@@ -226,6 +226,23 @@ pub fn run(args: &[String], repair: bool) -> i32 {
     }
 }
 
+fn development_update_mode(root: &Path, args: &[String], repair: bool) -> Result<bool, String> {
+    if args.iter().any(|arg| arg == "--development") {
+        return Ok(true);
+    }
+    if !repair {
+        return Ok(false);
+    }
+    let paths = UpdatePaths::new(root.to_path_buf(), "development");
+    if paths.journal.exists() {
+        return Ok(read_transaction(&paths)?.development);
+    }
+    if flag_value(args, "--target").is_some_and(|target| is_release_tag(&target)) {
+        return Ok(false);
+    }
+    Ok(super::inspect_destination_path(root).kind == "development")
+}
+
 pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     let root = flag_value(args, "--dir")
         .map(PathBuf::from)
@@ -238,10 +255,7 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     let journal_paths = UpdatePaths::new(root.clone(), "development");
-    let development = args.iter().any(|arg| arg == "--development")
-        || (repair
-            && ((journal_paths.journal.exists() && read_transaction(&journal_paths)?.development)
-                || super::inspect_destination_path(&root).kind == "development"));
+    let development = development_update_mode(&root, args, repair)?;
     if development {
         fs::create_dir_all(&journal_paths.state_dir)
             .map_err(display_io("create update state directory"))?;
@@ -2326,6 +2340,40 @@ mod tests {
             fs::read_to_string(temp.path().join(".env")).unwrap(),
             "keep data"
         );
+    }
+
+    #[test]
+    fn recovery_confirmation_preserves_release_and_development_modes() {
+        let (temp, target, mut transaction) = development_fixture();
+        let root = temp.path();
+        fs::write(root.join("pyproject.toml"), "[project]\nname = 'suzent'\n").unwrap();
+        fs::create_dir_all(root.join("src/suzent")).unwrap();
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        assert_eq!(crate::inspect_destination_path(root).kind, "development");
+        let release_args = vec![
+            "--target".into(),
+            "v0.15.1".into(),
+            "--backup-conflicts".into(),
+        ];
+        for repair in [false, true] {
+            assert!(!super::development_update_mode(root, &release_args, repair).unwrap());
+        }
+        let dev_args = vec![
+            "--development".into(),
+            "--target".into(),
+            target.commit.clone(),
+            "--backup-conflicts".into(),
+        ];
+        for repair in [false, true] {
+            assert!(super::development_update_mode(root, &dev_args, repair).unwrap());
+        }
+        let paths = UpdatePaths::new(root.to_path_buf(), &target.commit);
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        super::write_journal(&paths, &transaction).unwrap();
+        assert!(super::development_update_mode(root, &release_args, true).unwrap());
+        transaction.development = false;
+        super::write_journal(&paths, &transaction).unwrap();
+        assert!(!super::development_update_mode(root, &[], true).unwrap());
     }
 
     #[test]

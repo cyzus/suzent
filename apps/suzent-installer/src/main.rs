@@ -469,7 +469,8 @@ async fn confirm_git_recovery(
         )).blocking_show()
     }).await.map_err(|error| error.to_string())?;
     if accepted {
-        start_update_worker(app_handle, runtime, true, Some((target, source)))?;
+        let repair = runtime.repair;
+        start_update_worker(app_handle, runtime, repair, Some((target, source)))?;
     }
     Ok(accepted)
 }
