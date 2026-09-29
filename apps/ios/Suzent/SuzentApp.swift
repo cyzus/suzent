@@ -16,6 +16,20 @@ import MarkdownUI
     }
 }
 
+private struct ChatMenuPresentation {
+    let anchor: Anchor<CGRect>
+    let content: AnyView
+    let preferredHeight: CGFloat
+    let dismiss: () -> Void
+}
+
+private struct ChatMenuPreferenceKey: PreferenceKey {
+    static var defaultValue: [ChatMenuPresentation] { [] }
+    static func reduce(value: inout [ChatMenuPresentation], nextValue: () -> [ChatMenuPresentation]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
 private struct ChatSidebarRow: View {
     let chat: Chat
     let selected: Bool
@@ -45,36 +59,8 @@ private struct ChatSidebarRow: View {
                 moving = false; menu = true
             })
             .accessibilityAction(named: Text("Conversation actions")) { moving = false; menu = true }
-            .popover(isPresented: $menu) {
-                VStack(spacing: 0) {
-                    if !canManage {
-                        Text("Enable Manage conversations in desktop Settings → Mobile access.")
-                            .font(.footnote).padding(16)
-                    } else if moving {
-                        menuItem("Move to project", icon: "chevron.left") { moving = false }
-                        Divider()
-                        ScrollView {
-                            VStack(spacing: 0) {
-                                ForEach(projects) { project in
-                                    Button { menu = false; manage("move", project.id) } label: {
-                                        HStack { Text(project.name); Spacer(); if project.id == chat.projectId { Image(systemName: "checkmark") } }
-                                            .padding(12).frame(minHeight: 44)
-                                    }.buttonStyle(ChatRowButtonStyle(selected: false)).disabled(project.id == chat.projectId)
-                                }
-                            }
-                        }.frame(maxHeight: 260)
-                    } else {
-                        menuItem(chat.pinned == true ? "Unpin" : "Pin", icon: "pin") { menu = false; manage(chat.pinned == true ? "unpin" : "pin", nil) }
-                        menuItem("Rename", icon: "pencil") { menu = false; title = chat.title; renaming = true }
-                        menuItem("Move to project", icon: "folder") { moving = true }
-                            .disabled(chat.isRunning == true || projects.isEmpty)
-                        Divider()
-                        menuItem("Delete conversation", icon: "trash", danger: true) { menu = false; deleting = true }
-                            .disabled(chat.isRunning == true)
-                    }
-                }.frame(width: 260).background(Color.suzentSurface)
-                    .overlay(Rectangle().stroke(Color.primary, lineWidth: 2))
-                    .padding(3).presentationCompactAdaptation(.popover)
+            .anchorPreference(key: ChatMenuPreferenceKey.self, value: .bounds) { anchor in
+                menu ? [ChatMenuPresentation(anchor: anchor, content: AnyView(menuPanel), preferredHeight: !canManage ? 120 : moving ? 305 : 178, dismiss: { menu = false })] : []
             }
             .alert("Rename", isPresented: $renaming) {
                 TextField("Conversation title", text: $title)
@@ -86,6 +72,38 @@ private struct ChatSidebarRow: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) { manage("delete", nil) }
             } message: { Text("This deletes the conversation on all devices and cannot be undone.") }
+    }
+
+    private var menuPanel: some View {
+        VStack(spacing: 0) {
+            if !canManage {
+                Text("Enable Manage conversations in desktop Settings → Mobile access.")
+                    .font(.footnote).padding(16)
+            } else if moving {
+                menuItem("Move to project", icon: "chevron.left") { moving = false }
+                Divider()
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(projects) { project in
+                            Button { menu = false; manage("move", project.id) } label: {
+                                HStack { Text(project.name); Spacer(); if project.id == chat.projectId { Image(systemName: "checkmark") } }
+                                    .padding(12).frame(minHeight: 44)
+                            }.buttonStyle(ChatRowButtonStyle(selected: false)).disabled(project.id == chat.projectId)
+                        }
+                    }
+                }.frame(maxHeight: 260)
+            } else {
+                menuItem(chat.pinned == true ? "Unpin" : "Pin", icon: "pin") { menu = false; manage(chat.pinned == true ? "unpin" : "pin", nil) }
+                menuItem("Rename", icon: "pencil") { menu = false; title = chat.title; renaming = true }
+                menuItem("Move to project", icon: "folder") { moving = true }
+                    .disabled(chat.isRunning == true || projects.isEmpty)
+                Divider()
+                menuItem("Delete conversation", icon: "trash", danger: true) { menu = false; deleting = true }
+                    .disabled(chat.isRunning == true)
+            }
+        }.frame(width: 260).background(Color.suzentSurface)
+            .overlay(Rectangle().stroke(Color.primary, lineWidth: 2))
+            .shadow(color: .black, radius: 0, x: 3, y: 3)
     }
 
     private func menuItem(_ title: LocalizedStringKey, icon: String, danger: Bool = false, action: @escaping () -> Void) -> some View {
@@ -182,6 +200,22 @@ struct ContentView: View {
                         .accessibilityHidden(!showSidebar)
                 }
             }.background(Color.suzentSurface).clipped()
+                .overlayPreferenceValue(ChatMenuPreferenceKey.self) { menus in
+                    GeometryReader { proxy in
+                        if let menu = menus.last {
+                            let row = proxy[menu.anchor]
+                            let height = min(menu.preferredHeight, proxy.size.height - 32)
+                            let top = row.maxY + 4 + height <= proxy.size.height - 16 ? row.maxY + 4 : max(16, row.minY - height - 4)
+                            ZStack(alignment: .topLeading) {
+                                Color.black.opacity(0.001).ignoresSafeArea()
+                                    .onTapGesture { menu.dismiss() }.accessibilityHidden(true)
+                                menu.content.frame(maxHeight: height, alignment: .top)
+                                    .offset(x: max(16, min(row.minX, proxy.size.width - 276)), y: top)
+                            }.accessibilityAddTraits(.isModal)
+                                .accessibilityAction(.escape) { menu.dismiss() }
+                        }
+                    }
+                }
         }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(.primary)
@@ -245,6 +279,7 @@ struct ContentView: View {
                     if model.chats.contains(where: { $0.pinned == true }) {
                         Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
                         conversationRows(model.chats.filter { $0.pinned == true })
+                        Divider()
                     }
                     ForEach(projects) { project in projectSection(project) }
                     let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true }
