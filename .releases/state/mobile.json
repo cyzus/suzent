@@ -5,6 +5,7 @@
     ".releases/changes/mobile-chat-management.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-local-https.json",
+    ".releases/changes/mobile-model-memory.json",
     ".releases/changes/mobile-pua-citations.json",
     ".releases/changes/mobile-release-distribution.json",
     ".releases/changes/mobile-send-idempotency.json",
