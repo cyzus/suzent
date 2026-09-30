@@ -813,22 +813,27 @@ def test_mobile_message_fork_grants_access_only_to_requesting_device(
     client.headers["Authorization"] = f"Bearer {result['token']}"
     from suzent.mobile.client_api import get_database
 
-    get_database().get_chat("shared").messages = [
-        {"role": "assistant", "content": "Answer"}
+    messages = [
+        {"role": "user", "content": "Question"},
+        {"role": "assistant", "content": "Answer"},
     ]
+    get_database().get_chat("shared").messages = messages
     calls = []
 
     def fork(chat_id, *, message_index):
+        from suzent.core.fork import _validate_assistant_message_boundary
+
+        _validate_assistant_message_boundary(messages, message_index)
         calls.append((chat_id, message_index))
         return "forked", []
 
     monkeypatch.setattr("suzent.core.fork.fork_chat", fork)
     response = client.post(
         "/mobile/client/message-action",
-        json={"chat_id": "shared", "message_index": 0, "action": "fork"},
+        json={"chat_id": "shared", "message_index": 1, "action": "fork"},
     )
     assert response.json() == {"chat_id": "forked"}
-    assert calls == [("shared", 0)]
+    assert calls == [("shared", 2)]
     assert store.verify(result["token"]).permissions.permits_chat("forked")
     assert not store.verify(other["token"]).permissions.permits_chat("forked")
 

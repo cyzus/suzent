@@ -284,7 +284,7 @@ async def message_action(request: Request) -> JSONResponse:
         from suzent.core.fork import fork_chat
 
         try:
-            new_id, _ = fork_chat(body.chat_id, message_index=body.message_index)
+            new_id, _ = fork_chat(body.chat_id, message_index=body.message_index + 1)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         if not get_mobile_store(request).add_chat(grant.device_id, new_id):
