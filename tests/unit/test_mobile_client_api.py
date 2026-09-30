@@ -26,7 +26,7 @@ def setup_client(tmp_path, monkeypatch):
     app.state.mobile_store = store
     app.add_middleware(AuthBoundaryMiddleware)
     records = {
-        key: SimpleNamespace(id=key, title=key, config={})
+        key: SimpleNamespace(id=key, title=key, config={}, state_revision=0)
         for key in ("shared", "private")
     }
 
@@ -769,7 +769,10 @@ def test_message_actions_replay_only_latest_turn(
     record.config = {"model": "test/other"}
     monkeypatch.setattr(
         "suzent.core.retry.load_retry_checkpoint",
-        lambda _: SimpleNamespace(user_message=record.messages[-1]["content"]),
+        lambda _: SimpleNamespace(
+            user_message=record.messages[-1]["content"],
+            config_snapshot={"_retry_revision": 0},
+        ),
     )
     calls = []
 
@@ -878,7 +881,10 @@ def test_message_edit_checks_commands_and_model(
     record.config = {"model": "test/model"}
     monkeypatch.setattr(
         "suzent.core.retry.load_retry_checkpoint",
-        lambda _: SimpleNamespace(user_message=record.messages[-1]["content"]),
+        lambda _: SimpleNamespace(
+            user_message=record.messages[-1]["content"],
+            config_snapshot={"_retry_revision": 0},
+        ),
     )
     calls = []
 
@@ -951,7 +957,8 @@ def test_mobile_replay_rejects_automation_or_stale_checkpoint(
             ]
         )
     checkpoint = SimpleNamespace(
-        user_message="Human prompt" if trigger else "Older prompt"
+        user_message="Human prompt" if trigger else "Older prompt",
+        config_snapshot={"_retry_revision": 0},
     )
     monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: checkpoint)
 
@@ -986,7 +993,9 @@ def test_mobile_retry_allows_one_complete_tool_turn(setup_client, monkeypatch):
     ]
     monkeypatch.setattr(
         "suzent.core.retry.load_retry_checkpoint",
-        lambda _: SimpleNamespace(user_message="Question"),
+        lambda _: SimpleNamespace(
+            user_message="Question", config_snapshot={"_retry_revision": 0}
+        ),
     )
 
     async def send(request):
@@ -998,3 +1007,43 @@ def test_mobile_retry_allows_one_complete_tool_turn(setup_client, monkeypatch):
         json={"chat_id": "shared", "message_index": 3, "action": "retry"},
     )
     assert response.status_code == 202
+
+
+@pytest.mark.parametrize("checkpoint_revision", [None, 0])
+@pytest.mark.parametrize("action", ["retry", "edit"])
+def test_mobile_replay_rejects_hidden_state_changes(
+    setup_client, monkeypatch, checkpoint_revision, action
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = get_database().get_chat("shared")
+    record.state_revision = 1
+    record.messages = [
+        {"role": "user", "content": "Question"},
+        {"role": "assistant", "content": "Answer"},
+    ]
+    snapshot = (
+        {} if checkpoint_revision is None else {"_retry_revision": checkpoint_revision}
+    )
+    monkeypatch.setattr(
+        "suzent.core.retry.load_retry_checkpoint",
+        lambda _: SimpleNamespace(user_message="Question", config_snapshot=snapshot),
+    )
+
+    async def send(request):
+        pytest.fail("A transcript-hidden state change must invalidate replay")
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    response = client.post(
+        "/mobile/client/message-action",
+        json={
+            "chat_id": "shared",
+            "message_index": 0 if action == "edit" else 1,
+            "action": action,
+            "text": "Edited",
+        },
+    )
+    assert response.status_code == 409

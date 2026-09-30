@@ -245,6 +245,10 @@ Replay is unavailable after an intervening automation turn or when the latest
 user message no longer matches the saved checkpoint. Branches include the full
 assistant/tool continuation associated with the selected reply, even when its
 tool rows are hidden by the mobile presentation.
+Replay also requires the checkpoint's recorded completion revision to match the
+current conversation revision, so transcript-hidden background turns invalidate
+it. Older checkpoints without that marker require a new user turn before mobile
+replay becomes available.
 
 Saved credentials reconnect automatically on launch and foreground return. A
 temporarily unavailable desktop shows a retry screen instead of QR onboarding;

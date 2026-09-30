@@ -654,6 +654,7 @@ class ChatProcessor:
                 yield chunk
             return
 
+        retry_checkpoint_id: str | None = None
         # Save retry checkpoint now that we have the pre-turn state.
         # Skip for resume/heartbeat/steer flows.
         if (
@@ -666,7 +667,7 @@ class ChatProcessor:
                 from suzent.core.retry import save_retry_checkpoint
 
                 serializable_files = [f for f in (files or []) if isinstance(f, dict)]
-                save_retry_checkpoint(
+                retry_checkpoint_id = save_retry_checkpoint(
                     chat_id=chat_id,
                     agent_state_before=_agent_state_before,
                     messages_before=_messages_before,
@@ -1371,6 +1372,18 @@ class ChatProcessor:
                         append_display_messages=pending_trigger_rows,
                         draft_run_id=stream_run_id,
                     )
+                    if (
+                        retry_checkpoint_id is not None
+                        and snapshot_revision is not None
+                    ):
+                        from suzent.core.retry import record_retry_checkpoint_revision
+
+                        await asyncio.to_thread(
+                            record_retry_checkpoint_revision,
+                            chat_id,
+                            retry_checkpoint_id,
+                            snapshot_revision,
+                        )
             except Exception as e:
                 logger.warning(
                     f"Failed to persist pre-postprocess state snapshot for {chat_id}: {e}"

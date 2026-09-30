@@ -336,6 +336,14 @@ async def message_action(request: Request) -> JSONResponse:
     checkpoint = load_retry_checkpoint(body.chat_id)
     if checkpoint is None:
         raise HTTPException(409, "No retry checkpoint available")
+    checkpoint_revision = checkpoint.config_snapshot.get("_retry_revision")
+    if (
+        not isinstance(checkpoint_revision, int)
+        or checkpoint_revision != stored.state_revision
+    ):
+        raise HTTPException(
+            409, "The conversation has changed since the retry checkpoint"
+        )
     from suzent.core.fork import assistant_message_boundaries
 
     latest_content = messages[last_user].get("content")
