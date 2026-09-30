@@ -206,6 +206,7 @@ import SuzentCore
             chats = listing
             projects = projectList
             selected = initialChat
+            restoreModel(initialChat)
             connected = true
         } catch { candidate.close(); throw error }
     }
@@ -308,7 +309,7 @@ import SuzentCore
         streaming = false
         pendingApprovals = []
         selected = chat
-        selectedModel = nil
+        selectedModel = UserDefaults.standard.string(forKey: "suzent.chatModel.\(origin).\(chat.id)")
         draft = drafts[chat.id] ?? ""
         liveParts = []
         let current = generation
@@ -316,10 +317,30 @@ import SuzentCore
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
+            restoreModel(saved)
             openedVersion += 1
             syncRunning(saved)
             if saved.isRunning == true { observe(chat.id, client: client) }
         } catch { if current == generation { handle(error) } }
+    }
+
+    func selectModel(_ model: String?) {
+        selectedModel = model
+        UserDefaults.standard.set(model, forKey: "suzent.lastModel.\(origin)")
+        if let id = selected?.id, !id.isEmpty {
+            UserDefaults.standard.set(model, forKey: "suzent.chatModel.\(origin).\(id)")
+        }
+    }
+
+    private func restoreModel(_ chat: Chat) {
+        let key = chat.id.isEmpty ? "suzent.lastModel.\(origin)" : "suzent.chatModel.\(origin).\(chat.id)"
+        let remembered = UserDefaults.standard.string(forKey: key)
+        selectedModel = remembered.flatMap { (chat.models ?? []).contains($0) ? $0 : nil }
+        // Once the backend acknowledges a pending choice, let future desktop changes win.
+        if !chat.id.isEmpty, remembered == chat.model || selectedModel == nil {
+            UserDefaults.standard.removeObject(forKey: key)
+            selectedModel = nil
+        }
     }
 
     func createChat(projectID: String? = nil) async {
@@ -335,7 +356,7 @@ import SuzentCore
             pendingApprovals = []; approvalChoices = [:]
             liveParts = []
             selected = chat
-            selectedModel = nil
+            restoreModel(chat)
             draft = ""
         } catch { handle(error) }
     }
@@ -353,6 +374,7 @@ import SuzentCore
                 let created = try await client.createChat(title: String(localized: "Mobile conversation"), projectID: selected?.projectId)
                 selected = created
                 id = created.id
+                UserDefaults.standard.set(selectedModel, forKey: "suzent.chatModel.\(origin).\(id)")
                 chats.insert(created, at: 0)
             }
             try await client.send(text, chatID: id, model: selectedModel)

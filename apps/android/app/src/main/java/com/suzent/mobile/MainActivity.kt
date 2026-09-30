@@ -354,7 +354,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         title = stringResource(R.string.desktop_model),
         options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().sorted().map { it to it },
         selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
-    ) { model.selectedModel = it.ifEmpty { null }; modelsExpanded = false }
+    ) { model.selectModel(it.ifEmpty { null }); modelsExpanded = false }
 
 }
 
