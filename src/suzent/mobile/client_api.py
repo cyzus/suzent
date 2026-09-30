@@ -336,6 +336,8 @@ async def message_action(request: Request) -> JSONResponse:
     checkpoint = load_retry_checkpoint(body.chat_id)
     if checkpoint is None:
         raise HTTPException(409, "No retry checkpoint available")
+    from suzent.core.fork import assistant_message_boundaries
+
     latest_content = messages[last_user].get("content")
     if (
         not isinstance(latest_content, str)
@@ -344,6 +346,7 @@ async def message_action(request: Request) -> JSONResponse:
             for row in messages[last_user + 1 :]
         )
         or latest_content.strip() != checkpoint.user_message.strip()
+        or len(assistant_message_boundaries(messages[last_user + 1 :])) > 1
     ):
         raise HTTPException(409, "The latest turn does not match the retry checkpoint")
     from suzent.routes.chat_routes import chat_send

@@ -924,7 +924,7 @@ def test_mobile_retry_rejects_acp_runtime(setup_client):
     )
 
 
-@pytest.mark.parametrize("trigger", ["system_triggered", "trigger", None])
+@pytest.mark.parametrize("trigger", ["system_triggered", "trigger", "assistant", None])
 @pytest.mark.parametrize("action", ["retry", "edit"])
 def test_mobile_replay_rejects_automation_or_stale_checkpoint(
     setup_client, monkeypatch, trigger, action
@@ -939,7 +939,11 @@ def test_mobile_replay_rejects_automation_or_stale_checkpoint(
         {"role": "user", "content": "Human prompt"},
         {"role": "assistant", "content": "Answer"},
     ]
-    if trigger:
+    if trigger == "assistant":
+        record.messages.append(
+            {"role": "assistant", "content": "Autonomous goal result"}
+        )
+    elif trigger:
         record.messages.extend(
             [
                 {"role": trigger, "content": "Scheduled task"},
@@ -965,3 +969,32 @@ def test_mobile_replay_rejects_automation_or_stale_checkpoint(
         },
     )
     assert response.status_code == 409
+
+
+def test_mobile_retry_allows_one_complete_tool_turn(setup_client, monkeypatch):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = get_database().get_chat("shared")
+    record.messages = [
+        {"role": "user", "content": "Question"},
+        {"role": "assistant", "content": "Working", "tool_calls": [{"id": "tool-1"}]},
+        {"role": "tool", "content": "Result", "tool_call_id": "tool-1"},
+        {"role": "assistant", "content": "Final answer"},
+    ]
+    monkeypatch.setattr(
+        "suzent.core.retry.load_retry_checkpoint",
+        lambda _: SimpleNamespace(user_message="Question"),
+    )
+
+    async def send(request):
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    response = client.post(
+        "/mobile/client/message-action",
+        json={"chat_id": "shared", "message_index": 3, "action": "retry"},
+    )
+    assert response.status_code == 202
