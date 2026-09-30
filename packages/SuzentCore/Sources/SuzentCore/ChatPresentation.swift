@@ -166,3 +166,16 @@ public struct LiveActivityBuffer: Sendable {
         parts.append(MessagePart(type: "tool", toolCallId: id, state: "running")); return parts.count - 1
     }
 }
+
+public func streamingMarkdown(_ text: String, active: Bool) -> String {
+    guard active, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return text }
+    let lastLine = text.split(separator: "\n", omittingEmptySubsequences: false).last?.trimmingCharacters(in: .whitespaces) ?? ""
+    let blockEnding = lastLine.hasPrefix("```") || lastLine.hasPrefix("~~~") || lastLine.contains("|")
+    return text + (blockEnding ? "\n\n▍" : " ▍")
+}
+
+public func showAssemblyBadge(_ parts: [MessagePart], streaming: Bool) -> Bool {
+    streaming && !parts.contains {
+        $0.type != "text" || !($0.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
