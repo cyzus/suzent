@@ -8,6 +8,7 @@
     ".releases/changes/mobile-pua-citations.json",
     ".releases/changes/mobile-release-distribution.json",
     ".releases/changes/mobile-send-idempotency.json",
+    ".releases/changes/mobile-streaming-motion.json",
     ".releases/changes/product-release-plans.json"
   ],
   "legacy_complete": true
