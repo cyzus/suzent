@@ -420,6 +420,7 @@ private final class CitationContentCache {
 struct SuzentMarkdown: View {
     let text: String
     var citationSources: [CitationSource] = []
+    var softStreaming: Bool? = nil
     @State private var pendingLink: URL?
     @State private var browserLink: URL?
     @StateObject private var icons = CitationIcons()
@@ -487,6 +488,8 @@ struct SuzentMarkdown: View {
                 .paragraph { configuration in
                     if configuration.content.renderMarkdown().contains("suzent-citation://") {
                         CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink, sources: citationSources, icons: icons.images) { pendingLink = $0 }
+                    } else if let softStreaming, !configuration.content.renderMarkdown().contains("![") {
+                        SoftStreamParagraph(markdown: configuration.content.renderMarkdown(), active: softStreaming) { pendingLink = $0 }
                     } else { configuration.label }
                 }
                 .text {
@@ -550,12 +553,12 @@ struct ActivityContent: View {
     var live = false
     var citationSources: [CitationSource] = []
     var body: some View {
+        let chunks = activityChunks(parts)
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(activityChunks(parts).enumerated()), id: \.offset) { _, chunk in
-                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
+            ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
+                if chunk.first?.type == "text" { StreamingMarkdown(text: chunk.first?.text ?? "", active: live && index == chunks.count - 1, citationSources: citationSources) }
                 else { ActivityRail(parts: chunk, live: live) }
             }
-            if live { StreamingPulse().padding(.vertical, 4).accessibilityLabel("Working…") }
         }
     }
 }
@@ -807,5 +810,286 @@ struct StreamingPulse: View {
                 }
             }.frame(width: 18, height: 12)
         }.accessibilityHidden(true)
+    }
+}
+
+struct AssemblyBadge: View {
+    let thinking: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var started = Date()
+    @State private var expanded = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !expanded || reduceMotion || scenePhase != .active)) { timeline in
+                    Canvas { context, size in
+                        context.scaleBy(x: size.width / 320, y: size.height / 108)
+                        for mark in AssemblyScene.frame(seconds: timeline.date.timeIntervalSince(started), reduced: reduceMotion) {
+                            var path = Path()
+                            for (index, point) in mark.points.enumerated() {
+                                let position = CGPoint(x: point.x, y: point.y)
+                                if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
+                            }
+                            if mark.points.count > 2 { path.closeSubpath() }
+                            let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
+                            if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
+                            else { context.fill(path, with: shading) }
+                        }
+                    }
+                }.padding(2).opacity(expanded ? 1 : 0)
+                SuzentLogoMark().frame(width: 26, height: 26).opacity(expanded ? 0 : 1)
+            }
+            .frame(width: expanded ? min(320, max(90, geometry.size.width - 3)) : 90, height: expanded ? 108 : 40)
+            .background(Color.suzentSurface)
+            .clipped()
+            .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+            .background { Rectangle().fill(Color.primary).offset(x: 3, y: 3) }
+            .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
+        }
+        .frame(height: expanded ? 111 : 43)
+        .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
+        .task(id: thinking) {
+            if thinking { started = Date() }
+            if thinking && !reduceMotion {
+                // Let SwiftUI present the default badge before changing the target size.
+                try? await Task.sleep(for: .milliseconds(32))
+            }
+            guard !Task.isCancelled else { return }
+            expanded = thinking
+        }
+        .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+    }
+}
+
+private struct StreamingMarkdown: View {
+    let text: String
+    let active: Bool
+    let citationSources: [CitationSource]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        SuzentMarkdown(text: streamingMarkdown(text, active: active), citationSources: citationSources,
+            softStreaming: active && !reduceMotion)
+    }
+}
+
+private final class StreamFadeLayoutManager: NSLayoutManager {
+    struct Reveal {
+        let range: NSRange
+        let began: TimeInterval
+    }
+    var reveals: [Reveal] = []
+
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        guard let context = UIGraphicsGetCurrentContext(), !reveals.isEmpty else {
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        let segments = reveals.map { (glyphRange(forCharacterRange: $0.range, actualCharacterRange: nil), $0.began) }
+        var boundaries = Set([glyphsToShow.location, NSMaxRange(glyphsToShow)])
+        for (range, _) in segments {
+            let clipped = NSIntersectionRange(range, glyphsToShow)
+            if clipped.length > 0 { boundaries.insert(clipped.location); boundaries.insert(NSMaxRange(clipped)) }
+        }
+        let sorted = boundaries.sorted()
+        for index in 0..<(sorted.count - 1) {
+            let range = NSRange(location: sorted[index], length: sorted[index + 1] - sorted[index])
+            let began = segments.first { NSLocationInRange(range.location, $0.0) }?.1
+            let progress = began.map { min(1, max(0, (now - $0) / 0.15)) } ?? 1
+            context.saveGState()
+            context.setAlpha(0.12 + 0.88 * (1 - pow(1 - progress, 2)))
+            super.drawGlyphs(forGlyphRange: range, at: origin)
+            context.restoreGState()
+        }
+    }
+}
+
+private final class StreamFadeTextView: UITextView {
+    let fadeLayout: StreamFadeLayoutManager
+    private var previous = ""
+    private var ticker: Timer?
+
+    init() {
+        let storage = NSTextStorage()
+        let layout = StreamFadeLayoutManager()
+        let container = NSTextContainer(size: .zero)
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+        fadeLayout = layout
+        super.init(frame: .zero, textContainer: container)
+        isScrollEnabled = false
+        isEditable = false
+        backgroundColor = .clear
+        textContainerInset = .zero
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func update(_ content: NSAttributedString, active: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        var body = content.string
+        while body.last?.isWhitespace == true { body.removeLast() }
+        if body.hasSuffix("▍") { body.removeLast() }
+        while body.last?.isWhitespace == true { body.removeLast() }
+        if !active || !body.hasPrefix(previous) { fadeLayout.reveals.removeAll() }
+        else if body.utf16.count > previous.utf16.count {
+            let raw = NSRange(location: previous.utf16.count, length: body.utf16.count - previous.utf16.count)
+            let composed = (body as NSString).rangeOfComposedCharacterSequences(for: raw)
+            // One fade per received fragment keeps draw calls independent of character count.
+            fadeLayout.reveals.append(.init(range: composed, began: now))
+        }
+        fadeLayout.reveals.removeAll { now - $0.began >= 0.15 || NSMaxRange($0.range) > content.length }
+        if !attributedText.isEqual(to: content) { attributedText = content }
+        previous = body
+        startTicker()
+    }
+
+    private func startTicker() {
+        guard ticker == nil, window != nil, !fadeLayout.reveals.isEmpty else { return }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated {
+                let now = ProcessInfo.processInfo.systemUptime
+                self.fadeLayout.reveals.removeAll { now - $0.began >= 0.15 }
+                self.fadeLayout.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: self.textStorage.length))
+                self.setNeedsDisplay()
+                if self.fadeLayout.reveals.isEmpty { self.ticker?.invalidate(); self.ticker = nil }
+            }
+        }
+        ticker = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { ticker?.invalidate(); ticker = nil } else { startTicker() }
+    }
+}
+
+private struct SoftStreamParagraph: UIViewRepresentable {
+    let markdown: String
+    let active: Bool
+    let openLink: (URL) -> Void
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var openLink: (URL) -> Void
+        init(openLink: @escaping (URL) -> Void) { self.openLink = openLink }
+        func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+            if ["http", "https", "suzent-citation"].contains(URL.scheme?.lowercased()) { openLink(URL) }
+            return false
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(openLink: openLink) }
+    func makeUIView(context: Context) -> StreamFadeTextView {
+        let view = StreamFadeTextView()
+        view.delegate = context.coordinator
+        return view
+    }
+    func updateUIView(_ view: StreamFadeTextView, context: Context) {
+        context.coordinator.openLink = openLink
+        let parsed = (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown)
+        let result = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
+        let entire = NSRange(location: 0, length: result.length)
+        result.addAttributes([.font: UIFont.systemFont(ofSize: PresentationTokens.typeChat), .foregroundColor: UIColor.label], range: entire)
+        var offset = 0
+        for run in parsed.runs {
+            let length = String(parsed[run.range].characters).utf16.count
+            let range = NSRange(location: offset, length: length)
+            let intent = run.inlinePresentationIntent ?? []
+            var font = UIFont.systemFont(ofSize: PresentationTokens.typeChat)
+            if intent.contains(.code) {
+                font = .monospacedSystemFont(ofSize: PresentationTokens.typeChat, weight: .semibold)
+                result.addAttributes([.backgroundColor: UIColor(red: 1, green: 230/255, blue: 102/255, alpha: 1), .foregroundColor: UIColor.black], range: range)
+            } else {
+                var traits: UIFontDescriptor.SymbolicTraits = []
+                if intent.contains(.stronglyEmphasized) { traits.insert(.traitBold) }
+                if intent.contains(.emphasized) { traits.insert(.traitItalic) }
+                if let descriptor = font.fontDescriptor.withSymbolicTraits(traits) { font = UIFont(descriptor: descriptor, size: PresentationTokens.typeChat) }
+            }
+            result.addAttribute(.font, value: font, range: range)
+            if intent.contains(.strikethrough) { result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
+            offset += length
+        }
+        view.linkTextAttributes = [.foregroundColor: UIColor(red: 0, green: 102/255, blue: 1, alpha: 1)]
+        view.update(result, active: active)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: StreamFadeTextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+    }
+}
+
+
+private struct ChatContentFrameKey: PreferenceKey {
+    static var defaultValue: CGRect { .zero }
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+struct FollowingChatScrollView<Content: View>: View {
+    let openedVersion: Int
+    let sentVersion: Int
+    let startsAtBottom: Bool
+    let dismissKeyboard: () -> Void
+    @ViewBuilder let content: () -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var following = true
+    @State private var dragging = false
+    @State private var contentFrame = CGRect.zero
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollViewReader { reader in
+                ScrollView {
+                    content()
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: ChatContentFrameKey.self,
+                                                   value: geometry.frame(in: .named("chat-viewport")))
+                        })
+                }
+                .coordinateSpace(name: "chat-viewport")
+                .contentShape(Rectangle())
+                .scrollDismissesKeyboard(.interactively)
+                .defaultScrollAnchor(startsAtBottom ? .bottom : .top)
+                .simultaneousGesture(TapGesture().onEnded(dismissKeyboard))
+                .simultaneousGesture(DragGesture(minimumDistance: 4)
+                    .onChanged { _ in
+                        dragging = true
+                        following = false
+                    }
+                    .onEnded { _ in
+                        dragging = false
+                        following = contentFrame.maxY <= viewport.size.height + 2
+                    })
+                .onPreferenceChange(ChatContentFrameKey.self) { frame in
+                    let heightChanged = abs(frame.height - contentFrame.height) > 0.5
+                    contentFrame = frame
+                    if !following && !dragging && frame.maxY <= viewport.size.height + 2 {
+                        following = true
+                    }
+                    // Scroll only after layout adds height, never for each received token.
+                    if heightChanged && following && !dragging && startsAtBottom {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
+                            reader.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: viewport.size.height) { _, _ in
+                    if following && !dragging && startsAtBottom { reader.scrollTo("bottom", anchor: .bottom) }
+                }
+                .onChange(of: openedVersion) { _, _ in
+                    following = true
+                    reader.scrollTo("bottom", anchor: .bottom)
+                }
+                .onChange(of: sentVersion) { _, _ in
+                    following = true
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
+                        reader.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
+        }
     }
 }
