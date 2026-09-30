@@ -359,6 +359,7 @@ async def message_action(request: Request) -> JSONResponse:
         raise HTTPException(409, "The latest turn does not match the retry checkpoint")
     from suzent.routes.chat_routes import chat_send
 
+    config["_retry_expected_revision"] = checkpoint_revision
     response = await chat_send(
         forwarded(
             request,

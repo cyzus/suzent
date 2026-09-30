@@ -197,7 +197,9 @@ def load_retry_checkpoint(chat_id: str) -> Optional[Any]:
         return None
 
 
-def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
+def apply_retry_checkpoint(
+    chat_id: str, expected_revision: int | None = None
+) -> Optional[dict]:
     """
     Restore agent state, display messages, and files to the checkpoint state.
 
@@ -217,11 +219,18 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
 
         # Restore agent state + display messages in DB. rewrite_chat_messages keeps the
         # sidebar summary and FTS index in sync with the restored message list.
-        db.rewrite_chat_messages(
+        if (
+            expected_revision is not None
+            and checkpoint.config_snapshot.get("_retry_revision") != expected_revision
+        ):
+            return None
+        if not db.rewrite_chat_messages(
             chat_id,
             list(checkpoint.messages_before),
             agent_state=checkpoint.agent_state_before,
-        )
+            expected_revision=expected_revision,
+        ):
+            return None
 
         # Restore files using the lightweight file-level snapshot when available.
         file_snapshot_data = getattr(checkpoint, "file_snapshot", None)

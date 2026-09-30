@@ -1713,7 +1713,12 @@ class ChatProcessor:
 
         from suzent.core.retry import apply_retry_checkpoint
 
-        checkpoint_data = apply_retry_checkpoint(chat_id)
+        expected_revision = config.pop("_retry_expected_revision", None)
+        checkpoint_data = (
+            apply_retry_checkpoint(chat_id, expected_revision=expected_revision)
+            if expected_revision is not None
+            else apply_retry_checkpoint(chat_id)
+        )
 
         if is_retry_edit:
             edited_message = message_content.split(" ", 1)[1].strip()

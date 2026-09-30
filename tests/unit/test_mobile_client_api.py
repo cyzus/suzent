@@ -796,7 +796,11 @@ def test_message_actions_replay_only_latest_turn(
         == 202
     )
     assert calls == [
-        {"chat_id": "shared", "message": expected, "config": {"model": "test/other"}}
+        {
+            "chat_id": "shared",
+            "message": expected,
+            "config": {"model": "test/other", "_retry_expected_revision": 0},
+        }
     ]
     monkeypatch.setattr(
         "suzent.core.stream_registry.is_background_streaming", lambda _: True
