@@ -29,10 +29,23 @@ def setup_client(tmp_path, monkeypatch):
         key: SimpleNamespace(id=key, title=key, config={})
         for key in ("shared", "private")
     }
+
+    def update_chat(chat_id: str, **changes: object) -> bool:
+        if chat_id not in records:
+            return False
+        for key, value in changes.items():
+            setattr(records[chat_id], key, value)
+        return True
+
+    def merge_chat_config(chat_id: str, updates: dict[str, object]) -> bool:
+        return update_chat(chat_id, config={**records[chat_id].config, **updates})
+
     db = SimpleNamespace(
+        merge_chat_config=merge_chat_config,
+        has_client_message=lambda chat_id, message_id: False,
         get_pinned_chat_ids=lambda ids: set(),
         get_subagent_chat_ids_for_parent_chat=lambda chat_id: [],
-        update_chat=lambda chat_id, **changes: chat_id in records,
+        update_chat=update_chat,
         get_chat=records.get,
         get_chat_projects=lambda ids: {
             key: ("p-" + key, key.title()) for key in ids if key in records
@@ -273,11 +286,11 @@ def test_send_cannot_override_permissions_or_run_commands(setup_client, monkeypa
     )
     assert calls == []
     assert client.post("/mobile/client/send", json=base).status_code == 202
-    assert calls == [base]
+    assert calls == [{**base, "config": {"model": "test/model"}}]
 
     identified = {**base, "client_message_id": "phone-send-1"}
     assert client.post("/mobile/client/send", json=identified).status_code == 202
-    assert calls[-1] == identified
+    assert calls[-1] == {**identified, "config": {"model": "test/model"}}
 
 
 def test_created_chat_added_to_only_its_device(setup_client, monkeypatch):
@@ -389,12 +402,21 @@ def test_corrupt_store_fails_without_exposing_records(tmp_path, monkeypatch):
         assert "private-name" not in response.text
 
 
+@pytest.mark.parametrize("runtime", ["native", "acp"])
+@pytest.mark.parametrize("model_key", ["model", "subagent_model"])
 def test_transcript_reports_current_run_without_loading_runtime(
-    setup_client, monkeypatch
+    setup_client, monkeypatch, runtime, model_key
 ):
     client, store = setup_client
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
+    from suzent.mobile.client_api import get_database
+
+    get_database().get_chat("shared").config = {
+        model_key: "test/other",
+        "runtime": runtime,
+        "private": "hidden",
+    }
     record = SimpleNamespace(
         model_dump=lambda **kwargs: {
             "id": "shared",
@@ -422,8 +444,8 @@ def test_transcript_reports_current_run_without_loading_runtime(
             "pinned": False,
             "projectId": "p-shared",
             "projectName": "Shared",
-            "model": "test/model",
-            "models": ["test/model", "test/other"],
+            "model": "test/other" if runtime == "native" else None,
+            "models": ["test/model", "test/other"] if runtime == "native" else [],
         }
 
 
@@ -617,3 +639,259 @@ def test_confirm_pairing_requires_mobile_credential(setup_client):
     assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 200
     store.revoke(result["device"]["device_id"])
     assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 401
+
+
+@pytest.mark.parametrize("status", [202, 409, 500])
+def test_send_preserves_chat_config_and_saves_only_accepted_model(
+    setup_client, monkeypatch, status
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    db = get_database()
+    original = {"model": "test/model", "tools": [], "permission_mode": "default"}
+    db.get_chat("shared").config = dict(original)
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({}, status_code=status)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    body = {"chat_id": "shared", "message": "Hello", "model": "test/other"}
+    assert client.post("/mobile/client/send", json=body).status_code == status
+    expected = {**original, "model": "test/other"}
+    assert calls[0]["config"] == expected
+    assert db.get_chat("shared").config == (expected if status == 202 else original)
+
+    # Returning to this conversation and sending without an override must use
+    # its saved model, not global preferences, and retain its tool settings.
+    client.post("/mobile/client/send", json={"chat_id": "shared", "message": "Again"})
+    assert calls[-1]["config"] == (expected if status == 202 else original)
+
+
+def test_duplicate_mobile_send_does_not_replace_saved_model(setup_client, monkeypatch):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    db = get_database()
+    db.get_chat("shared").config = {"model": "test/model"}
+    db.has_client_message = lambda *_: True
+
+    async def send(request):
+        return JSONResponse({}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    response = client.post(
+        "/mobile/client/send",
+        json={
+            "chat_id": "shared",
+            "message": "Hello",
+            "model": "test/other",
+            "client_message_id": "already-accepted",
+        },
+    )
+    assert response.status_code == 202
+    assert db.get_chat("shared").config == {"model": "test/model"}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"subagent_model": "test/other"},
+        {"subagent_model": "test/model", "model": "test/other"},
+    ],
+)
+def test_mobile_send_uses_subagent_model_unless_explicitly_changed(
+    setup_client, monkeypatch, config
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    get_database().get_chat("shared").config = dict(config)
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    assert (
+        client.post(
+            "/mobile/client/send", json={"chat_id": "shared", "message": "Hello"}
+        ).status_code
+        == 202
+    )
+    assert calls[0]["config"]["model"] == "test/other"
+    assert get_database().get_chat("shared").config["model"] == "test/other"
+
+
+@pytest.mark.parametrize("action", ["retry", "edit", "fork"])
+def test_message_actions_require_scoped_permissions(setup_client, action):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    from suzent.mobile.client_api import get_database
+
+    get_database().get_chat("shared").messages = [{"role": "user", "content": "Hi"}]
+    body = {"chat_id": "shared", "message_index": 0, "action": action, "text": "Edited"}
+    assert client.post("/mobile/client/message-action", json=body).status_code == 403
+    assert (
+        client.post(
+            "/mobile/client/message-action", json={**body, "chat_id": "private"}
+        ).status_code
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    "action,expected", [("retry", "/retry"), ("edit", "/retry-edit Updated")]
+)
+def test_message_actions_replay_only_latest_turn(
+    setup_client, monkeypatch, action, expected
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    from suzent.mobile.client_api import get_database
+
+    record = get_database().get_chat("shared")
+    record.messages = [
+        {"role": "user", "content": "Earlier"},
+        {"role": "user", "content": "Latest"},
+    ]
+    record.config = {"model": "test/other"}
+    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: object())
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    body = {
+        "chat_id": "shared",
+        "message_index": 0,
+        "action": action,
+        "text": "Updated",
+    }
+    assert client.post("/mobile/client/message-action", json=body).status_code == 409
+    assert not calls
+    assert (
+        client.post(
+            "/mobile/client/message-action", json={**body, "message_index": 1}
+        ).status_code
+        == 202
+    )
+    assert calls == [
+        {"chat_id": "shared", "message": expected, "config": {"model": "test/other"}}
+    ]
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming", lambda _: True
+    )
+    assert (
+        client.post(
+            "/mobile/client/message-action", json={**body, "message_index": 1}
+        ).status_code
+        == 409
+    )
+    assert len(calls) == 1
+
+
+def test_mobile_message_fork_grants_access_only_to_requesting_device(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], create_chats=True)
+    other = grant(store, chat_ids=["shared"], create_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    from suzent.mobile.client_api import get_database
+
+    get_database().get_chat("shared").messages = [
+        {"role": "assistant", "content": "Answer"}
+    ]
+    calls = []
+
+    def fork(chat_id, *, message_index):
+        calls.append((chat_id, message_index))
+        return "forked", []
+
+    monkeypatch.setattr("suzent.core.fork.fork_chat", fork)
+    response = client.post(
+        "/mobile/client/message-action",
+        json={"chat_id": "shared", "message_index": 0, "action": "fork"},
+    )
+    assert response.json() == {"chat_id": "forked"}
+    assert calls == [("shared", 0)]
+    assert store.verify(result["token"]).permissions.permits_chat("forked")
+    assert not store.verify(other["token"]).permissions.permits_chat("forked")
+
+
+@pytest.mark.parametrize(
+    "override,expected_status",
+    [
+        ({"text": "  /model unwanted"}, 403),
+        ({"model": "disabled/model"}, 400),
+        ({"model": "test/other"}, 202),
+    ],
+)
+def test_message_edit_checks_commands_and_model(
+    setup_client, monkeypatch, override, expected_status
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = get_database().get_chat("shared")
+    record.messages = [{"role": "user", "content": "Question"}]
+    record.config = {"model": "test/model"}
+    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: object())
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    response = client.post(
+        "/mobile/client/message-action",
+        json={
+            "chat_id": "shared",
+            "message_index": 0,
+            "action": "edit",
+            "text": "Updated",
+            **override,
+        },
+    )
+    assert response.status_code == expected_status
+    if expected_status == 202:
+        assert calls[0]["config"]["model"] == "test/other"
+        assert record.config["model"] == "test/other"
+    else:
+        assert not calls
+        assert record.config["model"] == "test/model"
+
+
+def test_mobile_retry_rejects_acp_runtime(setup_client):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = get_database().get_chat("shared")
+    record.messages = [{"role": "user", "content": "Question"}]
+    record.config = {"runtime": "acp"}
+    assert (
+        client.post(
+            "/mobile/client/message-action",
+            json={"chat_id": "shared", "message_index": 0, "action": "retry"},
+        ).status_code
+        == 400
+    )

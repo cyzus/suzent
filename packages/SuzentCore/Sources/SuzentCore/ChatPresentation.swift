@@ -33,6 +33,9 @@ public struct DisplayMessage: Sendable {
     public let role: String
     public let parts: [MessagePart]
     public let citationSources: [CitationSource]
+    public var model: String? = nil
+    public var timestamp: String? = nil
+    public var messageIndex: Int = 0
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
@@ -62,7 +65,7 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         let sources = (localSources + nearbySources).reduce(into: [CitationSource]()) { sources, source in
             if !sources.contains(where: { $0.id == source.id }) { sources.append(source) }
         }
-        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources)
+        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources, model: message.model, timestamp: message.timestamp, messageIndex: messageIndex)
     }
     var grouped: [DisplayMessage] = []
     for row in rows {
@@ -72,7 +75,8 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
                 parts: normalizeParts(previous.parts + row.parts),
-                citationSources: previous.citationSources + row.citationSources)
+                citationSources: previous.citationSources + row.citationSources,
+                model: row.model ?? previous.model, timestamp: row.timestamp ?? previous.timestamp, messageIndex: row.messageIndex)
         } else { grouped.append(row) }
     }
     return grouped

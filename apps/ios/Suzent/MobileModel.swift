@@ -324,6 +324,19 @@ import SuzentCore
         } catch { if current == generation { handle(error) } }
     }
 
+    func messageAction(_ message: DisplayMessage, action: String, text: String? = nil) async {
+        guard let client, let id = selected?.id, !id.isEmpty, !busy, !streaming else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let target = try await client.messageAction(id, index: message.messageIndex, action: action, text: text, model: selectedModel)
+            let chat = try await client.chat(target)
+            busy = false
+            await open(chat)
+            await refresh()
+        } catch { handle(error) }
+    }
+
     func selectModel(_ model: String?) {
         selectedModel = model
         UserDefaults.standard.set(model, forKey: "suzent.lastModel.\(origin)")

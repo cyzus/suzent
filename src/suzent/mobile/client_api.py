@@ -42,6 +42,13 @@ class ManageRequest(ChatRequest):
     value: str | None = Field(default=None, min_length=1, max_length=200)
 
 
+class MessageActionRequest(ChatRequest):
+    action: Literal["retry", "edit", "fork"]
+    message_index: Annotated[StrictInt, Field(ge=0)]
+    text: str | None = Field(default=None, min_length=1, max_length=100000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+
+
 class ObserveRequest(ChatRequest):
     wait_ms: int = Field(default=1000, ge=0, le=1000)
     protocol: Literal[1] = 1
@@ -127,7 +134,12 @@ async def chat(request: Request) -> JSONResponse:
     data = json.loads(response.body)
     from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
 
-    config = data.get("config") or {}
+    db = get_database()
+    stored_chat = db.get_chat(chat_id)
+    if stored_chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    # The lightweight transcript deliberately excludes configuration.
+    config = stored_chat.config or {}
     native = str(config.get("runtime", "native")).lower() != "acp"
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
     return reply(
@@ -140,7 +152,11 @@ async def chat(request: Request) -> JSONResponse:
             "projectId": metadata[0],
             "projectName": metadata[1],
             "pinned": chat_id in get_database().get_pinned_chat_ids([chat_id]),
-            "model": (config.get("model") or get_default_chat_model())
+            "model": (
+                config.get("model")
+                or config.get("subagent_model")
+                or get_default_chat_model()
+            )
             if native
             else None,
             "models": get_enabled_models_from_db() if native else [],
@@ -211,21 +227,34 @@ async def send(request: Request) -> JSONResponse:
     if body.message.lstrip().startswith("/"):
         raise HTTPException(403, "Desktop commands are not available to mobile clients")
     from suzent.routes.chat_routes import chat_send
+    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
 
+    db = get_database()
+    chat = db.get_chat(body.chat_id)
+    if chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    config = dict(chat.config or {})
+    native = str(config.get("runtime", "native")).lower() != "acp"
     payload = body.model_dump(exclude={"model"}, exclude_none=True)
     if body.model is not None:
-        from suzent.core.providers import get_enabled_models_from_db
-
-        chat = get_database().get_chat(body.chat_id)
-        if chat is None:
-            raise HTTPException(404, "Conversation unavailable")
-        if (
-            str((chat.config or {}).get("runtime", "native")).lower() == "acp"
-            or body.model not in get_enabled_models_from_db()
-        ):
+        if not native or body.model not in get_enabled_models_from_db():
             raise HTTPException(400, "Model unavailable for this conversation")
-        payload["config"] = {"model": body.model}
-    return await chat_send(forwarded(request, payload))
+        config["model"] = body.model
+    elif native and not config.get("model"):
+        config["model"] = config.get("subagent_model") or get_default_chat_model()
+    payload["config"] = config
+    already_sent = body.client_message_id is not None and db.has_client_message(
+        body.chat_id, body.client_message_id
+    )
+    response = await chat_send(forwarded(request, payload))
+    if (
+        response.status_code == 202
+        and native
+        and not already_sent
+        and config.get("model")
+    ):
+        db.merge_chat_config(body.chat_id, {"model": config["model"]})
+    return response
 
 
 async def stop(request: Request) -> JSONResponse:
@@ -234,6 +263,83 @@ async def stop(request: Request) -> JSONResponse:
     from suzent.routes.chat_routes import stop_chat
 
     return await stop_chat(forwarded(request, body.model_dump()))
+
+
+async def message_action(request: Request) -> JSONResponse:
+    body = await parse(request, MessageActionRequest)
+    grant = authorize(request, body.chat_id)
+    db = get_database()
+    stored = db.get_chat(body.chat_id)
+    if stored is None:
+        raise HTTPException(404, "Conversation unavailable")
+    from suzent.core.stream_registry import is_background_streaming
+
+    if is_background_streaming(body.chat_id):
+        raise HTTPException(409, "Conversation is running")
+    messages = stored.messages or []
+    if body.message_index >= len(messages):
+        raise HTTPException(400, "Message unavailable")
+    if body.action == "fork":
+        authorize(request, body.chat_id, "create_chats")
+        from suzent.core.fork import fork_chat
+
+        try:
+            new_id, _ = fork_chat(body.chat_id, message_index=body.message_index)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if not get_mobile_store(request).add_chat(grant.device_id, new_id):
+            raise HTTPException(401, "Mobile credential revoked")
+        return reply({"chat_id": new_id})
+    authorize(request, body.chat_id, "send")
+    authorize(request, body.chat_id, "manage_chats")
+    config = dict(stored.config or {})
+    if str(config.get("runtime", "native")).lower() == "acp":
+        raise HTTPException(400, "Retry is unavailable for this runtime")
+    if body.action == "edit" and (body.text or "").lstrip().startswith("/"):
+        raise HTTPException(403, "Desktop commands are not available to mobile clients")
+    if body.model is not None:
+        from suzent.core.providers import get_enabled_models_from_db
+
+        if body.model not in get_enabled_models_from_db():
+            raise HTTPException(400, "Model unavailable for this conversation")
+        config["model"] = body.model
+    elif not config.get("model") and config.get("subagent_model"):
+        config["model"] = config["subagent_model"]
+    last_user = next(
+        (
+            i
+            for i in range(len(messages) - 1, -1, -1)
+            if messages[i].get("role") == "user"
+        ),
+        -1,
+    )
+    if last_user < 0 or body.message_index < last_user:
+        raise HTTPException(409, "Only the latest turn can be retried")
+    if body.action == "edit" and (
+        body.message_index != last_user or not (body.text or "").strip()
+    ):
+        raise HTTPException(400, "Only the latest user message can be edited")
+    from suzent.core.retry import load_retry_checkpoint
+
+    if load_retry_checkpoint(body.chat_id) is None:
+        raise HTTPException(409, "No retry checkpoint available")
+    from suzent.routes.chat_routes import chat_send
+
+    response = await chat_send(
+        forwarded(
+            request,
+            {
+                "chat_id": body.chat_id,
+                "message": f"/retry-edit {body.text.strip()}"
+                if body.action == "edit"
+                else "/retry",
+                "config": config,
+            },
+        )
+    )
+    if response.status_code == 202 and config.get("model"):
+        db.merge_chat_config(body.chat_id, {"model": config["model"]})
+    return response
 
 
 async def manage(request: Request) -> JSONResponse:
@@ -361,6 +467,7 @@ client_routes = [
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/send", send, methods=["POST"]),
+    Route("/mobile/client/message-action", message_action, methods=["POST"]),
     Route("/mobile/client/stop", stop, methods=["POST"]),
     Route("/mobile/client/manage", manage, methods=["POST"]),
     Route("/mobile/client/live", observe, methods=["POST"]),

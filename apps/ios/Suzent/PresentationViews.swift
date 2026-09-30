@@ -20,9 +20,15 @@ extension Color {
 struct MessageView: View {
     let message: DisplayMessage
     var isLatest = false
+    var fallbackModel: String?
+    var canRetry = false
+    var canEdit = false
+    var canFork = false
+    var onAction: (String, String?) -> Void = { _, _ in }
     private var user: Bool { message.role == "user" }
 
     var body: some View {
+        VStack(spacing: 10) {
         if user {
             HStack {
                 Spacer(minLength: 40)
@@ -41,6 +47,119 @@ struct MessageView: View {
                 ActivityContent(parts: message.parts, live: false, citationSources: message.citationSources)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
+        if ["user", "assistant"].contains(message.role) {
+            MessageFooter(message: message, fallbackModel: fallbackModel, canRetry: canRetry, canEdit: canEdit, canFork: canFork, onAction: onAction)
+        }
+        }
+    }
+}
+
+private struct MessageFooter: View {
+    let message: DisplayMessage
+    var fallbackModel: String?
+    var canRetry: Bool
+    var canEdit: Bool
+    var canFork: Bool
+    var onAction: (String, String?) -> Void
+    @State private var copied = false
+    @State private var action: String?
+    @State private var edited = ""
+    @State private var sourcesOpen = false
+    @State private var modelDetails: String?
+    private var user: Bool { message.role == "user" }
+
+    var body: some View {
+        HStack(spacing: 5) {
+                if user { Spacer(minLength: 0) }
+                if !message.text.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = message.text
+                        copied = true
+                    } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc").frame(width: 32, height: 36) }
+                    .accessibilityLabel(copied ? String(localized: "Copied") : String(localized: "Copy message"))
+                }
+                if canEdit { actionButton("pencil", title: String(localized: "Edit and resend"), action: "edit") }
+                if canRetry { actionButton("arrow.clockwise", title: String(localized: "Retry reply"), action: "retry") }
+                if canFork { actionButton("arrow.triangle.branch", title: String(localized: "Branch conversation"), action: "fork") }
+                if !user && !message.citationSources.isEmpty {
+                    Button { sourcesOpen = true } label: {
+                        Label("\(message.citationSources.count)", systemImage: "globe")
+                            .font(.caption2).lineLimit(1).fixedSize().frame(minHeight: 36)
+                    }
+                }
+                if !user, let model = message.model ?? fallbackModel, !model.isEmpty {
+                    Button { modelDetails = model } label: {
+                        Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
+                            .font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.tail)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .frame(maxWidth: 180, alignment: .leading)
+                            .overlay(Rectangle().strokeBorder(Color.secondary.opacity(0.3)))
+                    }.layoutPriority(-1).accessibilityLabel(model)
+                        .accessibilityHint(String(localized: "View full model name"))
+                }
+                HStack(spacing: 8) {
+                    if let raw = message.timestamp {
+                        if let date = messageDate(raw) { Text(date, format: .dateTime.day().month(.abbreviated).hour().minute()) }
+                        else { Text(raw) }
+                    }
+                    if user { Text("You") }
+                }.font(.system(size: 11)).lineLimit(1).layoutPriority(1)
+        }.buttonStyle(.plain).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
+            .alert("Model", isPresented: Binding(get: { modelDetails != nil }, set: { if !$0 { modelDetails = nil } })) {
+                Button("Dismiss") { modelDetails = nil }
+            } message: { Text(modelDetails ?? "") }
+            .task(id: copied) {
+                if copied { try? await Task.sleep(for: .seconds(1.8)); copied = false }
+            }
+            .sheet(isPresented: Binding(get: { action != nil }, set: { if !$0 { action = nil } })) {
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if action == "edit" { TextEditor(text: $edited).frame(minHeight: 140).border(Color.secondary.opacity(0.3)) }
+                        else { Text(action == "fork" ? String(localized: "Create a new conversation from this message.") : String(localized: "Replace the latest reply by running the last user message again.")) }
+                        Spacer()
+                    }.padding(20)
+                        .navigationTitle(action == "edit" ? String(localized: "Edit and resend") : action == "fork" ? String(localized: "Branch conversation") : String(localized: "Retry reply"))
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { action = nil } }
+                            ToolbarItem(placement: .confirmationAction) { Button("Confirm") {
+                                if let action { onAction(action, action == "edit" ? edited : nil) }
+                                action = nil
+                            }.disabled(action == "edit" && edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                        }
+                }.presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $sourcesOpen) {
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(message.citationSources) { source in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(source.title).font(.headline)
+                                    if let snippet = source.snippet, !snippet.isEmpty { Text(snippet).font(.subheadline).lineLimit(5) }
+                                    if let raw = source.url, let url = URL(string: raw), ["http", "https"].contains(url.scheme) {
+                                        Link("Read article", destination: url)
+                                    }
+                                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                        }.padding(20)
+                    }.navigationTitle("Sources").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Dismiss") { sourcesOpen = false } } }
+                }.presentationDetents([.medium, .large])
+            }
+    }
+
+    private func actionButton(_ icon: String, title: String, action value: String) -> some View {
+        Button { edited = message.text; action = value } label: {
+            Image(systemName: icon).frame(width: 32, height: 36)
+        }.accessibilityLabel(title)
+    }
+
+    private func messageDate(_ raw: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
     }
 }
 

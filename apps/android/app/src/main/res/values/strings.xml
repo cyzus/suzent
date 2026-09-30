@@ -131,4 +131,13 @@
     <string name="save_chat">Save</string>
     <string name="pinned_chats">Pinned</string>
     <string name="select_conversation">Select a conversation or start a new one.</string>
+    <string name="message_copy">Copy message</string>
+    <string name="message_copied">Copied</string>
+    <string name="message_edit">Edit and resend</string>
+    <string name="message_retry">Retry reply</string>
+    <string name="message_fork">Branch conversation</string>
+    <string name="message_sources">%1$d sources</string>
+    <string name="message_retry_help">Replace the latest reply by running the last user message again.</string>
+    <string name="message_fork_help">Create a new conversation from this message.</string>
+    <string name="message_model">Model</string>
 </resources>
