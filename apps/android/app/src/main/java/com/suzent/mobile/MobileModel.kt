@@ -35,6 +35,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var pairingJob: Job? = null
     var projects by mutableStateOf<List<Project>>(emptyList())
     var selectedModel by mutableStateOf<String?>(null)
+    private val modelPreferences = application.getSharedPreferences("model_preferences", android.content.Context.MODE_PRIVATE)
+
     var sentVersion by mutableStateOf(0)
     var openedVersion by mutableStateOf(0)
     var pinnedVersion by mutableStateOf(0)
@@ -212,6 +214,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             chats = listing
             projects = projectList
             selected = initialChat
+            restoreModel(initialChat)
             connected = true
         } catch (failure: Exception) { candidate.close(); throw failure }
     }
@@ -328,7 +331,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         streaming = false
         pendingApprovals = emptyList()
         selected = chat
-        selectedModel = null
+        selectedModel = modelPreferences.getString("chatModel.$origin.${chat.id}", null)
         draft = drafts[chat.id].orEmpty()
         liveParts = emptyList()
         viewModelScope.launch {
@@ -338,12 +341,32 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
+                    restoreModel(saved)
                     openedVersion++
                     chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
                     if (saved.running) observe(chat.id)
                 }
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { handle(failure) }
+        }
+    }
+
+    fun selectModel(model: String?) {
+        selectedModel = model
+        modelPreferences.edit().putString("lastModel.$origin", model).apply()
+        selected?.id?.takeIf { it.isNotEmpty() }?.let { id ->
+            modelPreferences.edit().putString("chatModel.$origin.$id", model).apply()
+        }
+    }
+
+    private fun restoreModel(chat: Chat) {
+        val key = if (chat.id.isEmpty()) "lastModel.$origin" else "chatModel.$origin.${chat.id}"
+        val remembered = modelPreferences.getString(key, null)
+        selectedModel = remembered?.takeIf { it in chat.models }
+        // Once the backend acknowledges a pending choice, let future desktop changes win.
+        if (chat.id.isNotEmpty() && (remembered == chat.model || selectedModel == null)) {
+            modelPreferences.edit().remove(key).apply()
+            selectedModel = null
         }
     }
 
@@ -359,7 +382,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 pendingApprovals = emptyList(); approvalChoices = emptyMap()
                 liveParts = emptyList()
                 selected = composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
-                selectedModel = null
+                restoreModel(composer)
                 draft = ""
             } catch (failure: Exception) { handle(failure) }
             finally { busy = false }
@@ -382,6 +405,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     if (current != generation) return@launch
                     selected = created
                     id = created.id
+                    modelPreferences.edit().putString("chatModel.$origin.$id", selectedModel).apply()
                     chats = listOf(created) + chats
                 }
                 api.send(id, message, selectedModel)

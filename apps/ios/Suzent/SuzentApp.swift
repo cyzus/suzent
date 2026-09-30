@@ -244,7 +244,7 @@ struct ContentView: View {
                                 SuzentSelectionPanel(title: String(localized: "Desktop model"),
                                     options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
                                     selected: model.selectedModel ?? "", dismiss: dismissSelection) {
-                                        model.selectedModel = $0.isEmpty ? nil : $0
+                                        model.selectModel($0.isEmpty ? nil : $0)
                                     }
                             } else {
                                 SuzentSelectionPanel(title: String(localized: "Creating in"),
