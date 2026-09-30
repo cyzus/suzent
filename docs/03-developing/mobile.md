@@ -241,6 +241,10 @@ is permitted. The latest user message can be edited and resent, and the latest
 turn retried, with both send and conversation-management permission. These actions
 require an idle conversation, ask for confirmation, and use the desktop retry
 checkpoint behavior through the scoped `/mobile/client/message-action` endpoint.
+Replay is unavailable after an intervening automation turn or when the latest
+user message no longer matches the saved checkpoint. Branches include the full
+assistant/tool continuation associated with the selected reply, even when its
+tool rows are hidden by the mobile presentation.
 
 Saved credentials reconnect automatically on launch and foreground return. A
 temporarily unavailable desktop shows a retry screen instead of QR onboarding;
