@@ -106,6 +106,15 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         json("mobile/client/manage", JSONObject().put("chat_id", id).put("action", action).apply { if (value != null) put("value", value) })
     }
 
+    suspend fun messageAction(id: String, index: Int, action: String, text: String? = null, model: String? = null): String {
+        val result = json("mobile/client/message-action", JSONObject().put("chat_id", id)
+            .put("message_index", index).put("action", action).apply {
+                if (text != null) put("text", text)
+                if (model != null) put("model", model)
+            })
+        return result.optString("chat_id", id)
+    }
+
     suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))

@@ -351,6 +351,23 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun messageAction(message: DisplayMessage, action: String, text: String? = null) {
+        val api = client ?: return
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return
+        if (busy || streaming) return
+        busy = true
+        viewModelScope.launch {
+            try {
+                val target = api.messageAction(id, message.messageIndex, action, text, selectedModel)
+                val chat = api.chat(target)
+                busy = false
+                open(chat)
+                refreshNow()
+            } catch (failure: Exception) { handle(failure) }
+            finally { busy = false }
+        }
+    }
+
     fun selectModel(model: String?) {
         selectedModel = model
         modelPreferences.edit().putString("lastModel.$origin", model).apply()

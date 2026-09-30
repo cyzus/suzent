@@ -71,3 +71,13 @@ import Testing
 
     #expect(markdownWithCitationLinks(row.text, sources: row.citationSources) == "Weather [Forecast](<https://example.com/weather>)")
 }
+
+@Test func footerKeepsPerMessageMetadataAndOriginalIndex() throws {
+    let data = Data(#"{"id":"test","title":"Test","messages":[{"role":"user","content":"Question","timestamp":"2026-09-30T12:00:00Z"},{"role":"assistant","content":"Answer","model":"provider/old-model","timestamp":"2026-09-30T12:01:00Z"}]}"#.utf8)
+    let chat = try JSONDecoder().decode(Chat.self, from: data)
+    let rows = presentMessages(chat.messages ?? [])
+    #expect(rows[0].timestamp == "2026-09-30T12:00:00Z")
+    #expect(rows[1].model == "provider/old-model")
+    #expect(rows[1].timestamp == "2026-09-30T12:01:00Z")
+    #expect(rows[1].messageIndex == 1)
+}

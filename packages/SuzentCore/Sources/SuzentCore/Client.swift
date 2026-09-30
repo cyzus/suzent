@@ -158,6 +158,18 @@ public final class SuzentClient: Sendable {
         _ = try await data("mobile/client/manage", body: body)
     }
 
+    public func messageAction(_ id: String, index: Int, action: String, text: String? = nil, model: String? = nil) async throws -> String {
+        var body: [String: Any] = ["chat_id": id, "message_index": index, "action": action]
+        if let text { body["text"] = text }
+        if let model { body["model"] = model }
+        struct Result: Decodable { let chat_id: String }
+        var request = try request("mobile/client/message-action", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        try validate(response)
+        return try JSONDecoder().decode(Result.self, from: data).chat_id
+    }
+
     public func projects() async throws -> [Project] {
         struct Listing: Decodable { let projects: [Project] }
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/projects")).projects

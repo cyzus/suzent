@@ -19,7 +19,7 @@ data class Backend(val origin: HttpUrl) {
 }
 
 data class ChatMessage(val role: String, val content: String, val parts: List<MessagePart> = emptyList(),
-    val name: String = "", val toolCallId: String = "")
+    val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null)
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
     val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false) {
     companion object {
@@ -40,7 +40,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                                         source.optString("id"), source.optString("type"), source.optString("title"),
                                         source.optString("url"), source.optString("snippet"), source.optString("favicon")) }
                                 })
-                        }, item.optString("name"), item.optString("tool_call_id"))
+                        }, item.optString("name"), item.optString("tool_call_id"), item.opt("model") as? String, item.opt("timestamp") as? String)
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
                 pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }

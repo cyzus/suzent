@@ -320,7 +320,14 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             }
         }
         itemsIndexed(messages.asReversed(), key = { index, _ -> "message-${messages.lastIndex - index}" }) { index, message ->
-            MessageView(message, isLatest = index == 0 && !model.streaming && model.liveParts.isEmpty())
+            val idle = !model.busy && !model.streaming && !chat.running
+            val lastUser = chat.messages.indexOfLast { it.role == "user" }
+            val canReplay = idle && chat.models.isNotEmpty() && lastUser >= 0 && model.device?.permissions?.send == true && model.device?.permissions?.manageChats == true
+            MessageView(message, isLatest = index == 0 && !model.streaming && model.liveParts.isEmpty(), fallbackModel = chat.model,
+                canRetry = canReplay && (message.messageIndex == lastUser || (index == 0 && message.role == "assistant")),
+                canEdit = canReplay && message.role == "user" && message.messageIndex == lastUser,
+                canFork = idle && message.role == "assistant" && model.device?.permissions?.createChats == true,
+                onAction = { action, text -> model.messageAction(message, action, text) })
         }
         if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
     }

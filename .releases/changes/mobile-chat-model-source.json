@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "minor"},
+  "summary": "Add native message footers with metadata, copy, sources, and scoped replay and branching actions; correct mobile conversation model selection."
+}
