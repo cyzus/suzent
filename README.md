@@ -20,7 +20,7 @@ Memory as Markdown on your disk · any model, including local ones via Ollama ·
 
 **[Website](https://suzent.com)** • **[Quickstart](docs/01-getting-started/quickstart.md)** • **[Docs](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[Contributing](./CONTRIBUTING.md)**
 
-<img src="docs/assets/readme/suzent-tour.gif" alt="A tour of the Suzent web console: chat, memory, model providers, social channels, and automation" width="880" />
+<img src="docs/assets/readme/suzent-tour.gif" alt="A tour of the Suzent desktop app: chat, core memory, scheduled tasks, and social channels" width="880" />
 
 </div>
 
