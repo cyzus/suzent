@@ -8,24 +8,23 @@
 
 ![Suzent Banner](docs/assets/banner_v2.png)
 
-# **SUZENT: THE SOVEREIGN AI AGENT**
+# **SUZENT**
 
-### **YOUR AGENT SHOULD NOT BE AN ACCOUNT YOU RENT.**
+### **The open-source, local-first personal AI agent you own.**
 
-![Status](https://img.shields.io/badge/RITUAL-READY-black?style=flat-square) ![System](https://img.shields.io/badge/GEIST-LOCAL_FIRST-black?style=flat-square)
+Memory as Markdown on your disk · any model, including local ones via Ollama · Docker-sandboxed tools · desktop, mobile, Telegram, Slack, Discord, Feishu, and WeChat
 
-[![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
+[![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![Stars](https://img.shields.io/github/stars/cyzus/suzent?style=flat-square)](https://github.com/cyzus/suzent/stargazers) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
+**[Website](https://suzent.com)** • **[Quickstart](docs/01-getting-started/quickstart.md)** • **[Docs](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[Contributing](./CONTRIBUTING.md)**
 
-**[WEBSITE](https://suzent.com)** • **[SUMMONING RITUAL](docs/01-getting-started/quickstart.md)** • **[GRIMOIRE](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
-
-
+<img src="docs/assets/readme/suzent-tour.gif" alt="A tour of the Suzent web console: chat, memory, model providers, social channels, and automation" width="880" />
 
 </div>
 
 ---
 
-## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **SUMMON A SOVEREIGN GEIST**
+## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **WHY SUZENT**
 
 > Your agent should not be an account you rent. It should be a system you own.
 
@@ -39,9 +38,7 @@ Its memory is append-only Markdown on your disk, not rows in someone else's data
 
 ## **QUICK START**
 
-### **INSTALL**
-
-SUZENT runs on Windows, macOS, and Linux. One command summons it, its Python backend, and the `suzent` CLI. Git is the only prerequisite; everything else is auto-installed.
+SUZENT runs on Windows, macOS, and Linux. Git is the only prerequisite; everything else is installed for you.
 
 **macOS / Linux**
 ```bash
@@ -53,7 +50,17 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
-**Mainland China mirror mode**
+Then start it and add a model under **Settings → Providers**:
+
+```bash
+suzent start
+```
+
+No API key? Pick [Ollama](docs/02-concepts/providers/ollama.md) and run everything on your own machine.
+
+<details>
+<summary><b>Mainland China mirror mode</b></summary>
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
 ```
@@ -64,18 +71,16 @@ $env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Com
 
 This uses faster mirrors for PyPI, npm, Playwright, Node via nvm, and Rustup. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running the command.
 
-Then bind your keys in `~/suzent/.env` and run:
+</details>
 
-```bash
-suzent start
-```
-
-### **THE `suzent` CLI**
+<details>
+<summary><b>The <code>suzent</code> CLI</b></summary>
 
 ```bash
 suzent --version       # Print the backend version, commit, and UI version
 suzent start           # Start the backend and the desktop app (in the background)
 suzent serve           # Start the backend only (headless / standalone)
+suzent web             # Open the web console against the backend
 suzent ui              # Start the desktop app against a running backend
 suzent logs -f         # Follow the log of a backgrounded process
 suzent stop            # Stop the backend server and the dev frontend
@@ -88,25 +93,22 @@ suzent repair          # Recover an interrupted or damaged update
 
 Run `suzent --help`, or `suzent <command> --help`, for the full flag set.
 
-### **UPDATE**
+</details>
+
+<details>
+<summary><b>Updating</b></summary>
 
 ```bash
 suzent update
 ```
 
-This installs the latest stable release as one matched set: backend source, locked dependencies, and desktop app. A standalone updater performs the switch outside the active virtual environment, verifies downloaded assets, and rolls back automatically on failure. If an interrupted update needs recovery, run:
+This installs the latest stable release as one matched set: backend source, locked dependencies, and desktop app. A standalone updater performs the switch outside the active virtual environment, verifies downloaded assets, and rolls back automatically on failure. If an interrupted update needs recovery, run `suzent repair`.
 
-```bash
-suzent repair
-```
-
-Developers working from a source checkout can update `main` and its frontend dependencies together with plain `suzent update`; the checkout is detected automatically. The explicit equivalent is:
-
-```bash
-suzent update --dev
-```
+Developers working from a source checkout can update `main` and its frontend dependencies together with plain `suzent update`; the checkout is detected automatically. The explicit equivalent is `suzent update --dev`.
 
 Or re-run the install command above — it detects an existing installation and updates it to the latest stable release.
+
+</details>
 
 ---
 
