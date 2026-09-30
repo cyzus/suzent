@@ -156,3 +156,15 @@
 "Conversation title" = "会话标题";
 "Save" = "保存";
 "This deletes the conversation on all devices and cannot be undone." = "此操作会删除所有设备上的该会话，且无法撤销。";
+
+"Copy message" = "复制消息";
+"Copied" = "已复制";
+"Edit and resend" = "编辑并重发";
+"Retry reply" = "重新生成回复";
+"Branch conversation" = "创建分支对话";
+"Replace the latest reply by running the last user message again." = "重新运行最后一条用户消息，替换最新回复。";
+"Create a new conversation from this message." = "从这条消息创建新的分支对话。";
+
+"Model" = "模型";
+
+"View full model name" = "查看完整模型名称";

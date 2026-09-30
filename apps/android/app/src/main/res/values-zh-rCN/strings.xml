@@ -131,4 +131,13 @@
     <string name="save_chat">保存</string>
     <string name="pinned_chats">置顶会话</string>
     <string name="select_conversation">请选择会话或新建会话。</string>
+    <string name="message_copy">复制消息</string>
+    <string name="message_copied">已复制</string>
+    <string name="message_edit">编辑并重发</string>
+    <string name="message_retry">重新生成回复</string>
+    <string name="message_fork">创建分支对话</string>
+    <string name="message_sources">%1$d 个来源</string>
+    <string name="message_retry_help">重新运行最后一条用户消息，替换最新回复。</string>
+    <string name="message_fork_help">从这条消息创建新的分支对话。</string>
+    <string name="message_model">模型</string>
 </resources>

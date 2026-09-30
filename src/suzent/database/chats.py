@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, or_, text, update
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import select
 
@@ -419,6 +419,7 @@ class ChatOperationsMixin:
         messages: List[Dict[str, Any]],
         agent_state: Any = _UNSET,
         turn_count_delta: int = 0,
+        expected_revision: Optional[int] = None,
     ) -> bool:
         """Replace a chat's full message list, keeping derived state consistent.
 
@@ -434,6 +435,15 @@ class ChatOperationsMixin:
             turn_count_delta: Added to ``turn_count`` (e.g. -1 for a heartbeat rollback).
         """
         with self._session() as session:
+            if agent_state is not _UNSET:
+                claim = update(ChatModel).where(ChatModel.id == chat_id)
+                if expected_revision is not None:
+                    claim = claim.where(ChatModel.state_revision == expected_revision)
+                result = session.execute(
+                    claim.values(state_revision=ChatModel.state_revision + 1)
+                )
+                if result.rowcount != 1:
+                    return False
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 return False
@@ -568,6 +578,17 @@ class ChatOperationsMixin:
         """
         now = datetime.now()
         with self._session() as session:
+            # Claim the revision before reading so replay cannot race finalization.
+            result = session.execute(
+                update(ChatModel)
+                .where(
+                    ChatModel.id == chat_id,
+                    ChatModel.state_revision == expected_revision,
+                )
+                .values(state_revision=expected_revision)
+            )
+            if result.rowcount != 1:
+                return False
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 return False

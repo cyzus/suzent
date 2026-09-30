@@ -228,7 +228,27 @@ New conversations restore that selection if the model is still enabled; existing
 conversations retain their own configuration. Pending model choices are stored per
 conversation and restored when switching chats, even before sending a message.
 Once a fetched conversation confirms the choice, its server configuration takes
-precedence again. Choosing Conversation default clears the remembered selection. This preference is independent of the desktop preference.
+precedence again. Choosing Conversation default clears the remembered selection.
+This preference is independent of the desktop preference. The backend reads each
+conversation's saved model (including the original subagent model when no explicit
+conversation model exists) for both display and sending. Accepted mobile sends
+persist the model without replacing other conversation settings.
+
+Completed messages have native footers with copy and timestamps. Assistant footers
+also show the recorded per-message model (falling back to the conversation model
+for older messages), a sources drawer, and conversation branching when creation
+is permitted. The latest user message can be edited and resent, and the latest
+turn retried, with both send and conversation-management permission. These actions
+require an idle conversation, ask for confirmation, and use the desktop retry
+checkpoint behavior through the scoped `/mobile/client/message-action` endpoint.
+Replay is unavailable after an intervening automation turn or when the latest
+user message no longer matches the saved checkpoint. Branches include the full
+assistant/tool continuation associated with the selected reply, even when its
+tool rows are hidden by the mobile presentation.
+Replay also requires the checkpoint's recorded completion revision to match the
+current conversation revision, so transcript-hidden background turns invalidate
+it. Older checkpoints without that marker require a new user turn before mobile
+replay becomes available.
 
 Saved credentials reconnect automatically on launch and foreground return. A
 temporarily unavailable desktop shows a retry screen instead of QR onboarding;

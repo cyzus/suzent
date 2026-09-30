@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -107,7 +108,7 @@ def save_retry_checkpoint(
     user_files: list,
     config_snapshot: dict,
     file_snapshot: Optional[list] = None,
-) -> None:
+) -> str | None:
     """
     Persist a retry checkpoint for *chat_id*.
 
@@ -122,13 +123,21 @@ def save_retry_checkpoint(
         from sqlmodel import Session
 
         db = get_database()
+        checkpoint_id = uuid.uuid4().hex
         checkpoint = RetryCheckpointModel(
             chat_id=chat_id,
             agent_state_before=agent_state_before,
             messages_before=list(messages_before),
             user_message=user_message,
             user_files=list(user_files),
-            config_snapshot=dict(config_snapshot),
+            config_snapshot={
+                **{
+                    key: value
+                    for key, value in config_snapshot.items()
+                    if not key.startswith("_retry_")
+                },
+                "_retry_checkpoint_id": checkpoint_id,
+            },
             has_file_snapshot=bool(file_snapshot is not None),
             file_snapshot=file_snapshot or [],
             created_at=datetime.now(timezone.utc),
@@ -145,9 +154,33 @@ def save_retry_checkpoint(
             f"[retry] checkpoint saved for {chat_id}: "
             f"file_snapshot_entries={len(file_snapshot) if file_snapshot else 0}"
         )
+        return checkpoint_id
 
     except Exception as e:
         logger.error(f"[retry] save_retry_checkpoint failed for {chat_id}: {e}")
+        return None
+
+
+def record_retry_checkpoint_revision(
+    chat_id: str, checkpoint_id: str, revision: int
+) -> None:
+    """Bind a checkpoint to its own completed turn, never a later autonomous turn."""
+    from suzent.database import RetryCheckpointModel, get_database
+    from sqlmodel import Session
+
+    with Session(get_database().engine) as session:
+        checkpoint = session.get(RetryCheckpointModel, chat_id)
+        if (
+            checkpoint is None
+            or checkpoint.config_snapshot.get("_retry_checkpoint_id") != checkpoint_id
+        ):
+            return
+        checkpoint.config_snapshot = {
+            **checkpoint.config_snapshot,
+            "_retry_revision": revision,
+        }
+        session.add(checkpoint)
+        session.commit()
 
 
 def load_retry_checkpoint(chat_id: str) -> Optional[Any]:
@@ -164,7 +197,9 @@ def load_retry_checkpoint(chat_id: str) -> Optional[Any]:
         return None
 
 
-def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
+def apply_retry_checkpoint(
+    chat_id: str, expected_revision: int | None = None
+) -> Optional[dict]:
     """
     Restore agent state, display messages, and files to the checkpoint state.
 
@@ -184,11 +219,18 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
 
         # Restore agent state + display messages in DB. rewrite_chat_messages keeps the
         # sidebar summary and FTS index in sync with the restored message list.
-        db.rewrite_chat_messages(
+        if (
+            expected_revision is not None
+            and checkpoint.config_snapshot.get("_retry_revision") != expected_revision
+        ):
+            return None
+        if not db.rewrite_chat_messages(
             chat_id,
             list(checkpoint.messages_before),
             agent_state=checkpoint.agent_state_before,
-        )
+            expected_revision=expected_revision,
+        ):
+            return None
 
         # Restore files using the lightweight file-level snapshot when available.
         file_snapshot_data = getattr(checkpoint, "file_snapshot", None)
@@ -227,7 +269,11 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
         return {
             "user_message": checkpoint.user_message,
             "user_files": list(checkpoint.user_files),
-            "config_snapshot": dict(checkpoint.config_snapshot),
+            "config_snapshot": {
+                key: value
+                for key, value in checkpoint.config_snapshot.items()
+                if not key.startswith("_retry_")
+            },
         }
 
     except Exception as e:

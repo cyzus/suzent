@@ -270,8 +270,11 @@ private class CitationBadgeSpan(private val dark: Boolean, private val selected:
 private data class MarkdownBlock(val body: CharSequence, val language: String? = null)
 
 @Composable
-fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
+fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackModel: String? = null,
+                canRetry: Boolean = false, canEdit: Boolean = false, canFork: Boolean = false,
+                onAction: (String, String?) -> Unit = { _, _ -> }) {
     val outline = MaterialTheme.colorScheme.outline
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         Box(Modifier.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)
             .widthIn(max = 320.dp).drawBehind {
@@ -283,7 +286,85 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
         SuzentAssistantBadge(compact = !isLatest)
         ActivityContent(message.parts, live = false, citationSources = message.citationSources)
     }
+    if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork, onAction)
+    }
 }
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRetry: Boolean, canEdit: Boolean,
+                          canFork: Boolean, onAction: (String, String?) -> Unit) {
+    val context = LocalContext.current
+    var copied by remember(message.text) { mutableStateOf(false) }
+    var action by remember { mutableStateOf<String?>(null) }
+    var edited by remember(message.text) { mutableStateOf(message.text) }
+    var sourcesOpen by remember { mutableStateOf(false) }
+    var modelDetails by remember { mutableStateOf<String?>(null) }
+    val user = message.role == "user"
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1800); copied = false } }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (user) Spacer(Modifier.weight(1f))
+            if (message.text.isNotBlank()) IconButton(modifier = Modifier.size(32.dp), onClick = {
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", message.text)); copied = true
+            }) { Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink) }
+            if (canEdit) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "edit" }) { Icon(painterResource(R.drawable.ic_chat_rename), stringResource(R.string.message_edit), Modifier.size(18.dp), tint = ink) }
+            if (canRetry) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "retry" }) { Icon(painterResource(R.drawable.ic_message_retry), stringResource(R.string.message_retry), Modifier.size(18.dp), tint = ink) }
+            if (canFork) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "fork" }) { Icon(painterResource(R.drawable.ic_message_fork), stringResource(R.string.message_fork), Modifier.size(18.dp), tint = ink) }
+            if (!user && message.citationSources.isNotEmpty()) TextButton(onClick = { sourcesOpen = true }, contentPadding = PaddingValues(horizontal = 4.dp),
+                modifier = Modifier.widthIn(min = 32.dp).height(32.dp)
+                    .semantics { contentDescription = context.getString(R.string.message_sources, message.citationSources.size) }) {
+                Text("↗ ${message.citationSources.size}", fontSize = 11.sp, color = ink, maxLines = 1)
+            }
+            if (!user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
+                Text(model.substringAfter('/'), Modifier.weight(1f, fill = false)
+                    .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model }
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant).padding(horizontal = 6.dp, vertical = 3.dp),
+                    fontSize = 11.sp, fontWeight = FontWeight.Medium, color = ink,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            message.timestamp?.let { raw ->
+                val formatted = remember(raw) { runCatching {
+                    val parsed = java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault())
+                    parsed.format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.getDefault()))
+                }.getOrDefault(raw) }
+                Text(formatted, Modifier.widthIn(max = 100.dp), fontSize = 11.sp, color = ink,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            if (user) Text(stringResource(R.string.you), fontSize = 11.sp, color = ink, maxLines = 1)
+    }
+    modelDetails?.let { model ->
+        AlertDialog(onDismissRequest = { modelDetails = null }, title = { Text(stringResource(R.string.message_model)) },
+            text = { SelectionContainer { Text(model) } },
+            confirmButton = { TextButton(onClick = { modelDetails = null }) { Text(stringResource(android.R.string.ok)) } })
+    }
+    action?.let { selected ->
+        val title = stringResource(when (selected) { "edit" -> R.string.message_edit; "fork" -> R.string.message_fork; else -> R.string.message_retry })
+        AlertDialog(onDismissRequest = { action = null }, title = { Text(title) }, text = {
+            if (selected == "edit") OutlinedTextField(edited, { edited = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 8)
+            else Text(stringResource(if (selected == "fork") R.string.message_fork_help else R.string.message_retry_help))
+        }, confirmButton = { TextButton(enabled = selected != "edit" || edited.isNotBlank(), onClick = {
+            onAction(selected, if (selected == "edit") edited else null); action = null
+        }) { Text(title) } }, dismissButton = { TextButton(onClick = { action = null }) { Text(stringResource(R.string.cancel_link)) } })
+    }
+    if (sourcesOpen) ModalBottomSheet(onDismissRequest = { sourcesOpen = false }) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge)
+            message.citationSources.distinctBy { it.id }.forEach { source ->
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(source.title, fontWeight = FontWeight.SemiBold)
+                    if (source.snippet.isNotBlank()) Text(source.snippet, maxLines = 5, style = MaterialTheme.typography.bodySmall)
+                    if (Uri.parse(source.url).scheme in listOf("http", "https")) TextButton(onClick = {
+                        androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(source.url))
+                    }) { Text(stringResource(R.string.citation_read)) }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun SuzentTextButton(

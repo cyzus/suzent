@@ -6,6 +6,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatPresentationTest {
+    @Test fun messageFooterKeepsPerMessageMetadataAndOriginalIndex() {
+        val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
+            {"role":"user","content":"Question","timestamp":"2026-09-30T12:00:00Z"},
+            {"role":"assistant","content":"Answer","model":"provider/old-model","timestamp":"2026-09-30T12:01:00Z"}
+        ]}"""))
+        val rows = presentMessages(chat.messages)
+        assertEquals("2026-09-30T12:00:00Z", rows[0].timestamp)
+        assertEquals("provider/old-model", rows[1].model)
+        assertEquals("2026-09-30T12:01:00Z", rows[1].timestamp)
+        assertEquals(1, rows[1].messageIndex)
+    }
+
     @Test fun nativePresentationContract() {
         val cases = JSONArray(requireNotNull(javaClass.classLoader?.getResourceAsStream("presentation-fixtures.json"))
             .bufferedReader().use { it.readText() })
