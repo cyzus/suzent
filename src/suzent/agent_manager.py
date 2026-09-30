@@ -466,7 +466,7 @@ def build_agent_config(
 #
 # `_chat_id` / `_user_id` are safe to exclude only because every scoped section
 # is now resolved per run from `ctx.deps` rather than captured at construction.
-_TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
+_TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id", "_retry_expected_revision"}
 
 
 async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Agent:
