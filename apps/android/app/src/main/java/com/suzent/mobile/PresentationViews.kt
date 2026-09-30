@@ -87,7 +87,7 @@ fun SuzentTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList()) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -147,7 +147,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                 }
             } else {
                 AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    TextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+                    SoftStreamTextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
                     view.setTextColor(foreground); view.setLinkTextColor(link)
                     val styled = android.text.SpannableString(block.body)
@@ -161,7 +161,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                             styled.setSpan(CitationBadgeSpan(dark, target == pendingLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                     }
-                    renderer.setParsedMarkdown(view, styled)
+                    renderer.setParsedMarkdown(view, view.prepare(styled, softStreaming))
                     // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
                     // from installing its link handler automatically.
                     view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
@@ -397,11 +397,10 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
+                if (chunk.first().type == "text") StreamingMarkdown(chunk.first().text, live && index == chunks.lastIndex, citationSources)
                 else ActivityRail(chunk, live)
             }
         }
-        if (live) StreamingPulse()
     }
 }
 

@@ -169,3 +169,13 @@ class LiveActivityBuffer {
         dirty = true
     }
 }
+
+fun streamingMarkdown(text: String, active: Boolean): String {
+    if (!active || text.isBlank()) return text
+    val lastLine = text.substringAfterLast('\n').trim()
+    val blockEnding = lastLine.startsWith("```") || lastLine.startsWith("~~~") || lastLine.contains('|')
+    return text + if (blockEnding) "\n\n▍" else " ▍"
+}
+
+fun showAssemblyBadge(parts: List<MessagePart>, streaming: Boolean): Boolean =
+    streaming && parts.none { it.type != "text" || it.text.isNotBlank() }

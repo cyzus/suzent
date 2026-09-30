@@ -1,6 +1,10 @@
 package com.suzent.mobile
 
 import android.os.Bundle
+import android.animation.ValueAnimator
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -282,6 +286,9 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val focus = LocalFocusManager.current
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(model.openedVersion) { scroll.scrollToItem(0) }
+    val followLiveGrowth by remember(scroll) {
+        derivedStateOf { !scroll.canScrollBackward && !scroll.isScrollInProgress }
+    }
     var modelsExpanded by remember(chat.id) { mutableStateOf(false) }
     LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
@@ -301,10 +308,15 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item(key = "approvals") { ApprovalCards(model) }
         if (model.streaming || model.liveParts.isNotEmpty()) item(key = "live") {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SuzentAssistantBadge()
-                if (model.liveParts.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { StreamingPulse(); Text(stringResource(R.string.working), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                else ActivityContent(model.liveParts, live = model.streaming)
+            // The reversed list pins the bottom; smooth line-height changes instead of
+            // starting a new scroll animation for every streamed text update.
+            val growthModifier = if (model.streaming && model.liveParts.any { it.type == "text" && it.text.isNotBlank() }
+                && followLiveGrowth && ValueAnimator.areAnimatorsEnabled()) {
+                Modifier.animateContentSize(animationSpec = tween(120, easing = LinearOutSlowInEasing))
+            } else Modifier
+            Column(modifier = growthModifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AssemblyBadge(thinking = showAssemblyBadge(model.liveParts, model.streaming))
+                if (model.liveParts.isNotEmpty()) ActivityContent(model.liveParts, live = model.streaming)
             }
         }
         itemsIndexed(messages.asReversed(), key = { index, _ -> "message-${messages.lastIndex - index}" }) { index, message ->

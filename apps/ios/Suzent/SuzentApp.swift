@@ -371,8 +371,8 @@ struct ContentView: View {
                 }
                 Spacer()
             }.padding(.horizontal, 16).padding(.vertical, 10) }
-            ScrollViewReader { reader in
-                ScrollView {
+            FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
+                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
                         let messages = presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
@@ -382,20 +382,13 @@ struct ContentView: View {
                         }
                         if hasLiveMessage {
                             VStack(alignment: .leading, spacing: 10) {
-                                SuzentAssistantBadge()
-                                if model.liveParts.isEmpty { HStack(spacing: 8) { StreamingPulse(); Text("Working…").foregroundStyle(.secondary) } }
-                                else { ActivityContent(parts: model.liveParts, live: model.streaming) }
+                                AssemblyBadge(thinking: showAssemblyBadge(model.liveParts, streaming: model.streaming))
+                                if !model.liveParts.isEmpty { ActivityContent(parts: model.liveParts, live: model.streaming) }
                             }
                         }
                         ApprovalCards(model: model)
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16)
-                }.contentShape(Rectangle())
-                    .simultaneousGesture(TapGesture().onEnded { composing = false })
-                    .scrollDismissesKeyboard(.interactively)
-                    .defaultScrollAnchor(chat.id.isEmpty ? .top : .bottom)
-                    .onChange(of: model.openedVersion) { _, _ in reader.scrollTo("bottom", anchor: .bottom) }
-                    .onChange(of: model.sentVersion) { _, _ in withAnimation { reader.scrollTo("bottom", anchor: .bottom) } }
             }.id(chat.id)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center) {
