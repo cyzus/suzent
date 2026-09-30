@@ -66,6 +66,8 @@ public struct ChatMessage: Decodable, Sendable {
     public let parts: [MessagePart]
     public let name: String?
     public let toolCallId: String?
+    public let model: String?
+    public let timestamp: String?
 
     public init(role: String, content: String) {
         self.role = role
@@ -73,9 +75,11 @@ public struct ChatMessage: Decodable, Sendable {
         self.parts = []
         self.name = nil
         self.toolCallId = nil
+        self.model = nil
+        self.timestamp = nil
     }
 
-    enum CodingKeys: String, CodingKey { case role, content, parts, name; case toolCallId = "tool_call_id" }
+    enum CodingKeys: String, CodingKey { case role, content, parts, name, model, timestamp; case toolCallId = "tool_call_id" }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         role = try values.decodeIfPresent(String.self, forKey: .role) ?? "assistant"
@@ -83,6 +87,8 @@ public struct ChatMessage: Decodable, Sendable {
         parts = try values.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
         name = try values.decodeIfPresent(String.self, forKey: .name)
         toolCallId = try values.decodeIfPresent(String.self, forKey: .toolCallId)
+        model = try values.decodeIfPresent(String.self, forKey: .model)
+        timestamp = try values.decodeIfPresent(String.self, forKey: .timestamp)
     }
 }
 

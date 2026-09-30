@@ -11,7 +11,8 @@ data class MessagePart(
     val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(),
 )
 
-data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList()) {
+data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
+    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0) {
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
@@ -68,7 +69,7 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             val nearbySources = referencedIds.mapNotNull { id ->
                 indexedSources.filter { it.second.id == id }.minByOrNull { kotlin.math.abs(it.first - messageIndex) }?.second
             }
-            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id })
+            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id }, message.model, message.timestamp, messageIndex)
         }
     }
     val grouped = mutableListOf<DisplayMessage>()
@@ -78,7 +79,8 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             previous.parts.last().type != "text" && row.parts.first().type != "text") {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
-                normalizeParts(previous.parts + row.parts), previous.citationSources + row.citationSources)
+                normalizeParts(previous.parts + row.parts), previous.citationSources + row.citationSources,
+                row.model ?: previous.model, row.timestamp ?: previous.timestamp, row.messageIndex)
         } else grouped.add(row)
     }
     return grouped

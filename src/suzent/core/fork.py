@@ -84,11 +84,8 @@ def _agent_state_at_display_point(
     return _state_from_display_messages(selected_messages)
 
 
-def _validate_assistant_message_boundary(
-    messages: list[dict[str, Any]],
-    message_index: int,
-) -> None:
-    """Ensure an end-exclusive raw index is an assistant bubble boundary."""
+def assistant_message_boundaries(messages: list[dict[str, Any]]) -> list[int]:
+    """Return end-exclusive assistant boundaries, including tool continuations."""
     boundaries: list[tuple[str, int]] = []
     assistant_end: int | None = None
     awaiting_tool_continuation = False
@@ -140,9 +137,16 @@ def _validate_assistant_message_boundary(
             boundaries.append((str(role or "unknown"), raw_end))
 
     flush_assistant()
+    return [end for role, end in boundaries if role == "assistant"]
+
+
+def _validate_assistant_message_boundary(
+    messages: list[dict[str, Any]], message_index: int
+) -> None:
+    """Ensure an end-exclusive raw index is an assistant bubble boundary."""
     if not 1 <= message_index <= len(messages):
         raise ValueError("message_index is outside the message history")
-    if ("assistant", message_index) not in boundaries:
+    if message_index not in assistant_message_boundaries(messages):
         raise ValueError("Conversation branches must start from an assistant message")
 
 
