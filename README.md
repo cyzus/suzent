@@ -8,9 +8,11 @@
 
 ![Suzent Banner](docs/assets/banner_v2.png)
 
-# **SUZENT**
+# **SUZENT: THE SOVEREIGN AI AGENT**
 
-### **The open-source, local-first personal AI agent you own.**
+### **Your agent should not be an account you rent.**
+
+An open-source, local-first personal AI agent whose memory, authority, runtime, and continuity stay yours.
 
 Memory as Markdown on your disk · any model, including local ones via Ollama · Docker-sandboxed tools · desktop, mobile, Telegram, Slack, Discord, Feishu, and WeChat
 
@@ -24,9 +26,7 @@ Memory as Markdown on your disk · any model, including local ones via Ollama ·
 
 ---
 
-## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **WHY SUZENT**
-
-> Your agent should not be an account you rent. It should be a system you own.
+## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **WHAT SOVEREIGN MEANS**
 
 **SUZENT** [soo-zuh-nt] is an open-source, local-first AI agent whose identity, memory, skills, workspace, and runtime remain under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
 
