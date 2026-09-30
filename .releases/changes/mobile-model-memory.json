@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Remember mobile model choices for new conversations and preserve pending choices when switching chats."
+}
