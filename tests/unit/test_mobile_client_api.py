@@ -767,7 +767,10 @@ def test_message_actions_replay_only_latest_turn(
         {"role": "user", "content": "Latest"},
     ]
     record.config = {"model": "test/other"}
-    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: object())
+    monkeypatch.setattr(
+        "suzent.core.retry.load_retry_checkpoint",
+        lambda _: SimpleNamespace(user_message=record.messages[-1]["content"]),
+    )
     calls = []
 
     async def send(request):
@@ -804,8 +807,9 @@ def test_message_actions_replay_only_latest_turn(
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("tool_continuation", [False, True])
 def test_mobile_message_fork_grants_access_only_to_requesting_device(
-    setup_client, monkeypatch
+    setup_client, monkeypatch, tool_continuation
 ):
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], create_chats=True)
@@ -817,6 +821,21 @@ def test_mobile_message_fork_grants_access_only_to_requesting_device(
         {"role": "user", "content": "Question"},
         {"role": "assistant", "content": "Answer"},
     ]
+    if tool_continuation:
+        messages[-1]["tool_calls"] = [{"id": "call-1"}]
+        messages.extend(
+            [
+                {"role": "tool", "content": "Tool result", "tool_call_id": "call-1"},
+                {"role": "assistant", "content": "Final answer"},
+            ]
+        )
+    expected_boundary = len(messages)
+    messages.extend(
+        [
+            {"role": "user", "content": "Next turn"},
+            {"role": "assistant", "content": "Next answer"},
+        ]
+    )
     get_database().get_chat("shared").messages = messages
     calls = []
 
@@ -833,7 +852,7 @@ def test_mobile_message_fork_grants_access_only_to_requesting_device(
         json={"chat_id": "shared", "message_index": 1, "action": "fork"},
     )
     assert response.json() == {"chat_id": "forked"}
-    assert calls == [("shared", 2)]
+    assert calls == [("shared", expected_boundary)]
     assert store.verify(result["token"]).permissions.permits_chat("forked")
     assert not store.verify(other["token"]).permissions.permits_chat("forked")
 
@@ -857,7 +876,10 @@ def test_message_edit_checks_commands_and_model(
     record = get_database().get_chat("shared")
     record.messages = [{"role": "user", "content": "Question"}]
     record.config = {"model": "test/model"}
-    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: object())
+    monkeypatch.setattr(
+        "suzent.core.retry.load_retry_checkpoint",
+        lambda _: SimpleNamespace(user_message=record.messages[-1]["content"]),
+    )
     calls = []
 
     async def send(request):
@@ -900,3 +922,46 @@ def test_mobile_retry_rejects_acp_runtime(setup_client):
         ).status_code
         == 400
     )
+
+
+@pytest.mark.parametrize("trigger", ["system_triggered", "trigger", None])
+@pytest.mark.parametrize("action", ["retry", "edit"])
+def test_mobile_replay_rejects_automation_or_stale_checkpoint(
+    setup_client, monkeypatch, trigger, action
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = get_database().get_chat("shared")
+    record.messages = [
+        {"role": "user", "content": "Human prompt"},
+        {"role": "assistant", "content": "Answer"},
+    ]
+    if trigger:
+        record.messages.extend(
+            [
+                {"role": trigger, "content": "Scheduled task"},
+                {"role": "assistant", "content": "Automation result"},
+            ]
+        )
+    checkpoint = SimpleNamespace(
+        user_message="Human prompt" if trigger else "Older prompt"
+    )
+    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: checkpoint)
+
+    async def send(request):
+        pytest.fail("A stale retry checkpoint must never be applied")
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    response = client.post(
+        "/mobile/client/message-action",
+        json={
+            "chat_id": "shared",
+            "message_index": 0 if action == "edit" else len(record.messages) - 1,
+            "action": action,
+            "text": "Edited prompt",
+        },
+    )
+    assert response.status_code == 409
