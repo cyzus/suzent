@@ -3,6 +3,7 @@
   "consumed": [
     ".releases/changes/ios-reconnect-timeout.json",
     ".releases/changes/mobile-chat-management.json",
+    ".releases/changes/mobile-chat-model-source.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-model-memory.json",
