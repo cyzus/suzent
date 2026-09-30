@@ -6812,7 +6812,13 @@ accepted message clears its draft and dismisses the keyboard. Failed or uncertai
 sends retain the draft and are never retried automatically. Switching conversations
 preserves drafts for the current app session. Native conversations offer the
 backend-enabled model list, submitted with the next message; ACP conversations
-keep their desktop model configuration.
+keep their desktop model configuration. Both mobile apps remember the last explicit
+model selection locally for each server address, including across app restarts.
+New conversations restore that selection if the model is still enabled; existing
+conversations retain their own configuration. Pending model choices are stored per
+conversation and restored when switching chats, even before sending a message.
+Once a fetched conversation confirms the choice, its server configuration takes
+precedence again. Choosing Conversation default clears the remembered selection. This preference is independent of the desktop preference.
 
 Saved credentials reconnect automatically on launch and foreground return. A
 temporarily unavailable desktop shows a retry screen instead of QR onboarding;
