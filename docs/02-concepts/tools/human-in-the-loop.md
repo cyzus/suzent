@@ -27,8 +27,9 @@ Pick a mode per conversation from the mode selector next to the message box.
 
 In every mode, your explicit "deny" rules and Suzent's built-in safety checks
 (for example, blocked paths and dangerous shell commands) still apply. In Smart
-mode, if the reviewer can't decide, it asks you. The reviewer uses the **Cheap**
-model role; see [Model roles](../providers.md#model-roles).
+mode, if the reviewer can't decide, it asks you. The reviewer uses the **Permission
+Review** model role, which falls back to **Decision**; see
+[Model roles](../providers/model-roles.md).
 
 ## Answering a request
 
@@ -58,3 +59,6 @@ the background, where nobody can click "Allow". They always use Smart mode,
 whatever mode the chat that created them uses, and anything the reviewer can't
 clear as safe is denied instead of waiting for an answer. See
 [Automation](../automation.md).
+
+The one exception is heartbeats: under **Settings → Automation → Heartbeat Tool
+Approvals** you can pick tools that a heartbeat may run without review.

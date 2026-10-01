@@ -1,0 +1,8 @@
+{
+  "label": "Chat apps",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "description": "Talk to your agent from Telegram, Slack, Discord, Feishu (Lark), or WeChat."
+  }
+}

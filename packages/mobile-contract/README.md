@@ -24,7 +24,7 @@ New devices wait for desktop approval. Advertise only `device.status`, return
 ping, invoke, error are handled explicitly. Stop processing as soon as the app
 leaves the foreground. Pydantic models: `src/suzent/nodes/models.py`.
 
-Mobile uses the same [snapshot/cursor protocol](../../docs/03-developing/stream-recovery-protocol.md)
+Mobile uses the same [snapshot/cursor protocol](../../docs/03-developing/architecture/stream-recovery-protocol.md)
 as desktop. `STREAM_SNAPSHOT` replaces transient text; `STREAM_EVENT` applies only
 new consecutive sequence numbers for its transport run. Recovery sends `run_id`
 and `after_seq`, with up to five attempts and bounded exponential backoff. It

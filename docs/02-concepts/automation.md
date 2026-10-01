@@ -109,7 +109,8 @@ without you prompting each step. Use it when "done" is easy to check, such as
 "Fix every lint error in `src/` and make sure `ruff check` passes."
 
 - Type `/goal <objective>` in the chat. The agent starts right away.
-- After each turn, a quick check (using the **Cheap** model role) decides
+- After each turn, a quick check (using the **Goal Judge** model role, which falls back to
+  **Decision**) decides
   whether the goal is met. If not, the agent continues automatically.
 - It stops when the goal is achieved, or pauses after 20 turns.
 - Anything you type takes priority. Your message runs first, then the goal

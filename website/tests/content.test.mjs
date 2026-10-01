@@ -13,11 +13,11 @@ test("preserves folder-index and numeric-prefix URLs", () => {
   );
   assert.equal(localize("/", "zh-Hans"), "/zh-Hans");
 });
-test("matches renamed Chinese files by published URL", () => {
+test("matches Chinese files by published URL", () => {
   const page = pages.find((p) => p.url === "/zh-Hans/docs/concepts/providers");
   assert.equal(page.title, "模型与提供商");
   assert.equal(page.translated, true);
-  assert.match(page.translationSource, /providers\.md$/);
+  assert.match(page.translationSource, /providers\/README\.md$/);
 });
 test("retains untranslated pages without claiming a translation", () => {
   const page = pages.find(
@@ -27,7 +27,7 @@ test("retains untranslated pages without claiming a translation", () => {
   assert.ok(page.content.length > 100);
 });
 test("does not remove imports or JSX inside code examples", () => {
-  const page = pages.find((p) => p.url === "/docs/developing/development-guide");
+  const page = pages.find((p) => p.url === "/docs/developing/contributing/development-guide");
   assert.match(page.content, /import \{ SuzentLogo \}/);
   assert.match(page.content, /<SuzentLogo className/);
 });
@@ -53,7 +53,7 @@ test("all documents have searchable full content and both locale routes", () => 
 });
 
 test("headings retain code underscores and ignore nested code examples", () => {
-  const tools = pages.find((p) => p.url === "/docs/developing/tool-system");
+  const tools = pages.find((p) => p.url === "/docs/developing/architecture/tool-system");
   assert.ok(tools.toc.some((h) => h.url === "#web_search"));
   const skills = pages.find((p) => p.url === "/docs/concepts/skills");
   assert.ok(skills.toc.some((h) => h.url === "#adding-skills"));
@@ -73,13 +73,13 @@ test("English section links stay usable when the translated page lacks that sect
 test("moved documentation has localized aliases and canonical targets", () => {
   for (const prefix of ["", "/zh-Hans"]) {
     for (const [from, to] of [
-      ["/docs/developing/memory/architecture", "/docs/developing/memory-architecture"],
-      ["/docs/concepts/memory/internals", "/docs/developing/memory-internals"],
-      ["/docs/developing/logo", "/docs/developing/development-guide#logo-standard"],
-      ["/docs/developing/streaming-persistence-analysis", "/docs/developing/stream-recovery-protocol"],
+      ["/docs/developing/memory/architecture", "/docs/developing/architecture/memory-architecture"],
+      ["/docs/concepts/memory/internals", "/docs/developing/architecture/memory-internals"],
+      ["/docs/developing/logo", "/docs/developing/contributing/development-guide#logo-standard"],
+      ["/docs/developing/streaming-persistence-analysis", "/docs/developing/architecture/stream-recovery-protocol"],
       ["/docs/upgrading", "/docs/getting-started/updating"],
-      ["/docs/concepts/providers/openai", "/docs/concepts/providers#supported-providers"],
-      ["/docs/concepts/social-messaging/feishu", "/docs/concepts/social-messaging#feishu-lark"],
+      ["/docs/concepts/model-roles", "/docs/concepts/providers/model-roles"],
+      ["/docs/developing/a2a", "/docs/developing/protocols/a2a"],
       ["/docs/concepts/runtime/retry", "/docs/concepts/filesystem#undoing-the-last-turn-retry"],
       ["/docs/concepts/nodes/acp", "/docs/concepts/nodes#use-suzent-from-your-editor-acp"],
     ]) {

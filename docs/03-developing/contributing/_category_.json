@@ -1,0 +1,8 @@
+{
+  "label": "Contributing",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "Set up a development checkout, run the app, and ship releases."
+  }
+}

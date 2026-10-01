@@ -637,7 +637,7 @@ class MemoryManager:
         instead, by showing the extractor what memory already holds so a re-mention
         is not extracted at all. What survives that is resolved by the dream
         consolidation pass. See docs/02-concepts/memory/README.md and
-        docs/03-developing/memory-architecture.md.
+        docs/03-developing/architecture/memory-architecture.md.
         """
         result = MemoryExtractionResult.empty()
 

@@ -31,7 +31,7 @@ for the rest of that conversation by itself.
 | **Tasks & goals** | Break work into tracked tasks, pursue a [goal](../automation.md#goal-mode) across many turns, and schedule its own follow-ups. |
 | **Orchestration** | Load [skills](../skills.md) and hand work to [sub-agents](#sub-agents). |
 | **Interaction** | Ask you a focused question, or show tables, forms, cards, and buttons in the sidebar or chat. Your clicks and form answers go straight back to the agent. |
-| **Creative** | Generate and edit images, create videos, read text aloud, and send messages through your [chat apps](../social-messaging.md). See [below](#images-video-and-speech). |
+| **Creative** | Generate and edit images, create videos, read text aloud, and send messages through your [chat apps](../social-messaging/README.md). See [below](#images-video-and-speech). |
 | **Memory & recall** | Search what it remembers and find relevant past conversations. See [Memory](../memory/README.md). |
 
 ## Web search
@@ -59,7 +59,7 @@ other conversations in the same project, and agents on
 ## Images, video and speech
 
 These tools need their own models. Assign them in
-**Settings → Model Roles** (see [Model roles](../providers.md#model-roles)),
+**Settings → Model Roles** (see [Model roles](../providers/model-roles.md)),
 then enable the tools in the tool picker.
 
 **Images.** Ask for an image and the agent generates it with your

@@ -30,7 +30,7 @@ project's conversations, plus one folder shared by every project:
 | Folder | What it is | Sandbox path | Host-mode path |
 |---|---|---|---|
 | Project workspace | The agent's working folder. Relative paths land here, so `report.md` is saved in the workspace. | `/workspace` | `$PROJECT_PATH` |
-| Uploads | Files you attach in the chat or send from a [chat app](./social-messaging.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
+| Uploads | Files you attach in the chat or send from a [chat app](./social-messaging/README.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
 | Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | `$MOUNT_<NAME>` |
 
@@ -54,8 +54,14 @@ The agent cannot read outside these folders. Paths such as `/etc/passwd`,
 
 ## Giving the agent access to your folders
 
-To let the agent work on a folder from your computer, mount it. Add a line per
-folder to `~/.suzent/config/default.yaml`, in the form
+To let the agent work on a folder from your computer, mount it.
+
+The quickest way is the **Working Dir** button in the chat box: choose a folder,
+or pick one from **Recent folders**, and it's mounted for that conversation.
+Click it again to see or remove what's mounted.
+
+To mount a folder for every conversation, add a line per folder to
+`~/.suzent/config/default.yaml`, in the form
 `"folder on your computer:path the agent sees"`:
 
 ```yaml

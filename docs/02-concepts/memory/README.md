@@ -104,10 +104,10 @@ looking for contradictions, broken links, orphaned pages, and stale knowledge.
 
 ## Settings
 
-Turn memory on or off, and pick the models it uses, in
-**Settings → Memory System**. The dream uses the **Dream** model role, and
-memory search uses the **Embedding** role (see
-[Model roles](../providers.md#model-roles)).
+Turn memory on or off in **Settings → Memory System**. Its models are set in
+**Settings → Model Roles**: the dream uses the **Dream** role, picking out facts
+uses **Memory Extraction**, and memory search uses **Embedding** (see
+[Model roles](../providers/model-roles.md)).
 
 How often the dream runs, where the notebook lives, and other tuning are in
 [Advanced memory settings](./configuration.md).

@@ -114,7 +114,7 @@ suzent start
 </TabItem>
 </Tabs>
 
-使用 DeepSeek、Grok、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](../02-concepts/providers.md)。
+使用 DeepSeek、Grok、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](../02-concepts/providers/README.md)。
 
 ---
 
@@ -144,8 +144,8 @@ suzent doctor
 
 ## 后续步骤
 
-- [模型与提供商](../02-concepts/providers.md)：添加更多模型，并决定每项工作用哪个模型
+- [模型与提供商](../02-concepts/providers/README.md)：添加更多模型，并决定每项工作用哪个模型
 - [记忆](../02-concepts/memory/README.md)：智能体记住了什么，以及如何修改
 - [工具](../02-concepts/tools/tools.md)：智能体能做的所有事
-- [聊天应用](../02-concepts/social-messaging.md)：通过 Telegram、Slack 等与它对话
+- [聊天应用](../02-concepts/social-messaging/README.md)：通过 Telegram、Slack 等与它对话
 - [自动化](../02-concepts/automation.md)：安排定时任务和定期检查

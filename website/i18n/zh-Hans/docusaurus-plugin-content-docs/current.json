@@ -18,5 +18,25 @@
   "sidebar.tutorialSidebar.category.Tools": {
     "message": "工具",
     "description": "Sidebar category: Tools"
+  },
+  "sidebar.tutorialSidebar.category.Models & Providers": {
+    "message": "模型与提供商",
+    "description": "Sidebar category: Models & Providers"
+  },
+  "sidebar.tutorialSidebar.category.Chat apps": {
+    "message": "聊天应用",
+    "description": "Sidebar category: Chat apps"
+  },
+  "sidebar.tutorialSidebar.category.Contributing": {
+    "message": "参与开发",
+    "description": "Sidebar category: Contributing"
+  },
+  "sidebar.tutorialSidebar.category.Architecture": {
+    "message": "架构",
+    "description": "Sidebar category: Architecture"
+  },
+  "sidebar.tutorialSidebar.category.Protocols & APIs": {
+    "message": "协议与 API",
+    "description": "Sidebar category: Protocols & APIs"
   }
 }

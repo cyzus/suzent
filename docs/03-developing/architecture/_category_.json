@@ -1,0 +1,8 @@
+{
+  "label": "Architecture",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "How Suzent's runtime, tools, memory, and clients work today."
+  }
+}
