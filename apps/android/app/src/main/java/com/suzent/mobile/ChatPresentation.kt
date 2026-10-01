@@ -75,11 +75,11 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
     val grouped = mutableListOf<DisplayMessage>()
     rows.forEach { row ->
         val previous = grouped.lastOrNull()
-        if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool") &&
-            previous.parts.last().type != "text" && row.parts.first().type != "text") {
+        // Store rows within a turn share one badge and footer, including the final text.
+        if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool")) {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
-                normalizeParts(previous.parts + row.parts), previous.citationSources + row.citationSources,
+                normalizeParts(previous.parts + row.parts), (previous.citationSources + row.citationSources).distinctBy { it.id },
                 row.model ?: previous.model, row.timestamp ?: previous.timestamp, row.messageIndex)
         } else grouped.add(row)
     }

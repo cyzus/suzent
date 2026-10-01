@@ -69,13 +69,15 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
     }
     var grouped: [DisplayMessage] = []
     for row in rows {
+        // Store rows within a turn share one badge and footer, including the final text.
         if let previous = grouped.last,
-           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role),
-           previous.parts.last?.type != "text", row.parts.first?.type != "text" {
+           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role) {
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
                 parts: normalizeParts(previous.parts + row.parts),
-                citationSources: previous.citationSources + row.citationSources,
+                citationSources: (previous.citationSources + row.citationSources).reduce(into: [CitationSource]()) { sources, source in
+                    if !sources.contains(where: { $0.id == source.id }) { sources.append(source) }
+                },
                 model: row.model ?? previous.model, timestamp: row.timestamp ?? previous.timestamp, messageIndex: row.messageIndex)
         } else { grouped.append(row) }
     }
