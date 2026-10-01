@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: FAQ & troubleshooting
 description: Answers to the questions new users ask most, from API keys and costs to backups, logs, and bots that don't reply.
 ---

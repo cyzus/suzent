@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Configuration files
 description: Where Suzent keeps your data and settings, the settings you can edit by hand, and the environment variables it reads.
 ---

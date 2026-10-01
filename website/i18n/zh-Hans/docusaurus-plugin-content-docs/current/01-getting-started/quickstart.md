@@ -148,7 +148,8 @@ suzent doctor
 
 ## 后续步骤
 
-- [聊天窗口](../02-using/chat.md)：对话里能做的所有事
+- [和智能体一起工作](../02-using/conversations.md)：交代任务、中途纠正、撤销出错的操作
+- [按你的需要设置](../02-using/make-it-yours.md)：接下来值得设置的东西
 - [桌面、手机和浏览器](./platforms.md)：从手机或另一台电脑使用你的智能体
 - [模型与提供商](../04-models/README.md)：添加更多模型，并决定每项工作用哪个模型
 - [记忆](../03-features/memory/README.md)：智能体记住了什么，以及如何修改

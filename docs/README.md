@@ -15,7 +15,7 @@ five-question ownership test, see
 
 ## Using Suzent
 
-- [The chat window](02-using/chat.md), [Projects & the sidebar](02-using/projects.md), [Settings at a glance](02-using/settings.md)
+- [Working with your agent](02-using/conversations.md), [Organizing work into projects](02-using/projects.md), [Making it yours](02-using/make-it-yours.md)
 
 ## Features
 
@@ -44,7 +44,7 @@ five-question ownership test, see
 
 ## Reference
 
-- [Command line](07-reference/cli.md), [Slash commands](07-reference/slash-commands.md), [Configuration files](07-reference/configuration.md), [FAQ & troubleshooting](07-reference/faq.md)
+- [Command line](07-reference/cli.md), [Slash commands](07-reference/slash-commands.md), [Settings pages](07-reference/settings.md), [Configuration files](07-reference/configuration.md), [FAQ & troubleshooting](07-reference/faq.md)
 
 ## Development
 

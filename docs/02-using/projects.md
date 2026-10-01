@@ -1,129 +1,59 @@
 ---
 sidebar_position: 2
-title: Projects & the sidebar
-description: Group chats into projects, keep the chat list tidy, and use the right-hand sidebar's files, canvas, board, and background tasks.
+title: Organizing work into projects
+description: Use projects to give related chats a shared folder, standing context, and one board of goals and tasks.
 ---
 
-# Projects & the sidebar
+# Organizing work into projects
 
-The left sidebar holds your chats and projects. The right-hand sidebar shows
-what the agent is working with in the current chat: its files, its canvas, its
-goals and tasks, and anything running in the background.
+A project is how you keep one piece of ongoing work together, such as a
+report, a codebase, or a trip you're planning. Every chat in a project shares
+three things:
 
-## Projects
+- **A folder.** Files the agent writes in one chat are there in the next, and
+  other projects can't see them. See
+  [Workspace & sandbox](../03-features/filesystem.md#where-files-go).
+- **Project context.** A short note, `context.md` in the project folder, that
+  every chat in the project reads first. The agent keeps it up to date as it
+  learns about the work.
+- **A board** of the project's goals and tasks, from every chat.
 
-A project groups related chats. Every chat in a project shares:
+## When to start a project
 
-- **One workspace folder.** Files the agent writes in one chat are there for
-  the next. Other projects can't see them. See
-  [Workspace & sandbox](../03-features/filesystem.md#where-files-go) for where
-  the folder lives on your computer.
-- **Project context.** A short note about the project that every chat in it
-  reads, kept in the workspace as `context.md`. The agent keeps it up to date,
-  and you can edit it yourself (see [Context](#context)).
-- **A board** of the project's tasks and goals (see [Board](#goal-and-board)).
+Start one when work will span more than one chat, or when it has files you
+want kept apart from everything else. Quick, one-off questions are fine in
+**Home**, the project new chats go to by default. Chats that arrive from
+[chat apps](../05-chat-apps/README.md) go to **Social**.
 
-New chats go to **Home**, the default project. Chats that arrive from
-[chat apps](../05-chat-apps/README.md) go to **Social**. These two projects
-can't be deleted.
+Create a project from the **Projects** list in the sidebar, or pick one on the
+new-chat screen. A chat can be moved to another project later; deleting a
+project moves its chats to **Home**.
 
-### Creating and moving
+## Give it standing instructions
 
-- **New project:** in the sidebar's **Projects** list, click **+** and type a
-  name. You can also pick or create a project on the new-chat screen, next to
-  **Creating in**.
-- **Move to project:** open a chat's **Actions** menu (⋯) and choose the
-  project.
-- **Rename** or **Delete** a project from its own menu. Deleting a project that
-  still has chats moves them to **Home** first.
+Project context is the place for anything every chat should know: the goal,
+the audience, decisions already made, conventions to follow. Open the
+**Context** tab in the chat's side panel and click **Edit** to write it
+yourself, or ask the agent to note something there.
 
-## Organizing the chat list
+When the agent works in a folder that has an `AGENTS.md` or `CLAUDE.md` file, it
+follows those instructions too. If there are several, the one closest to the
+working folder wins.
 
-| To | Do this |
-|---|---|
-| Start a chat | Click **New chat** at the top of the list. |
-| Find a chat | Type in **Search chats...**. It matches chat titles and message text. |
-| Keep a chat at the top | Choose **Pin chat** in its **Actions** menu. It moves to **Pinned**. |
-| Rename or delete a chat | Use its **Actions** menu. |
-| Switch layout | Open **Organize** (⋯ next to the list's heading) and pick **By project** or **Single list**. |
+Project context is about this project. What the agent learns about *you* is
+kept in [memory](../03-features/memory/README.md) and applies everywhere.
 
-Small labels on a chat tell you more at a glance: **Running** while the agent
-is working, an unread count, **Heartbeat** for check-in chats, how many
-sub-agents it started, and **Branched from** for a copy made with
-[Branch from here](./chat.md#branch-from-here).
+## Track the work on the board
 
-### Tasks
+Set a goal with `/goal` and the agent keeps working until it's met. The
+**Goal** tab shows this chat's goal and the tasks assigned to it, with
+**Pause**, **Resume**, and **Clear**. **Open Board** shows every task in the
+project, from every chat, so you can see where the whole project stands and add
+or move tasks yourself. See [Goal mode](../03-features/automation.md#goal-mode).
 
-When you have scheduled tasks or heartbeats, a **Tasks** section lists them
-with their next run time, or with an error if the last run failed. Click one to
-open its chat. **View all N scheduled tasks** opens **Settings → Automation**.
-Deleting a task from its menu removes the task; a task that runs in its own
-chat loses that chat too. See [Automation](../03-features/automation.md).
+## Keep an eye on what it's doing
 
-## The right-hand sidebar
-
-Open the right-hand sidebar from the icons along the right edge of a chat. A
-dot on an icon means it has something new.
-
-| Tab | What it shows |
-|---|---|
-| **Files** | The agent's files. |
-| **Context** | The project context and any repository instructions. |
-| **Web** | The agent's searches, the pages it read, and a live view of its browser. |
-| **Canvas** | Interactive panels the agent shows you. |
-| **Background tasks** | Commands and sub-agents running in the background. |
-| **Goal** | This chat's goal and tasks, and the way into the project's board. |
-| **Tools** | Which tools this chat may use. See [Tools](../03-features/tools/tools.md). |
-
-### Files
-
-Switch between three folders: **Workspace** (this project's folder),
-**Shared** (shared by every project), and **Mounts** (folders you've mounted,
-for example with **Working Dir**). Click a file to preview it; clicking a file
-mentioned in the chat opens it here too.
-
-- **Upload file** adds a file to the top of **Workspace** or **Shared**.
-- **Open in Explorer** opens the folder on your computer.
-- Right-click a file or folder for **Open**, **Reveal in file manager**,
-  **Copy path**, and **Delete**. Deleting can't be undone.
-
-In **Mounts**, you can browse and open files, but **Upload file**, **Open in
-Explorer**, and **Delete** aren't available.
-
-### Context
-
-The **Context** tab shows the note the agent keeps about this project under
-**Project context**. Click **Edit** to change it. The same note appears in the
-**Memory** view, under **Project context**, for every project that has one.
-
-When the chat is working in a folder that has `AGENTS.md` or `CLAUDE.md`
-instruction files, they're listed under **Repository instructions**. If there
-are several, the one closest to the working folder wins.
-
-### Web
-
-See [Watching what the agent does](../03-features/tools/browser.md#watching-what-the-agent-does).
-
-### Canvas
-
-When the agent shows you something interactive, such as a table, a form, or a
-set of buttons, it appears here. What you click or fill in goes straight back
-to the agent.
-
-### Background tasks
-
-Long-running commands and sub-agents appear here. Open one to follow its
-output, see how it ended, **Stop** it, or redirect a sub-agent. See
-[Tools](../03-features/tools/tools.md) for how background commands and
-[sub-agents](../03-features/tools/tools.md#sub-agents) work.
-
-### Goal and board
-
-The **Goal** tab shows the chat's **Active Goal** with **Pause**, **Resume**,
-and **Clear** buttons, followed by the tasks assigned to this chat. See
-[Goal mode](../03-features/automation.md#goal-mode).
-
-Below them, **Open Board** opens the **Project Board**: every task in the
-project, from every chat, in three columns (to do, active, done), with the
-project's goals along the top. On the board you can add a task, move a task to
-the next column, or delete it.
+The chat's side panel shows what the agent is working with: its files, the
+pages it read, interactive panels it shows you on the **Canvas**, and commands
+or sub-agents running in the background. Open a background task to follow it,
+stop it, or redirect a sub-agent.
