@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names."
+}
