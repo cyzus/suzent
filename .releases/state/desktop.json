@@ -1,5 +1,5 @@
 {
-  "version": "0.15.2",
+  "version": "0.15.3",
   "consumed": [
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/ask-question-no-replay.json",
@@ -28,6 +28,7 @@
     ".releases/changes/unified-refresh-button.json",
     ".releases/changes/updater-recovery-interface.json",
     ".releases/changes/video-and-voice.json",
+    ".releases/changes/webfetch-markdown.json",
     ".releases/changes/windows-install-backend-identity.json",
     ".releases/changes/windows-updater-process-identity.json"
   ],
