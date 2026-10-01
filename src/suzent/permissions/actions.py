@@ -86,11 +86,13 @@ def build_approval_decision(
     reason_code: str = "tool_requires_approval",
     risk: PermissionRisk = PermissionRisk.MEDIUM,
     source: PermissionDecisionSource = PermissionDecisionSource.POLICY,
+    rememberable: bool = True,
 ) -> PermissionDecision:
     """Build the actions offered for a deferred tool call.
 
     Shell persistence is scoped to the exact command. Other tools retain the
-    current tool-wide remember behavior during the migration period.
+    current tool-wide remember behavior during the migration period. With
+    ``rememberable=False`` only a one-time allow or reject is offered.
     """
 
     args = args or {}
@@ -136,7 +138,7 @@ def build_approval_decision(
     # Shell commands can be remembered safely as prefix/exact rules. Inline
     # Python/Node programs are intentionally one-shot: persisting an arbitrary
     # code blob is confusing and provides little reusable authority.
-    if not is_shell or is_shell_command:
+    if rememberable and (not is_shell or is_shell_command):
         remembered_tool_name = "ShellTool" if is_shell else tool_name
         actions.extend(
             [

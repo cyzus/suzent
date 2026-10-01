@@ -220,6 +220,13 @@ Result:
 {result_summary}
 """
 
+SUBAGENT_WORKTREE_KEPT = """
+
+Its changes were kept on branch `{branch}` in the worktree at `{path}`. \
+Review them and merge what you want, then remove the worktree \
+(`git worktree remove <path>`) and branch (`git branch -D <branch>`).
+"""
+
 # Hidden (model-only) directive injected as a <system-reminder> when image(s)
 # were dropped because the active model lacks vision. Paths are virtual
 # (``/workspace/uploads/...``) so the agent's PathResolver-backed tools can

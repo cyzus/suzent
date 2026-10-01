@@ -174,7 +174,8 @@ class AgentTool(Tool):
                 description=(
                     "'none': sub-agent shares the parent filesystem (default). "
                     "'worktree': creates a fresh git worktree on a new branch so changes "
-                    "are isolated and can be reviewed or discarded after the task completes."
+                    "are isolated. If the sub-agent leaves changes, the worktree and branch "
+                    "are kept for you to review, merge or discard; an untouched worktree is removed."
                 ),
             ),
         ] = "none",
@@ -412,6 +413,15 @@ class AgentTool(Tool):
 
         if not run_in_background:
             # Blocking mode: return the actual result so the parent LLM can act on it
+            worktree_note = ""
+            if task.worktree_branch:
+                from suzent.prompts import SUBAGENT_WORKTREE_KEPT
+
+                worktree_note = SUBAGENT_WORKTREE_KEPT.format(
+                    branch=task.worktree_branch, path=task.worktree_path
+                ).rstrip()
+                metadata["worktree_branch"] = task.worktree_branch
+                metadata["worktree_path"] = task.worktree_path
             if task.status == "completed":
                 return ToolResult.success_result(
                     (
@@ -419,13 +429,15 @@ class AgentTool(Tool):
                         f"Task: {description[:200]}\n"
                         f"Model: {model_override or '(default)'}\n"
                         f"Tools: {tool_list}"
+                        f"{worktree_note}"
                     ),
                     metadata={**metadata, "result_summary": task.result_summary},
                 )
             outcome = "was stopped" if task.status == "cancelled" else "failed"
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
-                f"Sub-agent {task.task_id} {outcome}. {task.error or ''}".strip(),
+                f"Sub-agent {task.task_id} {outcome}. {task.error or ''}".strip()
+                + worktree_note,
                 metadata={**metadata, "error": task.error},
             )
 

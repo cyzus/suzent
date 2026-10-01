@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep MCP server headers when editing, stop saved rules from approving blocked commands in Smart mode, keep a helper's worktree when it leaves changes, let questions wait for an answer, fall back from SearXNG when it returns a web page, respect the goal turn limit, and translate remaining English labels."
+}
