@@ -14,12 +14,13 @@ Full text of this documentation, in one file: https://suzent.com/llms-full.txt
 
 ## Sovereignty architecture
 
-- [Memory](https://suzent.com/docs/concepts/memory): Sovereign continuity — readable, file-backed memory where the index serves the files.
-- [Human in the loop](https://suzent.com/docs/concepts/tools/human-in-the-loop): Sovereign authority — approval boundaries for tool execution.
-- [Filesystem](https://suzent.com/docs/concepts/filesystem): Sovereign vessel — controlled workspaces and filesystem access.
-- [GitHub sync](https://suzent.com/docs/concepts/github-sync): Sovereign continuity — portable agent state with credentials kept local.
-- [Automation](https://suzent.com/docs/concepts/automation): Goals, schedules, and continuing work.
-- [Nodes](https://suzent.com/docs/concepts/nodes): Extending the agent across approved devices.
+- [Models & Providers](https://suzent.com/docs/models): Sovereign mind — any model provider, with identity kept outside the model.
+- [Memory](https://suzent.com/docs/features/memory): Sovereign continuity — readable, file-backed memory where the index serves the files.
+- [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop): Sovereign authority — approval boundaries for tool execution.
+- [Workspace & sandbox](https://suzent.com/docs/features/filesystem): Sovereign vessel — controlled workspaces, filesystem access, and sandboxed execution.
+- [GitHub sync](https://suzent.com/docs/features/github-sync): Sovereign continuity — portable agent state with credentials kept local.
+- [Automation](https://suzent.com/docs/features/automation): Goals, schedules, and continuing work.
+- [Devices & other agents](https://suzent.com/docs/features/nodes): Extending the agent across approved devices, A2A agents, and editors.
 
 ## Source
 

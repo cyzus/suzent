@@ -1,0 +1,8 @@
+{
+  "label": "Tools",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "What your agent can do, how it asks permission, and how it uses a browser."
+  }
+}

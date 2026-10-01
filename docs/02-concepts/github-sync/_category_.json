@@ -1,8 +1,0 @@
-{
-  "label": "GitHub Sync",
-  "position": 7,
-  "link": {
-    "type": "generated-index",
-    "description": "Sync portable Suzent configuration, skills, and memory to a private GitHub repository."
-  }
-}

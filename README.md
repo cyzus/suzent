@@ -56,7 +56,7 @@ Then start it and add a model under **Settings → Providers**:
 suzent start
 ```
 
-No API key? Pick [Ollama](docs/02-concepts/providers/ollama.md) and run everything on your own machine.
+No API key? Pick [Ollama](docs/04-models/local/ollama.md) and run everything on your own machine.
 
 <details>
 <summary><b>Mainland China mirror mode</b></summary>
@@ -158,12 +158,12 @@ One agent, one memory, reachable from several surfaces. Messaging channels are o
 | Surface | Transport | Supports | Setup |
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
-| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-developing/mobile.md) |
-| **Telegram** | Bot API | Text, photos, files | [Guide](docs/02-concepts/social-messaging/telegram.md) |
-| **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/02-concepts/social-messaging/slack.md) |
-| **Discord** | Gateway | Text, files | [Guide](docs/02-concepts/social-messaging/discord.md) |
-| **Feishu (Lark)** | WebSocket | Text, files | [Guide](docs/02-concepts/social-messaging/feishu.md) |
-| **WeChat** | iLink Bot API | Text | [Guide](docs/02-concepts/social-messaging/wechat.md) |
+| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/nodes.md#pair-your-phone) |
+| **Telegram** | Bot API | Text, photos, files | [Guide](docs/05-chat-apps/telegram.md) |
+| **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/05-chat-apps/slack.md) |
+| **Discord** | Gateway | Text, files | [Guide](docs/05-chat-apps/discord.md) |
+| **Feishu (Lark)** | WebSocket | Text, files | [Guide](docs/05-chat-apps/feishu.md) |
+| **WeChat** | iLink Bot API | Text | [Guide](docs/05-chat-apps/wechat.md) |
 
 Each conversation becomes a persistent session, so history, working memory, and extracted facts survive a restart. Uploaded files land in the sandbox at `/persistence/uploads/`.
 
@@ -173,23 +173,21 @@ Each conversation becomes a persistent session, so history, working memory, and 
 
 | Section | What's covered |
 |---|---|
-| [What is Suzent?](docs/01-getting-started/intro.md) | Core concepts and architecture overview |
-| [Quickstart](docs/01-getting-started/quickstart.md) | Set up SUZENT from scratch in under 5 minutes |
-| [Providers](docs/02-concepts/providers/README.md) | OpenAI, Anthropic, Gemini, Ollama, and more |
-| [Memory](docs/02-concepts/memory/README.md) | How persistent memory works and how to configure it |
-| [LLM Wiki](docs/02-concepts/memory/llm-wiki.md) | Agent-maintained structured knowledge vault |
-| [Tools](docs/02-concepts/tools/tools.md) | Full reference for every built-in tool |
-| [Canvas (A2UI)](docs/02-concepts/tools/canvas.md) | Interactive UI rendered in the sidebar |
-| [Tool Approval](docs/02-concepts/tools/human-in-the-loop.md) | How dangerous tools require confirmation |
-| [Skills](docs/02-concepts/skills/skills.md) | Extend the agent with portable knowledge modules |
-| [Filesystem & Sandbox](docs/02-concepts/filesystem.md) | File access, sandboxed execution, storage paths |
-| [Automation](docs/02-concepts/automation/automation.md) | Cron jobs and heartbeat monitoring |
-| [GitHub Sync](docs/02-concepts/github-sync/README.md) | Carry portable brain data through a private repo |
-| [Social Messaging](docs/02-concepts/social-messaging/README.md) | Telegram, Slack, Discord, Feishu, WeChat |
-| [Nodes](docs/02-concepts/nodes/nodes.md) | Connect and control companion devices |
-| [Retry](docs/02-concepts/runtime/retry.md) | Roll back the last agent turn and rerun it |
-| [Development Guide](docs/03-developing/development-guide.md) | Setup, workflow, builds, architecture |
-| [Native Mobile](docs/03-developing/mobile.md) | SwiftUI/Compose developer preview, monorepo layout, and roadmap |
+| [What is Suzent?](docs/01-getting-started/intro.md) | What a sovereign agent is and what Suzent can do |
+| [Quickstart](docs/01-getting-started/quickstart.md) | Install, connect a model, and start chatting |
+| [Models & Providers](docs/04-models/README.md) | OpenAI, Anthropic, Gemini, Ollama, and more, plus model roles |
+| [Memory](docs/03-features/memory/README.md) | What the agent remembers, where it lives, and how to edit it |
+| [Notebook](docs/03-features/memory/llm-wiki.md) | Agent-maintained, Obsidian-compatible knowledge vault |
+| [Tools](docs/03-features/tools/tools.md) | Everything the agent can do, and how to turn it on or off |
+| [Permissions & approvals](docs/03-features/tools/human-in-the-loop.md) | How Suzent asks before it acts |
+| [Skills](docs/03-features/skills.md) | Install, write, and manage portable `SKILL.md` packages |
+| [Workspace & sandbox](docs/03-features/filesystem.md) | Folders, the Docker sandbox, and undoing a turn |
+| [Automation](docs/03-features/automation.md) | Scheduled tasks, heartbeats, goals, and the background service |
+| [Chat apps](docs/05-chat-apps/README.md) | Telegram, Slack, Discord, Feishu, WeChat |
+| [Devices & other agents](docs/03-features/nodes.md) | Your phone, other computers, A2A agents, and your editor |
+| [GitHub Sync](docs/03-features/github-sync.md) | Carry your agent to another computer through a private repo |
+| [Development Guide](docs/08-developing/contributing/development-guide.md) | Setup, workflow, builds, architecture |
+| [Native Mobile](docs/08-developing/architecture/mobile.md) | SwiftUI/Compose developer preview, monorepo layout, and roadmap |
 
 The full index lives in [docs/README.md](docs/README.md).
 
@@ -207,7 +205,7 @@ The full index lives in [docs/README.md](docs/README.md).
 
 ## **CONTRIBUTING**
 
-Contributions welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/03-developing/development-guide.md) for setup, production builds, and architecture.
+Contributions welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/08-developing/contributing/development-guide.md) for setup, production builds, and architecture.
 
 ---
 

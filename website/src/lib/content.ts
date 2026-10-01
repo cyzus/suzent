@@ -30,6 +30,7 @@ export interface Page {
   relative?: string;
   directory?: string;
   position?: number;
+  collapsed?: boolean;
   date?: string;
   tags?: string[];
   authors?: string[];

@@ -1,0 +1,8 @@
+{
+  "label": "Reference",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "description": "Look up command-line commands, slash commands, configuration files, and answers to common questions."
+  }
+}
