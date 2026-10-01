@@ -43,7 +43,10 @@ A helper:
 - starts with only its brief, unless the agent gives it a copy of the
   conversation so far (shown as **Context forked**);
 - works in your chat's folder, or another folder the agent names (with the
-  sandbox on, only one your chat can already reach);
+  sandbox on, only one your chat can already reach). In a git project the
+  agent can instead give the helper its own copy on a new branch; if the
+  helper changes anything, that copy and branch are kept so you can review,
+  merge, or delete them, and an untouched copy is cleaned up;
 - doesn't start with your [memory](../memory/README.md) in its context, and
   can't start helpers of its own or manage other conversations;
 - runs in **Smart** mode, since nobody is there to answer. It keeps the

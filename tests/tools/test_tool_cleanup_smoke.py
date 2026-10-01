@@ -1,3 +1,4 @@
+import asyncio
 import json
 import subprocess
 from pathlib import Path
@@ -346,7 +347,14 @@ async def test_memory_tools_return_structured_results():
 @pytest.mark.asyncio
 async def test_ask_question_tool_headless_returns_result():
     tool = AskQuestionTool()
-    ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1", a2ui_queue=None))
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            a2ui_queue=None,
+            interaction_profile="interactive",
+            social_context={},
+        )
+    )
 
     result = await tool.forward(
         ctx,
@@ -355,6 +363,35 @@ async def test_ask_question_tool_headless_returns_result():
 
     assert result.success
     assert result.metadata["questions"][0]["question"] == "Preferred language?"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("profile", "social_context"),
+    [("subagent", {}), ("headless", {}), ("interactive", {"platform": "telegram"})],
+)
+async def test_ask_question_tool_does_not_wait_without_a_person(
+    profile: str, social_context: dict
+):
+    tool = AskQuestionTool()
+    queue: asyncio.Queue = asyncio.Queue()
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            a2ui_queue=queue,
+            interaction_profile=profile,
+            social_context=social_context,
+        )
+    )
+
+    result = await asyncio.wait_for(
+        tool.forward(ctx, questions=[QuestionItem(question="Preferred language?")]),
+        timeout=1,
+    )
+
+    assert result.success
+    assert "Preferred language?" in result.message
+    assert queue.empty()
 
 
 @pytest.mark.asyncio

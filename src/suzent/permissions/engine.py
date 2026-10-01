@@ -144,6 +144,11 @@ class PermissionEngine:
             return decision.model_copy(
                 update={"source": PermissionDecisionSource.FULL_ACCESS}
             )
+        # A command the shell policy would block outright is only ever approved
+        # one call at a time: no saved rule (e.g. a remembered `sudo` prefix) or
+        # tool-wide allow may answer for the user.
+        if decision.reason_code == "shell_policy_high_risk":
+            return decision
         if decision.behavior == CommandDecision.ASK and policy == "always_allow":
             return _decision(
                 CommandDecision.ALLOW,
@@ -422,6 +427,7 @@ class PermissionEngine:
                     reason=evaluation.reason,
                     reason_code="shell_policy_high_risk",
                     risk=PermissionRisk.CRITICAL,
+                    rememberable=False,
                 ).model_dump(by_alias=True)
                 payload["metadata"] = evaluation.metadata
                 return PermissionDecision.model_validate(payload)

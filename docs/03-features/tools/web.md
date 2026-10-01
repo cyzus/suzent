@@ -21,7 +21,7 @@ few ways:
 |---|---|
 | Kind of result | general web, news, images, or videos |
 | Time range | past day, week, month, or year |
-| Number of results | 10 by default, up to 20 (with SearXNG, your instance decides) |
+| Number of results | 10 by default, up to 20 |
 
 Each result comes back with its title, link, and a short snippet.
 
@@ -37,10 +37,10 @@ For more private or more reliable results, run your own
    folder (see [Configuration](../../07-reference/configuration.md#environment-variables)).
 3. Restart Suzent.
 
-If the instance can't be reached, returns an error status, or refuses JSON
-with a "403 Forbidden", Suzent quietly falls back to DuckDuckGo for that search.
-If it answers with something other than JSON, such as a web page, the search
-fails instead, so check step 1 if searches stop working.
+If the instance can't be reached, returns an error status, refuses JSON with a
+"403 Forbidden", or answers with something other than JSON (such as a web
+page), Suzent quietly falls back to DuckDuckGo for that search. If results
+keep looking like DuckDuckGo's, check step 1.
 
 ## Reading a page
 

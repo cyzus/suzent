@@ -640,7 +640,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                             )}
                             {job.source !== 'user' && (
                               <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
-                                {job.source}
+                                {t(`settings.automation.jobSource.${job.source}`)}
                               </span>
                             )}
                           </div>

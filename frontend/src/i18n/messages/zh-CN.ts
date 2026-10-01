@@ -655,6 +655,7 @@ export const zhCN = {
     },
     mcp: {
       title: 'MCP 服务器',
+      viewTools: '工具',
       subtitle: '通过 MCP 连接外部工具与资源',
       addNewServerTitle: '添加新服务器',
       addNewServerDesc: '添加一个 MCP 服务器，用于连接外部工具与资源。',
@@ -1042,6 +1043,11 @@ export const zhCN = {
     },
     automation: {
       title: '自动化',
+      jobSource: {
+        agent: '智能体',
+        preset: '预设',
+        heartbeat: '心跳',
+      },
       subtitle: '调度周期性智能体任务并管理调度器',
       heartbeatToolsTitle: '心跳工具授权',
       heartbeatToolsDesc:
@@ -1483,12 +1489,43 @@ export const zhCN = {
       cancelled: '已取消',
     },
   },
+  toolsPanel: {
+    loading: '加载中…',
+    noTools: '未配置任何工具',
+    tools: '工具',
+    mcpServers: 'MCP 服务器',
+  },
+  webActivities: {
+    returnToBrowser: '返回浏览器',
+    history: '历史',
+  },
+  a2uiForm: {
+    typeSomethingElse: '输入其他答案…',
+    back: '← 上一步',
+    skip: '跳过',
+    next: '下一步 →',
+    submit: '提交',
+  },
+  citations: {
+    sourceCount: '{count} 个来源',
+    sourcesCount: '{count} 个来源',
+  },
   projectBoard: {
     title: '项目看板',
     noTasks: '本项目暂无任务。',
     noGoals: '暂无活跃目标。',
     taskCount: '个项目任务',
     open: '打开看板',
+    openFull: '打开完整项目看板',
+    board: '看板',
+    columns: {
+      todo: '待办',
+      active: '进行中',
+      done: '已完成',
+    },
+    taskTitlePlaceholder: '任务标题…',
+    moveTo: '移到{status}',
+    addTask: '+ 添加任务',
   },
   archival: {
     title: '归档记忆',
@@ -1830,10 +1867,6 @@ export const zhCN = {
     title: '我可以{action}吗？',
     useTool: '使用 {tool}',
     localProject: '项目（本地）',
-    deny: '拒绝',
-    allowOnce: '仅允许一次',
-    allowSession: '本次会话允许',
-    allowGlobal: '始终允许',
     ctrlEnter: 'Ctrl+Enter',
     yes: '是',
     yesAnd: '是，并{action}',

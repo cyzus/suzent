@@ -52,6 +52,7 @@ type MCPUrlServer = {
   type: 'url';
   name: string;
   url: string;
+  headers?: Record<string, string>;
   enabled: boolean;
 };
 
@@ -246,12 +247,14 @@ export function SettingsModal({
         setMcpServers(data);
         const urls = data.urls || {};
         const stdio = data.stdio || {};
+        const headers = data.headers || {};
         const enabled = data.enabled || {};
 
         const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
           type: 'url',
           name,
           url: String(url),
+          headers: headers[name],
           enabled: !!enabled[name],
         }));
 
