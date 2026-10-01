@@ -26,11 +26,11 @@ Memory in plain files you own · any model, cloud or local · tools that act onl
 
 ---
 
-## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **WHAT SOVEREIGN MEANS**
+## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **MEET SUZENT**
 
-**SUZENT** [soo-zuh-nt] is an open-source, local-first AI agent whose identity, memory, skills, workspace, and runtime remain under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
+**SUZENT** [soo-zuh-nt] keeps an agent's identity, memory, skills, workspace, and runtime under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
 
-Its memory is append-only Markdown on your disk, not rows in someone else's database. Its tool calls pass through permission modes you define. Its execution is isolated in Docker workspaces you own. It can research, write, code, pursue goals, run scheduled work, connect to your devices, and meet you in Telegram, Slack, Discord, Feishu, or WeChat — always inside boundaries you set.
+Its memory is append-only Markdown on your disk, not rows in someone else's database. Its tool calls pass through permission modes you define. Its code runs in an isolated Docker sandbox, or on the host under path restrictions you set. It can research, write, code, pursue goals, run scheduled work, connect to your devices, and meet you in Telegram, Slack, Discord, Feishu, or WeChat — always inside boundaries you set.
 
 **Models are replaceable. Platforms are temporary. Your agent remains.**
 
@@ -137,7 +137,7 @@ Conversation facts land in append-only Markdown logs, consolidate into an inspec
 
 ### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **GOVERN ITS ACTIONS**
 
-Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. Docker workspaces isolate execution, while the activity timeline records what ran, what changed, and why it was authorized.
+Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. An optional Docker sandbox isolates execution, while the activity timeline records what ran, what changed, and why it was authorized.
 
 ### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **RUN IT ANYWHERE, LET IT WORK**
 
@@ -158,6 +158,7 @@ One agent, one memory, reachable from several surfaces. Messaging channels are o
 | Surface | Transport | Supports | Setup |
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
+| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-developing/mobile.md) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/02-concepts/social-messaging/telegram.md) |
 | **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/02-concepts/social-messaging/slack.md) |
 | **Discord** | Gateway | Text, files | [Guide](docs/02-concepts/social-messaging/discord.md) |
@@ -215,7 +216,7 @@ SUZENT's docs and community speak in an occult register. There is a point behind
 *   **BACKEND**: Python 3.12, FastAPI, pydantic-ai, litellm, SQLite.
 *   **FRONTEND**: React, TypeScript, Tailwind, Vite, Tauri.
 *   **MEMORY**: LanceDB local vector storage.
-*   **SANDBOX**: Docker.
+*   **SANDBOX**: Docker (optional).
 *   **EXTENSIBILITY**: MCP, portable `SKILL.md` packages.
 
 ---
