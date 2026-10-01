@@ -9,6 +9,7 @@
     ".releases/changes/mobile-model-memory.json",
     ".releases/changes/mobile-pua-citations.json",
     ".releases/changes/mobile-release-distribution.json",
+    ".releases/changes/mobile-reply-boundaries.json",
     ".releases/changes/mobile-send-idempotency.json",
     ".releases/changes/mobile-streaming-motion.json",
     ".releases/changes/mobile-turn-badge-fix.json",
