@@ -288,5 +288,37 @@
       0,
       0
     ]
+  },
+  {
+    "name": "completed inline surface keeps later autonomous reply separate",
+    "messages": [
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "text",
+            "text": "Answer with card"
+          },
+          {
+            "type": "a2ui",
+            "surface": {
+              "id": "one"
+            }
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "Later answer"
+      }
+    ],
+    "texts": [
+      "Answer with card",
+      "Later answer"
+    ],
+    "activities": [
+      1,
+      0
+    ]
   }
 ]

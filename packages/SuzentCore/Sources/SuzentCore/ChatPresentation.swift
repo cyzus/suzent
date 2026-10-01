@@ -69,9 +69,9 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
     }
     var grouped: [DisplayMessage] = []
     for row in rows {
-        // A final text part ends a reply; only unfinished activity joins the next row.
+        // Only tool/reasoning tails continue a reply; text and rendered surfaces end it.
         if let previous = grouped.last,
-           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role), previous.parts.last?.type != "text" {
+           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role), ["tool", "reasoning"].contains(previous.parts.last?.type ?? "") {
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
                 parts: normalizeParts(previous.parts + row.parts),
