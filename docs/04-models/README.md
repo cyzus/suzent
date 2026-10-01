@@ -23,8 +23,8 @@ model selector in the chat window.
    models it can use.
 4. Tick the models you want, then click **Save Changes**.
 
-Keys are stored in Suzent's local database on your machine, never in plain-text
-config files.
+Keys are stored in your operating system's keychain (or, where there is none,
+an encrypted file on your computer), never in plain-text config files.
 
 ## Supported providers
 

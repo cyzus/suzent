@@ -10,24 +10,41 @@ five-question ownership test, see
 
 - [What is Suzent?](01-getting-started/intro.md): what a sovereign agent is and what Suzent can do
 - [Quickstart](01-getting-started/quickstart.md): install, connect a model, and start chatting
+- [Desktop, phone, and browser](01-getting-started/platforms.md): every way to reach your agent
 - [Updating](01-getting-started/updating.md): update Suzent and upgrade an existing install
 
-## Guides
+## Using Suzent
 
-- [Models & Providers](./04-models/README.md): connect OpenAI, Anthropic, Gemini, Ollama, and more, one page per provider
-  - [Model roles](./04-models/model-roles.md): choose which model does which job
-- [Memory](./03-features/memory/README.md): what your agent remembers, where it lives, and how to change it
-  - [Notebook](./03-features/memory/llm-wiki.md): the Obsidian-compatible knowledge vault
-  - [Advanced memory settings](./03-features/memory/configuration.md)
-- [Tools](./03-features/tools/tools.md): everything your agent can do, and how to turn it on or off
-  - [Permissions & approvals](./03-features/tools/human-in-the-loop.md): how Suzent asks before it acts
-  - [Browser](./03-features/tools/browser.md): its own browser, or yours through the extension
-- [Skills](./03-features/skills.md): install, write, and manage `SKILL.md` packages
-- [Workspace & sandbox](./03-features/filesystem.md): folders, the Docker sandbox, and undoing a turn
-- [Automation](./03-features/automation.md): scheduled tasks, heartbeats, goals, and the background service
-- [Chat apps](./05-chat-apps/README.md): Telegram, Slack, Discord, Feishu, and WeChat, one page per app
-- [Devices & other agents](./03-features/nodes.md): your phone, other computers, A2A agents, and your editor
-- [GitHub Sync](./03-features/github-sync.md): carry your agent to another computer
+- [The chat window](02-using/chat.md), [Projects & the sidebar](02-using/projects.md), [Settings at a glance](02-using/settings.md)
+
+## Features
+
+- [Overview](03-features/README.md)
+- [Memory](03-features/memory/README.md), [Notebook](03-features/memory/llm-wiki.md), [Advanced memory settings](03-features/memory/configuration.md)
+- [Tools](03-features/tools/tools.md), [Permissions & approvals](03-features/tools/human-in-the-loop.md), [Browser](03-features/tools/browser.md)
+- [Skills](03-features/skills.md), [Workspace & sandbox](03-features/filesystem.md), [Automation](03-features/automation.md)
+- [Devices & other agents](03-features/nodes.md), [GitHub Sync](03-features/github-sync.md)
+
+## Models
+
+- [Models & Providers](04-models/README.md) and [Model roles](04-models/model-roles.md)
+- Cloud: [OpenAI](04-models/cloud/openai.md), [ChatGPT Subscription](04-models/cloud/chatgpt-subscription.md), [Anthropic](04-models/cloud/anthropic.md), [Google Gemini](04-models/cloud/gemini.md), [xAI](04-models/cloud/xai.md), [DeepSeek](04-models/cloud/deepseek.md), [DashScope](04-models/cloud/dashscope.md), [Moonshot](04-models/cloud/moonshot.md), [Zhipu AI](04-models/cloud/zhipu.md), [MiniMax](04-models/cloud/minimax.md), [Xiaomi MiMo](04-models/cloud/xiaomi-mimo.md), [OpenRouter](04-models/cloud/openrouter.md)
+- Local and self-hosted: [Ollama](04-models/local/ollama.md), [vLLM](04-models/local/vllm.md), [SGLang](04-models/local/sglang.md), [LiteLLM Proxy](04-models/local/litellm.md)
+
+## Chat apps
+
+- [Overview](05-chat-apps/README.md) and [Access control & pairing](05-chat-apps/access-control.md)
+- [Telegram](05-chat-apps/telegram.md), [Slack](05-chat-apps/slack.md), [Discord](05-chat-apps/discord.md), [Feishu (Lark)](05-chat-apps/feishu.md), [WeChat](05-chat-apps/wechat.md)
+
+## Tutorials
+
+- [Run everything on your own computer](06-tutorials/run-locally.md)
+- [Get a morning briefing on Telegram](06-tutorials/morning-briefing.md)
+- [Work on a folder safely](06-tutorials/project-folder.md)
+
+## Reference
+
+- [Command line](07-reference/cli.md), [Slash commands](07-reference/slash-commands.md), [Configuration files](07-reference/configuration.md), [FAQ & troubleshooting](07-reference/faq.md)
 
 ## Development
 

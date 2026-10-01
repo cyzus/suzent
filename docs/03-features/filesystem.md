@@ -61,7 +61,7 @@ or pick one from **Recent folders**, and it's mounted for that conversation.
 Click it again to see or remove what's mounted.
 
 To mount a folder for every conversation, add a line per folder to
-`~/.suzent/config/default.yaml`, in the form
+`~/.suzent/config/local.yaml` (settings in that file stay on this computer), in the form
 `"folder on your computer:path the agent sees"`:
 
 ```yaml

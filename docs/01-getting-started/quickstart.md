@@ -138,14 +138,18 @@ write a short summary to a file.
 suzent doctor
 ```
 
-**Port conflict on startup** — `suzent start` detects conflicts and asks if you want to kill blocking processes. Type `y` to proceed.
+**Port conflict on startup** — `suzent start` stops if the port is already in use and tells you which process holds it. Usually that's another copy of Suzent: run `suzent stop`, or start on another port with `suzent start --port <port>`.
 
 **Updating** — Run `suzent update`, or see [Updating Suzent](./updating.md).
+
+More answers are in [FAQ & troubleshooting](../07-reference/faq.md).
 
 ---
 
 ## Next Steps
 
+- [The chat window](../02-using/chat.md): everything you can do in a conversation
+- [Desktop, phone, and browser](./platforms.md): reach your agent from your phone or another computer
 - [Models & Providers](../04-models/README.md): add more models and choose which one does what
 - [Memory](../03-features/memory/README.md): what your agent remembers and how to edit it
 - [Tools](../03-features/tools/tools.md): everything your agent can do

@@ -126,6 +126,8 @@ suzent start
 
 ---
 
+<a id="troubleshooting"></a>
+
 ## 故障排查
 
 **"找不到命令：suzent"** ——安装后重启终端以刷新 `PATH`。若仍无效，查看安装脚本输出，按提示手动添加脚本目录到 PATH。
@@ -136,14 +138,18 @@ suzent start
 suzent doctor
 ```
 
-**启动时端口冲突** —— `suzent start` 会检测冲突并询问是否终止占用进程，输入 `y` 继续。
+**启动时端口冲突** —— 如果端口已被占用，`suzent start` 会停止并告诉你是哪个进程占用了它。通常是另一个正在运行的 Suzent：运行 `suzent stop`，或用 `suzent start --port <端口>` 换一个端口启动。
 
 **更新** —— 运行 `suzent update`，或查看[更新 Suzent](./updating.md)。
+
+更多问题见[常见问题与故障排查](../07-reference/faq.md)。
 
 ---
 
 ## 后续步骤
 
+- [聊天窗口](../02-using/chat.md)：对话里能做的所有事
+- [桌面、手机和浏览器](./platforms.md)：从手机或另一台电脑使用你的智能体
 - [模型与提供商](../04-models/README.md)：添加更多模型，并决定每项工作用哪个模型
 - [记忆](../03-features/memory/README.md)：智能体记住了什么，以及如何修改
 - [工具](../03-features/tools/tools.md)：智能体能做的所有事

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Updating
 description: How to update Suzent, repair shortcuts, and what to check when upgrading an existing install across versions.
 ---

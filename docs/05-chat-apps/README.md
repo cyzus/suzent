@@ -28,10 +28,8 @@ Suzent keeps these settings in `config/social.json`, which you can also edit by
 hand. `config/social.example.json` shows every option.
 
 **Only people you allow can talk to your agent.** Messages from anyone not on
-the app's allowed list are refused. Each app has its own list, and only user
-IDs count; display names are ignored because anyone can change theirs. If you
-turn on **Pairing & Access Control**, strangers can ask for access and you
-approve or deny them in the same panel.
+the app's allowed list are refused. See [Access control & pairing](./access-control.md)
+for letting others in, and for choosing which model and tools chat apps use.
 
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
@@ -54,10 +52,7 @@ Send these as messages to the bot:
 | `/status` | Check that Suzent is healthy. |
 | `/help` | List every command. |
 
-## Settings for chat apps
-
-To control which model and tools chat-app conversations use, see the
-**Social Model** and **Agent Capabilities** sections on the same settings page.
+## Keep it online
 
 Chat apps only work while Suzent is running. To keep them available after you
 close the window, turn on the [background service](../03-features/automation.md#keep-suzent-running-in-the-background).

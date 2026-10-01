@@ -41,13 +41,15 @@ description: 智能体能访问哪些文件夹、文件保存在哪里、如何�
 
 智能体无法读取这些文件夹之外的内容。像 `/etc/passwd`、`../../secret` 或 Suzent 自身源代码这样的路径都会被拒绝。
 
+<a id="giving-the-agent-access-to-your-folders"></a>
+
 ## 让智能体访问你的文件夹
 
 想让智能体处理你电脑上的某个文件夹，需要先挂载它。
 
 最快的方法是聊天输入框里的 **工作目录** 按钮：选择一个文件夹，或从 **最近使用** 中挑一个，它就会挂载到当前对话。再次点击可以查看或移除已挂载的文件夹。
 
-要为所有对话挂载文件夹，在 `~/.suzent/config/default.yaml` 中为每个文件夹加一行，格式为 `"你电脑上的文件夹:智能体看到的路径"`：
+要为所有对话挂载文件夹，在 `~/.suzent/config/local.yaml`（这个文件里的设置只留在本机）中为每个文件夹加一行，格式为 `"你电脑上的文件夹:智能体看到的路径"`：
 
 ```yaml
 sandbox_volumes:
@@ -56,6 +58,8 @@ sandbox_volumes:
 ```
 
 这样智能体就会把 `D:/datasets/file.csv` 看作 `/data/file.csv`。在主机模式下，Shell 命令通过 `$MOUNT_<名称>` 变量访问同一个文件夹。
+
+<a id="using-the-sandbox"></a>
 
 ## 使用沙盒
 

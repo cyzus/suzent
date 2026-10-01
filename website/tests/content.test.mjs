@@ -38,7 +38,7 @@ test("preserves quickstart commands and localizes relative navigation", () => {
   assert.match(page.content, /setup\.ps1/);
   assert.match(page.content, /setup\.sh/);
   assert.doesNotMatch(page.content, /import Tabs from '@theme/);
-  assert.match(page.content, /\/zh-Hans\/docs\/concepts\/providers/);
+  assert.match(page.content, /\/zh-Hans\/docs\/models/);
 });
 test("all documents have searchable full content and both locale routes", () => {
   for (const page of pages.filter(

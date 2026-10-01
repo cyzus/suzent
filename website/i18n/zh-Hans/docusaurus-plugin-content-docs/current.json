@@ -3,10 +3,6 @@
     "message": "快速开始",
     "description": "Sidebar category: Getting Started"
   },
-  "sidebar.tutorialSidebar.category.Guides": {
-    "message": "使用指南",
-    "description": "Sidebar category: Guides"
-  },
   "sidebar.tutorialSidebar.category.Development": {
     "message": "开发指南",
     "description": "Sidebar category: Development"
@@ -18,10 +14,6 @@
   "sidebar.tutorialSidebar.category.Tools": {
     "message": "工具",
     "description": "Sidebar category: Tools"
-  },
-  "sidebar.tutorialSidebar.category.Models & Providers": {
-    "message": "模型与提供商",
-    "description": "Sidebar category: Models & Providers"
   },
   "sidebar.tutorialSidebar.category.Chat apps": {
     "message": "聊天应用",
@@ -38,5 +30,33 @@
   "sidebar.tutorialSidebar.category.Protocols & APIs": {
     "message": "协议与 API",
     "description": "Sidebar category: Protocols & APIs"
+  },
+  "sidebar.tutorialSidebar.category.Using Suzent": {
+    "message": "使用 Suzent",
+    "description": "Sidebar category: Using Suzent"
+  },
+  "sidebar.tutorialSidebar.category.Features": {
+    "message": "功能",
+    "description": "Sidebar category: Features"
+  },
+  "sidebar.tutorialSidebar.category.Models": {
+    "message": "模型",
+    "description": "Sidebar category: Models"
+  },
+  "sidebar.tutorialSidebar.category.Cloud providers": {
+    "message": "云端提供商",
+    "description": "Sidebar category: Cloud providers"
+  },
+  "sidebar.tutorialSidebar.category.Local & self-hosted": {
+    "message": "本地与自建",
+    "description": "Sidebar category: Local & self-hosted"
+  },
+  "sidebar.tutorialSidebar.category.Tutorials": {
+    "message": "教程",
+    "description": "Sidebar category: Tutorials"
+  },
+  "sidebar.tutorialSidebar.category.Reference": {
+    "message": "参考",
+    "description": "Sidebar category: Reference"
   }
 }

@@ -94,8 +94,8 @@ independent directions, so "I can control them" and "they can control me" are
 granted and revoked separately. Pause or remove a link at any time in the
 device list.
 
-To operate a computer fully from elsewhere, create a token under **Settings →
-Devices → Host tokens**. It grants complete access, is
+To operate a computer fully from elsewhere, create a host token in **Settings →
+Security**. It grants complete access, is
 shown only once, and can be revoked like any device. Treat it like a password.
 
 ## Work with other agents (A2A)
