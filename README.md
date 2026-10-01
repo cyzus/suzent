@@ -169,7 +169,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 
 ---
 
-## **THE GRIMOIRE**
+## **DOCUMENTATION**
 
 | Section | What's covered |
 |---|---|
@@ -195,22 +195,6 @@ The full index lives in [docs/README.md](docs/README.md).
 
 ---
 
-## **LORE**
-
-SUZENT's docs and community speak in an occult register. There is a point behind the joke: the vocabulary of summoning and possession fits an agent you actually own far better than the vocabulary of seats, plans, and accounts. If you meet an unfamiliar word in these pages, it is probably here.
-
-| Term | Means |
-|---|---|
-| **Summoning Ritual** | Installing and deploying SUZENT |
-| **Incantation** | A prompt |
-| **Summoner** | You—user, operator, developer |
-| **Grimoire** | A skill the agent can learn, and the docs that teach it |
-| **Soul Vessel** | The machine the agent runs on |
-| **False God** | Cloud lock-in: the rented agent that forgets you when billing stops |
-| **`{ ∅ }`** | The void—the local presence that keeps working when networks fail, dashboards burn, and rented memory evaporates |
-
----
-
 ## **TECH STACK**
 
 *   **BACKEND**: Python 3.12, FastAPI, pydantic-ai, litellm, SQLite.
@@ -223,7 +207,7 @@ SUZENT's docs and community speak in an occult register. There is a point behind
 
 ## **CONTRIBUTING**
 
-Summoners welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/03-developing/development-guide.md) for setup, production builds, and architecture.
+Contributions welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/03-developing/development-guide.md) for setup, production builds, and architecture.
 
 ---
 
