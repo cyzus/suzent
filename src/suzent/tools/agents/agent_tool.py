@@ -174,7 +174,8 @@ class AgentTool(Tool):
                 description=(
                     "'none': sub-agent shares the parent filesystem (default). "
                     "'worktree': creates a fresh git worktree on a new branch so changes "
-                    "are isolated and can be reviewed or discarded after the task completes."
+                    "are isolated. If the sub-agent leaves changes, the worktree and branch "
+                    "are kept for you to review, merge or discard; an untouched worktree is removed."
                 ),
             ),
         ] = "none",
