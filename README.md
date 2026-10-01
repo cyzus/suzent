@@ -10,28 +10,27 @@
 
 # **SUZENT: THE SOVEREIGN AI AGENT**
 
-### **YOUR AGENT SHOULD NOT BE AN ACCOUNT YOU RENT.**
+### **Your agent should not be an account you rent.**
 
-![Status](https://img.shields.io/badge/RITUAL-READY-black?style=flat-square) ![System](https://img.shields.io/badge/GEIST-LOCAL_FIRST-black?style=flat-square)
+An open-source, local-first personal AI agent whose memory, authority, runtime, and continuity stay yours.
 
-[![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
+Memory in plain files you own · any model, cloud or local · tools that act only within your permissions · desktop, mobile, and the chat apps you already use
 
+[![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![Stars](https://img.shields.io/github/stars/cyzus/suzent?style=flat-square)](https://github.com/cyzus/suzent/stargazers) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
-**[WEBSITE](https://suzent.com)** • **[SUMMONING RITUAL](docs/01-getting-started/quickstart.md)** • **[GRIMOIRE](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
+**[Website](https://suzent.com)** • **[Quickstart](docs/01-getting-started/quickstart.md)** • **[Docs](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[Contributing](./CONTRIBUTING.md)**
 
-
+<img src="docs/assets/readme/suzent-tour.gif" alt="A tour of the Suzent desktop app: chat, core memory, scheduled tasks, and social channels" width="880" />
 
 </div>
 
 ---
 
-## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **SUMMON A SOVEREIGN GEIST**
+## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **MEET SUZENT**
 
-> Your agent should not be an account you rent. It should be a system you own.
+**SUZENT** [soo-zuh-nt] keeps an agent's identity, memory, skills, workspace, and runtime under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
 
-**SUZENT** [soo-zuh-nt] is an open-source, local-first AI agent whose identity, memory, skills, workspace, and runtime remain under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
-
-Its memory is append-only Markdown on your disk, not rows in someone else's database. Its tool calls pass through permission modes you define. Its execution is isolated in Docker workspaces you own. It can research, write, code, pursue goals, run scheduled work, connect to your devices, and meet you in Telegram, Slack, Discord, Feishu, or WeChat — always inside boundaries you set.
+Its memory is append-only Markdown on your disk, not rows in someone else's database. Its tool calls pass through permission modes you define. Its code runs in an isolated Docker sandbox, or on the host under path restrictions you set. It can research, write, code, pursue goals, run scheduled work, connect to your devices, and meet you in Telegram, Slack, Discord, Feishu, or WeChat — always inside boundaries you set.
 
 **Models are replaceable. Platforms are temporary. Your agent remains.**
 
@@ -39,9 +38,7 @@ Its memory is append-only Markdown on your disk, not rows in someone else's data
 
 ## **QUICK START**
 
-### **INSTALL**
-
-SUZENT runs on Windows, macOS, and Linux. One command summons it, its Python backend, and the `suzent` CLI. Git is the only prerequisite; everything else is auto-installed.
+SUZENT runs on Windows, macOS, and Linux. Git is the only prerequisite; everything else is installed for you.
 
 **macOS / Linux**
 ```bash
@@ -53,7 +50,17 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
-**Mainland China mirror mode**
+Then start it and add a model under **Settings → Providers**:
+
+```bash
+suzent start
+```
+
+No API key? Pick [Ollama](docs/02-concepts/providers/ollama.md) and run everything on your own machine.
+
+<details>
+<summary><b>Mainland China mirror mode</b></summary>
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
 ```
@@ -64,18 +71,16 @@ $env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Com
 
 This uses faster mirrors for PyPI, npm, Playwright, Node via nvm, and Rustup. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running the command.
 
-Then bind your keys in `~/suzent/.env` and run:
+</details>
 
-```bash
-suzent start
-```
-
-### **THE `suzent` CLI**
+<details>
+<summary><b>The <code>suzent</code> CLI</b></summary>
 
 ```bash
 suzent --version       # Print the backend version, commit, and UI version
 suzent start           # Start the backend and the desktop app (in the background)
 suzent serve           # Start the backend only (headless / standalone)
+suzent web             # Open the web console against the backend
 suzent ui              # Start the desktop app against a running backend
 suzent logs -f         # Follow the log of a backgrounded process
 suzent stop            # Stop the backend server and the dev frontend
@@ -88,25 +93,22 @@ suzent repair          # Recover an interrupted or damaged update
 
 Run `suzent --help`, or `suzent <command> --help`, for the full flag set.
 
-### **UPDATE**
+</details>
+
+<details>
+<summary><b>Updating</b></summary>
 
 ```bash
 suzent update
 ```
 
-This installs the latest stable release as one matched set: backend source, locked dependencies, and desktop app. A standalone updater performs the switch outside the active virtual environment, verifies downloaded assets, and rolls back automatically on failure. If an interrupted update needs recovery, run:
+This installs the latest stable release as one matched set: backend source, locked dependencies, and desktop app. A standalone updater performs the switch outside the active virtual environment, verifies downloaded assets, and rolls back automatically on failure. If an interrupted update needs recovery, run `suzent repair`.
 
-```bash
-suzent repair
-```
-
-Developers working from a source checkout can update `main` and its frontend dependencies together with plain `suzent update`; the checkout is detected automatically. The explicit equivalent is:
-
-```bash
-suzent update --dev
-```
+Developers working from a source checkout can update `main` and its frontend dependencies together with plain `suzent update`; the checkout is detected automatically. The explicit equivalent is `suzent update --dev`.
 
 Or re-run the install command above — it detects an existing installation and updates it to the latest stable release.
+
+</details>
 
 ---
 
@@ -135,7 +137,7 @@ Conversation facts land in append-only Markdown logs, consolidate into an inspec
 
 ### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **GOVERN ITS ACTIONS**
 
-Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. Docker workspaces isolate execution, while the activity timeline records what ran, what changed, and why it was authorized.
+Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. An optional Docker sandbox isolates execution, while the activity timeline records what ran, what changed, and why it was authorized.
 
 ### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **RUN IT ANYWHERE, LET IT WORK**
 
@@ -156,6 +158,7 @@ One agent, one memory, reachable from several surfaces. Messaging channels are o
 | Surface | Transport | Supports | Setup |
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
+| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-developing/mobile.md) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/02-concepts/social-messaging/telegram.md) |
 | **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/02-concepts/social-messaging/slack.md) |
 | **Discord** | Gateway | Text, files | [Guide](docs/02-concepts/social-messaging/discord.md) |
@@ -166,7 +169,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 
 ---
 
-## **THE GRIMOIRE**
+## **DOCUMENTATION**
 
 | Section | What's covered |
 |---|---|
@@ -192,35 +195,19 @@ The full index lives in [docs/README.md](docs/README.md).
 
 ---
 
-## **LORE**
-
-SUZENT's docs and community speak in an occult register. There is a point behind the joke: the vocabulary of summoning and possession fits an agent you actually own far better than the vocabulary of seats, plans, and accounts. If you meet an unfamiliar word in these pages, it is probably here.
-
-| Term | Means |
-|---|---|
-| **Summoning Ritual** | Installing and deploying SUZENT |
-| **Incantation** | A prompt |
-| **Summoner** | You—user, operator, developer |
-| **Grimoire** | A skill the agent can learn, and the docs that teach it |
-| **Soul Vessel** | The machine the agent runs on |
-| **False God** | Cloud lock-in: the rented agent that forgets you when billing stops |
-| **`{ ∅ }`** | The void—the local presence that keeps working when networks fail, dashboards burn, and rented memory evaporates |
-
----
-
 ## **TECH STACK**
 
 *   **BACKEND**: Python 3.12, FastAPI, pydantic-ai, litellm, SQLite.
 *   **FRONTEND**: React, TypeScript, Tailwind, Vite, Tauri.
 *   **MEMORY**: LanceDB local vector storage.
-*   **SANDBOX**: Docker.
+*   **SANDBOX**: Docker (optional).
 *   **EXTENSIBILITY**: MCP, portable `SKILL.md` packages.
 
 ---
 
 ## **CONTRIBUTING**
 
-Summoners welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/03-developing/development-guide.md) for setup, production builds, and architecture.
+Contributions welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, and the [Development Guide](docs/03-developing/development-guide.md) for setup, production builds, and architecture.
 
 ---
 
