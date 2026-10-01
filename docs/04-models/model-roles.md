@@ -21,7 +21,7 @@ small, cheap model while your conversations use the best one you have.
 | **Dream** | Overnight [memory consolidation](../03-features/memory/README.md#how-memory-is-tidied). | Primary |
 | **Vision** | Reading images. | Primary, if it can see images |
 | **Embedding** | Memory search. | Nothing; assign one to use memory search |
-| **Image Generation**, **Image Editing**, **Video generation**, **TTS** | The [creative tools](../03-features/tools/tools.md#images-video-and-speech). | Nothing; assign one to use the tool |
+| **Image Generation**, **Image Editing**, **Video generation**, **TTS** | The [creative tools](../03-features/tools/media.md). | Nothing; assign one to use the tool |
 
 ## Backups
 

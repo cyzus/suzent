@@ -29,7 +29,7 @@ description: 智能体能访问哪些文件夹、文件保存在哪里、如何�
 | 项目工作区 | 智能体的工作文件夹。相对路径都落在这里，所以 `report.md` 会保存在工作区中。 | `/workspace` | `$PROJECT_PATH` |
 | 上传文件 | 你在聊天中附加的文件，或从[聊天应用](../05-chat-apps/README.md)发来的文件。 | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | 共享文件夹 | 所有项目共享。记忆也存放在这里。 | `/shared` | `$SHARED_PATH` |
-| 挂载的文件夹 | 你从电脑上挂载的文件夹（见下文）。 | 你设定的路径，例如 `/data` | `$MOUNT_<名称>` |
+| 挂载的文件夹 | 你从电脑上挂载的文件夹（见下文）。 | 你设定的路径，例如 `/data` | 以该路径命名的变量，例如 `$DATA` |
 
 在主机模式下，智能体直接使用你电脑上的真实文件夹，所以沙盒路径并不存在，Shell 命令要改用这些变量。`$PROJECT_PATH` 和 `$SHARED_PATH` 在沙盒中同样可用，用它们写的脚本在两种模式下都能运行。
 
@@ -57,7 +57,7 @@ sandbox_volumes:
   - "C:/Users/you/Documents/MyVault:/mnt/notebook"
 ```
 
-这样智能体就会把 `D:/datasets/file.csv` 看作 `/data/file.csv`。在主机模式下，Shell 命令通过 `$MOUNT_<名称>` 变量访问同一个文件夹。
+这样智能体就会把 `D:/datasets/file.csv` 看作 `/data/file.csv`。在主机模式下，Shell 命令通过以路径命名的变量访问同一个文件夹：`/data` 对应 `$DATA`，`/mnt/` 下的路径（如 `/mnt/notebook`）对应 `$MOUNT_NOTEBOOK`。
 
 <a id="using-the-sandbox"></a>
 
