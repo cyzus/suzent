@@ -1,0 +1,8 @@
+{
+  "label": "Features",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "What your agent can do: memory, tools, skills, workspace, automation, devices, and sync."
+  }
+}

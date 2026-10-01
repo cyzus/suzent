@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "none"},
+  "summary": "Restructure the user documentation and update doc paths in source comments and package READMEs.",
+  "reason": "Only documentation, website content, READMEs, and code comments changed; no shipped behavior changes."
+}

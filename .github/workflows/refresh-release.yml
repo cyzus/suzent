@@ -108,7 +108,7 @@ jobs:
               'Browser: merging packages and publishes the extension ZIP; store submission remains manual.' \
               'Mobile: merging records the version and notes only; store and GitHub Release distribution are future work.' \
               '' \
-              'Merge with a merge commit once checks pass. See docs/03-developing/releasing.md.')"
+              'Merge with a merge commit once checks pass. See docs/08-developing/contributing/releasing.md.')"
             gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body "$body"
           fi
           # Explicit dispatch also works when the built-in token suppresses PR events.

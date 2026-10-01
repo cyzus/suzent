@@ -64,7 +64,7 @@ Authority is sharper. An assistant that suggests text is a different proposition
 from an agent that runs commands, edits files, sends messages, and acts on a
 schedule while you sleep. Once an agent can do things, the question of who
 defines the limits stops being philosophical. Suzent's answer is
-[explicit permission rules with human approval gates](https://suzent.com/docs/concepts/tools/human-in-the-loop);
+[explicit permission rules with human approval gates](https://suzent.com/docs/features/tools/human-in-the-loop);
 a hosted product's answer is its terms of service.
 
 If your agent has both — deep context and real authority — then "the vendor
@@ -95,8 +95,8 @@ GPT, Claude, or Gemini through an API gets frontier model quality while keeping
 memory, skills, and permissions on your side of the boundary. You are renting
 the engine, deliberately, while owning the vehicle.
 
-That combination — [any provider you like](https://suzent.com/docs/concepts/providers),
-[memory in your own files](https://suzent.com/docs/concepts/memory) — is the
+That combination — [any provider you like](https://suzent.com/docs/models),
+[memory in your own files](https://suzent.com/docs/features/memory) — is the
 configuration most people actually want, and it is what Suzent is built to be.
 
 ---

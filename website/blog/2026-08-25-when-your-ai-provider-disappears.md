@@ -50,11 +50,11 @@ company survives. It is a structural question you can answer in advance:
 
 For a sovereign AI agent, the answer is drawn deliberately:
 
-- **Memory** — [Markdown files on your disk](https://suzent.com/docs/concepts/memory),
+- **Memory** — [Markdown files on your disk](https://suzent.com/docs/features/memory),
   readable and versionable.
 - **Skills** — knowledge modules you author, in your own directory.
 - **Configuration and permissions** — rules you wrote, stored locally.
-- **Workspace** — [folders and sandboxes you granted](https://suzent.com/docs/concepts/filesystem).
+- **Workspace** — [folders and sandboxes you granted](https://suzent.com/docs/features/filesystem).
 - **The model** — rented, deliberately, and replaceable.
 
 Everything above the last line is yours regardless of what happens to the
@@ -72,12 +72,12 @@ Continuity comes from two properties, both of which are architectural:
 **Identity is not in the model.** If what makes the agent *yours* is its
 memory, skills, and workspace rather than a specific set of weights or a
 specific vendor's fine-tune, then models become interchangeable engines. Suzent
-supports [many providers](https://suzent.com/docs/concepts/providers) and lets
+supports [many providers](https://suzent.com/docs/models) and lets
 you switch per session precisely so that no single one becomes load-bearing.
 
 **State is portable without secrets.** Moving an agent should not mean moving
 your credentials. Suzent's
-[sync design](https://suzent.com/docs/concepts/github-sync) carries
+[sync design](https://suzent.com/docs/features/github-sync) carries
 configuration, skills, and Markdown memory to a private repository while keeping
 API keys, device identity, and the local secret store off the wire entirely.
 
