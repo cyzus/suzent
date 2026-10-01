@@ -29,6 +29,7 @@ import {
 } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
+import { formatKeyValueList, parseKeyValueList } from '../../lib/mcpKeyValue';
 
 type MCPUrlServer = {
   type: 'url';
@@ -92,16 +93,6 @@ export function McpTab({
   // Which servers have their tool list expanded.
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
-  const parseKv = (raw: string): Record<string, string> | undefined => {
-    if (!raw.trim()) return undefined;
-    const out: Record<string, string> = {};
-    for (const pair of raw.split(',')) {
-      const [k, v] = pair.split('=').map((s) => s.trim());
-      if (k && v) out[k] = v;
-    }
-    return Object.keys(out).length ? out : undefined;
-  };
-
   const clearAddForm = () => {
     setSrvName('');
     setSrvUrl('');
@@ -116,11 +107,13 @@ export function McpTab({
     onMcpServersRefresh(data);
     const urls = data.urls || {};
     const stdio = data.stdio || {};
+    const headers = data.headers || {};
     const enabled = data.enabled || {};
     const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
       type: 'url',
       name,
       url: String(url),
+      headers: headers[name],
       enabled: !!enabled[name],
     }));
     const stdioServers: MCPServer[] = Object.entries(stdio).map(
@@ -143,9 +136,7 @@ export function McpTab({
             name: server.name,
             type: 'url',
             url: server.url,
-            headers: Object.entries(server.headers || {})
-              .map(([k, v]) => `${k}=${v}`)
-              .join(', '),
+            headers: formatKeyValueList(server.headers),
             command: '',
             args: '',
             env: '',
@@ -157,9 +148,7 @@ export function McpTab({
             headers: '',
             command: server.command,
             args: (server.args || []).join(', '),
-            env: Object.entries(server.env || {})
-              .map(([k, v]) => `${k}=${v}`)
-              .join(', '),
+            env: formatKeyValueList(server.env),
           }
     );
   };
@@ -176,7 +165,7 @@ export function McpTab({
         } catch {
           return;
         }
-        const headers = parseKv(srvHeaders);
+        const headers = parseKeyValueList(srvHeaders);
         addedName = srvName.trim() || new URL(srvUrl).host;
         probe = await addMcpServer(addedName, srvUrl.trim(), undefined, headers);
       } else {
@@ -187,7 +176,7 @@ export function McpTab({
               .map((s) => s.trim())
               .filter(Boolean)
           : undefined;
-        const env = parseKv(stdioEnv);
+        const env = parseKeyValueList(stdioEnv);
         addedName = srvName.trim() || stdioCmd.trim();
         probe = await addMcpServer(addedName, undefined, { command: stdioCmd.trim(), args, env });
       }
@@ -217,7 +206,7 @@ export function McpTab({
           name,
           editDraft.url.trim(),
           undefined,
-          parseKv(editDraft.headers)
+          parseKeyValueList(editDraft.headers)
         );
       } else {
         if (!editDraft.command.trim()) return;
@@ -230,7 +219,7 @@ export function McpTab({
         probe = await updateMcpServer(name, undefined, {
           command: editDraft.command.trim(),
           args,
-          env: parseKv(editDraft.env),
+          env: parseKeyValueList(editDraft.env),
         });
       }
       if (probe) setProbes((prev) => ({ ...prev, [name]: probe! }));

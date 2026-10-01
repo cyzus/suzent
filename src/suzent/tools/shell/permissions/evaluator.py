@@ -61,7 +61,9 @@ def evaluate_command_policy(
 
     path_uses = extract_path_uses(ctx)
 
-    # Catastrophic targets (rm -rf /, /etc, C:/Windows) are never approvable.
+    # Catastrophic targets (rm -rf /, /etc, C:/Windows) are denied. Smart mode
+    # in an interactive chat may turn the denial into a one-time prompt, which
+    # no saved rule can answer.
     dangerous_paths = validate_dangerous_paths(path_uses)
     if dangerous_paths is not None:
         dangerous_paths.metadata["base_command"] = ctx.base_command

@@ -21,10 +21,10 @@ const NEXT_STATUS: Record<string, TaskStatus> = {
   cancelled: 'pending',
 };
 
-const COLUMNS: { id: TaskStatus | 'blocked'; label: string }[] = [
-  { id: 'pending', label: 'Todo' },
-  { id: 'in_progress', label: 'Active' },
-  { id: 'completed', label: 'Done' },
+const COLUMNS: { id: TaskStatus | 'blocked'; labelKey: string }[] = [
+  { id: 'pending', labelKey: 'projectBoard.columns.todo' },
+  { id: 'in_progress', labelKey: 'projectBoard.columns.active' },
+  { id: 'completed', labelKey: 'projectBoard.columns.done' },
 ];
 
 const DOT_PATTERNS = ['●', '○', '◆', '◇'] as const;
@@ -68,6 +68,7 @@ interface AddCardFormProps {
 }
 
 const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
+  const { t } = useI18n();
   const [value, setValue] = useState('');
   return (
     <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-2 shadow-[2px_2px_0_0_#000]">
@@ -79,7 +80,7 @@ const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
           if (e.key === 'Enter' && value.trim()) onAdd(value.trim());
           if (e.key === 'Escape') onCancel();
         }}
-        placeholder="Task title…"
+        placeholder={t('projectBoard.taskTitlePlaceholder')}
         className="w-full border-2 border-brutal-black px-2 py-1 text-xs font-bold font-mono bg-white dark:bg-zinc-700 dark:text-white outline-none mb-2"
       />
       <div className="flex gap-1">
@@ -108,6 +109,7 @@ interface KanbanCardProps {
 }
 
 const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle, onDelete }) => {
+  const { t } = useI18n();
   const isActive = task.status === 'in_progress';
   const isDone = task.status === 'completed';
   const isBlocked = task.status === 'blocked';
@@ -124,7 +126,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle,
       <div className="absolute top-1.5 right-1.5 flex gap-1 z-10 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
         <button
           onClick={onStatusCycle}
-          title={`Move to ${NEXT_STATUS[task.status]}`}
+          title={t('projectBoard.moveTo', {
+            status: t(COLUMNS.find((col) => col.id === NEXT_STATUS[task.status])?.labelKey ?? ''),
+          })}
           className="w-6 h-6 flex items-center justify-center border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black leading-none font-mono hover:bg-neutral-100 transition-colors"
         >
           {isDone ? '↺' : '→'}
@@ -248,7 +252,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
               {/* Column header */}
               <div className="shrink-0 px-3 py-3 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 flex items-center justify-between">
                 <span className="text-[9px] font-black uppercase tracking-widest text-brutal-black dark:text-white">
-                  {col.label}
+                  {t(col.labelKey)}
                 </span>
                 <span
                   className={`text-[9px] font-black font-mono px-1.5 border border-brutal-black leading-snug ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}
@@ -281,7 +285,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                     onClick={() => setAddingIn(col.id)}
                     className="border border-dashed border-brutal-black bg-transparent text-brutal-black dark:text-white text-[9px] font-black uppercase tracking-wider py-2 opacity-20 hover:opacity-60 w-full font-mono transition-opacity"
                   >
-                    + Add task
+                    {t('projectBoard.addTask')}
                   </button>
                 )}
               </div>

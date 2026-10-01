@@ -62,14 +62,6 @@ class ShellCommandBackend(Tool):
     DEFAULT_TIMEOUT_SECONDS = 120
     TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
     TIMEOUT_OUTPUT_BYTES_PER_STREAM = 12_000
-    LLM_API_KEY_ENV_PATTERNS = (
-        "ANTHROPIC_*",
-        "GEMINI_*",
-        "GOOGLE_*",
-        "OPENAI_*",
-        "OPENROUTER_*",
-        "PYDANTIC_AI_GATEWAY_API_KEY",
-    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -4,6 +4,7 @@ import { WebSearchSidebarView } from './WebSearchSidebarView';
 import { WebPageReaderView } from './WebPageReaderView';
 import type { WebHistoryLog } from '../../hooks/useWebHistory';
 import { DisclosureChevron } from '../DisclosureChevron';
+import { useI18n } from '../../i18n';
 
 interface WebActivitiesViewProps {
   visible?: boolean;
@@ -23,6 +24,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
   forcedContextId,
   onClearForcedContext,
 }) => {
+  const { t } = useI18n();
   const [activeViewId, setActiveViewId] = useState<string>('browser_active');
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
 
@@ -149,7 +151,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
                 />
               </svg>
               <span className="text-xs font-black uppercase tracking-widest">
-                Return to Browser
+                {t('webActivities.returnToBrowser')}
               </span>
             </div>
           )}
@@ -161,7 +163,9 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
           className={`shrink-0 px-4 flex flex-col justify-center items-center font-mono font-bold transition-all border-l-2 border-brutal-black dark:border-black ${isTimelineOpen ? 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black hover:dark:bg-neutral-200' : 'bg-brutal-yellow text-brutal-black hover:bg-yellow-300 dark:bg-brutal-yellow/80 hover:dark:bg-brutal-yellow'}`}
           disabled={!hasHistory}
         >
-          <div className="text-[10px] uppercase tracking-widest opacity-80 mb-0.5">History</div>
+          <div className="text-[10px] uppercase tracking-widest opacity-80 mb-0.5">
+            {t('webActivities.history')}
+          </div>
           <div className="text-sm flex items-center gap-1">
             <span>{history.length}</span>
             <DisclosureChevron
