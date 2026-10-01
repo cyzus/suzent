@@ -1909,7 +1909,10 @@ question appears in the chat, and the agent pauses for your answer.
 - A question can allow more than one choice (tick boxes), or offer
   **Type something else…** so you can write your own answer.
 
-Your answer goes straight back to the agent. Asking a question needs no
+Your answer goes straight back to the agent, and it waits as long as you need.
+Where nobody can click an answer (sub-agents, scheduled tasks, goals, and
+chats in a chat app), the agent asks in its reply instead, or carries on with
+an assumption it states. Asking a question needs no
 approval, and it is always on: the tool picker shows it ticked under
 **Interaction**, and it can't be switched off.
 
@@ -2269,7 +2272,10 @@ A helper:
 - starts with only its brief, unless the agent gives it a copy of the
   conversation so far (shown as **Context forked**);
 - works in your chat's folder, or another folder the agent names (with the
-  sandbox on, only one your chat can already reach);
+  sandbox on, only one your chat can already reach). In a git project the
+  agent can instead give the helper its own copy on a new branch; if the
+  helper changes anything, that copy and branch are kept so you can review,
+  merge, or delete them, and an untouched copy is cleaned up;
 - doesn't start with your [memory](https://suzent.com/zh-Hans/docs/features/memory) in its context, and
   can't start helpers of its own or manage other conversations;
 - runs in **Smart** mode, since nobody is there to answer. It keeps the
@@ -2406,7 +2412,7 @@ few ways:
 |---|---|
 | Kind of result | general web, news, images, or videos |
 | Time range | past day, week, month, or year |
-| Number of results | 10 by default, up to 20 (with SearXNG, your instance decides) |
+| Number of results | 10 by default, up to 20 |
 
 Each result comes back with its title, link, and a short snippet.
 
@@ -2422,10 +2428,10 @@ For more private or more reliable results, run your own
    folder (see [Configuration](https://suzent.com/zh-Hans/docs/reference/configuration#environment-variables)).
 3. Restart Suzent.
 
-If the instance can't be reached, returns an error status, or refuses JSON
-with a "403 Forbidden", Suzent quietly falls back to DuckDuckGo for that search.
-If it answers with something other than JSON, such as a web page, the search
-fails instead, so check step 1 if searches stop working.
+If the instance can't be reached, returns an error status, refuses JSON with a
+"403 Forbidden", or answers with something other than JSON (such as a web
+page), Suzent quietly falls back to DuckDuckGo for that search. If results
+keep looking like DuckDuckGo's, check step 1.
 
 ## Reading a page
 
