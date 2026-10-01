@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Restructure the user documentation and update doc paths in source comments.",
+  "reason": "Only documentation, website content, and code comments changed; no shipped behavior changes."
+}
