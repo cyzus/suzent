@@ -9,6 +9,7 @@
 - Render PUA and ASCII citation markers and open their sources through native confirmation prompts on iOS and Android.
 - Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend.
 - Add the rectangular assembly-line thinking badge, lightweight streaming text fades, and smoother bottom following on iOS and Android.
+- Show one assistant badge and footer per mobile reply across activity steps and final text on Android and iOS.
 
 ## [mobile-v0.1.1] - 2026-09-27
 
