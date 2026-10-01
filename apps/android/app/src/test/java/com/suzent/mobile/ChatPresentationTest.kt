@@ -10,8 +10,7 @@ class ChatPresentationTest {
         val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
             {"role":"user","content":"Question"},
             {"role":"assistant","parts":[{"type":"reasoning","text":"Thinking"}]},
-            {"role":"assistant","content":"Checking"},
-            {"role":"assistant","parts":[{"type":"tool","toolName":"read_file","toolCallId":"one","output":"ok"}]},
+            {"role":"assistant","parts":[{"type":"text","text":"Checking"},{"type":"tool","toolName":"read_file","toolCallId":"one","output":"ok"}]},
             {"role":"assistant","content":"Answer","model":"provider/model","timestamp":"2026-09-30T12:01:00Z"},
             {"role":"system_triggered","content":"Scheduled task"},
             {"role":"assistant","content":"Next answer"}
@@ -24,7 +23,7 @@ class ChatPresentationTest {
         assertEquals(listOf(1, 1, 1, 1), activityChunks(answer.parts).map { it.size })
         assertEquals("provider/model", answer.model)
         assertEquals("2026-09-30T12:01:00Z", answer.timestamp)
-        assertEquals(4, answer.messageIndex)
+        assertEquals(3, answer.messageIndex)
     }
 
     @Test fun messageFooterKeepsPerMessageMetadataAndOriginalIndex() {

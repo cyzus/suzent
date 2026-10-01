@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Keep completed mobile assistant replies separate when later autonomous replies arrive."
+}
