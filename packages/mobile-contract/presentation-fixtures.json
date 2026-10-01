@@ -49,12 +49,10 @@
       }
     ],
     "texts": [
-      "",
       "Done"
     ],
     "activities": [
-      1,
-      0
+      1
     ]
   },
   {
@@ -201,12 +199,10 @@
       }
     ],
     "texts": [
-      "",
       "Done"
     ],
     "activities": [
-      3,
-      0
+      3
     ]
   },
   {
@@ -258,16 +254,12 @@
       }
     ],
     "texts": [
-      "",
       "Checking more",
-      "",
       "Next",
       ""
     ],
     "activities": [
-      1,
-      0,
-      1,
+      2,
       0,
       1
     ]
