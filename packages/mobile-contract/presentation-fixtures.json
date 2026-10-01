@@ -255,13 +255,38 @@
     ],
     "texts": [
       "Checking more",
+      "",
       "Next",
       ""
     ],
     "activities": [
-      2,
+      1,
+      1,
       0,
       1
+    ]
+  },
+  {
+    "name": "standalone assistant replies retain independent footers",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "First answer",
+        "model": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "Autonomous answer",
+        "model": "second"
+      }
+    ],
+    "texts": [
+      "First answer",
+      "Autonomous answer"
+    ],
+    "activities": [
+      0,
+      0
     ]
   }
 ]

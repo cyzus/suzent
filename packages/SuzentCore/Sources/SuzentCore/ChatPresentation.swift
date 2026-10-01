@@ -69,9 +69,9 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
     }
     var grouped: [DisplayMessage] = []
     for row in rows {
-        // Store rows within a turn share one badge and footer, including the final text.
+        // A final text part ends a reply; only unfinished activity joins the next row.
         if let previous = grouped.last,
-           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role) {
+           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role), previous.parts.last?.type != "text" {
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
                 parts: normalizeParts(previous.parts + row.parts),
