@@ -32,7 +32,7 @@ project's conversations, plus one folder shared by every project:
 | Project workspace | The agent's working folder. Relative paths land here, so `report.md` is saved in the workspace. | `/workspace` | `$PROJECT_PATH` |
 | Uploads | Files you attach in the chat or send from a [chat app](../05-chat-apps/README.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
-| Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | `$MOUNT_<NAME>` |
+| Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | A variable named after that path, e.g. `$DATA` |
 
 In host mode the agent works with the real folders on your computer, so the
 sandbox paths don't exist there; shell commands use the variables instead.
@@ -71,7 +71,9 @@ sandbox_volumes:
 ```
 
 Now the agent sees `D:/datasets/file.csv` as `/data/file.csv`. In host mode,
-shell commands reach the same folder through a `$MOUNT_<NAME>` variable.
+shell commands reach the same folder through a variable named after the path:
+`/data` becomes `$DATA`, and a path under `/mnt/` such as `/mnt/notebook`
+becomes `$MOUNT_NOTEBOOK`.
 
 ## Using the sandbox
 

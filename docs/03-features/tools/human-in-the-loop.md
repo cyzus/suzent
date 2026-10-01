@@ -27,23 +27,27 @@ Pick a mode per conversation from the mode selector next to the message box.
 
 In every mode, your explicit "deny" rules and Suzent's built-in safety checks
 (for example, blocked paths and dangerous shell commands) still apply. In Smart
-mode, if the reviewer can't decide, it asks you. The reviewer uses the **Permission
+mode, a shell command the safety checks would block is put to you instead of
+refused outright, and if the reviewer can't decide, it asks you. The reviewer uses the **Permission
 Review** model role, which falls back to **Decision**; see
 [Model roles](../../04-models/model-roles.md).
 
 ## Answering a request
 
-When the agent needs approval, it pauses and shows what it wants to do. You can:
+When the agent needs approval, it pauses and asks above the message box. You can:
 
-- **Allow** it once.
-- **Allow for session**, so the same action is allowed for the rest of this
-  chat.
-- **Always allow**, so it is allowed in every chat from now on.
-- **Deny** it, optionally telling the agent what to do instead.
+| Answer | What it does |
+|---|---|
+| **Yes** | Allow it this once. |
+| **Yes, and always allow for session** | Allow this tool for the rest of this chat. |
+| **Yes, and always allow globally** | Allow this tool in every chat from now on. |
+| **No** | Refuse. To tell the agent what to do instead, type in **No, and tell Suzent what to do differently** and click **Submit**. |
 
-For shell commands, "allow" remembers that exact command, or a command prefix
-such as `git log`, not every command. A pending request survives a page
-refresh, so you can come back to it later.
+For shell commands, the remember options name the command, for example
+**Yes, allow all git log … for this session** or **Yes, always allow all git log …**.
+That remembers that command, or that command prefix, not every command. Inline
+scripts can only be allowed once. A pending request survives a page refresh, so
+you can come back to it later.
 
 ## Where rules are kept
 
@@ -55,7 +59,7 @@ can review or remove them. Every decision is also logged to
 ## When nobody is watching
 
 Scheduled tasks, heartbeats, goals, sub-agents, and memory consolidation run in
-the background, where nobody can click "Allow". They always use Smart mode,
+the background, where nobody can answer. They always use Smart mode,
 whatever mode the chat that created them uses, and anything the reviewer can't
 clear as safe is denied instead of waiting for an answer. See
 [Automation](../automation.md).

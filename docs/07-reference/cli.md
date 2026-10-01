@@ -133,7 +133,7 @@ suzent mcp add docs --url https://example.com/mcp --header "Authorization: Beare
 ```
 
 `--args` takes a comma-separated list. `--header` and `--env` can be repeated.
-See [MCP servers](../03-features/tools/tools.md#mcp-servers).
+See [MCP servers](../03-features/tools/mcp.md).
 
 ## Scheduled tasks
 
