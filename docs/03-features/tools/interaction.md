@@ -21,7 +21,10 @@ question appears in the chat, and the agent pauses for your answer.
 - A question can allow more than one choice (tick boxes), or offer
   **Type something else…** so you can write your own answer.
 
-Your answer goes straight back to the agent. Asking a question needs no
+Your answer goes straight back to the agent, and it waits as long as you need.
+Where nobody can click an answer (sub-agents, scheduled tasks, goals, and
+chats in a chat app), the agent asks in its reply instead, or carries on with
+an assumption it states. Asking a question needs no
 approval, and it is always on: the tool picker shows it ticked under
 **Interaction**, and it can't be switched off.
 

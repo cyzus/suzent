@@ -741,6 +741,9 @@ def _tool_timeout_from_event(event: Any) -> float:
         # call does not stop it. That leaves the parent holding a synthesized
         # failure for a run that is still going.
         return math.inf
+    if tool_name == "ask_question":
+        # The call is waiting on a person, who may take as long as they like.
+        return math.inf
     if tool_name != "run_command":
         return timeout
 

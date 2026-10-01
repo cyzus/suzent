@@ -254,6 +254,18 @@ def test_non_bash_tool_stream_timeout_defaults_to_one_minute():
     assert streaming._tool_timeout_from_event(event) == 60.0
 
 
+def test_ask_question_stream_timeout_waits_for_the_user():
+    event = FunctionToolCallEvent(
+        ToolCallPart(
+            tool_name="ask_question",
+            args={"questions": [{"question": "Which one?"}]},
+            tool_call_id="call-1",
+        )
+    )
+
+    assert streaming._tool_timeout_from_event(event) == math.inf
+
+
 def test_draft_accumulator_persists_citation_sources():
     acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
 
