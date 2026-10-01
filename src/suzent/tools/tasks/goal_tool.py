@@ -3,6 +3,7 @@ from typing import Annotated, Optional, Literal
 from pydantic import Field
 from pydantic_ai import RunContext
 
+from suzent.config import CONFIG
 from suzent.core.agent_deps import AgentDeps
 from suzent.database import get_database
 from suzent.logger import get_logger
@@ -10,8 +11,6 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.tasks.project_scope import require_project_id
 
 logger = get_logger(__name__)
-
-DEFAULT_MAX_TURNS = 20
 
 
 class GoalTool(Tool):
@@ -88,7 +87,7 @@ class GoalTool(Tool):
             )
         db = get_database()
         goal = db.get_goal(project_id, chat_id=chat_id)
-        effective_turns = max_turns or DEFAULT_MAX_TURNS
+        effective_turns = max_turns or CONFIG.goals_max_turns
         if goal:
             # A replacement reuses the row and resets the count, so bump the
             # generation: anything holding the old identity must not treat this
