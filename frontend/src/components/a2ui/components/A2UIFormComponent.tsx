@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { A2UIForm, A2UIFormField } from '../../../types/a2ui';
 import { BrutalButton } from '../../BrutalButton';
+import { useI18n } from '../../../i18n';
 
 interface Props {
   component: A2UIForm;
@@ -22,6 +23,7 @@ function SelectOptionList({
   onChange: (v: string) => void;
   allowFreeText?: boolean;
 }) {
+  const { t } = useI18n();
   const isOther = allowFreeText && value !== '' && !options.includes(value);
   const [otherText, setOtherText] = React.useState(isOther ? value : '');
   const [otherActive, setOtherActive] = React.useState(isOther);
@@ -72,7 +74,7 @@ function SelectOptionList({
                 otherActive ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'
               }
             >
-              Type something else…
+              {t('a2uiForm.typeSomethingElse')}
             </span>
             <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">
               {options.length + 1}
@@ -111,6 +113,7 @@ function MultiSelectList({
   onChange: (v: string[]) => void;
   allowFreeText?: boolean;
 }) {
+  const { t } = useI18n();
   const otherValue = value.find((v) => !options.includes(v)) ?? '';
   const [otherText, setOtherText] = React.useState(otherValue);
   const otherChecked = otherValue !== '';
@@ -203,7 +206,7 @@ function MultiSelectList({
             <span
               className={`flex-1 ${otherChecked ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}`}
             >
-              Type something else…
+              {t('a2uiForm.typeSomethingElse')}
             </span>
             <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">
               {options.length + 1}
@@ -340,6 +343,7 @@ interface PagedFormProps {
 }
 
 function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
+  const { t } = useI18n();
   const fields = component.fields ?? [];
   const [page, setPage] = useState(0);
   const total = fields.length;
@@ -386,11 +390,11 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
             size="sm"
             onClick={() => setPage((p) => p - 1)}
           >
-            ← Back
+            {t('a2uiForm.back')}
           </BrutalButton>
         )}
         <BrutalButton type="button" variant="ghost" size="sm" onClick={skip}>
-          Skip
+          {t('a2uiForm.skip')}
         </BrutalButton>
         <div className="flex-1" />
         <BrutalButton
@@ -400,7 +404,7 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
           onClick={advance}
           disabled={!hasValue()}
         >
-          {isLast ? (component.submit_label ?? 'Submit') : 'Next →'}
+          {isLast ? (component.submit_label ?? t('a2uiForm.submit')) : t('a2uiForm.next')}
         </BrutalButton>
       </div>
     </div>

@@ -615,6 +615,7 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
   onClick,
   className,
 }) => {
+  const { t } = useI18n();
   const [retrying, setRetrying] = useState(false);
 
   const handleClick = async () => {
@@ -631,7 +632,7 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
     <button
       onClick={handleClick}
       disabled={retrying}
-      title="Retry"
+      title={t('common.retry')}
       className={`group/retry w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className ?? ''}`}
     >
       <svg
