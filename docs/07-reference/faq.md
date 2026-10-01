@@ -87,8 +87,8 @@ reverts the file edits. See [Slash commands](./slash-commands.md#undo-and-retry)
 ### Can I stop the agent asking for permission all the time?
 
 Switch the conversation to **Smart** or **Full Access** with the mode selector
-next to the message box, or choose **Allow for session** or **Always allow**
-when it asks. See [Permissions & approvals](../03-features/tools/human-in-the-loop.md).
+next to the message box, or choose one of the
+"always allow" answers when it asks. See [Permissions & approvals](../03-features/tools/human-in-the-loop.md).
 
 ### Scheduled tasks don't run when I close the window.
 

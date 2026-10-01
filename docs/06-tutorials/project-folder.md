@@ -30,8 +30,9 @@ your computer, turn on the sandbox for this chat (requires Docker). See
 
 > Read the README and the tests, then fix the failing test in `parser.py`.
 
-Review each request as it comes in. **Allow for session** saves you from
-approving the same command again in this chat.
+Review each request as it comes in. Answering
+**Yes, allow … for this session** saves you from approving the same command
+again in this chat.
 
 ## 4. Take it back if you don't like it
 
