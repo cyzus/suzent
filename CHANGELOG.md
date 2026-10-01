@@ -1026,7 +1026,7 @@ token arriving.
   - `suzent heartbeat status|enable|disable|run`
 - **Skills**: New `automation` skill documenting both systems for agent-driven scheduling.
 - **Database**: `cron_jobs` table for job configuration; `cron_runs` table for execution history.
-- **Docs**: [Automation guide](docs/02-concepts/automation/automation.md) covering cron expressions, heartbeat format, CLI reference, API reference, architecture, and troubleshooting.
+- **Docs**: [Automation guide](docs/03-features/automation.md) covering cron expressions, heartbeat format, CLI reference, API reference, architecture, and troubleshooting.
 - **i18n**: Support zh-CN in desktop app
 
 ### ⚡ Changed

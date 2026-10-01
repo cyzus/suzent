@@ -70,25 +70,25 @@
         "title": "Readable, file-backed memory",
         "description": "Markdown is the source of truth. The searchable index serves your files, and can be rebuilt from them.",
         "linkLabel": "Inspect memory architecture",
-        "to": "/docs/concepts/memory"
+        "to": "/docs/features/memory"
       },
       {
         "title": "Governed tool execution",
         "description": "Human approval and scoped tool rules define which actions may cross the boundary from reasoning into execution.",
         "linkLabel": "Inspect approval controls",
-        "to": "/docs/concepts/tools/human-in-the-loop"
+        "to": "/docs/features/tools/human-in-the-loop"
       },
       {
         "title": "Isolated project workspaces",
         "description": "Filesystem access and sandboxed workspaces keep agent activity inside boundaries you can understand and control.",
         "linkLabel": "Inspect filesystem boundaries",
-        "to": "/docs/concepts/filesystem"
+        "to": "/docs/features/filesystem"
       },
       {
         "title": "Portable state, local secrets",
         "description": "Sync the parts that form the agent while keeping machine-specific credentials out of portable state.",
         "linkLabel": "Inspect continuity design",
-        "to": "/docs/concepts/github-sync"
+        "to": "/docs/features/github-sync"
       }
     ],
     "ctaTitle": "Do not rent an identity. Own an agent.",
@@ -167,25 +167,25 @@
         "title": "可读、基于文件的记忆",
         "description": "Markdown 是事实来源。搜索索引服务于你的文件，并且可以从文件重新构建。",
         "linkLabel": "查看记忆架构",
-        "to": "/docs/concepts/memory"
+        "to": "/docs/features/memory"
       },
       {
         "title": "受治理的工具执行",
         "description": "人工审批和有作用域的工具规则，决定哪些行动可以从推理跨越到真实执行。",
         "linkLabel": "查看审批控制",
-        "to": "/docs/concepts/tools/human-in-the-loop"
+        "to": "/docs/features/tools/human-in-the-loop"
       },
       {
         "title": "隔离的项目工作区",
         "description": "文件系统权限和沙箱工作区，让智能体活动始终处于你能够理解和控制的边界内。",
         "linkLabel": "查看文件系统边界",
-        "to": "/docs/concepts/filesystem"
+        "to": "/docs/features/filesystem"
       },
       {
         "title": "状态可迁移，秘密留本地",
         "description": "同步构成智能体的部分，同时把设备专属凭证排除在可迁移状态之外。",
         "linkLabel": "查看连续性设计",
-        "to": "/docs/concepts/github-sync"
+        "to": "/docs/features/github-sync"
       }
     ],
     "ctaTitle": "不要租用一种身份。拥有一个智能体。",

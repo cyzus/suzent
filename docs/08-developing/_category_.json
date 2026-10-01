@@ -1,0 +1,9 @@
+{
+  "label": "Development",
+  "position": 8,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "For contributors working on Suzent's own code. You don't need any of this to use Suzent."
+  }
+}

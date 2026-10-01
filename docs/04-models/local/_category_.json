@@ -1,0 +1,8 @@
+{
+  "label": "Local & self-hosted",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Models that run on your own computer or a server you control."
+  }
+}

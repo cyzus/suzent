@@ -636,8 +636,8 @@ class MemoryManager:
         dropped, which is what #34 was. Repetition is suppressed one step earlier
         instead, by showing the extractor what memory already holds so a re-mention
         is not extracted at all. What survives that is resolved by the dream
-        consolidation pass. See docs/02-concepts/memory/consolidation.md and
-        docs/02-concepts/memory/architecture.md.
+        consolidation pass. See docs/03-features/memory/README.md and
+        docs/08-developing/architecture/memory-architecture.md.
         """
         result = MemoryExtractionResult.empty()
 

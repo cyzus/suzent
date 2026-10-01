@@ -41,7 +41,7 @@ of the line. The model supplies capability; the state supplies identity. Swap
 the first and the second is untouched — provided the architecture kept them
 separate in the first place.
 
-That is why Suzent supports [many providers](https://suzent.com/docs/concepts/providers)
+That is why Suzent supports [many providers](https://suzent.com/docs/models)
 — OpenAI, Anthropic, Gemini, DeepSeek, Ollama and local models, and others — and
 lets you switch per session rather than per installation.
 
@@ -53,12 +53,12 @@ it survives contact with a real migration.
 **Memory has to be model-independent.** If what the agent knows is stored as
 embeddings from one provider's model, switching means re-embedding everything,
 and any drift in retrieval quality is invisible until it bites. Suzent's source
-of truth is [Markdown](https://suzent.com/docs/concepts/memory); the semantic
+of truth is [Markdown](https://suzent.com/docs/features/memory); the semantic
 index is derived from those files and can be rebuilt. Changing the embedding
 model is a reindex, not a data loss.
 
 **Skills have to be prose, not prompts tuned to one model.** Suzent
-[skills](https://suzent.com/docs/concepts/skills) are Markdown knowledge modules
+[skills](https://suzent.com/docs/features/skills) are Markdown knowledge modules
 describing how to work in a domain. Documentation transfers between models.
 Brittle prompt scaffolding tuned to one model's quirks does not.
 
@@ -98,6 +98,6 @@ The answer tells you where its identity was living all along.
 
 ---
 
-[Providers](https://suzent.com/docs/concepts/providers) ·
+[Providers](https://suzent.com/docs/models) ·
 [What makes an agent sovereign](https://suzent.com/sovereign) ·
 [Source](https://github.com/cyzus/suzent)
