@@ -6,6 +6,27 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatPresentationTest {
+    @Test fun activityAndFinalAnswerShareOneMessageWithFinalMetadata() {
+        val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
+            {"role":"user","content":"Question"},
+            {"role":"assistant","parts":[{"type":"reasoning","text":"Thinking"}]},
+            {"role":"assistant","content":"Checking"},
+            {"role":"assistant","parts":[{"type":"tool","toolName":"read_file","toolCallId":"one","output":"ok"}]},
+            {"role":"assistant","content":"Answer","model":"provider/model","timestamp":"2026-09-30T12:01:00Z"},
+            {"role":"system_triggered","content":"Scheduled task"},
+            {"role":"assistant","content":"Next answer"}
+        ]}"""))
+        val rows = presentMessages(chat.messages)
+        assertEquals(listOf("user", "assistant", "system_triggered", "assistant"), rows.map { it.role })
+        val answer = rows[1]
+        assertEquals(listOf("reasoning", "text", "tool", "text"), answer.parts.map { it.type })
+        assertEquals("Checking\n\nAnswer", answer.text)
+        assertEquals(listOf(1, 1, 1, 1), activityChunks(answer.parts).map { it.size })
+        assertEquals("provider/model", answer.model)
+        assertEquals("2026-09-30T12:01:00Z", answer.timestamp)
+        assertEquals(4, answer.messageIndex)
+    }
+
     @Test fun messageFooterKeepsPerMessageMetadataAndOriginalIndex() {
         val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
             {"role":"user","content":"Question","timestamp":"2026-09-30T12:00:00Z"},
