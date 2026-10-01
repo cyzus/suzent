@@ -24,18 +24,30 @@ conversation in **Settings → Security**.
 
 ## Where files go
 
-Each conversation has its own private folder, plus a folder shared by all
-conversations. The agent sees them under the same names in both modes:
+Every [project](#projects) has its own workspace folder, shared by all of the
+project's conversations, plus one folder shared by every project:
 
-| Path | What it is |
-|---|---|
-| `/persistence` | This conversation's own folder. Relative paths land here, so `report.md` means `/persistence/report.md`. |
-| `/persistence/uploads` | Files you attach in the chat or send from a [chat app](./social-messaging.md). |
-| `/shared` | Shared by all conversations. Memory lives here. |
-| `/mnt/...` | Folders from your computer that you've mounted (see below). |
+| Folder | What it is | Sandbox path | Host-mode path |
+|---|---|---|---|
+| Project workspace | The agent's working folder. Relative paths land here, so `report.md` is saved in the workspace. | `/workspace` | `$PROJECT_PATH` |
+| Uploads | Files you attach in the chat or send from a [chat app](./social-messaging.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
+| Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
+| Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | `$MOUNT_<NAME>` |
 
-On disk, these live under `.suzent/sandbox/` in your Suzent folder:
-`sessions/<chat-id>/` for each conversation and `shared/` for the shared folder.
+In host mode the agent works with the real folders on your computer, so the
+sandbox paths don't exist there; shell commands use the variables instead.
+`$PROJECT_PATH` and `$SHARED_PATH` work in the sandbox too, so scripts that use
+them run in either mode.
+
+On your computer, these folders live under `~/.suzent/sandbox/`:
+`projects/<project>/` for each project's workspace and `shared/` for the shared
+folder.
+
+<a id="projects"></a>
+
+Conversations start in the default project. Use **New project** in the sidebar
+(or **Move to project** on a chat) to group related conversations, so they share a workspace and project memory
+without seeing another project's files.
 
 The agent cannot read outside these folders. Paths such as `/etc/passwd`,
 `../../secret`, or Suzent's own source code are refused.
@@ -53,8 +65,7 @@ sandbox_volumes:
 ```
 
 Now the agent sees `D:/datasets/file.csv` as `/data/file.csv`. In host mode,
-shell commands can reach mounted folders through `$MOUNT_<NAME>` variables, and
-`$PROJECT_PATH` and `$SHARED_PATH` point at the conversation and shared folders.
+shell commands reach the same folder through a `$MOUNT_<NAME>` variable.
 
 ## Using the sandbox
 
@@ -101,23 +112,20 @@ reply, or send `/retry` in a chat app. Suzent rolls back everything that turn
 did and runs your message again:
 
 - the conversation itself,
-- files in the conversation's folder,
-- files in folders you mounted.
+- files the agent created or edited with its file tools, wherever they are.
 
 Two limits to know:
 
 - **Only the last turn** can be retried. There is no multi-step undo.
-- **`/shared` is not rolled back**, because other conversations use it too.
-  Keep your own backups (or Git) for anything important there.
-
-Suzent snapshots mounted folders before every turn, so very large mounts make
-each turn slower. Mount only the folders the agent actually needs.
+- **Changes made by shell commands are not undone**, such as installed
+  packages or files a script wrote. Keep your own backups (or Git) for
+  anything important.
 
 ## Troubleshooting
 
 | Problem | What to check |
 |---|---|
-| The agent can't find a file | Look in `.suzent/sandbox/sessions/<chat-id>/` on your computer. |
+| The agent can't find a file | Look in `~/.suzent/sandbox/projects/<project>/` on your computer. |
 | "Path traversal" error | The path is outside the allowed folders. Mount the folder first. |
 | A mounted folder is missing | Check the `sandbox_volumes` line and restart Suzent. |
 | The sandbox won't start | Make sure Docker is running (`docker ps`). |

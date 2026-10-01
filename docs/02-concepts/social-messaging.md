@@ -35,8 +35,8 @@ approve or deny them in the same panel.
 
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
-supports images. Files you send are saved to the conversation's
-`/persistence/uploads/` folder, where the agent can open them. Send `/retry` to
+supports images. Files you send are saved to the workspace's
+`uploads` folder, where the agent can open them. Send `/retry` to
 redo the agent's last answer.
 
 To control which model and tools chat-app conversations use, see the
