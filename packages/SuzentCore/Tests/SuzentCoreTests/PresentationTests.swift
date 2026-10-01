@@ -81,3 +81,17 @@ import Testing
     #expect(rows[1].timestamp == "2026-09-30T12:01:00Z")
     #expect(rows[1].messageIndex == 1)
 }
+
+@Test func activityAndFinalAnswerShareOneMessageWithFinalMetadata() throws {
+    let data = Data(#"[{"role":"user","content":"Question"},{"role":"assistant","parts":[{"type":"reasoning","text":"Thinking"}]},{"role":"assistant","content":"Checking"},{"role":"assistant","parts":[{"type":"tool","toolName":"read_file","toolCallId":"one","output":"ok"}]},{"role":"assistant","content":"Answer","model":"provider/model","timestamp":"2026-09-30T12:01:00Z"},{"role":"system_triggered","content":"Scheduled task"},{"role":"assistant","content":"Next answer"}]"#.utf8)
+    let messages = try JSONDecoder().decode([ChatMessage].self, from: data)
+    let rows = presentMessages(messages)
+    #expect(rows.map(\.role) == ["user", "assistant", "system_triggered", "assistant"])
+    let answer = rows[1]
+    #expect(answer.parts.map(\.type) == ["reasoning", "text", "tool", "text"])
+    #expect(answer.text == "Checking\n\nAnswer")
+    #expect(activityChunks(answer.parts).map(\.count) == [1, 1, 1, 1])
+    #expect(answer.model == "provider/model")
+    #expect(answer.timestamp == "2026-09-30T12:01:00Z")
+    #expect(answer.messageIndex == 4)
+}
