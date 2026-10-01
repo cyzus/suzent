@@ -54,7 +54,7 @@ These are in `~/.suzent/config/`:
 | `default.yaml` | Your own settings, for anything without a screen in the app. Synced by GitHub Sync. |
 | `local.yaml` | Settings that only make sense on this computer, such as folder paths. Never synced. |
 | `config.yaml` | Preferences the app saves for you. Let the app manage it. |
-| `permissions.yaml` | Your **Always allow** rules and the default permission mode. See [Permissions & approvals](../03-features/tools/human-in-the-loop.md#where-rules-are-kept). |
+| `permissions.yaml` | Your "always allow" rules and the default permission mode. See [Permissions & approvals](../03-features/tools/human-in-the-loop.md#where-rules-are-kept). |
 | `permission-audit.jsonl` | A log of every permission decision. |
 | `skills.json` | Which skills are switched on or off. |
 

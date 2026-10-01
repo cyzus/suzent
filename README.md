@@ -178,7 +178,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 | [Models & Providers](docs/04-models/README.md) | OpenAI, Anthropic, Gemini, Ollama, and more, plus model roles |
 | [Memory](docs/03-features/memory/README.md) | What the agent remembers, where it lives, and how to edit it |
 | [Notebook](docs/03-features/memory/llm-wiki.md) | Agent-maintained, Obsidian-compatible knowledge vault |
-| [Tools](docs/03-features/tools/tools.md) | Everything the agent can do, and how to turn it on or off |
+| [Tools](docs/03-features/tools/README.md) | Everything the agent can do, and how to turn it on or off |
 | [Permissions & approvals](docs/03-features/tools/human-in-the-loop.md) | How Suzent asks before it acts |
 | [Skills](docs/03-features/skills.md) | Install, write, and manage portable `SKILL.md` packages |
 | [Workspace & sandbox](docs/03-features/filesystem.md) | Folders, the Docker sandbox, and undoing a turn |
