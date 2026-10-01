@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add native conversation context menus, responsive pressed states, and explicit device-scoped conversation management permissions.
 - Add native message footers with metadata, copy, sources, and scoped replay and branching actions; correct mobile conversation model selection.
 - Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend.
+- Keep MCP server headers when editing, stop saved rules from approving blocked commands in Smart mode, keep a helper's worktree when it leaves changes, let questions wait for an answer, fall back from SearXNG when it returns a web page, respect the goal turn limit, and translate remaining English labels.
 
 ## [v0.15.1] - 2026-09-29
 

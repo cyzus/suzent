@@ -24,6 +24,7 @@
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/tool-argument-conventions.json",
     ".releases/changes/tool-package-layout.json",
+    ".releases/changes/tools-docs-code-fixes.json",
     ".releases/changes/unified-refresh-button.json",
     ".releases/changes/updater-recovery-interface.json",
     ".releases/changes/video-and-voice.json",
