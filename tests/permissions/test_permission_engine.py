@@ -334,6 +334,53 @@ async def test_auto_mode_prompts_for_high_risk_shell_policy(
 
 
 @pytest.mark.asyncio
+async def test_auto_mode_high_risk_prompt_cannot_be_remembered(
+    tmp_path: Path,
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "run_command",
+            {"content": "sudo rm -rf build", "language": "command"},
+        ),
+        context(tmp_path, mode=PermissionMode.AUTO),
+    )
+
+    assert decision.reason_code == "shell_policy_high_risk"
+    assert [action.id for action in decision.actions] == ["allow_once", "reject"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "remembered",
+    [
+        {
+            "permission_rules": [
+                {
+                    "tool": "ShellTool",
+                    "behavior": "allow",
+                    "matcher": {"type": "command_prefix", "value": "sudo"},
+                }
+            ]
+        },
+        {"tool_approval_policy": {"run_command": "always_allow"}},
+    ],
+)
+async def test_saved_allow_does_not_answer_high_risk_prompt(
+    tmp_path: Path, remembered: dict
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "run_command",
+            {"content": "sudo rm -rf build", "language": "command"},
+        ),
+        context(tmp_path, mode=PermissionMode.AUTO, **remembered),
+    )
+
+    assert decision.behavior == CommandDecision.ASK
+    assert decision.reason_code == "shell_policy_high_risk"
+
+
+@pytest.mark.asyncio
 async def test_process_poll_is_readonly_in_plan_mode(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
