@@ -16,7 +16,7 @@
 
 记忆是你拥有的普通文件 · 任意模型，云端或本地 · 工具只在你的权限范围内行动 · 桌面、移动端，以及你已经在用的聊天应用
 
-[![版本](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=版本)](https://github.com/cyzus/suzent/releases) [![Stars](https://img.shields.io/github/stars/cyzus/suzent?style=flat-square)](https://github.com/cyzus/suzent/stargazers) [![许可证](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-加入聊天-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
+[![版本](https://badgen.net/github/release/cyzus/suzent?label=%E7%89%88%E6%9C%AC)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![许可证](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-加入聊天-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
 **[官方网站](https://suzent.com/zh-Hans/)** • **[快速开始](docs/01-getting-started/quickstart.md)** • **[文档](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[贡献指南](./CONTRIBUTING.md)**
 

@@ -49,12 +49,10 @@
       }
     ],
     "texts": [
-      "",
       "Done"
     ],
     "activities": [
-      1,
-      0
+      1
     ]
   },
   {
@@ -201,12 +199,10 @@
       }
     ],
     "texts": [
-      "",
       "Done"
     ],
     "activities": [
-      3,
-      0
+      3
     ]
   },
   {
@@ -258,7 +254,6 @@
       }
     ],
     "texts": [
-      "",
       "Checking more",
       "",
       "Next",
@@ -266,10 +261,64 @@
     ],
     "activities": [
       1,
-      0,
       1,
       0,
       1
+    ]
+  },
+  {
+    "name": "standalone assistant replies retain independent footers",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "First answer",
+        "model": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "Autonomous answer",
+        "model": "second"
+      }
+    ],
+    "texts": [
+      "First answer",
+      "Autonomous answer"
+    ],
+    "activities": [
+      0,
+      0
+    ]
+  },
+  {
+    "name": "completed inline surface keeps later autonomous reply separate",
+    "messages": [
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "text",
+            "text": "Answer with card"
+          },
+          {
+            "type": "a2ui",
+            "surface": {
+              "id": "one"
+            }
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "Later answer"
+      }
+    ],
+    "texts": [
+      "Answer with card",
+      "Later answer"
+    ],
+    "activities": [
+      1,
+      0
     ]
   }
 ]

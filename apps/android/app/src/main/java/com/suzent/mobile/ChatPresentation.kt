@@ -75,11 +75,12 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
     val grouped = mutableListOf<DisplayMessage>()
     rows.forEach { row ->
         val previous = grouped.lastOrNull()
+        // Only tool/reasoning tails continue a reply; text and rendered surfaces end it.
         if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool") &&
-            previous.parts.last().type != "text" && row.parts.first().type != "text") {
+            previous.parts.last().type in listOf("tool", "reasoning")) {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
-                normalizeParts(previous.parts + row.parts), previous.citationSources + row.citationSources,
+                normalizeParts(previous.parts + row.parts), (previous.citationSources + row.citationSources).distinctBy { it.id },
                 row.model ?: previous.model, row.timestamp ?: previous.timestamp, row.messageIndex)
         } else grouped.add(row)
     }

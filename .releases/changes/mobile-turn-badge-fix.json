@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Show one assistant badge and footer per mobile reply across activity steps and final text on Android and iOS."
+}
