@@ -1,11 +1,20 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
   "consumed": [
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/mobile-chat-management.json",
+    ".releases/changes/mobile-chat-model-source.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-local-https.json",
+    ".releases/changes/mobile-model-memory.json",
+    ".releases/changes/mobile-pua-citations.json",
     ".releases/changes/mobile-release-distribution.json",
-    ".releases/changes/product-release-plans.json"
+    ".releases/changes/mobile-reply-boundaries.json",
+    ".releases/changes/mobile-send-idempotency.json",
+    ".releases/changes/mobile-streaming-motion.json",
+    ".releases/changes/mobile-turn-badge-fix.json",
+    ".releases/changes/product-release-plans.json",
+    ".releases/changes/restructure-user-docs.json"
   ],
   "legacy_complete": true
 }
