@@ -971,10 +971,21 @@ async def _worktree_has_changes(task: SubAgentTask) -> bool:
         return True
     if not task.worktree_base:
         return True
-    ahead = await _git_output(
-        "rev-list", "--count", f"{task.worktree_base}..HEAD", cwd=worktree_path
-    )
-    return ahead is None or ahead != "0"
+    # Check the helper's branch as well as HEAD: it may have committed on the
+    # branch and then checked out another revision.
+    revisions = ["HEAD"]
+    if task.worktree_branch:
+        revisions.append(f"refs/heads/{task.worktree_branch}")
+    for revision in revisions:
+        ahead = await _git_output(
+            "rev-list",
+            "--count",
+            f"{task.worktree_base}..{revision}",
+            cwd=worktree_path,
+        )
+        if ahead is None or ahead != "0":
+            return True
+    return False
 
 
 async def _teardown_worktree(task: SubAgentTask) -> None:

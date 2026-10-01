@@ -73,3 +73,17 @@ async def test_commits_keep_the_branch(repo: Path) -> None:
 
     assert _git("branch", "--list", branch, cwd=repo) != ""
     assert task.worktree_branch == branch
+
+
+async def test_commits_on_branch_survive_a_checkout_of_the_base(repo: Path) -> None:
+    task = await _worktree_task(repo, "detached")
+    path, branch = task.worktree_path, task.worktree_branch
+    (Path(path) / "new.txt").write_text("work\n")
+    _git("add", ".", cwd=Path(path))
+    _git("commit", "-q", "-m", "work", cwd=Path(path))
+    _git("checkout", "-q", "--detach", task.worktree_base, cwd=Path(path))
+
+    await _teardown_worktree(task)
+
+    assert _git("branch", "--list", branch, cwd=repo) != ""
+    assert task.worktree_branch == branch
