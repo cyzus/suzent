@@ -1542,7 +1542,7 @@ def _web_foreground(port: int, host: str, debug: bool, open_browser: bool) -> No
         typer.echo(
             f"WARNING  Binding {host} exposes the API beyond this machine. Remote "
             "browsers must carry a host-scope token; see "
-            "docs/03-developing/contributing/web-ui.md."
+            "docs/08-developing/contributing/web-ui.md."
         )
 
     env = os.environ.copy()

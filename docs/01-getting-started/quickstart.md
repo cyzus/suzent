@@ -114,7 +114,7 @@ In Settings, open the Google Gemini card → **API KEYS** tab → **CHANGE** →
 </TabItem>
 </Tabs>
 
-Using DeepSeek, Grok, OpenRouter, Ollama, your ChatGPT subscription, or another provider? See [Models & Providers](../02-concepts/providers/README.md).
+Using DeepSeek, Grok, OpenRouter, Ollama, your ChatGPT subscription, or another provider? See [Models & Providers](../04-models/README.md).
 
 ---
 
@@ -146,8 +146,8 @@ suzent doctor
 
 ## Next Steps
 
-- [Models & Providers](../02-concepts/providers/README.md): add more models and choose which one does what
-- [Memory](../02-concepts/memory/README.md): what your agent remembers and how to edit it
-- [Tools](../02-concepts/tools/tools.md): everything your agent can do
-- [Chat apps](../02-concepts/social-messaging/README.md): talk to it from Telegram, Slack, and more
-- [Automation](../02-concepts/automation.md): schedule tasks and check-ins
+- [Models & Providers](../04-models/README.md): add more models and choose which one does what
+- [Memory](../03-features/memory/README.md): what your agent remembers and how to edit it
+- [Tools](../03-features/tools/tools.md): everything your agent can do
+- [Chat apps](../05-chat-apps/README.md): talk to it from Telegram, Slack, and more
+- [Automation](../03-features/automation.md): schedule tasks and check-ins

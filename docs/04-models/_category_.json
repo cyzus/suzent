@@ -1,0 +1,8 @@
+{
+  "label": "Models",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "description": "Connect model providers, cloud or local, and choose which model does which job."
+  }
+}

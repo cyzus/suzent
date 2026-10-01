@@ -1,8 +1,0 @@
-{
-  "label": "Models & Providers",
-  "position": 1,
-  "link": {
-    "type": "generated-index",
-    "description": "Connect OpenAI, Anthropic, Gemini, Ollama, and other model providers."
-  }
-}

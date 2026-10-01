@@ -63,7 +63,7 @@ needs one. The important architectural commitment is the direction of authority:
 and nothing is lost. Delete the files and the index is meaningless. That
 ordering is what keeps the memory yours rather than the database's.
 
-The [memory documentation](https://suzent.com/docs/concepts/memory) covers the
+The [memory documentation](https://suzent.com/docs/features/memory) covers the
 capture and consolidation mechanics in detail.
 
 ## The parts that should not be portable
@@ -73,7 +73,7 @@ not everything the agent holds should travel with it.
 
 API keys, provider credentials, device identity, and the local secret store are
 deliberately excluded from portable state. When Suzent
-[syncs to a private Git repository](https://suzent.com/docs/concepts/github-sync),
+[syncs to a private Git repository](https://suzent.com/docs/features/github-sync),
 the payload builder rejects those paths before push. Memory and skills move;
 secrets stay on the device.
 
@@ -97,6 +97,6 @@ Start with the memory. The rest follows from it.
 
 ---
 
-[Memory docs](https://suzent.com/docs/concepts/memory) ·
+[Memory docs](https://suzent.com/docs/features/memory) ·
 [Quickstart](https://suzent.com/docs/getting-started/quickstart) ·
 [Source](https://github.com/cyzus/suzent)

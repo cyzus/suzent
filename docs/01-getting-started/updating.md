@@ -72,7 +72,7 @@ python scripts/retire_legacy_rows.py --export   # save them to the daily logs
 
 **Your existing `MEMORY.md` won't be overwritten.** `MEMORY.md` now has a part
 Suzent writes and a part you write, separated by marker comments (see
-[MEMORY.md is half yours](../02-concepts/memory/README.md#memorymd-is-half-yours)).
+[MEMORY.md is half yours](../03-features/memory/README.md#memorymd-is-half-yours)).
 A file without markers is treated as entirely yours and is left alone. Let a
 consolidation create a new one, or add the markers yourself, to get automatic
 updates back.

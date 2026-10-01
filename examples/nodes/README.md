@@ -40,7 +40,7 @@ Rules worth knowing:
 - **The server rejects commands you didn't advertise**, so the manifest is a real
   contract, not a hint.
 - **Authorization is the device token**, minted by your approval — not by being
-  Suzent. See [security.md](../../docs/03-developing/protocols/node-security.md).
+  Suzent. See [security.md](../../docs/08-developing/protocols/node-security.md).
 
 ## The hard part isn't the protocol — it's where the code runs
 
@@ -92,4 +92,4 @@ to invoke. Suzent already speaks MCP for tools.
 - **MCP**: anything richer that already has (or wants) a standard tool interface.
 
 Use A2A only when the far end is an *agent* you delegate goals to, rather than a
-capability surface you invoke. See [a2a.md](../../docs/03-developing/protocols/a2a.md).
+capability surface you invoke. See [a2a.md](../../docs/08-developing/protocols/a2a.md).

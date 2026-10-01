@@ -6,12 +6,17 @@ Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a 
 
 ## Documentation
 
-Full documentation lives in `docs/`:
-- `docs/01-getting-started/` — intro, quickstart, and updating
-- `docs/02-concepts/` — user guides: providers (one page per provider), memory, tools, skills, workspace, automation, chat apps (one page per app), devices, github-sync
-- `docs/03-developing/` — contributor docs, grouped into `contributing/` (setup, releases), `architecture/` (how it works today), and `protocols/` (HTTP API, nodes, A2A, ACP); planned work and known gaps go in `roadmap.md`, not in those pages
+Full documentation lives in `docs/`. Each numbered folder is a sidebar section on the site:
+- `01-getting-started/` — what Suzent is, quickstart, platforms, updating
+- `02-using/` — the chat window, projects, and settings
+- `03-features/` — memory, tools, skills, workspace, automation, devices, GitHub sync
+- `04-models/` — one page per provider, grouped into `cloud/` and `local/`, plus model roles
+- `05-chat-apps/` — one page per chat app, plus access control
+- `06-tutorials/` — task-oriented walkthroughs
+- `07-reference/` — CLI, slash commands, configuration, FAQ and troubleshooting
+- `08-developing/` — contributor docs, grouped into `contributing/`, `architecture/` (how it works today), and `protocols/`; planned work and known gaps go in `roadmap.md`, not in those pages
 
-`docs/` powers the user-facing site at suzent.com/docs. Keep `01` and `02` written for users (settings, steps, plain language; no class names, REST tables, or code internals) and put implementation detail in `03-developing/`. When a page moves or merges, add its old URL to `website/content/doc-redirects.json`.
+`docs/` powers the user-facing site at suzent.com/docs. Keep `01` to `07` written for users (settings, steps, plain language; no class names, REST tables, or code internals) and put implementation detail in `08-developing/`.
 
 ## General Principles
 

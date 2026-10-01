@@ -6,7 +6,7 @@ spec's well-known path), so it is published only when the operator opts in via
 ``CONFIG.a2a_enabled``. It deliberately advertises the *agent*, not the node
 mesh: node capabilities stay behind the authenticated node API, because A2A's
 model is opaque execution while a node manifest is a transparent capability
-surface. See docs/03-developing/protocols/node-security.md.
+surface. See docs/08-developing/protocols/node-security.md.
 """
 
 from __future__ import annotations
