@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Quickstart
+description: Install Suzent, connect a model, and send your first message in a few minutes.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -8,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # Quickstart
 
-Get Suzent running in under 5 minutes.
+Get Suzent running in a few minutes.
 
 ---
 
@@ -113,7 +114,7 @@ In Settings, open the Google Gemini card → **API KEYS** tab → **CHANGE** →
 </TabItem>
 </Tabs>
 
-Using DeepSeek, Grok, OpenRouter, Ollama, or another provider? See the full [Providers reference](../concepts/providers).
+Using DeepSeek, Grok, OpenRouter, Ollama, your ChatGPT subscription, or another provider? See [Models & Providers](../02-concepts/providers.md).
 
 ---
 
@@ -122,6 +123,8 @@ Using DeepSeek, Grok, OpenRouter, Ollama, or another provider? See the full [Pro
 Pick a model from the model selector in the chat window and send your first message.
 
 **That's it.** Your agent has memory, tools, and automation ready out of the box.
+Try asking it to remember something about you, or to research a topic and
+write a short summary to a file.
 
 ---
 
@@ -137,42 +140,14 @@ suzent doctor
 
 **Port conflict on startup** — `suzent start` detects conflicts and asks if you want to kill blocking processes. Type `y` to proceed.
 
-**Updating**
-
-```bash
-suzent update
-```
-
-Stable updates pin the backend, locked dependencies, and desktop app to the
-same release. The command hands control to a standalone updater outside the
-workspace, so Windows can replace the virtual environment and app safely. The
-updater records progress in `<install-dir>/.suzent/update-status.json` and automatically
-restores the previous release if installation or verification fails. Run
-`suzent repair` if a machine lost power or was terminated during recovery.
-
-In a source checkout, plain `suzent update` detects the workspace and switches
-to the development channel automatically. `suzent update --dev` remains
-available when you want to select that channel explicitly.
-
-**Launcher shortcuts**
-
-```bash
-suzent shortcuts
-```
-
-Every install and update creates the application menu entry — Start Menu on
-Windows, `~/Applications/Suzent.app` on macOS, the applications menu on Linux —
-and repairs it if it went missing or points at an old install directory. Run the
-command yourself to fix a shortcut in between updates, or to change what you
-want: `--desktop` / `--no-desktop` and `--menu` / `--no-menu` are remembered for
-later repairs, and `--remove` deletes only the entries Suzent created.
+**Updating** — Run `suzent update`, or see [Updating Suzent](./updating.md).
 
 ---
 
 ## Next Steps
 
-- [What is Suzent?](./intro) — Understand the architecture
-- [Providers](../concepts/providers) — Full list of supported models and providers
-- [Tools](../concepts/tools) — See everything your agent can do
-- [Memory](../concepts/memory) — How persistent memory works
-- [Automation](../concepts/automation) — Schedule tasks and set up heartbeat monitors
+- [Models & Providers](../02-concepts/providers.md): add more models and choose which one does what
+- [Memory](../02-concepts/memory/README.md): what your agent remembers and how to edit it
+- [Tools](../02-concepts/tools/tools.md): everything your agent can do
+- [Chat apps](../02-concepts/social-messaging.md): talk to it from Telegram, Slack, and more
+- [Automation](../02-concepts/automation.md): schedule tasks and check-ins

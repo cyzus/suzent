@@ -31,6 +31,7 @@ export function DocumentationLayout({
         node: {
           type: "folder" as const,
           name: category.title,
+          ...(category.collapsed ? { defaultOpen: false } : {}),
           index: {
             type: "page" as const,
             name: category.title,

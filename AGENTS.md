@@ -7,9 +7,11 @@ Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a 
 ## Documentation
 
 Full documentation lives in `docs/`:
-- `docs/01-getting-started/` — intro and quickstart
-- `docs/02-concepts/` — memory, nodes, tools, skills, runtime, automation, github-sync, social messaging
-- `docs/03-developing/` — development guide, desktop guide, Docker services, releasing
+- `docs/01-getting-started/` — intro, quickstart, and updating
+- `docs/02-concepts/` — user guides: providers, memory, tools, skills, workspace, automation, chat apps, devices, github-sync
+- `docs/03-developing/` — contributor docs: development guide, releasing, HTTP API, internals and protocols
+
+`docs/` powers the user-facing site at suzent.com/docs. Keep `01` and `02` written for users (settings, steps, plain language; no class names, REST tables, or code internals) and put implementation detail in `03-developing/`. When a page moves or merges, add its old URL to `website/content/doc-redirects.json`.
 
 ## General Principles
 

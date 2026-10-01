@@ -56,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 suzent start
 ```
 
-没有 API 密钥？选择 [Ollama](docs/02-concepts/providers/ollama.md)，一切都在你自己的机器上运行。
+没有 API 密钥？选择 [Ollama](docs/02-concepts/providers.md#ollama)，一切都在你自己的机器上运行。
 
 <details>
 <summary><b>中国大陆镜像模式</b></summary>
@@ -158,12 +158,12 @@ GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，�
 | 入口 | 传输方式 | 支持内容 | 配置 |
 |---|---|---|---|
 | **桌面应用** | 本地后端 | 完整界面、Canvas、记忆与技能面板 | `suzent start` |
-| **移动应用**（预览版） | 与桌面端配对 | 共享的对话 | [指南](docs/03-developing/mobile.md) |
-| **Telegram** | Bot API | 文本、图片、文件 | [指南](docs/02-concepts/social-messaging/telegram.md) |
-| **Slack** | Socket Mode（Events API） | 文本、文件 | [指南](docs/02-concepts/social-messaging/slack.md) |
-| **Discord** | Gateway | 文本、文件 | [指南](docs/02-concepts/social-messaging/discord.md) |
-| **飞书（Lark）** | WebSocket | 文本、文件 | [指南](docs/02-concepts/social-messaging/feishu.md) |
-| **微信** | iLink Bot API | 文本 | [指南](docs/02-concepts/social-messaging/wechat.md) |
+| **移动应用**（预览版） | 与桌面端配对 | 共享的对话 | [指南](docs/02-concepts/nodes.md#pair-your-phone) |
+| **Telegram** | Bot API | 文本、图片、文件 | [指南](docs/02-concepts/social-messaging.md#telegram) |
+| **Slack** | Socket Mode（Events API） | 文本、文件 | [指南](docs/02-concepts/social-messaging.md#slack) |
+| **Discord** | Gateway | 文本、文件 | [指南](docs/02-concepts/social-messaging.md#discord) |
+| **飞书（Lark）** | WebSocket | 文本、文件 | [指南](docs/02-concepts/social-messaging.md#feishu-lark) |
+| **微信** | iLink Bot API | 文本 | [指南](docs/02-concepts/social-messaging.md#wechat) |
 
 每个对话都会成为一个持久会话，因此历史记录、工作记忆和提取的事实都能在重启后保留。上传的文件会落在沙盒的 `/persistence/uploads/` 目录中。
 
@@ -173,21 +173,19 @@ GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，�
 
 | 章节 | 内容 |
 |---|---|
-| [什么是 Suzent？](docs/01-getting-started/intro.md) | 核心概念与架构总览 |
-| [快速上手](docs/01-getting-started/quickstart.md) | 5 分钟内从零搭建 SUZENT |
-| [模型提供商](docs/02-concepts/providers/README.md) | OpenAI、Anthropic、Gemini、Ollama 等 |
-| [记忆](docs/02-concepts/memory/README.md) | 持久记忆的原理与配置方式 |
-| [LLM Wiki](docs/02-concepts/memory/llm-wiki.md) | 由智能体维护的结构化知识库 |
-| [工具](docs/02-concepts/tools/tools.md) | 全部内置工具的完整参考 |
-| [Canvas（A2UI）](docs/02-concepts/tools/canvas.md) | 在侧边栏渲染的交互式界面 |
-| [工具审批](docs/02-concepts/tools/human-in-the-loop.md) | 危险工具如何要求人工确认 |
-| [技能](docs/02-concepts/skills/skills.md) | 用可移植的知识模块扩展智能体 |
-| [文件系统与沙盒](docs/02-concepts/filesystem.md) | 文件访问、沙盒执行与存储路径 |
-| [自动化](docs/02-concepts/automation/automation.md) | 定时任务与心跳监控 |
-| [GitHub 同步](docs/02-concepts/github-sync/README.md) | 通过私有仓库迁移可移植的大脑数据 |
-| [社交消息](docs/02-concepts/social-messaging/README.md) | Telegram、Slack、Discord、飞书、微信 |
-| [节点](docs/02-concepts/nodes/nodes.md) | 连接并控制伴侣设备 |
-| [Retry](docs/02-concepts/runtime/retry.md) | 回滚上一轮并重新运行 |
+| [什么是 Suzent？](docs/01-getting-started/intro.md) | 什么是主权智能体，以及 Suzent 能做什么 |
+| [快速上手](docs/01-getting-started/quickstart.md) | 安装、连接模型、开始对话 |
+| [模型与提供商](docs/02-concepts/providers.md) | OpenAI、Anthropic、Gemini、Ollama 等，以及模型角色 |
+| [记忆](docs/02-concepts/memory/README.md) | 智能体记住了什么、存在哪里、如何修改 |
+| [笔记本](docs/02-concepts/memory/llm-wiki.md) | 由智能体维护、兼容 Obsidian 的知识库 |
+| [工具](docs/02-concepts/tools/tools.md) | 智能体能做的所有事，以及如何开关 |
+| [权限与审批](docs/02-concepts/tools/human-in-the-loop.md) | Suzent 如何在行动前征求同意 |
+| [技能](docs/02-concepts/skills.md) | 安装、编写和管理可移植的 `SKILL.md` 技能包 |
+| [工作区与沙盒](docs/02-concepts/filesystem.md) | 文件夹、Docker 沙盒，以及撤销一轮对话 |
+| [自动化](docs/02-concepts/automation.md) | 定时任务、心跳、目标和后台服务 |
+| [聊天应用](docs/02-concepts/social-messaging.md) | Telegram、Slack、Discord、飞书、微信 |
+| [设备与其他智能体](docs/02-concepts/nodes.md) | 手机、其他电脑、A2A 智能体和你的编辑器 |
+| [GitHub 同步](docs/02-concepts/github-sync.md) | 通过私有仓库把智能体带到另一台电脑 |
 | [开发指南](docs/03-developing/development-guide.md) | 环境搭建、工作流、构建与架构 |
 | [原生移动端](docs/03-developing/mobile.md) | SwiftUI/Compose 开发预览、monorepo 结构与实施计划 |
 

@@ -3,9 +3,9 @@
     "message": "快速开始",
     "description": "Sidebar category: Getting Started"
   },
-  "sidebar.tutorialSidebar.category.Concepts": {
-    "message": "核心概念",
-    "description": "Sidebar category: Concepts"
+  "sidebar.tutorialSidebar.category.Guides": {
+    "message": "使用指南",
+    "description": "Sidebar category: Guides"
   },
   "sidebar.tutorialSidebar.category.Development": {
     "message": "开发指南",
@@ -18,21 +18,5 @@
   "sidebar.tutorialSidebar.category.Tools": {
     "message": "工具",
     "description": "Sidebar category: Tools"
-  },
-  "sidebar.tutorialSidebar.category.Skills": {
-    "message": "技能",
-    "description": "Sidebar category: Skills"
-  },
-  "sidebar.tutorialSidebar.category.Social Messaging": {
-    "message": "社交消息",
-    "description": "Sidebar category: Social Messaging"
-  },
-  "sidebar.tutorialSidebar.category.Nodes": {
-    "message": "节点",
-    "description": "Sidebar category: Nodes"
-  },
-  "sidebar.tutorialSidebar.category.Automation": {
-    "message": "自动化",
-    "description": "Sidebar category: Automation"
   }
 }

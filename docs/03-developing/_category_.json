@@ -1,8 +1,9 @@
 {
   "label": "Development",
   "position": 3,
+  "collapsed": true,
   "link": {
     "type": "generated-index",
-    "description": "Guides for contributors and developers working on Suzent itself."
+    "description": "For contributors working on Suzent's own code. You don't need any of this to use Suzent."
   }
 }

@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: 快速开始
+description: 安装 Suzent、连接模型，几分钟内发出第一条消息。
 ---
 
 import Tabs from '@theme/Tabs';
@@ -8,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # 快速开始
 
-5 分钟内启动 Suzent。
+几分钟内启动 Suzent。
 
 ---
 
@@ -50,6 +51,29 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 安装脚本会自动安装 Suzent 及所有缺失的依赖项（Python/uv、Rust、构建工具等）。
 
+### 中国大陆镜像模式
+
+如果从中国大陆下载依赖较慢，可以在运行安装脚本前开启镜像模式：
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+```powershell
+$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+</TabItem>
+<TabItem value="mac-linux" label="Mac / Linux">
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+```
+
+</TabItem>
+</Tabs>
+
+镜像模式会为 PyPI、npm、Playwright、Node（通过 nvm）和 Rustup 配置国内镜像。如果访问 GitHub 本身也很慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设为你信任的镜像地址。
+
 ---
 
 ## 2. 启动
@@ -58,7 +82,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 suzent start
 ```
 
-此命令会启动后端并在浏览器中打开界面。默认地址为 `http://localhost:25315`。
+此命令会启动后端并打开桌面界面。
 
 ---
 
@@ -71,26 +95,26 @@ suzent start
 
 **获取密钥：** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → 创建新密钥（以 `sk-...` 开头）
 
-在设置中，将密钥粘贴到 **OpenAI → API Key**，启用所需模型，然后点击 **保存 → 验证**。
+在设置中打开 OpenAI 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **获取密钥：** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → 创建密钥（以 `sk-ant-...` 开头）
 
-在设置中，将密钥粘贴到 **Anthropic → API Key**，启用所需模型，然后点击 **保存 → 验证**。
+在设置中打开 Anthropic 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **获取密钥（有免费额度）：** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → 创建 API 密钥（以 `AIza...` 开头）
 
-在设置中，将密钥粘贴到 **Google Gemini → API Key**，启用所需模型，然后点击 **保存 → 验证**。
+在设置中打开 Google Gemini 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
 
 </TabItem>
 </Tabs>
 
-使用 DeepSeek、Grok、OpenRouter、Ollama 或其他提供商？请查看完整的[提供商参考](../concepts/providers)。
+使用 DeepSeek、Grok、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](../02-concepts/providers.md)。
 
 ---
 
@@ -98,7 +122,7 @@ suzent start
 
 在聊天窗口的模型选择器中选择一个模型，发送第一条消息即可。
 
-**就这样。** 记忆系统、工具和自动化功能开箱即用。
+**就这样。** 记忆系统、工具和自动化功能开箱即用。可以试着让它记住一件关于你的事，或者让它调研一个话题并把摘要写进文件。
 
 ---
 
@@ -114,29 +138,14 @@ suzent doctor
 
 **启动时端口冲突** —— `suzent start` 会检测冲突并询问是否终止占用进程，输入 `y` 继续。
 
-**更新**
-
-```bash
-suzent upgrade
-```
-
-**启动快捷方式**
-
-```bash
-suzent shortcuts
-```
-
-安装和更新都会创建并修复应用菜单入口（Windows 开始菜单、macOS
-`~/Applications/Suzent.app`、Linux 应用菜单）。快捷方式被删除或安装目录变化后，
-可手动运行该命令修复；`--desktop` / `--no-desktop` 与 `--menu` / `--no-menu`
-的选择会被记住，`--remove` 只删除 Suzent 自己创建的入口。
+**更新** —— 运行 `suzent update`，或查看[更新 Suzent](./updating.md)。
 
 ---
 
 ## 后续步骤
 
-- [Suzent 是什么？](./intro) —— 了解整体架构
-- [提供商](../concepts/providers) —— 完整的模型与提供商列表
-- [工具](../concepts/tools) —— 查看智能体的所有能力
-- [记忆系统](../concepts/memory) —— 了解持久记忆的工作原理
-- [自动化](../concepts/automation) —— 定时任务与心跳监控
+- [模型与提供商](../02-concepts/providers.md)：添加更多模型，并决定每项工作用哪个模型
+- [记忆](../02-concepts/memory/README.md)：智能体记住了什么，以及如何修改
+- [工具](../02-concepts/tools/tools.md)：智能体能做的所有事
+- [聊天应用](../02-concepts/social-messaging.md)：通过 Telegram、Slack 等与它对话
+- [自动化](../02-concepts/automation.md)：安排定时任务和定期检查

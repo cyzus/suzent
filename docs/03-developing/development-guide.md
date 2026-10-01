@@ -1,3 +1,7 @@
+---
+sidebar_position: 1
+---
+
 # Development Guide
 
 ## Quick Start
@@ -190,7 +194,7 @@ The backend automatically detects bundled environment through:
 | `LANCEDB_URI` | LanceDB vector store path |
 | `SANDBOX_DATA_PATH` | Sandbox data directory |
 | `SKILLS_DIR` | Advanced extra skills directory override |
-| `SUZENT_CAPABILITIES_TO_REPO` | Explicit maintainer opt-in that writes capability data into tracked `config/capabilities/` files instead of the user-data overlay. Normal and developer modes do not set it. See [Model Capabilities](../02-concepts/providers/model-capabilities.md). |
+| `SUZENT_CAPABILITIES_TO_REPO` | Explicit maintainer opt-in that writes capability data into tracked `config/capabilities/` files instead of the user-data overlay. Normal and developer modes do not set it. See [Model Capabilities](./model-capabilities.md). |
 
 ### Tauri Configuration
 
@@ -333,8 +337,8 @@ add an outer white border.
 ## Memory implementation
 
 Memory documentation has one entry point under [Memory](../02-concepts/memory/README.md).
-Contributors should read [Architecture](../02-concepts/memory/architecture.md)
-for invariants and [Internals](../02-concepts/memory/internals.md) for classes,
+Contributors should read [Architecture](./memory-architecture.md)
+for invariants and [Internals](./memory-internals.md) for classes,
 storage layout, and failure behavior.
 
 ## Troubleshooting

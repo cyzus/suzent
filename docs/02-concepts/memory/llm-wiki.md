@@ -1,3 +1,9 @@
+---
+sidebar_position: 2
+title: Notebook
+description: The Obsidian-compatible knowledge vault your agent researches, writes, and tidies.
+---
+
 # Notebook
 
 Your agent keeps a second kind of memory: a **notebook**, an Obsidian-compatible
@@ -53,7 +59,7 @@ Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next 
 | **Found by** | Semantic search | Links, file search, and semantic search |
 
 The two meet in one place: consolidated facts about you end up as pages under
-`3_Personal/`. See [How Consolidation Works](./consolidation.md).
+`3_Personal/`. See [How memory is tidied](./README.md#how-memory-is-tidied).
 
 ## Tidying
 
@@ -62,6 +68,3 @@ contradictions between pages, broken links, orphaned pages, knowledge that has g
 stale. Nothing is deleted; pages are corrected or marked deprecated.
 
 You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
-
-Building on the notebook itself? See
-[Memory Internals](../../02-concepts/memory/internals.md).

@@ -1,3 +1,7 @@
+---
+sidebar_position: 3
+---
+
 # Docker Services (Optional)
 
 This document describes optional Docker configurations for auxiliary services.

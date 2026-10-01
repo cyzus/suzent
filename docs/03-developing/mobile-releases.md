@@ -1,3 +1,7 @@
+---
+sidebar_position: 6
+---
+
 # Mobile release distribution
 
 Mobile releases are independent of desktop releases. Prepare a mobile release with

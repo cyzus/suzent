@@ -138,6 +138,7 @@ export function createContent() {
           description: data.link?.description || "",
           directory: path.relative(docsRoot, dir),
           position: data.position ?? 999,
+          collapsed: !!data.collapsed,
         });
       }
       dir = path.dirname(dir);

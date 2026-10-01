@@ -1,3 +1,7 @@
+---
+sidebar_position: 41
+---
+
 # Updating Model Capabilities
 
 Suzent keeps shipped model metadata in `config/capabilities/*.json`. These files
@@ -18,7 +22,7 @@ tracked files are only updated when `SUZENT_CAPABILITIES_TO_REPO=1` is set.
 Developer mode does not set this variable, so provider discovery and sync
 continue to use the local overlay while developing.
 
-See [Model Capabilities](../02-concepts/providers/model-capabilities.md) for
+See [Model capabilities and roles](./model-capabilities.md) for
 details about precedence between shipped data, the local overlay, and global
 overrides.
 

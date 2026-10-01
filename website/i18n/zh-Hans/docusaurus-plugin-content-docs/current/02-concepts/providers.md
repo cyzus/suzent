@@ -1,183 +1,92 @@
 ---
 sidebar_position: 1
-title: 提供商
+title: 模型与提供商
+description: 连接 OpenAI、Anthropic、Gemini、Ollama 等模型提供商，并决定每项工作由哪个模型负责。
 ---
 
-# 提供商
+# 模型与提供商
 
-Suzent 与模型无关。在 **设置 → 提供商** 中配置任意数量的提供商，并可按会话切换。
+**主权心智。** 模型是引擎，不是自我。智能体的身份存在于它的记忆、技能和工作区中，所以你可以更换提供商，或同时使用多个提供商，而不必从头开始。请见[什么才是主权智能体？](https://suzent.com/sovereign)。
 
-API 密钥存储在本地数据库中——绝不以明文写入配置文件。
+Suzent 支持所有主流模型提供商。想添加多少就添加多少，并在聊天窗口的模型选择器中为每个对话挑选模型。
 
----
+## 添加提供商
 
-## 配置提供商
+1. 打开 **设置 → 提供商**，点击你要配置的提供商。
+2. 在 **API 密钥** 标签页点击 **修改**，粘贴你的密钥。
+3. 在 **模型** 标签页点击 **获取**。这一步会验证密钥并加载可用模型。
+4. 勾选需要的模型，然后点击 **保存更改**。
 
-1. 打开 **设置 → 提供商**
-2. 选择要添加的提供商
-3. 填写凭据并点击 **保存**
-4. 点击 **验证** 确认连接并加载可用模型
-5. 从模型列表中启用你想使用的模型
+密钥保存在你电脑上 Suzent 的本地数据库中，绝不会以明文写入配置文件。
 
----
+<a id="supported-providers"></a>
 
-## 云端提供商
+## 支持的提供商
 
-### OpenAI
+| 提供商 | 获取密钥 | 说明 |
+|---|---|---|
+| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | 密钥以 `sk-` 开头。可选的 Base URL 适用于 Azure OpenAI 和兼容代理。 |
+| ChatGPT 订阅 | 无需密钥 | 用 ChatGPT 账号登录。见[下文](#chatgpt-subscription)。 |
+| Anthropic | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Claude 模型。密钥以 `sk-ant-` 开头。 |
+| Google Gemini | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) | 有免费额度。密钥以 `AIza` 开头。 |
+| xAI（Grok） | [console.x.ai](https://console.x.ai) | 密钥以 `xai-` 开头。 |
+| DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) | 价格低，包含推理模型。 |
+| DashScope（阿里云百炼） | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) | 通义千问模型。 |
+| Moonshot（Kimi） | [platform.moonshot.cn](https://platform.moonshot.cn) | 长上下文。 |
+| 智谱 AI（GLM） | [open.bigmodel.cn](https://open.bigmodel.cn) | GLM 系列模型。 |
+| MiniMax | [platform.minimaxi.com](https://platform.minimaxi.com) | |
+| 小米 MiMo | 小米 MiMo 控制台 | OpenAI 兼容 API。 |
+| OpenRouter | [openrouter.ai/keys](https://openrouter.ai/keys) | 一个密钥即可使用数百个模型。 |
+| LiteLLM Proxy | 你自己的代理 | 填写代理地址和 master key。适合团队使用和成本统计。 |
+| Ollama | 无需密钥 | 在你自己的电脑上运行模型。见[下文](#ollama)。 |
 
-**模型：** GPT-4.1、GPT-4.1 Mini、o3、o4-mini
+<a id="chatgpt-subscription"></a>
 
-**获取密钥：** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+### ChatGPT 订阅
 
-| 字段 | 说明 |
-|---|---|
-| `OPENAI_API_KEY` | API 密钥（以 `sk-...` 开头） |
-| `OPENAI_BASE_URL` | 可选。覆盖默认端点——适用于 Azure OpenAI 或兼容代理 |
+使用 ChatGPT 套餐中包含的模型，而不是按 API 用量付费。
 
----
+1. 打开 **设置 → 提供商 → ChatGPT 订阅**，点击登录。
+2. 打开显示的链接，输入验证码并确认。
+3. 回到 Suzent，启用需要的 `chatgpt/...` 模型。
 
-### Anthropic
+如果登录过期，在同一张卡片上断开连接后重新登录即可。
 
-**模型：** Claude Opus 4.6、Claude Sonnet 4.6、Claude Haiku 4.5
-
-**获取密钥：** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
-
-| 字段 | 说明 |
-|---|---|
-| `ANTHROPIC_API_KEY` | API 密钥（以 `sk-ant-...` 开头） |
-
----
-
-### Google Gemini
-
-**模型：** Gemini 2.5 Pro、Gemini 2.5 Flash、Gemini 2.0 Flash
-
-**获取密钥（有免费额度）：** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-
-| 字段 | 说明 |
-|---|---|
-| `GEMINI_API_KEY` | API 密钥（以 `AIza...` 开头） |
-
-`GOOGLE_API_KEY` 也可作为别名使用。
-
----
-
-### xAI（Grok）
-
-**模型：** Grok 3、Grok 3 Mini、Grok 3 Fast
-
-**获取密钥：** [console.x.ai](https://console.x.ai)
-
-| 字段 | 说明 |
-|---|---|
-| `XAI_API_KEY` | API 密钥（以 `xai-...` 开头） |
-
----
-
-### DeepSeek
-
-**模型：** DeepSeek V3（对话）、DeepSeek R1（推理）
-
-**获取密钥：** [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
-
-| 字段 | 说明 |
-|---|---|
-| `DEEPSEEK_API_KEY` | API 密钥（以 `sk-...` 开头） |
-
-DeepSeek R1 是推理模型——速度较慢，但更擅长多步骤问题。
-
----
-
-### MiniMax
-
-**模型：** MiniMax M2.5、MiniMax M2.1
-
-**获取密钥：** [platform.minimaxi.com](https://platform.minimaxi.com)
-
-| 字段 | 说明 |
-|---|---|
-| `MINIMAX_API_KEY` | API 密钥 |
-
----
-
-### Moonshot（Kimi）
-
-**模型：** Kimi v1 128K、Kimi v1 32K、Kimi v1 8K
-
-**获取密钥：** [platform.moonshot.cn](https://platform.moonshot.cn)
-
-| 字段 | 说明 |
-|---|---|
-| `MOONSHOT_API_KEY` | API 密钥（以 `sk-...` 开头） |
-
----
-
-### 智谱 AI（GLM）
-
-**模型：** GLM-4.7 Flash
-
-**获取密钥：** [open.bigmodel.cn](https://open.bigmodel.cn)
-
-| 字段 | 说明 |
-|---|---|
-| `ZAI_API_KEY` | API 密钥 |
-
----
-
-## 聚合器与代理
-
-### OpenRouter
-
-通过单个 API 密钥访问 300+ 个模型——GPT、Claude、Gemini、Mistral、Llama 等。适合需要在不同提供商之间切换但不想管理多个订阅的场景。
-
-**获取密钥：** [openrouter.ai/keys](https://openrouter.ai/keys)
-
-| 字段 | 说明 |
-|---|---|
-| `OPENROUTER_API_KEY` | API 密钥（以 `sk-or-...` 开头） |
-
-保存后点击 **获取模型** 加载完整目录。
-
----
-
-### LiteLLM 代理
-
-在任意模型集前运行自托管网关。适合团队使用、限速管理或成本追踪。
-
-**配置文档：** [docs.litellm.ai](https://docs.litellm.ai)
-
-| 字段 | 说明 |
-|---|---|
-| `LITELLM_MASTER_KEY` | 代理主密钥（以 `sk-...` 开头） |
-| `LITELLM_BASE_URL` | 代理服务地址（如 `http://localhost:4000`） |
-
-保存后点击 **获取模型** 加载代理暴露的模型。
-
----
-
-## 本地运行
+<a id="ollama"></a>
 
 ### Ollama
 
-完全在本地机器上运行模型——无需 API 密钥或网络连接。
+Ollama 完全在你的电脑上运行模型，不需要 API 密钥，也不需要联网。
 
-**配置：** 从 [ollama.com](https://ollama.com) 安装 Ollama，然后拉取模型：
+1. 从 [ollama.com](https://ollama.com) 安装 Ollama，并拉取一个模型：
 
-```bash
-ollama pull llama3.2
-```
+   ```bash
+   ollama pull llama3.2
+   ```
 
-| 字段 | 说明 |
+2. 在 **设置 → 提供商** 中打开 Ollama 卡片，点击 **获取** 列出本地模型。只有当 Ollama 不在 `http://localhost:11434` 运行时才需要修改 Base URL。
+
+<a id="model-roles"></a>
+
+## 模型角色
+
+不是每项工作都需要最大的模型。**设置 → 模型角色** 让你为不同类型的工作分配模型：
+
+| 角色 | 用途 |
 |---|---|
-| `OLLAMA_BASE_URL` | Ollama 服务地址（默认：`http://localhost:11434`） |
-| `OLLAMA_API_KEY` | 可选。仅在实例需要认证时填写 |
+| **主要** | 你的对话。需要支持工具调用和较大的上下文窗口。 |
+| **轻量** | 轻量的后台工作：生成对话标题、挑出值得记住的事实，以及"目标是否完成""这个工具调用是否安全"之类的快速判断。小而快的模型最合适。 |
+| **Dream** | 夜间的[记忆整理](./memory/README.md#how-memory-is-tidied)。 |
+| **视觉** | 识别图片。留空时会使用支持视觉的主要模型。 |
+| **向量嵌入** | 记忆搜索。 |
+| **图像生成、图像编辑、视频生成、语音合成** | [创作类工具](./tools/tools.md#images-video-and-speech)。 |
 
-点击 **获取模型** 自动检测所有本地可用模型。
+任务角色留空时会继承上级角色：对话标题使用轻量模型，轻量模型留空时使用主要模型。向量嵌入和创作类角色没有上级，使用前需要先分配模型。每个角色还可以设置备用模型，第一个失败时按顺序尝试。
 
----
+## 小贴士
 
-## 提示
+**环境变量。** 你可以在启动 Suzent 前设置 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 等环境变量。它们会在设置中显示为"来自环境变量"，无法在应用里修改。
 
-**环境变量** —— 也可在启动 Suzent 前通过环境变量设置密钥，无需使用界面。应用优先读取数据库，再回退到环境变量。通过环境变量设置的密钥在设置界面显示为 **"来自环境变量"**，无法从界面覆盖。
+**自定义模型。** 如果列表里没有你想要的模型，可以在提供商卡片中添加模型 ID，例如 `openai/gpt-4o-2024-11-20`。
 
-**自定义模型** —— 每个提供商都可在默认列表之上添加自定义模型 ID。在 **设置 → 提供商 → [提供商] → 自定义模型** 中，按 LiteLLM 格式填写模型 ID：`provider/model-name`（如 `openai/gpt-4o-2024-11-20`）。
+**模型信息。** Suzent 会记录每个模型的上下文窗口、价格，以及是否支持图片和工具调用。点击 **获取** 时会自动更新，通常你完全不需要操心。

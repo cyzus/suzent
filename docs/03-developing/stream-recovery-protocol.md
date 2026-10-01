@@ -1,3 +1,7 @@
+---
+sidebar_position: 25
+---
+
 # Stream recovery protocol
 
 Desktop chat sends, retry/edit, steering, approval resume, heartbeat and Canvas

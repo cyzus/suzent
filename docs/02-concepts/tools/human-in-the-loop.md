@@ -1,195 +1,60 @@
-# Tool Permissions and Human Approval
+---
+sidebar_position: 2
+title: Permissions & approvals
+description: How Suzent asks before it acts, the three permission modes, and how to remember your answers.
+---
 
-**Sovereign authority.** This is the boundary where an agent's reasoning
-becomes action in the world. A sovereign agent does not cross it on its own
-terms: every gated call below is a point at which Suzent stops and asks, under
-rules you set. See [what makes an agent sovereign](https://suzent.com/sovereign).
+# Permissions & approvals
 
-Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
+**Sovereign authority.** This is where your agent's reasoning becomes action in
+the world. A sovereign agent doesn't cross that line on its own terms: it stops
+and asks, under rules you set. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
-## Deferred Tools
+Reading is free. Anything that changes something, such as running a command,
+writing or editing a file, sending a message, or generating an image, goes
+through a permission check first.
 
-| Tool | Function | Gated operation |
-|------|----------|-----------------|
-| RunCommandTool / StartCommandTool | `run_command`, `start_command` | Command and code execution |
-| WriteFileTool | `write_file` | File creation and overwrite |
-| EditFileTool | `edit_file` | File edits |
-| StopCommandTool | `stop_command` | Stop a background command |
-| SocialMessageTool | `social_message` | Sending messages |
-| ImageGenerationTool | `image_generate` | Image generation |
+## Permission modes
 
-Read-only variants such as contact listing and process polling are allowed without prompting when the active mode permits read operations.
+Pick a mode per conversation from the mode selector next to the message box.
 
-## Approval Actions
+| Mode | What happens |
+|---|---|
+| **Ask** (default) | Read-only actions run. Anything that changes files or the outside world asks you first. |
+| **Smart** | Clearly low-risk actions run on their own. Anything else is reviewed by a separate security model, which approves it, blocks it, or asks you. |
+| **Full Access** | Actions run without asking. |
 
-An approval prompt can offer:
+In every mode, your explicit "deny" rules and Suzent's built-in safety checks
+(for example, blocked paths and dangerous shell commands) still apply. In Smart
+mode, if the reviewer can't decide, it asks you. The reviewer uses the **Cheap**
+model role; see [Model roles](../providers.md#model-roles).
 
-- **Allow**: approve this call once.
-- **Allow for session**: create a rule in this chat.
-- **Allow globally**: create a rule in the user `permissions.yaml`.
-- **Reject**: deny the call, optionally with guidance for the agent.
+## Answering a request
 
-The available actions are backend-owned and can vary by tool. Bash persistence uses an exact-command matcher; it does not approve the entire Bash tool. Other tools currently use a tool-wide matcher unless a narrower matcher is supplied.
+When the agent needs approval, it pauses and shows what it wants to do. You can:
 
-The complete pending decision is stored with the chat. On resume, the backend validates the selected action ID against that stored contract and ignores client-supplied arguments when applying permission updates.
+- **Allow** it once.
+- **Allow for session**, so the same action is allowed for the rest of this
+  chat.
+- **Always allow**, so it is allowed in every chat from now on.
+- **Deny** it, optionally telling the agent what to do instead.
 
-## Approval Lifecycle
+For shell commands, "allow" remembers that exact command, or a command prefix
+such as `git log`, not every command. A pending request survives a page
+refresh, so you can come back to it later.
 
-```text
-Agent issues a deferred tool call
-        │
-        ▼
-   PermissionEngine evaluates it against rules, mode, and safety checks
-        │
-        ├── allow ──► tool executes
-        ├── deny  ──► call is rejected, agent is told
-        │
-        ▼ ask
-   Decision (with its offered actions) is persisted as a pending approval,
-   and a tool_approval_request event is streamed to the frontend
-        │
-        ▼
-   Frontend renders the offered actions; user selects one:
-   Allow · Allow for session · Allow globally · Reject (+ optional feedback)
-        │
-        ▼
-   Backend validates the selected action against the stored decision,
-   creates the session/global rule if the action calls for one,
-   resolves the deferred call, and the run resumes
-```
+## Where rules are kept
 
-The pending decision is stored with the chat, so the same prompt is restored after a page refresh. The backend only honors actions that were part of the stored decision and ignores client-supplied arguments, so a client cannot widen a rule beyond what was offered. A resume that targets an approval that is no longer pending — a duplicate submission, a retry, or a click after the run already finished — is ignored rather than treated as an error.
+Session rules live with the chat. "Always allow" rules are saved in
+`permissions.yaml` in your Suzent config folder (`~/.suzent/config/`), where you
+can review or remove them. Every decision is also logged to
+`permission-audit.jsonl` in the same folder, with secrets redacted.
 
-## Permission Modes
+## When nobody is watching
 
-| Mode | Behavior |
-|------|----------|
-| `default` | Allow read-only commands; ask before workspace edits and other state-changing operations |
-| `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
-| `full_access` | Run valid tool actions without approval prompts; explicit deny rules and hard safety checks still apply |
-
-Older `accept_edits`, `plan`, and `strict_readonly` values are accepted for
-backward compatibility but are no longer user-selectable. A legacy default is
-migrated conservatively to `default`.
-
-Auto mode is not blanket approval. Explicit denies, shell safety checks, path restrictions, and normalized deny rules run before the classifier. Interactive classifier failures fall back to asking; headless classifier failures deny.
-
-Full Access removes ordinary approval interruptions, but it does not override
-explicit deny rules, invalid tool inputs, or hard shell and path safety checks.
-
-## Rule Scopes
-
-- `once`: no persisted rule.
-- `session`: stored in `ChatConfig.permission_rules`.
-- `global`: stored in the user configuration directory's `permissions.yaml`.
-
-Rules contain a tool, behavior (`allow`, `ask`, or `deny`), matcher, source, ID, and creation time. Supported matchers are:
-
-- `all`
-- `exact_input`
-- `command_prefix`
-- `path_prefix`
-- `destination`
-
-For matching rules, precedence is `deny`, then `ask`, then `allow`. More specific matchers win within the same behavior.
-
-## APIs
-
-```text
-GET    /permissions?chat_id={chat_id}
-POST   /permissions/rules
-DELETE /permissions/rules/{rule_id}?destination=session|global&chat_id={chat_id}
-GET    /chats/{chat_id}/permission-state
-GET    /chats/{chat_id}/permission-mode
-PUT    /chats/{chat_id}/permission-mode
-```
-
-Resume a suspended call through `/chat` or `/chat/send`:
-
-```json
-{
-  "chat_id": "chat-id",
-  "message": "",
-  "resume_approvals": [
-    {
-      "request_id": "tool-call-id",
-      "tool_call_id": "tool-call-id",
-      "action_id": "allow_session",
-      "feedback": "Optional user guidance"
-    }
-  ]
-}
-```
-
-Legacy binary approval payloads remain accepted as allow-once or deny-only decisions. They cannot create remembered policies.
-
-## Streaming Contract
-
-Permission provenance is streamed separately from the tool result so the UI can
-show how a deferred action was authorized. Full Access is labeled as allowed
-without review; it must not be presented as an Auto classifier approval.
-
-```json
-{
-  "name": "tool_permission_decision",
-  "value": {
-    "toolCallId": "tool-call-id",
-    "behavior": "ask",
-    "source": "auto_classifier",
-    "reason": "This command changes workspace files.",
-    "reasonCode": "auto_classifier_ask",
-    "risk": "medium",
-    "confidence": "high",
-    "riskCategories": ["filesystem"],
-    "reviewerModel": "openai/gpt-4.1-mini"
-  }
-}
-```
-
-The `tool_approval_request` custom event contains:
-
-```json
-{
-  "approvalId": "tool-call-id",
-  "toolCallId": "tool-call-id",
-  "toolName": "run_command",
-  "args": {"content": "npm test"},
-  "decision": {
-    "behavior": "ask",
-    "reason": "Git commands require approval",
-    "reasonCode": "shell_policy_ask",
-    "risk": "high",
-    "actions": []
-  }
-}
-```
-
-The frontend renders `decision.actions` in order, including feedback inputs and rule explanations declared by the backend. Pending contracts are persisted in `_pending_approvals` so the same prompt can be restored after refresh.
-
-After a user acts on an approval prompt, Suzent streams
-`tool_permission_resolution` with the selected action and scope. Older clients
-can ignore provenance events and still rely on `tool_approval_request`.
-
-## Audit Trail
-
-Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
-
-Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted. The append is offloaded to a worker thread so audit logging never blocks the streaming event loop.
-
-## Adding Approval to a Tool
-
-Set `requires_approval = True` on the tool class:
-
-```python
-class MyTool(BaseTool):
-    tool_name = "my_tool"
-    requires_approval = True
-```
-
-The registry wraps it as a pydantic-ai deferred tool. Add deterministic read-only or mode-specific behavior to `PermissionEngine` when needed; otherwise the default decision asks before execution.
-
-Keep execution-time validation inside the tool. Permission approval answers whether an operation may proceed, while the tool must still validate paths, symlinks, arguments, and current external state immediately before execution.
-
-## Headless Runs
-
-Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.
+Scheduled tasks, heartbeats, goals, sub-agents, and memory consolidation run in
+the background, where nobody can click "Allow". They always use Smart mode,
+whatever mode the chat that created them uses, and anything the reviewer can't
+clear as safe is denied instead of waiting for an answer. See
+[Automation](../automation.md).

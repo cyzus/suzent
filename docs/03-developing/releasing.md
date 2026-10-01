@@ -1,3 +1,7 @@
+---
+sidebar_position: 4
+---
+
 # Release guide
 
 Suzent prepares independent release plans for three products:

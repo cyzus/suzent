@@ -3,7 +3,7 @@
 ``suzent acp`` is meant to be *spawned by an ACP client* (Zed, enoxian, any
 editor implementing the protocol) rather than run by hand: the client owns the
 process, speaks JSON-RPC on its stdin/stdout, and passes the workspace as the
-session ``cwd``. See ``docs/02-concepts/nodes/acp.md``.
+session ``cwd``. See ``docs/03-developing/acp.md``.
 """
 
 import asyncio

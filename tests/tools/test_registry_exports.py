@@ -3,7 +3,7 @@
 `suzent.tools.names` is re-exported through the registry for backwards
 compatibility. Listing those aliases in `__all__` would quietly shrink a
 wildcard import down to them, dropping the registry APIs documented in
-`docs/02-concepts/tools/tools.md`.
+`docs/03-developing/tool-system.md`.
 """
 
 import pytest

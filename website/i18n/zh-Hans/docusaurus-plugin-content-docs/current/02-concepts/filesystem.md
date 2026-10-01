@@ -1,131 +1,106 @@
 ---
-title: 文件系统与执行
+sidebar_position: 5
+title: 工作区与沙盒
+description: 智能体能访问哪些文件夹、文件保存在哪里、如何在隔离沙盒中运行代码，以及如何撤销一轮对话。
 ---
 
-# 文件系统与执行
+# 工作区与沙盒
 
-Suzent 通过两种模式提供安全的文件访问和代码执行：**沙箱模式**（隔离的 Docker 容器）和**主机模式**（带限制的直接执行）。
+**主权容器。** 主权智能体运行在由你掌控的空间里。本页的设置精确决定了它能访问哪些文件夹、代码在哪里运行，这些都由你有意授予，而不是从某个平台继承而来。请见[什么才是主权智能体？](https://suzent.com/sovereign)。
 
-## 执行模式
+## 两种运行方式
 
-| 模式 | BashTool | 文件工具 | 路径风格 |
-|------|----------|------------|------------|
-| **沙箱** | 在 Docker 容器中运行 | 虚拟文件系统 | `/persistence`、`/shared`、`/mnt/*` |
-| **主机** | 在主机上运行 | 主机文件系统 | `$PROJECT_PATH`、`$SHARED_PATH`、`$MOUNT_*` |
+| | 主机模式（默认） | 沙盒模式 |
+|---|---|---|
+| **命令在哪里运行** | 直接在你的电脑上 | 在隔离的 Docker 容器中 |
+| **能访问什么** | 只有它的工作区文件夹和你挂载的文件夹 | 只有挂载进容器的文件夹 |
+| **需要什么** | 无需额外安装 | Docker Desktop（Windows、macOS）或 Docker Engine（Linux） |
 
-在创建对话时，可通过聊天设置面板切换沙箱模式。
+可以在对话设置中为单个对话开启沙盒，也可以在 **设置 → 安全** 中为所有对话开启。
 
----
+## 文件放在哪里
 
-## 虚拟文件系统（两种模式通用）
+每个对话都有自己的私有文件夹，另外还有一个所有对话共享的文件夹。两种模式下智能体看到的路径相同：
 
-| 虚拟路径 | 映射至 | 用途 |
-|-------------|---------|---------|
-| `/persistence` | `.suzent/sandbox/sessions/{chat_id}/` | 每个对话的独立存储 |
-| `/shared` | `.suzent/sandbox/shared/` | 跨对话共享存储 |
-| `/uploads` | `.suzent/sandbox/sessions/{chat_id}/uploads/` | 上传的文件 |
-| `/mnt/*` | 自定义卷 | 主机目录 |
+| 路径 | 说明 |
+|---|---|
+| `/persistence` | 当前对话自己的文件夹。相对路径都落在这里，所以 `report.md` 就是 `/persistence/report.md`。 |
+| `/persistence/uploads` | 你在聊天中附加的文件，或从[聊天应用](./social-messaging.md)发来的文件。 |
+| `/shared` | 所有对话共享。记忆也存放在这里。 |
+| `/mnt/...` | 你从电脑上挂载的文件夹（见下文）。 |
 
-**相对路径**默认指向 `/persistence`：`data.csv` → `/persistence/data.csv`
+在磁盘上，它们位于 Suzent 文件夹下的 `.suzent/sandbox/`：每个对话在 `sessions/<chat-id>/`，共享文件夹在 `shared/`。
 
-### 自定义卷挂载
+智能体无法读取这些文件夹之外的内容。像 `/etc/passwd`、`../../secret` 或 Suzent 自身源代码这样的路径都会被拒绝。
+
+## 让智能体访问你的文件夹
+
+想让智能体处理你电脑上的某个文件夹，需要先挂载它。在 `~/.suzent/config/default.yaml` 中为每个文件夹加一行，格式为 `"你电脑上的文件夹:智能体看到的路径"`：
 
 ```yaml
-# config/default.yaml
 sandbox_volumes:
   - "D:/datasets:/data"
-  - "D:/skills:/mnt/skills"
+  - "C:/Users/you/Documents/MyVault:/mnt/notebook"
 ```
 
-这样 `/data/file.csv` 就会映射到主机上的 `D:/datasets/file.csv`。
+这样智能体就会把 `D:/datasets/file.csv` 看作 `/data/file.csv`。在主机模式下，Shell 命令可以通过 `$MOUNT_<名称>` 变量访问挂载的文件夹，`$PROJECT_PATH` 和 `$SHARED_PATH` 分别指向当前对话文件夹和共享文件夹。
 
----
+## 使用沙盒
 
-## 沙箱模式
+1. 安装 Docker 并确保它正在运行。
+2. 开启沙盒（见上文）。
 
-使用 Docker 容器进行隔离执行。每个聊天会话拥有独立的命名容器（`suzent-sandbox-{id}`），首次使用时启动并在会话期间保持运行。
+就这么简单。每个对话第一次运行命令时会获得自己的容器。容器崩溃会自动重启，闲置 30 分钟后自动停止。你的文件保存在自己的电脑上，所以即使容器被停止或删除，文件也不会丢失。
 
-### 特性
-- **隔离**：每个会话运行在独立容器中（默认通过 `bridge` 网络访问互联网）
-- **数据持久化**：`/persistence` 和 `/shared` 通过绑定挂载自主机——数据在容器重启和删除后仍然保留
-- **自动恢复**：容器崩溃时自动重启
-- **多语言支持**：Python、Node.js（需自定义镜像）、Shell 命令
-- **资源限制**：512 MB 内存、1 CPU、256 进程上限
+默认容器包含 Python 和 Shell，可以联网，内存上限 512 MB、使用 1 个 CPU。常见调整写在 `~/.suzent/config/default.yaml` 中：
 
-### 前提条件
+```yaml
+sandbox_network: none          # 让沙盒断网
+sandbox_image: suzent-sandbox  # Python + Node.js + 常用数据处理包
+```
 
-- **Docker Desktop**（Windows/macOS）或 Docker Engine（Linux）
-- 无需 KVM、特权模式或额外服务
+要使用 `suzent-sandbox` 镜像，先在 Suzent 文件夹中构建一次：`docker compose -f docker/sandbox-compose.yml build`。
 
-### 配置参考
+<details>
+<summary>全部沙盒设置</summary>
 
-| 键 | 默认值 | 说明 |
-|-----|---------|-------------|
-| `sandbox_enabled` | `false` | 启用沙箱模式 |
+| 设置 | 默认值 | 作用 |
+|---|---|---|
+| `sandbox_enabled` | `false` | 为所有对话使用沙盒 |
 | `sandbox_image` | `python:3.11-slim` | 使用的 Docker 镜像 |
-| `sandbox_network` | `bridge` | 网络模式（`bridge` = 有互联网，`none` = 完全隔离） |
-| `sandbox_idle_timeout_minutes` | `30` | 闲置 N 分钟后停止容器 |
-| `sandbox_volumes` | `[]` | 额外的绑定挂载（`host:container`） |
+| `sandbox_network` | `bridge` | `bridge` 允许联网，`none` 禁止联网 |
+| `sandbox_idle_timeout_minutes` | `30` | 闲置多久后停止容器 |
+| `sandbox_setup_command` | `""` | 容器创建时运行一次的命令，比如安装软件包 |
+| `sandbox_env` | `{}` | 额外的环境变量（密钥类变量会被拦截） |
+| `sandbox_volumes` | `[]` | 要挂载的文件夹，格式为 `主机路径:容器路径` |
+| `shell_denied_env_patterns` | `[]` | 在主机模式下对命令隐藏的环境变量，例如 `OPENAI_*` |
 
----
+</details>
 
-## 主机模式
+<a id="undoing-the-last-turn-retry"></a>
 
-直接在主机上执行，但有路径限制。
+## 撤销上一轮（重试）
 
-在主机模式下，可在 Bash 命令中使用以下环境变量：
+对回答不满意？点击智能体最后一条回复下方的重试图标（↺），或在聊天应用中发送 `/retry`。Suzent 会回滚这一轮做过的所有改动，然后重新运行你的消息：
 
-| 变量 | 指向 |
-|----------|-----------|
-| `$PROJECT_PATH` | 会话目录 |
-| `$SHARED_PATH` | 共享目录 |
-| `$MOUNT_SKILLS` | 技能目录 |
-| `$MOUNT_*` | 其他挂载卷 |
+- 对话本身，
+- 当前对话文件夹中的文件，
+- 你挂载的文件夹中的文件。
 
----
+需要注意两点：
 
-## 文件工具
+- **只能重试最后一轮**，没有多步撤销。
+- **`/shared` 不会回滚**，因为其他对话也在使用它。重要内容请自行备份（或使用 Git）。
 
-### ReadFileTool
-读取文件，支持自动格式转换（文本、PDF、DOCX、XLSX、图片 OCR）。
-
-### WriteFileTool
-创建或覆盖文件。
-
-:::warning
-会覆盖整个文件。小修改请使用 `EditFileTool`。
-:::
-
-### EditFileTool
-精确替换文件中的文本片段。
-
-### GlobTool
-按模式查找文件（如 `**/*.py`）。
-
-### GrepTool
-用正则表达式搜索文件内容。
-
----
-
-## 安全
-
-所有路径均经过验证，防止目录遍历攻击：
-
-- ✅ `/persistence/data.csv`
-- ✅ `/shared/model.pt`
-- ✅ `/data/file.txt`（已挂载时）
-- ❌ `/etc/passwd`
-- ❌ `../../../secret`
-- ❌ 项目源码目录（主机模式下）
-
----
+Suzent 会在每轮开始前为挂载的文件夹做快照，所以挂载的文件夹很大时，每一轮都会变慢。只挂载智能体真正需要的文件夹。
 
 ## 故障排查
 
-| 问题 | 解决方案 |
-|-------|----------|
-| **文件未找到** | 检查主机上的 `.suzent/sandbox/sessions/{chat_id}/` |
-| **路径遍历错误** | 确保路径在允许的目录范围内 |
-| **卷无法访问** | 检查配置中的 `sandbox_volumes` |
-| **容器启动失败** | 确认 Docker Desktop 正在运行（`docker ps`） |
-| **找不到 Node.js** | 构建自定义镜像：`docker compose -f docker/sandbox-compose.yml build`，并设置 `sandbox_image: suzent-sandbox` |
+| 问题 | 检查什么 |
+|---|---|
+| 智能体找不到文件 | 在你的电脑上查看 `.suzent/sandbox/sessions/<chat-id>/`。 |
+| 报错"Path traversal" | 路径不在允许的文件夹内，先挂载该文件夹。 |
+| 挂载的文件夹不见了 | 检查 `sandbox_volumes` 那一行，然后重启 Suzent。 |
+| 沙盒无法启动 | 确认 Docker 正在运行（`docker ps`）。 |
+| 沙盒里找不到 `node` | 构建并使用 `suzent-sandbox` 镜像（见上文）。 |
+| 沙盒无法联网 | 设置 `sandbox_network: bridge`（默认值）。 |
