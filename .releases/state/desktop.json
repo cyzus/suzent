@@ -1,5 +1,5 @@
 {
-  "version": "0.15.3",
+  "version": "0.16.0",
   "consumed": [
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/ask-question-no-replay.json",
@@ -19,6 +19,7 @@
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/product-release-plans.json",
+    ".releases/changes/project-library.json",
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/restructure-user-docs.json",
     ".releases/changes/single-source-installer-ux.json",
