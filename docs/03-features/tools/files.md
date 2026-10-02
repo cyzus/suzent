@@ -8,7 +8,7 @@ description: How your agent reads documents, creates and edits files, and finds 
 
 The **Filesystem** tools let the agent read your files, write new ones, make
 precise edits, and search a folder. They work on the folders it is allowed to
-reach: its project workspace, the shared folder, and any folders you mount. See
+reach: its project library, the shared folder, and any folders you mount. See
 [Workspace & sandbox](../filesystem.md) for which folders those are and how to
 add your own.
 
@@ -85,7 +85,7 @@ depend on the [permission mode](./human-in-the-loop.md#permission-modes):
 | **Smart** | Run on their own inside the conversation's working folder; anywhere else is checked by the reviewer |
 | **Full Access** | Run without asking |
 
-The working folder is the project workspace, or the folder you chose with
+The working folder is the project library, or the folder you chose with
 **Working Dir**.
 
 ## Undoing changes

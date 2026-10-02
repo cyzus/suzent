@@ -21,7 +21,7 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 |---|---|
 | `config/` | Your settings files (see below). |
 | `chats.db` | Your conversations. |
-| `sandbox/projects/<project>/` | Each [project's workspace](../03-features/filesystem.md#where-files-go). |
+| `sandbox/projects/<project>/` | Each [project's library](../03-features/filesystem.md#where-files-go). |
 | `sandbox/shared/` | The folder shared by all projects. Your memory's Markdown files are in `sandbox/shared/memory/`. |
 | `notebook/` | The [notebook](../03-features/memory/llm-wiki.md) vault. |
 | `memory/` | The memory search index, rebuilt from the Markdown files. |
@@ -89,7 +89,7 @@ See [Workspace & sandbox](../03-features/filesystem.md).
 | `sandbox_setup_command` | `""` | A command run once when a sandbox is created, such as installing packages. | |
 | `sandbox_env` | `{}` | Extra environment variables inside the sandbox. | |
 | `sandbox_volumes` | | Folders from your computer to mount in every conversation, as `"host folder:path the agent sees"`. Put this in `local.yaml`. | **Settings → Memory System** sets the notebook mount |
-| `sandbox_data_path` | `~/.suzent/sandbox` | Where project workspaces and the shared folder are kept. Put this in `local.yaml`. | |
+| `sandbox_data_path` | `~/.suzent/sandbox` | Where project libraries and the shared folder are kept. Put this in `local.yaml`. | |
 | `shell_denied_env_patterns` | `[]` | Environment variables hidden from commands the agent runs in host mode, such as `OPENAI_*`. | |
 
 ### Memory

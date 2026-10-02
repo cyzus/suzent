@@ -43,7 +43,7 @@ class ShellCommandBackend(Tool):
 
     Features:
     - Runs shell commands through the platform shell
-    - Working directory is the project workspace at /workspace (shared across chats in the project)
+    - Working directory is the project library at /workspace (shared across chats in the project)
     - Shared storage at /shared (accessible by all sessions)
     - Internet access for package installation and API calls
     """

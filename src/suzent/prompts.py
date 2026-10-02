@@ -144,7 +144,7 @@ The following directories are mapped and available for your use:
 """
 
 EXECUTION_MODE_SECTION_SANDBOX = """# Environment: Sandbox
-You are in a sandbox environment. Your current working directory is the project workspace at `/workspace` (shared across all chats in this project). Other available mounts: `/shared` (global), `/mnt/...` (custom volumes). Host paths are inaccessible.
+You are in a sandbox environment. Your current working directory is the project library at `/workspace` (shared across all chats in this project). Other available mounts: `/shared` (global), `/mnt/...` (custom volumes). Host paths are inaccessible.
 Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, and CHAT_ID.
 """
 
@@ -154,8 +154,27 @@ Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, 
 # same turn that Directory Mappings listed `/mnt/...` as available.
 EXECUTION_MODE_SECTION_HOST = """# Environment: Host
 You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
-Env vars available: PROJECT_PATH (your cwd, shared across chats in this project), SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
+Env vars available: PROJECT_PATH (the project library, shared across chats in this project; also your cwd unless this chat has its own working folder), SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
 Current Shell: {shell_type}
+"""
+
+PROJECT_LIBRARY_SECTION = """# Project Library
+`{library}` is this project's library, not a scratch area. Every chat in the project reads it, so keep only what a later chat should find:
+- `context.md`: project memory and file index, loaded into every turn.
+- `notes/`: findings and research worth keeping for this project.
+- `artifacts/`: deliverables such as reports and exports.
+- `uploads/`: files the user attached. `images/`, `videos/`, `audio/`: media saved by generation tools.
+
+Before writing a file, decide where it belongs:
+- Useful beyond this project (concepts, papers, comparisons, conclusions): the notebook, when one is configured and filing is allowed.
+- Only meaningful to this project (goals, decisions, deliverables): the library.
+- Only needed for the current task (scripts, downloads, intermediate output, reference clones): {scratch}, never the library. Delete it when done.
+
+Library rules:
+- Check the file index in `context.md` and update an existing file before creating a new one.
+- When you add, move, or delete a library file, update its one-line entry in the file index.
+- The first time you read an uploaded file, add its index entry with format, size, and key structure (such as rows and columns), so later chats do not need to re-read it.
+- Other chats may edit the same files: re-read a shared file right before changing it, and keep the edit small.
 """
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
@@ -339,15 +358,27 @@ def build_execution_mode_section(
     sandbox_enabled: bool,
     workspace_root: str = "",
     shell_type: str = "unknown",
+    project_dir: str = "",
 ) -> str:
     """Build environment mode section for host or sandbox execution."""
     if sandbox_enabled:
-        return EXECUTION_MODE_SECTION_SANDBOX
+        return (
+            EXECUTION_MODE_SECTION_SANDBOX
+            + "\n"
+            + PROJECT_LIBRARY_SECTION.format(library="/workspace", scratch="`/tmp`")
+        )
 
-    return EXECUTION_MODE_SECTION_HOST.format(
-        workspace_root=workspace_root.replace("\\", "/"),
-        os_name=platform.system(),
-        shell_type=shell_type,
+    return (
+        EXECUTION_MODE_SECTION_HOST.format(
+            workspace_root=workspace_root.replace("\\", "/"),
+            os_name=platform.system(),
+            shell_type=shell_type,
+        )
+        + "\n"
+        + PROJECT_LIBRARY_SECTION.format(
+            library=project_dir.replace("\\", "/") or "$PROJECT_PATH",
+            scratch="the system temp directory",
+        )
     )
 
 
@@ -608,10 +639,12 @@ def register_dynamic_instructions(
         if getattr(ctx.deps, "suppress_environment_context", False):
             return ""
         shell_type = getattr(ctx.deps, "shell_type", "unknown")
+        resolver = getattr(ctx.deps, "path_resolver", None)
         return build_execution_mode_section(
             sandbox_enabled=ctx.deps.sandbox_enabled,
             workspace_root=ctx.deps.workspace_root,
             shell_type=shell_type,
+            project_dir=str(resolver.project_dir) if resolver is not None else "",
         )
 
     @agent.instructions
@@ -660,7 +693,7 @@ def register_dynamic_instructions(
                 "Plan mode is active. Explore and reason using read-only tools. "
                 "Do not modify files, execute mutating commands, commit changes, or "
                 "change external systems. The only writable artifact is plan.md in "
-                "the project workspace. Build the implementation plan there and ask "
+                "the project library. Build the implementation plan there and ask "
                 "the user to switch modes before implementation."
             )
         if mode == "auto":

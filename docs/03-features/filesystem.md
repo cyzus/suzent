@@ -16,7 +16,7 @@ code runs, granted deliberately by you, not inherited from a platform. See
 | | Host mode (default) | Sandbox mode |
 |---|---|---|
 | **Where commands run** | Directly on your computer | Inside an isolated Docker container |
-| **What it can reach** | Its workspace folders and folders you mount, nothing else | Only the folders mounted into the container |
+| **What it can reach** | Its project library, the shared folder, and folders you mount, nothing else | Only the folders mounted into the container |
 | **Needs** | Nothing extra | Docker Desktop (Windows, macOS) or Docker Engine (Linux) |
 
 Turn the sandbox on for a conversation in its chat settings, or for every
@@ -24,12 +24,12 @@ conversation in **Settings → Security**.
 
 ## Where files go
 
-Every [project](#projects) has its own workspace folder, shared by all of the
+Every [project](#projects) has its own library folder, shared by all of the
 project's conversations, plus one folder shared by every project:
 
 | Folder | What it is | Sandbox path | Host-mode path |
 |---|---|---|---|
-| Project workspace | The agent's working folder. Relative paths land here, so `report.md` is saved in the workspace. | `/workspace` | `$PROJECT_PATH` |
+| Project library | The project's files: its context note, notes, deliverables, and uploads. Also the agent's working folder unless the chat has its own **Working Dir**. | `/workspace` | `$PROJECT_PATH` |
 | Uploads | Files you attach in the chat or send from a [chat app](../05-chat-apps/README.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
 | Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | A variable named after that path, e.g. `$DATA` |
@@ -40,13 +40,29 @@ sandbox paths don't exist there; shell commands use the variables instead.
 them run in either mode.
 
 On your computer, these folders live under `~/.suzent/sandbox/`:
-`projects/<project>/` for each project's workspace and `shared/` for the shared
+`projects/<project>/` for each project's library and `shared/` for the shared
 folder.
+
+### What goes in the project library
+
+The library is for things a later chat in the project should be able to find,
+not for everything the agent touches along the way. The agent sorts what it
+writes like this:
+
+| If it is... | It goes to |
+|---|---|
+| Useful beyond this project, such as a concept, a paper summary, or a comparison | Your [notebook](./memory/llm-wiki.md), when you've asked it to file there |
+| Only meaningful to this project, such as goals, decisions, or a finished report | The project library |
+| Only needed for the task at hand, such as a helper script, a download, or intermediate output | A temporary folder outside the library, deleted when it's done |
+
+Inside the library, the agent keeps finished work in `artifacts/` and notes worth
+keeping in `notes/`. It lists every library file, one line each, in the
+project's `context.md`, so the next chat knows what's already there.
 
 <a id="projects"></a>
 
 Conversations start in the default project. Use **New project** in the sidebar
-(or **Move to project** on a chat) to group related conversations, so they share a workspace and project memory
+(or **Move to project** on a chat) to group related conversations, so they share a library and project memory
 without seeing another project's files.
 
 The agent cannot read outside these folders. Paths such as `/etc/passwd`,

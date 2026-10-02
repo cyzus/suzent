@@ -5,7 +5,7 @@ Sandbox Manager Module
 Docker-based isolated sandbox for code execution.
 
 Each chat session gets its own container:
-- Project workspace at /workspace (the agent's cwd; shared across all chats in the project)
+- Project library at /workspace (the agent's cwd; shared across all chats in the project)
 - Shared storage at /shared (accessible by all sessions, bind-mounted from host)
 
 Data persists on the host filesystem independent of container lifecycle.
