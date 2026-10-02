@@ -581,12 +581,13 @@ A project is how you keep one piece of ongoing work together, such as a
 report, a codebase, or a trip you're planning. Every chat in a project shares
 three things:
 
-- **A folder.** Files the agent writes in one chat are there in the next, and
-  other projects can't see them. See
-  [Workspace & sandbox](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go).
+- **A library folder.** Notes and deliverables saved in one chat are there in
+  the next, and other projects can't see them. See
+  [What goes in the project library](https://suzent.com/zh-Hans/docs/features/filesystem#what-goes-in-the-project-library).
 - **Project context.** A short note, `context.md` in the project folder, that
-  every chat in the project reads first. The agent keeps it up to date as it
-  learns about the work.
+  every chat in the project reads first. The agent keeps it up to date with the
+  project's goal, current state, decisions, and a list of the files in the
+  library.
 - **A board** of the project's goals and tasks, from every chat.
 
 ## When to start a project
@@ -834,7 +835,7 @@ Source: https://suzent.com/zh-Hans/docs/features/filesystem
 | | 主机模式（默认） | 沙盒模式 |
 |---|---|---|
 | **命令在哪里运行** | 直接在你的电脑上 | 在隔离的 Docker 容器中 |
-| **能访问什么** | 只有它的工作区文件夹和你挂载的文件夹 | 只有挂载进容器的文件夹 |
+| **能访问什么** | 只有它的项目库、共享文件夹和你挂载的文件夹 | 只有挂载进容器的文件夹 |
 | **需要什么** | 无需额外安装 | Docker Desktop（Windows、macOS）或 Docker Engine（Linux） |
 
 可以在对话设置中为单个对话开启沙盒，也可以在 **设置 → 安全** 中为所有对话开启。
@@ -843,22 +844,37 @@ Source: https://suzent.com/zh-Hans/docs/features/filesystem
 
 ## 文件放在哪里
 
-每个[项目](#projects)都有自己的工作区文件夹，由项目内的所有对话共享；另外还有一个所有项目共享的文件夹：
+每个[项目](#projects)都有自己的项目库文件夹，由项目内的所有对话共享；另外还有一个所有项目共享的文件夹：
 
 | 文件夹 | 说明 | 沙盒路径 | 主机模式路径 |
 |---|---|---|---|
-| 项目工作区 | 智能体的工作文件夹。相对路径都落在这里，所以 `report.md` 会保存在工作区中。 | `/workspace` | `$PROJECT_PATH` |
+| 项目库 | 项目的文件：项目上下文、笔记、交付物和上传的文件。 | `/workspace` | `$PROJECT_PATH` |
+| Scratch | 临时文件，比如辅助脚本和下载的文件。如果对话没有设置自己的 **Working Dir**，它就是智能体的工作文件夹。它不算项目库的一部分，超过 `scratch_max_mb` 后会自动清理。 | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
 | 上传文件 | 你在聊天中附加的文件，或从[聊天应用](https://suzent.com/zh-Hans/docs/chat-apps)发来的文件。 | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | 共享文件夹 | 所有项目共享。记忆也存放在这里。 | `/shared` | `$SHARED_PATH` |
 | 挂载的文件夹 | 你从电脑上挂载的文件夹（见下文）。 | 你设定的路径，例如 `/data` | 以该路径命名的变量，例如 `$DATA` |
 
 在主机模式下，智能体直接使用你电脑上的真实文件夹，所以沙盒路径并不存在，Shell 命令要改用这些变量。`$PROJECT_PATH` 和 `$SHARED_PATH` 在沙盒中同样可用，用它们写的脚本在两种模式下都能运行。
 
-在你的电脑上，这些文件夹位于 `~/.suzent/sandbox/`：每个项目的工作区在 `projects/<项目>/`，共享文件夹在 `shared/`。
+在你的电脑上，这些文件夹位于 `~/.suzent/sandbox/`：每个项目的项目库在 `projects/<项目>/`，共享文件夹在 `shared/`。
+
+<a id="what-goes-in-the-project-library"></a>
+
+### 项目库里放什么
+
+项目库用来放项目里之后的对话还会用到的东西，而不是智能体干活时碰过的所有文件。智能体写文件前会这样归类：
+
+| 如果它是…… | 放到 |
+|---|---|
+| 换一个项目也用得上，比如概念、论文摘要、对比 | 你的 [notebook](https://suzent.com/zh-Hans/docs/features/memory/llm-wiki)（在你要求归档时） |
+| 只对这个项目有意义，比如目标、决策、完成的报告 | 项目库 |
+| 只在当前任务里用，比如辅助脚本、下载的文件、中间结果 | 项目里的 `scratch/` 文件夹 |
+
+在项目库里，智能体把完成的成果放在 `artifacts/`，值得保留的笔记放在 `notes/`，并在项目的 `context.md` 里为每个文件记一行，让下一个对话知道已经有什么。
 
 <a id="projects"></a>
 
-对话默认属于默认项目。在侧边栏点击 **新建项目**（或在对话上选择 **移动到项目**）可以把相关对话归到一起，它们会共享工作区和项目记忆，但看不到其他项目的文件。
+对话默认属于默认项目。在侧边栏点击 **新建项目**（或在对话上选择 **移动到项目**）可以把相关对话归到一起，它们会共享项目库和项目记忆，但看不到其他项目的文件。
 
 智能体无法读取这些文件夹之外的内容。像 `/etc/passwd`、`../../secret` 或 Suzent 自身源代码这样的路径都会被拒绝。
 
@@ -1726,7 +1742,7 @@ Source: https://suzent.com/zh-Hans/docs/features/tools/files
 
 The **Filesystem** tools let the agent read your files, write new ones, make
 precise edits, and search a folder. They work on the folders it is allowed to
-reach: its project workspace, the shared folder, and any folders you mount. See
+reach: its project library, the shared folder, and any folders you mount. See
 [Workspace & sandbox](https://suzent.com/zh-Hans/docs/features/filesystem) for which folders those are and how to
 add your own.
 
@@ -1803,8 +1819,8 @@ depend on the [permission mode](https://suzent.com/zh-Hans/docs/features/tools/h
 | **Smart** | Run on their own inside the conversation's working folder; anywhere else is checked by the reviewer |
 | **Full Access** | Run without asking |
 
-The working folder is the project workspace, or the folder you chose with
-**Working Dir**.
+The working folder is the project's `scratch/` folder, or the folder you chose
+with **Working Dir**.
 
 ## Undoing changes
 
@@ -2040,7 +2056,7 @@ its own specialist model, so assign that model first in
 | Speak text aloud | None (System) or **TTS** (API) | No | `audio` folder (API only) |
 
 Folders are inside the conversation's
-[project workspace](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go), so every conversation in
+[project library](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go), so every conversation in
 the project can reuse the files. Image generation and editing are on by default;
 the agent can switch on the others when a task needs them. Approvals follow your
 [permission mode](https://suzent.com/zh-Hans/docs/features/tools/human-in-the-loop).
@@ -2153,7 +2169,7 @@ tests, start a build or a dev server.
 | | Host mode (default) | Sandbox mode |
 |---|---|---|
 | **Runs on** | Your computer, using bash (macOS, Linux) or PowerShell (Windows) | An isolated Docker container |
-| **Starts in** | The project workspace, or the folder chosen with **Working Dir** | `/workspace` |
+| **Starts in** | The project's `scratch/` folder, or the folder chosen with **Working Dir** | `/workspace/scratch` |
 
 To switch, see [Using the sandbox](https://suzent.com/zh-Hans/docs/features/filesystem#using-the-sandbox). In host
 mode, commands can reach the project folders through variables such as
@@ -3166,7 +3182,7 @@ for letting others in, and for choosing which model and tools chat apps use.
 
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
-supports images. Files you send are saved to the workspace's
+supports images. Files you send are saved to the project library's
 `uploads` folder, where the agent can open them.
 
 ## Commands in a chat app
@@ -3740,7 +3756,7 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 |---|---|
 | `config/` | Your settings files (see below). |
 | `chats.db` | Your conversations. |
-| `sandbox/projects/<project>/` | Each [project's workspace](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go). |
+| `sandbox/projects/<project>/` | Each [project's library](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go). |
 | `sandbox/shared/` | The folder shared by all projects. Your memory's Markdown files are in `sandbox/shared/memory/`. |
 | `notebook/` | The [notebook](https://suzent.com/zh-Hans/docs/features/memory/llm-wiki) vault. |
 | `memory/` | The memory search index, rebuilt from the Markdown files. |
@@ -3808,7 +3824,8 @@ See [Workspace & sandbox](https://suzent.com/zh-Hans/docs/features/filesystem).
 | `sandbox_setup_command` | `""` | A command run once when a sandbox is created, such as installing packages. | |
 | `sandbox_env` | `{}` | Extra environment variables inside the sandbox. | |
 | `sandbox_volumes` | | Folders from your computer to mount in every conversation, as `"host folder:path the agent sees"`. Put this in `local.yaml`. | **Settings → Memory System** sets the notebook mount |
-| `sandbox_data_path` | `~/.suzent/sandbox` | Where project workspaces and the shared folder are kept. Put this in `local.yaml`. | |
+| `sandbox_data_path` | `~/.suzent/sandbox` | Where project libraries and the shared folder are kept. Put this in `local.yaml`. | |
+| `scratch_max_mb` | `2048` | Size limit for each project's `scratch/` folder. Past it, the oldest files are removed. | |
 | `shell_denied_env_patterns` | `[]` | Environment variables hidden from commands the agent runs in host mode, such as `OPENAI_*`. | |
 
 ### Memory
@@ -3925,7 +3942,7 @@ Type `/status` in a conversation to see that conversation's tokens and cost.
 ### Where are my files?
 
 Everything is in the `.suzent` folder in your home folder. Files the agent
-creates go to the project's workspace, in `~/.suzent/sandbox/projects/<project>/`.
+keeps go to the project's library, in `~/.suzent/sandbox/projects/<project>/`.
 See [The data folder](https://suzent.com/zh-Hans/docs/reference/configuration#the-data-folder) for the full layout.
 
 ### Is my data sent anywhere?
@@ -3961,7 +3978,7 @@ can edit yourself. See
 
 ### The agent can't see my folder.
 
-The agent only reaches its workspace and folders you mount. Click
+The agent only reaches its project library, the shared folder, and folders you mount. Click
 **Working Dir** in the chat box and choose the folder. See
 [Giving the agent access to your folders](https://suzent.com/zh-Hans/docs/features/filesystem#giving-the-agent-access-to-your-folders).
 
