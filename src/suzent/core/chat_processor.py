@@ -494,6 +494,27 @@ def _upload_index_reminder(agent_paths: list[str]) -> str | None:
     )
 
 
+def _unindexed_artifacts_reminder(chat_id: str | None) -> str | None:
+    """Ask the model to index deliverables that reached artifacts/ unregistered."""
+    if not chat_id:
+        return None
+    from suzent.core.library_index import unindexed_artifacts
+    from suzent.database import get_database
+    from suzent.prompts import UNINDEXED_ARTIFACTS_REMINDER_TEMPLATE
+
+    try:
+        project_dir = get_database().get_project_dir(chat_id)
+        missing = unindexed_artifacts(project_dir)
+    except Exception as exc:
+        logger.debug("Skipping artifacts index check for {}: {}", chat_id, exc)
+        return None
+    if not missing:
+        return None
+    return UNINDEXED_ARTIFACTS_REMINDER_TEMPLATE.format(
+        paths=", ".join(path.relative_to(project_dir).as_posix() for path in missing)
+    )
+
+
 def build_steering_text(steer_message: str) -> str:
     """Render an interruption into the prompt text appended to history.
 
@@ -1042,6 +1063,9 @@ class ChatProcessor:
         _upload_reminder = _upload_index_reminder(uploaded_paths)
         if _upload_reminder:
             _adhoc_reminders.append(_upload_reminder)
+        _artifacts_reminder = _unindexed_artifacts_reminder(chat_id)
+        if _artifacts_reminder:
+            _adhoc_reminders.append(_artifacts_reminder)
         reminder = (
             None
             if getattr(deps, "stateless", False)
