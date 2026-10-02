@@ -1947,7 +1947,7 @@ export const en = {
     maximize: 'Maximize (full screen)',
     openInExplorer: 'Open in Explorer',
     uploadFile: 'Upload file',
-    workspace: 'Workspace',
+    workspace: 'Library',
     shared: 'Shared',
     mounts: 'Mounts',
     scanning: 'Scanning...',

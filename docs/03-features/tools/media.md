@@ -19,7 +19,7 @@ its own specialist model, so assign that model first in
 | Speak text aloud | None (System) or **TTS** (API) | No | `audio` folder (API only) |
 
 Folders are inside the conversation's
-[project workspace](../filesystem.md#where-files-go), so every conversation in
+[project library](../filesystem.md#where-files-go), so every conversation in
 the project can reuse the files. Image generation and editing are on by default;
 the agent can switch on the others when a task needs them. Approvals follow your
 [permission mode](./human-in-the-loop.md).

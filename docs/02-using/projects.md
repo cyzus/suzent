@@ -10,12 +10,13 @@ A project is how you keep one piece of ongoing work together, such as a
 report, a codebase, or a trip you're planning. Every chat in a project shares
 three things:
 
-- **A folder.** Files the agent writes in one chat are there in the next, and
-  other projects can't see them. See
-  [Workspace & sandbox](../03-features/filesystem.md#where-files-go).
+- **A library folder.** Notes and deliverables saved in one chat are there in
+  the next, and other projects can't see them. See
+  [What goes in the project library](../03-features/filesystem.md#what-goes-in-the-project-library).
 - **Project context.** A short note, `context.md` in the project folder, that
-  every chat in the project reads first. The agent keeps it up to date as it
-  learns about the work.
+  every chat in the project reads first. The agent keeps it up to date with the
+  project's goal, current state, decisions, and a list of the files in the
+  library.
 - **A board** of the project's goals and tasks, from every chat.
 
 ## When to start a project

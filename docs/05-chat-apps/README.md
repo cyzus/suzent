@@ -33,7 +33,7 @@ for letting others in, and for choosing which model and tools chat apps use.
 
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
-supports images. Files you send are saved to the workspace's
+supports images. Files you send are saved to the project library's
 `uploads` folder, where the agent can open them.
 
 ## Commands in a chat app

@@ -97,7 +97,7 @@ def test_no_grant_leaves_the_resolver_on_the_project_dir(
     deps = _build_deps(monkeypatch, temp_db, tmp_path)
 
     assert deps.cwd is None
-    assert deps.path_resolver.get_working_dir() == deps.path_resolver.project_dir
+    assert deps.path_resolver.get_working_dir() == deps.path_resolver.scratch_dir
 
 
 @pytest.mark.parametrize(
