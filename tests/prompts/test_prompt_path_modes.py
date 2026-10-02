@@ -144,8 +144,8 @@ def test_sandbox_environment_describes_the_project_library():
     text = build_execution_mode_section(sandbox_enabled=True)
 
     assert "# Project Library" in text
-    assert "`/workspace` is this project's library, not a scratch area" in text
-    assert "`/tmp`, never the library" in text
+    assert "`/workspace` is this project's library." in text
+    assert "`/workspace/scratch/`. It is not part of the library" in text
 
 
 def test_host_environment_names_the_real_project_library(tmp_path: Path):
@@ -156,7 +156,7 @@ def test_host_environment_names_the_real_project_library(tmp_path: Path):
 
     assert f"`{project_dir.replace(chr(92), '/')}` is this project's library" in text
     assert "/workspace" not in text
-    assert "the system temp directory, never the library" in text
+    assert f"`{project_dir.replace(chr(92), '/')}/scratch/`" in text
 
 
 def test_memory_context_calls_context_md_project_memory_not_scratchpad():

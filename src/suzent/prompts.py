@@ -159,7 +159,7 @@ Current Shell: {shell_type}
 """
 
 PROJECT_LIBRARY_SECTION = """# Project Library
-`{library}` is this project's library, not a scratch area. Every chat in the project reads it, so keep only what a later chat should find:
+`{library}` is this project's library. Every chat in the project reads it, so apart from `scratch/` (below) keep only what a later chat should find:
 - `context.md`: project memory and file index, loaded into every turn.
 - `notes/`: findings and research worth keeping for this project.
 - `artifacts/`: deliverables such as reports and exports.
@@ -168,7 +168,7 @@ PROJECT_LIBRARY_SECTION = """# Project Library
 Before writing a file, decide where it belongs:
 - Useful beyond this project (concepts, papers, comparisons, conclusions): the notebook, when one is configured and filing is allowed.
 - Only meaningful to this project (goals, decisions, deliverables): the library.
-- Only needed for the current task (scripts, downloads, intermediate output, reference clones): {scratch}, never the library. Delete it when done.
+- Only needed for the current task (scripts, downloads, intermediate output, reference clones): `{library}/scratch/`. It is not part of the library: leave it out of the file index, and delete what you no longer need.
 
 Library rules:
 - Check the file index in `context.md` and update an existing file before creating a new one.
@@ -365,7 +365,7 @@ def build_execution_mode_section(
         return (
             EXECUTION_MODE_SECTION_SANDBOX
             + "\n"
-            + PROJECT_LIBRARY_SECTION.format(library="/workspace", scratch="`/tmp`")
+            + PROJECT_LIBRARY_SECTION.format(library="/workspace")
         )
 
     return (
@@ -376,8 +376,7 @@ def build_execution_mode_section(
         )
         + "\n"
         + PROJECT_LIBRARY_SECTION.format(
-            library=project_dir.replace("\\", "/") or "$PROJECT_PATH",
-            scratch="the system temp directory",
+            library=project_dir.replace("\\", "/") or "$PROJECT_PATH"
         )
     )
 

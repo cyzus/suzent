@@ -53,7 +53,7 @@ writes like this:
 |---|---|
 | Useful beyond this project, such as a concept, a paper summary, or a comparison | Your [notebook](./memory/llm-wiki.md), when you've asked it to file there |
 | Only meaningful to this project, such as goals, decisions, or a finished report | The project library |
-| Only needed for the task at hand, such as a helper script, a download, or intermediate output | A temporary folder outside the library, deleted when it's done |
+| Only needed for the task at hand, such as a helper script, a download, or intermediate output | The project's `scratch/` folder, which isn't part of the library and gets cleared out |
 
 Inside the library, the agent keeps finished work in `artifacts/` and notes worth
 keeping in `notes/`. It lists every library file, one line each, in the
