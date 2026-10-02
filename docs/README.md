@@ -23,7 +23,7 @@ five-question ownership test, see
 - [Memory](03-features/memory/README.md), [Notebook](03-features/memory/llm-wiki.md), [Advanced memory settings](03-features/memory/configuration.md)
 - [Tools](03-features/tools/README.md), [Permissions & approvals](03-features/tools/human-in-the-loop.md), [Browser](03-features/tools/browser.md)
 - [Skills](03-features/skills.md), [Workspace & sandbox](03-features/filesystem.md), [Automation](03-features/automation.md)
-- [Devices & other agents](03-features/nodes.md), [GitHub Sync](03-features/github-sync.md)
+- [Mobile app](03-features/mobile.md), [Devices & other agents](03-features/nodes.md), [GitHub Sync](03-features/github-sync.md)
 
 ## Models
 

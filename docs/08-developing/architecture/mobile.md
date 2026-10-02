@@ -48,7 +48,7 @@ packages/SuzentCore/       Foundation-only Swift protocol/client package
 Use a backend with mobile pairing/client protocol 1 and snapshot/cursor protocol 1.
 The phone checks capabilities before connecting and reports incompatible versions.
 
-Enable desktop **Reachable by other devices**, restart, and use its LAN/Tailscale
+Enable desktop **Settings → Mesh → Network access**, restart, and use its LAN/Tailscale
 address on port 25314 (never the phone's localhost) in the desktop pairing card.
 The QR includes the preferred origin plus discovered LAN/Tailscale candidates.
 Updated phones check candidate capabilities without credentials, then display the
@@ -193,7 +193,7 @@ scanner saves an image. Both apps provide English and Simplified Chinese strings
 
 ### Mobile tool approvals and activity rail
 
-New desktop invitations default to Full access; expand Restrict access for individual scopes. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
+New desktop invitations grant every scope except `manage_chats`, so the card shows Restricted access until that box is ticked; expand Restrict access for individual scopes. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
 
 Both native clients use the same activity fixtures in `packages/mobile-contract/activity-fixtures.json`. They retain text/activity order, group consecutive reasoning and tools into expandable rails, replace replayed arguments, and clear the entire transient state on stream reset. Pending approvals use the desktop queue and show tool arguments with allow/reject actions. All requests in a batch must be decided before the native run resumes; ACP uses its existing live broker. Foreground polling reflects decisions made on desktop.
 
