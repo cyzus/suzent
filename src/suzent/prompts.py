@@ -159,24 +159,9 @@ Current Shell: {shell_type}
 """
 
 PROJECT_LIBRARY_SECTION = """# Project Library
-`{library}` is this project's library. Every chat in the project reads it, so apart from `scratch/` (below) keep only what a later chat should find:
-- `context.md`: project memory and file index, loaded into every turn.
-- `notes/`: findings and research worth keeping for this project.
-- `artifacts/`: deliverables such as reports and exports.
-- `uploads/`: files the user attached. `images/`, `videos/`, `audio/`: media saved by generation tools.
-
-Before writing a file, decide where it belongs:
-- Useful beyond this project (concepts, papers, comparisons, conclusions): the notebook, when one is configured and filing is allowed.
-- Only meaningful to this project (goals, decisions, deliverables): the library.
-- Only needed for the current task (scripts, downloads, intermediate output, reference clones): `{library}/scratch/`, the default working directory. It is not part of the library: leave it out of the file index. It is trimmed automatically when it grows large, oldest files first.
-
-Relative paths land in your working directory, not the library, so write library files by their full path.
-
-Library rules:
-- Check the file index in `context.md` and update an existing file before creating a new one.
-- When you add, move, or delete a library file, update its one-line entry in the file index.
-- The first time you read an uploaded file, add its index entry with format, size, and key structure (such as rows and columns), so later chats do not need to re-read it.
-- Other chats may edit the same files: re-read a shared file right before changing it, and keep the edit small.
+`{library}` is this project's library, shared by every chat in the project. Keep only what a later chat should find there: deliverables in `artifacts/`, notes in `notes/`, each listed on one line in the file index of `context.md`. Check that index before creating a file, and re-read a shared file right before editing it.
+Throwaway work (scripts, downloads, intermediate output, reference clones) goes in `{library}/scratch/`, your default working directory; it is not indexed and is trimmed automatically. Relative paths land in your working directory, so write library files by their full path.
+Knowledge useful beyond this project belongs in the notebook, when filing there is allowed.
 """
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
@@ -257,6 +242,14 @@ STRIPPED_IMAGE_REMINDER_TEMPLATE = """\
 The user attached {count} image(s) at: {paths}. The active model cannot view \
 images directly. Use the analyze_image tool on these path(s) to inspect them \
 when relevant."""
+
+# Hidden (model-only) directive injected as a <system-reminder> when files are
+# uploaded, so the library rule for indexing uploads only costs tokens when it
+# applies.
+UPLOAD_INDEX_REMINDER_TEMPLATE = """\
+The user attached {count} file(s): {paths}. When you first read one, add it to \
+the file index in context.md with its format, size, and key structure (such as \
+rows and columns), so later chats do not need to re-read it."""
 
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
