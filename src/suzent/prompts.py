@@ -251,6 +251,11 @@ The user attached {count} file(s): {paths}. When you first read one, add it to \
 the file index in context.md with its format, size, and key structure (such as \
 rows and columns), so later chats do not need to re-read it."""
 
+UNINDEXED_ARTIFACTS_REMINDER_TEMPLATE = """\
+These files in the project's artifacts/ are missing from the file index in \
+context.md: {paths}. Add a one-line entry for each deliverable, or move it to \
+scratch/ if it is only an intermediate file."""
+
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
 SUBAGENT_WAKEUP_BATCH_ITEM = """

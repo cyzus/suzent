@@ -4,15 +4,14 @@ import asyncio
 import base64
 import io
 import wave
-from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
 from pydantic import Field, ValidationError
 from pydantic_ai import RunContext
 
-from suzent.config import CONFIG
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.library_index import artifacts_dir, register_artifacts
 from suzent.core.role_router import get_role_router
 from suzent.llm import _litellm, _litellm_model_and_kwargs
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
@@ -179,16 +178,10 @@ class SpeakTool(Tool):
                 content = response if isinstance(response, bytes) else response.content
             if not isinstance(content, bytes) or not content:
                 raise ValueError("TTS returned empty audio.")
-            if ctx.deps.chat_id:
-                from suzent.database import get_database
-
-                root = get_database().get_project_dir(ctx.deps.chat_id)
-            else:
-                root = Path(CONFIG.workspace_root)
-            directory = root / "audio"
-            directory.mkdir(parents=True, exist_ok=True)
+            directory = artifacts_dir(ctx.deps, "audio")
             path = directory / f"speech_{uuid4().hex}.{audio_format}"
             await asyncio.to_thread(path.write_bytes, content)
+            register_artifacts(ctx.deps, [str(path)], "generated speech")
             return ToolResult.success_result(
                 "Speech generated and saved.",
                 metadata={

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from suzent.core import library_index
 from suzent.tools.creative import video_tool as video
 from suzent.tools.creative import voice_tool as voice
 from suzent.voice.settings import VoiceSettings
@@ -153,7 +154,7 @@ async def test_api_speech_overrides_and_saves(
             return_value=(model, {"api_key": "test"}),
         ),
         patch.object(voice, "_litellm", return_value=client),
-        patch.object(voice.CONFIG, "workspace_root", str(tmp_path)),
+        patch.object(library_index.CONFIG, "workspace_root", str(tmp_path)),
     ):
         result = await voice.SpeakTool().forward(
             context, "hello", voice="chosen", prompt="Calm"
@@ -320,7 +321,7 @@ async def test_gemini_direct_audio_preserves_credentials_and_wav(
         patch.object(
             voice, "_litellm", return_value=SimpleNamespace(acompletion=completion)
         ),
-        patch.object(voice.CONFIG, "workspace_root", str(tmp_path)),
+        patch.object(library_index.CONFIG, "workspace_root", str(tmp_path)),
     ):
         result = await voice.SpeakTool().forward(context, "hello", prompt="Calm")
         assert result.success, result.message
