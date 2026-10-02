@@ -1894,7 +1894,7 @@ export const zhCN = {
     maximize: '最大化（全屏）',
     openInExplorer: '在文件管理器中打开',
     uploadFile: '上传文件',
-    workspace: '工作区',
+    workspace: '项目库',
     shared: '共享',
     mounts: '挂载',
     scanning: '扫描中...',

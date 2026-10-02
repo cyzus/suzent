@@ -482,6 +482,18 @@ def _stripped_image_reminder(agent_paths: list[str]) -> str | None:
     )
 
 
+def _upload_index_reminder(agent_paths: list[str]) -> str | None:
+    """Ask the model to index this turn's uploads, or ``None`` if there were none."""
+    if not agent_paths:
+        return None
+    from suzent.prompts import UPLOAD_INDEX_REMINDER_TEMPLATE
+
+    return UPLOAD_INDEX_REMINDER_TEMPLATE.format(
+        count=len(agent_paths),
+        paths=", ".join(agent_paths),
+    )
+
+
 def build_steering_text(steer_message: str) -> str:
     """Render an interruption into the prompt text appended to history.
 
@@ -688,6 +700,7 @@ class ChatProcessor:
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
+        uploaded_paths: list[str] = []
 
         from suzent.core.model_registry import get_model_registry
 
@@ -745,6 +758,9 @@ class ChatProcessor:
                         result = await self._process_upload_file(
                             file_item, uploads_host_path, uploads_agent_path
                         )
+
+                    if result["agent_path"]:
+                        uploaded_paths.append(result["agent_path"])
 
                     if result["is_image"] and not _vision_ok:
                         # Active model can't read images — don't ship raw bytes
@@ -1023,6 +1039,9 @@ class ChatProcessor:
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
         if _vision_reminder:
             _adhoc_reminders.append(_vision_reminder)
+        _upload_reminder = _upload_index_reminder(uploaded_paths)
+        if _upload_reminder:
+            _adhoc_reminders.append(_upload_reminder)
         reminder = (
             None
             if getattr(deps, "stateless", False)

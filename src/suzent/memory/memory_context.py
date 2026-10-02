@@ -13,6 +13,10 @@ from suzent.memory.markdown_store import MEMORY_GENERATED_END
 # ===== Core Memory Context Prompts =====
 
 
+# context.md is injected into every turn; past this it costs more than it helps.
+CONTEXT_CHAR_LIMIT = 8000
+
+
 def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
     """Point at wherever the vault conventions can actually be reached.
 
@@ -68,6 +72,16 @@ def format_core_memory_section(
     core_blocks_text = ""
     if blocks:
         for label, content in blocks.items():
+            if label == "context" and content and len(content) > CONTEXT_CHAR_LIMIT:
+                shown_path = project_context_path or (
+                    "/workspace/context.md"
+                    if sandbox_enabled
+                    else "${PROJECT_PATH}/context.md"
+                )
+                content = (
+                    content[:CONTEXT_CHAR_LIMIT]
+                    + f"\n\n[Truncated. Read `{shown_path}` for the rest, and condense it.]"
+                )
             core_blocks_text += f"\n**{label.capitalize()}**:\n{content or 'Not set'}\n"
     else:
         core_blocks_text = "\nNo core memory blocks configured.\n"
@@ -79,7 +93,7 @@ def format_core_memory_section(
             "- `/shared/memory/persona.md` — your identity, role, and workflow principles\n"
             "- `/shared/memory/user.md` — user preferences, tech stack, communication habits\n"
             "- `/shared/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** memory and file index\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_hint = _notebook_hint(
@@ -95,7 +109,7 @@ def format_core_memory_section(
             f"- `{_shared}/memory/persona.md` — your identity, role, and workflow principles\n"
             f"- `{_shared}/memory/user.md` — user preferences, tech stack, communication habits\n"
             f"- `{_shared}/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** memory and file index\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_hint = _notebook_hint(
@@ -135,7 +149,9 @@ Your memory lives in plain markdown files you can read and write directly:
 **Memory Guidelines:**
 - Search archival memory before asking the user for information they may have already shared
 - Write important new facts, decisions, and preferences to the appropriate memory file for durability
-- Keep `context.md` as a live scratchpad: task breakdown, current goal, key constraints
+- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
+  Current state, Decisions, File index (one line per library file), Related knowledge
+  (links to notebook pages). No step-by-step logs or temporary notes
 {curated_memory_hint}
 """
 
