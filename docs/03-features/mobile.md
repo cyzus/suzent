@@ -34,8 +34,8 @@ Play yet, and some desktop features are missing (see [Limits](#limits)).
    | Permission | Lets the phone |
    |---|---|
    | **Read all conversations, including future ones** | See every chat. Untick it to pick chats one by one under **Conversations this phone can read**. |
-   | **Create conversations** | Start new chats. |
-   | **Manage conversations (pin, rename, move, delete)** | Organize chats. Off by default. |
+   | **Create conversations** | Start new chats, and branch a conversation. |
+   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. Off by default. |
    | **Send messages** | Write to the agent, which can then use its tools under the chat's usual [permission mode](./tools/human-in-the-loop.md). |
    | **Stop responses** | Stop a reply in progress. |
    | **Approve tool requests** | Answer the agent's approval requests. |
@@ -66,7 +66,7 @@ keeps it running when the window is closed.
   pinned ones first, and start a new one in any project.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources, stop a reply, edit and resend your last message, retry a reply, or
-  branch a conversation.
+  branch a conversation. Edit and retry also need the manage permission.
 - **Pick the model.** **Desktop model** lists the models you've enabled on
   your computer.
 - **Answer approvals.** When the agent needs permission, the app shows
