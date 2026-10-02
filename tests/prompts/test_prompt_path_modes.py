@@ -145,7 +145,8 @@ def test_sandbox_environment_describes_the_project_library():
 
     assert "# Project Library" in text
     assert "`/workspace` is this project's library." in text
-    assert "`/workspace/scratch/`. It is not part of the library" in text
+    assert "`/workspace/scratch/`, the default working directory" in text
+    assert "your current working directory is its `scratch/` folder" in text
 
 
 def test_host_environment_names_the_real_project_library(tmp_path: Path):

@@ -144,7 +144,7 @@ The following directories are mapped and available for your use:
 """
 
 EXECUTION_MODE_SECTION_SANDBOX = """# Environment: Sandbox
-You are in a sandbox environment. Your current working directory is the project library at `/workspace` (shared across all chats in this project). Other available mounts: `/shared` (global), `/mnt/...` (custom volumes). Host paths are inaccessible.
+You are in a sandbox environment. The project library is `/workspace` (shared across all chats in this project); your current working directory is its `scratch/` folder. Other available mounts: `/shared` (global), `/mnt/...` (custom volumes). Host paths are inaccessible.
 Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, and CHAT_ID.
 """
 
@@ -154,7 +154,7 @@ Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, 
 # same turn that Directory Mappings listed `/mnt/...` as available.
 EXECUTION_MODE_SECTION_HOST = """# Environment: Host
 You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
-Env vars available: PROJECT_PATH (the project library, shared across chats in this project; also your cwd unless this chat has its own working folder), SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
+Env vars available: PROJECT_PATH (the project library, shared across chats in this project; your cwd is its `scratch/` folder unless this chat has its own working folder), SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
 Current Shell: {shell_type}
 """
 
@@ -168,7 +168,9 @@ PROJECT_LIBRARY_SECTION = """# Project Library
 Before writing a file, decide where it belongs:
 - Useful beyond this project (concepts, papers, comparisons, conclusions): the notebook, when one is configured and filing is allowed.
 - Only meaningful to this project (goals, decisions, deliverables): the library.
-- Only needed for the current task (scripts, downloads, intermediate output, reference clones): `{library}/scratch/`. It is not part of the library: leave it out of the file index, and delete what you no longer need.
+- Only needed for the current task (scripts, downloads, intermediate output, reference clones): `{library}/scratch/`, the default working directory. It is not part of the library: leave it out of the file index. It is trimmed automatically when it grows large, oldest files first.
+
+Relative paths land in your working directory, not the library, so write library files by their full path.
 
 Library rules:
 - Check the file index in `context.md` and update an existing file before creating a new one.
@@ -379,6 +381,20 @@ def build_execution_mode_section(
             library=project_dir.replace("\\", "/") or "$PROJECT_PATH"
         )
     )
+
+
+def _plan_file_path(deps: Any) -> str:
+    """Where plan mode may write: plan.md at the chat's base directory.
+
+    Spelled out in full because relative paths land in scratch/, not where the
+    permission check looks for plan.md.
+    """
+    resolver = getattr(deps, "path_resolver", None)
+    if resolver is None:
+        return "plan.md"
+    if getattr(deps, "sandbox_enabled", False) and resolver.cwd is None:
+        return "/workspace/plan.md"
+    return str(resolver.get_base_dir() / "plan.md").replace("\\", "/")
 
 
 def build_custom_volumes_section(deps: Any) -> str:
@@ -691,9 +707,9 @@ def register_dynamic_instructions(
                 "# Plan Mode\n"
                 "Plan mode is active. Explore and reason using read-only tools. "
                 "Do not modify files, execute mutating commands, commit changes, or "
-                "change external systems. The only writable artifact is plan.md in "
-                "the project library. Build the implementation plan there and ask "
-                "the user to switch modes before implementation."
+                f"change external systems. The only writable artifact is "
+                f"`{_plan_file_path(ctx.deps)}`. Build the implementation plan there "
+                "and ask the user to switch modes before implementation."
             )
         if mode == "auto":
             return (

@@ -90,7 +90,8 @@ class GrepTool(Tool):
         Args:
             ctx: The run context with agent dependencies.
             pattern: Regex pattern to search for.
-            path: File or directory to search in (default: working directory).
+            path: File or directory to search in (default: the chat's working folder,
+                or the whole project including scratch/).
             include: Filter files by glob pattern (e.g., '*.py', '*.{js,ts}').
             case_insensitive: If True, perform case-insensitive search.
             context_lines: Number of lines to show before and after each match.
@@ -251,8 +252,12 @@ class GrepTool(Tool):
                 if target.exists() and target not in seen_targets:
                     seen_targets.add(target)
                     targets.append(target)
+        elif path:
+            targets = [self._resolver.resolve(path)]
+        elif hasattr(self._resolver, "get_base_dir"):
+            targets = [self._resolver.get_base_dir()]
         else:
-            targets = [self._resolver.resolve(path or ".")]
+            targets = [self._resolver.resolve(".")]
 
         if not targets:
             return [], 0, 0, False
@@ -371,7 +376,7 @@ class GrepTool(Tool):
             "engine": engine,
         }
         if not results:
-            message = f"No matches for '{pattern}' in {path or 'working directory'}"
+            message = f"No matches for '{pattern}' in {path or 'the default folder'}"
             if capped:
                 if engine == "python":
                     message += (

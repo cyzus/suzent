@@ -464,7 +464,7 @@ class PermissionEngine:
             return False, "The workspace path could not be verified"
         try:
             resolved = Path(resolver.resolve(file_path)).resolve()
-            workspace = Path(resolver.get_working_dir()).resolve()
+            workspace = Path(resolver.get_base_dir()).resolve()
             resolved.relative_to(workspace)
             return True, "Path is inside the workspace"
         except (OSError, ValueError):
@@ -477,7 +477,7 @@ class PermissionEngine:
             return False
         try:
             resolved = Path(resolver.resolve(file_path)).resolve()
-            project_dir = Path(resolver.get_working_dir()).resolve()
+            project_dir = Path(resolver.get_base_dir()).resolve()
             return resolved == (project_dir / "plan.md").resolve()
         except (OSError, ValueError):
             return False

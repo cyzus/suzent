@@ -43,7 +43,7 @@ class ShellCommandBackend(Tool):
 
     Features:
     - Runs shell commands through the platform shell
-    - Working directory is the project library at /workspace (shared across chats in the project)
+    - Working directory is the project's scratch folder at /workspace/scratch (shared across chats in the project)
     - Shared storage at /shared (accessible by all sessions)
     - Internet access for package installation and API calls
     """
@@ -639,10 +639,11 @@ class ShellCommandBackend(Tool):
     def _resolve_working_dir(self) -> Path:
         """Resolve and create the working directory for host execution.
 
-        Defaults to the project directory the chat is linked to. The agent's
-        cwd is the project, not a per-chat sandbox subdirectory.
+        Defaults to the scratch folder of the project the chat is linked to, so
+        throwaway files stay out of the project library.
         """
         from suzent.config import CONFIG
+        from suzent.core.scratch import SCRATCH_DIRNAME
         from suzent.database import get_database
 
         if self.cwd:
@@ -650,7 +651,9 @@ class ShellCommandBackend(Tool):
         else:
             sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
             project_slug = get_database().get_chat_project_slug(self.chat_id)
-            working_dir = sandbox_data_path / "projects" / project_slug
+            working_dir = (
+                sandbox_data_path / "projects" / project_slug / SCRATCH_DIRNAME
+            )
         working_dir.mkdir(parents=True, exist_ok=True)
         return working_dir
 

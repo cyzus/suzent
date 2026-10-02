@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "minor"},
-  "summary": "Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and puts throwaway files in a temporary folder instead."
+  "summary": "Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files."
 }

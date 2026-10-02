@@ -5,7 +5,7 @@ Sandbox Manager Module
 Docker-based isolated sandbox for code execution.
 
 Each chat session gets its own container:
-- Project library at /workspace (the agent's cwd; shared across all chats in the project)
+- Project library at /workspace, with the agent's cwd in /workspace/scratch (shared across all chats in the project)
 - Shared storage at /shared (accessible by all sessions, bind-mounted from host)
 
 Data persists on the host filesystem independent of container lifecycle.
@@ -30,6 +30,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from suzent.core.scratch import SCRATCH_DIRNAME
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,6 +59,7 @@ class Defaults:
 
     # Mount points inside container
     WORKSPACE_MOUNT = "/workspace"
+    SCRATCH_WORKDIR = "/workspace/scratch"
     SHARED_MOUNT = "/shared"
 
     # Error patterns that trigger auto-healing (container-level errors)
@@ -378,7 +380,7 @@ class DockerSession:
 
     def _build_volumes(self) -> dict:
         """Build Docker volume mount dict from host paths, with security validation."""
-        self.project_dir.mkdir(parents=True, exist_ok=True)
+        (self.project_dir / SCRATCH_DIRNAME).mkdir(parents=True, exist_ok=True)
         shared_dir = Path(self.data_path) / "shared"
         shared_dir.mkdir(parents=True, exist_ok=True)
 
@@ -485,7 +487,7 @@ class DockerSession:
                     cap_drop=["ALL"],
                     security_opt=["no-new-privileges"],
                     network_mode=self.network,
-                    working_dir=Defaults.WORKSPACE_MOUNT,
+                    working_dir=Defaults.SCRATCH_WORKDIR,
                     environment=self._build_env(),
                     # Allow host.docker.internal to resolve on Linux (no-op on Docker Desktop)
                     extra_hosts={"host.docker.internal": "host-gateway"},
@@ -669,7 +671,7 @@ with open(log_path, "wb", buffering=0) as log:
 """
         self._container.exec_run(
             ["python3", "-c", supervisor],
-            workdir=Defaults.WORKSPACE_MOUNT,
+            workdir=Defaults.SCRATCH_WORKDIR,
             detach=True,
         )
         return proc_id
@@ -755,7 +757,7 @@ else:
             try:
                 result_holder[0] = self._container.exec_run(
                     cmd,
-                    workdir=Defaults.WORKSPACE_MOUNT,
+                    workdir=Defaults.SCRATCH_WORKDIR,
                     demux=True,
                     environment=environment or {},
                 )

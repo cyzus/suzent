@@ -85,8 +85,8 @@ depend on the [permission mode](./human-in-the-loop.md#permission-modes):
 | **Smart** | Run on their own inside the conversation's working folder; anywhere else is checked by the reviewer |
 | **Full Access** | Run without asking |
 
-The working folder is the project library, or the folder you chose with
-**Working Dir**.
+The working folder is the project's `scratch/` folder, or the folder you chose
+with **Working Dir**.
 
 ## Undoing changes
 

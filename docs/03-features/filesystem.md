@@ -29,7 +29,8 @@ project's conversations, plus one folder shared by every project:
 
 | Folder | What it is | Sandbox path | Host-mode path |
 |---|---|---|---|
-| Project library | The project's files: its context note, notes, deliverables, and uploads. Also the agent's working folder unless the chat has its own **Working Dir**. | `/workspace` | `$PROJECT_PATH` |
+| Project library | The project's files: its context note, notes, deliverables, and uploads. | `/workspace` | `$PROJECT_PATH` |
+| Scratch | Throwaway files such as helper scripts and downloads. The agent's working folder unless the chat has its own **Working Dir**. Not part of the library, and trimmed once it passes `scratch_max_mb`. | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
 | Uploads | Files you attach in the chat or send from a [chat app](../05-chat-apps/README.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
 | Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | A variable named after that path, e.g. `$DATA` |
@@ -53,7 +54,7 @@ writes like this:
 |---|---|
 | Useful beyond this project, such as a concept, a paper summary, or a comparison | Your [notebook](./memory/llm-wiki.md), when you've asked it to file there |
 | Only meaningful to this project, such as goals, decisions, or a finished report | The project library |
-| Only needed for the task at hand, such as a helper script, a download, or intermediate output | The project's `scratch/` folder, which isn't part of the library and gets cleared out |
+| Only needed for the task at hand, such as a helper script, a download, or intermediate output | The project's `scratch/` folder |
 
 Inside the library, the agent keeps finished work in `artifacts/` and notes worth
 keeping in `notes/`. It lists every library file, one line each, in the

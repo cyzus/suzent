@@ -90,6 +90,7 @@ See [Workspace & sandbox](../03-features/filesystem.md).
 | `sandbox_env` | `{}` | Extra environment variables inside the sandbox. | |
 | `sandbox_volumes` | | Folders from your computer to mount in every conversation, as `"host folder:path the agent sees"`. Put this in `local.yaml`. | **Settings → Memory System** sets the notebook mount |
 | `sandbox_data_path` | `~/.suzent/sandbox` | Where project libraries and the shared folder are kept. Put this in `local.yaml`. | |
+| `scratch_max_mb` | `2048` | Size limit for each project's `scratch/` folder. Past it, the oldest files are removed. | |
 | `shell_denied_env_patterns` | `[]` | Environment variables hidden from commands the agent runs in host mode, such as `OPENAI_*`. | |
 
 ### Memory

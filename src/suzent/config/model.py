@@ -176,6 +176,8 @@ class ConfigModel(BaseModel):
     sandbox_setup_command: str = ""
     sandbox_env: Dict[str, Any] = {}
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
+    # Each project's scratch/ is trimmed, oldest files first, past this size.
+    scratch_max_mb: int = 2048
     sandbox_volumes: List[str] = []
     shell_env: Optional[Dict[str, str]] = None
     shell_denied_env_patterns: List[str] = []

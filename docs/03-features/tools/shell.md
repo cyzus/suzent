@@ -21,7 +21,7 @@ tests, start a build or a dev server.
 | | Host mode (default) | Sandbox mode |
 |---|---|---|
 | **Runs on** | Your computer, using bash (macOS, Linux) or PowerShell (Windows) | An isolated Docker container |
-| **Starts in** | The project library, or the folder chosen with **Working Dir** | `/workspace` |
+| **Starts in** | The project's `scratch/` folder, or the folder chosen with **Working Dir** | `/workspace/scratch` |
 
 To switch, see [Using the sandbox](../filesystem.md#using-the-sandbox). In host
 mode, commands can reach the project folders through variables such as

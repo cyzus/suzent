@@ -27,6 +27,9 @@ class Resolver:
     def get_working_dir(self) -> Path:
         return self.workspace
 
+    def get_base_dir(self) -> Path:
+        return self.workspace
+
 
 def context(
     tmp_path: Path,
