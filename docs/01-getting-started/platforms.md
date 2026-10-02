@@ -13,25 +13,17 @@ agent.
 | | What it is | Start here |
 |---|---|---|
 | **Desktop app** | The main app for Windows, macOS, and Linux. | [Quickstart](./quickstart.md) |
-| **Phone** | The Suzent app for Android and iOS, paired with your computer. | [Pair your phone](#phone) |
+| **Phone** | The Suzent app for Android and iOS, paired with your computer. | [Mobile app](../03-features/mobile.md) |
 | **Browser** | The same interface in a web browser, served by Suzent itself. | [Browser](#browser) |
 | **Headless server** | Suzent running as a background service with no window. | [Headless server](#headless-server) |
 | **Chat apps** | Telegram, Slack, Discord, Feishu, or WeChat. | [Chat apps](../05-chat-apps/README.md) |
 
 ## Phone
 
-The mobile app (currently in preview) is a remote control for the agent on your
-computer. Nothing runs on the phone itself, so your memory and keys stay home.
-
-1. Get the app. Android builds are attached to the `mobile-v...` releases on
-   [GitHub Releases](https://github.com/cyzus/suzent/releases); the iOS app is
-   distributed through TestFlight.
-2. On your computer, open **Settings → Devices → Mobile access**, choose what
-   the phone may do, and click **Pair a phone**.
-3. Scan the QR code with the app and confirm.
-
-See [Pair your phone](../03-features/nodes.md#pair-your-phone) for the details
-and how to revoke access.
+The Suzent app for Android and iOS (currently in preview) is a remote control
+for the agent on your computer. Nothing runs on the phone itself, so your
+memory and keys stay home. To get it and pair it, see
+[Mobile app](../03-features/mobile.md).
 
 ## Browser
 
