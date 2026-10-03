@@ -29,11 +29,11 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: '[[ "$TAG" =~ ^mobile-v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - id: metadata
@@ -44,7 +44,7 @@ jobs:
           python scripts/mobile_release.py "$TAG" --output release-metadata
           jq -r 'to_entries[] | "\(.key)=\(.value)"' release-metadata/metadata.json >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mobile-release-metadata
           path: release-metadata/
@@ -54,17 +54,17 @@ jobs:
     environment: mobile-release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - run: python3 scripts/generate_mobile_version.py --build-number "$BUILD"
         env:
@@ -97,7 +97,7 @@ jobs:
           cp apps/android/app/build/outputs/apk/release/app-release.apk "mobile-assets/suzent-$VERSION-android.apk"
           cp apps/android/app/build/outputs/bundle/release/app-release.aab "mobile-assets/suzent-$VERSION-android.aab"
           (cd mobile-assets && sha256sum ./*.apk ./*.aab > SHA256SUMS)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mobile-android-release
           path: mobile-assets/
@@ -110,7 +110,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - run: brew install xcodegen
@@ -128,7 +128,7 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mobile-ios-symbols
           path: ${{ runner.temp }}/Suzent.xcarchive/dSYMs/
@@ -143,11 +143,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mobile-release-metadata
           path: metadata
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mobile-android-release
           path: assets
