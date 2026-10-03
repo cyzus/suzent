@@ -9,7 +9,10 @@
       "supports_function_calling": true,
       "supports_reasoning": false,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     },
     "deepseek/deepseek-reasoner": {
       "mode": "chat",
@@ -19,7 +22,10 @@
       "supports_function_calling": false,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     },
     "deepseek/deepseek-r1": {
       "mode": "chat",
@@ -59,7 +65,10 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_prompt_caching": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     },
     "deepseek/deepseek-v4-pro": {
       "mode": "chat",
@@ -69,7 +78,10 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_prompt_caching": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     },
     "deepseek/deepseek-v4-flash-vision-exp": {
       "mode": "chat",
@@ -79,7 +91,10 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     },
     "deepseek/deepseek-flash": {
       "mode": "chat",
@@ -89,7 +104,10 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ]
     }
   }
 }
