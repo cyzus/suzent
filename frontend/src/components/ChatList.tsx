@@ -904,12 +904,15 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
   const openChatMenu = (chatId: string, anchor: { x: number; y: number } | { rect: DOMRect }) => {
     // Right-clicking inside a selection acts on the whole selection, as in a file manager.
-    // Right-clicking outside it selects just that chat instead.
+    // Right-clicking outside it makes that chat the selection instead; with no
+    // selection, right-click leaves the list untouched.
     if (selection.selected.has(chatId) && selection.selected.size > 1) {
       setBulkMenu({ anchor, view: 'root' });
       return;
     }
-    clearSelection();
+    if (selection.selected.size > 0) {
+      setSelection({ selected: new Set([chatId]), anchor: chatId });
+    }
     setOpenMenu({ chatId, anchor });
   };
 
