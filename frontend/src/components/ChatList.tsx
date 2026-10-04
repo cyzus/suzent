@@ -721,9 +721,22 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     ]);
   };
 
+  // A chat dropping out of view (search, filter, organization) leaves the
+  // selection, so bulk actions never reach chats the user can no longer see.
+  useEffect(() => {
+    setSelection((prev) => {
+      const visible = new Set(selectableOrder);
+      const kept = [...prev.selected].filter((id) => visible.has(id));
+      if (kept.length === prev.selected.size) return prev;
+      return {
+        selected: new Set(kept),
+        anchor: prev.anchor && visible.has(prev.anchor) ? prev.anchor : null,
+      };
+    });
+  }, [selectableOrder]);
+
   // Re-subscribes every render so the handler always sees the current selection.
   useEffect(() => {
-    if (!selectMode) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (dialog || openMenu || bulkMenu || renamingChatId) return;
       const target = event.target as HTMLElement | null;
@@ -731,6 +744,19 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
         target &&
         (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
       ) {
+        return;
+      }
+      // Outside selection mode only select-all applies, and only while the
+      // sidebar has focus, so Ctrl/Command-A still selects text elsewhere.
+      if (!selectMode) {
+        if (
+          isSelectAllShortcut(event, platform) &&
+          target &&
+          sidebarBoundsRef.current?.contains(target)
+        ) {
+          event.preventDefault();
+          handleSelectAll();
+        }
         return;
       }
       if (event.key === 'Escape') {
@@ -939,13 +965,13 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
   const openChatMenu = (chatId: string, anchor: { x: number; y: number } | { rect: DOMRect }) => {
     // Right-clicking inside a selection acts on the whole selection, as in a file manager.
+    // Right-clicking outside it selects just that chat instead.
     if (selectMode) {
-      const nextSize = selection.selected.size + (selection.selected.has(chatId) ? 0 : 1);
-      setSelection((prev) => ({ selected: new Set([...prev.selected, chatId]), anchor: chatId }));
-      if (nextSize > 1) {
+      if (selection.selected.has(chatId) && selection.selected.size > 1) {
         setBulkMenu({ anchor, view: 'root' });
         return;
       }
+      setSelection({ selected: new Set([chatId]), anchor: chatId });
     }
     setOpenMenu({ chatId, anchor });
   };
@@ -1279,7 +1305,12 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   return (
-    <div ref={sidebarBoundsRef} className="flex flex-col h-full relative">
+    <div
+      ref={sidebarBoundsRef}
+      // Focusable so clicks in the sidebar give it keyboard focus for select-all.
+      tabIndex={-1}
+      className="flex flex-col h-full relative outline-none"
+    >
       {showRefreshIndicator && (
         <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
           <div className="h-1 bg-brutal-blue animate-brutal-blink"></div>
