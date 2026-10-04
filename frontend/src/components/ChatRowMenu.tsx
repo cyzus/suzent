@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
 
@@ -11,14 +12,18 @@ interface ChatRowMenuProps {
   projects: Project[];
   currentProjectId?: string | null;
   pinned: boolean;
+  /** When more than one chat is selected, the menu acts on all of them. */
+  bulkCount?: number;
+  initialView?: View;
   onTogglePin: () => void;
   onRename: () => void;
+  onSelect?: () => void;
   onDelete: () => void;
   onMoveToProject: (projectId: string) => void;
   onClose: () => void;
 }
 
-type View = 'root' | 'move';
+export type View = 'root' | 'move';
 
 /**
  * Floating context menu portalled into document.body. Brutalist styling.
@@ -32,15 +37,18 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   projects,
   currentProjectId,
   pinned,
+  bulkCount = 1,
+  initialView = 'root',
   onTogglePin,
   onRename,
+  onSelect,
   onDelete,
   onMoveToProject,
   onClose,
 }) => {
   const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>('root');
+  const [view, setView] = useState<View>(initialView);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
   const anchorPoint = useMemo(() => {
@@ -111,7 +119,9 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
     'text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black';
   const itemDanger = 'text-brutal-red hover:bg-brutal-red hover:text-white';
 
-  const rootView = (
+  const isBulk = bulkCount > 1;
+
+  const singleChatItems = (
     <>
       <button
         type="button"
@@ -148,6 +158,26 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         </svg>
         {t('chatList.menu.rename')}
       </button>
+      {onSelect && (
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemBase} ${itemDefault}`}
+          onClick={() => {
+            onSelect();
+            onClose();
+          }}
+        >
+          <CheckCircleIcon className="w-3.5 h-3.5 stroke-[3]" />
+          {t('chatList.selection.select')}
+        </button>
+      )}
+    </>
+  );
+
+  const rootView = (
+    <>
+      {!isBulk && singleChatItems}
 
       <button
         type="button"
@@ -168,7 +198,11 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
             d="M3 7l9-4 9 4M3 7v10l9 4 9-4V7M3 7l9 4 9-4"
           />
         </svg>
-        <span className="flex-1">{t('chatList.menu.moveToProject')}</span>
+        <span className="flex-1">
+          {isBulk
+            ? t('chatList.selection.moveCount', { count: bulkCount })
+            : t('chatList.menu.moveToProject')}
+        </span>
         <svg
           className="w-3 h-3"
           fill="none"
@@ -204,7 +238,9 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
           />
         </svg>
-        {t('chatList.menu.delete')}
+        {isBulk
+          ? t('chatList.selection.deleteCount', { count: bulkCount })
+          : t('chatList.menu.delete')}
       </button>
     </>
   );
