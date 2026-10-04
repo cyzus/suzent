@@ -601,6 +601,20 @@ Create a project from the **Projects** list in the sidebar, or pick one on the
 new-chat screen. A chat can be moved to another project later; deleting a
 project moves its chats to **Home**.
 
+To move or delete several chats at once, select them the way you would select
+files on your computer:
+
+- **macOS:** ⌘-click adds a chat, ⇧-click selects a range, ⌘A selects every
+  chat in view, and ⌘⌫ deletes the selection.
+- **Windows and Linux:** Ctrl-click adds a chat, Shift-click selects a range,
+  Ctrl+A selects every chat in view, and Delete deletes the selection.
+- **Touch screens:** press and hold a chat, then tap others to add them.
+
+You can also choose **Select chats** from the **⋯** menu next to the list, or
+**Select** from a chat's right-click menu. While chats are selected, a bar at
+the bottom of the sidebar offers **Move** and **Delete**, and right-clicking any
+selected chat acts on all of them. Press Esc or **Done** to stop selecting.
+
 ## Give it standing instructions
 
 Project context is the place for anything every chat should know: the goal,
