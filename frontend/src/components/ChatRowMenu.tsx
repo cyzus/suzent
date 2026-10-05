@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
 
@@ -17,7 +16,6 @@ interface ChatRowMenuProps {
   initialView?: View;
   onTogglePin: () => void;
   onRename: () => void;
-  onSelect?: () => void;
   onDelete: () => void;
   onMoveToProject: (projectId: string) => void;
   onClose: () => void;
@@ -41,7 +39,6 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   initialView = 'root',
   onTogglePin,
   onRename,
-  onSelect,
   onDelete,
   onMoveToProject,
   onClose,
@@ -158,20 +155,6 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         </svg>
         {t('chatList.menu.rename')}
       </button>
-      {onSelect && (
-        <button
-          type="button"
-          role="menuitem"
-          className={`${itemBase} ${itemDefault}`}
-          onClick={() => {
-            onSelect();
-            onClose();
-          }}
-        >
-          <CheckCircleIcon className="w-3.5 h-3.5 stroke-[3]" />
-          {t('chatList.selection.select')}
-        </button>
-      )}
     </>
   );
 
