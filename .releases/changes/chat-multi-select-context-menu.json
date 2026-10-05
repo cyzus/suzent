@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together."
+}
