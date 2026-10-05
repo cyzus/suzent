@@ -608,12 +608,9 @@ files on your computer:
   chat in view, and ⌘⌫ deletes the selection.
 - **Windows and Linux:** Ctrl-click adds a chat, Shift-click selects a range,
   Ctrl+A selects every chat in view, and Delete deletes the selection.
-- **Touch screens:** press and hold a chat, then tap others to add them.
 
-You can also choose **Select chats** from the **⋯** menu next to the list, or
-**Select** from a chat's right-click menu. While chats are selected, a bar at
-the bottom of the sidebar offers **Move** and **Delete**, and right-clicking any
-selected chat acts on all of them. Press Esc or **Done** to stop selecting.
+Selected chats are highlighted. Right-click any of them to move or delete them
+all together. A plain click or Esc clears the selection.
 
 ## Give it standing instructions
 
