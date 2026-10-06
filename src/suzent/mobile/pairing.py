@@ -263,6 +263,11 @@ class PairingStore:
                 and previous.permissions == pending["permissions"]
                 and not pending.get("rotate")
             ):
+                if previous.display_name != pending["display_name"]:
+                    previous = previous.model_copy(
+                        update={"display_name": pending["display_name"]}
+                    )
+                    self._save({**self._grants, pending["previous"]: previous})
                 del self._pending[pairing_id]
                 return {
                     "status": "approved",
@@ -356,15 +361,23 @@ class PairingStore:
 
     def set_management(self, device_id: str, enabled: bool) -> bool:
         with self._lock:
-            grant = next(
-                (g for g in self._grants.values() if g.device_id == device_id), None
-            )
-            if grant is None:
+            if not any(g.device_id == device_id for g in self._grants.values()):
                 return False
-            return self.set_permissions(
-                device_id,
-                grant.permissions.model_copy(update={"manage_chats": enabled}),
+            self._save(
+                {
+                    key: grant.model_copy(
+                        update={
+                            "permissions": grant.permissions.model_copy(
+                                update={"manage_chats": enabled}
+                            )
+                        }
+                    )
+                    if grant.device_id == device_id
+                    else grant
+                    for key, grant in self._grants.items()
+                }
             )
+            return True
 
     def revoke(self, device_id: str) -> bool:
         with self._lock:

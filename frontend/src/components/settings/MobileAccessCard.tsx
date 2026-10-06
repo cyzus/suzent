@@ -188,6 +188,11 @@ export function MobileAccessCard({
     ]);
     setPending(pendingResult.pending);
     setDevices(deviceResult.devices);
+    setEditing((current) =>
+      current && !deviceResult.devices.some((device) => device.device_id === current.deviceId)
+        ? null
+        : current
+    );
   }, []);
   useEffect(() => {
     let alive = true;
