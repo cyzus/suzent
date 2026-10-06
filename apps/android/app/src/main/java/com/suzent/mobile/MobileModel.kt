@@ -2,6 +2,7 @@ package com.suzent.mobile
 
 import android.app.Application
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -124,7 +125,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             try {
                 bootstrap.capabilities()
                 val previous = connection?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
-                val claim = bootstrap.claim(invitation, android.os.Build.MODEL,
+                val deviceName = pairingDeviceName(android.os.Build.MODEL) {
+                    Settings.Global.getString(getApplication<Application>().contentResolver, Settings.Global.DEVICE_NAME)
+                }
+                val claim = bootstrap.claim(invitation, deviceName,
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
                     rotate = connection?.origin != bootstrap.backend.origin.toString())
