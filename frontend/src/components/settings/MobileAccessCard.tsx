@@ -173,6 +173,10 @@ export function MobileAccessCard({
   const [chats, setChats] = useState<{ id: string; title: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState<{
+    deviceId: string;
+    permissions: MobilePermissions;
+  } | null>(null);
   useEffect(() => {
     if (config?.lan_host)
       setOrigin((current) => current || `http://${config.lan_host}:${config.port}`);
@@ -184,6 +188,11 @@ export function MobileAccessCard({
     ]);
     setPending(pendingResult.pending);
     setDevices(deviceResult.devices);
+    setEditing((current) =>
+      current && !deviceResult.devices.some((device) => device.device_id === current.deviceId)
+        ? null
+        : current
+    );
   }, []);
   useEffect(() => {
     let alive = true;
@@ -456,26 +465,20 @@ export function MobileAccessCard({
                   !device.permissions.approve_tools && <Badge>{t('mobileAccess.readOnly')}</Badge>}
               </div>
               <div className="flex items-start justify-between gap-3 border-t-2 border-brutal-black bg-white p-3 dark:bg-zinc-800">
-                <details className="min-w-0 flex-1">
-                  <summary className="cursor-pointer text-xs font-bold text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white">
-                    {t('mobileAccess.accessSettings')}
-                  </summary>
-                  <div className="pt-3">
-                    <BrutalMultiSelect
-                      variant="list"
-                      disabled={busy}
-                      value={device.permissions.manage_chats ? ['manage_chats'] : []}
-                      options={[{ value: 'manage_chats', label: t('mobileAccess.manage_chats') }]}
-                      onChange={(selected) =>
-                        void act(async () => {
-                          await mobileRequest(`devices/${device.device_id}/management`, {
-                            enabled: selected.includes('manage_chats'),
-                          });
-                        })
-                      }
-                    />
-                  </div>
-                </details>
+                <SettingsListAction
+                  disabled={busy || editing !== null}
+                  onClick={() =>
+                    setEditing({
+                      deviceId: device.device_id,
+                      permissions: {
+                        ...device.permissions,
+                        chat_ids: [...device.permissions.chat_ids],
+                      },
+                    })
+                  }
+                >
+                  {t('mobileAccess.editPermissions')}
+                </SettingsListAction>
                 <SettingsListAction
                   tone="red"
                   disabled={busy}
@@ -488,6 +491,38 @@ export function MobileAccessCard({
                   {t('mobileAccess.revoke')}
                 </SettingsListAction>
               </div>
+              {editing?.deviceId === device.device_id && (
+                <div className="space-y-3 border-t-2 border-brutal-black p-3">
+                  <PermissionPicker
+                    permissions={editing.permissions}
+                    chats={chats}
+                    busy={busy}
+                    setPermissions={(permissions) =>
+                      setEditing({ deviceId: device.device_id, permissions })
+                    }
+                  />
+                  <div className="flex justify-end gap-2">
+                    <BrutalButton size="xs" disabled={busy} onClick={() => setEditing(null)}>
+                      {t('mobileAccess.cancelEdit')}
+                    </BrutalButton>
+                    <BrutalButton
+                      size="xs"
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () => {
+                          await mobileRequest(`devices/${device.device_id}/permissions`, {
+                            permissions: editing.permissions,
+                          });
+                          setEditing(null);
+                        })
+                      }
+                    >
+                      {t('mobileAccess.savePermissions')}
+                    </BrutalButton>
+                  </div>
+                </div>
+              )}
             </SettingsListItem>
           ))}
         </SettingsGrid>

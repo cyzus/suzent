@@ -56,6 +56,10 @@ export const en = {
   },
 
   mobileAccess: {
+    editPermissions: 'Edit permissions',
+    cancelEdit: 'Cancel',
+    savePermissions: 'Save',
+
     short_manage_chats: 'Manage',
     shortAllChats: 'All chats',
     short_create_chats: 'Create',
