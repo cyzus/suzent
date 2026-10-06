@@ -86,8 +86,8 @@ struct CameraPicker: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.sourceType = .camera
-        picker.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
-        picker.videoQuality = .typeHigh
+        picker.mediaTypes = [UTType.image.identifier]
+        picker.cameraCaptureMode = .photo
         picker.delegate = context.coordinator
         return picker
     }
@@ -101,9 +101,7 @@ struct CameraPicker: UIViewControllerRepresentable {
         init(completion: @escaping (PendingAttachment?) -> Void) { self.completion = completion }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let movie = info[.mediaURL] as? URL {
-                completion(try? AttachmentStaging.copy(movie, name: AttachmentStaging.cameraName(movie.pathExtension.isEmpty ? "mov" : movie.pathExtension)))
-            } else if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.85) {
+            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.85) {
                 completion(try? AttachmentStaging.jpeg(data, name: AttachmentStaging.cameraName("jpg")))
             } else { completion(nil) }
         }
@@ -114,24 +112,56 @@ struct CameraPicker: UIViewControllerRepresentable {
 
 struct AttachMenu: View {
     var model: MobileModel
+    @State private var showMenu = false
+    @State private var pendingSource: Source?
+    private enum Source { case camera, photos, files }
     @State private var showCamera = false
     @State private var showPhotos = false
     @State private var showFiles = false
     @State private var photoItems: [PhotosPickerItem] = []
 
     var body: some View {
-        Menu {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button { showCamera = true } label: { Label("Camera", systemImage: "camera") }
-            }
-            Button { showPhotos = true } label: { Label("Photos and videos", systemImage: "photo.on.rectangle") }
-            Button { showFiles = true } label: { Label("Files", systemImage: "folder") }
-        } label: {
+        Button { showMenu = true } label: {
             Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).frame(width: 36, height: 44)
         }
+        .buttonStyle(.plain)
         .tint(.primary)
         .accessibilityLabel(String(localized: "Attach"))
         .disabled(model.busy || model.attachments.count >= maxAttachments)
+        .sheet(isPresented: $showMenu, onDismiss: {
+            let source = pendingSource
+            pendingSource = nil
+            switch source {
+            case .camera: showCamera = true
+            case .photos: showPhotos = true
+            case .files: showFiles = true
+            case nil: break
+            }
+        }) {
+            VStack(spacing: PresentationTokens.spaceMedium) {
+                HStack {
+                    Text("Attach").font(.headline)
+                    Spacer()
+                    Button { showMenu = false } label: {
+                        Image(systemName: "xmark").frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Dismiss")
+                }
+                HStack(alignment: .top, spacing: PresentationTokens.spaceMedium) {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        attachmentOption("Camera", icon: "camera", source: .camera)
+                    }
+                    attachmentOption("Photos and videos", icon: "photo", source: .photos)
+                    attachmentOption("Files", icon: "doc", source: .files)
+                }
+            }
+            .padding(PresentationTokens.spacePage)
+            .background(Color.suzentSurface)
+            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+            .padding(PresentationTokens.spacePage)
+            .presentationDetents([.height(220)])
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(0)
+        }
         .photosPicker(isPresented: $showPhotos, selection: $photoItems,
                       maxSelectionCount: max(1, maxAttachments - model.attachments.count),
                       matching: .any(of: [.images, .videos]))
@@ -151,6 +181,21 @@ struct AttachMenu: View {
             }.ignoresSafeArea()
         }
     }
+
+    private func attachmentOption(_ label: LocalizedStringKey, icon: String, source: Source) -> some View {
+        Button {
+            pendingSource = source
+            showMenu = false
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 28, weight: .regular))
+                Text(label).font(.system(size: PresentationTokens.typeCaption)).multilineTextAlignment(.center)
+            }.frame(maxWidth: .infinity, minHeight: 80)
+        }
+        .buttonStyle(SuzentButtonStyle())
+        .frame(maxWidth: .infinity)
+    }
+
 }
 
 struct AttachmentChip: View {

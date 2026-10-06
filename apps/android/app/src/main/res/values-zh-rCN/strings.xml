@@ -141,8 +141,8 @@
     <string name="message_fork_help">从这条消息创建新的分支对话。</string>
     <string name="message_model">模型</string>
     <string name="attach">添加附件</string>
+    <string name="attach_camera">相机</string>
     <string name="attach_photo">拍照</string>
-    <string name="attach_video">录像</string>
     <string name="attach_media">照片和视频</string>
     <string name="attach_file">文件</string>
     <string name="attachment_remove">移除 %1$s</string>

@@ -141,8 +141,8 @@
     <string name="message_fork_help">Create a new conversation from this message.</string>
     <string name="message_model">Model</string>
     <string name="attach">Attach</string>
+    <string name="attach_camera">Camera</string>
     <string name="attach_photo">Take photo</string>
-    <string name="attach_video">Record video</string>
     <string name="attach_media">Photos and videos</string>
     <string name="attach_file">Files</string>
     <string name="attachment_remove">Remove %1$s</string>
