@@ -180,6 +180,16 @@ export const en = {
       verifyFailed: 'Failed to verify backend version: {error}',
     },
   },
+  backgroundNotifications: {
+    title: 'Suzent · {name}',
+    taskFinished: '[{name}] finished — view in Social',
+    updateReady: '[{name}] has an update',
+    manyUpdates: '{count} background updates',
+    replyReady: 'Reply completed — open the chat to view the result',
+    replyNeedsApproval: 'Needs your approval to continue',
+    replyFailed: 'Reply failed',
+    untitledChat: 'Suzent',
+  },
   hostPicker: {
     title: 'Choose a folder',
     roots: 'Drives',
