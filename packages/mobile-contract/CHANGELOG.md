@@ -4,6 +4,7 @@
 
 ### Release notes
 - Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+- Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
 
 ## [mobile-v0.2.0] - 2026-10-01
 
