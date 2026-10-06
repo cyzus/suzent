@@ -1,4 +1,4 @@
-"""Persist image endpoint results in the chat's shared workspace."""
+"""Persist image endpoint results in the project library's artifacts/."""
 
 import asyncio
 import base64
@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import aiohttp
 
-from suzent.config import CONFIG
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.library_index import artifacts_dir, register_artifacts
 
 
 def image_suffix(data: bytes) -> str:
@@ -24,13 +24,7 @@ def image_suffix(data: bytes) -> str:
 
 
 async def save_images(images: list[str], deps: AgentDeps) -> list[str]:
-    if deps.chat_id:
-        from suzent.database import get_database
-
-        directory = get_database().get_project_dir(deps.chat_id) / "images"
-    else:
-        directory = Path(CONFIG.workspace_root) / "images"
-    directory.mkdir(parents=True, exist_ok=True)
+    directory = artifacts_dir(deps, "images")
     payloads: list[tuple[bytes, str]] = []
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=120)
@@ -56,4 +50,6 @@ async def save_images(images: list[str], deps: AgentDeps) -> list[str]:
         for path in paths:
             path.unlink(missing_ok=True)
         raise
-    return [str(path) for path in paths]
+    saved = [str(path) for path in paths]
+    register_artifacts(deps, saved, "generated image")
+    return saved

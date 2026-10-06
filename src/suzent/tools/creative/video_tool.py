@@ -10,8 +10,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from suzent.config import CONFIG
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.library_index import artifacts_dir, project_root, register_artifacts
 from suzent.core.role_router import get_role_router
 from suzent.llm import _litellm, _litellm_model_and_kwargs
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
@@ -30,15 +30,14 @@ class VideoJob(BaseModel):
 
 
 def _directory(deps: AgentDeps) -> Path:
-    if deps.chat_id:
-        from suzent.database import get_database
+    return artifacts_dir(deps, "videos")
 
-        root = get_database().get_project_dir(deps.chat_id)
-    else:
-        root = Path(CONFIG.workspace_root)
-    directory = root / "videos"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+
+def _job_path(deps: AgentDeps, job_id: str) -> Path:
+    """Locate a job record, including ones submitted before artifacts/ existed."""
+    path = _directory(deps) / f"{job_id}.json"
+    legacy = project_root(deps) / "videos" / f"{job_id}.json"
+    return legacy if not path.exists() and legacy.exists() else path
 
 
 def _save(path: Path, data: bytes) -> None:
@@ -185,7 +184,7 @@ class VideoStatusTool(Tool):
             )
         try:
             directory = _directory(ctx.deps)
-            path = directory / f"{job_id}.json"
+            path = _job_path(ctx.deps, job_id)
             job = VideoJob.model_validate_json(await asyncio.to_thread(path.read_bytes))
             if job.chat_id != ctx.deps.chat_id:
                 return ToolResult.error_result(
@@ -212,6 +211,7 @@ class VideoStatusTool(Tool):
                     video = directory / f"{job_id}.mp4"
                     await asyncio.to_thread(_save, video, content)
                     job.saved_paths = [str(video)]
+                    register_artifacts(ctx.deps, job.saved_paths, "generated video")
                     await asyncio.to_thread(_save, path, job.model_dump_json().encode())
             metadata = {
                 "job_id": job_id,
