@@ -54,7 +54,7 @@ describe('desktop notifications', () => {
 
   it('announces each watched reply once', () => {
     watchForReply('chat-1');
-    expect(takeReplyOutcome('chat-1')).toBe('ready');
+    expect(takeReplyOutcome('chat-1')).toEqual({ outcome: 'ready', preview: '' });
     expect(takeReplyOutcome('chat-1')).toBeNull();
     expect(takeReplyOutcome('chat-2')).toBeNull();
   });
@@ -67,13 +67,13 @@ describe('desktop notifications', () => {
   it('tells a failed turn from a finished one', () => {
     watchForReply('chat-1');
     recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', message: 'boom' }));
-    expect(takeReplyOutcome('chat-1')).toBe('failed');
+    expect(takeReplyOutcome('chat-1')).toEqual({ outcome: 'failed', preview: '' });
   });
 
   it('stays quiet about a turn the user stopped', () => {
     watchForReply('chat-1');
     recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', code: 'stream_stopped' }));
-    expect(takeReplyOutcome('chat-1')).toBe('stopped');
+    expect(takeReplyOutcome('chat-1')).toEqual({ outcome: 'stopped', preview: '' });
   });
 
   it('reports a turn paused on an unanswered approval', () => {
@@ -85,7 +85,24 @@ describe('desktop notifications', () => {
       'chat-1',
       frame({ type: 'CUSTOM', name: 'tool_approval_result', value: { toolCallId: 't1' } })
     );
-    expect(takeReplyOutcome('chat-1')).toBe('approval');
+    expect(takeReplyOutcome('chat-1')).toEqual({ outcome: 'approval', preview: '' });
+  });
+
+  it('previews the final assistant message without thinking or tool output', () => {
+    watchForReply('preview-chat');
+    recordReplyChunk(
+      'preview-chat',
+      frame({ type: 'TEXT_MESSAGE_START' }) +
+        frame({ type: 'TEXT_MESSAGE_CONTENT', delta: 'Working on it' }) +
+        frame({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: 'Private reasoning' }) +
+        frame({ type: 'TEXT_MESSAGE_START' }) +
+        frame({ type: 'TEXT_MESSAGE_CONTENT', delta: 'Updated the report.\n' }) +
+        frame({ type: 'TEXT_MESSAGE_CONTENT', delta: 'All checks passed.' })
+    );
+    expect(takeReplyOutcome('preview-chat')).toEqual({
+      outcome: 'ready',
+      preview: 'Updated the report. All checks passed.',
+    });
   });
 
   it('drops a watch whose turn never started', () => {

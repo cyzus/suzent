@@ -456,8 +456,9 @@ function AppInner(): React.ReactElement {
           return;
         }
         if (msg.event !== 'stream_ended') return;
-        const outcome = takeReplyOutcome(msg.chat_id);
-        if (!outcome || outcome === 'stopped') return;
+        const reply = takeReplyOutcome(msg.chat_id);
+        if (!reply || reply.outcome === 'stopped') return;
+        const { outcome, preview } = reply;
         const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
           ready: 'backgroundNotifications.replyReady',
           approval: 'backgroundNotifications.replyNeedsApproval',
@@ -465,8 +466,10 @@ function AppInner(): React.ReactElement {
         };
         const chat = chatsRef.current.find((c) => c.id === msg.chat_id);
         void notifyIfAway(
-          chat?.title || tRef.current('backgroundNotifications.untitledChat'),
-          tRef.current(messageKeys[outcome])
+          tRef.current('backgroundNotifications.title', {
+            name: chat?.title || tRef.current('backgroundNotifications.untitledChat'),
+          }),
+          outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
         );
       }),
     []
@@ -486,7 +489,10 @@ function AppInner(): React.ReactElement {
           'info',
           4000
         );
-        void notifyIfAway(only.job_name, only.result);
+        void notifyIfAway(
+          tr('backgroundNotifications.title', { name: only.job_name }),
+          only.result
+        );
       } else if (notifications.length > 1) {
         const summary = tr('backgroundNotifications.manyUpdates', {
           count: String(notifications.length),

@@ -171,10 +171,11 @@ export const zhCN = {
     },
   },
   backgroundNotifications: {
+    title: 'Suzent · {name}',
     taskFinished: '[{name}] 已完成，可在社交频道查看',
     updateReady: '[{name}] 有新进展',
     manyUpdates: '{count} 条后台更新',
-    replyReady: '回复已完成',
+    replyReady: '回复已完成，打开聊天查看结果',
     replyNeedsApproval: '需要你的批准才能继续',
     replyFailed: '回复失败',
     untitledChat: 'Suzent',

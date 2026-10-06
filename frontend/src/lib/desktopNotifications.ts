@@ -14,6 +14,7 @@ let permission: Promise<boolean> | null = null;
 export type ReplyOutcome = 'ready' | 'approval' | 'failed' | 'stopped';
 
 interface WatchedReply {
+  preview: string;
   failed: boolean;
   stopped: boolean;
   pendingApprovals: Set<string>;
@@ -55,7 +56,12 @@ export async function notifyIfAway(title: string, body: string): Promise<void> {
 }
 
 export function watchForReply(chatId: string): void {
-  awaitingReply.set(chatId, { failed: false, stopped: false, pendingApprovals: new Set() });
+  awaitingReply.set(chatId, {
+    preview: '',
+    failed: false,
+    stopped: false,
+    pendingApprovals: new Set(),
+  });
 }
 
 export function forgetReply(chatId: string): void {
@@ -72,13 +78,26 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
   if (!watched) return;
   for (const line of rawData.split('\n')) {
     if (!line.startsWith('data:')) continue;
-    let frame: { type?: string; code?: string; name?: string; value?: Record<string, unknown> };
+    let frame: {
+      type?: string;
+      code?: string;
+      name?: string;
+      delta?: string;
+      value?: Record<string, unknown>;
+    };
     try {
       frame = JSON.parse(line.slice(5));
     } catch {
       continue;
     }
-    if (frame.type === 'RUN_ERROR') {
+    if (frame.type === 'TEXT_MESSAGE_START') {
+      watched.preview = '';
+    } else if (frame.type === 'TEXT_MESSAGE_CONTENT' && typeof frame.delta === 'string') {
+      watched.preview = (watched.preview + frame.delta)
+        .replace(/\s+/g, ' ')
+        .trimStart()
+        .slice(0, MAX_BODY_LENGTH + 1);
+    } else if (frame.type === 'RUN_ERROR') {
       if (frame.code === 'stream_stopped') watched.stopped = true;
       else watched.failed = true;
     } else if (frame.type === 'error') {
@@ -93,12 +112,18 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
 }
 
 /** The watched turn's outcome, once: the caller owns announcing it. */
-export function takeReplyOutcome(chatId: string): ReplyOutcome | null {
+export function takeReplyOutcome(
+  chatId: string
+): { outcome: ReplyOutcome; preview: string } | null {
   const watched = awaitingReply.get(chatId);
   if (!watched) return null;
   awaitingReply.delete(chatId);
-  if (watched.stopped) return 'stopped';
-  if (watched.failed) return 'failed';
-  if (watched.pendingApprovals.size > 0) return 'approval';
-  return 'ready';
+  const outcome: ReplyOutcome = watched.stopped
+    ? 'stopped'
+    : watched.failed
+      ? 'failed'
+      : watched.pendingApprovals.size > 0
+        ? 'approval'
+        : 'ready';
+  return { outcome, preview: truncateNotificationBody(watched.preview) };
 }
