@@ -881,7 +881,7 @@ Source: https://suzent.com/zh-Hans/docs/features/filesystem
 | 只对这个项目有意义，比如目标、决策、完成的报告 | 项目库 |
 | 只在当前任务里用，比如辅助脚本、下载的文件、中间结果 | 项目里的 `scratch/` 文件夹 |
 
-在项目库里，智能体把完成的成果放在 `artifacts/`，值得保留的笔记放在 `notes/`，并在项目的 `context.md` 里为每个文件记一行，让下一个对话知道已经有什么。
+在项目库里，智能体把完成的成果放在 `artifacts/`，值得保留的笔记放在 `notes/`，并在项目的 `context.md` 里为每个文件记一行，让下一个对话知道已经有什么。生成的图片、视频和语音会放进 `artifacts/` 并自动登记。
 
 <a id="projects"></a>
 
@@ -2067,15 +2067,17 @@ its own specialist model, so assign that model first in
 
 | You want to | Model role it uses | Asks for approval | Saved to |
 |---|---|---|---|
-| Generate an image | **Image Generation** | Yes | `images` folder |
-| Edit an image | **Image Editing** | Yes | `images` folder |
+| Generate an image | **Image Generation** | Yes | `artifacts/images` folder |
+| Edit an image | **Image Editing** | Yes | `artifacts/images` folder |
 | Read or describe an image | **Vision** | No | Nothing saved |
-| Create a video | **Video generation** | Yes, when it is submitted | `videos` folder |
-| Speak text aloud | None (System) or **TTS** (API) | No | `audio` folder (API only) |
+| Create a video | **Video generation** | Yes, when it is submitted | `artifacts/videos` folder |
+| Speak text aloud | None (System) or **TTS** (API) | No | `artifacts/audio` folder (API only) |
 
 Folders are inside the conversation's
 [project library](https://suzent.com/zh-Hans/docs/features/filesystem#where-files-go), so every conversation in
-the project can reuse the files. Image generation and editing are on by default;
+the project can reuse the files. Each saved file is also listed in the
+project's `context.md`. Files saved before this change stay in the old
+`images`, `videos` and `audio` folders. Image generation and editing are on by default;
 the agent can switch on the others when a task needs them. Approvals follow your
 [permission mode](https://suzent.com/zh-Hans/docs/features/tools/human-in-the-loop).
 
