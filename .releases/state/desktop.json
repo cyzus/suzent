@@ -2,6 +2,7 @@
   "version": "0.16.0",
   "consumed": [
     ".releases/changes/approved-tool-names.json",
+    ".releases/changes/artifacts-registration.json",
     ".releases/changes/ask-question-no-replay.json",
     ".releases/changes/background-task-wakeups.json",
     ".releases/changes/builtin-tool-color.json",
