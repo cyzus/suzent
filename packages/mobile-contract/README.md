@@ -12,6 +12,14 @@ fragment. Clients reject redirects to keep credentials bound to the selected hos
 | Send once | POST /chat/send | `{chat_id,message}` → 202 |
 | Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
 | Stop | POST /chat/stop | `{chat_id}` |
+| Attach | POST /mobile/client/upload?chat_id= | multipart `files` (≤10, ≤200 MB, Content-Length required) → `{attachments:[{id,filename,mime_type,size}]}` |
+
+Clients show the attach control only when `GET /mobile/client/session` reports
+`attachments: 1`. A send then names uploads by id, `{chat_id, message, attachments:[id]}`,
+and the message may be empty when ids are present. Ids are bound to the device and
+conversation that uploaded them and are kept in memory for six hours; a backend
+restart expires them, and the send answers 400. User rows in a loaded transcript
+carry `files:[{filename,mime_type,...}]`.
 
 SSE is UTF-8, blank-line-delimited, with optional comments and multiple `data:`
 lines. Consume TEXT_MESSAGE_CONTENT.delta; expose RUN_ERROR.message; ignore

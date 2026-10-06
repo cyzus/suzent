@@ -36,6 +36,7 @@ public struct DisplayMessage: Sendable {
     public var model: String? = nil
     public var timestamp: String? = nil
     public var messageIndex: Int = 0
+    public var files: [FileAttachment] = []
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
@@ -65,7 +66,7 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         let sources = (localSources + nearbySources).reduce(into: [CitationSource]()) { sources, source in
             if !sources.contains(where: { $0.id == source.id }) { sources.append(source) }
         }
-        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources, model: message.model, timestamp: message.timestamp, messageIndex: messageIndex)
+        return parts.isEmpty && message.files.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources, model: message.model, timestamp: message.timestamp, messageIndex: messageIndex, files: message.files)
     }
     var grouped: [DisplayMessage] = []
     for row in rows {

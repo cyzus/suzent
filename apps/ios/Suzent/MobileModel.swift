@@ -23,6 +23,8 @@ import SuzentCore
     @ObservationIgnored private var drafts: [String: String] = [:]
     var selected: Chat?
     var draft = ""
+    var attachments: [PendingAttachment] = []
+    var attachmentsSupported = false
     var liveParts: [MessagePart] = []
     var pendingApprovals: [ApprovalRequest] = []
     var approvalChoices: [String: String] = [:]
@@ -43,6 +45,7 @@ import SuzentCore
     private var foreground = true
 
     init() {
+        AttachmentStaging.clear()
         do {
             if let saved = try CredentialStore.load() {
                 connection = saved
@@ -203,6 +206,7 @@ import SuzentCore
             client?.close()
             client = candidate
             device = session.device
+            attachmentsSupported = session.supportsAttachments
             chats = listing
             projects = projectList
             selected = initialChat
@@ -260,6 +264,7 @@ import SuzentCore
             let projectList = try await client.projects()
             guard generation == current else { return }
             device = session.device
+            attachmentsSupported = session.supportsAttachments
             chats = listing
             projects = projectList
             if let id = selected?.id, !id.isEmpty, !streaming {
@@ -285,7 +290,7 @@ import SuzentCore
                     streamTask?.cancel()
                     selected = nil
                     streaming = false
-                    liveParts = []; pendingApprovals = []; draft = ""
+                    liveParts = []; pendingApprovals = []; draft = ""; discardAttachments()
                 }
             }
             let listing = try await client.chats()
@@ -308,6 +313,7 @@ import SuzentCore
         streamTask?.cancel()
         streaming = false
         pendingApprovals = []
+        if chat.id != selected?.id { discardAttachments() }
         selected = chat
         selectedModel = UserDefaults.standard.string(forKey: "suzent.chatModel.\(origin).\(chat.id)")
         draft = drafts[chat.id] ?? ""
@@ -371,13 +377,38 @@ import SuzentCore
             selected = chat
             restoreModel(chat)
             draft = ""
+            discardAttachments()
         } catch { handle(error) }
+    }
+
+    func stage(_ load: @escaping @Sendable () async throws -> [PendingAttachment]) async {
+        guard !busy else { return }
+        do {
+            let staged = try await load()
+            let room = max(0, maxAttachments - attachments.count)
+            attachments += staged.prefix(room)
+            staged.dropFirst(room).forEach { try? FileManager.default.removeItem(at: $0.url) }
+            if staged.count > room { error = String(localized: "You can attach up to \(maxAttachments) items per message.") }
+        } catch {
+            self.error = String(localized: "That item could not be read. Try attaching it again.")
+        }
+    }
+
+    func removeAttachment(_ attachment: PendingAttachment) {
+        attachments.removeAll { $0.id == attachment.id }
+        try? FileManager.default.removeItem(at: attachment.url)
+    }
+
+    private func discardAttachments() {
+        attachments.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        attachments = []
     }
 
     func send() async {
         guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let outgoing = attachments
+        guard !text.isEmpty || !outgoing.isEmpty else { return }
         busy = true
         error = nil
         defer { busy = false }
@@ -390,12 +421,16 @@ import SuzentCore
                 UserDefaults.standard.set(selectedModel, forKey: "suzent.chatModel.\(origin).\(id)")
                 chats.insert(created, at: 0)
             }
-            try await client.send(text, chatID: id, model: selectedModel)
+            let issued = outgoing.isEmpty ? [] : try await client.upload(outgoing, chatID: id)
+            try await client.send(text, chatID: id, model: selectedModel, attachments: issued)
             draft = ""
             drafts[id] = nil
+            outgoing.forEach { try? FileManager.default.removeItem(at: $0.url) }
+            attachments.removeAll { item in outgoing.contains { $0.id == item.id } }
             sentVersion += 1
             if var chat = selected, chat.id == id {
-                chat.messages = (chat.messages ?? []) + [ChatMessage(role: "user", content: text)]
+                chat.messages = (chat.messages ?? []) + [ChatMessage(role: "user", content: text,
+                    files: outgoing.map { FileAttachment(filename: $0.name, mimeType: $0.mimeType) })]
                 chat.isRunning = true
                 selected = chat
                 syncRunning(chat)
@@ -605,7 +640,7 @@ import SuzentCore
     }
 
     func forget() {
-        projects = []; selectedModel = nil; drafts = [:]
+        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         pairingTask?.cancel()
         do { try CredentialStore.clear() }

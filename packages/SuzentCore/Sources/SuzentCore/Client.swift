@@ -191,18 +191,42 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
     }
 
-    public func send(_ text: String, chatID: String, model: String? = nil) async throws {
-        var body = [
+    /// Uploads files for one conversation and returns the ids the backend issued for them.
+    public func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String] {
+        guard !chatID.contains("/"), chatID != ".", chatID != ".." else { throw ClientError.invalidResponse }
+        var components = URLComponents(url: backend.endpoint("mobile/client/upload"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
+        guard let url = components?.url else { throw ClientError.invalidAddress }
+        let boundary = "suzent-\(UUID().uuidString)"
+        let form = try MultipartForm.write(attachments, boundary: boundary)
+        defer { try? FileManager.default.removeItem(at: form) }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.upload(for: request, fromFile: form)
+        try validate(response)
+        struct Issued: Decodable { struct Item: Decodable { let id: String }; let attachments: [Item] }
+        return try JSONDecoder().decode(Issued.self, from: data).attachments.map(\.id)
+    }
+
+    public func send(_ text: String, chatID: String, model: String? = nil, attachments: [String] = []) async throws {
+        var body: [String: Any] = [
             "chat_id": chatID,
             "message": text,
             "client_message_id": UUID().uuidString.lowercased()
         ]
         if let model { body["model"] = model }
+        if !attachments.isEmpty { body["attachments"] = attachments }
+        var request = try request("mobile/client/send", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         do {
-            _ = try await data("mobile/client/send", body: body)
+            let (_, response) = try await session.data(for: request)
+            try validate(response)
         } catch let error as URLError {
             guard error.code != .cancelled else { throw error }
-            _ = try await data("mobile/client/send", body: body)
+            let (_, response) = try await session.data(for: request)
+            try validate(response)
         }
     }
 

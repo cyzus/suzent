@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.mobile.attachments import AttachmentRegistry
 from suzent.mobile.client_api import client_routes, revocable_stream
 from suzent.mobile.pairing import ClientPermissions, PairingStore
 from suzent.routes.mobile_routes import mobile_routes
@@ -1051,3 +1052,115 @@ def test_mobile_replay_rejects_hidden_state_changes(
         },
     )
     assert response.status_code == 409
+
+
+def test_attachments_are_sent_by_issued_id_only(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared", "private"], send=True)
+    other = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    monkeypatch.setattr(
+        "suzent.mobile.client_api.attachment_registry", AttachmentRegistry()
+    )
+    saved = []
+
+    async def save_uploads(chat_id, files):
+        names = [file.filename for file in files]
+        saved.append((chat_id, names))
+        return [
+            {
+                "id": "meta",
+                "filename": name,
+                "path": f"/workspace/uploads/{name}",
+                "size": 3,
+                "mime_type": "image/jpeg",
+                "uploaded_at": "now",
+            }
+            for name in names
+        ]
+
+    monkeypatch.setattr("suzent.routes.sandbox_routes.save_uploads", save_uploads)
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    assert client.get("/mobile/client/session").json()["attachments"] == 1
+
+    photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
+    response = client.post("/mobile/client/upload?chat_id=shared", files=photo)
+    assert response.status_code == 200
+    attachment = response.json()["attachments"][0]
+    assert attachment["filename"] == "photo.jpg"
+    assert "path" not in attachment
+    assert saved == [("shared", ["photo.jpg"])]
+
+    body = {"chat_id": "shared", "attachments": [attachment["id"]]}
+    assert client.post("/mobile/client/send", json=body).status_code == 202
+    assert calls[-1]["files"][0]["path"] == "/workspace/uploads/photo.jpg"
+    assert calls[-1]["message"] == ""
+
+    assert (
+        client.post(
+            "/mobile/client/send", json={**body, "chat_id": "private"}
+        ).status_code
+        == 400
+    )
+    client.headers["Authorization"] = f"Bearer {other['token']}"
+    assert client.post("/mobile/client/send", json=body).status_code == 400
+    assert (
+        client.post(
+            "/mobile/client/send", json={**body, "attachments": ["0" * 32]}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/mobile/client/send", json={"chat_id": "shared", "message": " "}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post("/mobile/client/upload?chat_id=private", files=photo).status_code
+        == 403
+    )
+    assert len(calls) == 1
+
+
+def test_upload_requires_send_permission_and_bounded_size(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
+    assert (
+        client.post("/mobile/client/upload?chat_id=shared", files=photo).status_code
+        == 403
+    )
+    sender = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {sender['token']}"
+    monkeypatch.setattr("suzent.mobile.client_api.MAX_UPLOAD_BYTES", 10)
+    assert (
+        client.post(
+            "/mobile/client/upload?chat_id=shared",
+            files={"files": ("big.bin", b"x" * 100, "application/octet-stream")},
+        ).status_code
+        == 413
+    )
+    assert client.post("/mobile/client/upload?chat_id=shared").status_code in (
+        400,
+        411,
+        413,
+    )
+
+
+def test_attachment_registry_expires_entries(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr("suzent.mobile.attachments.time.monotonic", lambda: now[0])
+    registry = AttachmentRegistry(ttl=10)
+    first = registry.issue("device", "chat", {"filename": "a"})
+    assert registry.resolve("device", "chat", [first]) == [{"filename": "a"}]
+    assert registry.resolve("device", "other", [first]) is None
+    now[0] = 111.0
+    assert registry.resolve("device", "chat", [first]) is None

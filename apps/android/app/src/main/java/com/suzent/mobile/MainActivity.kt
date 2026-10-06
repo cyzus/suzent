@@ -338,7 +338,10 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (model.attachmentsSupported && model.device?.permissions?.send == true)
+            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
             modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
@@ -369,7 +372,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 private fun SendAction(model: MobileModel, chat: Chat) {
             if (model.streaming || chat.running) SuzentAction(stringResource(R.string.stop), model::stop, prominent = true, enabled = model.device?.permissions?.stop == true, compact = true)
             else SuzentAction(stringResource(R.string.send), model::send, prominent = true,
-                enabled = !model.busy && model.draft.isNotBlank() && model.device?.permissions?.send == true, compact = true)
+                enabled = !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true, compact = true)
 }
 
 @Composable

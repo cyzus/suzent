@@ -32,8 +32,13 @@ struct MessageView: View {
         if user {
             HStack {
                 Spacer(minLength: 40)
-                Text(message.text).font(.system(size: PresentationTokens.typeChat))
-                    .textSelection(.enabled).padding(PresentationTokens.spaceMedium)
+                VStack(alignment: .trailing, spacing: PresentationTokens.spaceSmall) {
+                    ForEach(Array(message.files.enumerated()), id: \.offset) { _, file in
+                        AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: .black)
+                    }
+                    if !message.text.isEmpty { Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled) }
+                }
+                    .padding(PresentationTokens.spaceMedium)
                     .foregroundStyle(.black)
                     .background(Color(presentation: PresentationTokens.yellow))
                     .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
