@@ -9,7 +9,7 @@ vi.mock('@tauri-apps/plugin-notification', () => plugin);
 
 import {
   forgetReply,
-  notifyIfAway,
+  notifyDesktop,
   recordReplyChunk,
   takeReplyOutcome,
   truncateNotificationBody,
@@ -32,23 +32,23 @@ describe('desktop notifications', () => {
 
   it('notifies when the window has lost focus', async () => {
     setFocus(false);
-    await notifyIfAway('Daily report', 'All systems operational');
+    await notifyDesktop('Daily report', 'All systems operational');
     expect(plugin.sendNotification).toHaveBeenCalledWith({
       title: 'Daily report',
       body: 'All systems operational',
     });
   });
 
-  it('stays quiet while the user is looking at Suzent', async () => {
+  it('also notifies while the user is looking at Suzent', async () => {
     setFocus(true);
-    await notifyIfAway('Daily report', 'done');
-    expect(plugin.sendNotification).not.toHaveBeenCalled();
+    await notifyDesktop('Daily report', 'done');
+    expect(plugin.sendNotification).toHaveBeenCalledWith({ title: 'Daily report', body: 'done' });
   });
 
   it('never calls the Tauri plugin in web mode', async () => {
     vi.stubGlobal('window', {});
     setFocus(false);
-    await notifyIfAway('Daily report', 'done');
+    await notifyDesktop('Daily report', 'done');
     expect(plugin.sendNotification).not.toHaveBeenCalled();
   });
 
