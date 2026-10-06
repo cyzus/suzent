@@ -12,15 +12,17 @@ its own specialist model, so assign that model first in
 
 | You want to | Model role it uses | Asks for approval | Saved to |
 |---|---|---|---|
-| Generate an image | **Image Generation** | Yes | `images` folder |
-| Edit an image | **Image Editing** | Yes | `images` folder |
+| Generate an image | **Image Generation** | Yes | `artifacts/images` folder |
+| Edit an image | **Image Editing** | Yes | `artifacts/images` folder |
 | Read or describe an image | **Vision** | No | Nothing saved |
-| Create a video | **Video generation** | Yes, when it is submitted | `videos` folder |
-| Speak text aloud | None (System) or **TTS** (API) | No | `audio` folder (API only) |
+| Create a video | **Video generation** | Yes, when it is submitted | `artifacts/videos` folder |
+| Speak text aloud | None (System) or **TTS** (API) | No | `artifacts/audio` folder (API only) |
 
 Folders are inside the conversation's
 [project library](../filesystem.md#where-files-go), so every conversation in
-the project can reuse the files. Image generation and editing are on by default;
+the project can reuse the files. Each saved file is also listed in the
+project's `context.md`. Files saved before this change stay in the old
+`images`, `videos` and `audio` folders. Image generation and editing are on by default;
 the agent can switch on the others when a task needs them. Approvals follow your
 [permission mode](./human-in-the-loop.md).
 
