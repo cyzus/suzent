@@ -63,7 +63,7 @@ import {
   subscribeToBusPayloads,
   subscribeToStreamEvents,
 } from '../hooks/useEventBus';
-import { useStatusStore } from '../hooks/useStatusStore';
+import { useNativeNotification } from '../hooks/useNativeNotification';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
@@ -827,7 +827,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onCompleted: onSubAgentCompleted,
     onFailed: onSubAgentFailed,
   } = useSubAgentStatus();
-  const { setStatus: setStatusBar } = useStatusStore();
+  const notify = useNativeNotification();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
   // Set while a stop has been accepted by the backend and we are waiting for the
@@ -1244,7 +1244,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ...prev,
           [p.task_id]: { status: 'completed', resultSummary: p.result_summary },
         }));
-        setStatusBar(`Sub-agent completed — ${p.task_id}`, 'success', 5000);
       } else if (name === 'subagent_failed') {
         const p = value as SubAgentFailedPayload;
         onSubAgentFailed(p);
@@ -1252,7 +1251,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ...prev,
           [p.task_id]: { status: 'failed', error: p.error },
         }));
-        setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
       } else if (name === 'image_not_supported') {
         // Active model lacks vision; backend stripped the image(s) but kept them
         // on disk so analyze_image can still inspect them. Surface the warning
@@ -1447,7 +1445,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         retireRunToken(runToken);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
-        setStatusBar(msg, 'error', 4000);
+        notify(msg);
         throw new Error(msg);
       }
       // 202: the previous (suspended) stream has ended, but its onFinish pending-
@@ -1460,14 +1458,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Connect immediately rather than waiting for stream_started from the bus.
       tryConnectRef.current?.();
     },
-    [
-      currentChatId,
-      getStreamingParts,
-      mintRunToken,
-      retireRunToken,
-      setStatusBar,
-      trackPendingStart,
-    ]
+    [currentChatId, getStreamingParts, mintRunToken, retireRunToken, notify, trackPendingStart]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -1487,7 +1478,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       opts?: { seedParts?: AGUIPart[]; restoreInput?: string; runToken?: string }
     ): boolean => {
       const plan = planSendFailureRecovery(status, action);
-      setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
+      notify(t(plan.messageKey, plan.messageParams));
 
       // The turn this client named was never accepted -- a 409 means another
       // one is already running. Drop the name now: the reattach below is a
@@ -1541,7 +1532,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, setStatusBar, t]
+    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, notify, t]
   );
 
   const { handleToolApproval } = useToolApproval({
@@ -1788,10 +1779,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         console.error('Failed to update cron model override:', error);
         setCronModelSelection({ jobId: cronJobId!, model: previousModel });
         setConfig((prev) => ({ ...prev, model: previousModel }));
-        setStatusBar(t('chatInput.modelUpdateError'), 'error', 4000);
+        notify(t('chatInput.modelUpdateError'));
       });
     },
-    [_isCronChat, cronJobId, safeConfig.model, setConfig, setStatusBar, t]
+    [_isCronChat, cronJobId, safeConfig.model, setConfig, notify, t]
   );
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
@@ -2421,7 +2412,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // this check — the backend will return 409 if it's truly still busy, which gives
     // a cleaner error than blocking here during the brief cancel-propagation window.
     if (isBusStreaming(chatIdForSend) && isStreaming && activeStreamingChatId === chatIdForSend) {
-      setStatusBar('This chat is still responding — wait or use the redirect button', 'info', 4000);
       return;
     }
 

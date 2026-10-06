@@ -1,7 +1,7 @@
 /**
  * Native notifications for work that finishes while the user is looking
- * elsewhere. Desktop only: in web mode every call is a no-op, and when Suzent
- * has focus the in-app status bar already tells the user.
+ * elsewhere, or needs feedback on an action. Desktop only: in web mode
+ * every call is a no-op.
  */
 import { isDesktop } from './runtime';
 
@@ -35,17 +35,13 @@ function ensurePermission(): Promise<boolean> {
   return permission;
 }
 
-export function isUserAway(): boolean {
-  return document.visibilityState === 'hidden' || !document.hasFocus();
-}
-
 export function truncateNotificationBody(body: string): string {
   const flat = body.replace(/\s+/g, ' ').trim();
   return flat.length > MAX_BODY_LENGTH ? `${flat.slice(0, MAX_BODY_LENGTH - 1)}…` : flat;
 }
 
-export async function notifyIfAway(title: string, body: string): Promise<void> {
-  if (!isDesktop() || !isUserAway()) return;
+export async function notifyDesktop(title: string, body: string): Promise<void> {
+  if (!isDesktop()) return;
   try {
     if (!(await ensurePermission())) return;
     const { sendNotification } = await import('@tauri-apps/plugin-notification');

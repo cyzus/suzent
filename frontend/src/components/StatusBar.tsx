@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useStatusStore, StatusType } from '../hooks/useStatusStore';
 import { useChatCoreStore, useChatStore } from '../hooks/useChatStore';
 import { selectContextLimit } from '../lib/contextLimit';
 import { useI18n } from '../i18n';
@@ -20,39 +19,6 @@ import {
 } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
 import { InformationPopover } from './InformationPopover';
-
-const getStatusStyles = (type: StatusType) => {
-  switch (type) {
-    case 'error':
-      return 'bg-brutal-red text-white';
-    case 'success':
-      return 'bg-brutal-green text-brutal-black';
-    case 'warning':
-      return 'bg-brutal-yellow text-brutal-black';
-    case 'info':
-      return 'bg-brutal-blue text-white';
-    case 'idle':
-    default:
-      return 'bg-neutral-200 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-400';
-  }
-};
-
-const getStatusIcon = (type: StatusType) => {
-  switch (type) {
-    case 'error':
-      return '!';
-    case 'success':
-      return '✓';
-    case 'warning':
-      return '⚠';
-    case 'info':
-      return 'i';
-    case 'idle':
-      return '•';
-    default:
-      return '';
-  }
-};
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -484,7 +450,6 @@ function ContextWidget() {
 function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number }) {
   const { compaction, clearCompaction } = useContextUsageStore();
   const { currentChatId, isStreaming } = useChatStore();
-  const { setStatus } = useStatusStore();
   const { compact, progress } = useCompact();
   const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
   const hintTimerRef = useRef<number | null>(null);
@@ -553,22 +518,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   const handleManualCompact = async () => {
     if (!currentChatId || isStreaming || compacting) return;
 
-    setStatus('Compacting context...', 'info', 5000);
-
-    const result = await compact(currentChatId);
-    if (result.error) {
-      setStatus(`Compaction failed: ${result.error}`, 'error', 6000);
-      return;
-    }
-
-    if (result.skipped) {
-      setStatus(result.reason || 'Compaction skipped', 'warning', 5000);
-      return;
-    }
-
-    // The context-window panel is refreshed centrally via the auto_compaction bus
-    // payload (stage="complete" carries fresh usage) — see ChatWindow's bus handler.
-    setStatus('Context compacted', 'success', 5000);
+    await compact(currentChatId);
   };
 
   const canManualCompact = !!currentChatId && !isStreaming && !compacting;
@@ -930,8 +880,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   onOpenMemorySettings,
   showActiveChatTitle = false,
 }) => {
-  const { message, type } = useStatusStore();
-
   return (
     <div
       className={`
@@ -939,22 +887,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
       border-b-3 border-brutal-black
       font-mono text-[10px] md:text-xs font-bold uppercase tracking-wider
       transition-colors duration-200
-      ${getStatusStyles(type)}
+      bg-neutral-200 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-400
     `}
     >
-      {/* Left: service/toast followed by the selected conversation. */}
+      {/* Left: service followed by the selected conversation. */}
       <div className="flex min-w-0 flex-1 items-center gap-4 pr-4">
-        <div
-          className={`flex min-w-0 items-center gap-2.5 ${message ? 'flex-shrink' : 'flex-shrink-0'}`}
-        >
-          {message ? (
-            <>
-              <span className="w-4 flex-shrink-0 text-center">{getStatusIcon(type)}</span>
-              <span className="truncate">{message}</span>
-            </>
-          ) : (
-            <BackendServiceWidget />
-          )}
+        <div className="flex min-w-0 flex-shrink-0 items-center gap-2.5">
+          <BackendServiceWidget />
         </div>
 
         <div className="flex min-w-0 flex-1 justify-start overflow-hidden">
