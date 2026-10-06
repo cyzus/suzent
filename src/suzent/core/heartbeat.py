@@ -16,7 +16,7 @@ import asyncio
 import time
 from datetime import datetime, timezone
 import dateutil.parser
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
@@ -52,7 +52,6 @@ class HeartbeatRunner(BaseBrain):
         self._last_run_at: Optional[datetime] = None
         self._last_result: Optional[str] = None
         self._last_error: Optional[str] = None
-        self._notification_callback: Optional[Callable[[str], None]] = None
         # Tracks chats whose heartbeat is due, pending frontend pickup.
         # Maps chat_id → timestamp when it was marked pending.
         self._pending_heartbeats: Dict[str, float] = {}
@@ -60,10 +59,6 @@ class HeartbeatRunner(BaseBrain):
     @property
     def enabled(self) -> bool:
         return self._enabled
-
-    def set_notification_callback(self, callback: Callable[[str], None]):
-        """Set callback for delivering heartbeat alerts."""
-        self._notification_callback = callback
 
     async def start(self):
         """Register as the active runner. The scheduler drives the clock."""
@@ -271,12 +266,23 @@ class HeartbeatRunner(BaseBrain):
 
             db.set_last_result_at(chat_id)
 
-            if self._notification_callback and response_text:
-                self._notification_callback(f"Chat {chat_id[:8]}: {response_text}")
+            self._announce(chat_id, response_text, db)
 
         except Exception as e:
             logger.error(f"Heartbeat execution failed for {chat_id}: {e}")
             self._last_error = str(e)
+
+    @staticmethod
+    def _announce(chat_id: str, response_text: str, db) -> None:
+        """Queue the alert for the desktop app, which may be closed or in the background."""
+        from suzent.core.scheduler import get_active_scheduler
+
+        scheduler = get_active_scheduler()
+        if scheduler is None:
+            return
+        chat = db.get_chat(chat_id)
+        title = chat.title if chat and chat.title else chat_id[:8]
+        scheduler.add_notification("heartbeat", response_text, title=title)
 
     @staticmethod
     def build_heartbeat_reminder(instructions: str) -> str:

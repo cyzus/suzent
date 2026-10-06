@@ -27,6 +27,7 @@ import { useStatusStore } from './hooks/useStatusStore';
 import {
   BackendVersionTimeoutError,
   drainCronNotifications,
+  type CronNotification,
   fetchHeartbeatStatus,
   fetchSystemVersion,
   getApiBase,
@@ -37,7 +38,14 @@ import {
   startDesktopUpdateAndRestart,
   type UpdateStatus,
 } from './lib/desktopUpdates';
-import { isBusStreaming } from './hooks/useEventBus';
+import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
+import {
+  notifyIfAway,
+  recordReplyChunk,
+  takeReplyOutcome,
+  type ReplyOutcome,
+} from './lib/desktopNotifications';
+import { isDesktop } from './lib/runtime';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
@@ -433,16 +441,80 @@ function AppInner(): React.ReactElement {
     setChatHeartbeatStatusRef.current = setChatHeartbeatStatus;
   }, [setChatHeartbeatStatus]);
 
+  const tRef = React.useRef(t);
+  React.useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
+  // A reply the user asked for lands while Suzent is in the background.
+  React.useEffect(
+    () =>
+      subscribeToBusPayloads((msg) => {
+        if (typeof msg?.chat_id !== 'string') return;
+        if (msg.event === 'chunk' && typeof msg.data === 'string') {
+          recordReplyChunk(msg.chat_id, msg.data);
+          return;
+        }
+        if (msg.event !== 'stream_ended') return;
+        const reply = takeReplyOutcome(msg.chat_id);
+        if (!reply || reply.outcome === 'stopped') return;
+        const { outcome, preview } = reply;
+        const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
+          ready: 'backgroundNotifications.replyReady',
+          approval: 'backgroundNotifications.replyNeedsApproval',
+          failed: 'backgroundNotifications.replyFailed',
+        };
+        const chat = chatsRef.current.find((c) => c.id === msg.chat_id);
+        void notifyIfAway(
+          tRef.current('backgroundNotifications.title', {
+            name: chat?.title || tRef.current('backgroundNotifications.untitledChat'),
+          }),
+          outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
+        );
+      }),
+    []
+  );
+
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
+    const announceBackgroundNotifications = (notifications: CronNotification[]): void => {
+      const tr = tRef.current;
+      if (notifications.length === 1) {
+        const [only] = notifications;
+        const params = { name: only.job_name };
+        setStatusMsg(
+          only.source && only.source !== 'cron'
+            ? tr('backgroundNotifications.updateReady', params)
+            : tr('backgroundNotifications.taskFinished', params),
+          'info',
+          4000
+        );
+        void notifyIfAway(
+          tr('backgroundNotifications.title', { name: only.job_name }),
+          only.result
+        );
+      } else if (notifications.length > 1) {
+        const summary = tr('backgroundNotifications.manyUpdates', {
+          count: String(notifications.length),
+        });
+        setStatusMsg(summary, 'info', 4000);
+        void notifyIfAway(tr('app.title'), summary);
+      }
+    };
+
     const interval = setInterval(async () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      // Draining marks results delivered. A minimized desktop window can still
+      // show them as system notifications; a hidden browser tab cannot, so it
+      // leaves them queued until the user comes back.
+      if (!hidden || isDesktop()) {
+        announceBackgroundNotifications(await drainCronNotifications());
+      }
+      if (hidden) {
         return;
       }
-      // Heartbeat status runs in parallel with notification drain.
       const chatId = currentChatIdRef.current;
-      const [notifications] = await Promise.all([
-        drainCronNotifications(),
+      await Promise.all([
         fetchHeartbeatStatus()
           .then(setHeartbeatStatus)
           .catch(() => {}),
@@ -452,12 +524,6 @@ function AppInner(): React.ReactElement {
               .catch(() => {})
           : Promise.resolve(),
       ]);
-      if (notifications.length === 1) {
-        setStatusMsg(`[${notifications[0].job_name}] finished — view in Social`, 'info', 4000);
-      } else if (notifications.length > 1) {
-        setStatusMsg(`${notifications.length} tasks finished — view in Social`, 'info', 4000);
-      }
-
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
       const openChat = chatsRef.current.find((c) => c.id === chatId);
