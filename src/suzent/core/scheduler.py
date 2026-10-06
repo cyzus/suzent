@@ -461,19 +461,23 @@ class SchedulerBrain(BaseBrain):
         self._pending_notifications.clear()
         return notifications
 
-    def add_notification(self, source: str, result: str) -> None:
+    def add_notification(
+        self, source: str, result: str, title: Optional[str] = None
+    ) -> None:
         """Persist a notification from a non-cron source (e.g. goal mode)."""
+        title = title or source
         try:
             get_database().create_background_notification(
-                source=source, title=source, result=result
+                source=source, title=title, result=result
             )
         except Exception as exc:
             logger.warning(f"Failed to persist background notification: {exc}")
             self._pending_notifications.append(
                 {
                     "job_id": None,
-                    "job_name": source,
+                    "job_name": title,
                     "result": result[:500],
+                    "source": source,
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -720,6 +724,7 @@ class SchedulerBrain(BaseBrain):
                             "job_id": job.id,
                             "job_name": job.name,
                             "result": response_text[:500],
+                            "source": "cron",
                             "timestamp": datetime.now().isoformat(),
                         }
                     )

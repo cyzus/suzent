@@ -170,6 +170,13 @@ export const zhCN = {
       verifyFailed: '无法验证后端版本：{error}',
     },
   },
+  backgroundNotifications: {
+    taskFinished: '[{name}] 已完成，可在社交频道查看',
+    updateReady: '[{name}] 有新进展',
+    manyUpdates: '{count} 条后台更新',
+    replyReady: '回复已完成',
+    untitledChat: 'Suzent',
+  },
   hostPicker: {
     title: '选择文件夹',
     roots: '驱动器',

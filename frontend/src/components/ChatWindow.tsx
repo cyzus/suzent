@@ -2,6 +2,7 @@ import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
+import { watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
@@ -1453,6 +1454,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       streamingChatIdRef.current = null;
       isLiveStreamRef.current = false;
       // Connect immediately rather than waiting for stream_started from the bus.
+      watchForReply(chatId);
       tryConnectRef.current?.();
     },
     [
@@ -2372,6 +2374,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
+            watchForReply(steerChatId);
             tryConnectRef.current?.();
           })
           .catch((err) => {
@@ -2504,6 +2507,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             return;
           }
           // 202: stream registered — connect to /chat/live immediately.
+          watchForReply(chatIdForSend);
           tryConnectRef.current?.();
         })
         .catch((err) => {
@@ -2597,6 +2601,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             });
             return;
           }
+          watchForReply(chatIdForRetry);
           tryConnectRef.current?.();
         })
         .catch((err) => {
@@ -2692,6 +2697,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
+            watchForReply(chatIdForEdit);
             tryConnectRef.current?.();
           })
           .catch((err) => {

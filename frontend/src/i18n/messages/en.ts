@@ -180,6 +180,13 @@ export const en = {
       verifyFailed: 'Failed to verify backend version: {error}',
     },
   },
+  backgroundNotifications: {
+    taskFinished: '[{name}] finished — view in Social',
+    updateReady: '[{name}] has an update',
+    manyUpdates: '{count} background updates',
+    replyReady: 'Reply ready',
+    untitledChat: 'Suzent',
+  },
   hostPicker: {
     title: 'Choose a folder',
     roots: 'Drives',
