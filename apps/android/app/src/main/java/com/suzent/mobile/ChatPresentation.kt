@@ -12,7 +12,7 @@ data class MessagePart(
 )
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
-    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0) {
+    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList()) {
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
@@ -63,13 +63,13 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             else -> message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
         }
         val parts = normalizeParts(rawParts)
-        if (parts.isEmpty()) null else {
+        if (parts.isEmpty() && message.files.isEmpty()) null else {
             val localSources = rawParts.flatMap { it.citationSources }
             val referencedIds = parts.flatMap { citationSourceIds(it.text) }.toSet()
             val nearbySources = referencedIds.mapNotNull { id ->
                 indexedSources.filter { it.second.id == id }.minByOrNull { kotlin.math.abs(it.first - messageIndex) }?.second
             }
-            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id }, message.model, message.timestamp, messageIndex)
+            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id }, message.model, message.timestamp, messageIndex, message.files)
         }
     }
     val grouped = mutableListOf<DisplayMessage>()
@@ -77,7 +77,7 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
         val previous = grouped.lastOrNull()
         // Only tool/reasoning tails continue a reply; text and rendered surfaces end it.
         if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool") &&
-            previous.parts.last().type in listOf("tool", "reasoning")) {
+            previous.parts.lastOrNull()?.type in listOf("tool", "reasoning")) {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
                 normalizeParts(previous.parts + row.parts), (previous.citationSources + row.citationSources).distinctBy { it.id },

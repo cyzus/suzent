@@ -398,7 +398,9 @@ struct ContentView: View {
                     }.padding(16)
             }.id(chat.id)
             VStack(alignment: .leading, spacing: 8) {
+                PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
+                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
                         .tint(Color(presentation: PresentationTokens.blue))
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
@@ -439,7 +441,7 @@ struct ContentView: View {
                 Button("Stop") { Task { await model.stop() } }.disabled(model.device?.permissions.stop != true)
             } else {
                 Button("Send") { Task { await model.send() } }
-                    .disabled(model.busy || model.device?.permissions.send != true || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(model.busy || model.device?.permissions.send != true || (model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.attachments.isEmpty))
             }
         }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
     }

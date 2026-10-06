@@ -18,8 +18,10 @@ data class Backend(val origin: HttpUrl) {
     fun endpoint(path: String): HttpUrl = origin.newBuilder().addPathSegments(path).build()
 }
 
+data class FileAttachment(val filename: String, val mimeType: String)
 data class ChatMessage(val role: String, val content: String, val parts: List<MessagePart> = emptyList(),
-    val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null)
+    val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null,
+    val files: List<FileAttachment> = emptyList())
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
     val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false) {
     companion object {
@@ -29,6 +31,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                 (0 until messages.length()).mapNotNull { index ->
                     val item = messages.optJSONObject(index) ?: return@mapNotNull null
                     val parts = item.optJSONArray("parts") ?: JSONArray()
+                    val files = item.optJSONArray("files") ?: JSONArray()
                     ChatMessage(item.optString("role", "assistant"), item.opt("content") as? String ?: "",
                         (0 until parts.length()).mapNotNull { partIndex ->
                             val part = parts.optJSONObject(partIndex) ?: return@mapNotNull null
@@ -40,7 +43,10 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                                         source.optString("id"), source.optString("type"), source.optString("title"),
                                         source.optString("url"), source.optString("snippet"), source.optString("favicon")) }
                                 })
-                        }, item.optString("name"), item.optString("tool_call_id"), item.opt("model") as? String, item.opt("timestamp") as? String)
+                        }, item.optString("name"), item.optString("tool_call_id"), item.opt("model") as? String, item.opt("timestamp") as? String,
+                        (0 until files.length()).mapNotNull { fileIndex ->
+                            files.optJSONObject(fileIndex)?.let { file -> FileAttachment(file.optString("filename"), file.optString("mime_type")) }
+                        })
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
                 pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }

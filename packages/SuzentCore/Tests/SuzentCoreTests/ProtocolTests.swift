@@ -51,3 +51,19 @@ import Testing
     #expect(decoder.consume("") == "incomplete")
     #expect(decoder.consume("") == nil)
 }
+
+@Test func attachmentsDecodeAndStreamAsMultipart() throws {
+    let message = try JSONDecoder().decode(ChatMessage.self, from: Data(#"""
+        {"role":"user","content":"","files":[{"filename":"photo.jpg","mime_type":"image/jpeg","path":"/workspace/uploads/photo.jpg"}]}
+        """#.utf8))
+    #expect(message.files == [FileAttachment(filename: "photo.jpg", mimeType: "image/jpeg")])
+    #expect(presentMessages([message]).first?.files.count == 1)
+
+    let source = FileManager.default.temporaryDirectory.appendingPathComponent("attachment-\(UUID().uuidString)")
+    try Data("abc".utf8).write(to: source)
+    defer { try? FileManager.default.removeItem(at: source) }
+    let form = try MultipartForm.write([PendingAttachment(url: source, name: "a\"b.txt", mimeType: "text/plain")], boundary: "edge")
+    defer { try? FileManager.default.removeItem(at: form) }
+    let body = try String(contentsOf: form, encoding: .utf8)
+    #expect(body == "--edge\r\nContent-Disposition: form-data; name=\"files\"; filename=\"a'b.txt\"\r\nContent-Type: text/plain\r\n\r\nabc\r\n--edge--\r\n")
+}

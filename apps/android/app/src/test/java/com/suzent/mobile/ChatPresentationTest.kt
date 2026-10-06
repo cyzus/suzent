@@ -104,4 +104,13 @@ class ChatPresentationTest {
 
         assertEquals("Weather [Forecast](<https://example.com/weather>)", markdownWithCitationLinks(row.text, row.citationSources))
     }
+
+    @Test fun attachmentsAreParsedOntoUserRows() {
+        val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
+            {"role":"user","content":"","files":[{"filename":"photo.jpg","mime_type":"image/jpeg","path":"/workspace/uploads/photo.jpg"}]}
+        ]}"""))
+        val row = presentMessages(chat.messages).single()
+        assertEquals(listOf(FileAttachment("photo.jpg", "image/jpeg")), row.files)
+        assertEquals("", row.text)
+    }
 }
