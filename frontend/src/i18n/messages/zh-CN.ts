@@ -53,6 +53,10 @@ export const zhCN = {
   },
 
   mobileAccess: {
+    editPermissions: '编辑权限',
+    cancelEdit: '取消',
+    savePermissions: '保存',
+
     short_manage_chats: '管理',
     shortAllChats: '所有会话',
     short_create_chats: '创建',
