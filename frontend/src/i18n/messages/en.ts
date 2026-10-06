@@ -56,6 +56,33 @@ export const en = {
   },
 
   mobileAccess: {
+    short_manage_chats: 'Manage',
+    shortAllChats: 'All chats',
+    short_create_chats: 'Create',
+    short_send: 'Send',
+    short_stop: 'Stop',
+    short_approve_tools: 'Tool approvals',
+    shortManage: 'Manage chats',
+
+    deviceCount: '{count} paired phones',
+    prepareStep: 'Use the same Wi-Fi',
+    prepareStepHelp: 'Keep this desktop running and connect your phone to the same Wi-Fi.',
+    scanStep: 'Scan with Suzent',
+    scanStepHelp: 'Generate a QR code, then open the pairing scanner in the Suzent mobile app.',
+    confirmStep: 'Confirm on your phone',
+    confirmStepHelp:
+      'Review this desktop and the requested permissions, then accept the connection.',
+    accessSettings: 'Phone permissions',
+    networkSettings: 'Connection settings',
+    waiting: 'Waiting for scan',
+    ready: 'Pair your phone',
+    qrHelp:
+      'Each QR code is a one-time invitation. Permissions and connection settings can be adjusted before generating it.',
+    generating: 'Generating QR code…',
+    regenerate: 'New QR code',
+    pairedDevices: 'Paired phones',
+    noDevices: 'No paired phones yet.',
+
     fullAccess: 'Full access',
     restrictedAccess: 'Restricted access',
     fullAccessHelp:
@@ -65,7 +92,7 @@ export const en = {
     approve_tools: 'Approve tool requests',
 
     choosePermissions: 'Choose what this phone can access before generating its QR code.',
-    cancelInvitation: 'Close QR code and cancel invitation',
+    cancelInvitation: 'Cancel pairing',
 
     title: 'Mobile access',
     description:
@@ -74,11 +101,11 @@ export const en = {
     network:
       'LAN connections are encrypted automatically. Scan to trust this desktop. You can also enter an existing HTTPS address.',
     generate: 'Pair a phone',
-    expired: 'Invitation expired. Generate a new QR code.',
+    expired: 'QR code expired.',
     qrAlt: 'Suzent mobile pairing QR code',
-    scan: 'Scan in the Suzent app and confirm the connection on your phone. Anyone with this one-time QR code can accept the permissions above.',
+    scan: 'One-time access invitation. Share only with your phone.',
     expires: 'Expires in {seconds}s',
-    copy: 'Copy pairing invitation',
+    copy: 'Copy invitation',
     compare: 'Confirm that the phone shows code {code}.',
     all_chats: 'Read all conversations, including future ones',
     create_chats: 'Create conversations',

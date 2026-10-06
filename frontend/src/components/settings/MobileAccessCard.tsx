@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import QRCode from 'qrcode';
+import { DevicePhoneMobileIcon, QrCodeIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase, type NodeAuthConfig } from '../../lib/api';
 import {
@@ -13,7 +14,15 @@ import {
   type MobilePermissions,
 } from '../../lib/mobileApi';
 import { BrutalButton } from '../BrutalButton';
-import { SettingsCard } from './SettingsCard';
+import { BrutalMultiSelect } from '../BrutalMultiSelect';
+import {
+  Badge,
+  SectionCardHeader,
+  SettingsCard,
+  SettingsGrid,
+  SettingsListItem,
+  SettingsListAction,
+} from './SettingsCard';
 import { CopyButton } from './CopyButton';
 
 const emptyPermissions = (): MobilePermissions => ({
@@ -49,41 +58,36 @@ function PermissionPicker({
   const { t } = useI18n();
   return (
     <div className="space-y-3">
-      {(
-        ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
-      ).map((key) => (
-        <label key={key} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={permissions[key]}
-            disabled={busy}
-            onChange={(event) => setPermissions({ ...permissions, [key]: event.target.checked })}
-          />
-          {t(`mobileAccess.${key}`)}
-        </label>
-      ))}
+      <BrutalMultiSelect
+        variant="list"
+        disabled={busy}
+        value={(
+          ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
+        ).filter((key) => permissions[key])}
+        options={(
+          ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
+        ).map((key) => ({ value: key, label: t(`mobileAccess.${key}`) }))}
+        onChange={(selected) =>
+          setPermissions({
+            ...permissions,
+            all_chats: selected.includes('all_chats'),
+            create_chats: selected.includes('create_chats'),
+            manage_chats: selected.includes('manage_chats'),
+            send: selected.includes('send'),
+            stop: selected.includes('stop'),
+            approve_tools: selected.includes('approve_tools'),
+          })
+        }
+      />
       {!permissions.all_chats && (
-        <fieldset className="max-h-48 overflow-auto space-y-2">
-          <legend className="text-sm font-bold">{t('mobileAccess.sharedChats')}</legend>
-          {chats.map((chat) => (
-            <label key={chat.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={permissions.chat_ids.includes(chat.id)}
-                disabled={busy}
-                onChange={(event) =>
-                  setPermissions({
-                    ...permissions,
-                    chat_ids: event.target.checked
-                      ? [...permissions.chat_ids, chat.id]
-                      : permissions.chat_ids.filter((id) => id !== chat.id),
-                  })
-                }
-              />
-              {chat.title}
-            </label>
-          ))}
-        </fieldset>
+        <BrutalMultiSelect
+          variant="list"
+          label={t('mobileAccess.sharedChats')}
+          disabled={busy}
+          value={permissions.chat_ids}
+          options={chats.map((chat) => ({ value: chat.id, label: chat.title }))}
+          onChange={(chat_ids) => setPermissions({ ...permissions, chat_ids })}
+        />
       )}
       <p className="text-xs text-neutral-500">{t('mobileAccess.toolPolicy')}</p>
     </div>
@@ -274,104 +278,131 @@ export function MobileAccessCard({
       }
     });
   const expired = invitation !== null && invitation.expires_at * 1000 <= now;
+  const invitationActive = invitation !== null && !expired;
   return (
     <SettingsCard>
-      <div className="p-4 space-y-4">
-        <h3 className="font-black text-lg">{t('mobileAccess.title')}</h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          {t('mobileAccess.description')}
-        </p>
+      <div className="space-y-5">
+        <SectionCardHeader
+          icon={<DevicePhoneMobileIcon className="h-6 w-6" />}
+          title={t('mobileAccess.title')}
+          actions={<Badge>{t('mobileAccess.deviceCount', { count: devices.length })}</Badge>}
+        />
         {error && (
-          <p role="alert" className="text-brutal-red">
+          <p
+            role="alert"
+            className="border-2 border-brutal-red bg-red-50 p-3 text-sm text-brutal-red dark:bg-red-950/20"
+          >
             {error}
           </p>
         )}
-        <div className="border-2 border-brutal-black dark:border-white p-3 space-y-2">
-          <p className="font-bold">
-            {t(
-              permissions.all_chats &&
-                permissions.create_chats &&
-                permissions.manage_chats &&
-                permissions.send &&
-                permissions.stop &&
-                permissions.approve_tools
-                ? 'mobileAccess.fullAccess'
-                : 'mobileAccess.restrictedAccess'
-            )}
-          </p>
-          <p className="text-sm text-neutral-500">{t('mobileAccess.fullAccessHelp')}</p>
-          <details>
-            <summary className="cursor-pointer text-sm font-bold">
-              {t('mobileAccess.restrictAccess')}
-            </summary>
-            <div className="pt-3 space-y-3">
-              <PermissionPicker
-                permissions={permissions}
-                setPermissions={setPermissions}
-                chats={chats}
-                busy={busy || invitation !== null}
-              />
-              <BrutalButton
-                disabled={busy || invitation !== null}
-                onClick={() => setPermissions(fullPermissions())}
-              >
-                {t('mobileAccess.restoreFullAccess')}
-              </BrutalButton>
-            </div>
-          </details>
-        </div>
-        <label className="block space-y-1 text-sm">
-          <span>{t('mobileAccess.origin')}</span>
-          <input
-            className="w-full border-2 border-brutal-black dark:border-white bg-transparent p-2"
-            value={origin}
-            disabled={busy || invitation !== null}
-            onChange={(event) => {
-              setOrigin(event.target.value);
-              setInvitation(null);
-              setQR('');
-              setPayload('');
-            }}
-          />
-        </label>
-        <p className="text-xs text-neutral-500">{t('mobileAccess.network')}</p>
-        {config?.addresses?.map((address) => (
-          <p key={address.gateway_url} className="text-xs font-mono break-all">
-            {address.label}: {address.host}
-          </p>
-        ))}
-        <BrutalButton variant="warning" disabled={busy || !origin} onClick={generate}>
-          {t('mobileAccess.generate')}
-        </BrutalButton>
-        {invitation && (
-          <BrutalButton disabled={busy} onClick={() => void act(cancelActive)}>
-            {t('mobileAccess.cancelInvitation')}
-          </BrutalButton>
-        )}
-        {invitation &&
-          (expired ? (
-            <p>{t('mobileAccess.expired')}</p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <img
-                src={qr}
-                alt={t('mobileAccess.qrAlt')}
-                className="w-64 h-64 border-2 border-brutal-black"
-              />
-              <div className="space-y-2">
-                <p>{t('mobileAccess.scan')}</p>
-                <p>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.85fr)]">
+          <div className="min-w-0 space-y-4">
+            <ol className="space-y-4">
+              {(['prepareStep', 'scanStep', 'confirmStep'] as const).map((step, index) => (
+                <li key={step} className="flex items-start gap-3">
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-sm font-black text-brutal-black"
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                  <p className="pt-1 text-sm font-bold">{t(`mobileAccess.${step}`)}</p>
+                </li>
+              ))}
+            </ol>
+            <details className="border-2 border-brutal-black p-3 dark:border-white">
+              <summary className="cursor-pointer text-sm font-bold">
+                {t('mobileAccess.accessSettings')}
+              </summary>
+              <div className="space-y-3 pt-3">
+                <PermissionPicker
+                  permissions={permissions}
+                  setPermissions={setPermissions}
+                  chats={chats}
+                  busy={busy || invitationActive}
+                />
+              </div>
+            </details>
+            <details className="border-2 border-brutal-black p-3 dark:border-white">
+              <summary className="cursor-pointer text-sm font-bold">
+                {t('mobileAccess.networkSettings')}
+              </summary>
+              <div className="space-y-3 pt-3">
+                <label className="block space-y-1 text-sm">
+                  <span>{t('mobileAccess.origin')}</span>
+                  <input
+                    className="w-full border-2 border-brutal-black bg-transparent p-2 dark:border-white"
+                    value={origin}
+                    disabled={busy || invitationActive}
+                    onChange={(event) => setOrigin(event.target.value)}
+                  />
+                </label>
+                <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+                  {t('mobileAccess.network')}
+                </p>
+                {config?.addresses?.map((address) => (
+                  <p key={address.gateway_url} className="break-all font-mono text-xs">
+                    {address.label}: {address.host}
+                  </p>
+                ))}
+              </div>
+            </details>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-4 border-2 border-brutal-black bg-neutral-50 p-4 text-center dark:border-white dark:bg-zinc-900">
+            {invitationActive ? (
+              <>
+                <Badge tone="amber">{t('mobileAccess.waiting')}</Badge>
+                <img
+                  src={qr}
+                  alt={t('mobileAccess.qrAlt')}
+                  className="h-auto w-full max-w-64 border-2 border-brutal-black bg-white"
+                />
+                <p className="font-mono text-xs">
                   {t('mobileAccess.expires', {
-                    seconds: Math.max(0, Math.ceil(invitation.expires_at - now / 1000)),
+                    seconds: Math.max(0, Math.ceil(invitation!.expires_at - now / 1000)),
                   })}
                 </p>
-                <div className="flex items-center gap-2">
+                <p className="max-w-sm text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+                  {t('mobileAccess.scan')}
+                </p>
+                <div className="flex items-center gap-2 text-xs">
                   <span>{t('mobileAccess.copy')}</span>
-                  <CopyButton value={payload} />
+                  <CopyButton value={payload} label={t('mobileAccess.copy')} />
                 </div>
-              </div>
-            </div>
-          ))}
+              </>
+            ) : (
+              <>
+                <QrCodeIcon className="h-16 w-16 text-neutral-400" aria-hidden="true" />
+                <p className="text-sm font-bold" role="status">
+                  {t(expired ? 'mobileAccess.expired' : 'mobileAccess.ready')}
+                </p>
+                <BrutalButton
+                  variant="warning"
+                  disabled={busy || !origin.trim()}
+                  onClick={generate}
+                >
+                  {t(
+                    busy
+                      ? 'mobileAccess.generating'
+                      : expired
+                        ? 'mobileAccess.regenerate'
+                        : 'mobileAccess.generate'
+                  )}
+                </BrutalButton>
+              </>
+            )}
+            {invitation && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void act(cancelActive)}
+                className="text-xs font-medium text-neutral-500 underline decoration-neutral-300 underline-offset-4 transition-colors hover:text-brutal-black hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:decoration-neutral-600 dark:hover:text-white"
+              >
+                {t('mobileAccess.cancelInvitation')}
+              </button>
+            )}
+          </div>
+        </div>
         {pending
           .filter((device) => device.expires_at * 1000 > now)
           .map((device) => (
@@ -383,54 +414,83 @@ export function MobileAccessCard({
               decide={decide}
             />
           ))}
-        {devices.map((device) => (
-          <div
-            key={device.device_id}
-            className="border-t border-neutral-300 dark:border-neutral-700 pt-3 flex justify-between gap-4"
-          >
-            <div>
-              <strong>
-                {device.display_name} · {device.platform}
-              </strong>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={device.permissions.manage_chats === true}
-                  disabled={busy}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    void act(async () => {
-                      await mobileRequest(`devices/${device.device_id}/management`, { enabled });
-                    });
-                  }}
-                />
-                {t('mobileAccess.manage_chats')}
-              </label>
-              <p className="text-xs">
-                {device.permissions.all_chats
-                  ? t('mobileAccess.all_chats')
-                  : t('mobileAccess.chatCount', { count: device.permissions.chat_ids.length })}
-              </p>
-              <p className="text-xs">
+        <div className="border-t-2 border-brutal-black pt-4 dark:border-white">
+          <h4 className="text-sm font-black">{t('mobileAccess.pairedDevices')}</h4>
+          {devices.length === 0 && (
+            <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-400">
+              {t('mobileAccess.noDevices')}
+            </p>
+          )}
+        </div>
+        <SettingsGrid density="compact">
+          {devices.map((device) => (
+            <SettingsListItem key={device.device_id}>
+              <div className="flex items-center gap-3 p-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black bg-white text-brutal-black dark:bg-zinc-800 dark:text-white">
+                  <DevicePhoneMobileIcon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h5 className="truncate text-sm font-black" title={device.display_name}>
+                    {device.display_name}
+                  </h5>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {device.platform === 'ios' ? 'iOS' : 'Android'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+                <Badge>
+                  {device.permissions.all_chats
+                    ? t('mobileAccess.shortAllChats')
+                    : t('mobileAccess.chatCount', { count: device.permissions.chat_ids.length })}
+                </Badge>
                 {(['create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const)
                   .filter((key) => device.permissions[key])
-                  .map((key) => t(`mobileAccess.${key}`))
-                  .join(' · ') || t('mobileAccess.readOnly')}
-              </p>
-            </div>
-            <BrutalButton
-              disabled={busy}
-              variant="danger"
-              onClick={() =>
-                void act(async () => {
-                  await mobileRequest(`devices/${device.device_id}/revoke`, {});
-                })
-              }
-            >
-              {t('mobileAccess.revoke')}
-            </BrutalButton>
-          </div>
-        ))}
+                  .map((key) => (
+                    <Badge key={key}>{t(`mobileAccess.short_${key}`)}</Badge>
+                  ))}
+                {!device.permissions.create_chats &&
+                  !device.permissions.manage_chats &&
+                  !device.permissions.send &&
+                  !device.permissions.stop &&
+                  !device.permissions.approve_tools && <Badge>{t('mobileAccess.readOnly')}</Badge>}
+              </div>
+              <div className="flex items-start justify-between gap-3 border-t-2 border-brutal-black bg-white p-3 dark:bg-zinc-800">
+                <details className="min-w-0 flex-1">
+                  <summary className="cursor-pointer text-xs font-bold text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white">
+                    {t('mobileAccess.accessSettings')}
+                  </summary>
+                  <div className="pt-3">
+                    <BrutalMultiSelect
+                      variant="list"
+                      disabled={busy}
+                      value={device.permissions.manage_chats ? ['manage_chats'] : []}
+                      options={[{ value: 'manage_chats', label: t('mobileAccess.manage_chats') }]}
+                      onChange={(selected) =>
+                        void act(async () => {
+                          await mobileRequest(`devices/${device.device_id}/management`, {
+                            enabled: selected.includes('manage_chats'),
+                          });
+                        })
+                      }
+                    />
+                  </div>
+                </details>
+                <SettingsListAction
+                  tone="red"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      await mobileRequest(`devices/${device.device_id}/revoke`, {});
+                    })
+                  }
+                >
+                  {t('mobileAccess.revoke')}
+                </SettingsListAction>
+              </div>
+            </SettingsListItem>
+          ))}
+        </SettingsGrid>
       </div>
     </SettingsCard>
   );
