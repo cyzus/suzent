@@ -22,6 +22,7 @@
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-send-idempotency.json",
     ".releases/changes/model-role-hierarchy.json",
+    ".releases/changes/native-notifications-only.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/project-library.json",
