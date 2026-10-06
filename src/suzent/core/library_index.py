@@ -4,6 +4,7 @@ Tools that save output into ``artifacts/`` register each file here, so later
 chats find it through the index instead of listing folders.
 """
 
+import re
 import threading
 from pathlib import Path
 
@@ -17,7 +18,17 @@ ARTIFACTS_DIRNAME = "artifacts"
 CONTEXT_FILENAME = "context.md"
 FILE_INDEX_HEADING = "## File index"
 
+_INDEXED_PATH = re.compile(r"`([^`]+)`|\]\(([^)\s]+)\)")
+
 _lock = threading.Lock()
+
+
+def indexed_paths(text: str) -> set[str]:
+    """Return the paths ``context.md`` lists in backticks or as link targets."""
+    return {
+        (code or link).removeprefix("./").removeprefix("/workspace/")
+        for code, link in _INDEXED_PATH.findall(text)
+    }
 
 
 def project_root(deps: AgentDeps) -> Path:
@@ -44,14 +55,16 @@ def add_to_file_index(project_dir: Path, entries: list[tuple[Path, str]]) -> int
     context = project_dir / CONTEXT_FILENAME
     with _lock:
         text = context.read_text(encoding="utf-8") if context.exists() else ""
+        indexed = indexed_paths(text)
         lines = []
         for path, description in entries:
             try:
                 relative = path.relative_to(project_dir).as_posix()
             except ValueError:
                 relative = path.as_posix()
-            if relative in text or any(relative in line for line in lines):
+            if relative in indexed:
                 continue
+            indexed.add(relative)
             lines.append(f"- `{relative}`: {description}")
         if not lines:
             return 0
@@ -77,22 +90,6 @@ def register_artifacts(deps: AgentDeps, paths: list[str], description: str) -> N
             project_root(deps), [(Path(path), description) for path in paths]
         )
     except Exception as exc:
-        logger.warning("Could not index artifacts {}: {}", paths, exc)
-
-
-def unindexed_artifacts(project_dir: Path, limit: int = 10) -> list[Path]:
-    """Return up to ``limit`` files in ``artifacts/`` missing from ``context.md``."""
-    root = project_dir / ARTIFACTS_DIRNAME
-    if not root.is_dir():
-        return []
-    context = project_dir / CONTEXT_FILENAME
-    text = context.read_text(encoding="utf-8") if context.exists() else ""
-    missing = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.name.startswith(".") or path.suffix == ".json":
-            continue
-        if path.relative_to(project_dir).as_posix() not in text:
-            missing.append(path)
-            if len(missing) >= limit:
-                break
-    return missing
+        logger.warning(
+            "Could not index {} artifact(s): {}", len(paths), type(exc).__name__
+        )

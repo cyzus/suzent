@@ -59,8 +59,7 @@ writes like this:
 Inside the library, the agent keeps finished work in `artifacts/` and notes worth
 keeping in `notes/`. It lists every library file, one line each, in the
 project's `context.md`, so the next chat knows what's already there. Generated
-images, videos and speech go into `artifacts/` and are listed automatically; if
-a file lands in `artifacts/` without an entry, the agent is reminded to add one.
+images, videos and speech go into `artifacts/` and are listed automatically.
 
 <a id="projects"></a>
 

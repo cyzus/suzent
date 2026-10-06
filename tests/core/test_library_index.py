@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from suzent.core.library_index import add_to_file_index, unindexed_artifacts
+from suzent.core.library_index import add_to_file_index
 
 
 def test_creates_file_index_section(tmp_path: Path) -> None:
@@ -35,11 +35,9 @@ def test_creates_context_when_missing(tmp_path: Path) -> None:
     )
 
 
-def test_unindexed_artifacts(tmp_path: Path) -> None:
-    artifacts = tmp_path / "artifacts"
-    (artifacts / "images").mkdir(parents=True)
-    for name in ("images/a.png", "report.md", "job.json", ".hidden"):
-        (artifacts / name).write_text("x")
-    (tmp_path / "context.md").write_text("- `artifacts/report.md`: report\n")
-    assert unindexed_artifacts(tmp_path) == [artifacts / "images/a.png"]
-    assert unindexed_artifacts(tmp_path / "missing") == []
+def test_recognises_link_and_workspace_paths(tmp_path: Path) -> None:
+    (tmp_path / "context.md").write_text(
+        "## File index\n\n- [r](artifacts/r.md)\n- `/workspace/artifacts/s.md`\n"
+    )
+    entries = [(tmp_path / "artifacts/r.md", "r"), (tmp_path / "artifacts/s.md", "s")]
+    assert add_to_file_index(tmp_path, entries) == 0
