@@ -8,11 +8,15 @@ const plugin = vi.hoisted(() => ({
 vi.mock('@tauri-apps/plugin-notification', () => plugin);
 
 import {
+  forgetReply,
   notifyIfAway,
-  takeAwaitedReply,
+  recordReplyChunk,
+  takeReplyOutcome,
   truncateNotificationBody,
   watchForReply,
 } from './desktopNotifications';
+
+const frame = (data: object): string => `data: ${JSON.stringify(data)}\n\n`;
 
 function setFocus(focused: boolean): void {
   vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => focused });
@@ -50,9 +54,44 @@ describe('desktop notifications', () => {
 
   it('announces each watched reply once', () => {
     watchForReply('chat-1');
-    expect(takeAwaitedReply('chat-1')).toBe(true);
-    expect(takeAwaitedReply('chat-1')).toBe(false);
-    expect(takeAwaitedReply('chat-2')).toBe(false);
+    expect(takeReplyOutcome('chat-1')).toBe('ready');
+    expect(takeReplyOutcome('chat-1')).toBeNull();
+    expect(takeReplyOutcome('chat-2')).toBeNull();
+  });
+
+  it('ignores chunks from chats nobody is waiting on', () => {
+    recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', message: 'boom' }));
+    expect(takeReplyOutcome('chat-1')).toBeNull();
+  });
+
+  it('tells a failed turn from a finished one', () => {
+    watchForReply('chat-1');
+    recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', message: 'boom' }));
+    expect(takeReplyOutcome('chat-1')).toBe('failed');
+  });
+
+  it('stays quiet about a turn the user stopped', () => {
+    watchForReply('chat-1');
+    recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', code: 'stream_stopped' }));
+    expect(takeReplyOutcome('chat-1')).toBe('stopped');
+  });
+
+  it('reports a turn paused on an unanswered approval', () => {
+    const request = (id: string) =>
+      frame({ type: 'CUSTOM', name: 'tool_approval_request', value: { toolCallId: id } });
+    watchForReply('chat-1');
+    recordReplyChunk('chat-1', request('t1') + request('t2'));
+    recordReplyChunk(
+      'chat-1',
+      frame({ type: 'CUSTOM', name: 'tool_approval_result', value: { toolCallId: 't1' } })
+    );
+    expect(takeReplyOutcome('chat-1')).toBe('approval');
+  });
+
+  it('drops a watch whose turn never started', () => {
+    watchForReply('chat-1');
+    forgetReply('chat-1');
+    expect(takeReplyOutcome('chat-1')).toBeNull();
   });
 
   it('flattens and shortens long bodies', () => {

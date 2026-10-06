@@ -2,7 +2,7 @@ import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
-import { watchForReply } from '../lib/desktopNotifications';
+import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
@@ -1419,6 +1419,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // minted a newer one, and retiring that would leave the turn now running
       // nameless.
       const runToken = mintRunToken(chatId);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(chatId);
       // A resume is a start like any other -- the approval dialog already put
       // the chat back into streaming, so Stop is live over this request too.
       const resumeAbort = new AbortController();
@@ -1435,11 +1437,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       } catch (err) {
         // The turn never started; the name minted for it must not outlive it.
+        forgetReply(chatId);
         retireRunToken(runToken);
         throw err;
       }
 
       if (!resp.ok) {
+        forgetReply(chatId);
         retireRunToken(runToken);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
@@ -1454,7 +1458,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       streamingChatIdRef.current = null;
       isLiveStreamRef.current = false;
       // Connect immediately rather than waiting for stream_started from the bus.
-      watchForReply(chatId);
       tryConnectRef.current?.();
     },
     [
@@ -1505,6 +1508,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       retireStopAttempt();
 
       if (!plan.reattach) {
+        forgetReply(chatId);
         setIsStreaming(false, chatId);
         return false;
       }
@@ -2352,6 +2356,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       const steerChatId = currentChatId;
       const steerRunToken = mintRunToken(steerChatId);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(steerChatId);
       const steerAbort = new AbortController();
       trackPendingStart(
         fetch(`${getApiBase()}/chat/steer-send`, {
@@ -2374,11 +2380,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
-            watchForReply(steerChatId);
             tryConnectRef.current?.();
           })
           .catch((err) => {
             if (!isAbortError(err)) console.error('[send] /chat/steer-send failed:', err);
+            forgetReply(steerChatId);
             retireRunToken(steerRunToken);
             setIsStreaming(false, steerChatId);
           })
@@ -2479,6 +2485,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
     const sendRunToken = mintRunToken(chatIdForSend);
+    // Before the POST: a fast turn can end before its 202 arrives.
+    watchForReply(chatIdForSend);
     payload.client_run_token = sendRunToken;
 
     // Fire /chat/send — backend registers the background stream and returns 202.
@@ -2507,7 +2515,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             return;
           }
           // 202: stream registered — connect to /chat/live immediately.
-          watchForReply(chatIdForSend);
           tryConnectRef.current?.();
         })
         .catch((err) => {
@@ -2516,6 +2523,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           // Left installed, the next probe on this chat inherits it and a stop
           // goes out under a dead name -- answered 409, which reads as "already
           // stopped" while the turn that is running carries on.
+          forgetReply(chatIdForSend);
           retireRunToken(sendRunToken);
           setIsStreaming(false, chatIdForSend);
           clearPartsIfStillViewingSendChat();
@@ -2581,6 +2589,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     retireStopAttempt();
 
     const retryRunToken = mintRunToken(chatIdForRetry);
+    // Before the POST: a fast turn can end before its 202 arrives.
+    watchForReply(chatIdForRetry);
     const retryAbort = new AbortController();
     trackPendingStart(
       fetch(`${getApiBase()}/chat/send`, {
@@ -2601,11 +2611,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             });
             return;
           }
-          watchForReply(chatIdForRetry);
           tryConnectRef.current?.();
         })
         .catch((err) => {
           if (!isAbortError(err)) console.error('[handleRetry] /chat/send failed:', err);
+          forgetReply(chatIdForRetry);
           retireRunToken(retryRunToken);
           setIsStreaming(false, chatIdForRetry);
         }),
@@ -2676,6 +2686,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       retireStopAttempt();
 
       const editRunToken = mintRunToken(chatIdForEdit);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(chatIdForEdit);
       const editAbort = new AbortController();
       trackPendingStart(
         fetch(`${getApiBase()}/chat/send`, {
@@ -2697,12 +2709,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
-            watchForReply(chatIdForEdit);
             tryConnectRef.current?.();
           })
           .catch((err) => {
             if (!isAbortError(err))
               console.error('[handleEditUserMessage] /chat/send failed:', err);
+            forgetReply(chatIdForEdit);
             retireRunToken(editRunToken);
             setIsStreaming(false, chatIdForEdit);
           }),

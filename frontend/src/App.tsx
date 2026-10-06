@@ -39,7 +39,13 @@ import {
   type UpdateStatus,
 } from './lib/desktopUpdates';
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
-import { notifyIfAway, takeAwaitedReply } from './lib/desktopNotifications';
+import {
+  notifyIfAway,
+  recordReplyChunk,
+  takeReplyOutcome,
+  type ReplyOutcome,
+} from './lib/desktopNotifications';
+import { isDesktop } from './lib/runtime';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
@@ -444,12 +450,23 @@ function AppInner(): React.ReactElement {
   React.useEffect(
     () =>
       subscribeToBusPayloads((msg) => {
-        if (msg?.event !== 'stream_ended' || typeof msg.chat_id !== 'string') return;
-        if (!takeAwaitedReply(msg.chat_id)) return;
+        if (typeof msg?.chat_id !== 'string') return;
+        if (msg.event === 'chunk' && typeof msg.data === 'string') {
+          recordReplyChunk(msg.chat_id, msg.data);
+          return;
+        }
+        if (msg.event !== 'stream_ended') return;
+        const outcome = takeReplyOutcome(msg.chat_id);
+        if (!outcome || outcome === 'stopped') return;
+        const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
+          ready: 'backgroundNotifications.replyReady',
+          approval: 'backgroundNotifications.replyNeedsApproval',
+          failed: 'backgroundNotifications.replyFailed',
+        };
         const chat = chatsRef.current.find((c) => c.id === msg.chat_id);
         void notifyIfAway(
           chat?.title || tRef.current('backgroundNotifications.untitledChat'),
-          tRef.current('backgroundNotifications.replyReady')
+          tRef.current(messageKeys[outcome])
         );
       }),
     []
@@ -480,11 +497,14 @@ function AppInner(): React.ReactElement {
     };
 
     const interval = setInterval(async () => {
-      // Background results are drained even while hidden: a minimized window is
-      // exactly when the system notification matters.
-      const notifications = await drainCronNotifications();
-      announceBackgroundNotifications(notifications);
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      // Draining marks results delivered. A minimized desktop window can still
+      // show them as system notifications; a hidden browser tab cannot, so it
+      // leaves them queued until the user comes back.
+      if (!hidden || isDesktop()) {
+        announceBackgroundNotifications(await drainCronNotifications());
+      }
+      if (hidden) {
         return;
       }
       const chatId = currentChatIdRef.current;

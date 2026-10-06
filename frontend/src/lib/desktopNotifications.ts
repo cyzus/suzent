@@ -11,8 +11,16 @@ const MAX_BODY_LENGTH = 200;
 // denial would only show the prompt again on platforms that allow it.
 let permission: Promise<boolean> | null = null;
 
+export type ReplyOutcome = 'ready' | 'approval' | 'failed' | 'stopped';
+
+interface WatchedReply {
+  failed: boolean;
+  stopped: boolean;
+  pendingApprovals: Set<string>;
+}
+
 // Chats where the user started a turn and is waiting for the reply.
-const awaitingReply = new Set<string>();
+const awaitingReply = new Map<string, WatchedReply>();
 
 function ensurePermission(): Promise<boolean> {
   if (!permission) {
@@ -47,10 +55,50 @@ export async function notifyIfAway(title: string, body: string): Promise<void> {
 }
 
 export function watchForReply(chatId: string): void {
-  awaitingReply.add(chatId);
+  awaitingReply.set(chatId, { failed: false, stopped: false, pendingApprovals: new Set() });
 }
 
-/** True once per watched turn: the caller owns announcing that reply. */
-export function takeAwaitedReply(chatId: string): boolean {
-  return awaitingReply.delete(chatId);
+export function forgetReply(chatId: string): void {
+  awaitingReply.delete(chatId);
+}
+
+/**
+ * Note how a watched turn is going from a raw SSE chunk off the event bus.
+ * A stream also ends when it pauses for approval, fails, or is stopped, and
+ * each of those deserves a different message, or none.
+ */
+export function recordReplyChunk(chatId: string, rawData: string): void {
+  const watched = awaitingReply.get(chatId);
+  if (!watched) return;
+  for (const line of rawData.split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    let frame: { type?: string; code?: string; name?: string; value?: Record<string, unknown> };
+    try {
+      frame = JSON.parse(line.slice(5));
+    } catch {
+      continue;
+    }
+    if (frame.type === 'RUN_ERROR') {
+      if (frame.code === 'stream_stopped') watched.stopped = true;
+      else watched.failed = true;
+    } else if (frame.type === 'error') {
+      watched.failed = true;
+    } else if (frame.type === 'CUSTOM') {
+      const toolCallId = frame.value?.toolCallId;
+      if (typeof toolCallId !== 'string') continue;
+      if (frame.name === 'tool_approval_request') watched.pendingApprovals.add(toolCallId);
+      else if (frame.name === 'tool_approval_result') watched.pendingApprovals.delete(toolCallId);
+    }
+  }
+}
+
+/** The watched turn's outcome, once: the caller owns announcing it. */
+export function takeReplyOutcome(chatId: string): ReplyOutcome | null {
+  const watched = awaitingReply.get(chatId);
+  if (!watched) return null;
+  awaitingReply.delete(chatId);
+  if (watched.stopped) return 'stopped';
+  if (watched.failed) return 'failed';
+  if (watched.pendingApprovals.size > 0) return 'approval';
+  return 'ready';
 }

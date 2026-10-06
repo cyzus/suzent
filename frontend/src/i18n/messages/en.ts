@@ -185,6 +185,8 @@ export const en = {
     updateReady: '[{name}] has an update',
     manyUpdates: '{count} background updates',
     replyReady: 'Reply ready',
+    replyNeedsApproval: 'Needs your approval to continue',
+    replyFailed: 'Reply failed',
     untitledChat: 'Suzent',
   },
   hostPicker: {

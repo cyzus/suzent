@@ -175,6 +175,8 @@ export const zhCN = {
     updateReady: '[{name}] 有新进展',
     manyUpdates: '{count} 条后台更新',
     replyReady: '回复已完成',
+    replyNeedsApproval: '需要你的批准才能继续',
+    replyFailed: '回复失败',
     untitledChat: 'Suzent',
   },
   hostPicker: {
