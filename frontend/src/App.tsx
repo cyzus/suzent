@@ -23,7 +23,7 @@ import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
-import { useStatusStore } from './hooks/useStatusStore';
+import { useNativeNotification } from './hooks/useNativeNotification';
 import {
   BackendVersionTimeoutError,
   drainCronNotifications,
@@ -40,7 +40,7 @@ import {
 } from './lib/desktopUpdates';
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
 import {
-  notifyIfAway,
+  notifyDesktop,
   recordReplyChunk,
   takeReplyOutcome,
   type ReplyOutcome,
@@ -270,7 +270,7 @@ function NavTabs({
 
 function UpdateButton(): React.ReactElement | null {
   const { t } = useI18n();
-  const setStatusMsg = useStatusStore((s) => s.setStatus);
+  const notify = useNativeNotification();
   const [updateStatus, setUpdateStatus] = React.useState<UpdateStatus | null>(null);
   const [isStartingUpdate, setIsStartingUpdate] = React.useState(false);
 
@@ -306,7 +306,7 @@ function UpdateButton(): React.ReactElement | null {
     } catch (error) {
       setIsStartingUpdate(false);
       const message = error instanceof Error ? error.message : String(error);
-      setStatusMsg(t('updates.startFailed', { error: message }), 'error', 6000);
+      notify(t('updates.startFailed', { error: message }));
     }
   }
 
@@ -396,7 +396,6 @@ function AppInner(): React.ReactElement {
     chats,
     loadChat,
   } = useChatCoreStore();
-  const setStatusMsg = useStatusStore((s) => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
   const { t } = useI18n();
@@ -446,7 +445,7 @@ function AppInner(): React.ReactElement {
     tRef.current = t;
   }, [t]);
 
-  // A reply the user asked for lands while Suzent is in the background.
+  // Announce the outcome of a reply the user asked for.
   React.useEffect(
     () =>
       subscribeToBusPayloads((msg) => {
@@ -465,7 +464,7 @@ function AppInner(): React.ReactElement {
           failed: 'backgroundNotifications.replyFailed',
         };
         const chat = chatsRef.current.find((c) => c.id === msg.chat_id);
-        void notifyIfAway(
+        void notifyDesktop(
           tRef.current('backgroundNotifications.title', {
             name: chat?.title || tRef.current('backgroundNotifications.untitledChat'),
           }),
@@ -481,15 +480,7 @@ function AppInner(): React.ReactElement {
       const tr = tRef.current;
       if (notifications.length === 1) {
         const [only] = notifications;
-        const params = { name: only.job_name };
-        setStatusMsg(
-          only.source && only.source !== 'cron'
-            ? tr('backgroundNotifications.updateReady', params)
-            : tr('backgroundNotifications.taskFinished', params),
-          'info',
-          4000
-        );
-        void notifyIfAway(
+        void notifyDesktop(
           tr('backgroundNotifications.title', { name: only.job_name }),
           only.result
         );
@@ -497,8 +488,7 @@ function AppInner(): React.ReactElement {
         const summary = tr('backgroundNotifications.manyUpdates', {
           count: String(notifications.length),
         });
-        setStatusMsg(summary, 'info', 4000);
-        void notifyIfAway(tr('app.title'), summary);
+        void notifyDesktop(tr('app.title'), summary);
       }
     };
 
@@ -539,7 +529,7 @@ function AppInner(): React.ReactElement {
       }
     }, 8000);
     return () => clearInterval(interval);
-  }, [setStatusMsg, setHeartbeatStatus]); // stable Zustand actions
+  }, [setHeartbeatStatus]); // stable Zustand actions
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
