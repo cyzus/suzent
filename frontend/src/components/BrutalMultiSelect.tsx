@@ -8,6 +8,7 @@ interface Option {
 }
 
 interface BrutalMultiSelectProps {
+  disabled?: boolean;
   value: string[];
   onChange: (value: string[]) => void;
   options: (string | Option)[];
@@ -22,6 +23,7 @@ interface BrutalMultiSelectProps {
 }
 
 export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
+  disabled = false,
   value = [],
   onChange,
   options,
@@ -130,6 +132,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
   }, [variant, isOpen]);
 
   const handleToggle = (val: string) => {
+    if (disabled) return;
     const newValue = value.includes(val) ? value.filter((v) => v !== val) : [...value, val];
     onChange(newValue);
   };
@@ -157,8 +160,10 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
               <button
                 key={option.value}
                 type="button"
+                disabled={disabled}
+                aria-pressed={active}
                 onClick={() => handleToggle(option.value)}
-                className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group ${
+                className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
                     ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
                     : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
@@ -200,6 +205,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
 
   const dropdown =
     isOpen &&
+    !disabled &&
     dropdownPosition &&
     createPortal(
       <div
@@ -264,8 +270,9 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow focus:outline-none ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
+        className={`w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
       >
         <span className="truncate">{displayLabel}</span>
         <svg
