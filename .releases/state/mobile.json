@@ -1,7 +1,8 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "consumed": [
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/mobile-attachments.json",
     ".releases/changes/mobile-chat-management.json",
     ".releases/changes/mobile-chat-model-source.json",
     ".releases/changes/mobile-component-parity.json",

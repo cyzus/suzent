@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.3.0] - 2026-10-06
+
+### Release notes
+- Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+
 ## [mobile-v0.2.0] - 2026-10-01
 
 ### Release notes
