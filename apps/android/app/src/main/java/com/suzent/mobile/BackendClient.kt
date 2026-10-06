@@ -19,6 +19,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
@@ -37,10 +40,12 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         .apply { if (body != null) post(body.toString().toRequestBody("application/json".toMediaType())) }
         .build()
 
-    private suspend fun json(path: String, body: JSONObject? = null): JSONObject = withContext(Dispatchers.IO) {
-        val transport = if (body == null) reads else http
+    private suspend fun json(path: String, body: JSONObject? = null): JSONObject =
+        execute(request(path, body), if (body == null) reads else http)
+
+    private suspend fun execute(request: Request, transport: OkHttpClient): JSONObject = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
-            val call = transport.newCall(request(path, body))
+            val call = transport.newCall(request)
             continuation.invokeOnCancellation {
                 transport.dispatcher.executorService.execute { call.cancel() }
             }
@@ -76,9 +81,13 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             throw failure
         } catch (_: org.json.JSONException) { throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE) }
     }
+    var supportsAttachments = false
+        private set
+
     suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
         validateMobileCapabilities(value)
+        supportsAttachments = value.optInt("attachments") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
@@ -119,11 +128,23 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))
     }
-    suspend fun send(id: String, text: String, model: String? = null) {
+    suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String> {
+        require(!id.contains('/') && id != "." && id != "..")
+        val form = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
+            attachments.forEach { addFormDataPart("files", it.name, it.file.asRequestBody(it.mimeType.toMediaTypeOrNull())) }
+        }.build()
+        val url = backend.endpoint("mobile/client/upload").newBuilder().addQueryParameter("chat_id", id).build()
+        val request = Request.Builder().url(url).apply { if (token.isNotEmpty()) header("Authorization", "Bearer $token") }.post(form).build()
+        val issued = execute(request, http).getJSONArray("attachments")
+        return (0 until issued.length()).map { issued.getJSONObject(it).getString("id") }
+    }
+
+    suspend fun send(id: String, text: String, model: String? = null, attachments: List<String> = emptyList()) {
         val messageId = UUID.randomUUID().toString()
         val body = JSONObject().put("chat_id", id).put("message", text)
             .put("client_message_id", messageId)
             .apply { if (model != null) put("model", model) }
+            .apply { if (attachments.isNotEmpty()) put("attachments", org.json.JSONArray(attachments)) }
         try {
             json("mobile/client/send", body)
         } catch (failure: Exception) {

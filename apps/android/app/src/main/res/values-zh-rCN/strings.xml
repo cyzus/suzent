@@ -140,4 +140,13 @@
     <string name="message_retry_help">重新运行最后一条用户消息，替换最新回复。</string>
     <string name="message_fork_help">从这条消息创建新的分支对话。</string>
     <string name="message_model">模型</string>
+    <string name="attach">添加附件</string>
+    <string name="attach_photo">拍照</string>
+    <string name="attach_video">录像</string>
+    <string name="attach_media">照片和视频</string>
+    <string name="attach_file">文件</string>
+    <string name="attachment_remove">移除 %1$s</string>
+    <string name="attachment_limit">每条消息最多添加 %1$d 个附件。</string>
+    <string name="attachment_read_error">无法读取该项目，请重新添加。</string>
+    <string name="camera_permission_attach">请在设置中允许使用相机，才能拍照和录像。</string>
 </resources>

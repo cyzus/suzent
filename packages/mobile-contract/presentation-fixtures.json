@@ -320,5 +320,43 @@
       1,
       0
     ]
+  },
+  {
+    "name": "attachment-only user rows stay visible",
+    "messages": [
+      {
+        "role": "user",
+        "content": "",
+        "files": [
+          {
+            "filename": "photo.jpg",
+            "mime_type": "image/jpeg",
+            "path": "/workspace/uploads/photo.jpg"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "What is in this clip?",
+        "files": [
+          {
+            "filename": "clip.mp4",
+            "mime_type": "video/mp4"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": ""
+      }
+    ],
+    "texts": [
+      "",
+      "What is in this clip?"
+    ],
+    "activities": [
+      0,
+      0
+    ]
   }
 ]

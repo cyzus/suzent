@@ -280,7 +280,10 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackMode
             .widthIn(max = 320.dp).drawBehind {
                 drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
             }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline).padding(PresentationTokens.spaceMedium.dp)) {
-            SelectionContainer { Text(message.text, color = Color.Black, fontSize = PresentationTokens.typeChat.sp) }
+            Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
+                message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
+                if (message.text.isNotEmpty()) SelectionContainer { Text(message.text, color = Color.Black, fontSize = PresentationTokens.typeChat.sp) }
+            }
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SuzentAssistantBadge(compact = !isLatest)

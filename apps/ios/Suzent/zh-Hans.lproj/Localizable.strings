@@ -168,3 +168,11 @@
 "Model" = "模型";
 
 "View full model name" = "查看完整模型名称";
+
+"Attach" = "添加附件";
+"Camera" = "拍照或录像";
+"Photos and videos" = "照片和视频";
+"Files" = "文件";
+"Remove %@" = "移除 %@";
+"You can attach up to %lld items per message." = "每条消息最多添加 %lld 个附件。";
+"That item could not be read. Try attaching it again." = "无法读取该项目，请重新添加。";
