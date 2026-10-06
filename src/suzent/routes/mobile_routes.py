@@ -46,6 +46,11 @@ class DecisionRequest(BaseModel):
     permissions: ClientPermissions | None = None
 
 
+class PermissionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    permissions: ClientPermissions
+
+
 class ManagementRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: StrictBool
@@ -164,6 +169,17 @@ async def revoke(request: Request) -> JSONResponse:
     return reply({"ok": removed}, 200 if removed else 404)
 
 
+async def update_permissions(request: Request) -> JSONResponse:
+    try:
+        body = PermissionsRequest.model_validate(await request.json(), strict=True)
+    except (ValidationError, ValueError):
+        return reply({"error": "Invalid device permissions"}, 400)
+    updated = get_mobile_store(request).set_permissions(
+        request.path_params["device_id"], body.permissions
+    )
+    return reply({"ok": updated}, 200 if updated else 404)
+
+
 async def management(request: Request) -> JSONResponse:
     try:
         body = ManagementRequest.model_validate(await request.json())
@@ -185,6 +201,9 @@ mobile_routes = [
     Route("/mobile/pairing/pending", pending, methods=["GET"]),
     Route("/mobile/pairing/{pairing_id}/decide", decide, methods=["POST"]),
     Route("/mobile/devices", devices, methods=["GET"]),
+    Route(
+        "/mobile/devices/{device_id}/permissions", update_permissions, methods=["POST"]
+    ),
     Route("/mobile/devices/{device_id}/management", management, methods=["POST"]),
     Route("/mobile/devices/{device_id}/revoke", revoke, methods=["POST"]),
 ]

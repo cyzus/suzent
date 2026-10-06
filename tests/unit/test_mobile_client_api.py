@@ -1164,3 +1164,56 @@ def test_attachment_registry_expires_entries(monkeypatch):
     assert registry.resolve("device", "other", [first]) is None
     now[0] = 111.0
     assert registry.resolve("device", "chat", [first]) is None
+
+
+def test_operator_can_replace_permissions_without_repairing(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    url = f"/mobile/devices/{result['device']['device_id']}/permissions"
+    permissions = ClientPermissions(chat_ids=["shared"], manage_chats=True).model_dump()
+    assert client.post(url, json={"permissions": permissions}).status_code == 401
+    with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
+        response = desktop.post(url, json={"permissions": permissions})
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert (
+            desktop.post(
+                "/mobile/devices/missing/permissions", json={"permissions": permissions}
+            ).status_code
+            == 404
+        )
+    assert store.verify(result["token"]).permissions.model_dump() == permissions
+    assert [
+        chat["id"] for chat in client.get("/mobile/client/chats").json()["chats"]
+    ] == ["shared"]
+    assert (
+        client.post(
+            "/mobile/client/send", json={"chat_id": "shared", "message": "hello"}
+        ).status_code
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"permissions": None},
+        {"permissions": {"send": "true"}},
+        {"permissions": {"unknown": True}},
+        {"permissions": {"chat_ids": [1]}},
+        {"permissions": {}, "extra": True},
+    ],
+)
+def test_permission_update_rejects_invalid_body(
+    setup_client: tuple[TestClient, PairingStore], body: dict[str, object]
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True)
+    url = f"/mobile/devices/{result['device']['device_id']}/permissions"
+    with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
+        assert desktop.post(url, json=body).status_code == 400
+    assert store.verify(result["token"]).permissions.all_chats

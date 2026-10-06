@@ -338,18 +338,14 @@ class PairingStore:
                 return True
             return False
 
-    def set_management(self, device_id: str, enabled: bool) -> bool:
+    def set_permissions(self, device_id: str, permissions: ClientPermissions) -> bool:
         with self._lock:
             if not any(g.device_id == device_id for g in self._grants.values()):
                 return False
             self._save(
                 {
                     key: grant.model_copy(
-                        update={
-                            "permissions": grant.permissions.model_copy(
-                                update={"manage_chats": enabled}
-                            )
-                        }
+                        update={"permissions": permissions.model_copy(deep=True)}
                     )
                     if grant.device_id == device_id
                     else grant
@@ -357,6 +353,18 @@ class PairingStore:
                 }
             )
             return True
+
+    def set_management(self, device_id: str, enabled: bool) -> bool:
+        with self._lock:
+            grant = next(
+                (g for g in self._grants.values() if g.device_id == device_id), None
+            )
+            if grant is None:
+                return False
+            return self.set_permissions(
+                device_id,
+                grant.permissions.model_copy(update={"manage_chats": enabled}),
+            )
 
     def revoke(self, device_id: str) -> bool:
         with self._lock:
