@@ -5555,6 +5555,22 @@ were intentionally replaced, scan a fresh QR to authorize it again. Public HTTPS
 Tailscale and reverse proxies remain supported as optional connection methods;
 this local listener does not provide internet traversal or a relay service.
 
+### Updating paired-phone permissions
+
+The desktop operator can replace a device's complete permission set with
+`POST /mobile/devices/{device_id}/permissions` and a `permissions` object matching
+`ClientPermissions`. The route uses the host authorization boundary; a mobile
+credential cannot change its own permissions. Invalid payloads return 400 and
+unknown devices return 404.
+
+The store persists the replacement atomically before updating in-memory grants.
+The existing credential remains valid, and subsequent mobile requests check the
+updated scope. The legacy `/management` route remains available for older
+clients and changes only `manage_chats`.
+
+The desktop editor keeps a local draft until Save. Cancel discards the draft;
+failed saves leave it available to retry.
+
 
 ---
 
