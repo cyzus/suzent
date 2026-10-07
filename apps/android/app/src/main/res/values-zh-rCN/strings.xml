@@ -164,4 +164,6 @@
     <string name="connecting_suzent">正在连接 Suzent</string>
     <string name="connection_help">连接帮助</string>
     <string name="connection_help_detail">请确认桌面端 Suzent 正在运行，并检查两端的网络连接。</string>
+    <string name="reminder_expanded">已展开</string>
+    <string name="reminder_collapsed">已折叠</string>
 </resources>

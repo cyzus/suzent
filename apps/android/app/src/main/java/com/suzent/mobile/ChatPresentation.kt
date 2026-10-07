@@ -16,6 +16,19 @@ data class DisplayMessage(val role: String, val parts: List<MessagePart>, val ci
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
+data class SystemReminder(val content: String, val title: String, val body: String) {
+    val initiallyCollapsed: Boolean get() = body.length > 600 || body.split('\n').size > 8
+}
+
+fun systemReminder(text: String): SystemReminder? {
+    val clean = text.replace(Regex("""<!--\s*suzent-agent-inbox:[\s\S]*?-->""", RegexOption.IGNORE_CASE), "").trim()
+    if (clean.isEmpty()) return null
+    val lines = clean.split('\n')
+    val first = lines.first().trim()
+    val title = Regex("""^\*\*(.+?)\*\*$""").matchEntire(first)?.groupValues?.get(1)?.trim() ?: first
+    return SystemReminder(clean, title, lines.drop(1).joinToString("\n").trim())
+}
+
 private val citationPatterns = listOf(
     Regex("\\[\\[cite:\\s*([^\\]\\n]+?)\\s*]]", RegexOption.IGNORE_CASE),
     Regex("\ue200cite\ue202([^\ue201]+)\ue201", RegexOption.IGNORE_CASE),
@@ -62,7 +75,10 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             message.parts.isEmpty() -> listOf(MessagePart("text", text = message.content))
             else -> message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
         }
-        val parts = normalizeParts(rawParts)
+        val visibleParts = if (message.role in listOf("system_triggered", "trigger")) rawParts.map {
+            if (it.type == "text") it.copy(text = systemReminder(it.text)?.content.orEmpty()) else it
+        } else rawParts
+        val parts = normalizeParts(visibleParts)
         if (parts.isEmpty() && message.files.isEmpty()) null else {
             val localSources = rawParts.flatMap { it.citationSources }
             val referencedIds = parts.flatMap { citationSourceIds(it.text) }.toSet()
@@ -77,7 +93,8 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
         val previous = grouped.lastOrNull()
         // Only tool/reasoning tails continue a reply; text and rendered surfaces end it.
         if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool") &&
-            previous.parts.lastOrNull()?.type in listOf("tool", "reasoning")) {
+            previous.parts.lastOrNull()?.type in listOf("tool", "reasoning") &&
+            messages.subList(previous.messageIndex + 1, row.messageIndex + 1).none { it.role in listOf("system_triggered", "trigger") }) {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
                 normalizeParts(previous.parts + row.parts), (previous.citationSources + row.citationSources).distinctBy { it.id },

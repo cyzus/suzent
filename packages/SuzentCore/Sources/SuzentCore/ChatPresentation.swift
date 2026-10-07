@@ -40,6 +40,25 @@ public struct DisplayMessage: Sendable {
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
+public struct SystemReminder: Sendable, Equatable {
+    public let content: String
+    public let title: String
+    public let body: String
+    public var initiallyCollapsed: Bool { body.utf16.count > 600 || body.components(separatedBy: "\n").count > 8 }
+
+    public init?(_ text: String) {
+        let clean = text.replacingOccurrences(of: #"<!--\s*suzent-agent-inbox:[\s\S]*?-->"#, with: "", options: .regularExpression.union(.caseInsensitive))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        content = clean
+        let lines = clean.components(separatedBy: "\n")
+        let first = lines[0].trimmingCharacters(in: .whitespaces)
+        title = first.replacingOccurrences(of: #"^\*\*(.+?)\*\*$"#, with: "$1", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        body = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> = []) -> [DisplayMessage] {
     let indexedSources = messages.enumerated().flatMap { index, message in
         message.parts.flatMap { part in (part.citationSources ?? []).map { (index, $0) } }
@@ -57,7 +76,13 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         } else {
             rawParts = message.parts.filter { $0.type != "tool" || !liveToolIds.contains($0.toolCallId ?? "") }
         }
-        let parts = normalizeParts(rawParts)
+        let reminder = ["system_triggered", "trigger"].contains(message.role)
+        let visibleParts = reminder ? rawParts.map { part in
+            var clean = part
+            if part.type == "text" { clean.text = SystemReminder(part.text ?? "")?.content ?? "" }
+            return clean
+        } : rawParts
+        let parts = normalizeParts(visibleParts)
         let localSources = rawParts.flatMap { $0.citationSources ?? [] }
         let referencedIDs = Set(parts.flatMap { citationSourceIDs($0.text ?? "") })
         let nearbySources = referencedIDs.compactMap { id in
@@ -72,7 +97,8 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
     for row in rows {
         // Only tool/reasoning tails continue a reply; text and rendered surfaces end it.
         if let previous = grouped.last,
-           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role), ["tool", "reasoning"].contains(previous.parts.last?.type ?? "") {
+           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role), ["tool", "reasoning"].contains(previous.parts.last?.type ?? ""),
+           !messages[(previous.messageIndex + 1)...row.messageIndex].contains(where: { ["system_triggered", "trigger"].contains($0.role) }) {
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
                 parts: normalizeParts(previous.parts + row.parts),
