@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
 - Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
 - Simplify phone pairing and let desktop operators edit all paired-phone permissions without pairing again.
+- Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads.
 - Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
 - Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
 - Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
