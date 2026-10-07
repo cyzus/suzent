@@ -5,6 +5,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SidebarPresentationTest {
+    @Test fun groupsSurvivePinProjectAndTaskPartitioning() {
+        val fixture = JSONObject(requireNotNull(javaClass.classLoader?.getResourceAsStream("sidebar-group-fixtures.json"))
+            .bufferedReader().use { it.readText() })
+        val source = fixture.getJSONArray("chats")
+        val chats = (0 until source.length()).map { Chat.parse(source.getJSONObject(it)) }
+        val jobs = fixture.getJSONArray("tasks")
+        val tasks = (0 until jobs.length()).map { ScheduledTask.parse(jobs.getJSONObject(it)) }
+        val rows = sidebarChats(chats, "", setOf("parent", "other"))
+        assertEquals(listOf("parent", "child", "grandchild"), rows.filter { it.root.pinned }.map { it.chat.id })
+        assertEquals(listOf("parent", "child", "grandchild"), rows.filter { it.root.projectId == "p1" }.map { it.chat.id })
+        assertFalse(rows.first { it.chat.id == "other-child" }.root.pinned)
+        val groups = scheduledSidebarGroups(chats, tasks, "", setOf("cron-1", "cron-2"))
+        assertEquals(listOf("cron-child-1"), groups[0].children.map { it.chat.id })
+        assertEquals(listOf("cron-child-2"), groups[1].children.map { it.chat.id })
+        val found = scheduledSidebarGroups(chats, tasks, "sources", emptySet())
+        assertEquals("1", found.single().task?.id)
+        assertEquals("cron-1", found.single().root?.chat?.id)
+        assertEquals(listOf("cron-child-1"), found.single().children.map { it.chat.id })
+        assertEquals(1, found.single().children.single().depth)
+    }
+
     @Test fun sharedHierarchyFixtures() {
         val fixture = JSONObject(requireNotNull(javaClass.classLoader?.getResourceAsStream("sidebar-fixtures.json"))
             .bufferedReader().use { it.readText() })

@@ -9,6 +9,7 @@ public struct SidebarChatEntry: Identifiable, Sendable {
     public let chat: Chat
     public let depth: Int
     public let childCount: Int
+    public let root: Chat
     public var id: String { chat.id }
 }
 
@@ -48,10 +49,37 @@ public func sidebarChats(_ chats: [Chat], search: String, expanded: Set<String>)
         let descendants = children[chat.id] ?? []
         let matches = descendants.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
         guard query.isEmpty || chat.title.localizedCaseInsensitiveContains(query) || !matches.isEmpty else { continue }
-        result.append(SidebarChatEntry(chat: chat, depth: 0, childCount: descendants.count))
+        result.append(SidebarChatEntry(chat: chat, depth: 0, childCount: descendants.count, root: chat))
         if !query.isEmpty || expanded.contains(chat.id) {
-            for child in matches { result.append(SidebarChatEntry(chat: child, depth: 1, childCount: 0)) }
+            for child in matches { result.append(SidebarChatEntry(chat: child, depth: 1, childCount: 0, root: chat)) }
         }
+    }
+    return result
+}
+
+public struct ScheduledSidebarGroup: Identifiable, Sendable {
+    public let task: ScheduledTask?
+    public let root: SidebarChatEntry?
+    public let children: [SidebarChatEntry]
+    public var id: String { task.map { "task:\($0.id)" } ?? "chat:\(root?.id ?? "")" }
+}
+
+public func scheduledSidebarGroups(_ chats: [Chat], tasks: [ScheduledTask], search: String, expanded: Set<String>) -> [ScheduledSidebarGroup] {
+    let ids = scheduledChatIDs(chats)
+    let source = chats.filter { ids.contains($0.id) }
+    let allRows = sidebarChats(source, search: "", expanded: expanded)
+    let searched = sidebarChats(source, search: search, expanded: expanded)
+    let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+    var result: [ScheduledSidebarGroup] = []
+    let taskChatIDs = Set(tasks.compactMap(\.chatId))
+    for task in tasks {
+        let matches = query.isEmpty || task.name.localizedCaseInsensitiveContains(query)
+        let rows = (matches ? allRows : searched).filter { $0.root.id == task.chatId }
+        guard matches || !rows.isEmpty else { continue }
+        result.append(ScheduledSidebarGroup(task: task, root: rows.first { $0.depth == 0 }, children: rows.filter { $0.depth > 0 }))
+    }
+    for root in searched where root.depth == 0 && !taskChatIDs.contains(root.id) {
+        result.append(ScheduledSidebarGroup(task: nil, root: root, children: searched.filter { $0.root.id == root.id && $0.depth > 0 }))
     }
     return result
 }

@@ -151,6 +151,7 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
     }
     fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
     val scheduledIds = remember(model.chats) { scheduledChatIds(model.chats) }
+    val normalRows = sidebarChats(model.chats.filter { it.id !in scheduledIds }, search, expandedAgents)
     val projects = remember(model.projects, model.chats) {
         (model.projects + model.chats.mapNotNull { chat -> chat.projectId?.let { Project(it, chat.projectName ?: it) } }).distinctBy { it.id }
     }
@@ -162,9 +163,9 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
         SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
-            if (model.chats.any { it.pinned && it.id !in scheduledIds }) {
+            if (normalRows.any { it.root.pinned }) {
                 item(key = "pinned-heading") { Text(stringResource(R.string.pinned_chats), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
-                items(sidebarChats(model.chats.filter { it.pinned && it.id !in scheduledIds }, search, expandedAgents), key = { it.chat.id }) {
+                items(normalRows.filter { it.root.pinned }, key = { it.chat.id }) {
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
@@ -179,26 +180,31 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                             modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("+") }
                     }
                 }
-                if (project.id !in collapsedProjects || search.isNotEmpty()) items(sidebarChats(model.chats.filter { !it.pinned && it.id !in scheduledIds && it.projectId == project.id }, search, expandedAgents), key = { it.chat.id }) {
+                if (project.id !in collapsedProjects || search.isNotEmpty()) items(normalRows.filter { !it.root.pinned && it.root.projectId == project.id }, key = { it.chat.id }) {
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
-            items(sidebarChats(model.chats.filter { !it.pinned && it.id !in scheduledIds && it.projectId == null }, search, expandedAgents), key = { it.chat.id }) {
+            items(normalRows.filter { !it.root.pinned && it.root.projectId == null }, key = { it.chat.id }) {
                 SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
             }
-            val tasks = model.scheduledTasks.filter { it.name.contains(search.trim(), ignoreCase = true) }
-            val taskChatIds = model.scheduledTasks.mapNotNull { it.chatId }.toSet()
-            val scheduledChats = sidebarChats(model.chats.filter { it.id in scheduledIds && it.id !in taskChatIds }, search, expandedAgents)
-            if (tasks.isNotEmpty() || scheduledChats.isNotEmpty()) {
+            val groups = scheduledSidebarGroups(model.chats, model.scheduledTasks, search, expandedAgents)
+            if (groups.isNotEmpty()) {
                 item(key = "scheduled-heading") { Text(stringResource(R.string.scheduled_tasks), fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
-                items(tasks, key = { "task:${it.id}" }) { task ->
-                    ScheduledTaskRow(task, model, !settingsSelected && model.selected?.id == task.chatId) {
-                        task.chatId?.let { id -> open(model.chats.firstOrNull { it.id == id } ?: Chat(id, task.name, task.running, emptyList())) }
+                items(groups, key = { it.id }) { group ->
+                    Column {
+                        val task = group.task
+                        val root = group.root
+                        if (task != null) ScheduledTaskRow(task, model, !settingsSelected && model.selected?.id == task.chatId,
+                            root?.childCount ?: 0, task.chatId in expandedAgents, { task.chatId?.let(::toggleAgents) }) {
+                            task.chatId?.let { id -> open(model.chats.firstOrNull { it.id == id } ?: Chat(id, task.name, task.running, emptyList())) }
+                        }
+                        else if (root != null) SidebarEntry(root, model.selected?.id == root.chat.id && !settingsSelected,
+                            model, open, root.chat.id in expandedAgents) { toggleAgents(root.chat.id) }
+                        group.children.forEach { entry ->
+                            SidebarEntry(entry, model.selected?.id == entry.chat.id && !settingsSelected, model, open, false) {}
+                        }
                     }
-                }
-                items(scheduledChats, key = { it.chat.id }) {
-                    SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
             if (projects.isEmpty() && model.chats.isEmpty()) item {
@@ -222,19 +228,44 @@ private fun SidebarEntry(entry: SidebarChatEntry, selected: Boolean, model: Mobi
 }
 
 @Composable
-private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: Boolean, open: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = .08f) else MaterialTheme.colorScheme.surface)
-        .clickable(enabled = !model.busy && task.chatId != null, onClick = open).padding(12.dp)) {
-        Text(task.name, fontSize = PresentationTokens.typeChat.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-        val status = when {
-            task.running -> stringResource(R.string.task_running)
-            !task.active -> stringResource(R.string.task_paused)
-            task.hasError -> stringResource(R.string.task_failed)
-            task.nextRunAt != null -> stringResource(R.string.task_next_run, formatTaskDate(task.nextRunAt))
-            else -> stringResource(R.string.task_active)
+private fun SidebarFoldControl(childCount: Int, expanded: Boolean, toggle: () -> Unit) {
+    val railColor = MaterialTheme.colorScheme.onSurfaceVariant
+            val label = stringResource(if (expanded) R.string.collapse_subagents else R.string.expand_subagents, childCount)
+            SuzentTextButton(onClick = toggle, modifier = Modifier.size(width = 52.dp, height = 44.dp).semantics { contentDescription = label },
+                contentPadding = PaddingValues(0.dp)) {
+                Row(Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f)).padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(childCount.toString(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.foundation.Canvas(Modifier.size(10.dp)) {
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            if (expanded) { moveTo(1.dp.toPx(), 3.dp.toPx()); lineTo(5.dp.toPx(), 7.dp.toPx()); lineTo(9.dp.toPx(), 3.dp.toPx()) }
+                            else { moveTo(3.dp.toPx(), 1.dp.toPx()); lineTo(7.dp.toPx(), 5.dp.toPx()); lineTo(3.dp.toPx(), 9.dp.toPx()) }
+                        }
+                        drawPath(path, railColor, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                    }
+                }
+            }
+}
+
+@Composable
+private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: Boolean,
+                             childCount: Int, expanded: Boolean, toggle: () -> Unit, open: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = .08f) else MaterialTheme.colorScheme.surface)
+        .clickable(enabled = !model.busy && task.chatId != null, onClick = open).padding(12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(task.name, fontSize = PresentationTokens.typeChat.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            val status = when {
+                task.running -> stringResource(R.string.task_running)
+                !task.active -> stringResource(R.string.task_paused)
+                task.hasError -> stringResource(R.string.task_failed)
+                task.nextRunAt != null -> stringResource(R.string.task_next_run, formatTaskDate(task.nextRunAt))
+                else -> stringResource(R.string.task_active)
+            }
+            Text(status, fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (task.chatId == null) Text(stringResource(R.string.task_no_conversation), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(status, fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (task.chatId == null) Text(stringResource(R.string.task_no_conversation), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
     }
 }
 
@@ -255,7 +286,6 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
     val interaction = remember(chat.id) { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val foreground = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurface
-    val railColor = MaterialTheme.colorScheme.onSurfaceVariant
     Box {
     Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface)
         .drawBehind { if (selected) drawRect(outline, size = Size(3.dp.toPx(), size.height)) }
@@ -274,23 +304,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
                 color = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (chat.running) Text("…", color = suzentLink)
-        if (childCount > 0) {
-            val label = stringResource(if (expanded) R.string.collapse_subagents else R.string.expand_subagents, childCount)
-            SuzentTextButton(onClick = toggle, modifier = Modifier.size(width = 52.dp, height = 44.dp).semantics { contentDescription = label },
-                contentPadding = PaddingValues(0.dp)) {
-                Row(Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f)).padding(horizontal = 7.dp, vertical = 4.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(childCount.toString(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    androidx.compose.foundation.Canvas(Modifier.size(10.dp)) {
-                        val path = androidx.compose.ui.graphics.Path().apply {
-                            if (expanded) { moveTo(1.dp.toPx(), 3.dp.toPx()); lineTo(5.dp.toPx(), 7.dp.toPx()); lineTo(9.dp.toPx(), 3.dp.toPx()) }
-                            else { moveTo(3.dp.toPx(), 1.dp.toPx()); lineTo(7.dp.toPx(), 5.dp.toPx()); lineTo(3.dp.toPx(), 9.dp.toPx()) }
-                        }
-                        drawPath(path, railColor, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
-                    }
-                }
-            }
-        }
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
     }
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RectangleShape,
         containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
