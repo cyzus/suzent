@@ -84,10 +84,14 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     var supportsAttachments = false
         private set
 
+    var supportsScheduledTasks = false
+        private set
+
     suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
         validateMobileCapabilities(value)
         supportsAttachments = value.optInt("attachments") == 1
+        supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
@@ -104,6 +108,11 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     suspend fun chats(): List<Chat> {
         val array = json("mobile/client/chats").getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
+    }
+    suspend fun scheduledTasks(): List<ScheduledTask> {
+        if (!supportsScheduledTasks) return emptyList()
+        val array = json("mobile/client/scheduled-tasks").getJSONArray("tasks")
+        return (0 until array.length()).map { ScheduledTask.parse(array.getJSONObject(it)) }
     }
     suspend fun projects(): List<Project> {
         val array = json("mobile/client/projects").getJSONArray("projects")

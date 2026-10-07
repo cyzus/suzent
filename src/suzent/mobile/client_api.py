@@ -113,6 +113,7 @@ async def session(request: Request) -> JSONResponse:
             "client_protocol": 1,
             "stream_protocols": [1],
             "attachments": 1,
+            "scheduled_tasks": 1,
         }
     )
 
@@ -126,6 +127,7 @@ async def chats(request: Request) -> JSONResponse:
     )
     projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
     pinned = db.get_pinned_chat_ids([chat_id for chat_id, _ in records])
+    navigation = db.get_chat_navigation([chat_id for chat_id, _ in records])
     from suzent.core.stream_registry import is_background_streaming
 
     return reply(
@@ -138,6 +140,15 @@ async def chats(request: Request) -> JSONResponse:
                     "isRunning": is_background_streaming(chat_id),
                     "projectId": projects_by_chat.get(chat_id, (None, None))[0],
                     "projectName": projects_by_chat.get(chat_id, (None, None))[1],
+                    "platform": navigation.get(chat_id, {}).get("platform"),
+                    "parentChatId": (
+                        parent_id
+                        if (
+                            parent_id := navigation.get(chat_id, {}).get("parentChatId")
+                        )
+                        and grant.permissions.permits_chat(parent_id)
+                        else None
+                    ),
                 }
                 for chat_id, title in records
             ]
@@ -147,7 +158,7 @@ async def chats(request: Request) -> JSONResponse:
 
 async def chat(request: Request) -> JSONResponse:
     chat_id = request.path_params["chat_id"]
-    authorize(request, chat_id)
+    grant = authorize(request, chat_id)
     from suzent.routes.chat_routes import get_chat
 
     response = await get_chat(request, include_runtime=False)
@@ -174,6 +185,13 @@ async def chat(request: Request) -> JSONResponse:
             "projectId": metadata[0],
             "projectName": metadata[1],
             "pinned": chat_id in get_database().get_pinned_chat_ids([chat_id]),
+            "platform": config.get("platform"),
+            "parentChatId": (
+                parent_id
+                if (parent_id := config.get("parent_chat_id"))
+                and grant.permissions.permits_chat(parent_id)
+                else None
+            ),
             "model": (
                 config.get("model")
                 or config.get("subagent_model")
@@ -184,6 +202,37 @@ async def chat(request: Request) -> JSONResponse:
             "models": get_enabled_models_from_db() if native else [],
         }
     )
+
+
+async def scheduled_tasks(request: Request) -> JSONResponse:
+    grant = authorize(request)
+    db = get_database()
+    from suzent.core.stream_registry import is_background_streaming
+    from suzent.routes.cron_routes import _task_chat_id
+
+    tasks: list[dict[str, object]] = []
+    for job in db.list_cron_jobs():
+        chat_id = _task_chat_id(job)
+        if not grant.permissions.permits_chat(chat_id):
+            continue
+        stored_chat = db.get_chat(chat_id)
+        tasks.append(
+            {
+                "id": str(job.id),
+                "name": job.name,
+                "chatId": chat_id if stored_chat else None,
+                "active": job.active,
+                "isRunning": is_background_streaming(chat_id),
+                "nextRunAt": job.next_run_at.astimezone().isoformat()
+                if job.next_run_at
+                else None,
+                "lastRunAt": job.last_run_at.astimezone().isoformat()
+                if job.last_run_at
+                else None,
+                "hasError": bool(job.last_error),
+            }
+        )
+    return reply({"tasks": tasks})
 
 
 def allowed_projects(grant: ClientGrant) -> list[dict[str, str]]:
@@ -563,6 +612,7 @@ client_routes = [
     Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
     Route("/mobile/client/composer", composer, methods=["GET"]),
     Route("/mobile/client/projects", projects, methods=["GET"]),
+    Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),

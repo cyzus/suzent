@@ -743,6 +743,23 @@ class ChatOperationsMixin:
             statement = statement.order_by(ChatModel.updated_at.desc()).limit(limit)
             return [(row[0], row[1]) for row in session.exec(statement).all()]
 
+    def get_chat_navigation(
+        self, chat_ids: list[str]
+    ) -> dict[str, dict[str, str | None]]:
+        if not chat_ids:
+            return {}
+        with self._session() as session:
+            statement = select(ChatModel.id, ChatModel.config).where(
+                ChatModel.id.in_(chat_ids)
+            )
+            return {
+                chat_id: {
+                    "platform": (config or {}).get("platform"),
+                    "parentChatId": (config or {}).get("parent_chat_id"),
+                }
+                for chat_id, config in session.exec(statement).all()
+            }
+
     def list_chats(
         self,
         limit: int | None = 50,

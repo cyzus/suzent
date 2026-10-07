@@ -15,6 +15,7 @@ import SuzentCore
     private var pairingTask: Task<Void, Never>?
     var chats: [Chat] = []
     var projects: [Project] = []
+    var scheduledTasks: [ScheduledTask] = []
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
@@ -198,6 +199,7 @@ import SuzentCore
             let session = try await candidate.clientSession()
             let listing = try await candidate.chats()
             let projectList = try await candidate.projects()
+            let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
             try CredentialStore.save(saved)
@@ -209,6 +211,7 @@ import SuzentCore
             attachmentsSupported = session.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
             connected = true
@@ -262,11 +265,13 @@ import SuzentCore
             let session = try await client.clientSession()
             let listing = try await client.chats()
             let projectList = try await client.projects()
+            let taskList = session.supportsScheduledTasks ? try await client.scheduledTasks() : []
             guard generation == current else { return }
             device = session.device
             attachmentsSupported = session.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
@@ -640,6 +645,7 @@ import SuzentCore
     }
 
     func forget() {
+        scheduledTasks = []
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         pairingTask?.cancel()

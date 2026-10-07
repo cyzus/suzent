@@ -138,6 +138,20 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
     }
     var collapsedProjects by remember { mutableStateOf(setOf<String>()) }
+    var expandedAgents by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(model.selected?.id, model.chats.map { it.id }) {
+        var current = model.chats.firstOrNull { it.id == model.selected?.id }
+        val parents = mutableSetOf<String>()
+        while (current?.isSubagent == true) {
+            val parent = current.parentChatId ?: break
+            if (!parents.add(parent)) break
+            current = model.chats.firstOrNull { it.id == parent }
+        }
+        expandedAgents = expandedAgents + parents
+    }
+    fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
+    val scheduledIds = remember(model.chats) { scheduledChatIds(model.chats) }
+    val normalRows = sidebarChats(model.chats.filter { it.id !in scheduledIds }, search, expandedAgents)
     val projects = remember(model.projects, model.chats) {
         (model.projects + model.chats.mapNotNull { chat -> chat.projectId?.let { Project(it, chat.projectName ?: it) } }).distinctBy { it.id }
     }
@@ -149,10 +163,10 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
         SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
-            if (model.chats.any { it.pinned }) {
+            if (normalRows.any { it.root.pinned }) {
                 item(key = "pinned-heading") { Text(stringResource(R.string.pinned_chats), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
-                items(model.chats.filter { it.pinned && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+                items(normalRows.filter { it.root.pinned }, key = { it.chat.id }) {
+                    SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
             projects.forEach { project ->
@@ -166,12 +180,32 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                             modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("+") }
                     }
                 }
-                if (project.id !in collapsedProjects || search.isNotEmpty()) items(model.chats.filter { !it.pinned && it.projectId == project.id && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+                if (project.id !in collapsedProjects || search.isNotEmpty()) items(normalRows.filter { !it.root.pinned && it.root.projectId == project.id }, key = { it.chat.id }) {
+                    SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
-            items(model.chats.filter { !it.pinned && it.projectId == null && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+            items(normalRows.filter { !it.root.pinned && it.root.projectId == null }, key = { it.chat.id }) {
+                SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
+            }
+            val groups = scheduledSidebarGroups(model.chats, model.scheduledTasks, search, expandedAgents)
+            if (groups.isNotEmpty()) {
+                item(key = "scheduled-heading") { Text(stringResource(R.string.scheduled_tasks), fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
+                items(groups, key = { it.id }) { group ->
+                    Column {
+                        val task = group.task
+                        val root = group.root
+                        if (task != null) ScheduledTaskRow(task, model, !settingsSelected && model.selected?.id == task.chatId,
+                            root?.childCount ?: 0, task.chatId in expandedAgents, { task.chatId?.let(::toggleAgents) }) {
+                            task.chatId?.let { id -> open(model.chats.firstOrNull { it.id == id } ?: Chat(id, task.name, task.running, emptyList())) }
+                        }
+                        else if (root != null) SidebarEntry(root, model.selected?.id == root.chat.id && !settingsSelected,
+                            model, open, root.chat.id in expandedAgents) { toggleAgents(root.chat.id) }
+                        group.children.forEach { entry ->
+                            SidebarEntry(entry, model.selected?.id == entry.chat.id && !settingsSelected, model, open, false) {}
+                        }
+                    }
+                }
             }
             if (projects.isEmpty() && model.chats.isEmpty()) item {
                 SuzentTextButton(onClick = { create(null) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
@@ -183,7 +217,66 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
 }
 
 @Composable
-private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit) {
+private fun SidebarEntry(entry: SidebarChatEntry, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
+                         expanded: Boolean, toggle: () -> Unit) {
+    val rail = MaterialTheme.colorScheme.outlineVariant
+    Box(Modifier.padding(start = if (entry.depth > 0) 12.dp else 0.dp).drawBehind {
+        if (entry.depth > 0) drawRect(rail, size = Size(1.dp.toPx(), size.height))
+    }.padding(start = if (entry.depth > 0) 8.dp else 0.dp)) {
+        SidebarChat(entry.chat, selected, model, open, entry.childCount, expanded, toggle, entry.depth > 0)
+    }
+}
+
+@Composable
+private fun SidebarFoldControl(childCount: Int, expanded: Boolean, toggle: () -> Unit) {
+    val railColor = MaterialTheme.colorScheme.onSurfaceVariant
+            val label = stringResource(if (expanded) R.string.collapse_subagents else R.string.expand_subagents, childCount)
+            SuzentTextButton(onClick = toggle, modifier = Modifier.size(width = 52.dp, height = 44.dp).semantics { contentDescription = label },
+                contentPadding = PaddingValues(0.dp)) {
+                Row(Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f)).padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(childCount.toString(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.foundation.Canvas(Modifier.size(10.dp)) {
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            if (expanded) { moveTo(1.dp.toPx(), 3.dp.toPx()); lineTo(5.dp.toPx(), 7.dp.toPx()); lineTo(9.dp.toPx(), 3.dp.toPx()) }
+                            else { moveTo(3.dp.toPx(), 1.dp.toPx()); lineTo(7.dp.toPx(), 5.dp.toPx()); lineTo(3.dp.toPx(), 9.dp.toPx()) }
+                        }
+                        drawPath(path, railColor, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                    }
+                }
+            }
+}
+
+@Composable
+private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: Boolean,
+                             childCount: Int, expanded: Boolean, toggle: () -> Unit, open: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = .08f) else MaterialTheme.colorScheme.surface)
+        .clickable(enabled = !model.busy && task.chatId != null, onClick = open).padding(12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(task.name, fontSize = PresentationTokens.typeChat.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            val status = when {
+                task.running -> stringResource(R.string.task_running)
+                !task.active -> stringResource(R.string.task_paused)
+                task.hasError -> stringResource(R.string.task_failed)
+                task.nextRunAt != null -> stringResource(R.string.task_next_run, formatTaskDate(task.nextRunAt))
+                else -> stringResource(R.string.task_active)
+            }
+            Text(status, fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (task.chatId == null) Text(stringResource(R.string.task_no_conversation), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
+    }
+}
+
+private fun formatTaskDate(raw: String): String = runCatching {
+    java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT))
+}.getOrDefault(raw)
+
+@Composable
+private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
+                        childCount: Int, expanded: Boolean, toggle: () -> Unit, nested: Boolean) {
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
@@ -201,8 +294,17 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             onLongClick = { moving = false; menu = true }, onClick = { open(chat) })
         .heightIn(min = 48.dp).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(14.dp))
-        Text(chat.title, Modifier.weight(1f), color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Column(Modifier.weight(1f)) {
+            Text(chat.title, color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            if (chat.isSubagent && !nested) {
+                val parent = model.chats.firstOrNull { it.id == chat.parentChatId }
+                Text(if (parent != null) stringResource(R.string.subagent_of, parent.title) else stringResource(R.string.subagent),
+                    fontSize = PresentationTokens.typeCaption.sp, color = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            } else if (chat.isScheduled) Text(stringResource(R.string.scheduled_task), fontSize = PresentationTokens.typeCaption.sp,
+                color = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (chat.running) Text("…", color = suzentLink)
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
     }
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RectangleShape,
         containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
