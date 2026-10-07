@@ -1,9 +1,10 @@
 # Mobile changelog
 
-## [mobile-v0.3.0] - 2026-10-06
+## [mobile-v0.3.0] - 2026-10-07
 
 ### Release notes
 - Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+- Use charcoal surfaces, softer gray outlines, and near-black hard shadows in Android and iOS dark mode, with theme-aware code blocks and brighter links.
 - Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
 
 ## [mobile-v0.2.0] - 2026-10-01
