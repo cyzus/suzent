@@ -164,4 +164,6 @@
     <string name="connecting_suzent">Connecting to Suzent</string>
     <string name="connection_help">Connection help</string>
     <string name="connection_help_detail">Check that Suzent is running on your desktop and both devices are online.</string>
+    <string name="reminder_expanded">Expanded</string>
+    <string name="reminder_collapsed">Collapsed</string>
 </resources>

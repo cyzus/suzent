@@ -7,6 +7,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
 import android.content.Intent
@@ -99,7 +100,7 @@ val suzentLink: Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false, textSize: Float = PresentationTokens.typeChat.toFloat()) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -162,8 +163,9 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                 }
             } else {
                 AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    SoftStreamTextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+                    SoftStreamTextView(ctx).apply { this.textSize = textSize; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
+                    view.textSize = textSize
                     view.setTextColor(foreground); view.setLinkTextColor(link)
                     val styled = android.text.SpannableString(block.body)
                     styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
@@ -291,7 +293,9 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackMode
     val outline = MaterialTheme.colorScheme.outline
     val shadowColor = suzentShadow
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
+    if (message.role in listOf("system_triggered", "trigger")) {
+        systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
+    } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         Box(Modifier.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)
             .widthIn(max = 320.dp).drawBehind {
                 drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
@@ -306,6 +310,29 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackMode
         ActivityContent(message.parts, live = false, citationSources = message.citationSources)
     }
     if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork, onAction)
+    }
+}
+
+@Composable
+private fun SystemReminderView(reminder: SystemReminder, sources: List<CitationSource>) {
+    var expanded by remember(reminder.content) { mutableStateOf(!reminder.initiallyCollapsed) }
+    val expandedLabel = stringResource(R.string.reminder_expanded)
+    val collapsedLabel = stringResource(R.string.reminder_collapsed)
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().drawBehind {
+        drawRect(outline, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height))
+    }.padding(start = 14.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().then(if (reminder.body.isNotEmpty()) Modifier
+            .clickable(role = androidx.compose.ui.semantics.Role.Button) { expanded = !expanded }
+            .semantics { stateDescription = if (expanded) expandedLabel else collapsedLabel }
+            .heightIn(min = 44.dp) else Modifier), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("◷", color = muted, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+            Text(reminder.title, color = muted, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (reminder.body.isNotEmpty()) Text(if (expanded) "−" else "+", color = muted, modifier = Modifier.padding(horizontal = 8.dp))
+        }
+        if (expanded && reminder.body.isNotEmpty()) MarkdownText(reminder.body, citationSources = sources, textSize = 12f)
     }
 }
 
