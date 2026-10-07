@@ -95,3 +95,38 @@ import Testing
     #expect(answer.timestamp == "2026-09-30T12:01:00Z")
     #expect(answer.messageIndex == 3)
 }
+
+@Test func systemRemindersFollowDesktopPresentation() throws {
+    struct Fixture: Decodable {
+        let name: String
+        let content: String
+        let title: String?
+        let body: String?
+        let collapsed: Bool?
+    }
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+    let data = try Data(contentsOf: root.appendingPathComponent("mobile-contract/system-reminder-fixtures.json"))
+    for fixture in try JSONDecoder().decode([Fixture].self, from: data) {
+        let reminder = SystemReminder(fixture.content)
+        #expect(reminder?.title == fixture.title, "\(fixture.name)")
+        #expect(reminder?.body == fixture.body, "\(fixture.name)")
+        #expect(reminder?.initiallyCollapsed == fixture.collapsed, "\(fixture.name)")
+    }
+}
+
+@Test func hiddenReminderPreservesTurnBoundary() throws {
+    let data = Data(#"[{"role":"assistant","parts":[{"type":"reasoning","text":"Thinking"}]},{"role":"system_triggered","content":"<!-- suzent-agent-inbox:hidden -->"},{"role":"assistant","content":"New turn"}]"#.utf8)
+    let rows = presentMessages(try JSONDecoder().decode([ChatMessage].self, from: data))
+    #expect(rows.count == 2)
+    #expect(rows.map(\.messageIndex) == [0, 2])
+    #expect(rows[1].text == "New turn")
+}
+
+@Test func reminderMetadataIsRemovedWithoutChangingUserMessages() throws {
+    let data = Data(#"[{"role":"user","content":"<!-- suzent-agent-inbox:literal -->"},{"role":"system_triggered","parts":[{"type":"text","text":"<!-- suzent-agent-inbox:private -->\n**Agent done**\nResult"}]}]"#.utf8)
+    let rows = presentMessages(try JSONDecoder().decode([ChatMessage].self, from: data))
+    #expect(rows.map(\.role) == ["user", "system_triggered"])
+    #expect(rows[0].text == "<!-- suzent-agent-inbox:literal -->")
+    #expect(rows[1].text == "**Agent done**\nResult")
+}

@@ -45,7 +45,11 @@ struct MessageView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-        if user {
+        if ["system_triggered", "trigger"].contains(message.role) {
+            if let reminder = SystemReminder(message.text) {
+                SystemReminderView(reminder: reminder, citationSources: message.citationSources)
+            }
+        } else if user {
             HStack {
                 Spacer(minLength: 40)
                 VStack(alignment: .trailing, spacing: PresentationTokens.spaceSmall) {
@@ -72,6 +76,45 @@ struct MessageView: View {
             MessageFooter(message: message, fallbackModel: fallbackModel, canRetry: canRetry, canEdit: canEdit, canFork: canFork, onAction: onAction)
         }
         }
+    }
+}
+
+private struct SystemReminderView: View {
+    let reminder: SystemReminder
+    let citationSources: [CitationSource]
+    @State private var expanded: Bool
+
+    init(reminder: SystemReminder, citationSources: [CitationSource]) {
+        self.reminder = reminder
+        self.citationSources = citationSources
+        _expanded = State(initialValue: !reminder.initiallyCollapsed)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if reminder.body.isEmpty { heading }
+            else {
+                Button { expanded.toggle() } label: {
+                    HStack(spacing: 8) {
+                        heading
+                        Spacer(minLength: 4)
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11))
+                    }.frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+            }
+            if expanded && !reminder.body.isEmpty {
+                SuzentMarkdown(text: reminder.body, citationSources: citationSources, textSize: 12)
+            }
+        }.foregroundStyle(Color.suzentMuted).padding(.leading, 14).padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) { Rectangle().fill(Color.suzentOutline.opacity(0.4)).frame(width: 3) }
+    }
+
+    private var heading: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock").accessibilityHidden(true)
+            Text(reminder.title).lineLimit(2).multilineTextAlignment(.leading)
+        }.font(.system(size: 11, weight: .semibold, design: .monospaced))
     }
 }
 
@@ -564,6 +607,7 @@ struct SuzentMarkdown: View {
     let text: String
     var citationSources: [CitationSource] = []
     var softStreaming: Bool? = nil
+    var textSize: Double = PresentationTokens.typeChat
     @State private var pendingLink: URL?
     @State private var browserLink: URL?
     @StateObject private var icons = CitationIcons()
@@ -638,7 +682,7 @@ struct SuzentMarkdown: View {
                 .text {
                     ForegroundColor(Color.suzentText)
                     BackgroundColor(.clear)
-                    FontSize(PresentationTokens.typeChat)
+                    FontSize(textSize)
                 }
                 .code {
                     FontFamilyVariant(.monospaced)
