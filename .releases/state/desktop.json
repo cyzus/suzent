@@ -16,6 +16,7 @@
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/inchat-task-navigation.json",
     ".releases/changes/mobile-attachments.json",
+    ".releases/changes/mobile-charcoal-dark-mode.json",
     ".releases/changes/mobile-chat-management.json",
     ".releases/changes/mobile-chat-model-source.json",
     ".releases/changes/mobile-component-parity.json",
