@@ -161,4 +161,7 @@
     <string name="task_no_conversation">尚未生成对话</string>
     <string name="expand_subagents">展开 %1$d 个子智能体</string>
     <string name="collapse_subagents">折叠 %1$d 个子智能体</string>
+    <string name="connecting_suzent">正在连接 Suzent</string>
+    <string name="connection_help">连接帮助</string>
+    <string name="connection_help_detail">请确认桌面端 Suzent 正在运行，并检查两端的网络连接。</string>
 </resources>

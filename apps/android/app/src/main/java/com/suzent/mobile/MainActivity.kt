@@ -90,11 +90,28 @@ private fun MobileScreen(model: MobileModel) {
                         val label = stringResource(R.string.open_sidebar)
                         IconButton(onClick = { focus.clearFocus(); scope.launch { drawer.open() } }, modifier = Modifier.size(PresentationTokens.controlHeight.dp)) { Icon(painterResource(R.drawable.ic_menu), contentDescription = label, tint = MaterialTheme.colorScheme.onSurface) }
                     }
-                    Box(Modifier.weight(1f)) { SuzentWordmark() }
+                    Box(Modifier.weight(1f), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        val chat = model.selected
+                        if (model.connected && showSettings) {
+                            Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        } else if (model.connected && chat != null && chat.id.isNotEmpty()) {
+                            Column(Modifier.padding(horizontal = 8.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                chat.projectName?.let { Text(it, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                                Text(chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                        } else if (!model.connected && model.canReconnect) {
+                            Text("SUZENT", modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else SuzentWordmark()
+                    }
                     if (model.connected) IconButton(onClick = { focus.clearFocus(); model.create(); showSettings = false }, modifier = Modifier.size(PresentationTokens.controlHeight.dp),
                         enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Icon(painterResource(R.drawable.ic_new_chat), contentDescription = stringResource(R.string.new_chat)) }
                 }
-                HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+                if (model.connected || !model.canReconnect) HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
@@ -102,17 +119,37 @@ private fun MobileScreen(model: MobileModel) {
                     SuzentNotice(message) { model.error = null }
                 }
                 when {
-                    !model.connected && model.canReconnect -> Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        Column(Modifier.widthIn(max = 480.dp).padding(PresentationTokens.spaceLarge.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                            SuzentAssistantBadge()
-                            Text(stringResource(R.string.reconnect), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
-                            if (model.busy) {
-                                StreamingPulse()
-                                if (model.reconnecting) SuzentAction(stringResource(R.string.cancel_reconnect), model::cancelReconnect)
-                            } else SuzentAction(stringResource(R.string.reconnect), model::connect, prominent = true)
-                            SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
-                            SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
+                    !model.connected && model.canReconnect -> {
+                        var helpOpen by remember { mutableStateOf(false) }
+                        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Spacer(Modifier.weight(1f))
+                            Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                ReconnectIndicator(active = model.busy)
+                                Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
+                                    fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Box(Modifier.heightIn(min = 44.dp)) {
+                                    if (model.busy) {
+                                        if (model.reconnecting) TextButton(onClick = model::cancelReconnect) {
+                                            Text(stringResource(R.string.cancel_reconnect), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    } else TextButton(onClick = model::connect) {
+                                        Text(stringResource(R.string.reconnect), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { helpOpen = true }) {
+                                Text(stringResource(R.string.connection_help), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
+                        if (helpOpen) AlertDialog(onDismissRequest = { helpOpen = false },
+                            title = { Text(stringResource(R.string.connection_help)) },
+                            text = { Column {
+                                Text(stringResource(R.string.connection_help_detail))
+                                TextButton(onClick = { helpOpen = false; model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming) { Text(stringResource(R.string.pair_again)) }
+                                TextButton(onClick = { helpOpen = false; model.forget() }, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
+                            } },
+                            confirmButton = { TextButton(onClick = { helpOpen = false }) { Text(stringResource(R.string.cancel_reconnect)) } })
                     }
                     !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                     showSettings -> SettingsView(model)
@@ -401,10 +438,6 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
-    if (chat.id.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        chat.projectName?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Text(if (chat.id.isEmpty()) stringResource(R.string.new_chat) else chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-    }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
         detectTapGestures(onTap = { keyboard?.hide(); focus.clearFocus() })
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
