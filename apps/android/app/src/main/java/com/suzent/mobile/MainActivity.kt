@@ -202,7 +202,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         .heightIn(min = 48.dp).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         Text(chat.title, Modifier.weight(1f), color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-        if (chat.running) Text("…", color = MaterialTheme.colorScheme.primary)
+        if (chat.running) Text("…", color = suzentLink)
     }
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RectangleShape,
         containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
@@ -347,7 +347,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
         if (!expanded) SendAction(model, chat)
         }

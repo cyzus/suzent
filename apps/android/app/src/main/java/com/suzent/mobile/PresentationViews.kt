@@ -60,7 +60,7 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 @Composable
 fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
-        primary = Color(PresentationTokens.link_dark), onPrimary = Color.Black,
+        primary = Color(PresentationTokens.blue), onPrimary = Color.White,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
         surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.background_dark),
         surfaceVariant = Color(PresentationTokens.code_header_dark),
@@ -94,6 +94,9 @@ fun SuzentTheme(content: @Composable () -> Unit) {
 val suzentShadow: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.shadow_dark else PresentationTokens.black)
 
+val suzentLink: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.link_dark else PresentationTokens.blue)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false) {
@@ -112,7 +115,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     val codeBackground = Color(if (dark) PresentationTokens.surface_dark else PresentationTokens.code_bg)
     val codeForeground = Color(if (dark) PresentationTokens.text_dark else PresentationTokens.code_text)
     val codeHeader = Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.black)
-    val link = MaterialTheme.colorScheme.primary.toArgb()
+    val link = suzentLink.toArgb()
     val renderer = remember(context, dark) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
@@ -428,8 +431,8 @@ fun SuzentTextInput(value: String, onValueChange: (String) -> Unit, placeholder:
     androidx.compose.foundation.text.BasicTextField(value, onValueChange, singleLine = !multiline,
         minLines = if (multiline) 3 else 1, maxLines = if (multiline) 6 else 1, interactionSource = interaction,
         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
+        modifier = modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, if (focused) suzentLink else MaterialTheme.colorScheme.outline)
             .heightIn(min = PresentationTokens.controlHeight.dp).padding(PresentationTokens.spaceMedium.dp),
         decorationBox = { input -> Box { if (value.isEmpty()) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = PresentationTokens.typeControl.sp); input() } })
 }
@@ -510,7 +513,7 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     val running = live && parts.any { it.state == "running" }
     val failed = parts.any { it.state in listOf("error", "denied") }
     val ink = MaterialTheme.colorScheme.onSurface
-    val accent = if (failed) MaterialTheme.colorScheme.error else if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
     val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
     Column(Modifier.fillMaxWidth()) {
         SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -544,7 +547,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
     val active = live && part.state == "running"
     val error = part.state in listOf("error", "denied")
     val pending = part.state == "approval-requested"
-    val color = if (error) MaterialTheme.colorScheme.error else if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val color = if (error) MaterialTheme.colorScheme.error else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 14.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
             Box(Modifier.size(16.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -705,7 +708,7 @@ fun StreamingPulse() {
         repeat(3) { index ->
             Box(Modifier.size(4.dp).graphicsLayer {
                 alpha = if (enabled) 0.3f + 0.7f * (sin(phase - index * 0.8f) + 1f) / 2f else 0.7f
-            }.background(MaterialTheme.colorScheme.primary))
+            }.background(suzentLink))
         }
     }
 }
