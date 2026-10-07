@@ -125,7 +125,7 @@ struct AttachMenu: View {
             Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).frame(width: 36, height: 44)
         }
         .buttonStyle(.plain)
-        .tint(.primary)
+        .tint(Color.suzentText)
         .accessibilityLabel(String(localized: "Attach"))
         .disabled(model.busy || model.attachments.count >= maxAttachments)
         .sheet(isPresented: $showMenu, onDismiss: {
@@ -156,7 +156,7 @@ struct AttachMenu: View {
             }
             .padding(PresentationTokens.spacePage)
             .background(Color.suzentSurface)
-            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .padding(PresentationTokens.spacePage)
             .presentationDetents([.height(220)])
             .presentationDragIndicator(.hidden)
