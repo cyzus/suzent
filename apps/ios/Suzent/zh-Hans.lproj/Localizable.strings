@@ -176,3 +176,17 @@
 "Remove %@" = "移除 %@";
 "You can attach up to %lld items per message." = "每条消息最多添加 %lld 个附件。";
 "That item could not be read. Try attaching it again." = "无法读取该项目，请重新添加。";
+
+"Sub-agent" = "子智能体";
+"Sub-agent of %@" = "来自：%@";
+"Scheduled tasks" = "定时任务";
+"Scheduled task" = "定时任务";
+"Running" = "运行中";
+"Paused" = "已暂停";
+"Last run failed" = "上次运行失败";
+"Active" = "已启用";
+"Next run: %@" = "下次运行：%@";
+"No conversation yet" = "尚未生成对话";
+
+"Expand sub-agents: %lld" = "展开 %lld 个子智能体";
+"Collapse sub-agents: %lld" = "折叠 %lld 个子智能体";

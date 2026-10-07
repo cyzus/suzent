@@ -149,4 +149,16 @@
     <string name="attachment_limit">You can attach up to %1$d items per message.</string>
     <string name="attachment_read_error">That item could not be read. Try attaching it again.</string>
     <string name="camera_permission_attach">Allow camera access in Settings to take photos and videos.</string>
+    <string name="subagent">Sub-agent</string>
+    <string name="subagent_of">Sub-agent of %1$s</string>
+    <string name="scheduled_tasks">Scheduled tasks</string>
+    <string name="scheduled_task">Scheduled task</string>
+    <string name="task_running">Running</string>
+    <string name="task_paused">Paused</string>
+    <string name="task_failed">Last run failed</string>
+    <string name="task_active">Active</string>
+    <string name="task_next_run">Next run: %1$s</string>
+    <string name="task_no_conversation">No conversation yet</string>
+    <string name="expand_subagents">Expand %1$d sub-agents</string>
+    <string name="collapse_subagents">Collapse %1$d sub-agents</string>
 </resources>

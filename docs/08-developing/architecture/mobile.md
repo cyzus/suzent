@@ -200,6 +200,23 @@ Both native clients use the same activity fixtures in `packages/mobile-contract/
 
 ### Navigation and composer
 
+Mobile chat summaries and transcripts include optional `platform` and
+`parentChatId` metadata. The parent ID is null when it is outside the device's
+shared-chat scope. Android and iOS use the same sidebar fixtures to nest and fold
+sub-agents in a single layer under the topmost visible parent, retain unshared-parent
+conversations as standalone rows, and include the root when searching for a child.
+Descendants share one fold control on the main conversation row; child rows never
+introduce another folding level. Scheduled conversations and their sub-agents
+appear in a separate scheduled-tasks section.
+
+`GET /mobile/client/session` advertises `scheduled_tasks: 1` when
+`GET /mobile/client/scheduled-tasks` is available. Clients skip that request on
+older backends. The endpoint only returns tasks whose target conversation is
+permitted for the device, including bound tasks and isolated `cron-{id}` tasks.
+It exposes name, active/running/error flags, offset-qualified run times, and an
+openable chat ID only when that chat exists; prompts and raw errors stay private.
+This sidebar is read-only. Pending tasks remain visible without creating a chat.
+
 Chats live in a searchable sidebar grouped by desktop Project, with collapsible
 sections and a new-conversation action per accessible, active project. New conversation
 opens an unsaved composer; only its first non-empty send creates a stored chat.

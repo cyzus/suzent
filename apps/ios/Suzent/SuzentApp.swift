@@ -33,6 +33,11 @@ private struct ChatMenuPreferenceKey: PreferenceKey {
 private struct ChatSidebarRow: View {
     let chat: Chat
     let selected: Bool
+    let parentTitle: String?
+    let nested: Bool
+    let childCount: Int
+    let childrenExpanded: Bool
+    let toggleChildren: () -> Void
     let enabled: Bool
     let canManage: Bool
     let projects: [Project]
@@ -48,12 +53,32 @@ private struct ChatSidebarRow: View {
         Button { if !menu { open() } } label: {
             HStack {
                 if chat.pinned == true { Image(systemName: "pin.fill").font(.caption) }
-                Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
-                    .lineLimit(2).multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                    if chat.isSubagent && !nested {
+                        if let parentTitle { Text("Sub-agent of \(parentTitle)").font(.caption) }
+                        else { Text("Sub-agent").font(.caption) }
+                    } else if chat.isScheduled { Text("Scheduled task").font(.caption) }
+                }
                 Spacer()
                 if chat.isRunning == true { Image(systemName: "ellipsis") }
+                if childCount > 0 { Color.clear.frame(width: 44) }
             }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
+            .overlay(alignment: .trailing) {
+                if childCount > 0 {
+                    Button(action: toggleChildren) {
+                        HStack(spacing: 5) {
+                            Text("\(childCount)").font(.system(size: 11, weight: .medium, design: .monospaced))
+                            Image(systemName: childrenExpanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
+                        }.foregroundStyle(Color.suzentMuted).padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(Color.suzentText.opacity(0.06))
+                            .frame(width: 52, height: 44)
+                    }.buttonStyle(.plain).padding(.trailing, 6)
+                        .accessibilityLabel(childrenExpanded ? Text("Collapse sub-agents: \(childCount)") : Text("Expand sub-agents: \(childCount)"))
+                }
+            }
             .simultaneousGesture(LongPressGesture().onEnded { _ in
                 guard enabled else { return }
                 moving = false; menu = true
@@ -124,11 +149,14 @@ struct ContentView: View {
     @State private var repairScanner = false
     @State private var search = ""
     @State private var collapsedProjects: Set<String> = []
+    @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var scheduledIDs: Set<String> { scheduledChatIDs(model.chats) }
 
     private var projects: [Project] {
         var result = model.projects
@@ -282,20 +310,23 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Color.clear.frame(height: 0).id("sidebar-top")
-                    if model.chats.contains(where: { $0.pinned == true }) {
+                    if model.chats.contains(where: { $0.pinned == true && !scheduledIDs.contains($0.id) }) {
                         Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
-                        conversationRows(model.chats.filter { $0.pinned == true })
+                        conversationRows(model.chats.filter { $0.pinned == true && !scheduledIDs.contains($0.id) })
                         Divider()
                     }
                     ForEach(projects) { project in projectSection(project) }
-                    let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true }
+                    let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true && !scheduledIDs.contains($0.id) }
                     if !unassigned.isEmpty { conversationRows(unassigned) }
+                    scheduledSection
                     if projects.isEmpty && model.chats.isEmpty {
                         Button("New conversation") { Task { await model.createChat(); showSidebar = false; showSettings = false } }
                             .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                     }
                 }.padding(.horizontal, 16)
             }
+            .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
+            .onChange(of: model.chats.map(\.id)) { _, _ in expandSelectedAgents() }
             .onChange(of: model.pinnedVersion) { _, _ in
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
                     reader.scrollTo("sidebar-top", anchor: .top)
@@ -325,23 +356,82 @@ struct ContentView: View {
                 }.accessibilityLabel("New conversation")
                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true || !model.projects.contains(where: { $0.id == project.id }))
             }
-            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(model.chats.filter { $0.projectId == project.id && $0.pinned != true }) }
+            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(model.chats.filter { $0.projectId == project.id && $0.pinned != true && !scheduledIDs.contains($0.id) }) }
         }
     }
 
     private func conversationRows(_ chats: [Chat]) -> some View {
-        ForEach(chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }.sorted { ($0.pinned == true) && ($1.pinned != true) }) { chat in
-            ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
-                           enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
-                           projects: model.projects, manage: { action, value in
-                Task { await model.manageChat(chat, action: action, value: value) }
-            }) {
-                composing = false
-                showSettings = false
-                showSidebar = false
-                Task { await model.open(chat) }
-            }
+        ForEach(sidebarChats(chats, search: search, expanded: expandedAgents)) { entry in
+            let chat = entry.chat
+            VStack(alignment: .leading, spacing: 0) {
+                ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
+                               parentTitle: model.chats.first { $0.id == chat.parentChatId }?.title,
+                               nested: entry.depth > 0, childCount: entry.childCount, childrenExpanded: expandedAgents.contains(chat.id),
+                               toggleChildren: {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                        if expandedAgents.contains(chat.id) { expandedAgents.remove(chat.id) }
+                        else { expandedAgents.insert(chat.id) }
+                    }
+                },
+                               enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
+                               projects: model.projects, manage: { action, value in
+                    Task { await model.manageChat(chat, action: action, value: value) }
+                }) { openSidebarChat(chat) }
+            }.padding(.leading, entry.depth > 0 ? 8 : 0)
+                .overlay(alignment: .leading) {
+                    if entry.depth > 0 { Rectangle().fill(Color.suzentOutline.opacity(0.45)).frame(width: 1) }
+                }
+                .padding(.leading, entry.depth > 0 ? 12 : 0)
         }
+    }
+
+    private func openSidebarChat(_ chat: Chat) {
+        composing = false
+        showSettings = false
+        showSidebar = false
+        Task { await model.open(chat) }
+    }
+
+    private func expandSelectedAgents() {
+        var current = model.chats.first { $0.id == model.selected?.id }
+        var parents = Set<String>()
+        while let chat = current, chat.isSubagent, let parent = chat.parentChatId, parents.insert(parent).inserted {
+            current = model.chats.first { $0.id == parent }
+        }
+        expandedAgents.formUnion(parents)
+    }
+
+    @ViewBuilder private var scheduledSection: some View {
+        let tasks = model.scheduledTasks.filter { search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.name.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        let taskChatIDs = Set(model.scheduledTasks.compactMap(\.chatId))
+        let oldChats = model.chats.filter { scheduledIDs.contains($0.id) && !taskChatIDs.contains($0.id) }
+        if !tasks.isEmpty || !sidebarChats(oldChats, search: search, expanded: expandedAgents).isEmpty {
+            Text("Scheduled tasks").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
+            ForEach(tasks) { task in
+                Button {
+                    if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(task.name).font(.system(size: PresentationTokens.typeChat, weight: .semibold)).lineLimit(2)
+                        if task.isRunning { Text("Running").font(.caption).foregroundStyle(Color.suzentMuted) }
+                        else if !task.active { Text("Paused").font(.caption).foregroundStyle(Color.suzentMuted) }
+                        else if task.hasError { Text("Last run failed").font(.caption).foregroundStyle(Color.suzentMuted) }
+                        else if let raw = task.nextRunAt, let date = taskDate(raw) {
+                            Text("Next run: \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(Color.suzentMuted)
+                        } else { Text("Active").font(.caption).foregroundStyle(Color.suzentMuted) }
+                        if task.chatId == nil { Text("No conversation yet").font(.caption).foregroundStyle(Color.suzentMuted) }
+                    }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                }.buttonStyle(ChatRowButtonStyle(selected: task.chatId != nil && model.selected?.id == task.chatId && !showSettings))
+                    .disabled(model.busy || task.chatId == nil)
+            }
+            conversationRows(oldChats)
+        }
+    }
+
+    private func taskDate(_ raw: String) -> Date? {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
     }
 
     private var settings: some View {
