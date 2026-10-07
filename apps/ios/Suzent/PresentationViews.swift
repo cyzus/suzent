@@ -5,15 +5,31 @@ import SafariServices
 import ImageIO
 
 extension Color {
-    static var suzentSurface: Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(red: 23 / 255, green: 23 / 255, blue: 23 / 255, alpha: 1) : .white
-        })
-    }
+    static let suzentBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.background_dark))
+    static let suzentSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.surface_dark))
+    static let suzentText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark))
+    static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
+    static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
+    static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
+    static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
+    static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
+    static let suzentCodeHeader = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.code_header_dark))
 
     init(presentation value: UInt32) {
         self.init(.sRGB, red: Double((value >> 16) & 255) / 255,
                   green: Double((value >> 8) & 255) / 255, blue: Double(value & 255) / 255, opacity: 1)
+    }
+}
+
+private extension UIColor {
+    static func suzentAdaptive(light: UInt32, dark: UInt32) -> UIColor {
+        UIColor { traits in
+            let value = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((value >> 16) & 255) / 255,
+                           green: CGFloat((value >> 8) & 255) / 255,
+                           blue: CGFloat(value & 255) / 255, alpha: 1)
+        }
     }
 }
 
@@ -41,8 +57,8 @@ struct MessageView: View {
                     .padding(PresentationTokens.spaceMedium)
                     .foregroundStyle(.black)
                     .background(Color(presentation: PresentationTokens.yellow))
-                    .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.primary).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
                     .frame(maxWidth: 320, alignment: .trailing)
                     .padding(.trailing, PresentationTokens.shadowOffset).padding(.bottom, PresentationTokens.shadowOffset)
             }
@@ -109,7 +125,7 @@ private struct MessageFooter: View {
                     }
                     if user { Text("You") }
                 }.font(.system(size: 11)).lineLimit(1).layoutPriority(1)
-        }.buttonStyle(.plain).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
+        }.buttonStyle(.plain).foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
             .alert("Model", isPresented: Binding(get: { modelDetails != nil }, set: { if !$0 { modelDetails = nil } })) {
                 Button("Dismiss") { modelDetails = nil }
             } message: { Text(modelDetails ?? "") }
@@ -194,21 +210,20 @@ struct SuzentButtonStyle: ButtonStyle {
     var quiet = false
     var destructive = false
     @Environment(\.isEnabled) private var enabled
-    @Environment(\.colorScheme) private var scheme
 
     func makeBody(configuration: Configuration) -> some View {
-        let outline: Color = scheme == .dark ? .white : .black
+        let outline = Color.suzentOutline
         return configuration.label
             .font(.system(size: PresentationTokens.typeControl, weight: .semibold))
             .padding(.horizontal, compact ? PresentationTokens.spaceMedium : PresentationTokens.spacePage)
             .padding(.vertical, PresentationTokens.spaceSmall)
             .frame(maxWidth: compact ? nil : .infinity, minHeight: PresentationTokens.controlHeight)
-            .foregroundStyle(destructive ? Color.red : prominent ? .white : outline)
+            .foregroundStyle(destructive ? Color.red : prominent ? .white : Color.suzentText)
             .background(prominent ? Color(presentation: PresentationTokens.blue)
-                : scheme == .dark ? Color(presentation: PresentationTokens.surface_dark) : .white)
+                : Color.suzentSurface)
             .overlay(Rectangle().strokeBorder(quiet ? .clear : outline, lineWidth: PresentationTokens.borderWidth))
             .compositingGroup()
-            .shadow(color: quiet ? .clear : outline, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
+            .shadow(color: quiet ? .clear : Color.suzentShadow, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
                     y: configuration.isPressed ? 0 : PresentationTokens.shadowOffset)
             .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
             .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
@@ -233,7 +248,7 @@ struct SuzentDisclosure<Content: View>: View {
             }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
             if expanded { content().padding(.top, PresentationTokens.spaceMedium) }
         }.padding(PresentationTokens.spacePage)
-            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }
 }
 
@@ -249,7 +264,7 @@ struct SuzentTextInput: View {
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .focused($focused).padding(PresentationTokens.spaceMedium)
             .frame(minHeight: PresentationTokens.controlHeight)
-            .overlay(Rectangle().stroke(focused ? Color(presentation: PresentationTokens.blue) : .primary, lineWidth: PresentationTokens.borderWidth))
+            .overlay(Rectangle().stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }
 }
 
@@ -275,7 +290,7 @@ struct SuzentToggleStyle: ToggleStyle {
                 Spacer(minLength: 12)
                 Rectangle().fill(configuration.isOn ? Color(presentation: PresentationTokens.blue) : Color.secondary.opacity(0.2))
                     .frame(width: 44, height: 26)
-                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                     .overlay(alignment: configuration.isOn ? .trailing : .leading) {
                         Rectangle().fill(configuration.isOn ? .white : .primary).frame(width: 18, height: 18).padding(4)
                     }
@@ -421,7 +436,7 @@ private struct CitationParagraph: UIViewRepresentable {
         let result = NSMutableAttributedString(parsed)
         let all = NSRange(location: 0, length: result.length)
         let font = UIFont.systemFont(ofSize: CGFloat(PresentationTokens.typeChat))
-        result.addAttributes([.font: font, .foregroundColor: UIColor.label], range: all)
+        result.addAttributes([.font: font, .foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark)], range: all)
         for run in parsed.runs {
             let range = NSRange(run.range, in: parsed)
             if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
@@ -482,7 +497,7 @@ private struct CitationParagraph: UIViewRepresentable {
         }
         coordinator.measuredSize = nil
         view.attributedText = result
-        view.linkTextAttributes = [.foregroundColor: UIColor.systemBlue]
+        view.linkTextAttributes = [.foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark)]
         view.tintColor = .clear
         view.accessibilityLabel = String(parsed.characters)
     }
@@ -573,7 +588,7 @@ struct SuzentMarkdown: View {
                                         Image(uiImage: image).resizable().scaledToFit().frame(width: 18, height: 18).accessibilityHidden(true)
                                     } else { Image(systemName: "globe").frame(width: 18, height: 18).accessibilityHidden(true) }
                                     Text((source.url.host ?? "").replacingOccurrences(of: "www.", with: ""))
-                                }.font(.caption).foregroundStyle(.secondary)
+                                }.font(.caption).foregroundStyle(Color.suzentMuted)
                                 Text(source.title).font(.headline)
                                 if !source.snippet.isEmpty { Text(source.snippet).font(.subheadline).lineLimit(6) }
                                 Button("Read article") { browserLink = source.url }.buttonStyle(.borderedProminent).clipShape(Capsule())
@@ -617,7 +632,7 @@ struct SuzentMarkdown: View {
                     } else { configuration.label }
                 }
                 .text {
-                    ForegroundColor(.primary)
+                    ForegroundColor(Color.suzentText)
                     BackgroundColor(.clear)
                     FontSize(PresentationTokens.typeChat)
                 }
@@ -628,25 +643,25 @@ struct SuzentMarkdown: View {
                     BackgroundColor(Color(presentation: PresentationTokens.yellow))
                 }
                 .link {
-                    ForegroundColor(Color(presentation: PresentationTokens.blue))
+                    ForegroundColor(Color.suzentLink)
                 }
                 .codeBlock { configuration in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(configuration.language?.uppercased() ?? "CODE")
                             .font(.system(.caption, design: .monospaced).bold())
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12).foregroundStyle(.white).background(.black)
+                            .padding(12).foregroundStyle(.white).background(Color.suzentCodeHeader)
                         ScrollView(.horizontal) {
                             configuration.label
                                 .markdownTextStyle {
                                     FontFamilyVariant(.monospaced)
                                     FontSize(14)
-                                    ForegroundColor(.black)
+                                    ForegroundColor(Color.suzentCodeText)
                                     BackgroundColor(.clear)
                                 }
                                 .fixedSize(horizontal: true, vertical: false).padding(16)
-                        }.background(Color(presentation: PresentationTokens.code_bg))
-                    }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                        }.background(Color.suzentCodeBackground)
+                    }.overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                         .markdownMargin(top: 8, bottom: 16)
                 }
     }
@@ -659,13 +674,13 @@ struct SuzentAssistantBadge: View {
             if compact {
                 HStack(spacing: 6) {
                     SuzentLogoMark().frame(width: 16, height: 16).opacity(0.5)
-                    Text("SUZENT").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("SUZENT").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Color.suzentMuted)
                 }
             } else {
                 SuzentLogoMark().frame(width: 26, height: 26)
                     .frame(width: 90, height: 40).background(Color.suzentSurface)
-                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.primary).offset(x: 3, y: 3) }
+                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
                     .padding(.trailing, 3).padding(.bottom, 3)
             }
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
@@ -697,7 +712,7 @@ struct ActivityRail: View {
     private var waiting: Bool { parts.contains { $0.state == "approval-requested" } }
     private var running: Bool { live && parts.contains { $0.state == "running" } }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
-    private var accent: Color { failed ? .red : running ? Color(presentation: PresentationTokens.blue) : .secondary }
+    private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
@@ -710,7 +725,7 @@ struct ActivityRail: View {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
                     Spacer(minLength: 0)
                 }.font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .textCase(.uppercase).foregroundStyle(.secondary)
+                    .textCase(.uppercase).foregroundStyle(Color.suzentMuted)
                     .padding(.vertical, 12).padding(.horizontal, 4).contentShape(Rectangle())
             }.buttonStyle(.plain)
             if expanded {
@@ -733,7 +748,7 @@ struct ToolActivityBlock: View {
     @State private var expanded = false
     private var running: Bool { live && part.state == "running" }
     private var failed: Bool { ["error", "denied"].contains(part.state ?? "") }
-    private var color: Color { failed ? .red : running ? Color(presentation: PresentationTokens.blue) : .secondary }
+    private var color: Color { failed ? .red : running ? Color.suzentLink : .secondary }
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(spacing: 0) {
@@ -750,12 +765,12 @@ struct ToolActivityBlock: View {
                             .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
                         Spacer(minLength: 4)
                         if running { StreamingPulse() }
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.suzentMuted)
                     }.frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 if !expanded, part.type == "tool", let preview = (failed ? part.output?.nonEmpty : part.args?.nonEmpty) {
                     Text(preview).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary).lineLimit(1).padding(.bottom, 10)
+                        .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.bottom, 10)
                 }
                 if expanded {
                     VStack(alignment: .leading, spacing: 12) {
@@ -772,7 +787,7 @@ struct ToolActivityBlock: View {
     @ViewBuilder private func detail(_ title: LocalizedStringKey, value: String?, code: Bool) -> some View {
         if let value, !value.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.system(size: 10, weight: .bold)).textCase(.uppercase).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 10, weight: .bold)).textCase(.uppercase).foregroundStyle(Color.suzentMuted)
                 Text(value).font(.system(size: 12, design: code ? .monospaced : .default)).textSelection(.enabled)
             }
         }
@@ -788,7 +803,7 @@ struct ApprovalCards: View {
                     .padding(12).foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
                 VStack(alignment: .leading, spacing: 10) {
                     Text(request.toolName).font(.system(.headline, design: .monospaced))
-                    Text("Via connected desktop").font(.caption).foregroundStyle(.secondary)
+                    Text("Via connected desktop").font(.caption).foregroundStyle(Color.suzentMuted)
                     Text(request.args).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
                     if !request.reason.isEmpty { Text(request.reason).font(.footnote) }
                     if model.device?.permissions.approveTools == true && !request.actions.isEmpty {
@@ -800,10 +815,10 @@ struct ApprovalCards: View {
                                 }
                             }.buttonStyle(SuzentButtonStyle(prominent: action.behavior == "allow", compact: true)).disabled(model.approvalBusy)
                         }
-                        Text("Choose for each pending tool to continue.").font(.caption).foregroundStyle(.secondary)
+                        Text("Choose for each pending tool to continue.").font(.caption).foregroundStyle(Color.suzentMuted)
                     } else { Text("Approve on desktop, or pair again with tool approval access.").font(.footnote) }
                 }.padding(12)
-            }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+            }.overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
         }
     }
 }
@@ -860,7 +875,7 @@ struct SuzentSelectionTrigger: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let prefix { Text(prefix).foregroundStyle(.secondary).lineLimit(1) }
+                if let prefix { Text(prefix).foregroundStyle(Color.suzentMuted).lineLimit(1) }
                 Text(value).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold))
             }
@@ -900,8 +915,8 @@ struct SuzentSelectionPanel: View {
                 }
             }
         }.background(Color.suzentSurface)
-            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.primary).offset(x: 4, y: 4) }
+            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: 4, y: 4) }
             .padding(.trailing, 4).padding(.bottom, 4)
             .onAppear { titleFocused = true }
     }
@@ -968,8 +983,8 @@ struct AssemblyBadge: View {
             .frame(width: expanded ? min(320, max(90, geometry.size.width - 3)) : 90, height: expanded ? 108 : 40)
             .background(Color.suzentSurface)
             .clipped()
-            .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.primary).offset(x: 3, y: 3) }
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
             .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
         }
         .frame(height: expanded ? 111 : 43)
@@ -1117,7 +1132,7 @@ private struct SoftStreamParagraph: UIViewRepresentable {
         let parsed = (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown)
         let result = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
         let entire = NSRange(location: 0, length: result.length)
-        result.addAttributes([.font: UIFont.systemFont(ofSize: PresentationTokens.typeChat), .foregroundColor: UIColor.label], range: entire)
+        result.addAttributes([.font: UIFont.systemFont(ofSize: PresentationTokens.typeChat), .foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark)], range: entire)
         var offset = 0
         for run in parsed.runs {
             let length = String(parsed[run.range].characters).utf16.count
@@ -1137,7 +1152,7 @@ private struct SoftStreamParagraph: UIViewRepresentable {
             if intent.contains(.strikethrough) { result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
             offset += length
         }
-        view.linkTextAttributes = [.foregroundColor: UIColor(red: 0, green: 102/255, blue: 1, alpha: 1)]
+        view.linkTextAttributes = [.foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark)]
         view.update(result, active: active)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: StreamFadeTextView, context: Context) -> CGSize? {

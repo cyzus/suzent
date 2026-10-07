@@ -55,7 +55,7 @@ struct PairingView: View {
                     }
                     if model.canReconnect {
                         Divider()
-                        Text(model.origin).font(.caption).foregroundStyle(.secondary)
+                        Text(model.origin).font(.caption).foregroundStyle(Color.suzentMuted)
                         Button("Reconnect to desktop") { Task { await model.connect() } }
                             .buttonStyle(SuzentButtonStyle()).disabled(model.busy)
                     }
@@ -74,7 +74,7 @@ struct ClientPermissionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PresentationTokens.spaceMedium) {
             Text(device.displayName).font(.headline)
-            Text(origin).font(.caption.monospaced()).foregroundStyle(.secondary)
+            Text(origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted)
             Label(device.permissions.allChats ? String(localized: "All conversations")
                 : String(localized: "Shared conversations: \(device.permissions.chatIds.count)"), systemImage: "text.bubble")
             permission("Create conversations", enabled: device.permissions.createChats)
@@ -83,13 +83,13 @@ struct ClientPermissionsView: View {
             permission("Stop responses", enabled: device.permissions.stop)
             permission("Approve tool requests", enabled: device.permissions.approveTools == true)
             Text("Manage or revoke access in desktop Settings → Devices → Mobile access.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(Color.suzentMuted)
             Text("Tool requests follow the conversation policy. Node access is separate.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(Color.suzentMuted)
         }
     }
     private func permission(_ title: LocalizedStringKey, enabled: Bool) -> some View {
-        HStack { Text(title); Spacer(); Text(enabled ? String(localized: "Allowed") : String(localized: "Not allowed")).foregroundStyle(.secondary) }
+        HStack { Text(title); Spacer(); Text(enabled ? String(localized: "Allowed") : String(localized: "Not allowed")).foregroundStyle(Color.suzentMuted) }
     }
 }
 
@@ -111,7 +111,7 @@ struct PairingPermissionsView: View {
             permission("Approve tool requests", enabled: permissions.approveTools == true)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-            .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }
     private func permission(_ title: LocalizedStringKey, enabled: Bool) -> some View {
         HStack { Text(title); Spacer(); Text(enabled ? String(localized: "Allowed") : String(localized: "Not allowed")) }
