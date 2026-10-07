@@ -23,7 +23,7 @@ data class ChatMessage(val role: String, val content: String, val parts: List<Me
     val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null,
     val files: List<FileAttachment> = emptyList())
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
-    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false) {
+    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null) {
     companion object {
         fun parse(json: JSONObject): Chat {
             val messages = json.optJSONArray("messages") ?: JSONArray()
@@ -48,8 +48,18 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                             files.optJSONObject(fileIndex)?.let { file -> FileAttachment(file.optString("filename"), file.optString("mime_type")) }
                         })
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
+                platform = json.opt("platform") as? String, parentChatId = json.opt("parentChatId") as? String,
                 pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }
+    }
+}
+
+data class ScheduledTask(val id: String, val name: String, val chatId: String?, val active: Boolean,
+    val running: Boolean, val nextRunAt: String?, val lastRunAt: String?, val hasError: Boolean) {
+    companion object {
+        fun parse(json: JSONObject): ScheduledTask = ScheduledTask(json.getString("id"), json.getString("name"),
+            json.opt("chatId") as? String, json.getBoolean("active"), json.optBoolean("isRunning"),
+            json.opt("nextRunAt") as? String, json.opt("lastRunAt") as? String, json.optBoolean("hasError"))
     }
 }
 

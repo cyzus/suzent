@@ -1,0 +1,116 @@
+{
+  "chats": [
+    {
+      "id": "child",
+      "title": "Research",
+      "platform": "subagent",
+      "parentChatId": "parent"
+    },
+    {
+      "id": "grandchild",
+      "title": "Verify sources",
+      "platform": "subagent",
+      "parentChatId": "child"
+    },
+    {
+      "id": "parent",
+      "title": "Plan trip"
+    },
+    {
+      "id": "other",
+      "title": "Shopping"
+    },
+    {
+      "id": "orphan",
+      "title": "Unshared parent",
+      "platform": "SUBAGENT",
+      "parentChatId": "missing"
+    },
+    {
+      "id": "scheduled",
+      "title": "Daily report",
+      "platform": "cron"
+    }
+  ],
+  "cases": [
+    {
+      "search": "",
+      "expanded": [],
+      "ids": [
+        "parent",
+        "other",
+        "orphan",
+        "scheduled"
+      ],
+      "depths": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "search": "",
+      "expanded": [
+        "parent"
+      ],
+      "ids": [
+        "parent",
+        "child",
+        "grandchild",
+        "other",
+        "orphan",
+        "scheduled"
+      ],
+      "depths": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "search": "",
+      "expanded": [
+        "parent",
+        "child"
+      ],
+      "ids": [
+        "parent",
+        "child",
+        "grandchild",
+        "other",
+        "orphan",
+        "scheduled"
+      ],
+      "depths": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "search": "  VERIFY  ",
+      "expanded": [],
+      "ids": [
+        "parent",
+        "grandchild"
+      ],
+      "depths": [
+        0,
+        1
+      ]
+    },
+    {
+      "search": "no matches",
+      "expanded": [],
+      "ids": [],
+      "depths": []
+    }
+  ]
+}
