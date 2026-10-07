@@ -694,6 +694,61 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
 }
 
 
+private fun reconnectSample(phase: Float, vararg frames: Pair<Float, Float>): Float {
+    for (index in 1 until frames.size) {
+        if (phase <= frames[index].first) {
+            val (start, from) = frames[index - 1]
+            val (end, to) = frames[index]
+            val t = ((phase - start) / (end - start)).coerceIn(0f, 1f)
+            return from + (to - from) * t * t * (3f - 2f * t)
+        }
+    }
+    return frames.last().second
+}
+
+@Composable
+fun ReconnectIndicator(active: Boolean) {
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycle by owner.lifecycle.currentStateFlow.collectAsState()
+    val animated = active && android.animation.ValueAnimator.areAnimatorsEnabled() &&
+        lifecycle.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+    val p = if (animated) {
+        val transition = rememberInfiniteTransition(label = "reconnect")
+        val value by transition.animateFloat(0f, 1f,
+            infiniteRepeatable(tween(7800, easing = LinearEasing)), label = "curious logo")
+        value
+    } else 0f
+    val gaze = reconnectSample(p, 0f to 0f, .09f to 0f, .15f to -1.5f, .28f to -1.5f, .34f to 0f, .40f to 1.33f, .53f to 1.33f, .60f to 0f, 1f to 0f)
+    val eyeY = reconnectSample(p, 0f to 0f, .15f to -.33f, .28f to -.33f, .34f to 0f, .40f to -.67f, .53f to -.67f, .60f to -1f, .68f to -1f, .76f to 0f, 1f to 0f)
+    val lift = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -3f, .27f to -3f, .35f to 1f, .43f to -5f, .51f to -5f, .57f to 2f, .64f to -7f, .72f to 1f, .76f to 0f, 1f to 0f)
+    val tilt = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -7f, .27f to -7f, .35f to 2f, .43f to 6f, .51f to 6f, .57f to -2f, .64f to 0f, 1f to 0f)
+    val blink = reconnectSample(p, 0f to 1f, .12f to 1f, .145f to .12f, .17f to 1f, .31f to 1f, .335f to .12f, .36f to 1f, .55f to 1f, .575f to .12f, .60f to 1f, .71f to 1f, .735f to .12f, .76f to 1f, 1f to 1f)
+    val ink = MaterialTheme.colorScheme.onSurface
+    Box(Modifier.size(210.dp, 130.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Canvas(Modifier.size(72.dp).graphicsLayer {
+            rotationZ = tilt; translationY = lift * density
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .8f)
+        }) {
+            val scale = size.width / 24f
+            SuzentLogoGeometry.rectangles.forEachIndexed { index, rect ->
+                val eye = index > 0
+                val height = rect[3] * if (eye) blink else 1f
+                drawRoundRect(if (eye) Color.White else Color.Black,
+                    topLeft = Offset((rect[0] + if (eye) gaze else 0f) * scale,
+                        (rect[1] + if (eye) eyeY + (rect[3] - height) / 2f else 0f) * scale),
+                    size = androidx.compose.ui.geometry.Size(rect[2] * scale, height * scale),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(minOf(rect[4], height / 2f) * scale))
+            }
+        }
+        if (animated) Canvas(Modifier.fillMaxSize()) {
+            val opacity = reconnectSample(p, 0f to 0f, .05f to 0f, .12f to 1f, .21f to 0f, 1f to 0f)
+            val x = size.width / 2f + (-92f + reconnectSample(p, 0f to -8f, .21f to 13f, 1f to 13f)).dp.toPx()
+            drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .65f * opacity)), x, x + 44.dp.toPx()),
+                topLeft = Offset(x, size.height / 2f - 10.dp.toPx()), size = androidx.compose.ui.geometry.Size(44.dp.toPx(), 1.dp.toPx()))
+        }
+    }
+}
+
 @Composable
 fun StreamingPulse() {
     val enabled = android.animation.ValueAnimator.areAnimatorsEnabled()

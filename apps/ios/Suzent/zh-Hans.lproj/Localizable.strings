@@ -190,3 +190,7 @@
 
 "Expand sub-agents: %lld" = "展开 %lld 个子智能体";
 "Collapse sub-agents: %lld" = "折叠 %lld 个子智能体";
+
+"Connecting to Suzent" = "正在连接 Suzent";
+"Connection help" = "连接帮助";
+"Check that Suzent is running on your desktop and both devices are online." = "请确认桌面端 Suzent 正在运行，并检查两端的网络连接。";
