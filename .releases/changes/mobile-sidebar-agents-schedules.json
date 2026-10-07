@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "minor", "desktop": "patch"},
+  "summary": "Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads."
+}

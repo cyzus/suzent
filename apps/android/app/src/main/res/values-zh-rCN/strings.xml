@@ -149,4 +149,16 @@
     <string name="attachment_limit">每条消息最多添加 %1$d 个附件。</string>
     <string name="attachment_read_error">无法读取该项目，请重新添加。</string>
     <string name="camera_permission_attach">请在设置中允许使用相机，才能拍照和录像。</string>
+    <string name="subagent">子智能体</string>
+    <string name="subagent_of">来自：%1$s</string>
+    <string name="scheduled_tasks">定时任务</string>
+    <string name="scheduled_task">定时任务</string>
+    <string name="task_running">运行中</string>
+    <string name="task_paused">已暂停</string>
+    <string name="task_failed">上次运行失败</string>
+    <string name="task_active">已启用</string>
+    <string name="task_next_run">下次运行：%1$s</string>
+    <string name="task_no_conversation">尚未生成对话</string>
+    <string name="expand_subagents">展开 %1$d 个子智能体</string>
+    <string name="collapse_subagents">折叠 %1$d 个子智能体</string>
 </resources>

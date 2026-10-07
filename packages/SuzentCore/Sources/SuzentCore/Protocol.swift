@@ -51,6 +51,24 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public var projectName: String?
     public var model: String?
     public var models: [String]?
+    public var platform: String?
+    public var parentChatId: String?
+
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
+public struct ScheduledTask: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let chatId: String?
+    public let active: Bool
+    public let isRunning: Bool
+    public let nextRunAt: String?
+    public let lastRunAt: String?
+    public let hasError: Bool
 }
 
 public struct Project: Decodable, Identifiable, Sendable {

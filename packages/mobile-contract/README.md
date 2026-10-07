@@ -9,6 +9,7 @@ fragment. Clients reject redirects to keep credentials bound to the selected hos
 | List | GET /chats | `{chats: [{id,title,isRunning}]}` |
 | Create | POST /chats | `{title}` → `{id,title,messages}` |
 | Load | GET /chats/{id} | `{id,title,messages:[{role,content}]}` |
+| Scheduled tasks | GET /mobile/client/scheduled-tasks | `{tasks:[{id,name,chatId,active,isRunning,nextRunAt,lastRunAt,hasError}]}`; requires session capability `scheduled_tasks: 1` |
 | Send once | POST /chat/send | `{chat_id,message}` → 202 |
 | Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
 | Stop | POST /chat/stop | `{chat_id}` |

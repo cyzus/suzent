@@ -35,6 +35,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var reconnecting by mutableStateOf(false)
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
+    var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
+        private set
     var projects by mutableStateOf<List<Project>>(emptyList())
     var selectedModel by mutableStateOf<String?>(null)
     private val modelPreferences = application.getSharedPreferences("model_preferences", android.content.Context.MODE_PRIVATE)
@@ -213,6 +215,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val session = candidate.session()
             val listing = candidate.chats()
             val projectList = candidate.projects()
+            val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
             store.save(saved); connection = saved; origin = saved.origin
@@ -222,6 +225,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             attachmentsSupported = candidate.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
             connected = true
@@ -281,11 +285,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val session = api.session()
             val listing = api.chats()
             val projectList = api.projects()
+            val taskList = api.scheduledTasks()
             if (current != generation) return
             device = session
             attachmentsSupported = api.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             val id = selected?.id
             if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
@@ -677,6 +683,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun forget() {
+        scheduledTasks = emptyList()
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
         pairingJob?.cancel()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false

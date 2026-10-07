@@ -24,8 +24,10 @@ public struct ClientSession: Decodable, Sendable {
     public let streamProtocols: [Int]
     public let pairingRepair: Int?
     public let attachments: Int?
+    public let scheduledTasks: Int?
 
     public var supportsAttachments: Bool { attachments == 1 }
+    public var supportsScheduledTasks: Bool { scheduledTasks == 1 }
 
     public func validate() throws {
         guard clientProtocol == 1, streamProtocols.contains(1) else { throw PairingError.incompatible }

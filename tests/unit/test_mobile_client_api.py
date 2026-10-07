@@ -45,6 +45,15 @@ def setup_client(tmp_path, monkeypatch):
         merge_chat_config=merge_chat_config,
         has_client_message=lambda chat_id, message_id: False,
         get_pinned_chat_ids=lambda ids: set(),
+        get_chat_navigation=lambda ids: {
+            key: {
+                "platform": records[key].config.get("platform"),
+                "parentChatId": records[key].config.get("parent_chat_id"),
+            }
+            for key in ids
+            if key in records
+        },
+        list_cron_jobs=lambda: [],
         get_subagent_chat_ids_for_parent_chat=lambda chat_id: [],
         update_chat=update_chat,
         get_chat=records.get,
@@ -85,6 +94,8 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
             "isRunning": False,
             "projectId": "p-shared",
             "projectName": "Shared",
+            "platform": None,
+            "parentChatId": None,
         }
     ]
     assert client.get("/mobile/client/chats/private").status_code == 403
@@ -372,6 +383,8 @@ def test_transcript_excludes_backend_configuration(setup_client, monkeypatch):
         "messages",
         "projectId",
         "projectName",
+        "platform",
+        "parentChatId",
         "model",
         "models",
     }
@@ -445,6 +458,8 @@ def test_transcript_reports_current_run_without_loading_runtime(
             "pinned": False,
             "projectId": "p-shared",
             "projectName": "Shared",
+            "platform": None,
+            "parentChatId": None,
             "model": "test/other" if runtime == "native" else None,
             "models": ["test/model", "test/other"] if runtime == "native" else [],
         }
@@ -1217,3 +1232,72 @@ def test_permission_update_rejects_invalid_body(
     with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
         assert desktop.post(url, json=body).status_code == 400
     assert store.verify(result["token"]).permissions.all_chats
+
+
+def test_navigation_redacts_unshared_parent(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    db.get_chat("shared").config = {"platform": "subagent", "parent_chat_id": "private"}
+    for permissions, expected in [
+        ({"chat_ids": ["shared"]}, None),
+        ({"all_chats": True}, "private"),
+    ]:
+        result = grant(store, **permissions)
+        client.headers["Authorization"] = f"Bearer {result['token']}"
+        rows = client.get("/mobile/client/chats").json()["chats"]
+        row = next(row for row in rows if row["id"] == "shared")
+        assert row["platform"] == "subagent"
+        assert row["parentChatId"] == expected
+
+
+def test_scheduled_tasks_are_scoped_and_safe(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+    from datetime import datetime
+
+    db = get_database()
+
+    def job(id: int, mode: str, chat_id: str | None) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=id,
+            name=f"Task {id}",
+            context_mode=mode,
+            chat_id=chat_id,
+            active=True,
+            next_run_at=datetime(2026, 10, 7, 12, 30),
+            last_run_at=None,
+            last_error="private error",
+            prompt="private prompt",
+        )
+
+    db.list_cron_jobs = lambda: [
+        job(1, "bound", "shared"),
+        job(2, "bound", "private"),
+        job(3, "isolated", None),
+    ]
+    for permissions, expected in [
+        ({"chat_ids": ["shared"]}, ["1"]),
+        ({"all_chats": True}, ["1", "2", "3"]),
+        ({}, []),
+    ]:
+        result = grant(store, **permissions)
+        client.headers["Authorization"] = f"Bearer {result['token']}"
+        response = client.get("/mobile/client/scheduled-tasks")
+        assert response.status_code == 200
+        tasks = response.json()["tasks"]
+        assert [task["id"] for task in tasks] == expected
+        assert all("prompt" not in task and "lastError" not in task for task in tasks)
+        if tasks:
+            assert tasks[0]["chatId"] == "shared"
+            assert tasks[0]["hasError"] is True
+            assert datetime.fromisoformat(tasks[0]["nextRunAt"]).utcoffset() is not None
+        if len(tasks) == 3:
+            assert tasks[-1]["chatId"] is None
+    store.revoke(result["device"]["device_id"])
+    assert client.get("/mobile/client/scheduled-tasks").status_code == 401
