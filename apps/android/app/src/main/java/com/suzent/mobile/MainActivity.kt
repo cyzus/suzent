@@ -332,9 +332,10 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
     }
     val composerOutline = MaterialTheme.colorScheme.outline
+    val composerShadow = suzentShadow
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).drawBehind {
         val offset = PresentationTokens.shadowOffset.dp.toPx()
-        drawRect(composerOutline, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
+        drawRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

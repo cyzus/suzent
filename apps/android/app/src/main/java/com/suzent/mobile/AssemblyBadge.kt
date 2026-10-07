@@ -61,8 +61,9 @@ fun AssemblyBadge(thinking: Boolean) {
         val reveal by animateFloatAsState(if (expanded) 1f else 0f,
             tween(if (reduced) 0 else 350), label = "assembly reveal")
         val outline = MaterialTheme.colorScheme.outline
+        val shadowColor = suzentShadow
         Box(Modifier.padding(end = 3.dp, bottom = 3.dp).drawBehind {
-            drawRect(outline, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()))
+            drawRect(shadowColor, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()))
         }.size(width, height).background(MaterialTheme.colorScheme.surface)
             .border(PresentationTokens.borderWidth.dp, outline).clipToBounds(), contentAlignment = Alignment.Center) {
             if (reveal > 0f) Canvas(Modifier.fillMaxSize().padding(2.dp).graphicsLayer { alpha = reveal }) {

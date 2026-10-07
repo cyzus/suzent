@@ -60,11 +60,17 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 @Composable
 fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
-        primary = Color(PresentationTokens.blue), onPrimary = Color.White,
+        primary = Color(PresentationTokens.link_dark), onPrimary = Color.Black,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
-        surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.surface_dark), outline = Color.White,
-        onSurface = Color.White, onBackground = Color.White, onSurfaceVariant = Color(PresentationTokens.muted_dark),
-        outlineVariant = Color(PresentationTokens.gray)
+        surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.background_dark),
+        surfaceVariant = Color(PresentationTokens.code_header_dark),
+        surfaceDim = Color(PresentationTokens.background_dark), surfaceBright = Color(PresentationTokens.code_header_dark),
+        surfaceContainerLowest = Color(PresentationTokens.background_dark), surfaceContainerLow = Color(PresentationTokens.surface_dark),
+        surfaceContainer = Color(PresentationTokens.surface_dark), surfaceContainerHigh = Color(PresentationTokens.code_header_dark),
+        surfaceContainerHighest = Color(PresentationTokens.gray), surfaceTint = Color.Transparent,
+        outline = Color(PresentationTokens.outline_dark), outlineVariant = Color(PresentationTokens.outline_subtle_dark),
+        onSurface = Color(PresentationTokens.text_dark), onBackground = Color(PresentationTokens.text_dark),
+        onSurfaceVariant = Color(PresentationTokens.muted_dark)
     ) else lightColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
@@ -85,6 +91,9 @@ fun SuzentTheme(content: @Composable () -> Unit) {
     ), content = content)
 }
 
+val suzentShadow: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.shadow_dark else PresentationTokens.black)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false) {
@@ -100,7 +109,11 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
             if (bitmap != null) value = value + (url to bitmap)
         }
     }
-    val renderer = remember(context) { Markwon.builder(context)
+    val codeBackground = Color(if (dark) PresentationTokens.surface_dark else PresentationTokens.code_bg)
+    val codeForeground = Color(if (dark) PresentationTokens.text_dark else PresentationTokens.code_text)
+    val codeHeader = Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.black)
+    val link = MaterialTheme.colorScheme.primary.toArgb()
+    val renderer = remember(context, dark) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                 builder.linkResolver(LinkResolver { _, link ->
@@ -112,13 +125,12 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
             override fun configureTheme(builder: MarkwonTheme.Builder) {
                 builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
                     .codeTextColor(Color.Black.toArgb())
-                    .codeBlockBackgroundColor(Color(PresentationTokens.code_bg).toArgb())
-                    .codeBlockTextColor(Color.Black.toArgb())
-                    .linkColor(Color(PresentationTokens.blue).toArgb())
+                    .codeBlockBackgroundColor(codeBackground.toArgb())
+                    .codeBlockTextColor(codeForeground.toArgb())
+                    .linkColor(link)
             }
         }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
-    val link = Color(PresentationTokens.blue).toArgb()
     val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, renderedText) {
         value = withContext(Dispatchers.Default) {
             synchronized(renderer) {
@@ -135,12 +147,12 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         blocks.forEach { block ->
             if (block.language != null) {
                 Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
-                    Text(block.language, Modifier.fillMaxWidth().background(Color.Black).padding(12.dp),
+                    Text(block.language, Modifier.fillMaxWidth().background(codeHeader).padding(12.dp),
                         color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.code_bg)).horizontalScroll(rememberScrollState())) {
+                    Row(Modifier.fillMaxWidth().background(codeBackground).horizontalScroll(rememberScrollState())) {
                         SelectionContainer {
-                            Text(block.body.toString(), Modifier.padding(16.dp), color = Color.Black,
+                            Text(block.body.toString(), Modifier.padding(16.dp), color = codeForeground,
                                 fontFamily = FontFamily.Monospace, fontSize = 14.sp, softWrap = false)
                         }
                     }
@@ -274,11 +286,12 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackMode
                 canRetry: Boolean = false, canEdit: Boolean = false, canFork: Boolean = false,
                 onAction: (String, String?) -> Unit = { _, _ -> }) {
     val outline = MaterialTheme.colorScheme.outline
+    val shadowColor = suzentShadow
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         Box(Modifier.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)
             .widthIn(max = 320.dp).drawBehind {
-                drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
+                drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
             }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline).padding(PresentationTokens.spaceMedium.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
                 message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
@@ -385,12 +398,13 @@ fun SuzentTextButton(
 @Composable
 fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false, quiet: Boolean = false, destructive: Boolean = false) {
     val outline = MaterialTheme.colorScheme.outline
+    val shadowColor = suzentShadow
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val shadow = if (quiet) 0.dp else PresentationTokens.shadowOffset.dp
     Box((if (compact) Modifier else Modifier.fillMaxWidth()).alpha(if (enabled) 1f else .45f).drawBehind {
         val offset = shadow.toPx()
-        if (!quiet && !pressed) drawRect(outline, topLeft = Offset(offset, offset),
+        if (!quiet && !pressed) drawRect(shadowColor, topLeft = Offset(offset, offset),
             size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
     }.padding(end = shadow, bottom = shadow)) {
         Row((if (compact) Modifier else Modifier.fillMaxWidth())
@@ -402,7 +416,7 @@ fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false,
             .padding(horizontal = (if (compact) PresentationTokens.spaceMedium else PresentationTokens.spacePage).dp, vertical = PresentationTokens.spaceSmall.dp),
             horizontalArrangement = Arrangement.Center, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold,
-                color = if (destructive) Color.Red else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface)
+                color = if (destructive) MaterialTheme.colorScheme.error else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -466,8 +480,9 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
         val outline = MaterialTheme.colorScheme.outline
+        val shadowColor = suzentShadow
         Box(Modifier.padding(end = 3.dp, bottom = 3.dp).drawBehind {
-            drawRect(outline, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()))
+            drawRect(shadowColor, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()))
         }.size(90.dp, 40.dp).background(MaterialTheme.colorScheme.surface)
             .border(PresentationTokens.borderWidth.dp, outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Image(painterResource(R.drawable.suzent_logo), contentDescription = "Suzent", modifier = Modifier.size(26.dp))
@@ -622,11 +637,12 @@ fun GreetingCube(modifier: Modifier = Modifier) {
 @Composable
 fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean = true, prefix: String? = null) {
     val outline = MaterialTheme.colorScheme.outline
+    val shadowColor = suzentShadow
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val offset = PresentationTokens.shadowOffset.dp
     Row(Modifier.alpha(if (enabled) 1f else .45f).padding(end = offset, bottom = offset)
-        .drawBehind { if (!pressed) drawRect(outline, topLeft = Offset(offset.toPx(), offset.toPx()), size = size) }
+        .drawBehind { if (!pressed) drawRect(shadowColor, topLeft = Offset(offset.toPx(), offset.toPx()), size = size) }
         .offset(x = if (pressed) offset else 0.dp, y = if (pressed) offset else 0.dp)
         .background(MaterialTheme.colorScheme.surface).border(PresentationTokens.borderWidth.dp, outline)
         .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
@@ -645,10 +661,11 @@ fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean 
 @Composable
 fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, choose: (String) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
+    val shadowColor = suzentShadow
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = Color.Transparent,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null, shape = RectangleShape) {
         Column(Modifier.fillMaxWidth().padding(16.dp).drawBehind {
-            drawRect(outline, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = size)
+            drawRect(shadowColor, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = size)
         }.background(MaterialTheme.colorScheme.surface).border(2.dp, outline)) {
             val dismissLabel = stringResource(R.string.dismiss)
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

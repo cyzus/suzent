@@ -29,10 +29,15 @@ compatibility allows retaining our iOS 17 minimum. See the
 ## Mobile component contract
 
 Button color roles are semantic: neutral navigation, disclosure, selection, and
-secondary actions use black in light mode and white in dark mode. Only primary
+secondary actions use black in light mode and light gray in dark mode. Only primary
 actions use blue; destructive actions use red. Camera-overlay controls remain
 white for contrast. Android text actions use `SuzentTextButton`; iOS inherits
 neutral tint. Input focus, links, and live status keep the blue accent.
+
+Native dark mode uses a charcoal page background, raised gray surfaces, muted gray
+outlines, and near-black hard shadows. Text and shadows have separate color roles;
+never reuse the light text color for a shadow. Code blocks follow the active theme,
+and links use a lighter blue in dark mode while primary action fills retain blue.
 
 SwiftUI and Compose implement the same primitives in their `PresentationViews`
 files. Reuse these for new screens instead of default platform controls:
