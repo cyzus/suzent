@@ -156,8 +156,6 @@ struct ContentView: View {
     @State private var showProjectPicker = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var scheduledIDs: Set<String> { scheduledChatIDs(model.chats) }
-
     private var projects: [Project] {
         var result = model.projects
         for chat in model.chats {
@@ -298,7 +296,8 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let scheduledIDs = scheduledChatIDs(model.chats)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Chats").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                 Spacer()
@@ -315,10 +314,10 @@ struct ContentView: View {
                         conversationRows(model.chats.filter { $0.pinned == true && !scheduledIDs.contains($0.id) })
                         Divider()
                     }
-                    ForEach(projects) { project in projectSection(project) }
+                    ForEach(projects) { project in projectSection(project, scheduledIDs: scheduledIDs) }
                     let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true && !scheduledIDs.contains($0.id) }
                     if !unassigned.isEmpty { conversationRows(unassigned) }
-                    scheduledSection
+                    scheduledSection(scheduledIDs: scheduledIDs)
                     if projects.isEmpty && model.chats.isEmpty {
                         Button("New conversation") { Task { await model.createChat(); showSidebar = false; showSettings = false } }
                             .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
@@ -340,7 +339,7 @@ struct ContentView: View {
         }
     }
 
-    private func projectSection(_ project: Project) -> some View {
+    private func projectSection(_ project: Project, scheduledIDs: Set<String>) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Button {
@@ -401,7 +400,7 @@ struct ContentView: View {
         expandedAgents.formUnion(parents)
     }
 
-    @ViewBuilder private var scheduledSection: some View {
+    @ViewBuilder private func scheduledSection(scheduledIDs: Set<String>) -> some View {
         let tasks = model.scheduledTasks.filter { search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.name.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines)) }
         let taskChatIDs = Set(model.scheduledTasks.compactMap(\.chatId))
         let oldChats = model.chats.filter { scheduledIDs.contains($0.id) && !taskChatIDs.contains($0.id) }
