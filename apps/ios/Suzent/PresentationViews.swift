@@ -96,7 +96,9 @@ private struct MessageFooter: View {
                     Button {
                         UIPasteboard.general.string = message.text
                         copied = true
-                    } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc").frame(width: 32, height: 36) }
+                    } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 13, weight: .regular))
+                        .frame(width: 32, height: 36).contentShape(Rectangle()) }
                     .accessibilityLabel(copied ? String(localized: "Copied") : String(localized: "Copy message"))
                 }
                 if canEdit { actionButton("pencil", title: String(localized: "Edit and resend"), action: "edit") }
@@ -173,7 +175,9 @@ private struct MessageFooter: View {
 
     private func actionButton(_ icon: String, title: String, action value: String) -> some View {
         Button { edited = message.text; action = value } label: {
-            Image(systemName: icon).frame(width: 32, height: 36)
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .regular))
+                .frame(width: 32, height: 36).contentShape(Rectangle())
         }.accessibilityLabel(title)
     }
 
@@ -924,16 +928,66 @@ struct SuzentSelectionPanel: View {
 
 
 struct SuzentLogoMark: View {
+    var eyeOffset: CGSize = .zero
+    var blink: Double = 1
     var body: some View {
         Canvas { context, size in
             context.scaleBy(x: size.width / 24, y: size.height / 24)
             for (index, rect) in SuzentLogoGeometry.rectangles.enumerated() {
-                context.fill(Path(roundedRect: CGRect(x: rect[0], y: rect[1], width: rect[2], height: rect[3]), cornerRadius: rect[4]), with: .color(index == 0 ? .black : .white))
+                let eye = index > 0
+                let height = rect[3] * (eye ? blink : 1)
+                let bounds = CGRect(x: rect[0] + (eye ? eyeOffset.width : 0),
+                                    y: rect[1] + (eye ? eyeOffset.height + (rect[3] - height) / 2 : 0),
+                                    width: rect[2], height: height)
+                context.fill(Path(roundedRect: bounds, cornerRadius: min(rect[4], height / 2)), with: .color(eye ? .white : .black))
             }
         }.accessibilityLabel("Suzent")
     }
 }
 
+
+struct ReconnectIndicator: View {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var began = Date()
+
+    private func sample(_ phase: Double, _ frames: [(Double, Double)]) -> Double {
+        for index in 1..<frames.count where phase <= frames[index].0 {
+            let (start, from) = frames[index - 1]
+            let (end, to) = frames[index]
+            let t = max(0, min(1, (phase - start) / (end - start)))
+            return from + (to - from) * t * t * (3 - 2 * t)
+        }
+        return frames.last?.1 ?? 0
+    }
+
+    var body: some View {
+        let animated = active && !reduceMotion && scenePhase == .active
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animated)) { timeline in
+            let p = animated ? timeline.date.timeIntervalSince(began).truncatingRemainder(dividingBy: 7.8) / 7.8 : 0
+            let gaze = sample(p, [(0,0),(0.09,0),(0.15,-1.5),(0.28,-1.5),(0.34,0),(0.40,1.33),(0.53,1.33),(0.60,0),(1,0)])
+            let lift = sample(p, [(0,0),(0.09,0),(0.18,-3),(0.27,-3),(0.35,1),(0.43,-5),(0.51,-5),(0.57,2),(0.64,-7),(0.72,1),(0.76,0),(1,0)])
+            let tilt = sample(p, [(0,0),(0.09,0),(0.18,-7),(0.27,-7),(0.35,2),(0.43,6),(0.51,6),(0.57,-2),(0.64,0),(1,0)])
+            let blink = sample(p, [(0,1),(0.12,1),(0.145,0.12),(0.17,1),(0.31,1),(0.335,0.12),(0.36,1),(0.55,1),(0.575,0.12),(0.60,1),(0.71,1),(0.735,0.12),(0.76,1),(1,1)])
+            ZStack {
+                SuzentLogoMark(eyeOffset: CGSize(width: gaze, height: animated ? sample(p, [(0,0),(0.15,-0.33),(0.28,-0.33),(0.34,0),(0.40,-0.67),(0.53,-0.67),(0.60,-1),(0.68,-1),(0.76,0),(1,0)]) : 0), blink: blink)
+                    .frame(width: 72, height: 72)
+                    .rotationEffect(.degrees(tilt), anchor: UnitPoint(x: 0.5, y: 0.8))
+                    .offset(y: lift)
+                if animated {
+                    Rectangle().fill(LinearGradient(colors: [.clear, Color.suzentText.opacity(0.65)], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: 44, height: 1)
+                        .opacity(sample(p, [(0,0),(0.05,0),(0.12,1),(0.21,0),(1,0)]))
+                        .offset(x: -70 + sample(p, [(0,-8),(0.21,13),(1,13)]), y: -10)
+                }
+            }
+        }.frame(width: 210, height: 130)
+            .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+            .onChange(of: active) { _, active in if active { began = Date() } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { began = Date() } }
+    }
+}
 
 struct StreamingPulse: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

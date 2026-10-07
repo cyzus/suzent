@@ -161,4 +161,7 @@
     <string name="task_no_conversation">No conversation yet</string>
     <string name="expand_subagents">Expand %1$d sub-agents</string>
     <string name="collapse_subagents">Collapse %1$d sub-agents</string>
+    <string name="connecting_suzent">Connecting to Suzent</string>
+    <string name="connection_help">Connection help</string>
+    <string name="connection_help_detail">Check that Suzent is running on your desktop and both devices are online.</string>
 </resources>

@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Show the current conversation title in the mobile header, retain the Suzent wordmark for new conversations, and remove the duplicate title above messages."
+}

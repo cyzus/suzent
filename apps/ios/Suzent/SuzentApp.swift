@@ -155,6 +155,7 @@ struct ContentView: View {
     @State private var showSidebar = false
     @State private var showSettings = false
     @State private var repairScanner = false
+    @State private var showConnectionHelp = false
     @State private var search = ""
     @State private var collapsedProjects: Set<String> = []
     @State private var expandedAgents: Set<String> = []
@@ -187,7 +188,22 @@ struct ContentView: View {
                                     Image(systemName: "line.3.horizontal").frame(width: 44, height: 44)
                                 }.accessibilityLabel("Open sidebar")
                             }
-                            Spacer(); SuzentWordmark(); Spacer()
+                            Group {
+                                if model.connected && showSettings {
+                                    Text("Settings").font(.headline).lineLimit(1)
+                                } else if model.connected, let chat = model.selected, !chat.id.isEmpty {
+                                    VStack(spacing: 2) {
+                                        if let project = chat.projectName {
+                                            Text(project).font(.caption).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                                        }
+                                        Text(chat.title).font(.system(size: PresentationTokens.typeControl, weight: .semibold))
+                                            .lineLimit(1).truncationMode(.tail)
+                                    }.padding(.horizontal, 8).multilineTextAlignment(.center)
+                                } else if !model.connected && model.canReconnect {
+                                    Text("SUZENT").font(.system(size: 13, weight: .semibold)).tracking(2)
+                                        .foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
+                                } else { SuzentWordmark() }
+                            }.frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
                             if model.connected {
                                 Button { composing = false; Task { await model.createChat(); showSettings = false; showSidebar = false } } label: {
                                     Image(systemName: "square.and.pencil").frame(width: 44, height: 44)
@@ -195,25 +211,36 @@ struct ContentView: View {
                                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
-                        Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+                        if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
                         if let error = model.error {
                             SuzentNotice(message: error) { model.error = nil }
                         }
                         if !model.connected && model.canReconnect {
-                            VStack(spacing: 20) {
-                                SuzentAssistantBadge()
-                                Text("Reconnect to desktop").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                                if model.busy {
-                                    StreamingPulse()
-                                    if model.reconnecting {
-                                        Button("Cancel") { model.cancelReconnect() }
-                                            .buttonStyle(SuzentButtonStyle())
-                                    }
+                            VStack {
+                                Spacer(minLength: 20)
+                                VStack(spacing: 21) {
+                                    ReconnectIndicator(active: model.busy)
+                                    Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
+                                        .font(.system(size: 21, weight: .medium)).multilineTextAlignment(.center)
+                                    Group {
+                                        if model.busy {
+                                            if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
+                                        } else { Button("Reconnect to desktop") { Task { await model.connect() } } }
+                                    }.font(.system(size: 13)).foregroundStyle(Color.suzentMuted)
+                                        .buttonStyle(.plain).frame(minHeight: 44)
                                 }
-                                else { Button("Reconnect to desktop") { Task { await model.connect() } }.buttonStyle(SuzentButtonStyle(prominent: true)) }
-                                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                            }.padding(PresentationTokens.spaceLarge).frame(maxWidth: 480).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                Spacer(minLength: 20)
+                                Button("Connection help") { showConnectionHelp = true }
+                                    .font(.system(size: 12)).foregroundStyle(Color.suzentMuted)
+                                    .frame(minHeight: 44).buttonStyle(.plain)
+                            }.padding(.horizontal, 24).padding(.bottom, 20)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
+                                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                                    Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
+                                    Button("Cancel", role: .cancel) { }
+                                } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
+
                         }
                         else if !model.connected { PairingView(model: model) }
                         else if showSettings { settings }
@@ -476,13 +503,6 @@ struct ContentView: View {
 
     private func conversation(_ chat: Chat) -> some View {
         VStack(spacing: 0) {
-            if !chat.id.isEmpty { HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    if let project = chat.projectName { Text(project).font(.caption).foregroundStyle(Color.suzentMuted) }
-                    Text(chat.id.isEmpty ? String(localized: "New conversation") : chat.title).font(.headline).lineLimit(1)
-                }
-                Spacer()
-            }.padding(.horizontal, 16).padding(.vertical, 10) }
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
                                    startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
