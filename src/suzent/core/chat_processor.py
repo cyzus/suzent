@@ -1042,16 +1042,12 @@ class ChatProcessor:
         _upload_reminder = _upload_index_reminder(uploaded_paths)
         if _upload_reminder:
             _adhoc_reminders.append(_upload_reminder)
-        reminder = (
-            None
-            if getattr(deps, "stateless", False)
-            else await build_combined_reminder(
-                chat_id,
-                deps,
-                adhoc_reminders=_adhoc_reminders,
-                user_message=_turn_message,
-                display_trigger=display_trigger,
-            )
+        reminder = await build_combined_reminder(
+            chat_id,
+            deps,
+            adhoc_reminders=_adhoc_reminders,
+            user_message=_turn_message,
+            display_trigger=display_trigger,
         )
         if reminder:
             if message_content and message_content.strip():
