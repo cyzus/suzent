@@ -211,6 +211,43 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
+  const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
+  const knownChats = useMemo(
+    () => new Map([...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])),
+    [chats, pinnedChats, projectChats]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const missingIds = [...activeStreams].filter(
+      (id) => !knownChats.has(id) && !(id in runningChatProjects)
+    );
+    void Promise.allSettled(
+      missingIds.map(async (id) => {
+        const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(id)}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const chat: { projectId?: string | null } = await response.json();
+        if (!controller.signal.aborted) {
+          setRunningChatProjects((previous) => ({ ...previous, [id]: chat.projectId ?? null }));
+        }
+      })
+    );
+    return () => controller.abort();
+  }, [activeStreams, knownChats, runningChatProjects]);
+
+  const runningProjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const chat of knownChats.values()) {
+      if (chat.projectId && isChatRunning(chat.id, chat.isRunning)) ids.add(chat.projectId);
+    }
+    for (const id of activeStreams) {
+      const projectId = knownChats.get(id)?.projectId ?? runningChatProjects[id];
+      if (projectId) ids.add(projectId);
+    }
+    return ids;
+  }, [activeStreams, knownChats, runningChatProjects, isChatRunning]);
   const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({
     you: 0,
     scheduled: 0,
@@ -1735,10 +1772,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   >
                                     {project.name}
                                   </span>
-                                  <span
-                                    className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
-                                  >
-                                    {project.chatCount}
+                                  <span className="inline-flex items-center gap-2">
+                                    {!isOpen && (
+                                      <SessionStatusBadges
+                                        running={runningProjectIds.has(project.id)}
+                                      />
+                                    )}
+                                    <span
+                                      className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
+                                    >
+                                      {project.chatCount}
+                                    </span>
                                   </span>
                                 </button>
                                 {!isSystem && (
