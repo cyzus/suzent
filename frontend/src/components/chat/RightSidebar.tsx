@@ -26,6 +26,7 @@ import {
   WrenchScrewdriverIcon,
   DocumentTextIcon,
 } from '@heroicons/react/24/outline';
+import { PanelResizeHandle } from '../PanelResizeHandle';
 import { ToolsPanel } from './ToolsPanel';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
@@ -122,7 +123,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+  const dragState = useRef(false);
 
   const effectiveViewportWidth = viewportWidthPx ?? window.innerWidth;
   const isDesktop = effectiveViewportWidth >= DESKTOP_BREAKPOINT_PX;
@@ -334,68 +335,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     [tabs, isOpen, activeTab, onClose, onOpen, isTabLocked]
   );
 
-  // ── Resize ─────────────────────────────────────────────────────────
-  // During the drag we write the width straight to the DOM (no React state, so
-  // the heavy canvas/content subtree never re-renders per mouse move) and
-  // coalesce moves into a single rAF write. React state is committed only once
-  // on mouseup — that's the sole re-render the resize triggers.
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (forceFullView) return;
-      e.preventDefault();
-      const element = sidebarRef.current;
-      if (!element) return;
-
-      const startWidth = element.getBoundingClientRect().width;
-      dragState.current = { startX: e.clientX, startWidth };
-      let latestWidth = startWidth;
-      let rafId = 0;
-
-      // Freeze children from reflowing mid-drag work; keeps the paint cheap.
-      const prevUserSelect = document.body.style.userSelect;
-      document.body.style.userSelect = 'none';
-
-      const applyWidth = () => {
-        rafId = 0;
-        element.style.width = `${latestWidth}px`;
-      };
-
-      const onMouseMove = (ev: MouseEvent) => {
-        if (!dragState.current) return;
-        const delta = dragState.current.startX - ev.clientX;
-        latestWidth = Math.max(
-          MIN_RIGHT_SIDEBAR_WIDTH_PX,
-          Math.min(effectiveMaxWidth, dragState.current.startWidth + delta)
-        );
-        if (!rafId) rafId = requestAnimationFrame(applyWidth);
-      };
-
-      const onMouseUp = () => {
-        dragState.current = null;
-        if (rafId) cancelAnimationFrame(rafId);
-        document.body.style.userSelect = prevUserSelect;
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        // Commit the final width to React state (single re-render).
-        setSidebarWidth(latestWidth);
-      };
-
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    },
-    [effectiveMaxWidth, forceFullView]
-  );
-
-  useEffect(() => {
-    if (sidebarWidth === null || forceFullView) return;
-    const clamped = Math.max(MIN_RIGHT_SIDEBAR_WIDTH_PX, Math.min(effectiveMaxWidth, sidebarWidth));
-    if (clamped !== sidebarWidth) setSidebarWidth(clamped);
-  }, [sidebarWidth, effectiveMaxWidth, forceFullView]);
-
-  useEffect(() => {
-    if (forceFullView && sidebarWidth !== null) setSidebarWidth(null);
-  }, [forceFullView, sidebarWidth]);
-
   // ── Width calculation ───────────────────────────────────────────────
   const isAutoExpanded =
     (activeTab === 'files' && isFileExpanded) || (activeTab === 'browser' && isBrowserStreamActive);
@@ -490,13 +429,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               : 0,
           }}
         >
-          {!forceFullView && isOpen && (
-            <div
-              onMouseDown={handleResizeStart}
-              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 hover:bg-brutal-black/20 active:bg-brutal-black/30 transition-colors"
-              title="Drag to resize"
-            />
-          )}
           <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
             <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
               <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
@@ -569,10 +501,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       ) : (
         <>
           {!forceFullView && effectiveOpen && (
-            <div
-              onMouseDown={handleResizeStart}
-              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 hover:bg-brutal-black/20 active:bg-brutal-black/30 transition-colors hidden lg:block"
-              title="Drag to resize"
+            <PanelResizeHandle
+              panelRef={sidebarRef}
+              side="right"
+              width={desktopOpenWidth}
+              minWidth={MIN_RIGHT_SIDEBAR_WIDTH_PX}
+              maxWidth={effectiveMaxWidth}
+              defaultWidth={getDesktopDefaultWidth()}
+              onWidthChange={setSidebarWidth}
+              onDraggingChange={(dragging) => {
+                dragState.current = dragging;
+              }}
             />
           )}
           <div

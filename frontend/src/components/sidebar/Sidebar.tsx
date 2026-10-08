@@ -2,10 +2,16 @@ import React from 'react';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 import { SuzentLogo } from '../SuzentLogo';
+import { PanelResizeHandle } from '../PanelResizeHandle';
+import { LEFT_SIDEBAR_WIDTH_PX, MIN_LEFT_SIDEBAR_WIDTH_PX } from '../../lib/layout';
 import { SidebarToggleIcon } from '../SidebarToggleIcon';
 
 interface SidebarProps {
   chatsContent: React.ReactNode;
+  width: number;
+  maxWidth: number;
+  isDesktop: boolean;
+  onWidthChange: (width: number) => void;
   isOpen?: boolean;
   onOpenSettings: () => void;
   onClose?: () => void;
@@ -14,12 +20,17 @@ interface SidebarProps {
 
 export function Sidebar({
   chatsContent,
+  width,
+  maxWidth,
+  isDesktop,
+  onWidthChange,
   isOpen = false,
   onOpenSettings,
   onClose,
   titlebarControls,
 }: SidebarProps): React.ReactElement {
   const { t } = useI18n();
+  const panelRef = React.useRef<HTMLElement>(null);
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
     []
@@ -48,13 +59,29 @@ export function Sidebar({
       )}
 
       <aside
+        ref={panelRef}
+        style={{
+          width: isDesktop ? width : Math.min(LEFT_SIDEBAR_WIDTH_PX, window.innerWidth),
+          marginLeft: isDesktop && !isOpen ? -width : 0,
+        }}
         className={`
         fixed lg:relative z-50 h-full shrink-0
-        w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
+        border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
         transform-gpu will-change-transform transition-[transform,margin-left] duration-300 ease-in-out
-        ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
+        ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0'}
       `}
       >
+        {isDesktop && isOpen && (
+          <PanelResizeHandle
+            panelRef={panelRef}
+            side="left"
+            width={width}
+            minWidth={MIN_LEFT_SIDEBAR_WIDTH_PX}
+            maxWidth={maxWidth}
+            defaultWidth={LEFT_SIDEBAR_WIDTH_PX}
+            onWidthChange={onWidthChange}
+          />
+        )}
         <div
           className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0"
           onMouseDown={handleSidebarHeaderMouseDown}
