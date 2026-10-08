@@ -1,6 +1,7 @@
 {
   "version": "0.16.0",
   "consumed": [
+    ".releases/changes/agent-inbox-system-reminders.json",
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/artifacts-registration.json",
     ".releases/changes/ask-question-no-replay.json",

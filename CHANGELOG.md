@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.16.0] - 2026-10-08
 
 ### Release notes
+- Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
 - Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically.
 - Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
 - Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
