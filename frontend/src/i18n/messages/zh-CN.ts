@@ -257,6 +257,10 @@ export const zhCN = {
     robotGallery: '机器人画廊',
   },
   sidebar: {
+    resizeLeft: '调整左侧边栏宽度',
+    resizeRight: '调整右侧边栏宽度',
+    resizeHint: '拖动调整宽度，双击恢复默认；方向键微调。',
+
     open: '打开侧栏',
     close: '关闭侧栏',
     tabs: {

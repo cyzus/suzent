@@ -270,6 +270,10 @@ export const en = {
     robotGallery: 'ROBOT GALLERY',
   },
   sidebar: {
+    resizeLeft: 'Resize left sidebar',
+    resizeRight: 'Resize right sidebar',
+    resizeHint: 'Drag to resize; double-click to reset. Arrow keys adjust width.',
+
     open: 'Open Sidebar',
     close: 'Close Sidebar',
     tabs: {
