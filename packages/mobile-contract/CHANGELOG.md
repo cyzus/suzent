@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.3.0] - 2026-10-08
+## [mobile-v0.3.0] - 2026-10-09
 
 ### Release notes
 - Reduce iOS message footer copy, edit, retry, and branch icons to a consistent 13-point size while preserving their existing touch areas.
