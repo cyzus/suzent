@@ -272,7 +272,13 @@ export const en = {
   sidebar: {
     resizeLeft: 'Resize left sidebar',
     resizeRight: 'Resize right sidebar',
-    resizeHint: 'Drag to resize; double-click to reset. Arrow keys adjust width.',
+    resizeHint:
+      'Drag to resize; keep dragging narrower to collapse. Double-click to reset. Arrow keys adjust width.',
+    resizeRightHint:
+      'Drag to resize; drag past the narrow limit to collapse, or past the wide limit to cover the chat. Double-click to reset.',
+    resizeCoverHint:
+      'Drag narrower to return beside the chat. Double-click to restore the default width.',
+    dock: 'Return beside chat',
 
     open: 'Open Sidebar',
     close: 'Close Sidebar',

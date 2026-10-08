@@ -80,6 +80,7 @@ export function Sidebar({
             maxWidth={maxWidth}
             defaultWidth={LEFT_SIDEBAR_WIDTH_PX}
             onWidthChange={onWidthChange}
+            onCollapse={onClose}
           />
         )}
         <div

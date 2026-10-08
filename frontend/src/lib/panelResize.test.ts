@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startPanelResize } from './panelResize';
+import { startPanelResize, type PanelResizeOptions } from './panelResize';
 
 class FakeElement extends EventTarget {
   style = { width: '320px', cssText: '' };
@@ -30,7 +30,13 @@ function pointer(type: string, clientX: number, pointerId = 1): void {
   target.dispatchEvent(Object.assign(new Event(type), { clientX, pointerId }));
 }
 
-function start(direction: 1 | -1 = 1) {
+function start(
+  direction: 1 | -1 = 1,
+  thresholds: Pick<
+    PanelResizeOptions,
+    'collapseThreshold' | 'coverThreshold' | 'dockThreshold'
+  > = {}
+) {
   const onFinish = vi.fn();
   const cleanup = startPanelResize({
     panel: panel as unknown as HTMLElement,
@@ -41,6 +47,7 @@ function start(direction: 1 | -1 = 1) {
     minWidth: 240,
     maxWidth: 480,
     onFinish,
+    ...thresholds,
   });
   return { cleanup, onFinish };
 }
@@ -119,5 +126,58 @@ describe('panel resize gestures', () => {
     expect(frames.size).toBe(0);
     expect(shield.removed).toBe(true);
     expect(body.style.userSelect).toBe('text');
+  });
+});
+
+describe('panel resize snap thresholds', () => {
+  it.each([1, -1] as const)(
+    'collapses direction %s only after passing the narrow threshold',
+    (direction) => {
+      const { onFinish } = start(direction, { collapseThreshold: 176 });
+      pointer('pointermove', 320 - direction * 80);
+      expect(onFinish).not.toHaveBeenCalled();
+      pointer('pointermove', 320 - direction * 143);
+      expect(onFinish).not.toHaveBeenCalled();
+      pointer('pointermove', 320 - direction * 144);
+      expect(onFinish).toHaveBeenCalledExactlyOnceWith(240, 'collapse');
+      expect(shield.removed).toBe(true);
+      expect(panel.style.width).toBe('320px');
+      pointer('pointerup', 0);
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('accumulates overshoot beyond the docked maximum before covering chat', () => {
+    const { onFinish } = start(-1, { coverThreshold: 544 });
+    pointer('pointermove', 160);
+    pointer('pointermove', 120);
+    expect(onFinish).not.toHaveBeenCalled();
+    pointer('pointermove', 96);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(480, 'cover');
+    expect(frames.size).toBe(0);
+  });
+
+  it('lets the user pull back before reaching a snap threshold', () => {
+    const { onFinish } = start(-1, { coverThreshold: 544 });
+    pointer('pointermove', 110);
+    pointer('pointerup', 140);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(480);
+  });
+
+  it('requires a narrower width to dock than to enter cover mode', () => {
+    panel.getBoundingClientRect = () => ({ width: 800 });
+    const { onFinish } = start(-1, { dockThreshold: 432 });
+    pointer('pointermove', 640);
+    expect(onFinish).not.toHaveBeenCalled();
+    pointer('pointermove', 688);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(432, 'dock');
+  });
+
+  it('Escape cancels overshoot before the threshold without changing modes', () => {
+    const { onFinish } = start(-1, { coverThreshold: 544 });
+    pointer('pointermove', 110);
+    target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape' }));
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(null);
+    expect(panel.style.width).toBe('320px');
   });
 });
