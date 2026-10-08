@@ -106,7 +106,7 @@ async def test_inject_into_live_run_confirms_only_once_persisted():
 
     task = asyncio.create_task(
         AgentInboxDispatcher()._inject_into_live_run(
-            control, _MESSAGE, "sub-agent done", True, []
+            control, _MESSAGE, "sub-agent done", []
         )
     )
     await asyncio.sleep(0)
@@ -124,7 +124,7 @@ async def test_inject_falls_back_when_run_ends_before_delivery():
 
     task = asyncio.create_task(
         AgentInboxDispatcher()._inject_into_live_run(
-            control, _MESSAGE, "sub-agent done", True, []
+            control, _MESSAGE, "sub-agent done", []
         )
     )
     await asyncio.sleep(0)
@@ -146,9 +146,7 @@ async def test_inject_checks_the_database_when_the_turn_ends_first(monkeypatch):
     )
 
     assert (
-        await dispatcher._inject_into_live_run(
-            control, _MESSAGE, "sub-agent done", True, []
-        )
+        await dispatcher._inject_into_live_run(control, _MESSAGE, "sub-agent done", [])
         is True
     )
 
@@ -162,7 +160,7 @@ async def test_inject_adopts_citation_sources_into_the_live_run():
 
     task = asyncio.create_task(
         AgentInboxDispatcher()._inject_into_live_run(
-            control, _MESSAGE, "sub-agent done", True, sources
+            control, _MESSAGE, "sub-agent done", sources
         )
     )
     await asyncio.sleep(0)
@@ -177,7 +175,29 @@ async def test_inject_falls_back_without_a_live_run():
     control = StreamControl()
     assert (
         await AgentInboxDispatcher()._inject_into_live_run(
-            control, _MESSAGE, "sub-agent done", True, []
+            control, _MESSAGE, "sub-agent done", []
         )
         is False
     )
+
+
+async def test_live_inbox_message_is_wrapped_and_preserves_visible_trigger(monkeypatch):
+    from suzent.core.system_reminder import (
+        PUA_START,
+        RUNTIME_NONCE,
+        extract_system_reminder_display_trigger,
+    )
+
+    monkeypatch.delenv("SUZENT_XML_SYSTEM_REMINDER", raising=False)
+    control = StreamControl()
+    captured = []
+    control.inject = lambda content: captured.append(content) or "enq-1"
+    control.mark_injected("enq-1")
+    control.mark_history_persisted()
+    content = "[Agent message from peer]\n<!-- suzent-agent-inbox:msg-1 -->\nhello"
+
+    assert await AgentInboxDispatcher()._inject_into_live_run(
+        control, _MESSAGE, content, []
+    )
+    assert PUA_START + RUNTIME_NONCE in captured[0]
+    assert extract_system_reminder_display_trigger(captured[0]) == content

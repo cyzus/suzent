@@ -28,6 +28,12 @@ fragment to a file and includes its accessible path and retention hint; if the
 spill fails, the truncation marker remains. This does not guarantee every dropped
 fragment is saved.
 
+This budget belongs to `build_combined_reminder`, not to
+`wrap_in_system_reminder`. Directly wrapped live inbox injections and ACP inbox
+turns do not use the assembly budget. Native inbox background turns do, so long
+messages can be truncated there; their visible trigger reflects the budgeted
+text.
+
 Providers should read state without mutating it: goal turn accounting belongs to
 turn completion, not prompt construction. Log metadata rather than prompt or
 reminder bodies.

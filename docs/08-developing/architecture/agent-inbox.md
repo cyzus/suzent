@@ -40,6 +40,13 @@ target transcript. If a process exits after the target turn commits but before
 the inbox acknowledgement commits, the next worker sees the marker and
 acknowledges the row without running the target twice.
 
+All local and received peer messages enter the target through the existing
+system-reminder format, with sender identity and the delivery marker retained.
+Native background turns use `system_reminders`; live-run injection and ACP turns
+use a locally authored PUA wrapper with a `display_trigger` for the visible
+transcript. Peer transport carries raw message content; the receiver owns its
+wrapper and runtime nonce.
+
 Sub-agent completion and failure wakeups use this inbox too, so restarting the
 backend no longer discards a completed child's parent notification.
 
