@@ -18,6 +18,9 @@ present. Hooks run concurrently with a two-second timeout per provider; failed
 or timed-out providers are skipped with a warning. Blocking provider work uses
 `run_provider_blocking` so it does not block the event loop.
 
+Stateless turns skip global and per-turn hooks while retaining explicit ad-hoc
+reminders, including inbox deliveries and attachment instructions.
+
 Ad-hoc caller directives precede hook output. Hook registration order determines
 priority. Fragments are sanitized before deduplication and budget measurement.
 The assembled body has a 6,000-character budget including display-trigger markup
