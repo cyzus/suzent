@@ -50,6 +50,10 @@ import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
   LEFT_SIDEBAR_WIDTH_PX,
+  MIN_LEFT_SIDEBAR_WIDTH_PX,
+  MIN_RIGHT_SIDEBAR_WIDTH_PX,
+  MAX_LEFT_SIDEBAR_WIDTH_PX,
+  SQUEEZED_MIN_CHAT_WIDTH_PX,
   MAX_RIGHT_SIDEBAR_WIDTH_PX,
   getCanvasSidebarWidth,
   clampRightSidebarWidth,
@@ -359,6 +363,7 @@ function AppInner(): React.ReactElement {
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
 
@@ -367,8 +372,30 @@ function AppInner(): React.ReactElement {
   // not a state change: we remember that *we* closed it (not the user) and
   // re-open it the moment there's room again.
   const leftCollapsedByLayoutRef = React.useRef(false);
-  const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(viewportWidth);
-  const leftSidebarReservedWidthPx = isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0;
+  const leftSidebarMaxWidth = Math.max(
+    MIN_LEFT_SIDEBAR_WIDTH_PX,
+    Math.min(
+      MAX_LEFT_SIDEBAR_WIDTH_PX,
+      viewportWidth -
+        SQUEEZED_MIN_CHAT_WIDTH_PX -
+        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 44)
+    )
+  );
+  const leftSidebarWidth = Math.max(
+    MIN_LEFT_SIDEBAR_WIDTH_PX,
+    Math.min(
+      preferredLeftWidth,
+      MAX_LEFT_SIDEBAR_WIDTH_PX,
+      viewportWidth -
+        SQUEEZED_MIN_CHAT_WIDTH_PX -
+        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 44)
+    )
+  );
+  const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(
+    viewportWidth,
+    leftSidebarWidth
+  );
+  const leftSidebarReservedWidthPx = isLeftSidebarOpen ? leftSidebarWidth : 0;
 
   const rightSidebarMaxWidthPx = clampRightSidebarWidth(
     MAX_RIGHT_SIDEBAR_WIDTH_PX,
@@ -545,7 +572,7 @@ function AppInner(): React.ReactElement {
       return;
     }
 
-    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth)) {
+    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth, leftSidebarWidth)) {
       if (isLeftSidebarOpen) {
         leftCollapsedByLayoutRef.current = true;
       }
@@ -672,6 +699,10 @@ function AppInner(): React.ReactElement {
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
+          width={leftSidebarWidth}
+          maxWidth={leftSidebarMaxWidth}
+          isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
+          onWidthChange={setPreferredLeftWidth}
           chatsContent={<ChatList onOpenAutomation={() => openSettings('automation')} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}

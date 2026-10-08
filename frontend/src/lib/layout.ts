@@ -1,5 +1,7 @@
 export const DESKTOP_BREAKPOINT_PX = 1024;
 export const LEFT_SIDEBAR_WIDTH_PX = 320;
+export const MIN_LEFT_SIDEBAR_WIDTH_PX = 240;
+export const MAX_LEFT_SIDEBAR_WIDTH_PX = 480;
 // The chat's comfortable width: the right sidebar gives up its own width to
 // preserve this before the chat is asked to give up anything.
 export const MIN_CHAT_WIDTH_PX = 580;
@@ -56,12 +58,15 @@ export function getRightSidebarMaxWidth(
  * this measures the tightest layout the three panes can hold, not the
  * comfortable one.
  */
-export function shouldCollapseLeftSidebarOnRightOpen(viewportWidth: number): boolean {
+export function shouldCollapseLeftSidebarOnRightOpen(
+  viewportWidth: number,
+  leftWidth = LEFT_SIDEBAR_WIDTH_PX
+): boolean {
   if (viewportWidth < DESKTOP_BREAKPOINT_PX) {
     return true;
   }
 
-  const squeezedChatWidth = viewportWidth - LEFT_SIDEBAR_WIDTH_PX - MIN_RIGHT_SIDEBAR_WIDTH_PX;
+  const squeezedChatWidth = viewportWidth - leftWidth - MIN_RIGHT_SIDEBAR_WIDTH_PX;
   return squeezedChatWidth < SQUEEZED_MIN_CHAT_WIDTH_PX;
 }
 
