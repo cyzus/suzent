@@ -169,7 +169,6 @@ class AgentInboxDispatcher:
         control: Any,
         message: dict[str, Any],
         content: str,
-        is_task_result: bool,
         citation_sources: list[dict[str, Any]],
     ) -> bool:
         """Deliver `content` into the target's in-flight turn.
@@ -186,11 +185,7 @@ class AgentInboxDispatcher:
 
         from suzent.core.system_reminder import wrap_in_system_reminder
 
-        payload = (
-            wrap_in_system_reminder(content, display_trigger=content)
-            if is_task_result
-            else content
-        )
+        payload = wrap_in_system_reminder(content, display_trigger=content)
 
         # Adopt the sender's sources before the text citing them lands: the run
         # imported its own at setup and will not look again.
@@ -289,7 +284,6 @@ class AgentInboxDispatcher:
                     control,
                     message,
                     delivered_content,
-                    is_task_result,
                     list(payload.get("citation_sources") or []),
                 ):
                     return
@@ -306,22 +300,20 @@ class AgentInboxDispatcher:
                     target_chat_id,
                     wrap_in_system_reminder(
                         delivered_content, display_trigger=delivered_content
-                    )
-                    if is_task_result
-                    else delivered_content,
+                    ),
                     config_override,
                     None,
                     # This text was wrapped by us a line ago; the flag is the
                     # provenance, since the token inside it proves nothing.
-                    runtime_authored=is_task_result,
+                    runtime_authored=True,
                 )
             else:
                 await ChatProcessor().process_background_turn(
                     chat_id=target_chat_id,
                     user_id=CONFIG.user_id,
-                    message_content="" if is_task_result else delivered_content,
+                    message_content="",
                     config_override=config_override,
-                    system_reminders=[delivered_content] if is_task_result else None,
+                    system_reminders=[delivered_content],
                     incoming_citation_sources=list(
                         payload.get("citation_sources") or []
                     ),
