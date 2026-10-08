@@ -146,6 +146,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     refresh: refreshProjects,
   } = useProjects();
 
+  const unreadSummaryKey = JSON.stringify(chats.map((chat) => [chat.id, chat.unreadCount ?? 0]));
+  useEffect(() => {
+    void refreshProjects();
+  }, [activeStreams, unreadSummaryKey, refreshProjects]);
+
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
@@ -368,29 +373,32 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     }
   }, [chats, filterId]);
 
-  const markRead = useCallback((chatId: string) => {
-    const chat = chatsRef.current.find((c) => c.id === chatId);
-    if (chat) chat.unreadCount = 0;
-    setProjectChats((prev) =>
-      prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
-    );
-    setCronJobs((prev) =>
-      prev.map((job) =>
-        getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
-      )
-    );
-    setHeartbeatStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            active_sessions: prev.active_sessions?.map((session) =>
-              session.chat_id === chatId ? { ...session, unread_count: 0 } : session
-            ),
-          }
-        : prev
-    );
-    void markChatRead(chatId);
-  }, []);
+  const markRead = useCallback(
+    (chatId: string) => {
+      const chat = chatsRef.current.find((c) => c.id === chatId);
+      if (chat) chat.unreadCount = 0;
+      setProjectChats((prev) =>
+        prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
+      );
+      setCronJobs((prev) =>
+        prev.map((job) =>
+          getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
+        )
+      );
+      setHeartbeatStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              active_sessions: prev.active_sessions?.map((session) =>
+                session.chat_id === chatId ? { ...session, unread_count: 0 } : session
+              ),
+            }
+          : prev
+      );
+      void markChatRead(chatId).then(() => refreshProjects());
+    },
+    [refreshProjects]
+  );
 
   const isUnread = (chat: ChatSummary) => {
     if (chat.id === currentChatId) return false;
@@ -1776,6 +1784,13 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                     {!isOpen && (
                                       <SessionStatusBadges
                                         running={runningProjectIds.has(project.id)}
+                                        unreadCount={Object.entries(
+                                          project.unreadChatCounts ?? {}
+                                        ).reduce(
+                                          (total, [chatId, count]) =>
+                                            total + (chatId === currentChatId ? 0 : count),
+                                          0
+                                        )}
                                       />
                                     )}
                                     <span
