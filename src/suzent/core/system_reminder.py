@@ -1152,11 +1152,16 @@ async def build_combined_reminder(
     # Providers are independent, so they run together. Serially, a slow one
     # delayed every one after it — and global hooks had no timeout at all, so a
     # single hung provider stalled the whole message pipeline indefinitely.
-    scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
-    if user_message and user_message.strip():
-        scheduled += [
-            (hook, _run(hook, chat_id, deps, user_message)) for hook in _per_turn_hooks
-        ]
+    scheduled = []
+    # Stateless agents need explicit turn inputs, but ambient context can make
+    # their fixed task prompts drift (for example, a dream run skipping its task).
+    if not getattr(deps, "stateless", False):
+        scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
+        if user_message and user_message.strip():
+            scheduled += [
+                (hook, _run(hook, chat_id, deps, user_message))
+                for hook in _per_turn_hooks
+            ]
 
     if scheduled:
         # Registration order is the priority order, and gather preserves it, so
