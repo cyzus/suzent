@@ -1,3 +1,5 @@
+export type PanelResizeAction = 'collapse' | 'cover' | 'dock';
+
 export interface PanelResizeOptions {
   panel: HTMLElement;
   handle: HTMLElement;
@@ -6,7 +8,10 @@ export interface PanelResizeOptions {
   direction: 1 | -1;
   minWidth: number;
   maxWidth: number;
-  onFinish: (width: number | null) => void;
+  collapseThreshold?: number;
+  coverThreshold?: number;
+  dockThreshold?: number;
+  onFinish: (width: number | null, action?: PanelResizeAction) => void;
 }
 
 /** Keep pointer events out of embedded pages and commit only once per gesture. */
@@ -18,10 +23,14 @@ export function startPanelResize({
   direction,
   minWidth,
   maxWidth,
+  collapseThreshold,
+  coverThreshold,
+  dockThreshold,
   onFinish,
 }: PanelResizeOptions): () => void {
   const originalWidth = panel.style.width;
   let width = panel.getBoundingClientRect().width;
+  let requestedWidth = width;
   let previousX = startX;
   let frame = 0;
   let finished = false;
@@ -40,10 +49,19 @@ export function startPanelResize({
     panel.style.width = `${width}px`;
   };
   const update = (clientX: number): void => {
-    width = Math.max(minWidth, Math.min(maxWidth, width + direction * (clientX - previousX)));
+    requestedWidth = Math.max(
+      collapseThreshold ?? minWidth,
+      Math.min(coverThreshold ?? maxWidth, requestedWidth + direction * (clientX - previousX))
+    );
+    width = Math.max(minWidth, Math.min(maxWidth, requestedWidth));
     previousX = clientX;
+    if (collapseThreshold !== undefined && requestedWidth <= collapseThreshold)
+      finish(true, 'collapse');
+    else if (coverThreshold !== undefined && requestedWidth >= coverThreshold)
+      finish(true, 'cover');
+    else if (dockThreshold !== undefined && requestedWidth <= dockThreshold) finish(true, 'dock');
   };
-  const finish = (commit: boolean): void => {
+  const finish = (commit: boolean, action?: PanelResizeAction): void => {
     if (finished) return;
     finished = true;
     cancelAnimationFrame(frame);
@@ -57,14 +75,15 @@ export function startPanelResize({
     shield.remove();
     document.body.style.cursor = previousCursor;
     document.body.style.userSelect = previousUserSelect;
-    if (commit) apply();
+    if (commit && !action) apply();
     else panel.style.width = originalWidth;
-    onFinish(commit ? width : null);
+    if (commit && action) onFinish(width, action);
+    else onFinish(commit ? width : null);
   };
   const move = (event: PointerEvent): void => {
     if (event.pointerId !== pointerId) return;
     update(event.clientX);
-    if (!frame) frame = requestAnimationFrame(apply);
+    if (!finished && !frame) frame = requestAnimationFrame(apply);
   };
   const up = (event: PointerEvent): void => {
     if (event.pointerId !== pointerId) return;
