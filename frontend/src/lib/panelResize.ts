@@ -1,4 +1,5 @@
 export type PanelResizeAction = 'collapse' | 'cover' | 'dock';
+export type PanelResizeMode = 'dock' | 'cover';
 
 export interface PanelResizeOptions {
   panel: HTMLElement;
@@ -11,6 +12,10 @@ export interface PanelResizeOptions {
   collapseThreshold?: number;
   coverThreshold?: number;
   dockThreshold?: number;
+  initialMode?: PanelResizeMode;
+  dockMaxWidth?: number;
+  coverWidth?: number;
+  onPreview?: (width: number, mode: PanelResizeAction) => void;
   onFinish: (width: number | null, action?: PanelResizeAction) => void;
 }
 
@@ -26,11 +31,17 @@ export function startPanelResize({
   collapseThreshold,
   coverThreshold,
   dockThreshold,
+  initialMode = 'dock',
+  dockMaxWidth = maxWidth,
+  coverWidth = maxWidth,
+  onPreview,
   onFinish,
 }: PanelResizeOptions): () => void {
   const originalWidth = panel.style.width;
   let width = panel.getBoundingClientRect().width;
   let requestedWidth = width;
+  let mode: PanelResizeAction = initialMode;
+  let snappedToCover = false;
   let previousX = startX;
   let frame = 0;
   let finished = false;
@@ -46,22 +57,43 @@ export function startPanelResize({
 
   const apply = (): void => {
     frame = 0;
-    panel.style.width = `${width}px`;
+    if (onPreview) onPreview(width, mode);
+    else panel.style.width = `${width}px`;
   };
   const update = (clientX: number): void => {
     requestedWidth = Math.max(
       collapseThreshold ?? minWidth,
-      Math.min(coverThreshold ?? maxWidth, requestedWidth + direction * (clientX - previousX))
+      Math.min(
+        Math.max(coverThreshold ?? maxWidth, maxWidth),
+        requestedWidth + direction * (clientX - previousX)
+      )
     );
-    width = Math.max(minWidth, Math.min(maxWidth, requestedWidth));
     previousX = clientX;
-    if (collapseThreshold !== undefined && requestedWidth <= collapseThreshold)
-      finish(true, 'collapse');
-    else if (coverThreshold !== undefined && requestedWidth >= coverThreshold)
-      finish(true, 'cover');
-    else if (dockThreshold !== undefined && requestedWidth <= dockThreshold) finish(true, 'dock');
+    const previousMode = mode;
+    if (collapseThreshold !== undefined && requestedWidth <= collapseThreshold) {
+      mode = 'collapse';
+    } else {
+      if (mode === 'collapse' && requestedWidth >= (collapseThreshold ?? minWidth) + 32)
+        mode = 'dock';
+      if (mode === 'dock' && coverThreshold !== undefined && requestedWidth >= coverThreshold) {
+        mode = 'cover';
+      } else if (
+        mode === 'cover' &&
+        dockThreshold !== undefined &&
+        requestedWidth <= dockThreshold
+      ) {
+        mode = 'dock';
+      }
+    }
+    if (mode === 'cover' && previousMode !== 'cover') snappedToCover = true;
+    width =
+      mode === 'cover'
+        ? snappedToCover
+          ? coverWidth
+          : Math.max(minWidth, Math.min(maxWidth, requestedWidth))
+        : Math.max(minWidth, Math.min(dockMaxWidth, requestedWidth));
   };
-  const finish = (commit: boolean, action?: PanelResizeAction): void => {
+  const finish = (commit: boolean): void => {
     if (finished) return;
     finished = true;
     cancelAnimationFrame(frame);
@@ -75,7 +107,8 @@ export function startPanelResize({
     shield.remove();
     document.body.style.cursor = previousCursor;
     document.body.style.userSelect = previousUserSelect;
-    if (commit && !action) apply();
+    const action = mode === initialMode ? undefined : mode;
+    if (commit && !action && !onPreview) apply();
     else panel.style.width = originalWidth;
     if (commit && action) onFinish(width, action);
     else onFinish(commit ? width : null);

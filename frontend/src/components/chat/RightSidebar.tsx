@@ -126,6 +126,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [coveringChat, setCoveringChat] = useState(false);
   const [coverWidth, setCoverWidth] = useState<number | null>(null);
   const [chatAreaWidth, setChatAreaWidth] = useState(0);
+  const spacerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragState = useRef(false);
 
@@ -434,9 +435,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   return (
     <>
-      {isCoveringChat && (
-        <div className="h-full shrink-0" style={{ width: ICON_STRIP_WIDTH }} aria-hidden="true" />
-      )}
+      <div
+        ref={spacerRef}
+        className="h-full shrink-0"
+        style={{ width: isCoveringChat ? ICON_STRIP_WIDTH : 0 }}
+        aria-hidden="true"
+      />
       <div
         ref={sidebarRef}
         style={
@@ -452,10 +456,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     right: 0,
                     top: 0,
                   }
-                : { width: desktopWidth, maxWidth: effectiveMaxWidth }
+                : { width: desktopWidth, maxWidth: availableCoverWidth }
         }
         className={`
-        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
+        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible transition-[width] duration-[160ms] ease-out motion-reduce:transition-none
         ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
         relative
       `}
@@ -557,15 +561,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 defaultWidth={getDesktopDefaultWidth()}
                 onWidthChange={isCoveringChat ? setCoverWidth : setSidebarWidth}
                 onCollapse={collapseSidebar}
-                onCover={
-                  isCoveringChat
-                    ? undefined
-                    : () => {
-                        setCoverWidth(null);
-                        setCoveringChat(true);
-                      }
-                }
-                onDock={isCoveringChat ? dockSidebar : undefined}
+                onCover={() => {
+                  setCoverWidth(null);
+                  setCoveringChat(true);
+                }}
+                onDock={dockSidebar}
+                dockMaxWidth={effectiveMaxWidth}
+                coverWidth={availableCoverWidth}
+                initiallyCovering={isCoveringChat}
+                spacerRef={spacerRef}
                 dockThreshold={Math.max(MIN_RIGHT_SIDEBAR_WIDTH_PX, effectiveMaxWidth - 48)}
                 onReset={() => dockSidebar()}
                 hint={t(isCoveringChat ? 'sidebar.resizeCoverHint' : 'sidebar.resizeRightHint')}

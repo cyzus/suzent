@@ -15,6 +15,10 @@ interface PanelResizeHandleProps {
   onDock?: (width: number) => void;
   onReset?: () => void;
   dockThreshold?: number;
+  dockMaxWidth?: number;
+  coverWidth?: number;
+  initiallyCovering?: boolean;
+  spacerRef?: React.RefObject<HTMLElement>;
   hint?: string;
   onDraggingChange?: (dragging: boolean) => void;
 }
@@ -33,6 +37,10 @@ export function PanelResizeHandle({
   onDock,
   onReset,
   dockThreshold,
+  dockMaxWidth = maxWidth,
+  coverWidth,
+  initiallyCovering = false,
+  spacerRef,
   hint,
 }: PanelResizeHandleProps): React.ReactElement {
   const { t } = useI18n();
@@ -62,6 +70,13 @@ export function PanelResizeHandle({
         event.stopPropagation();
         cleanup.current?.();
         onDraggingChange?.(true);
+        const panel = panelRef.current;
+        const originalStyle = panel.style.cssText;
+        const spacer = spacerRef?.current;
+        const originalSpacerWidth = spacer?.style.width;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let previewMode: PanelResizeAction = initiallyCovering ? 'cover' : 'dock';
+        let previewWidth = panel.getBoundingClientRect().width;
         cleanup.current = startPanelResize({
           panel: panelRef.current,
           handle: event.currentTarget,
@@ -71,10 +86,55 @@ export function PanelResizeHandle({
           minWidth,
           maxWidth,
           collapseThreshold: onCollapse ? minWidth - 64 : undefined,
-          coverThreshold: onCover ? maxWidth + 64 : undefined,
+          coverThreshold: onCover ? dockMaxWidth + 64 : undefined,
           dockThreshold: onDock ? dockThreshold : undefined,
+          dockMaxWidth,
+          coverWidth,
+          initialMode: initiallyCovering ? 'cover' : 'dock',
+          onPreview: (nextWidth, mode) => {
+            const targetWidth = mode === 'collapse' ? (side === 'left' ? 0 : 44) : nextWidth;
+            if (mode === previewMode && targetWidth === previewWidth) return;
+            const animate = mode !== previewMode && !reduceMotion;
+            const fromWidth = animate ? panel.getBoundingClientRect().width : targetWidth;
+            previewMode = mode;
+            previewWidth = targetWidth;
+            // Keep the handle mounted and captured through every preview mode.
+            panel.style.cssText = originalStyle;
+            panel.style.transition = 'none';
+            if (spacer) spacer.style.width = mode === 'cover' ? '44px' : '0px';
+            if (mode === 'cover') {
+              Object.assign(panel.style, {
+                position: 'absolute',
+                right: '0px',
+                top: '0px',
+                width: `${nextWidth}px`,
+                maxWidth: `${coverWidth ?? maxWidth}px`,
+              });
+            } else {
+              Object.assign(panel.style, {
+                position: 'relative',
+                right: '',
+                top: '',
+                width: `${targetWidth}px`,
+                maxWidth: `${Math.max(dockMaxWidth, coverWidth ?? maxWidth)}px`,
+              });
+              if (mode === 'collapse') {
+                panel.style.overflow = 'hidden';
+                panel.style.borderWidth = '0px';
+              }
+            }
+            if (animate) {
+              panel.style.width = `${fromWidth}px`;
+              // Establish the current visual width before the snap transition.
+              void panel.offsetWidth;
+              panel.style.transition = 'width 160ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+              panel.style.width = `${targetWidth}px`;
+            }
+          },
           onFinish: (nextWidth, action?: PanelResizeAction) => {
             cleanup.current = null;
+            panel.style.cssText = originalStyle;
+            if (spacer) spacer.style.width = originalSpacerWidth ?? '';
             onDraggingChange?.(false);
             if (action === 'collapse') onCollapse?.();
             else if (action === 'cover') onCover?.();
