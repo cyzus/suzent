@@ -441,7 +441,10 @@ def test_transcript_reports_current_run_without_loading_runtime(
     )
     monkeypatch.setattr(
         "suzent.routes.chat_routes.get_database",
-        lambda: SimpleNamespace(get_chat=lambda _: record),
+        lambda: SimpleNamespace(
+            get_chat=lambda _: record,
+            get_chat_project_id=lambda _: "p-shared",
+        ),
     )
     monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: None)
     for running in (True, False):

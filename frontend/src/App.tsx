@@ -470,6 +470,10 @@ function AppInner(): React.ReactElement {
     () =>
       subscribeToBusPayloads((msg) => {
         if (typeof msg?.chat_id !== 'string') return;
+        if (msg.event === 'chat_title_updated') {
+          void refreshChatListSilentRef.current();
+          return;
+        }
         if (msg.event === 'chunk' && typeof msg.data === 'string') {
           recordReplyChunk(msg.chat_id, msg.data);
           return;

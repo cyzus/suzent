@@ -1591,13 +1591,17 @@ class ChatProcessor:
                 async def _run_memory_extraction() -> None:
                     memory_db = get_database()
                     try:
-                        await self._extract_memories(
-                            chat_id=chat_id,
-                            user_id=user_id,
-                            user_content=message_content,
-                            agent_content=full_response,
-                            messages=last_messages,
-                        )
+                        from suzent.core.memory_tasks import memory_task
+
+                        if CONFIG.memory_enabled and not self._is_system_chat(chat_id):
+                            async with memory_task(chat_id):
+                                await self._extract_memories(
+                                    chat_id=chat_id,
+                                    user_id=user_id,
+                                    user_content=message_content,
+                                    agent_content=full_response,
+                                    messages=last_messages,
+                                )
                         memory_db.update_job_step_status(
                             job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                         )
@@ -2100,7 +2104,8 @@ class ChatProcessor:
                 user_id=user_id,
             )
         except Exception as e:
-            logger.error(f"Memory extraction failed for {chat_id}: {e}")
+            logger.warning(f"Memory extraction failed for {chat_id}: {e}")
+            raise
 
     async def _write_transcript(
         self, chat_id: str, user_content: str, agent_content: str, messages: list
