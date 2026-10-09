@@ -24,6 +24,7 @@ let _activeStreams: Set<string> = new Set();
 // "nothing is running" — callers that render live state need to tell those
 // apart so a running badge doesn't blink off while the SSE connects.
 let _snapshotReceived = false;
+let _memoryChats: Set<string> = new Set();
 const _listeners: Set<() => void> = new Set();
 let _es: EventSource | null = null;
 
@@ -53,11 +54,19 @@ function _handleMessage(evt: MessageEvent) {
     _busPayloadHandlers.forEach((fn) => fn(msg));
     if (msg.event === 'snapshot') {
       _activeStreams = new Set(msg.streams ?? []);
+      _memoryChats = new Set(msg.memory_chats ?? []);
       _snapshotReceived = true;
       notify();
       _activeStreams.forEach((chatId) => {
         _streamEventListeners.get(chatId)?.forEach((cb) => cb.onStart?.());
       });
+    } else if (msg.event === 'memory_processing') {
+      if (typeof msg.chat_id === 'string') {
+        _memoryChats = new Set(_memoryChats);
+        if (msg.active) _memoryChats.add(msg.chat_id);
+        else _memoryChats.delete(msg.chat_id);
+        notify();
+      }
     } else if (msg.event === 'stream_started') {
       if (msg.chat_id) {
         _activeStreams = new Set([..._activeStreams, msg.chat_id]);
@@ -115,6 +124,7 @@ function subscribe(fn: () => void): () => void {
       _closeEventSource();
       _activeStreams = new Set();
       _snapshotReceived = false;
+      _memoryChats = new Set();
     }
   };
 }
@@ -201,6 +211,7 @@ export function useEventBus() {
   return {
     isStreaming: isBusStreaming,
     activeStreams: _activeStreams,
+    memoryChats: _memoryChats,
     snapshotReady: _snapshotReceived,
   };
 }

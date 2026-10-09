@@ -300,6 +300,7 @@ export const zhCN = {
     },
   },
   backgroundTasks: {
+    memoryProcessing: '正在整理记忆…',
     heading: '后台任务（{count}）',
     empty: '当前会话暂无后台任务',
     shell: 'Shell 命令',

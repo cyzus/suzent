@@ -1235,11 +1235,31 @@ async def stream_agent_responses(
                     agent, "model", None
                 )
                 logger.info(f"[AutoTitle] creating task, model={_agent_model}")
-                title_task = asyncio.create_task(
-                    generate_auto_title(
+                from suzent.core.stream_registry import emit_bus_event
+                from suzent.core.task_registry import register_background_task
+
+                async def update_title() -> str | None:
+                    title = await generate_auto_title(
                         chat_id, _title_text, fallback_model=_agent_model
                     )
-                )
+                    if title:
+                        emit_bus_event(
+                            {
+                                "event": "chat_title_updated",
+                                "chat_id": chat_id,
+                                "title": title,
+                            }
+                        )
+                    return title
+
+                title_coro = update_title()
+                try:
+                    title_task = await register_background_task(
+                        title_coro, description=f"Auto-title for chat {chat_id}"
+                    )
+                except Exception:
+                    title_coro.close()
+                    raise
         except Exception as e:
             logger.warning(f"[AutoTitle] setup failed: {e}")
 
@@ -2130,10 +2150,15 @@ async def stream_agent_responses(
         if not control.cancel_event.is_set() and chat_id:
             yield _encode_custom("plan_refresh", {})
 
-        # Deliver auto-title (runs in parallel, should already be done by now)
-        if title_task is not None and not control.cancel_event.is_set():
+        # A pending title must never hold the reply stream open.
+        if (
+            title_task is not None
+            and title_task.done()
+            and not title_task.cancelled()
+            and not control.cancel_event.is_set()
+        ):
             try:
-                title = await title_task
+                title = title_task.result()
                 if title:
                     yield _encode_custom(
                         "chat_title_updated", {"chat_id": chat_id, "title": title}

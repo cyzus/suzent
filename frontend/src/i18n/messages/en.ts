@@ -314,6 +314,7 @@ export const en = {
     },
   },
   backgroundTasks: {
+    memoryProcessing: 'Organizing memory…',
     heading: 'Background tasks ({count})',
     empty: 'No background tasks in this session',
     shell: 'Shell command',

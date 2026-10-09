@@ -523,6 +523,32 @@ class LLMClient:
             return response.choices[0].message.content
 
         except Exception as e:
+            # Removing request parameters cannot repair transport or service failures.
+            from litellm.exceptions import (
+                APIConnectionError,
+                AuthenticationError,
+                InternalServerError,
+                NotFoundError,
+                RateLimitError,
+                ServiceUnavailableError,
+                Timeout,
+            )
+
+            if isinstance(
+                e,
+                (
+                    ConnectionError,
+                    TimeoutError,
+                    APIConnectionError,
+                    AuthenticationError,
+                    InternalServerError,
+                    NotFoundError,
+                    RateLimitError,
+                    ServiceUnavailableError,
+                    Timeout,
+                ),
+            ):
+                raise
             retry_error = e
             for param_name in (
                 "reasoning_effort",

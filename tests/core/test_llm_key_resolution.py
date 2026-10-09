@@ -490,3 +490,20 @@ def test_structured_extraction_has_budget_headroom(monkeypatch):
 
     assert seen["max_tokens"] == llm.STRUCTURED_OUTPUT_MAX_TOKENS
     assert llm.STRUCTURED_OUTPUT_MAX_TOKENS >= 4000
+
+
+def test_connection_failure_does_not_retry_by_removing_parameters(monkeypatch) -> None:
+    import pytest
+    from litellm.exceptions import APIConnectionError
+
+    error = APIConnectionError(
+        message="unreachable", llm_provider="openai", model="test"
+    )
+    completion = AsyncMock(side_effect=error)
+    monkeypatch.setattr(
+        llm, "_litellm", lambda: SimpleNamespace(acompletion=completion)
+    )
+    monkeypatch.setattr(llm, "resolve_api_key", lambda _provider: None)
+    with pytest.raises(APIConnectionError):
+        asyncio.run(LLMClient(model="openai/test").complete("hello", system="title"))
+    completion.assert_awaited_once()
