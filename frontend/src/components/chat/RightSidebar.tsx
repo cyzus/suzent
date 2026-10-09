@@ -15,7 +15,8 @@ import { useWebHistory } from '../../hooks/useWebHistory';
 import {
   DESKTOP_BREAKPOINT_PX,
   MIN_RIGHT_SIDEBAR_WIDTH_PX,
-  MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  getRightSidebarMaxWidth,
+  getCanvasSidebarWidth,
 } from '../../lib/layout';
 import {
   ChevronDoubleRightIcon,
@@ -41,7 +42,7 @@ interface RightSidebarProps {
   onOpen: () => void;
   onWidthChange?: (width: number | null) => void;
   maxWidthPx?: number;
-  canvasMaxWidthPx?: number;
+  wideContentDefaultWidthPx?: number;
   viewportWidthPx?: number;
   forceFullView?: boolean;
   goal: Goal | null;
@@ -85,7 +86,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onOpen,
   onWidthChange,
   maxWidthPx,
-  canvasMaxWidthPx,
+  wideContentDefaultWidthPx,
   viewportWidthPx,
   forceFullView = false,
   goal,
@@ -140,15 +141,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const canvasMatchesChat = !canvas || canvas.surfacesChatId === currentChatId;
   const hasCanvasContent = canvasMatchesChat && !!canvas?.hasSurfaces;
 
-  // Browser and canvas both need room for desktop-sized content. The shared
-  // wide-content ceiling is viewport-derived and preserves space for chat.
   const isCanvasActive = activeTab === 'canvas' && hasCanvasContent;
   const isBrowserActive = activeTab === 'browser';
-  const activeMax =
-    isCanvasActive || isBrowserActive
-      ? (canvasMaxWidthPx ?? maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX)
-      : (maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX);
-  const effectiveMaxWidth = Math.max(MIN_RIGHT_SIDEBAR_WIDTH_PX, activeMax);
+  const effectiveMaxWidth = Math.max(
+    MIN_RIGHT_SIDEBAR_WIDTH_PX,
+    maxWidthPx ?? getRightSidebarMaxWidth(effectiveViewportWidth)
+  );
 
   const shouldBuildWebHistory = isOpen || isBrowserStreamActive || Boolean(forcedWebContextId);
   const webHistoryMessages = useMemo(
@@ -357,11 +355,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const shouldUseCustomWidth = hasCustomWidth && !isOverlayMode;
 
   const getDesktopDefaultWidth = () => {
-    if (isBrowserActive) return effectiveMaxWidth;
+    if (isBrowserActive || isCanvasActive) {
+      return wideContentDefaultWidthPx ?? getCanvasSidebarWidth(effectiveViewportWidth);
+    }
     if (isAutoExpanded) return Math.round(effectiveViewportWidth * 0.5);
-    // Canvas often holds wide content (tables, forms) — give it as much room as
-    // the layout allows (clamped to effectiveMaxWidth below). Drag to narrow.
-    if (isCanvasActive) return effectiveMaxWidth;
     return 384;
   };
 
