@@ -41,11 +41,9 @@ your computer.
 
 ## Pair your phone
 
-In **Settings → Devices → Mobile access**, choose what the phone may do (read
-conversations, send messages, approve tool requests), click **Pair a phone**,
-and scan the QR code with the Suzent mobile app (currently in preview). Confirm that the code on your
-phone matches the one on screen. Each phone gets its own access, which you can
-restrict or revoke at any time.
+The Suzent app for Android and iOS pairs from **Settings → Devices → Mobile
+access**, with its own permissions for each phone. See
+[Mobile app](./mobile.md).
 
 A phone that may send messages can also attach things to them: tap **+** next
 to the message box to take a photo or video, pick from your photo library, or

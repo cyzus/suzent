@@ -9,7 +9,7 @@ Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a 
 Full documentation lives in `docs/`. Each numbered folder is a sidebar section on the site:
 - `01-getting-started/` — what Suzent is, quickstart, platforms, updating
 - `02-using/` — how to work with the agent: tasks, projects, and setting it up
-- `03-features/` — memory, tools, skills, workspace, automation, devices, GitHub sync
+- `03-features/` — memory, tools, skills, workspace, automation, mobile app, devices, GitHub sync
 - `04-models/` — one page per provider, grouped into `cloud/` and `local/`, plus model roles
 - `05-chat-apps/` — one page per chat app, plus access control
 - `06-tutorials/` — task-oriented walkthroughs
