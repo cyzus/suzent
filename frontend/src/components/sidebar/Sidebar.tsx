@@ -67,7 +67,7 @@ export function Sidebar({
         className={`
         fixed lg:relative z-50 h-full shrink-0
         border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
-        transform-gpu will-change-transform transition-[transform,margin-left] duration-300 ease-in-out
+        transform-gpu will-change-transform transition-[width,transform,margin-left] duration-[160ms] ease-out motion-reduce:transition-none
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0'}
       `}
       >

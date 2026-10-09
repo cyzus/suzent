@@ -34,7 +34,13 @@ function start(
   direction: 1 | -1 = 1,
   thresholds: Pick<
     PanelResizeOptions,
-    'collapseThreshold' | 'coverThreshold' | 'dockThreshold'
+    | 'collapseThreshold'
+    | 'coverThreshold'
+    | 'dockThreshold'
+    | 'initialMode'
+    | 'dockMaxWidth'
+    | 'coverWidth'
+    | 'onPreview'
   > = {}
 ) {
   const onFinish = vi.fn();
@@ -129,55 +135,125 @@ describe('panel resize gestures', () => {
   });
 });
 
-describe('panel resize snap thresholds', () => {
+function flushFrames(): void {
+  const callbacks = [...frames.values()];
+  frames.clear();
+  callbacks.forEach((callback) => callback(0));
+}
+
+describe('reversible panel resize previews', () => {
   it.each([1, -1] as const)(
-    'collapses direction %s only after passing the narrow threshold',
+    'can pull direction %s back after collapse without releasing the pointer',
     (direction) => {
-      const { onFinish } = start(direction, { collapseThreshold: 176 });
-      pointer('pointermove', 320 - direction * 80);
+      const onPreview = vi.fn();
+      const { onFinish } = start(direction, { collapseThreshold: 176, onPreview });
+      pointer('pointermove', 320 - direction * 150);
+      flushFrames();
+      expect(onPreview).toHaveBeenLastCalledWith(240, 'collapse');
       expect(onFinish).not.toHaveBeenCalled();
-      pointer('pointermove', 320 - direction * 143);
-      expect(onFinish).not.toHaveBeenCalled();
-      pointer('pointermove', 320 - direction * 144);
-      expect(onFinish).toHaveBeenCalledExactlyOnceWith(240, 'collapse');
-      expect(shield.removed).toBe(true);
-      expect(panel.style.width).toBe('320px');
-      pointer('pointerup', 0);
-      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(handle.captured).toBe(true);
+      expect(shield.removed).toBe(false);
+      pointer('pointermove', 320 - direction * 70);
+      flushFrames();
+      expect(onPreview).toHaveBeenLastCalledWith(256, 'dock');
+      pointer('pointerup', 320 - direction * 70);
+      expect(onFinish).toHaveBeenCalledExactlyOnceWith(256);
     }
   );
 
-  it('accumulates overshoot beyond the docked maximum before covering chat', () => {
-    const { onFinish } = start(-1, { coverThreshold: 544 });
-    pointer('pointermove', 160);
-    pointer('pointermove', 120);
+  it('commits collapse only on release and keeps the prior width for reopening', () => {
+    const { onFinish } = start(1, { collapseThreshold: 176 });
+    pointer('pointermove', 176);
     expect(onFinish).not.toHaveBeenCalled();
+    pointer('pointerup', 176);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(240, 'collapse');
+    expect(panel.style.width).toBe('320px');
+    expect(shield.removed).toBe(true);
+  });
+
+  it('previews cover, dock, and cover again within one captured gesture', () => {
+    const onPreview = vi.fn();
+    const { onFinish } = start(-1, {
+      coverThreshold: 544,
+      dockThreshold: 432,
+      coverWidth: 900,
+      onPreview,
+    });
     pointer('pointermove', 96);
-    expect(onFinish).toHaveBeenCalledExactlyOnceWith(480, 'cover');
-    expect(frames.size).toBe(0);
-  });
-
-  it('lets the user pull back before reaching a snap threshold', () => {
-    const { onFinish } = start(-1, { coverThreshold: 544 });
-    pointer('pointermove', 110);
-    pointer('pointerup', 140);
-    expect(onFinish).toHaveBeenCalledExactlyOnceWith(480);
-  });
-
-  it('requires a narrower width to dock than to enter cover mode', () => {
-    panel.getBoundingClientRect = () => ({ width: 800 });
-    const { onFinish } = start(-1, { dockThreshold: 432 });
-    pointer('pointermove', 640);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(900, 'cover');
     expect(onFinish).not.toHaveBeenCalled();
-    pointer('pointermove', 688);
-    expect(onFinish).toHaveBeenCalledExactlyOnceWith(432, 'dock');
+    expect(handle.captured).toBe(true);
+    pointer('pointermove', 208);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(432, 'dock');
+    pointer('pointermove', 96);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(900, 'cover');
+    pointer('pointerup', 96);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(900, 'cover');
   });
 
-  it('Escape cancels overshoot before the threshold without changing modes', () => {
-    const { onFinish } = start(-1, { coverThreshold: 544 });
-    pointer('pointermove', 110);
-    target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape' }));
+  it('releases in dock mode after pulling back from cover', () => {
+    const { onFinish } = start(-1, { coverThreshold: 544, dockThreshold: 432, coverWidth: 900 });
+    pointer('pointermove', 96);
+    pointer('pointerup', 220);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(420);
+  });
+
+  it('can start in cover mode and return after previewing dock', () => {
+    panel.getBoundingClientRect = () => ({ width: 800 });
+    const onPreview = vi.fn();
+    const { onFinish } = start(-1, {
+      initialMode: 'cover',
+      dockMaxWidth: 480,
+      coverWidth: 800,
+      coverThreshold: 544,
+      dockThreshold: 432,
+      onPreview,
+    });
+    pointer('pointermove', 688);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(432, 'dock');
+    pointer('pointermove', 576);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(800, 'cover');
+    pointer('pointerup', 576);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(800);
+  });
+
+  it('avoids flickering at the collapse and cover thresholds', () => {
+    const onPreview = vi.fn();
+    const { cleanup } = start(-1, {
+      collapseThreshold: 176,
+      coverThreshold: 544,
+      dockThreshold: 432,
+      coverWidth: 900,
+      onPreview,
+    });
+    pointer('pointermove', 464);
+    pointer('pointermove', 454);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(240, 'collapse');
+    pointer('pointermove', 320);
+    pointer('pointermove', 96);
+    pointer('pointermove', 106);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(900, 'cover');
+    cleanup();
+  });
+
+  it.each(['Escape', 'pointercancel', 'unmount'])('cancels a threshold preview on %s', (reason) => {
+    const { onFinish, cleanup } = start(-1, { coverThreshold: 544, coverWidth: 900 });
+    pointer('pointermove', 96);
+    flushFrames();
+    if (reason === 'Escape')
+      target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape' }));
+    else if (reason === 'pointercancel') pointer('pointercancel', 96);
+    else cleanup();
     expect(onFinish).toHaveBeenCalledExactlyOnceWith(null);
     expect(panel.style.width).toBe('320px');
+    expect(shield.removed).toBe(true);
+    expect(handle.captured).toBe(false);
   });
 });

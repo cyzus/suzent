@@ -259,9 +259,11 @@ export const zhCN = {
   sidebar: {
     resizeLeft: '调整左侧边栏宽度',
     resizeRight: '调整右侧边栏宽度',
-    resizeHint: '拖动调整宽度，继续向窄处拖动可收起；双击恢复默认，方向键微调。',
-    resizeRightHint: '拖过最小宽度可收起，拖过最大宽度可覆盖聊天；双击恢复默认。',
-    resizeCoverHint: '向右拖窄可回到聊天旁边；双击恢复默认宽度。',
+    resizeHint:
+      '拖动调整宽度，继续向窄处拖动可收起；按住可拉回，松手确认；双击恢复默认，方向键微调。',
+    resizeRightHint:
+      '拖过最小宽度可收起，拖过最大宽度可覆盖聊天；按住可拉回，松手确认；双击恢复默认。',
+    resizeCoverHint: '向右拖窄可回到聊天旁边；按住可拉回，松手确认；双击恢复默认宽度。',
     dock: '回到聊天旁边',
 
     open: '打开侧栏',
