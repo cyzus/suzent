@@ -1,10 +1,13 @@
 """Auto-title generation for new chats using the RoleRouter."""
 
+import asyncio
 from typing import Any
 
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+TITLE_TIMEOUT_SECONDS = 10.0
 
 _PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
 
@@ -84,9 +87,19 @@ async def generate_auto_title(
             # the heuristic below still beats leaving the chat named "New Chat".
             logger.info(f"Auto-title for {chat_id}: no model configured")
 
+        deadline = asyncio.get_running_loop().time() + TITLE_TIMEOUT_SECONDS
         for candidate_model in candidate_models:
             try:
-                title = await _generate_title_with_model(candidate_model, title_source)
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    break
+                title = await asyncio.wait_for(
+                    _generate_title_with_model(candidate_model, title_source),
+                    timeout=remaining,
+                )
+            except TimeoutError:
+                logger.warning(f"Auto-title timed out for {chat_id}")
+                break
             except Exception as e:
                 logger.warning(
                     f"Auto-title model failed for {chat_id} "

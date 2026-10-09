@@ -2008,7 +2008,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     !!currentChatId && safeMessages.length === 0 && (currentChatSummary?.messageCount ?? 0) > 0;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.
-  useEventBus();
+  const { memoryChats } = useEventBus();
 
   useEffect(() => {
     if (!currentChatId) return;
@@ -3159,6 +3159,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
               {hasPendingTransientApprovals && (
                 <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
+              )}
+              {currentChatId && memoryChats.has(currentChatId) && (
+                <div role="status" className="px-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  {t('backgroundTasks.memoryProcessing')}
+                </div>
               )}
               <ChatInputPanel
                 input={input}

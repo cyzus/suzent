@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Finish replies independently of title generation and show memory extraction as background work."
+}
