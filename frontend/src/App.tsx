@@ -54,9 +54,8 @@ import {
   MIN_RIGHT_SIDEBAR_WIDTH_PX,
   MAX_LEFT_SIDEBAR_WIDTH_PX,
   SQUEEZED_MIN_CHAT_WIDTH_PX,
-  MAX_RIGHT_SIDEBAR_WIDTH_PX,
   getCanvasSidebarWidth,
-  clampRightSidebarWidth,
+  getRightSidebarMaxWidth,
   shouldCollapseLeftSidebarOnRightOpen,
   shouldUseFullWidthRightSidebar,
 } from './lib/layout';
@@ -397,15 +396,9 @@ function AppInner(): React.ReactElement {
   );
   const leftSidebarReservedWidthPx = isLeftSidebarOpen ? leftSidebarWidth : 0;
 
-  const rightSidebarMaxWidthPx = clampRightSidebarWidth(
-    MAX_RIGHT_SIDEBAR_WIDTH_PX,
-    viewportWidth,
-    leftSidebarReservedWidthPx
-  );
-  // Canvas scales with the viewport (ratio-based) and may squeeze the chat more
-  // than other tabs — see getCanvasSidebarWidth. This is both its default width
-  // and its drag ceiling.
-  const rightSidebarCanvasMaxWidthPx = getCanvasSidebarWidth(
+  const rightSidebarMaxWidthPx = getRightSidebarMaxWidth(viewportWidth, leftSidebarReservedWidthPx);
+  // Wide content has its own starting width, but shares the manual resize limit.
+  const rightSidebarWideDefaultWidthPx = getCanvasSidebarWidth(
     viewportWidth,
     leftSidebarReservedWidthPx
   );
@@ -860,7 +853,7 @@ function AppInner(): React.ReactElement {
                 onRightSidebarToggle={handleRightSidebarToggle}
                 onRightSidebarWidthChange={setRightSidebarWidth}
                 rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
-                rightSidebarCanvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
+                rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                 viewportWidthPx={viewportWidth}
                 rightSidebarForceFullView={rightSidebarForceFullView}
               />
