@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from pydantic import BaseModel
 
 from suzent.core.providers.catalog import ProviderSpec
@@ -507,3 +508,28 @@ def test_connection_failure_does_not_retry_by_removing_parameters(monkeypatch) -
     with pytest.raises(APIConnectionError):
         asyncio.run(LLMClient(model="openai/test").complete("hello", system="title"))
     completion.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "error_name", ["APIConnectionError", "RateLimitError", "Timeout"]
+)
+@pytest.mark.parametrize("retry_index", [1, 2, 3])
+def test_service_failure_during_parameter_or_message_fallback_stops_retries(
+    monkeypatch, error_name: str, retry_index: int
+) -> None:
+    from litellm import exceptions
+
+    error = getattr(exceptions, error_name)(
+        message="service unavailable", llm_provider="openai", model="test"
+    )
+    completion = AsyncMock(
+        side_effect=[Exception("unsupported parameter")] * retry_index + [error]
+    )
+    monkeypatch.setattr(
+        llm, "_litellm", lambda: SimpleNamespace(acompletion=completion)
+    )
+    monkeypatch.setattr(llm, "resolve_api_key", lambda _provider: None)
+    with pytest.raises(type(error)) as caught:
+        asyncio.run(LLMClient(model="openai/test").complete("hello", system="title"))
+    assert caught.value is error
+    assert completion.await_count == retry_index + 1

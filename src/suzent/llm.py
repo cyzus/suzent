@@ -534,20 +534,18 @@ class LLMClient:
                 Timeout,
             )
 
-            if isinstance(
-                e,
-                (
-                    ConnectionError,
-                    TimeoutError,
-                    APIConnectionError,
-                    AuthenticationError,
-                    InternalServerError,
-                    NotFoundError,
-                    RateLimitError,
-                    ServiceUnavailableError,
-                    Timeout,
-                ),
-            ):
+            non_retryable_errors = (
+                ConnectionError,
+                TimeoutError,
+                APIConnectionError,
+                AuthenticationError,
+                InternalServerError,
+                NotFoundError,
+                RateLimitError,
+                ServiceUnavailableError,
+                Timeout,
+            )
+            if isinstance(e, non_retryable_errors):
                 raise
             retry_error = e
             for param_name in (
@@ -567,6 +565,8 @@ class LLMClient:
                     response = await _litellm().acompletion(**completion_kwargs)
                     return response.choices[0].message.content
                 except Exception as current_error:
+                    if isinstance(current_error, non_retryable_errors):
+                        raise
                     retry_error = current_error
 
             if system and completion_kwargs:
@@ -581,6 +581,8 @@ class LLMClient:
                     response = await _litellm().acompletion(**completion_kwargs)
                     return response.choices[0].message.content
                 except Exception as current_error:
+                    if isinstance(current_error, non_retryable_errors):
+                        raise
                     retry_error = current_error
 
             logger.error(
