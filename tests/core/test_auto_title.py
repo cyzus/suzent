@@ -175,3 +175,112 @@ def test_generate_auto_title_strips_system_reminders_from_local_fallback(
 
     assert title == "hi"
     assert db.titles["chat-1"] == "hi"
+
+
+async def test_hung_title_model_is_cancelled_and_uses_local_title(monkeypatch) -> None:
+    from suzent.core import auto_title
+
+    db = _DB()
+    cancelled = asyncio.Event()
+    attempted: list[str] = []
+
+    async def hang(model: str, _source: str) -> str:
+        attempted.append(model)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(auto_title, "TITLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(auto_title, "_generate_title_with_model", hang)
+    monkeypatch.setattr(
+        "suzent.core.role_router.get_role_router", lambda: _Router("hung")
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    title = await asyncio.wait_for(
+        generate_auto_title(
+            "chat", "Explain memory processing", fallback_model="primary"
+        ),
+        timeout=1,
+    )
+    assert title == "Explain memory processing"
+    assert cancelled.is_set()
+    assert attempted == ["hung"]
+    assert db.titles["chat"] == title
+
+
+async def test_reply_stream_finishes_while_title_is_pending(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from pydantic_ai import Agent
+    from pydantic_ai.models.test import TestModel
+
+    from suzent import streaming
+    from suzent.core.agent_deps import AgentDeps
+
+    release = asyncio.Event()
+    entered = asyncio.Event()
+    tasks: list[asyncio.Task] = []
+    events: list[dict] = []
+
+    async def title(*_args, **_kwargs) -> str:
+        entered.set()
+        await release.wait()
+        return "Late title"
+
+    async def register(coro, **_kwargs) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        tasks.append(task)
+        return task
+
+    db = SimpleNamespace(
+        get_chat=lambda _chat_id: SimpleNamespace(title="New Chat", turn_count=0),
+        update_chat=lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    monkeypatch.setattr(streaming, "get_database", lambda: db)
+    monkeypatch.setattr("suzent.core.auto_title.generate_auto_title", title)
+    monkeypatch.setattr("suzent.core.task_registry.register_background_task", register)
+    monkeypatch.setattr("suzent.core.stream_registry.emit_bus_event", events.append)
+    monkeypatch.setattr(streaming, "remove_pending_approvals", AsyncMock())
+    monkeypatch.setattr(
+        streaming._DraftDisplayAccumulator, "maybe_persist", AsyncMock()
+    )
+    agent = Agent(TestModel(custom_output_text="Reply complete"))
+
+    async def consume() -> list[str]:
+        return [
+            chunk
+            async for chunk in streaming.stream_agent_responses(
+                agent,
+                "hello",
+                AgentDeps(chat_id="title-test", stateless=True),
+                chat_id="title-test",
+            )
+        ]
+
+    try:
+        chunks = await asyncio.wait_for(consume(), timeout=1)
+        assert entered.is_set()
+        import json
+
+        frames = [json.loads(chunk.removeprefix("data: ").strip()) for chunk in chunks]
+        reply = "".join(frame.get("delta", "") for frame in frames)
+        assert reply == "Reply complete"
+        assert not tasks[0].done()
+        assert "title-test" not in streaming.stream_controls
+        release.set()
+        await tasks[0]
+        assert events == [
+            {
+                "event": "chat_title_updated",
+                "chat_id": "title-test",
+                "title": "Late title",
+            }
+        ]
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
