@@ -96,6 +96,10 @@ def test_chat_load_reports_the_budget_of_that_chat_s_model(monkeypatch, tmp_path
         def get_project_dir(_id):
             return tmp_project
 
+        @staticmethod
+        def get_chat_project_id(_id):
+            return None
+
     monkeypatch.setattr("suzent.routes.chat_routes.get_database", lambda: _Db())
 
     app = Starlette(routes=[Route("/chats/{chat_id}", get_chat)])
