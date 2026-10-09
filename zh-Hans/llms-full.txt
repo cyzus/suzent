@@ -5867,6 +5867,22 @@ also returns 204 and the UI reloads history. Reconnects with a cursor can drain
 retained terminal events. A dropped event-bus subscriber receives an EOF so
 EventSource reconnects and refreshes its active-stream snapshot.
 
+## Auxiliary work after a reply
+
+Automatic titles run as registered background tasks. Reply completion never waits
+for a pending title. Title generation has a shared ten-second budget across model
+attempts, then uses the local title heuristic. A completed title is persisted and
+announced with a `chat_title_updated` event on `/events/stream`.
+
+Memory extraction is scheduled independently of the display/state commit. Work
+for the same chat is serialized, with a sixty-second execution timeout per turn.
+The bus emits `memory_processing` with `chat_id` and `active`; its initial snapshot
+includes `memory_chats` so reconnecting clients recover pending work. Status stays
+active until that chat's extraction queue drains, including failure or cancellation.
+The desktop shows this status near the input without keeping the reply's stop
+button active. `STREAM_END{persisted:true}` still waits for the reply's required
+persistence, but does not wait for auxiliary model requests.
+
 ## Retention and limits
 
 - The delta replay window retains 4,096 events per run. The compact full snapshot
