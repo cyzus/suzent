@@ -201,6 +201,70 @@ describe('reversible panel resize previews', () => {
     expect(onFinish).toHaveBeenCalledExactlyOnceWith(420);
   });
 
+  it('follows the pointer when a snapped panel is grabbed again, then docks at the threshold', () => {
+    const first = start(-1, { coverThreshold: 544, dockThreshold: 432, coverWidth: 900 });
+    pointer('pointerup', 96);
+    expect(first.onFinish).toHaveBeenCalledExactlyOnceWith(900, 'cover');
+
+    panel.getBoundingClientRect = () => ({ width: 900 });
+    const onPreview = vi.fn();
+    const onFinish = vi.fn();
+    startPanelResize({
+      panel: panel as unknown as HTMLElement,
+      handle: handle as unknown as HTMLElement,
+      pointerId: 1,
+      startX: 0,
+      direction: -1,
+      minWidth: 240,
+      maxWidth: 900,
+      dockMaxWidth: 480,
+      coverWidth: 900,
+      coverThreshold: 544,
+      dockThreshold: 432,
+      initialMode: 'cover',
+      onPreview,
+      onFinish,
+    });
+    for (const x of [1, 100, 300, 467]) {
+      pointer('pointermove', x);
+      flushFrames();
+      expect(onPreview).toHaveBeenLastCalledWith(900 - x, 'cover');
+    }
+    pointer('pointermove', 468);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(432, 'dock');
+    pointer('pointerup', 468);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(432, 'dock');
+  });
+
+  it.each([1, 100, 467])('previews a %spx pull but snaps back to cover on release', (distance) => {
+    panel.getBoundingClientRect = () => ({ width: 900 });
+    const onPreview = vi.fn();
+    const onFinish = vi.fn();
+    startPanelResize({
+      panel: panel as unknown as HTMLElement,
+      handle: handle as unknown as HTMLElement,
+      pointerId: 1,
+      startX: 0,
+      direction: -1,
+      minWidth: 240,
+      maxWidth: 900,
+      dockMaxWidth: 480,
+      coverWidth: 900,
+      coverThreshold: 544,
+      dockThreshold: 432,
+      initialMode: 'cover',
+      onPreview,
+      onFinish,
+    });
+    pointer('pointermove', distance);
+    flushFrames();
+    expect(onPreview).toHaveBeenLastCalledWith(900 - distance, 'cover');
+    expect(onFinish).not.toHaveBeenCalled();
+    pointer('pointerup', distance);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(900);
+  });
+
   it('can start in cover mode and return after previewing dock', () => {
     panel.getBoundingClientRect = () => ({ width: 800 });
     const onPreview = vi.fn();

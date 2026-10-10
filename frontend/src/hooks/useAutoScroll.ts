@@ -237,13 +237,17 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    let settleFrame = 0;
     const resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(settleFrame);
       if (autoScrollEnabledRef.current) {
         performAutoScroll('auto');
+        // Sidebar drags can reflow descendants after this resize notification.
+        settleFrame = requestAnimationFrame(() => {
+          if (autoScrollEnabledRef.current) performAutoScroll('auto');
+        });
       }
     });
-
-    resizeObserver.observe(el);
     const observeMessages = () => {
       resizeObserver.disconnect();
       resizeObserver.observe(el);
@@ -258,6 +262,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
     mutationObserver.observe(el, { childList: true });
 
     return () => {
+      cancelAnimationFrame(settleFrame);
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
