@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Memory extraction no longer re-stores recalled memories or earlier turns' tool calls, and writes relative dates as absolute dates."
+}
