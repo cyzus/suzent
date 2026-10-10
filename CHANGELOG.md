@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads.
 - Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
 - Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
+- Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
 - Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
 
 ## [v0.15.2] - 2026-10-01
