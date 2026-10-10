@@ -4,6 +4,7 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 
@@ -271,6 +272,9 @@ For each fact:
 - State facts directly: "Prefers X" not "User mentioned they prefer X"
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
+- Write dates as absolute dates. Resolve relative ones ("tomorrow", "next Friday")
+  against the date a message is marked with, or else the current date given in
+  the prompt.
 
 ## Already-known facts
 The prompt may list facts already in memory. They are context, not material:
@@ -305,8 +309,15 @@ Do not re-extract these. Extract only what is new, or what CHANGES one of them.
 """
 
 
+def format_local_date(moment: datetime) -> str:
+    """Render *moment* as the user's local date, e.g. "2026-10-10 (Saturday, UTC+0800)"."""
+    return moment.astimezone().strftime("%Y-%m-%d (%A, UTC%z)")
+
+
 def format_fact_extraction_user_prompt(
-    content: str, known_facts: Optional[List[str]] = None
+    content: str,
+    known_facts: Optional[List[str]] = None,
+    current_date: Optional[str] = None,
 ) -> str:
     """
     Format user prompt for fact extraction from a conversation turn.
@@ -315,13 +326,15 @@ def format_fact_extraction_user_prompt(
         content: The formatted conversation turn text (user message + assistant response + actions)
         known_facts: Facts already in memory, nearest-first. Omitted when retrieval
             is unavailable — extraction then behaves exactly as it did before.
+        current_date: The user's local date, so relative dates can be resolved.
 
     Returns:
         Formatted extraction prompt
     """
+    date_line = f"Current date: {current_date}\n\n" if current_date else ""
     return f"""Extract memorable facts from this conversation turn. One concise sentence per fact.
 
-{format_known_facts_block(known_facts)}---
+{date_line}{format_known_facts_block(known_facts)}---
 {content}
 ---
 
