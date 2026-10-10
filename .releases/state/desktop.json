@@ -18,6 +18,7 @@
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/inchat-task-navigation.json",
+    ".releases/changes/memory-extraction-context.json",
     ".releases/changes/mobile-attachments.json",
     ".releases/changes/mobile-charcoal-dark-mode.json",
     ".releases/changes/mobile-chat-management.json",
