@@ -1,5 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { EyeIcon } from '@heroicons/react/24/outline';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  ArrowUturnLeftIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  DocumentTextIcon,
+  EyeIcon,
+} from '@heroicons/react/24/outline';
 import { undoChatFiles } from '../../lib/api';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff';
 import type { MessageFileChange } from '../../types/api';
@@ -7,32 +13,6 @@ import { useI18n } from '../../i18n';
 import { FileContentDiffViewer } from './FileDiffViewer';
 
 const DEFAULT_VISIBLE_FILES = 3;
-
-const FileChangesIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <rect x="5" y="3" width="14" height="18" rx="2" />
-    <path d="M9 9h6M12 6v6M9 16h6" />
-  </svg>
-);
-
-const UndoIcon: React.FC = () => (
-  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
-    <path d="M7 6 4 9l3 3" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M5 9h6a4 4 0 1 1 0 8h-1" strokeLinecap="round" />
-  </svg>
-);
-
-const ChevronIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
-  <svg
-    viewBox="0 0 20 20"
-    className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-  >
-    <path d="m6 8 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
 
 const getDisplayPath = (file: MessageFileChange): string => {
   const path = (file.display_path || file.path).replace(/\\/g, '/');
@@ -61,6 +41,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   onFileClick,
 }) => {
   const { t } = useI18n();
+  const diffPanelId = useId();
   const [expanded, setExpanded] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? '');
@@ -126,108 +107,125 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <div className="overflow-hidden border border-l-4 border-neutral-300 border-l-brutal-black bg-neutral-50/90 text-brutal-black dark:border-zinc-700 dark:border-l-zinc-500 dark:bg-white/[0.025] dark:text-white">
-      <div className="flex items-center gap-2.5 border-b border-neutral-200 px-3 py-2 dark:border-zinc-700">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-brutal-yellow/45 text-brutal-black dark:bg-white/10 dark:text-neutral-200">
-          <FileChangesIcon />
+    <section className="min-w-0 overflow-hidden border border-neutral-300 bg-white shadow-[2px_2px_0_0_rgba(0,0,0,0.06)] text-neutral-800 dark:border-zinc-600 dark:bg-zinc-900 dark:shadow-none dark:text-neutral-200">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200 bg-neutral-100/70 px-3 py-1.5 dark:border-zinc-700 dark:bg-white/[0.035]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="break-normal text-xs font-bold">
+            {t(files.length === 1 ? 'fileChanges.changedFile' : 'fileChanges.changedFiles', {
+              count: files.length,
+            })}
+          </span>
+          {files.length > 1 && (
+            <span className="flex gap-1.5 whitespace-nowrap font-mono text-[11px] tabular-nums">
+              <span className="text-emerald-700 dark:text-emerald-400">+{additions}</span>
+              <span className="text-red-600 dark:text-red-400">−{deletions}</span>
+            </span>
+          )}
         </div>
-        <div className="min-w-0">
-          <div className="text-sm font-black text-brutal-black dark:text-white">
-            {t('fileChanges.editedFiles', { count: files.length })}
-          </div>
-          <div className="font-mono text-xs font-bold">
-            <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>{' '}
-            <span className="text-red-500 dark:text-red-400">-{deletions}</span>
-          </div>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            disabled={busy || undoCompleted}
-            onClick={undo}
-            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-black/[0.05] disabled:opacity-40 dark:text-white dark:hover:bg-white/[0.07]"
-          >
+        <button
+          type="button"
+          disabled={busy || undoCompleted}
+          onClick={undo}
+          className="inline-flex min-h-7 shrink-0 items-center gap-1.5 px-1.5 text-[11px] font-bold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500 disabled:cursor-default disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-neutral-200"
+        >
+          {undoCompleted ? (
+            <CheckIcon className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
+          )}
+          <span className="whitespace-nowrap">
             {busy
               ? t('fileChanges.undoing')
               : undoCompleted
                 ? t('fileChanges.undone')
                 : t('fileChanges.undo')}
-            <UndoIcon />
-          </button>
-          <button
-            type="button"
-            aria-expanded={reviewing}
-            onClick={() => setReviewing((value) => !value)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-black transition-colors ${
-              reviewing
-                ? 'bg-black/[0.08] text-brutal-black dark:bg-white/10 dark:text-white'
-                : 'text-brutal-black hover:bg-black/[0.05] dark:text-white dark:hover:bg-white/[0.07]'
-            }`}
-          >
-            {t('fileChanges.diff')}
-            <ChevronIcon expanded={reviewing} />
-          </button>
-        </div>
+          </span>
+        </button>
       </div>
 
-      <div className="py-1">
-        {visibleFiles.map((file) => (
-          <div
-            key={file.path}
-            className={`group/file-row flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
-              reviewing && selectedFile?.path === file.path
-                ? 'bg-black/[0.055] dark:bg-white/[0.07]'
-                : 'hover:bg-black/[0.035] dark:hover:bg-white/[0.05]'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => openDiffForFile(file)}
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
-              aria-expanded={reviewing && selectedFile?.path === file.path}
+      <div className="divide-y divide-neutral-100 dark:divide-zinc-800">
+        {visibleFiles.map((file) => {
+          const displayPath = getDisplayPath(file);
+          const fileName = getFileName(file);
+          const directory = displayPath.slice(0, displayPath.lastIndexOf('/') + 1);
+          const isOpen = reviewing && selectedFile?.path === file.path;
+          return (
+            <div
+              key={file.path}
+              className={`flex min-w-0 items-center gap-1 px-2 py-1 ${isOpen ? 'bg-neutral-100/70 dark:bg-white/[0.04]' : ''}`}
             >
-              <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
-                {getDisplayPath(file)}
-              </span>
-            </button>
-            <span className="shrink-0 font-mono font-bold">
-              <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>{' '}
-              <span className="text-red-500 dark:text-red-400">-{file.deletions}</span>
-            </span>
-            {onFileClick && (
               <button
                 type="button"
-                onClick={(event) => openFilePreview(file, event.shiftKey)}
-                title={t('fileChanges.openFile')}
-                aria-label={t('fileChanges.openFile')}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-neutral-500 opacity-70 transition hover:bg-black/[0.06] hover:text-brutal-black group-hover/file-row:opacity-100 dark:text-neutral-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                onClick={() => openDiffForFile(file)}
+                title={displayPath}
+                aria-label={t('fileChanges.reviewFile', { file: fileName })}
+                aria-expanded={isOpen}
+                aria-controls={isOpen ? diffPanelId : undefined}
+                className="group flex min-w-0 flex-1 items-center gap-2 px-1 py-2 text-left transition-colors hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/[0.04]"
               >
-                <EyeIcon className="h-4 w-4 stroke-[2.2]" />
+                <DocumentTextIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs font-semibold leading-5">
+                    {fileName}
+                  </span>
+                  {directory && (
+                    <span className="block truncate font-mono text-[10px] leading-4 text-neutral-500 dark:text-neutral-400">
+                      {directory}
+                    </span>
+                  )}
+                  <span className="mt-0.5 flex flex-wrap gap-x-2 font-mono text-[11px] leading-4 tabular-nums">
+                    <span className="text-emerald-700 dark:text-emerald-400">
+                      +{file.additions}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400">−{file.deletions}</span>
+                  </span>
+                </span>
+                <ChevronDownIcon
+                  className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                />
               </button>
-            )}
-          </div>
-        ))}
-        {hiddenCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="ml-3 inline-flex items-center gap-1 py-1.5 text-xs font-black text-brutal-black hover:underline dark:text-white"
-          >
-            {expanded
-              ? t('fileChanges.showLess')
-              : t('fileChanges.showMore', { count: hiddenCount })}
-            <ChevronIcon expanded={expanded} />
-          </button>
-        )}
+              {onFileClick && (
+                <button
+                  type="button"
+                  onClick={(event) => openFilePreview(file, event.shiftKey)}
+                  title={t('fileChanges.openFile')}
+                  aria-label={t('fileChanges.openFile')}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/5 dark:hover:text-neutral-200"
+                >
+                  <EyeIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
-
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className="flex w-full items-center justify-center gap-1 border-t border-neutral-100 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:border-zinc-800 dark:text-neutral-400 dark:hover:bg-white/[0.03]"
+        >
+          {expanded
+            ? t('fileChanges.showLess')
+            : t(hiddenCount === 1 ? 'fileChanges.showOneMore' : 'fileChanges.showMore', {
+                count: hiddenCount,
+              })}
+          <ChevronDownIcon
+            className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+      )}
       {message && (
-        <div className="border-t border-neutral-300 bg-black/[0.025] px-3 py-2 text-xs font-bold dark:border-zinc-700 dark:bg-white/[0.035]">
+        <div
+          role="status"
+          className="break-words border-t border-neutral-200 px-3 py-2 text-xs leading-relaxed text-neutral-500 dark:border-zinc-700 dark:text-neutral-400"
+        >
           {message}
         </div>
       )}
       {reviewing && selectedFile && (
-        <div className="border-t border-neutral-300 dark:border-zinc-700">
+        <div id={diffPanelId} className="min-w-0 border-t border-neutral-200 dark:border-zinc-700">
           {selectedDiff ? (
             <FileContentDiffViewer
               filePath={getDisplayPath(selectedFile)}
@@ -238,12 +236,12 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
               embedded
             />
           ) : (
-            <div className="bg-neutral-50 px-3 py-5 text-center text-xs font-bold text-neutral-500 dark:bg-zinc-950 dark:text-neutral-400">
+            <div className="px-3 py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
               {t('fileChanges.binaryDiff')}
             </div>
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 };
