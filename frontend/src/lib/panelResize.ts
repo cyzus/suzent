@@ -107,6 +107,9 @@ export function startPanelResize({
     shield.remove();
     document.body.style.cursor = previousCursor;
     document.body.style.userSelect = previousUserSelect;
+    // Cover may preview a narrower width when grabbed again. The release
+    // still commits the snapped width unless the gesture crossed into dock.
+    if (commit && mode === 'cover') width = coverWidth;
     const action = mode === initialMode ? undefined : mode;
     if (commit && !action && !onPreview) apply();
     else panel.style.width = originalWidth;

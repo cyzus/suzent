@@ -978,9 +978,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           {badgeContainer}
 
           <div
-            className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+            className={
+              isStreamingThis
+                ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+                : 'flow-root'
+            }
           >
-            <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
+            <div
+              className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+            >
               {hasParts ? (
                 <AGUIPartsContent
                   parts={effectiveParts}
@@ -1110,9 +1116,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         {badgeContainer}
 
         <div
-          className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+          className={
+            isStreamingThis
+              ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+              : 'flow-root'
+          }
         >
-          <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
+          <div
+            className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+          >
             {legacyRenderGroups.map((group, groupIndex) => {
               if (group.type === 'activity') {
                 const activityGroupOrdinal = getActivityGroupOrdinal(
