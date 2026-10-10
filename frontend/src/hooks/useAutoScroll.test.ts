@@ -32,6 +32,12 @@ describe('message bottom scrolling', () => {
 
   it('follows the last message growing and newly appended messages', () => {
     vi.useFakeTimers();
+    let settle: FrameRequestCallback = () => {};
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      settle = callback;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
     const observe = vi.fn();
     const disconnect = vi.fn();
     let onResize = () => {};
@@ -65,6 +71,9 @@ describe('message bottom scrolling', () => {
     container.scrollHeight = 1100;
     onResize();
     expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 1100, behavior: 'auto' });
+    container.scrollHeight = 1250;
+    settle(0);
+    expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 1250, behavior: 'auto' });
     const appended = {};
     container.children.push(appended);
     onMutation();
