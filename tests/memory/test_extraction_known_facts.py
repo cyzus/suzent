@@ -156,7 +156,7 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
             {"content": "said once in chat", "durable": False},
         ]
 
-    async def _extract(content, known_facts=None):
+    async def _extract(content, known_facts=None, include_current_date=True):
         shown.append(list(known_facts or []))
         return []
 

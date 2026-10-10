@@ -617,6 +617,7 @@ class MemoryManager:
         conversation_turn: Union[ConversationTurn, Dict[str, Any]],
         chat_id: str,
         user_id: str,
+        include_current_date: bool = True,
     ) -> MemoryExtractionResult:
         """
         Automatically extract and store important facts from a conversation turn.
@@ -626,6 +627,8 @@ class MemoryManager:
             conversation_turn: ConversationTurn model or dict with same structure
             chat_id: Chat identifier
             user_id: User identifier
+            include_current_date: Tell the extractor today's date. Off when the
+                turn text is older history that carries its own dates.
 
         Returns:
             MemoryExtractionResult with the list of extracted fact contents.
@@ -659,7 +662,9 @@ class MemoryManager:
             # log at all, and `_split_confirmations` cannot recover a fact the model
             # already declined to emit.
             extracted_facts = await self._extract_facts_llm(
-                turn_text, [k["content"] for k in known if k.get("durable")]
+                turn_text,
+                [k["content"] for k in known if k.get("durable")],
+                include_current_date=include_current_date,
             )
 
             if not extracted_facts:
@@ -864,7 +869,10 @@ class MemoryManager:
             return None
 
     async def _extract_facts_llm(
-        self, content: str, known_facts: Optional[List[str]] = None
+        self,
+        content: str,
+        known_facts: Optional[List[str]] = None,
+        include_current_date: bool = True,
     ) -> List[ExtractedFact]:
         """
         Extract facts using LLM with Pydantic schema-based structured output.
@@ -876,13 +884,18 @@ class MemoryManager:
             content: The formatted conversation turn.
             known_facts: Facts already in memory, nearest-first, so the model can tell
                 a repeat from an update. Omitted when retrieval is unavailable.
+            include_current_date: Add today's date to the prompt.
 
         Returns:
             List of ExtractedFact models
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
         user_prompt = memory_context.format_fact_extraction_user_prompt(
-            content, known_facts
+            content,
+            known_facts,
+            current_date=memory_context.format_local_date(datetime.now())
+            if include_current_date
+            else None,
         )
         # Keep one client throughout an extraction if settings change mid-request.
         client = self.llm_client
