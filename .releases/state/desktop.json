@@ -9,6 +9,7 @@
     ".releases/changes/background-task-wakeups.json",
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
+    ".releases/changes/chat-file-card-layout.json",
     ".releases/changes/chat-multi-select-context-menu.json",
     ".releases/changes/chat-multi-select.json",
     ".releases/changes/chat-pinning-home.json",

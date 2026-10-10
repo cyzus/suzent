@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
 - Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically.
 - Finish replies independently of title generation and show memory extraction as background work.
+- Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows.
 - Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
 - Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
 - Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background.
