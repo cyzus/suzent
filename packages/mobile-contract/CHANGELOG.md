@@ -1,5 +1,17 @@
 # Mobile changelog
 
+## [mobile-v0.3.0] - 2026-10-10
+
+### Release notes
+- Reduce iOS message footer copy, edit, retry, and branch icons to a consistent 13-point size while preserving their existing touch areas.
+- Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+- Use charcoal surfaces, softer gray outlines, and near-black hard shadows in Android and iOS dark mode, with theme-aware code blocks and brighter links.
+- Show the current conversation title in the mobile header, retain the Suzent wordmark for new conversations, and remove the duplicate title above messages.
+- Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
+- Use the canonical black-and-white Suzent logo with curious glances and blinking during mobile reconnection. Simplify the screen to one status line and move pairing actions into connection help, respecting reduced motion and app background state.
+- Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads.
+- Render sub-agent and scheduled system reminders as compact disclosure rows on iOS and Android, hiding inbox delivery metadata and collapsing long bodies like desktop.
+
 ## [mobile-v0.2.0] - 2026-10-01
 
 ### Release notes
