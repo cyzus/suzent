@@ -978,6 +978,7 @@ class ContextCompressor:
                 return
 
             from suzent.core.system_reminder import strip_system_reminders
+            from suzent.memory.memory_context import format_local_date
 
             user_parts = []
             assistant_parts = []
@@ -1006,7 +1007,13 @@ class ContextCompressor:
                                 if isinstance(content, str)
                                 else [c for c in content if isinstance(c, str)]
                             )
-                            user_parts.extend(strip_system_reminders(t) for t in texts)
+                            # These turns may be days old: date each one so a
+                            # relative date resolves against when it was said.
+                            text = "\n".join(strip_system_reminders(t) for t in texts)
+                            if text.strip():
+                                user_parts.append(
+                                    f"[{format_local_date(part.timestamp)}] {text}"
+                                )
                         elif isinstance(part, ToolReturnPart):
                             returns[part.tool_call_id] = str(part.content)[:200]
 
@@ -1052,6 +1059,7 @@ class ContextCompressor:
                 conversation_turn=turn,
                 chat_id=self.chat_id,
                 user_id=self.user_id,
+                include_current_date=False,
             )
 
             extracted_count = len(result.extracted_facts) if result else 0

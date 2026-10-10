@@ -57,7 +57,8 @@ prompt and reminders are left out on purpose: the reminder carries recalled memo
 and an extractor that saw them would store them again. Tool calls answered before the
 turn started are excluded, because the history snapshot spans the whole chat. The prompt
 also carries the user's current date so relative dates are written as absolute ones.
-The pre-compaction flush builds the same shape from the messages about to be compacted.
+The pre-compaction flush builds the same shape from the messages about to be compacted,
+but dates each user message with when it was sent instead of giving today's date.
 
 ```mermaid
 %%{init: {'theme':'neutral'}}%%

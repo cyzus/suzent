@@ -4,6 +4,7 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 
@@ -272,7 +273,8 @@ For each fact:
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
 - Write dates as absolute dates. Resolve relative ones ("tomorrow", "next Friday")
-  against the current date given in the prompt.
+  against the date a message is marked with, or else the current date given in
+  the prompt.
 
 ## Already-known facts
 The prompt may list facts already in memory. They are context, not material:
@@ -305,6 +307,11 @@ def format_known_facts_block(known_facts: Optional[List[str]]) -> str:
 Do not re-extract these. Extract only what is new, or what CHANGES one of them.
 
 """
+
+
+def format_local_date(moment: datetime) -> str:
+    """Render *moment* as the user's local date, e.g. "2026-10-10 (Saturday, UTC+0800)"."""
+    return moment.astimezone().strftime("%Y-%m-%d (%A, UTC%z)")
 
 
 def format_fact_extraction_user_prompt(

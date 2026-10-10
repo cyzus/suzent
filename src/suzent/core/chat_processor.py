@@ -692,10 +692,6 @@ class ChatProcessor:
             except Exception as _ckpt_err:
                 logger.debug(f"[retry] checkpoint save skipped: {_ckpt_err}")
 
-        # Calls already answered before this turn; post-processing reports only the
-        # rest, since the snapshot it receives is the whole (compacted) history.
-        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
-
         # 5. Attachment Handling
         agent_images = []
         attachment_context = ""
@@ -969,6 +965,11 @@ class ChatProcessor:
                     len(cancelled_tool_call_ids),
                     chat_id,
                 )
+
+        # Calls already answered before this turn (abandoned ones were just given a
+        # result above); post-processing reports only the rest, since the snapshot
+        # it receives is the whole (compacted) history.
+        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
@@ -2418,16 +2419,16 @@ def _strip_attachment_annotations(text: str) -> str:
 
 
 def _answered_tool_call_ids(messages: list) -> frozenset[str]:
-    """IDs of the tool calls in ``messages`` that already have a return."""
-    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+    """IDs of the tool calls in ``messages`` that already have a result."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
 
     return frozenset(
-        part.tool_call_id
+        call.tool_call_id
         for msg in messages
-        if isinstance(msg, ModelRequest)
-        for part in msg.parts
-        if isinstance(part, ToolReturnPart)
-    )
+        if isinstance(msg, ModelResponse)
+        for call in msg.parts
+        if isinstance(call, ToolCallPart)
+    ) - _collect_unprocessed_tool_call_ids(messages)
 
 
 def _extract_tool_calls(

@@ -9,9 +9,12 @@ calls were already extracted on their own turns.
 from types import SimpleNamespace
 
 import pytest
+from datetime import datetime, timezone
+
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     SystemPromptPart,
     TextPart,
     ToolCallPart,
@@ -23,6 +26,7 @@ from suzent.core import chat_processor
 from suzent.core.chat_processor import (
     ChatProcessor,
     _answered_tool_call_ids,
+    _cancel_unprocessed_tool_calls,
     _extract_tool_calls,
 )
 from suzent.core.context_compressor import ContextCompressor
@@ -58,9 +62,10 @@ class _RecordingMemory:
         self.turns = []
 
     async def process_conversation_turn_for_memories(
-        self, conversation_turn, chat_id, user_id
+        self, conversation_turn, chat_id, user_id, include_current_date=True
     ):
         self.turns.append(conversation_turn)
+        self.include_current_date = include_current_date
         return SimpleNamespace(extracted_facts=[])
 
 
@@ -94,6 +99,32 @@ def test_call_awaiting_approval_counts_as_this_turn():
     assert [a.tool for a in actions] == ["bash"]
 
 
+def test_failed_validation_counts_as_answered():
+    history = _history() + [
+        _call("bad", "read_file"),
+        ModelRequest(
+            parts=[
+                RetryPromptPart(
+                    content="missing path", tool_name="read_file", tool_call_id="bad"
+                )
+            ]
+        ),
+    ]
+
+    assert "bad" in _answered_tool_call_ids(history)
+
+
+def test_abandoned_call_is_not_reported_on_the_next_turn():
+    """An interrupted run's call is cancelled before the snapshot, not after."""
+    history, _ = _cancel_unprocessed_tool_calls(
+        _history() + [_call("abandoned", "bash")], "interrupted"
+    )
+
+    assert (
+        _extract_tool_calls(history, exclude_ids=_answered_tool_call_ids(history)) == []
+    )
+
+
 async def test_turn_excludes_reminder_and_earlier_calls(memory, monkeypatch):
     processor = ChatProcessor.__new__(ChatProcessor)
     monkeypatch.setattr(processor, "_is_system_chat", lambda chat_id: False)
@@ -121,7 +152,8 @@ async def test_pre_compaction_flush_takes_only_user_words(memory):
             parts=[
                 SystemPromptPart(content="You are Suzent."),
                 UserPromptPart(
-                    content="I moved to Lisbon" + wrap_in_system_reminder(RECALLED)
+                    content="Dentist tomorrow" + wrap_in_system_reminder(RECALLED),
+                    timestamp=datetime(2026, 10, 3, 12, tzinfo=timezone.utc),
                 ),
             ]
         ),
@@ -134,7 +166,11 @@ async def test_pre_compaction_flush_takes_only_user_words(memory):
     await ContextCompressor._pre_compaction_flush(compressor, messages)
 
     (turn,) = memory.turns
-    assert turn.user_message.content == "I moved to Lisbon"
+    assert turn.user_message.content.startswith("[2026-10-0")
+    assert turn.user_message.content.endswith("] Dentist tomorrow")
+    assert RECALLED not in turn.user_message.content
+    assert "You are Suzent" not in turn.user_message.content
+    assert memory.include_current_date is False
     assert [(a.tool, a.output) for a in turn.agent_actions] == [
         ("web_search", "search result")
     ]
