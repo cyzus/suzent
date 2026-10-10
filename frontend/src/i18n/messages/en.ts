@@ -1244,6 +1244,10 @@ export const en = {
     },
   },
   fileChanges: {
+    showOneMore: 'Show 1 more file',
+    changedFile: '1 file changed',
+    changedFiles: '{count} files changed',
+    reviewFile: 'View changes to {file}',
     editedFiles: 'Edited {count} file(s)',
     diff: 'Diff',
     showMore: 'Show {count} more files',

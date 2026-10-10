@@ -1196,6 +1196,10 @@ export const zhCN = {
     },
   },
   fileChanges: {
+    showOneMore: '再显示 1 个文件',
+    changedFile: '已修改 1 个文件',
+    changedFiles: '已修改 {count} 个文件',
+    reviewFile: '查看 {file} 的修改',
     editedFiles: '已编辑 {count} 个文件',
     diff: '差异',
     showMore: '再显示 {count} 个文件',
