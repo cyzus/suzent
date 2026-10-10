@@ -24,6 +24,32 @@
     },
     "xiaomi_mimo/mimo-v2.5-tts-voicedesign": {
       "mode": "chat"
+    },
+    "xiaomi_mimo/mimo-v2.6-pro": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xiaomi_mimo/mimo-v2.6-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
