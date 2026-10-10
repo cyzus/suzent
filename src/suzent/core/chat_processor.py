@@ -966,6 +966,11 @@ class ChatProcessor:
                     chat_id,
                 )
 
+        # Calls already answered before this turn (abandoned ones were just given a
+        # result above); post-processing reports only the rest, since the snapshot
+        # it receives is the whole (compacted) history.
+        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
+
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
@@ -1425,6 +1430,7 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
+                    prior_tool_call_ids=prior_tool_call_ids,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1507,6 +1513,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> bool:
         """Background post-processing for a completed turn.
 
@@ -1556,7 +1563,11 @@ class ChatProcessor:
                 # written/indexed — keeps their chatter out of memory (NEW-7).
                 if not self._is_system_chat(chat_id):
                     await self._write_transcript(
-                        chat_id, message_content, full_response, last_messages
+                        chat_id,
+                        message_content,
+                        full_response,
+                        last_messages,
+                        prior_tool_call_ids,
                     )
                 db.update_job_step_status(
                     job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
@@ -1601,6 +1612,7 @@ class ChatProcessor:
                                     user_content=message_content,
                                     agent_content=full_response,
                                     messages=last_messages,
+                                    prior_tool_call_ids=prior_tool_call_ids,
                                 )
                         memory_db.update_job_step_status(
                             job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
@@ -2074,9 +2086,15 @@ class ChatProcessor:
             return False
 
     async def _extract_memories(
-        self, chat_id, user_id, user_content, agent_content, messages
-    ):
-        """Extract memories from pydantic-ai message history."""
+        self,
+        chat_id: str,
+        user_id: str,
+        user_content: str,
+        agent_content: str,
+        messages: list,
+        prior_tool_call_ids: frozenset[str] = frozenset(),
+    ) -> None:
+        """Extract memories from this turn of the pydantic-ai message history."""
         if not CONFIG.memory_enabled:
             return
         # Skip system/forked turns (dream, sub-agents). The per-chat platform — not
@@ -2089,11 +2107,16 @@ class ChatProcessor:
             if not memory_mgr:
                 return
 
-            # Extract tool calls from messages
-            actions = _extract_tool_calls(messages)
+            from suzent.core.system_reminder import strip_system_reminders
 
+            actions = _extract_tool_calls(messages, exclude_ids=prior_tool_call_ids)
+
+            # The hidden reminder carries recalled memories; left in, the extractor
+            # reads them as the user's words and stores them again.
             conversation_turn = ConversationTurn(
-                user_message=Message(role="user", content=user_content),
+                user_message=Message(
+                    role="user", content=strip_system_reminders(user_content)
+                ),
                 assistant_message=Message(role="assistant", content=agent_content),
                 agent_actions=actions,
             )
@@ -2108,7 +2131,12 @@ class ChatProcessor:
             raise
 
     async def _write_transcript(
-        self, chat_id: str, user_content: str, agent_content: str, messages: list
+        self,
+        chat_id: str,
+        user_content: str,
+        agent_content: str,
+        messages: list,
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> None:
         """Write user and assistant turns to the JSONL transcript."""
         try:
@@ -2118,7 +2146,9 @@ class ChatProcessor:
             await tm.append_turn(chat_id, "user", user_content)
 
             actions = []
-            for action in _extract_tool_calls(messages):
+            for action in _extract_tool_calls(
+                messages, exclude_ids=prior_tool_call_ids
+            ):
                 actions.append({"tool": action.tool, "args": action.args})
 
             await tm.append_turn(
@@ -2388,8 +2418,26 @@ def _strip_attachment_annotations(text: str) -> str:
     return _REFERENCE_PATTERN.sub("", text).strip()
 
 
-def _extract_tool_calls(messages: list) -> List[AgentAction]:
-    """Extract AgentAction records from pydantic-ai message history."""
+def _answered_tool_call_ids(messages: list) -> frozenset[str]:
+    """IDs of the tool calls in ``messages`` that already have a result."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    return frozenset(
+        call.tool_call_id
+        for msg in messages
+        if isinstance(msg, ModelResponse)
+        for call in msg.parts
+        if isinstance(call, ToolCallPart)
+    ) - _collect_unprocessed_tool_call_ids(messages)
+
+
+def _extract_tool_calls(
+    messages: list, exclude_ids: frozenset[str] = frozenset()
+) -> List[AgentAction]:
+    """Extract AgentAction records from pydantic-ai message history.
+
+    Calls whose ID is in *exclude_ids* are skipped.
+    """
     from pydantic_ai.messages import (
         ModelResponse,
         ModelRequest,
@@ -2410,7 +2458,10 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
     for msg in messages:
         if isinstance(msg, ModelResponse):
             for part in msg.parts:
-                if isinstance(part, ToolCallPart):
+                if (
+                    isinstance(part, ToolCallPart)
+                    and part.tool_call_id not in exclude_ids
+                ):
                     output = returns.get(part.tool_call_id, "")
                     actions.append(
                         AgentAction(
