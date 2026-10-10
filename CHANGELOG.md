@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.16.0] - 2026-10-10
+
+### Release notes
+- Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
+- Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically.
+- Finish replies independently of title generation and show memory extraction as background work.
+- Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows.
+- Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
+- Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
+- Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background.
+- Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+- Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
+- Simplify phone pairing and let desktop operators edit all paired-phone permissions without pairing again.
+- Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads.
+- Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
+- Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
+- Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
+- Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
+
 ## [v0.15.2] - 2026-10-01
 
 ### Release notes
