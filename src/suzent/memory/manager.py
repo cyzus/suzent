@@ -882,7 +882,9 @@ class MemoryManager:
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
         user_prompt = memory_context.format_fact_extraction_user_prompt(
-            content, known_facts
+            content,
+            known_facts,
+            current_date=datetime.now().astimezone().strftime("%Y-%m-%d (%A, UTC%z)"),
         )
         # Keep one client throughout an extraction if settings change mid-request.
         client = self.llm_client

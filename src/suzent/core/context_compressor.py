@@ -17,6 +17,7 @@ from pydantic_ai.messages import (
     ToolCallPart,
     ToolReturnPart,
     TextPart,
+    UserPromptPart,
 )
 from pydantic_ai.tools import RunContext
 
@@ -976,24 +977,42 @@ class ContextCompressor:
             if not memory_mgr:
                 return
 
+            from suzent.core.system_reminder import strip_system_reminders
+
             user_parts = []
             assistant_parts = []
-            actions = []
+            returns: dict[str, str] = {}
 
-            for msg in messages_to_compress:
+            # A previous compaction summary was distilled from turns already flushed.
+            messages = [
+                msg
+                for msg in messages_to_compress
+                if not any(
+                    is_compaction_summary_text(getattr(part, "content", None))
+                    for part in msg.parts
+                )
+            ]
+
+            # Only what the user typed: system prompts and tool returns are not the
+            # user's words, and the reminder carries recalled memories the extractor
+            # would store again.
+            for msg in messages:
                 if isinstance(msg, ModelRequest):
                     for part in msg.parts:
-                        if hasattr(part, "content") and isinstance(part.content, str):
-                            user_parts.append(part.content)
-                        if isinstance(part, ToolReturnPart):
-                            actions.append(
-                                AgentAction(
-                                    tool=part.tool_name,
-                                    args={},
-                                    output=str(part.content)[:200],
-                                )
+                        if isinstance(part, UserPromptPart):
+                            content = part.content
+                            texts = (
+                                [content]
+                                if isinstance(content, str)
+                                else [c for c in content if isinstance(c, str)]
                             )
-                elif isinstance(msg, ModelResponse):
+                            user_parts.extend(strip_system_reminders(t) for t in texts)
+                        elif isinstance(part, ToolReturnPart):
+                            returns[part.tool_call_id] = str(part.content)[:200]
+
+            actions = []
+            for msg in messages:
+                if isinstance(msg, ModelResponse):
                     for part in msg.parts:
                         if isinstance(part, TextPart):
                             text = part.content
@@ -1007,6 +1026,7 @@ class ContextCompressor:
                                     args=part.args
                                     if isinstance(part.args, dict)
                                     else {},
+                                    output=returns.get(part.tool_call_id, ""),
                                 )
                             )
 
