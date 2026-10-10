@@ -36,16 +36,26 @@ describe('message bottom scrolling', () => {
     const disconnect = vi.fn();
     let onResize = () => {};
     let onMutation = () => {};
-    vi.stubGlobal('ResizeObserver', class {
-      constructor(callback: () => void) { onResize = callback; }
-      observe = observe;
-      disconnect = disconnect;
-    });
-    vi.stubGlobal('MutationObserver', class {
-      constructor(callback: () => void) { onMutation = callback; }
-      observe = vi.fn();
-      disconnect = vi.fn();
-    });
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          onResize = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      }
+    );
+    vi.stubGlobal(
+      'MutationObserver',
+      class {
+        constructor(callback: () => void) {
+          onMutation = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
     const hook = useAutoScroll([]);
     const last = {};
     const container = { children: [{}, last], scrollHeight: 800, scrollTo: vi.fn() };
