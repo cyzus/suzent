@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
+- Stop approved tool calls from being dropped and re-run under automatic review when a chat saved while the approval was pending.
 - Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically.
 - Finish replies independently of title generation and show memory extraction as background work.
 - Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows.
