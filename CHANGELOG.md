@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.16.0] - 2026-10-10
+## [v0.16.0] - 2026-10-13
 
 ### Release notes
 - Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
 - Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
 - Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
+- Turn on Suzent's built-in skills by default, and keep skills found in your home folder (such as ~/.claude or ~/.codex) off until you enable them.
 - Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
 
 ## [v0.15.2] - 2026-10-01
