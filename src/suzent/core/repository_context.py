@@ -49,15 +49,12 @@ class RepositoryContextRoots:
             else:
                 candidates.append(("working", working_dir))
 
-        result: list[tuple[str, Path]] = []
-        seen: set[Path] = set()
+        # A home folder that is also the active checkout is that checkout, so
+        # the later, more specific scope names it while keeping its position.
+        scopes: dict[Path, str] = {}
         for scope, path in candidates:
-            resolved = path.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            result.append((scope, resolved))
-        return tuple(result)
+            scopes[path.resolve()] = scope
+        return tuple((scope, path) for path, scope in scopes.items())
 
 
 @dataclass(frozen=True)
@@ -208,8 +205,7 @@ def _skill_library_roots(candidate: Path) -> list[Path]:
 
 def discover_skill_roots(roots: RepositoryContextRoots) -> list[DiscoveredSkillRoot]:
     """Discover working-directory/repository AgentSkill containers."""
-    discovered: list[DiscoveredSkillRoot] = []
-    seen: set[Path] = set()
+    discovered: dict[Path, DiscoveredSkillRoot] = {}
     for scope, base in roots.unique_asset_bases():
         candidates = [("skills", base / "skills")]
         candidates.extend((name, base / name / "skills") for name in ASSISTANT_ROOTS)
@@ -218,28 +214,30 @@ def discover_skill_roots(roots: RepositoryContextRoots) -> list[DiscoveredSkillR
                 continue
             for library in _skill_library_roots(candidate):
                 resolved = library.resolve()
-                if resolved in seen:
+                # Reached from home first and again from the active project
+                # (say, working in ~/.claude): it is the project's library.
+                existing = discovered.get(resolved)
+                if existing is not None and (
+                    existing.source != "home" or scope == "home"
+                ):
                     continue
-                seen.add(resolved)
                 relative_library = library.relative_to(candidate).as_posix()
                 source_suffix = (
                     assistant_root
                     if relative_library == "."
                     else f"{assistant_root}/{relative_library}"
                 )
-                discovered.append(
-                    DiscoveredSkillRoot(
-                        path=resolved,
-                        source=scope,
-                        source_id=_source_id(scope, base, source_suffix),
-                        virtual_root=_virtual_root(resolved, roots.project_dir),
-                        # Home libraries belong to other agents (Codex bundles
-                        # its own under .system), so they are opt-in; a
-                        # project's own skills are part of the work at hand.
-                        default_enabled=scope != "home",
-                    )
+                discovered[resolved] = DiscoveredSkillRoot(
+                    path=resolved,
+                    source=scope,
+                    source_id=_source_id(scope, base, source_suffix),
+                    virtual_root=_virtual_root(resolved, roots.project_dir),
+                    # Home libraries belong to other agents (Codex bundles its
+                    # own under .system), so they are opt-in; a project's own
+                    # skills are part of the work at hand.
+                    default_enabled=scope != "home",
                 )
-    return discovered
+    return list(discovered.values())
 
 
 def discover_agent_files(roots: RepositoryContextRoots) -> list[DiscoveredAgentFile]:

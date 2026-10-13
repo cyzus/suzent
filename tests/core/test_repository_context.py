@@ -134,6 +134,43 @@ def test_discovers_namespaced_codex_system_skills(tmp_path: Path):
     assert manager.is_skill_enabled(skill.id)
 
 
+def test_home_checkout_skills_stay_enabled_as_repository_skills(tmp_path: Path):
+    home_dir = tmp_path / "home"
+    project_dir = tmp_path / "suzent-project"
+    project_dir.mkdir()
+    (home_dir / ".git").mkdir(parents=True)
+    _write_skill(home_dir / ".claude" / "skills", "dotfiles", "dotfiles", "body")
+
+    roots = RepositoryContextRoots(
+        project_dir,
+        home_dir,
+        find_repository_root(home_dir),
+        home_dir=home_dir,
+    )
+
+    assert roots.unique_asset_bases() == (("repository", home_dir.resolve()),)
+    (discovered,) = discover_skill_roots(roots)
+    assert discovered.source == "repository"
+    assert discovered.default_enabled
+
+
+def test_assistant_folder_as_working_dir_keeps_its_skills_enabled(tmp_path: Path):
+    home_dir = tmp_path / "home"
+    project_dir = tmp_path / "suzent-project"
+    working_dir = home_dir / ".claude"
+    project_dir.mkdir()
+    _write_skill(working_dir / "skills", "personal", "personal", "body")
+    _write_skill(home_dir / ".codex" / "skills", "codex-only", "codex-only", "body")
+
+    roots = RepositoryContextRoots(project_dir, working_dir, None, home_dir=home_dir)
+    discovered = discover_skill_roots(roots)
+
+    assert [(root.source, root.path, root.default_enabled) for root in discovered] == [
+        ("working", (working_dir / "skills").resolve(), True),
+        ("home", (home_dir / ".codex" / "skills").resolve(), False),
+    ]
+
+
 def test_canonical_source_is_not_loaded_again_as_repository_skill(tmp_path: Path):
     canonical = tmp_path / "skills"
     _write_skill(canonical, "shared", "shared", "same body")
