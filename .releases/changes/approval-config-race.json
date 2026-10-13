@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Stop approved tool calls from being dropped and re-run under automatic review when a chat saved while the approval was pending."
+}
