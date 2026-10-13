@@ -82,6 +82,7 @@ class SubAgentTask:
     isolation_target_path: Optional[str] = None  # caller-supplied git repo root
     worktree_path: Optional[str] = None  # created worktree path (output)
     worktree_branch: Optional[str] = None  # created branch name (output)
+    worktree_base: Optional[str] = None  # commit the worktree branched from
     runner_task: Optional[asyncio.Task] = field(default=None, repr=False)
     # The parent tool call that spawned this. A blocking call reports its task
     # id only in the result it returns, so until it finishes the parent's card
@@ -644,6 +645,7 @@ async def _run_subagent(
     # The sub-agent's chat is watchable and stoppable like any other, so its
     # turn's control has to know which run it is cancelling.
     bind_producer_replay(stream_queue.replay)
+    wake_parent = False
     try:
         from suzent.core.chat_processor import ChatProcessor
         from suzent.agent_manager import build_agent_config
@@ -776,9 +778,7 @@ async def _run_subagent(
                 "citation_sources": task.citation_sources,
             },
         )
-
-        if wakeup_parent:
-            _queue_parent_wakeup(task)
+        wake_parent = wakeup_parent
 
     except asyncio.CancelledError:
         task.status = "cancelled"
@@ -803,8 +803,7 @@ async def _run_subagent(
                 "error": str(e),
             },
         )
-        if wakeup_parent:
-            _queue_parent_wakeup(task)
+        wake_parent = wakeup_parent
     finally:
         bind_producer_replay(None)
         unregister_background_stream(task.chat_id, stream_queue)
@@ -818,10 +817,13 @@ async def _run_subagent(
                 await get_acp_manager().close(task.chat_id)
             except Exception as exc:
                 logger.warning(f"Failed to close ACP session for {task.task_id}: {exc}")
-        # Phase 3: always tear down the worktree, even on failure
+        # Phase 3: always tear down the worktree, even on failure. The parent is
+        # woken only afterwards so it learns whether the changes were kept.
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
         _persist_task_state(task)
+        if wake_parent:
+            _queue_parent_wakeup(task)
         # The task is now terminal; prune here too so a burst that all finishes
         # without a new spawn doesn't leave result summaries resident.
         await _evict_old_finished_tasks_locked()
@@ -903,9 +905,10 @@ async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    await proc.communicate()
+    stdout, _ = await proc.communicate()
     if proc.returncode != 0:
         return "Repository has no commits — cannot create worktree"
+    base_commit = stdout.decode().strip()
 
     # 3. Build slug-safe branch name and worktree path
     slug = re.sub(r"[^a-zA-Z0-9_-]", "-", task.task_id)[:64]
@@ -930,6 +933,7 @@ async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
 
     task.worktree_path = worktree_dir
     task.worktree_branch = branch_name
+    task.worktree_base = base_commit
     task.cwd = worktree_dir  # override any caller-supplied cwd
 
     logger.info(
@@ -939,16 +943,70 @@ async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
     return None
 
 
+async def _git_output(*args: str, cwd: str) -> Optional[str]:
+    """Run a git command and return its stdout, or None if it failed."""
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return None
+    return stdout.decode().strip()
+
+
+async def _worktree_has_changes(task: SubAgentTask) -> bool:
+    """True when the worktree holds uncommitted files or commits past its base.
+
+    Errs on the side of keeping: if git cannot answer, the work is assumed to exist.
+    """
+    worktree_path = task.worktree_path
+    if not worktree_path or not Path(worktree_path).exists():
+        return False
+    status = await _git_output("status", "--porcelain", cwd=worktree_path)
+    if status is None or status:
+        return True
+    if not task.worktree_base:
+        return True
+    # Check the helper's branch as well as HEAD: it may have committed on the
+    # branch and then checked out another revision.
+    revisions = ["HEAD"]
+    if task.worktree_branch:
+        revisions.append(f"refs/heads/{task.worktree_branch}")
+    for revision in revisions:
+        ahead = await _git_output(
+            "rev-list",
+            "--count",
+            f"{task.worktree_base}..{revision}",
+            cwd=worktree_path,
+        )
+        if ahead is None or ahead != "0":
+            return True
+    return False
+
+
 async def _teardown_worktree(task: SubAgentTask) -> None:
     """
-    Remove the worktree and delete the branch. Always called in the finally: block
-    of _run_subagent. Mirrors test-claude's cleanupWorktree() in utils/worktree.ts:
-    - git worktree remove --force with cwd=git_root (never the worktree itself)
-    - 100ms sleep for git to release file locks
-    - git branch -D to avoid accumulating stale branches
+    Remove the worktree and its branch unless the sub-agent left work in it.
+
+    A worktree with uncommitted files or new commits is kept, together with its
+    branch, so the parent can review, merge or discard the changes; its path and
+    branch stay on the task. An untouched worktree is removed with
+    git worktree remove --force (cwd=git_root, never the worktree itself) and its
+    branch deleted, after which worktree_path and worktree_branch are cleared.
     """
     worktree_path = task.worktree_path
     if not worktree_path:
+        return
+
+    if await _worktree_has_changes(task):
+        logger.info(
+            f"Keeping worktree {worktree_path} on branch {task.worktree_branch}: "
+            f"sub-agent {task.task_id} left changes"
+        )
         return
 
     # Derive git_root from path convention: <repo>/.git/worktrees-tmp/<slug>
@@ -989,6 +1047,9 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
         except Exception as e:
             logger.warning(f"Failed to delete branch {task.worktree_branch}: {e}")
 
+    task.worktree_path = None
+    task.worktree_branch = None
+
 
 # ─── Parent wakeup & notification ────────────────────────────────────────────
 
@@ -996,7 +1057,7 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
 def _queue_parent_wakeup(task: SubAgentTask) -> None:
     """Persist a completion or failure message for the parent agent."""
     from suzent.core.agent_inbox import enqueue_agent_message
-    from suzent.prompts import SUBAGENT_WAKEUP_SINGLE
+    from suzent.prompts import SUBAGENT_WAKEUP_SINGLE, SUBAGENT_WORKTREE_KEPT
 
     if task.status == "completed":
         source_context = ""
@@ -1027,6 +1088,10 @@ def _queue_parent_wakeup(task: SubAgentTask) -> None:
             f"Sub-agent {task.task_id} failed.\n"
             f"Task: {task.description[:300]}\n"
             f"Error: {task.error or 'unknown error'}"
+        )
+    if task.worktree_branch:
+        content += SUBAGENT_WORKTREE_KEPT.format(
+            branch=task.worktree_branch, path=task.worktree_path
         )
     try:
         enqueue_agent_message(

@@ -30,9 +30,30 @@ private struct ChatMenuPreferenceKey: PreferenceKey {
     }
 }
 
+private struct SidebarFoldControl: View {
+    let count: Int
+    let expanded: Bool
+    let toggle: () -> Void
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 5) {
+                Text("\(count)").font(.system(size: 11, weight: .medium, design: .monospaced))
+                Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
+            }.foregroundStyle(Color.suzentMuted).padding(.horizontal, 7).padding(.vertical, 4)
+                .background(Color.suzentText.opacity(0.06)).frame(width: 52, height: 44)
+        }.buttonStyle(.plain).padding(.trailing, 6)
+            .accessibilityLabel(expanded ? Text("Collapse sub-agents: \(count)") : Text("Expand sub-agents: \(count)"))
+    }
+}
+
 private struct ChatSidebarRow: View {
     let chat: Chat
     let selected: Bool
+    let parentTitle: String?
+    let nested: Bool
+    let childCount: Int
+    let childrenExpanded: Bool
+    let toggleChildren: () -> Void
     let enabled: Bool
     let canManage: Bool
     let projects: [Project]
@@ -48,12 +69,24 @@ private struct ChatSidebarRow: View {
         Button { if !menu { open() } } label: {
             HStack {
                 if chat.pinned == true { Image(systemName: "pin.fill").font(.caption) }
-                Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
-                    .lineLimit(2).multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                    if chat.isSubagent && !nested {
+                        if let parentTitle { Text("Sub-agent of \(parentTitle)").font(.caption) }
+                        else { Text("Sub-agent").font(.caption) }
+                    } else if chat.isScheduled { Text("Scheduled task").font(.caption) }
+                }
                 Spacer()
                 if chat.isRunning == true { Image(systemName: "ellipsis") }
+                if childCount > 0 { Color.clear.frame(width: 44) }
             }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
+            .overlay(alignment: .trailing) {
+                if childCount > 0 {
+                    SidebarFoldControl(count: childCount, expanded: childrenExpanded, toggle: toggleChildren)
+                }
+            }
             .simultaneousGesture(LongPressGesture().onEnded { _ in
                 guard enabled else { return }
                 moving = false; menu = true
@@ -102,7 +135,7 @@ private struct ChatSidebarRow: View {
                     .disabled(chat.isRunning == true)
             }
         }.frame(width: 260).background(Color.suzentSurface)
-            .overlay(Rectangle().stroke(Color.primary, lineWidth: 2))
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
             .background {
                 Rectangle().fill(Color.black).offset(x: 3, y: 3)
                     .allowsHitTesting(false).accessibilityHidden(true)
@@ -122,8 +155,10 @@ struct ContentView: View {
     @State private var showSidebar = false
     @State private var showSettings = false
     @State private var repairScanner = false
+    @State private var showConnectionHelp = false
     @State private var search = ""
     @State private var collapsedProjects: Set<String> = []
+    @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var showModelPicker = false
@@ -153,7 +188,22 @@ struct ContentView: View {
                                     Image(systemName: "line.3.horizontal").frame(width: 44, height: 44)
                                 }.accessibilityLabel("Open sidebar")
                             }
-                            Spacer(); SuzentWordmark(); Spacer()
+                            Group {
+                                if model.connected && showSettings {
+                                    Text("Settings").font(.headline).lineLimit(1)
+                                } else if model.connected, let chat = model.selected, !chat.id.isEmpty {
+                                    VStack(spacing: 2) {
+                                        if let project = chat.projectName {
+                                            Text(project).font(.caption).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                                        }
+                                        Text(chat.title).font(.system(size: PresentationTokens.typeControl, weight: .semibold))
+                                            .lineLimit(1).truncationMode(.tail)
+                                    }.padding(.horizontal, 8).multilineTextAlignment(.center)
+                                } else if !model.connected && model.canReconnect {
+                                    Text("SUZENT").font(.system(size: 13, weight: .semibold)).tracking(2)
+                                        .foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
+                                } else { SuzentWordmark() }
+                            }.frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
                             if model.connected {
                                 Button { composing = false; Task { await model.createChat(); showSettings = false; showSidebar = false } } label: {
                                     Image(systemName: "square.and.pencil").frame(width: 44, height: 44)
@@ -161,32 +211,43 @@ struct ContentView: View {
                                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
-                        Rectangle().frame(height: PresentationTokens.borderWidth)
+                        if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
                         if let error = model.error {
                             SuzentNotice(message: error) { model.error = nil }
                         }
                         if !model.connected && model.canReconnect {
-                            VStack(spacing: 20) {
-                                SuzentAssistantBadge()
-                                Text("Reconnect to desktop").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                                if model.busy {
-                                    StreamingPulse()
-                                    if model.reconnecting {
-                                        Button("Cancel") { model.cancelReconnect() }
-                                            .buttonStyle(SuzentButtonStyle())
-                                    }
+                            VStack {
+                                Spacer(minLength: 20)
+                                VStack(spacing: 21) {
+                                    ReconnectIndicator(active: model.busy)
+                                    Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
+                                        .font(.system(size: 21, weight: .medium)).multilineTextAlignment(.center)
+                                    Group {
+                                        if model.busy {
+                                            if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
+                                        } else { Button("Reconnect to desktop") { Task { await model.connect() } } }
+                                    }.font(.system(size: 13)).foregroundStyle(Color.suzentMuted)
+                                        .buttonStyle(.plain).frame(minHeight: 44)
                                 }
-                                else { Button("Reconnect to desktop") { Task { await model.connect() } }.buttonStyle(SuzentButtonStyle(prominent: true)) }
-                                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                            }.padding(PresentationTokens.spaceLarge).frame(maxWidth: 480).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                Spacer(minLength: 20)
+                                Button("Connection help") { showConnectionHelp = true }
+                                    .font(.system(size: 12)).foregroundStyle(Color.suzentMuted)
+                                    .frame(minHeight: 44).buttonStyle(.plain)
+                            }.padding(.horizontal, 24).padding(.bottom, 20)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
+                                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                                    Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
+                                    Button("Cancel", role: .cancel) { }
+                                } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
+
                         }
                         else if !model.connected { PairingView(model: model) }
                         else if showSettings { settings }
                         else if let chat = model.selected { conversation(chat) }
                         else {
                             if model.busy { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
-                            else { Text("Select a conversation or start a new one.").foregroundStyle(.secondary).padding().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                            else { Text("Select a conversation or start a new one.").foregroundStyle(Color.suzentMuted).padding().frame(maxWidth: .infinity, maxHeight: .infinity) }
                         }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -196,13 +257,14 @@ struct ContentView: View {
                         .onTapGesture { withAnimation { showSidebar = false } }
                     sidebar.frame(width: min(geometry.size.width - 48, PresentationTokens.sidebarWidth), height: geometry.size.height)
                         .background(Color.suzentSurface)
-                        .overlay(alignment: .trailing) { Rectangle().frame(width: 2) }
+                        .overlay(alignment: .trailing) { Rectangle().fill(Color.suzentOutline).frame(width: 2) }
                         .compositingGroup()
                         .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, PresentationTokens.sidebarWidth) - 2)
                         .allowsHitTesting(showSidebar)
                         .accessibilityHidden(!showSidebar)
                 }
-            }.background(Color.suzentSurface).clipped()
+            }.background(Color.suzentBackground).clipped()
+                .foregroundStyle(Color.suzentText)
                 .overlayPreferenceValue(ChatMenuPreferenceKey.self) { menus in
                     GeometryReader { proxy in
                         if let menu = menus.last {
@@ -221,7 +283,7 @@ struct ContentView: View {
                 }
         }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
-        .tint(.primary)
+        .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
         .onChange(of: model.connected) { _, connected in showModelPicker = false; showProjectPicker = false; showSidebar = false; if !connected { showSettings = false } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
@@ -269,7 +331,9 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let scheduledIDs = scheduledChatIDs(model.chats)
+        let normalRows = sidebarChats(model.chats.filter { !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Chats").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                 Spacer()
@@ -281,20 +345,23 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Color.clear.frame(height: 0).id("sidebar-top")
-                    if model.chats.contains(where: { $0.pinned == true }) {
+                    if normalRows.contains(where: { $0.root.pinned == true }) {
                         Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
-                        conversationRows(model.chats.filter { $0.pinned == true })
+                        conversationRows(normalRows.filter { $0.root.pinned == true })
                         Divider()
                     }
-                    ForEach(projects) { project in projectSection(project) }
-                    let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true }
+                    ForEach(projects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
+                    let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
                     if !unassigned.isEmpty { conversationRows(unassigned) }
+                    scheduledSection
                     if projects.isEmpty && model.chats.isEmpty {
                         Button("New conversation") { Task { await model.createChat(); showSidebar = false; showSettings = false } }
                             .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                     }
                 }.padding(.horizontal, 16)
             }
+            .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
+            .onChange(of: model.chats.map(\.id)) { _, _ in expandSelectedAgents() }
             .onChange(of: model.pinnedVersion) { _, _ in
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
                     reader.scrollTo("sidebar-top", anchor: .top)
@@ -308,7 +375,7 @@ struct ContentView: View {
         }
     }
 
-    private func projectSection(_ project: Project) -> some View {
+    private func projectSection(_ project: Project, rows: [SidebarChatEntry]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Button {
@@ -324,23 +391,95 @@ struct ContentView: View {
                 }.accessibilityLabel("New conversation")
                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true || !model.projects.contains(where: { $0.id == project.id }))
             }
-            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(model.chats.filter { $0.projectId == project.id && $0.pinned != true }) }
+            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(rows) }
         }
     }
 
-    private func conversationRows(_ chats: [Chat]) -> some View {
-        ForEach(chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }.sorted { ($0.pinned == true) && ($1.pinned != true) }) { chat in
-            ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
-                           enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
-                           projects: model.projects, manage: { action, value in
-                Task { await model.manageChat(chat, action: action, value: value) }
-            }) {
-                composing = false
-                showSettings = false
-                showSidebar = false
-                Task { await model.open(chat) }
+    private func conversationRows(_ entries: [SidebarChatEntry]) -> some View {
+        ForEach(entries) { entry in
+            let chat = entry.chat
+            VStack(alignment: .leading, spacing: 0) {
+                ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
+                               parentTitle: model.chats.first { $0.id == chat.parentChatId }?.title,
+                               nested: entry.depth > 0, childCount: entry.childCount, childrenExpanded: expandedAgents.contains(chat.id),
+                               toggleChildren: {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                        if expandedAgents.contains(chat.id) { expandedAgents.remove(chat.id) }
+                        else { expandedAgents.insert(chat.id) }
+                    }
+                },
+                               enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
+                               projects: model.projects, manage: { action, value in
+                    Task { await model.manageChat(chat, action: action, value: value) }
+                }) { openSidebarChat(chat) }
+            }.padding(.leading, entry.depth > 0 ? 8 : 0)
+                .overlay(alignment: .leading) {
+                    if entry.depth > 0 { Rectangle().fill(Color.suzentOutline.opacity(0.45)).frame(width: 1) }
+                }
+                .padding(.leading, entry.depth > 0 ? 12 : 0)
+        }
+    }
+
+    private func openSidebarChat(_ chat: Chat) {
+        composing = false
+        showSettings = false
+        showSidebar = false
+        Task { await model.open(chat) }
+    }
+
+    private func expandSelectedAgents() {
+        var current = model.chats.first { $0.id == model.selected?.id }
+        var parents = Set<String>()
+        while let chat = current, chat.isSubagent, let parent = chat.parentChatId, parents.insert(parent).inserted {
+            current = model.chats.first { $0.id == parent }
+        }
+        expandedAgents.formUnion(parents)
+    }
+
+    @ViewBuilder private var scheduledSection: some View {
+        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents)
+        if !groups.isEmpty {
+            Text("Scheduled tasks").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    if let task = group.task {
+                        Button {
+                            if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.name).font(.system(size: PresentationTokens.typeChat, weight: .semibold)).lineLimit(2)
+                                    if task.isRunning { Text("Running").font(.caption).foregroundStyle(Color.suzentMuted) }
+                                    else if !task.active { Text("Paused").font(.caption).foregroundStyle(Color.suzentMuted) }
+                                    else if task.hasError { Text("Last run failed").font(.caption).foregroundStyle(Color.suzentMuted) }
+                                    else if let raw = task.nextRunAt, let date = taskDate(raw) {
+                                        Text("Next run: \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(Color.suzentMuted)
+                                    } else { Text("Active").font(.caption).foregroundStyle(Color.suzentMuted) }
+                                    if task.chatId == nil { Text("No conversation yet").font(.caption).foregroundStyle(Color.suzentMuted) }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                if (group.root?.childCount ?? 0) > 0 { Color.clear.frame(width: 44) }
+                            }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        }.buttonStyle(ChatRowButtonStyle(selected: task.chatId != nil && model.selected?.id == task.chatId && !showSettings))
+                            .disabled(model.busy || task.chatId == nil)
+                            .overlay(alignment: .trailing) {
+                                if let root = group.root, root.childCount > 0 {
+                                    SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id)) {
+                                        if expandedAgents.contains(root.id) { expandedAgents.remove(root.id) }
+                                        else { expandedAgents.insert(root.id) }
+                                    }
+                                }
+                            }
+                    } else if let root = group.root { conversationRows([root]) }
+                    conversationRows(group.children)
+                }
             }
         }
+    }
+
+    private func taskDate(_ raw: String) -> Date? {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
     }
 
     private var settings: some View {
@@ -353,24 +492,17 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
                     Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
-                    Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(.secondary)
-                }.padding(16).overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                    Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
+                }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
                 Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(.secondary)
+                Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
             }.padding(PresentationTokens.spacePage)
         }
     }
 
     private func conversation(_ chat: Chat) -> some View {
         VStack(spacing: 0) {
-            if !chat.id.isEmpty { HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    if let project = chat.projectName { Text(project).font(.caption).foregroundStyle(.secondary) }
-                    Text(chat.id.isEmpty ? String(localized: "New conversation") : chat.title).font(.headline).lineLimit(1)
-                }
-                Spacer()
-            }.padding(.horizontal, 16).padding(.vertical, 10) }
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
                                    startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
@@ -398,9 +530,11 @@ struct ContentView: View {
                     }.padding(16)
             }.id(chat.id)
             VStack(alignment: .leading, spacing: 8) {
+                PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
+                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
-                        .tint(Color(presentation: PresentationTokens.blue))
+                        .tint(Color.suzentLink)
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
                     if !keyboardVisible { sendAction(chat) }
                 }
@@ -412,8 +546,8 @@ struct ContentView: View {
                     sendAction(chat)
                 } }
             }.padding(10).background(Color.suzentSurface)
-                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                .background { Rectangle().fill(Color.primary).offset(x: 2, y: 2) }
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
                 .padding(.trailing, 2).padding(.bottom, 2)
                 .padding(.horizontal, 12).padding(.bottom, 8)
         }.task(id: chat.id) { await model.watchApprovals(chat.id) }
@@ -439,7 +573,7 @@ struct ContentView: View {
                 Button("Stop") { Task { await model.stop() } }.disabled(model.device?.permissions.stop != true)
             } else {
                 Button("Send") { Task { await model.send() } }
-                    .disabled(model.busy || model.device?.permissions.send != true || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(model.busy || model.device?.permissions.send != true || (model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.attachments.isEmpty))
             }
         }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
     }

@@ -23,9 +23,15 @@ on a computer you own: that is what makes it a
 
 | Page | What you'll learn |
 |---|---|
-| [Tools](./tools/tools.md) | What the agent can do: search, files, commands, images, sub-agents, MCP servers. |
+| [Tools](./tools/README.md) | Every tool group, and choosing which ones a chat may use. |
 | [Permissions & approvals](./tools/human-in-the-loop.md) | How it asks before it acts, and how to remember your answers. |
-| [Browser](./tools/browser.md) | Browsing in its own browser, or in yours with your logins. |
+| [Files](./tools/files.md) and [Commands](./tools/shell.md) | Reading, editing, and searching files; running commands, including in the background. |
+| [Web search & pages](./tools/web.md) and [Browser](./tools/browser.md) | Searching and reading the web, and browsing in its own browser or yours. |
+| [Sub-agents](./tools/sub-agents.md) | Handing parts of a job to helpers, and working with your other chats. |
+| [Tasks & planning](./tools/tasks.md) | Tracking tasks on the project board and scheduling its own follow-ups. |
+| [Questions, canvas & messages](./tools/interaction.md) | Asking you questions, showing forms and buttons, and messaging you in chat apps. |
+| [Images, video & speech](./tools/media.md) | Making and editing images and video, and reading text aloud. |
+| [MCP servers](./tools/mcp.md) | Adding tools from any MCP server. |
 | [Skills](./skills.md) | Teaching it new know-how with `SKILL.md` packages. |
 | [Workspace & sandbox](./filesystem.md) | Which folders it can reach, running code in a sandbox, and undoing a turn. |
 

@@ -22,7 +22,16 @@ import {
   type HeartbeatStatus,
 } from '../lib/api';
 import { getScheduledTaskChat } from '../lib/scheduledTaskChat';
-import { ChatRowMenu } from './ChatRowMenu';
+import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import {
+  applySelection,
+  isDeleteShortcut,
+  isSelectAllShortcut,
+  selectionIntent,
+  type SelectionIntent,
+  type SelectionState,
+} from '../lib/chatSelection';
+import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
 import { BrutalButton } from './BrutalButton';
@@ -31,6 +40,7 @@ const ALL_PROJECTS_FILTER = '__all__';
 const AUTOMATION_PREVIEW_LIMIT = 5;
 const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
+const EMPTY_SELECTION: SelectionState = { selected: new Set(), anchor: null };
 type ChatKind = 'you' | 'subagent' | 'scheduled';
 type ChatOrganization = 'projects' | 'list';
 
@@ -136,6 +146,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     refresh: refreshProjects,
   } = useProjects();
 
+  const unreadSummaryKey = JSON.stringify(chats.map((chat) => [chat.id, chat.unreadCount ?? 0]));
+  useEffect(() => {
+    void refreshProjects();
+  }, [activeStreams, unreadSummaryKey, refreshProjects]);
+
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
@@ -161,6 +176,15 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
   const [taskRenameValue, setTaskRenameValue] = useState('');
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
+  const platform = useMemo(
+    () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
+    []
+  );
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [bulkMenu, setBulkMenu] = useState<{
+    anchor: { x: number; y: number } | { rect: DOMRect };
+    view: ChatRowMenuView;
+  } | null>(null);
   const organizationMenuRef = useRef<HTMLDivElement | null>(null);
   const [organization, setOrganization] = useState<ChatOrganization>(() => {
     try {
@@ -192,6 +216,43 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
+  const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
+  const knownChats = useMemo(
+    () => new Map([...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])),
+    [chats, pinnedChats, projectChats]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const missingIds = [...activeStreams].filter(
+      (id) => !knownChats.has(id) && !(id in runningChatProjects)
+    );
+    void Promise.allSettled(
+      missingIds.map(async (id) => {
+        const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(id)}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const chat: { projectId?: string | null } = await response.json();
+        if (!controller.signal.aborted) {
+          setRunningChatProjects((previous) => ({ ...previous, [id]: chat.projectId ?? null }));
+        }
+      })
+    );
+    return () => controller.abort();
+  }, [activeStreams, knownChats, runningChatProjects]);
+
+  const runningProjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const chat of knownChats.values()) {
+      if (chat.projectId && isChatRunning(chat.id, chat.isRunning)) ids.add(chat.projectId);
+    }
+    for (const id of activeStreams) {
+      const projectId = knownChats.get(id)?.projectId ?? runningChatProjects[id];
+      if (projectId) ids.add(projectId);
+    }
+    return ids;
+  }, [activeStreams, knownChats, runningChatProjects, isChatRunning]);
   const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({
     you: 0,
     scheduled: 0,
@@ -312,29 +373,32 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     }
   }, [chats, filterId]);
 
-  const markRead = useCallback((chatId: string) => {
-    const chat = chatsRef.current.find((c) => c.id === chatId);
-    if (chat) chat.unreadCount = 0;
-    setProjectChats((prev) =>
-      prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
-    );
-    setCronJobs((prev) =>
-      prev.map((job) =>
-        getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
-      )
-    );
-    setHeartbeatStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            active_sessions: prev.active_sessions?.map((session) =>
-              session.chat_id === chatId ? { ...session, unread_count: 0 } : session
-            ),
-          }
-        : prev
-    );
-    void markChatRead(chatId);
-  }, []);
+  const markRead = useCallback(
+    (chatId: string) => {
+      const chat = chatsRef.current.find((c) => c.id === chatId);
+      if (chat) chat.unreadCount = 0;
+      setProjectChats((prev) =>
+        prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
+      );
+      setCronJobs((prev) =>
+        prev.map((job) =>
+          getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
+        )
+      );
+      setHeartbeatStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              active_sessions: prev.active_sessions?.map((session) =>
+                session.chat_id === chatId ? { ...session, unread_count: 0 } : session
+              ),
+            }
+          : prev
+      );
+      void markChatRead(chatId).then(() => refreshProjects());
+    },
+    [refreshProjects]
+  );
 
   const isUnread = (chat: ChatSummary) => {
     if (chat.id === currentChatId) return false;
@@ -513,6 +577,16 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     return arranged;
   }, [expandedSubagentParents, filteredChats, subagentsByParent]);
 
+  // Range selection follows the order rows appear on screen.
+  const selectableOrder = useMemo(() => {
+    if (localSearchQuery.trim()) return chats.map((chat) => chat.id);
+    const listed =
+      organization === 'list' || filterId !== ALL_PROJECTS_FILTER
+        ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
+        : [];
+    return [...new Set([...pinnedChats, ...listed].map((chat) => chat.id))];
+  }, [chats, filterId, localSearchQuery, organization, pinnedChats, visibleChats]);
+
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
       await loadMoreChats();
@@ -525,6 +599,164 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   }, [fetchProjectChats, filterId, loadMoreChats, projectChatOffset]);
 
   // ── Chat actions ──
+
+  const findChatSummary = (chatId: string): ChatSummary | undefined =>
+    chatsRef.current.find((c) => c.id === chatId) ??
+    projectChatsRef.current.find((c) => c.id === chatId) ??
+    pinnedChats.find((c) => c.id === chatId);
+
+  const clearSelection = (): void => {
+    setSelection(EMPTY_SELECTION);
+    setBulkMenu(null);
+  };
+
+  const handleSelectionClick = (
+    chatId: string,
+    intent: Exclude<SelectionIntent, 'replace' | 'ignore'>
+  ) => {
+    // The open chat counts as already selected, as the focused file does in a file manager.
+    setSelection((prev) => {
+      const base: SelectionState =
+        prev.selected.size > 0
+          ? prev
+          : {
+              selected: new Set(
+                currentChatId && selectableOrder.includes(currentChatId) ? [currentChatId] : []
+              ),
+              anchor: currentChatId,
+            };
+      return applySelection(base, selectableOrder, chatId, intent);
+    });
+  };
+
+  const handleSelectAll = (): void => {
+    setSelection((prev) => ({
+      selected: new Set(selectableOrder),
+      anchor: prev.anchor ?? selectableOrder[0] ?? null,
+    }));
+  };
+
+  const handleRequestBulkDelete = (): void => {
+    const ids = [...selection.selected];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const hasSubagents = ids.some((id) => (subagentsByParent.get(id)?.length ?? 0) > 0);
+    const doDelete = async (cascade: boolean) => {
+      // A cascading delete already removes selected sub-agents along with their parent.
+      const targets = cascade
+        ? ids.filter((id) => {
+            const parentId = findChatSummary(id)?.parentChatId;
+            return !(parentId && idSet.has(parentId));
+          })
+        : ids;
+      clearSelection();
+      setProjectChats((prev) =>
+        prev.filter(
+          (c) => !idSet.has(c.id) && !(cascade && c.parentChatId && idSet.has(c.parentChatId))
+        )
+      );
+      for (const id of targets) {
+        try {
+          await deleteChat(id, { cascade });
+        } catch {
+          /* deleteChat restores the row itself when the request fails */
+        }
+      }
+    };
+
+    const title =
+      ids.length === 1
+        ? t('chatList.delete.confirmTitle')
+        : t('chatList.selection.deleteTitle', { count: ids.length });
+    setDialog({
+      title,
+      message: hasSubagents
+        ? t('chatList.selection.cascadeMessage')
+        : t('chatList.selection.deleteMessage'),
+      actions: hasSubagents
+        ? [
+            { label: t('common.cancel'), tone: 'default' },
+            {
+              label: t('chatList.delete.cascadeNo'),
+              tone: 'default',
+              onClick: () => doDelete(false),
+            },
+            {
+              label: t('chatList.delete.cascadeYes'),
+              tone: 'danger',
+              onClick: () => doDelete(true),
+            },
+          ]
+        : [
+            { label: t('common.cancel'), tone: 'default' },
+            { label: t('chatList.delete.confirm'), tone: 'danger', onClick: () => doDelete(false) },
+          ],
+    });
+  };
+
+  const handleBulkMove = async (projectId: string): Promise<void> => {
+    const ids = [...selection.selected];
+    clearSelection();
+    let moved = 0;
+    for (const id of ids) {
+      const chat = findChatSummary(id);
+      if (!chat || chat.projectId === projectId) continue;
+      if (await moveChat(id, projectId, chat.projectId)) moved += 1;
+    }
+    if (moved === 0) return;
+    await Promise.all([
+      refreshChatList(undefined, true),
+      refreshProjects(),
+      filterId !== ALL_PROJECTS_FILTER ? fetchProjectChats(filterId) : undefined,
+    ]);
+  };
+
+  // A chat dropping out of view (search, filter, organization) leaves the
+  // selection, so bulk actions never reach chats the user can no longer see.
+  useEffect(() => {
+    setSelection((prev) => {
+      const visible = new Set(selectableOrder);
+      const kept = [...prev.selected].filter((id) => visible.has(id));
+      if (kept.length === prev.selected.size) return prev;
+      return {
+        selected: new Set(kept),
+        anchor: prev.anchor && visible.has(prev.anchor) ? prev.anchor : null,
+      };
+    });
+  }, [selectableOrder]);
+
+  // Re-subscribes every render so the handler always sees the current selection.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (dialog || openMenu || bulkMenu || renamingChatId) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
+      // Select-all only while the sidebar has focus, so Ctrl/Command-A still
+      // selects text elsewhere in the app.
+      if (isSelectAllShortcut(event, platform)) {
+        if (target && sidebarBoundsRef.current?.contains(target)) {
+          event.preventDefault();
+          handleSelectAll();
+        }
+        return;
+      }
+      if (selection.selected.size === 0) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        clearSelection();
+      } else if (isDeleteShortcut(event, platform)) {
+        event.preventDefault();
+        handleRequestBulkDelete();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  });
 
   const handleRequestDelete = (chatId: string) => {
     const hasSubagents = (subagentsByParent.get(chatId)?.length ?? 0) > 0;
@@ -695,10 +927,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
-    const chat =
-      chatsRef.current.find((c) => c.id === chatId) ??
-      projectChatsRef.current.find((c) => c.id === chatId) ??
-      pinnedChats.find((c) => c.id === chatId);
+    const chat = findChatSummary(chatId);
     if (!chat || chat.projectId === projectId) return;
     const ok = await moveChat(chatId, projectId, chat.projectId);
     if (ok) {
@@ -719,6 +948,16 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   const openChatMenu = (chatId: string, anchor: { x: number; y: number } | { rect: DOMRect }) => {
+    // Right-clicking inside a selection acts on the whole selection, as in a file manager.
+    // Right-clicking outside it makes that chat the selection instead; with no
+    // selection, right-click leaves the list untouched.
+    if (selection.selected.has(chatId) && selection.selected.size > 1) {
+      setBulkMenu({ anchor, view: 'root' });
+      return;
+    }
+    if (selection.selected.size > 0) {
+      setSelection({ selected: new Set([chatId]), anchor: chatId });
+    }
     setOpenMenu({ chatId, anchor });
   };
 
@@ -739,8 +978,10 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const childSubagents = subagentsByParent.get(chat.id) ?? [];
     const hasCollapsedChildren = childSubagents.length > 0;
     const childrenExpanded = expandedSubagentParents.has(chat.id);
-    const rowSurface =
-      currentChatId === chat.id
+    const isSelected = selection.selected.has(chat.id);
+    const rowSurface = isSelected
+      ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:border-blue-900 shadow-[inset_3px_0_0_#2563eb] dark:shadow-[inset_3px_0_0_#60a5fa]'
+      : currentChatId === chat.id
         ? 'bg-neutral-100 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600 shadow-[inset_3px_0_0_#171717] dark:shadow-[inset_3px_0_0_#f5f5f5]'
         : chat.heartbeatEnabled
           ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
@@ -751,14 +992,155 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               : isUnread(chat)
                 ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                 : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600';
+    const rowContent = compact ? (
+      <div className="flex min-w-0 items-center gap-2 pr-6">
+        <h3
+          title={chat.title || t('chatList.untitled')}
+          className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-5 text-neutral-800 dark:text-neutral-100"
+        >
+          {chat.title || t('chatList.untitled')}
+        </h3>
+        {(isChatRunning(chat.id, chat.isRunning) || unread > 0) && (
+          <SessionStatusBadges
+            running={isChatRunning(chat.id, chat.isRunning)}
+            unreadCount={unread}
+          />
+        )}
+        {chat.projectName && (
+          <span
+            title={chat.projectName}
+            className="max-w-[4.5rem] truncate text-[9px] font-medium text-neutral-400 dark:text-neutral-500"
+          >
+            {chat.projectName}
+          </span>
+        )}
+        <span className="shrink-0 text-[9px] tabular-nums text-neutral-400 dark:text-neutral-500">
+          {formatDate(chat.updatedAt)}
+        </span>
+      </div>
+    ) : (
+      <div className="min-w-0 space-y-1 pr-8">
+        <div className="flex items-start gap-2 overflow-hidden">
+          <h3
+            className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+          >
+            {chat.title || t('chatList.untitled')}
+          </h3>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          <SessionStatusBadges
+            running={isChatRunning(chat.id, chat.isRunning)}
+            unreadCount={unread}
+          />
+          {/* Project chip — always shown so the user knows which workspace */}
+          {showProject && chat.projectName && (
+            <span
+              className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
+                currentChatId === chat.id
+                  ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
+                  : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
+              }`}
+              title={chat.projectName}
+            >
+              {chat.projectName}
+            </span>
+          )}
+          {(chat.acpAgentName ||
+            chat.acpAgentId ||
+            (chat as any).acp_agent_name ||
+            (chat as any).acp_agent_id) && (
+            <span
+              className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
+              title={
+                chat.acpAgentName ||
+                (chat as any).acp_agent_name ||
+                chat.acpAgentId ||
+                (chat as any).acp_agent_id
+              }
+            >
+              ACP
+            </span>
+          )}
+          {chat.platform && (
+            <span
+              className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
+            >
+              {platformLabel(chat.platform)}
+            </span>
+          )}
+          {chat.heartbeatEnabled && (
+            <span
+              className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
+              title={t('chatWindow.heartbeatEnabled')}
+            >
+              <svg
+                className="w-3 h-3"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+              >
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
+              <span>{t('chatList.labels.heartbeat')}</span>
+            </span>
+          )}
+          {hasCollapsedChildren && (
+            <button
+              type="button"
+              aria-expanded={childrenExpanded}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleSubagentParent(chat.id);
+              }}
+              className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
+                childrenExpanded
+                  ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
+                  : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
+              }`}
+            >
+              {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+            </button>
+          )}
+          {chatKind === 'subagent' && parentTitle && (
+            <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
+              {t('chatList.labels.subagentOf', { name: parentTitle })}
+            </span>
+          )}
+          {chat.forkedFromChatId && parentTitle && (
+            <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
+              {t('chatList.labels.branchOf', { name: parentTitle })}
+            </span>
+          )}
+          <span
+            className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+          >
+            {formatDate(chat.updatedAt)}
+          </span>
+        </div>
+      </div>
+    );
     return (
       <div
         key={chat.id}
-        onClick={() => {
+        onClick={(e) => {
           if (renamingChatId) return;
+          const intent = selectionIntent(e, platform);
+          if (intent === 'ignore') return;
+          if (intent !== 'replace') {
+            handleSelectionClick(chat.id, intent);
+            return;
+          }
+          clearSelection();
           markRead(chat.id);
           loadChat(chat.id);
           if (switchToView) switchToView('chat');
+        }}
+        onMouseDown={(e) => {
+          // Keeps Shift-click from also selecting the row text.
+          if (e.shiftKey) e.preventDefault();
         }}
         onContextMenu={(e) => {
           if (renamingChatId) return;
@@ -804,136 +1186,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           </form>
         )}
 
-        {compact ? (
-          <div className="flex min-w-0 items-center gap-2 pr-6">
-            <h3
-              title={chat.title || t('chatList.untitled')}
-              className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-5 text-neutral-800 dark:text-neutral-100"
-            >
-              {chat.title || t('chatList.untitled')}
-            </h3>
-            {(isChatRunning(chat.id, chat.isRunning) || unread > 0) && (
-              <SessionStatusBadges
-                running={isChatRunning(chat.id, chat.isRunning)}
-                unreadCount={unread}
-              />
-            )}
-            {chat.projectName && (
-              <span
-                title={chat.projectName}
-                className="max-w-[4.5rem] truncate text-[9px] font-medium text-neutral-400 dark:text-neutral-500"
-              >
-                {chat.projectName}
-              </span>
-            )}
-            <span className="shrink-0 text-[9px] tabular-nums text-neutral-400 dark:text-neutral-500">
-              {formatDate(chat.updatedAt)}
-            </span>
-          </div>
-        ) : (
-          <div className="min-w-0 space-y-1 pr-8">
-            <div className="flex items-start gap-2 overflow-hidden">
-              <h3
-                className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
-              >
-                {chat.title || t('chatList.untitled')}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              <SessionStatusBadges
-                running={isChatRunning(chat.id, chat.isRunning)}
-                unreadCount={unread}
-              />
-              {/* Project chip — always shown so the user knows which workspace */}
-              {showProject && chat.projectName && (
-                <span
-                  className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
-                    currentChatId === chat.id
-                      ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
-                      : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
-                  }`}
-                  title={chat.projectName}
-                >
-                  {chat.projectName}
-                </span>
-              )}
-              {(chat.acpAgentName ||
-                chat.acpAgentId ||
-                (chat as any).acp_agent_name ||
-                (chat as any).acp_agent_id) && (
-                <span
-                  className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
-                  title={
-                    chat.acpAgentName ||
-                    (chat as any).acp_agent_name ||
-                    chat.acpAgentId ||
-                    (chat as any).acp_agent_id
-                  }
-                >
-                  ACP
-                </span>
-              )}
-              {chat.platform && (
-                <span
-                  className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
-                >
-                  {platformLabel(chat.platform)}
-                </span>
-              )}
-              {chat.heartbeatEnabled && (
-                <span
-                  className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
-                  title={t('chatWindow.heartbeatEnabled')}
-                >
-                  <svg
-                    className="w-3 h-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="square"
-                    strokeLinejoin="miter"
-                  >
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                  <span>{t('chatList.labels.heartbeat')}</span>
-                </span>
-              )}
-              {hasCollapsedChildren && (
-                <button
-                  type="button"
-                  aria-expanded={childrenExpanded}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleSubagentParent(chat.id);
-                  }}
-                  className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
-                    childrenExpanded
-                      ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
-                      : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
-                  }`}
-                >
-                  {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
-                </button>
-              )}
-              {chatKind === 'subagent' && parentTitle && (
-                <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
-                  {t('chatList.labels.subagentOf', { name: parentTitle })}
-                </span>
-              )}
-              {chat.forkedFromChatId && parentTitle && (
-                <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
-                  {t('chatList.labels.branchOf', { name: parentTitle })}
-                </span>
-              )}
-              <span
-                className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-              >
-                {formatDate(chat.updatedAt)}
-              </span>
-            </div>
-          </div>
-        )}
+        {rowContent}
 
         {/* Three-dot menu button — appears on hover; right-click anywhere on the row also opens it */}
         <button
@@ -1018,7 +1271,12 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   return (
-    <div ref={sidebarBoundsRef} className="flex flex-col h-full relative">
+    <div
+      ref={sidebarBoundsRef}
+      // Focusable so clicks in the sidebar give it keyboard focus for select-all.
+      tabIndex={-1}
+      className="flex flex-col h-full relative outline-none"
+    >
       {showRefreshIndicator && (
         <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
           <div className="h-1 bg-brutal-blue animate-brutal-blink"></div>
@@ -1522,10 +1780,24 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   >
                                     {project.name}
                                   </span>
-                                  <span
-                                    className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
-                                  >
-                                    {project.chatCount}
+                                  <span className="inline-flex items-center gap-2">
+                                    {!isOpen && (
+                                      <SessionStatusBadges
+                                        running={runningProjectIds.has(project.id)}
+                                        unreadCount={Object.entries(
+                                          project.unreadChatCounts ?? {}
+                                        ).reduce(
+                                          (total, [chatId, count]) =>
+                                            total + (chatId === currentChatId ? 0 : count),
+                                          0
+                                        )}
+                                      />
+                                    )}
+                                    <span
+                                      className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
+                                    >
+                                      {project.chatCount}
+                                    </span>
                                   </span>
                                 </button>
                                 {!isSystem && (
@@ -1605,6 +1877,22 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           </div>
         )}
       </div>
+
+      {bulkMenu && (
+        <ChatRowMenu
+          anchor={bulkMenu.anchor}
+          boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+          projects={projects}
+          pinned={false}
+          bulkCount={Math.max(2, selection.selected.size)}
+          initialView={bulkMenu.view}
+          onTogglePin={() => undefined}
+          onRename={() => undefined}
+          onDelete={handleRequestBulkDelete}
+          onMoveToProject={(projectId) => void handleBulkMove(projectId)}
+          onClose={() => setBulkMenu(null)}
+        />
+      )}
 
       {/* Floating row menu (portalled, never clipped) */}
       {openMenu &&

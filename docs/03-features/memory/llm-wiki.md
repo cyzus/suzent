@@ -55,7 +55,7 @@ Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next 
 |---|---|---|
 | **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
 | **Where** | `/shared/memory/` | your notebook folder |
-| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
+| **Written by** | Automatic extraction every few exchanges | The agent, using file tools |
 | **Found by** | Semantic search | Links, file search, and semantic search |
 
 The two meet in one place: consolidated facts about you end up as pages under

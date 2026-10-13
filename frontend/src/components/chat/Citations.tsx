@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { CitationSource } from '../../lib/streamEvents';
 import { InformationPopover } from '../InformationPopover';
 import { DisclosureChevron } from '../DisclosureChevron';
+import { useI18n } from '../../i18n';
 
 /**
  * Inline-citation rendering.
@@ -589,6 +590,7 @@ function scrollContainerBounds(el: HTMLElement): {
 }
 
 export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources }) => {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -693,7 +695,9 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
           )}
         </span>
         <span>
-          {sources.length} {sources.length === 1 ? 'Source' : 'Sources'}
+          {t(sources.length === 1 ? 'citations.sourceCount' : 'citations.sourcesCount', {
+            count: sources.length,
+          })}
         </span>
         <DisclosureChevron
           expanded={expanded}

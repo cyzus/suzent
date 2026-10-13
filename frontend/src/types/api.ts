@@ -157,6 +157,7 @@ export interface Project {
   createdAt: string;
   archived: boolean;
   chatCount: number;
+  unreadChatCounts?: Record<string, number>;
 }
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';

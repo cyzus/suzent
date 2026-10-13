@@ -127,6 +127,7 @@ const NAME_ALIASES: Record<string, string> = {
   process_manage: 'check_command',
   websearch: 'web_search',
   webfetch: 'webpage_fetch',
+  web_fetch: 'webpage_fetch',
   task: 'agent',
   todowrite: 'create_tasks',
 };

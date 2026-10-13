@@ -89,7 +89,13 @@ class AskQuestionTool(Tool):
         sid = surface_id or f"question_{_slug(questions[0].question)}"
         component = _build_component(questions)
 
-        if ctx.deps.a2ui_queue is not None:
+        # Sub-agents, scheduled runs and chat apps have no form to answer, so
+        # waiting on one would hang the run.
+        can_answer = (
+            ctx.deps.interaction_profile == "interactive"
+            and not ctx.deps.social_context
+        )
+        if can_answer and ctx.deps.a2ui_queue is not None:
             future = pending_questions.create(ctx.deps.chat_id, sid)
             await ctx.deps.a2ui_queue.put(
                 {
@@ -117,7 +123,9 @@ class AskQuestionTool(Tool):
             for q in questions
         ]
         return ToolResult.success_result(
-            "[Questions]\n" + "\n".join(lines),
+            "Nobody can answer an interactive question in this run. "
+            "Ask these in your reply instead, or continue with a stated assumption:\n"
+            + "\n".join(lines),
             metadata={
                 "surface_id": sid,
                 "questions": [q.model_dump() for q in questions],

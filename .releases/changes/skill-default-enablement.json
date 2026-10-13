@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Turn on Suzent's built-in skills by default, and keep skills found in your home folder (such as ~/.claude or ~/.codex) off until you enable them."
+}

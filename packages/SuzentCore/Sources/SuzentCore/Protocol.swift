@@ -51,12 +51,44 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public var projectName: String?
     public var model: String?
     public var models: [String]?
+    public var platform: String?
+    public var parentChatId: String?
+
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
+public struct ScheduledTask: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let chatId: String?
+    public let active: Bool
+    public let isRunning: Bool
+    public let nextRunAt: String?
+    public let lastRunAt: String?
+    public let hasError: Bool
 }
 
 public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public init(id: String, name: String) { self.id = id; self.name = name }
+}
+
+public struct FileAttachment: Decodable, Sendable, Equatable {
+    public let filename: String
+    public let mimeType: String
+
+    public init(filename: String, mimeType: String) { self.filename = filename; self.mimeType = mimeType }
+
+    enum CodingKeys: String, CodingKey { case filename; case mimeType = "mime_type" }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        filename = (try? values.decode(String.self, forKey: .filename)) ?? ""
+        mimeType = (try? values.decode(String.self, forKey: .mimeType)) ?? ""
+    }
 }
 
 public struct ChatMessage: Decodable, Sendable {
@@ -68,8 +100,9 @@ public struct ChatMessage: Decodable, Sendable {
     public let toolCallId: String?
     public let model: String?
     public let timestamp: String?
+    public let files: [FileAttachment]
 
-    public init(role: String, content: String) {
+    public init(role: String, content: String, files: [FileAttachment] = []) {
         self.role = role
         self.content = content
         self.parts = []
@@ -77,9 +110,10 @@ public struct ChatMessage: Decodable, Sendable {
         self.toolCallId = nil
         self.model = nil
         self.timestamp = nil
+        self.files = files
     }
 
-    enum CodingKeys: String, CodingKey { case role, content, parts, name, model, timestamp; case toolCallId = "tool_call_id" }
+    enum CodingKeys: String, CodingKey { case role, content, parts, name, model, timestamp, files; case toolCallId = "tool_call_id" }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         role = try values.decodeIfPresent(String.self, forKey: .role) ?? "assistant"
@@ -89,6 +123,7 @@ public struct ChatMessage: Decodable, Sendable {
         toolCallId = try values.decodeIfPresent(String.self, forKey: .toolCallId)
         model = try values.decodeIfPresent(String.self, forKey: .model)
         timestamp = try values.decodeIfPresent(String.self, forKey: .timestamp)
+        files = (try? values.decodeIfPresent([FileAttachment].self, forKey: .files)) ?? []
     }
 }
 

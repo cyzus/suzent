@@ -52,3 +52,20 @@ def test_pending_notification_count_is_bounded(temp_db, monkeypatch):
     drained = temp_db.drain_background_notifications(limit=10)
 
     assert [item.title for item in drained] == ["Job 2", "Job 3", "Job 4"]
+
+
+def test_scheduler_notification_keeps_its_title(temp_db, monkeypatch):
+    from suzent.core import scheduler
+
+    monkeypatch.setattr(scheduler, "get_database", lambda: temp_db)
+    brain = scheduler.SchedulerBrain()
+
+    brain.add_notification("heartbeat", "Action required", title="Inbox watch")
+    brain.add_notification("goal", "Goal reached")
+
+    drained = brain.drain_notifications()
+
+    assert [(n["source"], n["job_name"]) for n in drained] == [
+        ("heartbeat", "Inbox watch"),
+        ("goal", "goal"),
+    ]

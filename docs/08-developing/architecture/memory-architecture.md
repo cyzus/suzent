@@ -46,10 +46,31 @@ flowchart LR
     RECALL --> TURN
 ```
 
-## Write path, per conversation turn
+## Write path, in batches of turns
 
-Runs after the assistant response completes, in
-`MemoryManager.process_conversation_turn_for_memories`.
+Extraction reads each chat's JSONL transcript (`transcripts/{chat_id}.jsonl`), which
+gets one user and one assistant entry per turn. `memory/extraction_queue.py` keeps a
+cursor per chat in `transcripts/memory_cursors.json` and extracts the turns past it:
+
+- at the end of a turn, when 6 or more turns or 8k characters are pending;
+- otherwise when the chat has been quiet for 10 minutes;
+- before the chat's context is compacted, so compacted turns stay recallable;
+- on start, for anything still pending when the app last closed.
+
+A batch (at most 16k characters) is the new turns, each dated with when it happened,
+after the last two already-extracted turns marked as context only. It goes through
+`MemoryManager.process_conversation_for_memories`. The cursor moves only once the batch
+is written, and a failed extraction raises, so the turns stay queued and are retried.
+The first run after upgrading from per-turn extraction starts every existing chat at
+its current end, since those turns were already extracted. Turns from a chat with
+memory switched off are skipped rather than queued.
+
+The transcript entry is the user's message with hidden reminders stripped, the tool
+calls made this turn with the start of each result, and the final reply. The main
+agent's system prompt and reminders are left out on purpose: the reminder carries
+recalled memories, and an extractor that saw them would store them again. Tool calls
+answered before the turn started are excluded, because the history snapshot spans the
+whole chat.
 
 ```mermaid
 %%{init: {'theme':'neutral'}}%%

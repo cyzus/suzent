@@ -1,0 +1,17 @@
+{
+  "chats": [
+    {"id":"parent","title":"Pinned parent","pinned":true,"projectId":"p1"},
+    {"id":"child","title":"Child","platform":"subagent","parentChatId":"parent","pinned":false,"projectId":"p2"},
+    {"id":"grandchild","title":"Grandchild","platform":"subagent","parentChatId":"child","pinned":true},
+    {"id":"other","title":"Regular parent","pinned":false},
+    {"id":"other-child","title":"Pinned child","platform":"subagent","parentChatId":"other","pinned":true},
+    {"id":"cron-1","title":"Cron 1","platform":"cron"},
+    {"id":"cron-child-1","title":"Sources","platform":"subagent","parentChatId":"cron-1"},
+    {"id":"cron-2","title":"Cron 2","platform":"cron"},
+    {"id":"cron-child-2","title":"Metrics","platform":"subagent","parentChatId":"cron-2"}
+  ],
+  "tasks": [
+    {"id":"1","name":"Daily research","chatId":"cron-1","active":true,"isRunning":false,"nextRunAt":null,"lastRunAt":null,"hasError":false},
+    {"id":"2","name":"Daily dashboard","chatId":"cron-2","active":true,"isRunning":false,"nextRunAt":null,"lastRunAt":null,"hasError":false}
+  ]
+}

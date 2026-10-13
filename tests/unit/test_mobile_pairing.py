@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -218,7 +219,7 @@ def test_concurrent_phone_confirmation_issues_only_one_grant(tmp_path):
     assert len(store.devices()) == 1
 
 
-def repair(store, token, permissions, rotate=False):
+def repair(store, token, permissions, rotate=False, name="Phone"):
     import hashlib
 
     invitation = store.invite(permissions)
@@ -231,7 +232,7 @@ def repair(store, token, permissions, rotate=False):
     claim = store.claim(
         invitation["pairing_id"],
         invitation["invitation"],
-        "Phone",
+        name,
         "ios",
         True,
         proof,
@@ -358,3 +359,79 @@ def test_address_change_can_rotate_without_changing_scope(tmp_path):
     assert second["device"]["device_id"] == first["device"]["device_id"]
     assert store.confirm(second["token"])
     assert store.verify(first["token"]) is None
+
+
+def test_permission_replacement_is_persisted_and_isolated(tmp_path: Path) -> None:
+    path = tmp_path / "clients.json"
+    store = PairingStore(path)
+    tokens = []
+    for _ in range(2):
+        invitation, pickup = claimed(store)
+        store.decide(
+            invitation["pairing_id"], ClientPermissions(all_chats=True, send=True)
+        )
+        tokens.append(
+            store.collect(invitation["pairing_id"], pickup["pickup_secret"])["token"]
+        )
+    device = store.verify(tokens[0])
+    permissions = ClientPermissions(chat_ids=["one"], manage_chats=True)
+    assert store.set_permissions(device.device_id, permissions)
+    assert store.verify(tokens[0]).permissions == permissions
+    assert store.verify(tokens[1]).permissions.all_chats
+    assert PairingStore(path).verify(tokens[0]).permissions == permissions
+    permissions.chat_ids.append("mutated")
+    assert store.verify(tokens[0]).permissions.chat_ids == ["one"]
+    assert not store.set_permissions("missing", ClientPermissions())
+    assert store.set_management(device.device_id, False)
+    assert store.verify(tokens[0]).permissions == ClientPermissions(chat_ids=["one"])
+
+
+def test_failed_permission_write_keeps_existing_grant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    original = ClientPermissions(all_chats=True, send=True)
+    store.decide(invitation["pairing_id"], original)
+    token = store.collect(invitation["pairing_id"], pickup["pickup_secret"])["token"]
+    device_id = store.verify(token).device_id
+
+    def fail(*args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("suzent.mobile.pairing.os.replace", fail)
+    with pytest.raises(OSError):
+        store.set_permissions(device_id, ClientPermissions())
+    assert store.verify(token).permissions == original
+    assert PairingStore(store.path).verify(token).permissions == original
+
+
+def test_legacy_management_preserves_scopes_during_repair(tmp_path: Path) -> None:
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions(all_chats=True, send=True))
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(
+        store, first["token"], ClientPermissions(chat_ids=["one"], stop=True)
+    )
+    assert store.set_management(first["device"]["device_id"], True)
+    assert store.verify(first["token"]).permissions == ClientPermissions(
+        all_chats=True, send=True, manage_chats=True
+    )
+    expected = ClientPermissions(chat_ids=["one"], stop=True, manage_chats=True)
+    assert store.verify(second["token"]).permissions == expected
+    assert store.confirm(second["token"])
+    assert PairingStore(store.path).verify(second["token"]).permissions == expected
+
+
+def test_repair_refreshes_device_name_without_changing_credential(
+    tmp_path: Path,
+) -> None:
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions(), name="My phone")
+    assert second["reused"] is True
+    assert second["device"]["display_name"] == "My phone"
+    assert PairingStore(store.path).verify(first["token"]).display_name == "My phone"

@@ -153,6 +153,6 @@ suzent doctor
 - [桌面、手机和浏览器](./platforms.md)：从手机或另一台电脑使用你的智能体
 - [模型与提供商](../04-models/README.md)：添加更多模型，并决定每项工作用哪个模型
 - [记忆](../03-features/memory/README.md)：智能体记住了什么，以及如何修改
-- [工具](../03-features/tools/tools.md)：智能体能做的所有事
+- [工具](../03-features/tools/README.md)：智能体能做的所有事
 - [聊天应用](../05-chat-apps/README.md)：通过 Telegram、Slack 等与它对话
 - [自动化](../03-features/automation.md)：安排定时任务和定期检查

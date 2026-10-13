@@ -144,6 +144,11 @@ class PermissionEngine:
             return decision.model_copy(
                 update={"source": PermissionDecisionSource.FULL_ACCESS}
             )
+        # A command the shell policy would block outright is only ever approved
+        # one call at a time: no saved rule (e.g. a remembered `sudo` prefix) or
+        # tool-wide allow may answer for the user.
+        if decision.reason_code == "shell_policy_high_risk":
+            return decision
         if decision.behavior == CommandDecision.ASK and policy == "always_allow":
             return _decision(
                 CommandDecision.ALLOW,
@@ -422,6 +427,7 @@ class PermissionEngine:
                     reason=evaluation.reason,
                     reason_code="shell_policy_high_risk",
                     risk=PermissionRisk.CRITICAL,
+                    rememberable=False,
                 ).model_dump(by_alias=True)
                 payload["metadata"] = evaluation.metadata
                 return PermissionDecision.model_validate(payload)
@@ -458,7 +464,7 @@ class PermissionEngine:
             return False, "The workspace path could not be verified"
         try:
             resolved = Path(resolver.resolve(file_path)).resolve()
-            workspace = Path(resolver.get_working_dir()).resolve()
+            workspace = Path(resolver.get_base_dir()).resolve()
             resolved.relative_to(workspace)
             return True, "Path is inside the workspace"
         except (OSError, ValueError):
@@ -471,7 +477,7 @@ class PermissionEngine:
             return False
         try:
             resolved = Path(resolver.resolve(file_path)).resolve()
-            project_dir = Path(resolver.get_working_dir()).resolve()
+            project_dir = Path(resolver.get_base_dir()).resolve()
             return resolved == (project_dir / "plan.md").resolve()
         except (OSError, ValueError):
             return False

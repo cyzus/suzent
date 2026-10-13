@@ -76,7 +76,9 @@ async def test_ddgs_search_usage(clean_env, mock_ctx):
         mock_instance.__exit__.assert_called_once()
 
         # Verify arguments
-        mock_instance.text.assert_called_with("test", timelimit=None, max_results=5)
+        mock_instance.text.assert_called_with(
+            "test", timelimit=None, max_results=5, page=1
+        )
 
 
 async def test_ddgs_category_dispatch(clean_env, mock_ctx):
@@ -141,4 +143,66 @@ async def test_searxng_fallback_to_ddgs(clean_env, mock_ctx):
 
             assert "Fallback" in result.message
             # Verify DDGS called with forwarded params
-            mock_instance.text.assert_called_with("test", timelimit=None, max_results=5)
+            mock_instance.text.assert_called_with(
+                "test", timelimit=None, max_results=5, page=1
+            )
+
+
+async def test_ddgs_forwards_page(clean_env, mock_ctx):
+    with patch("ddgs.DDGS") as MockDDGS:
+        mock_instance = MockDDGS.return_value
+        mock_instance.__enter__.return_value = mock_instance
+        mock_instance.text.return_value = []
+
+        await WebSearchTool().forward(mock_ctx, query="test", page=3)
+
+        mock_instance.text.assert_called_with(
+            "test", timelimit=None, max_results=10, page=3
+        )
+
+
+async def test_searxng_html_response_falls_back_to_ddgs(clean_env, mock_ctx):
+    os.environ["SEARXNG_BASE_URL"] = "http://localhost:8080"
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "<html><body>search page</body></html>"
+        mock_client_instance.get = AsyncMock(return_value=mock_response)
+        MockClient.return_value = mock_client_instance
+
+        with patch("ddgs.DDGS") as MockDDGS:
+            mock_instance = MockDDGS.return_value
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.text.return_value = [
+                {"title": "Fallback", "href": "url", "body": "b"}
+            ]
+
+            result = await WebSearchTool().forward(mock_ctx, query="test")
+
+            assert result.success
+            assert "Fallback" in result.message
+
+
+async def test_searxng_respects_max_results(clean_env, mock_ctx):
+    import json
+
+    os.environ["SEARXNG_BASE_URL"] = "http://localhost:8080"
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = json.dumps(
+            {
+                "results": [
+                    {"title": f"R{i}", "url": f"http://r{i}.me", "content": "c"}
+                    for i in range(8)
+                ]
+            }
+        )
+        mock_client_instance.get = AsyncMock(return_value=mock_response)
+        MockClient.return_value = mock_client_instance
+
+        result = await WebSearchTool().forward(mock_ctx, query="test", max_results=3)
+
+        assert len(json.loads(result.message)["results"]) == 3

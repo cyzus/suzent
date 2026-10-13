@@ -45,6 +45,7 @@ main_event_loop = None  # Store reference to main event loop for async operation
 # Background watcher task reference (kept alive)
 _watcher_task = None
 _dream_runner = None
+_catch_up_task: asyncio.Task | None = None
 _initialization_task: asyncio.Task[bool] | None = None
 
 # Gate that lets the dream runner pause the core-file watcher while it holds the
@@ -199,7 +200,13 @@ async def _initialize_memory_system() -> bool:
     Returns:
         True if memory system initialized successfully, False otherwise.
     """
-    global memory_manager, memory_store, main_event_loop, _watcher_task, _dream_runner
+    global \
+        memory_manager, \
+        memory_store, \
+        main_event_loop, \
+        _watcher_task, \
+        _dream_runner, \
+        _catch_up_task
 
     # Idempotent: if a previous call already built the manager, don't re-run
     # (which would spawn duplicate watcher/dream tasks). Lets callers — e.g. the
@@ -312,6 +319,14 @@ async def _initialize_memory_system() -> bool:
                 except Exception as e:
                     logger.error(f"Failed to start DreamRunner: {e}")
 
+        # Extract turns that were still queued when the app last closed.
+        from suzent.memory.extraction_queue import get_extraction_queue
+
+        _catch_up_task = asyncio.create_task(
+            get_extraction_queue().catch_up(CONFIG.user_id),
+            name="memory_extraction_catch_up",
+        )
+
         return True
 
     except Exception as e:
@@ -328,6 +343,7 @@ async def shutdown_memory_system():
         memory_manager, \
         _watcher_task, \
         _dream_runner, \
+        _catch_up_task, \
         _initialization_task
 
     if _initialization_task is not None and not _initialization_task.done():
@@ -344,6 +360,13 @@ async def shutdown_memory_system():
         except Exception:
             pass
         _dream_runner = None
+
+    if _catch_up_task and not _catch_up_task.done():
+        _catch_up_task.cancel()
+    _catch_up_task = None
+    from suzent.memory.extraction_queue import get_extraction_queue
+
+    await get_extraction_queue().shutdown()
 
     if _watcher_task and not _watcher_task.done():
         _watcher_task.cancel()

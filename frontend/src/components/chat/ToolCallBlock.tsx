@@ -5,7 +5,7 @@ import { useDisclosureBody } from '../../hooks/useDisclosureBody';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
-import { getToolSummary } from './toolSummary';
+import { getToolSummary, normalizeToolName } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
@@ -248,7 +248,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   // operation in it, each one collapsed and unseen. Pinned open while an
   // approval is pending: the rejection reason lives in this block's own state.
   const bodyMounted = useDisclosureBody(expanded, { keepMounted: isPending });
-  const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
+  const canonicalToolName = normalizeToolName(toolName);
   const isShellCommand = toolName === 'run_command' || toolName === 'start_command';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
@@ -890,11 +890,11 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
                       className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
                       style={{ overflowX: 'hidden' }}
                     >
-                      {isWebTool ? (
+                      {canonicalToolName === 'web_search' ? (
                         <WebSearchRenderer output={output} />
-                      ) : toolResultMessage ? (
+                      ) : canonicalToolName === 'webpage_fetch' || toolResultMessage ? (
                         <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
-                          <MarkdownRenderer content={toolResultMessage} />
+                          <MarkdownRenderer content={toolResultMessage ?? output} />
                         </div>
                       ) : toolName.includes('search') || toolName.includes('web') ? (
                         <WebSearchRenderer output={output} />

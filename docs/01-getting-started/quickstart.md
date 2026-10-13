@@ -153,6 +153,6 @@ More answers are in [FAQ & troubleshooting](../07-reference/faq.md).
 - [Desktop, phone, and browser](./platforms.md): reach your agent from your phone or another computer
 - [Models & Providers](../04-models/README.md): add more models and choose which one does what
 - [Memory](../03-features/memory/README.md): what your agent remembers and how to edit it
-- [Tools](../03-features/tools/tools.md): everything your agent can do
+- [Tools](../03-features/tools/README.md): everything your agent can do
 - [Chat apps](../05-chat-apps/README.md): talk to it from Telegram, Slack, and more
 - [Automation](../03-features/automation.md): schedule tasks and check-ins

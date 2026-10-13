@@ -83,9 +83,9 @@ Missing blocks fall back to built-in defaults.
 
 ### Extraction path
 
-`process_conversation_turn_for_memories()` extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
+`process_conversation_for_memories()` takes a batch of turns from `ExtractionQueue` (see memory-architecture.md), extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
 
-The current implementation reindexes the whole current-day archive file after a turn rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
+The current implementation reindexes the whole current-day archive file after a batch rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
 
 ### Retrieval path
 

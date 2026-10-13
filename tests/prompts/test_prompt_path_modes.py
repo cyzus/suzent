@@ -138,3 +138,54 @@ def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
     # prompt as a Directory Mappings block listing /mnt paths as available.
     assert "/mnt" not in prompt
     assert "Do NOT use virtual" not in prompt
+
+
+def test_sandbox_environment_describes_the_project_library():
+    text = build_execution_mode_section(sandbox_enabled=True)
+
+    assert "# Project Library" in text
+    assert "`/workspace` is this project's library, shared by every chat" in text
+    assert "`/workspace/scratch/`, your default working directory" in text
+    assert "your current working directory is its `scratch/` folder" in text
+
+
+def test_host_environment_names_the_real_project_library(tmp_path: Path):
+    project_dir = str(tmp_path / "projects" / "demo")
+    text = build_execution_mode_section(
+        sandbox_enabled=False, workspace_root=str(tmp_path), project_dir=project_dir
+    )
+
+    assert f"`{project_dir.replace(chr(92), '/')}` is this project's library" in text
+    assert "/workspace" not in text
+    assert f"`{project_dir.replace(chr(92), '/')}/scratch/`" in text
+
+
+def test_memory_context_calls_context_md_project_memory_not_scratchpad():
+    text = format_core_memory_section(_sample_blocks(), sandbox_enabled=True)
+
+    assert "scratchpad and task state" not in text
+    assert "memory and file index" in text
+    assert "File index (one line per library file)" in text
+
+
+def test_memory_context_truncates_an_oversized_context_md():
+    from suzent.memory.memory_context import CONTEXT_CHAR_LIMIT
+
+    blocks = _sample_blocks() | {"context": "x" * (CONTEXT_CHAR_LIMIT + 500)}
+    text = format_core_memory_section(blocks, sandbox_enabled=True)
+
+    assert "x" * CONTEXT_CHAR_LIMIT in text
+    assert "x" * (CONTEXT_CHAR_LIMIT + 1) not in text
+    assert "[Truncated. Read `/workspace/context.md` for the rest" in text
+
+
+def test_upload_index_rule_rides_a_reminder_only_when_files_are_attached():
+    from suzent.core.chat_processor import _upload_index_reminder
+
+    assert _upload_index_reminder([]) is None
+    reminder = _upload_index_reminder(["/workspace/uploads/sales.csv"])
+    assert "/workspace/uploads/sales.csv" in reminder
+    assert "file index in context.md" in reminder
+    assert "first time you read an uploaded file" not in build_execution_mode_section(
+        sandbox_enabled=True
+    )

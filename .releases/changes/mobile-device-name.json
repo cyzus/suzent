@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential."
+}

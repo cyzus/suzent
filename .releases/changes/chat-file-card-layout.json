@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows."
+}

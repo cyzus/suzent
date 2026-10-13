@@ -24,6 +24,18 @@ class ProjectOperationsMixin:
     # their parent's project explicitly and cron chats stay in default.
     SOCIAL_PLATFORMS = {"telegram", "slack", "discord", "wechat", "whatsapp"}
 
+    def get_project_unread_counts(self) -> dict[str, dict[str, int]]:
+        counts: dict[str, dict[str, int]] = {}
+        with self._session() as session:
+            rows = session.exec(
+                select(ChatModel.id, ChatModel.project_id, ChatModel.config)
+            ).all()
+            for chat_id, project_id, config in rows:
+                unread = (config or {}).get("unread_count", 0)
+                if project_id and unread > 0:
+                    counts.setdefault(project_id, {})[chat_id] = unread
+        return counts
+
     @classmethod
     def _is_social_platform(cls, config: Optional[Dict[str, Any]]) -> bool:
         if not config:

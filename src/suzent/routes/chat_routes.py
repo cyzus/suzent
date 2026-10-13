@@ -1155,6 +1155,7 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
+        response_chat["projectId"] = db.get_chat_project_id(chat_id)
         if isinstance(response_chat.get("messages"), list):
             from suzent.core.chat_processor import (
                 _attach_latest_file_changes,

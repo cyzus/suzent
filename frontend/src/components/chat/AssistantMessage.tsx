@@ -615,6 +615,7 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
   onClick,
   className,
 }) => {
+  const { t } = useI18n();
   const [retrying, setRetrying] = useState(false);
 
   const handleClick = async () => {
@@ -631,7 +632,9 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
     <button
       onClick={handleClick}
       disabled={retrying}
-      title="Retry"
+      type="button"
+      title={t('common.retry')}
+      aria-label={t('common.retry')}
       className={`group/retry w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className ?? ''}`}
     >
       <svg
@@ -713,12 +716,12 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 
   return (
     <div
-      className="inline-flex min-w-0 max-w-[14rem] items-center gap-1.5 border border-neutral-200 bg-white/70 px-1.5 py-0.5 text-neutral-500 dark:border-neutral-700 dark:bg-zinc-900/70 dark:text-neutral-400 select-none"
+      className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
       title={t('chatMessage.modelSignature', { model: modelId })}
     >
       <ProviderFavicon model={modelId} />
-      <span className="truncate font-mono text-[10px] font-semibold normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
-        {modelId}
+      <span className="truncate font-mono text-[10px] font-medium normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
+        {modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1) : modelId}
       </span>
     </div>
   );
@@ -948,16 +951,20 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     ) : null;
 
   const messageFooter = (
-    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-0.5">
-      {fullMessageText && !isThinking && <CopyButton text={fullMessageText} className="relative" />}
-      {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
-      {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
+    <div className="flex min-w-0 items-center gap-1.5 px-1 pt-0.5 pb-1 text-[10px] leading-5">
+      <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
+        {fullMessageText && !isThinking && (
+          <CopyButton text={fullMessageText} className="relative" />
+        )}
+        {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
+        {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
+      </div>
       {!isThinking && <SourcesPanel sources={citationSourcesList} />}
       {!isThinking && <ModelSignature model={modelSignature} />}
       {message.timestamp && !isStreamingThis && (
-        <div className="ml-auto text-[10px] text-neutral-400 select-none">
+        <time className="ml-auto shrink-0 whitespace-nowrap font-mono text-neutral-400 select-none">
           {formatMessageTime(message.timestamp)}
-        </div>
+        </time>
       )}
     </div>
   );
@@ -971,9 +978,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           {badgeContainer}
 
           <div
-            className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+            className={
+              isStreamingThis
+                ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+                : 'flow-root'
+            }
           >
-            <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
+            <div
+              className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+            >
               {hasParts ? (
                 <AGUIPartsContent
                   parts={effectiveParts}
@@ -1103,9 +1116,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         {badgeContainer}
 
         <div
-          className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+          className={
+            isStreamingThis
+              ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+              : 'flow-root'
+          }
         >
-          <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
+          <div
+            className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+          >
             {legacyRenderGroups.map((group, groupIndex) => {
               if (group.type === 'activity') {
                 const activityGroupOrdinal = getActivityGroupOrdinal(

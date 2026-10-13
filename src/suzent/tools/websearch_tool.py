@@ -219,25 +219,37 @@ class WebSearchTool(Tool):
                     if not category or category == "general":
                         return list(
                             ddgs_client.text(
-                                query, timelimit=timelimit, max_results=max_results
+                                query,
+                                timelimit=timelimit,
+                                max_results=max_results,
+                                page=page or 1,
                             )
                         )
                     elif category == "news":
                         return list(
                             ddgs_client.news(
-                                query, timelimit=timelimit, max_results=max_results
+                                query,
+                                timelimit=timelimit,
+                                max_results=max_results,
+                                page=page or 1,
                             )
                         )
                     elif category == "images":
                         return list(
                             ddgs_client.images(
-                                query, timelimit=timelimit, max_results=max_results
+                                query,
+                                timelimit=timelimit,
+                                max_results=max_results,
+                                page=page or 1,
                             )
                         )
                     elif category == "videos":
                         return list(
                             ddgs_client.videos(
-                                query, timelimit=timelimit, max_results=max_results
+                                query,
+                                timelimit=timelimit,
+                                max_results=max_results,
+                                page=page or 1,
                             )
                         )
                     else:
@@ -326,24 +338,34 @@ class WebSearchTool(Tool):
 
             try:
                 data = json.loads(response.text)
-                return ToolResult.success_result(
-                    self._format_results(
-                        data.get("results", []),
-                        source="SearXNG",
-                        query=data.get("query", query),
-                    ),
-                    metadata={
-                        "source": "SearXNG",
-                        "query": data.get("query", query),
-                        "category": categories,
-                        "result_count": len(data.get("results", [])),
-                    },
-                )
             except json.JSONDecodeError:
-                return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    f"Invalid JSON returned from SearXNG: {response.text}",
+                logger.warning(
+                    "SearXNG did not return JSON (is 'json' in search.formats?). "
+                    "Falling back to DDGS."
                 )
+                return await self._search_with_ddgs(
+                    query,
+                    category=categories,
+                    max_results=max_results,
+                    time_range=time_range,
+                    page=page,
+                )
+
+            results = data.get("results", [])[: min(max_results or 10, 20)]
+            return ToolResult.success_result(
+                self._format_results(
+                    results,
+                    source="SearXNG",
+                    query=data.get("query", query),
+                    category=categories,
+                ),
+                metadata={
+                    "source": "SearXNG",
+                    "query": data.get("query", query),
+                    "category": categories,
+                    "result_count": len(results),
+                },
+            )
 
         except httpx.HTTPStatusError as e:
             logger.warning(
@@ -397,15 +419,17 @@ class WebSearchTool(Tool):
             # Special handling for Images/Videos/News fields if distinct
             if category == "images":
                 # DDGS images: 'title', 'image', 'thumbnail', 'url', 'height', 'width', 'source'
-                image_url = result.get("image", "")
-                thumbnail = result.get("thumbnail", "")
+                # SearXNG: 'img_src', 'thumbnail_src'
+                image_url = result.get("image") or result.get("img_src", "")
+                thumbnail = result.get("thumbnail") or result.get("thumbnail_src", "")
                 url = result.get("url")  # Page URL
                 content = f"Image: {image_url}\nThumbnail: {thumbnail}"
             elif category == "videos":
                 # DDGS videos: 'title', 'content', 'embed_url', 'deputy_id', 'description', 'images', 'uploader', 'duration', 'published'
-                description = result.get("description", "")
-                uploader = result.get("uploader", "")
-                duration = result.get("duration", "")
+                # SearXNG: 'content', 'author', 'length'
+                description = result.get("description") or result.get("content", "")
+                uploader = result.get("uploader") or result.get("author", "")
+                duration = result.get("duration") or result.get("length", "")
                 content = f"{description}\nUploader: {uploader} | Duration: {duration}"
             elif category == "news":
                 # DDGS news: 'date', 'title', 'body', 'url', 'image', 'source'

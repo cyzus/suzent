@@ -3,6 +3,7 @@ import { useChatCoreStore } from '../../hooks/useChatStore';
 import { useActivatedToolsStore } from '../../hooks/useActivatedToolsStore';
 import { deactivateTool, fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
 import { CapabilityToolPicker } from '../tools/CapabilityToolPicker';
+import { useI18n } from '../../i18n';
 
 type MCPServer = {
   name: string;
@@ -14,6 +15,7 @@ type MCPServer = {
 };
 
 export function ToolsPanel(): React.ReactElement | null {
+  const { t } = useI18n();
   const { config, setConfig, backendConfig, currentChatId } = useChatCoreStore();
   const { activatedByAI, removeActivatedTool } = useActivatedToolsStore();
   const [servers, setServers] = useState<MCPServer[]>([]);
@@ -55,7 +57,7 @@ export function ToolsPanel(): React.ReactElement | null {
   if (!backendConfig)
     return (
       <div className="flex items-center justify-center h-full text-neutral-400 text-xs">
-        Loading…
+        {t('toolsPanel.loading')}
       </div>
     );
 
@@ -86,7 +88,7 @@ export function ToolsPanel(): React.ReactElement | null {
   if (available.length === 0)
     return (
       <div className="flex items-center justify-center h-full text-neutral-400 text-xs px-4 text-center">
-        No tools configured
+        {t('toolsPanel.noTools')}
       </div>
     );
 
@@ -95,7 +97,7 @@ export function ToolsPanel(): React.ReactElement | null {
       {/* Tools section */}
       <div className="px-3 pt-3 pb-1.5">
         <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-          Tools
+          {t('toolsPanel.tools')}
         </span>
       </div>
       <div className="flex flex-col overflow-y-auto flex-1 scrollbar-thin">
@@ -116,7 +118,7 @@ export function ToolsPanel(): React.ReactElement | null {
           <>
             <div className="px-3 pt-3 pb-1.5 border-t border-brutal-black/10 dark:border-neutral-700 mt-1">
               <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                MCP Servers
+                {t('toolsPanel.mcpServers')}
               </span>
             </div>
             <div className="flex flex-col gap-1 px-1.5 pb-3">
