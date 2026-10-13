@@ -273,8 +273,11 @@ For each fact:
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
 - Write dates as absolute dates. Resolve relative ones ("tomorrow", "next Friday")
-  against the date a message is marked with, or else the current date given in
-  the prompt.
+  against the date the turn is marked with.
+- The conversation may span several turns. When a later turn changes or reverses
+  something said earlier, extract only where it ended up.
+- Turns marked as earlier context were already processed. Use them to understand
+  the new turns; never extract from them.
 
 ## Already-known facts
 The prompt may list facts already in memory. They are context, not material:
@@ -315,26 +318,22 @@ def format_local_date(moment: datetime) -> str:
 
 
 def format_fact_extraction_user_prompt(
-    content: str,
-    known_facts: Optional[List[str]] = None,
-    current_date: Optional[str] = None,
+    content: str, known_facts: Optional[List[str]] = None
 ) -> str:
     """
     Format user prompt for fact extraction from a conversation turn.
 
     Args:
-        content: The formatted conversation turn text (user message + assistant response + actions)
+        content: The formatted conversation (one or more dated turns)
         known_facts: Facts already in memory, nearest-first. Omitted when retrieval
             is unavailable — extraction then behaves exactly as it did before.
-        current_date: The user's local date, so relative dates can be resolved.
 
     Returns:
         Formatted extraction prompt
     """
-    date_line = f"Current date: {current_date}\n\n" if current_date else ""
-    return f"""Extract memorable facts from this conversation turn. One concise sentence per fact.
+    return f"""Extract memorable facts from this conversation. One concise sentence per fact.
 
-{date_line}{format_known_facts_block(known_facts)}---
+{format_known_facts_block(known_facts)}---
 {content}
 ---
 

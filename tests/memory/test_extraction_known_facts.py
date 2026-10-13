@@ -144,8 +144,6 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
     model was talked out of emitting. Showing a non-durable row would therefore drop
     the fact entirely rather than deduplicate it.
     """
-    from suzent.memory.models import ConversationTurn, Message
-
     mgr = MemoryManager.__new__(MemoryManager)
     mgr.markdown_store = None
     shown = []
@@ -156,18 +154,15 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
             {"content": "said once in chat", "durable": False},
         ]
 
-    async def _extract(content, known_facts=None, include_current_date=True):
+    async def _extract(content, known_facts=None):
         shown.append(list(known_facts or []))
         return []
 
     mgr._recall_known_facts = _recall
     mgr._extract_facts_llm = _extract
 
-    await mgr.process_conversation_turn_for_memories(
-        ConversationTurn(
-            user_message=Message(role="user", content="I use Unreal Engine 5"),
-            assistant_message=Message(role="assistant", content="Noted."),
-        ),
+    await mgr.process_conversation_for_memories(
+        "USER: I use Unreal Engine 5\nASSISTANT: Noted.",
         chat_id="c1",
         user_id="user-1",
     )

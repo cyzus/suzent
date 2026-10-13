@@ -3,7 +3,7 @@ Memory Manager - orchestrates core and archival memory operations.
 """
 
 from collections import OrderedDict
-from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from suzent.logger import get_logger
@@ -14,7 +14,6 @@ from .indexer import CoreMemoryFileIndexer
 from .classifier import classify_fact
 from . import memory_context
 from .models import (
-    ConversationTurn,
     ExtractedFact,
     ConversationContext,
     MemoryExtractionResult,
@@ -612,26 +611,28 @@ class MemoryManager:
 
     # ===== Automatic Memory Management (Internal) =====
 
-    async def process_conversation_turn_for_memories(
+    async def process_conversation_for_memories(
         self,
-        conversation_turn: Union[ConversationTurn, Dict[str, Any]],
+        conversation_text: str,
         chat_id: str,
         user_id: str,
-        include_current_date: bool = True,
+        recall_query: Optional[str] = None,
     ) -> MemoryExtractionResult:
         """
-        Automatically extract and store important facts from a conversation turn.
-        Called after the assistant response is complete.
+        Extract and store the important facts from a stretch of conversation.
 
         Args:
-            conversation_turn: ConversationTurn model or dict with same structure
+            conversation_text: The turns to analyze, formatted for the extractor
             chat_id: Chat identifier
             user_id: User identifier
-            include_current_date: Tell the extractor today's date. Off when the
-                turn text is older history that carries its own dates.
+            recall_query: Text to find already-known facts with; defaults to
+                *conversation_text*
 
         Returns:
             MemoryExtractionResult with the list of extracted fact contents.
+
+        Raises when the extraction model fails, so the caller can keep the turns
+        and retry them.
 
         Append-only write path (fixes #34): facts are written to the markdown daily
         log (the source of truth) and indexed into LanceDB. There is still NO
@@ -645,16 +646,11 @@ class MemoryManager:
         result = MemoryExtractionResult.empty()
 
         try:
-            # Convert dict to Pydantic model if needed
-            if isinstance(conversation_turn, dict):
-                turn = ConversationTurn.from_dict(conversation_turn)
-            else:
-                turn = conversation_turn
-
-            # Extract facts from the formatted turn, showing the model what memory
-            # already holds so a re-mention is not stored as a new fact.
-            turn_text = turn.format_for_extraction()
-            known = await self._recall_known_facts(turn_text, user_id, chat_id)
+            # Show the model what memory already holds so a re-mention is not
+            # stored as a new fact.
+            known = await self._recall_known_facts(
+                recall_query or conversation_text, user_id, chat_id
+            )
             # Only the durable ones. The prompt tells the model not to re-extract what
             # it is shown, and a fact that exists solely in a transcript or in the
             # generated MEMORY.md is not recorded anywhere the write path is about to
@@ -662,13 +658,11 @@ class MemoryManager:
             # log at all, and `_split_confirmations` cannot recover a fact the model
             # already declined to emit.
             extracted_facts = await self._extract_facts_llm(
-                turn_text,
-                [k["content"] for k in known if k.get("durable")],
-                include_current_date=include_current_date,
+                conversation_text, [k["content"] for k in known if k.get("durable")]
             )
 
             if not extracted_facts:
-                logger.debug("No facts extracted from conversation turn")
+                logger.debug("No facts extracted from conversation")
                 return result
 
             # Separate out the re-statements. What is left keeps the append-only path.
@@ -679,7 +673,7 @@ class MemoryManager:
 
             if not extracted_facts:
                 logger.debug(
-                    f"Turn held only re-statements: {len(confirmations)} confirmed"
+                    f"Conversation held only re-statements: {len(confirmations)} confirmed"
                 )
                 return result
 
@@ -715,14 +709,15 @@ class MemoryManager:
                     logger.error(f"Core memory refresh failed: {e}")
 
             logger.info(
-                f"Processed conversation turn: extracted {len(result.extracted_facts)} facts"
+                f"Processed conversation: extracted {len(result.extracted_facts)} facts"
             )
 
         except Exception as e:
-            logger.error(f"Failed to process conversation turn for memories: {e}")
+            logger.error(f"Failed to process conversation for memories: {e}")
             import traceback
 
             logger.error(traceback.format_exc())
+            raise
 
         return result
 
@@ -869,10 +864,7 @@ class MemoryManager:
             return None
 
     async def _extract_facts_llm(
-        self,
-        content: str,
-        known_facts: Optional[List[str]] = None,
-        include_current_date: bool = True,
+        self, content: str, known_facts: Optional[List[str]] = None
     ) -> List[ExtractedFact]:
         """
         Extract facts using LLM with Pydantic schema-based structured output.
@@ -884,21 +876,18 @@ class MemoryManager:
             content: The formatted conversation turn.
             known_facts: Facts already in memory, nearest-first, so the model can tell
                 a repeat from an update. Omitted when retrieval is unavailable.
-            include_current_date: Add today's date to the prompt.
 
         Returns:
             List of ExtractedFact models
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
         user_prompt = memory_context.format_fact_extraction_user_prompt(
-            content,
-            known_facts,
-            current_date=memory_context.format_local_date(datetime.now())
-            if include_current_date
-            else None,
+            content, known_facts
         )
         # Keep one client throughout an extraction if settings change mid-request.
         client = self.llm_client
+        if client is None:
+            return []
         extraction_model = self.llm_extraction_model or getattr(client, "model", None)
         logger.debug(f"Starting LLM fact extraction with model={extraction_model!r}")
 
@@ -1006,11 +995,12 @@ class MemoryManager:
                 return facts
 
             except Exception as fallback_error:
-                logger.error(
-                    f"LLM fact extraction failed completely for model={extraction_model!r}: "
+                # Raised, not swallowed: the caller keeps the turns queued and
+                # retries them, instead of treating them as having held nothing.
+                raise RuntimeError(
+                    f"LLM fact extraction failed for model={extraction_model!r}: "
                     f"{fallback_error}"
-                )
-                return []
+                ) from fallback_error
 
     # ===== Utility Methods =====
 
