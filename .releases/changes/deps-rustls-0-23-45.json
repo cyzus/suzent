@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Update rustls to 0.23.45 for the desktop app's TLS connections."
+}
