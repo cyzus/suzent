@@ -51,6 +51,15 @@ flowchart LR
 Runs after the assistant response completes, in
 `MemoryManager.process_conversation_turn_for_memories`.
 
+The turn text is the user's message with hidden reminders stripped, the tool calls made
+this turn (results cut to 200 characters), and the final reply. The main agent's system
+prompt and reminders are left out on purpose: the reminder carries recalled memories,
+and an extractor that saw them would store them again. Tool calls answered before the
+turn started are excluded, because the history snapshot spans the whole chat. The prompt
+also carries the user's current date so relative dates are written as absolute ones.
+The pre-compaction flush builds the same shape from the messages about to be compacted,
+but dates each user message with when it was sent instead of giving today's date.
+
 ```mermaid
 %%{init: {'theme':'neutral'}}%%
 flowchart TD
