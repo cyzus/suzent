@@ -144,8 +144,6 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
     model was talked out of emitting. Showing a non-durable row would therefore drop
     the fact entirely rather than deduplicate it.
     """
-    from suzent.memory.models import ConversationTurn, Message
-
     mgr = MemoryManager.__new__(MemoryManager)
     mgr.markdown_store = None
     shown = []
@@ -156,20 +154,44 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
             {"content": "said once in chat", "durable": False},
         ]
 
-    async def _extract(content, known_facts=None, include_current_date=True):
+    async def _extract(content, known_facts=None):
         shown.append(list(known_facts or []))
         return []
 
     mgr._recall_known_facts = _recall
     mgr._extract_facts_llm = _extract
 
-    await mgr.process_conversation_turn_for_memories(
-        ConversationTurn(
-            user_message=Message(role="user", content="I use Unreal Engine 5"),
-            assistant_message=Message(role="assistant", content="Noted."),
-        ),
+    await mgr.process_conversation_for_memories(
+        "USER: I use Unreal Engine 5\nASSISTANT: Noted.",
         chat_id="c1",
         user_id="user-1",
     )
 
     assert shown == [["on a page"]]
+
+
+async def test_failed_log_write_is_reported_so_the_turns_are_retried():
+    """A batch whose facts never reached the log must not count as extracted."""
+    mgr = MemoryManager.__new__(MemoryManager)
+
+    class _ReadOnlyStore:
+        async def append_daily_log(self, **kwargs):
+            raise OSError("read-only file system")
+
+    mgr.markdown_store = _ReadOnlyStore()
+
+    async def _recall(turn_text, user_id, chat_id=None):
+        return []
+
+    async def _extract(content, known_facts=None):
+        from suzent.memory.models import ExtractedFact
+
+        return [ExtractedFact(content="Prefers dark mode")]
+
+    mgr._recall_known_facts = _recall
+    mgr._extract_facts_llm = _extract
+
+    with pytest.raises(OSError):
+        await mgr.process_conversation_for_memories(
+            "USER: I prefer dark mode", chat_id="c1", user_id="user-1"
+        )

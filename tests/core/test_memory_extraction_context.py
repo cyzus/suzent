@@ -1,37 +1,30 @@
-"""What the memory extractor is shown for a turn.
+"""What a turn leaves in the transcript, which memory extraction reads.
 
 The extractor should see the user's words and this turn's work, nothing else:
 the hidden reminder carries recalled memories (re-extracting them is a feedback
-loop), and the snapshot it is handed is the whole chat history, whose earlier tool
-calls were already extracted on their own turns.
+loop), and the snapshot post-processing is handed is the whole chat history, whose
+earlier tool calls belong to earlier turns.
 """
 
-from types import SimpleNamespace
-
-import pytest
-from datetime import datetime, timezone
+import json
 
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     RetryPromptPart,
-    SystemPromptPart,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
 
-from suzent.core import chat_processor
 from suzent.core.chat_processor import (
     ChatProcessor,
     _answered_tool_call_ids,
     _cancel_unprocessed_tool_calls,
     _extract_tool_calls,
 )
-from suzent.core.context_compressor import ContextCompressor
 from suzent.core.system_reminder import wrap_in_system_reminder
-from suzent.memory import memory_context
 
 RECALLED = "Relevant memories: Lives in Berlin"
 
@@ -55,27 +48,6 @@ def _history() -> list:
         _return("old", "web_search", "old result"),
         ModelResponse(parts=[TextPart(content="earlier answer")]),
     ]
-
-
-class _RecordingMemory:
-    def __init__(self) -> None:
-        self.turns = []
-
-    async def process_conversation_turn_for_memories(
-        self, conversation_turn, chat_id, user_id, include_current_date=True
-    ):
-        self.turns.append(conversation_turn)
-        self.include_current_date = include_current_date
-        return SimpleNamespace(extracted_facts=[])
-
-
-@pytest.fixture
-def memory(monkeypatch):
-    recorder = _RecordingMemory()
-    monkeypatch.setattr(chat_processor.CONFIG, "memory_enabled", True)
-    monkeypatch.setattr(chat_processor, "get_memory_manager", lambda: recorder)
-    monkeypatch.setattr("suzent.memory.lifecycle.get_memory_manager", lambda: recorder)
-    return recorder
 
 
 def test_previously_answered_calls_are_excluded():
@@ -125,63 +97,25 @@ def test_abandoned_call_is_not_reported_on_the_next_turn():
     )
 
 
-async def test_turn_excludes_reminder_and_earlier_calls(memory, monkeypatch):
-    processor = ChatProcessor.__new__(ChatProcessor)
-    monkeypatch.setattr(processor, "_is_system_chat", lambda chat_id: False)
+async def test_transcript_turn_is_the_users_words_and_this_turns_work(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("suzent.session.transcript.DATA_DIR", tmp_path)
     history = _history()
     prior = _answered_tool_call_ids(history)
     history += [_call("new", "read_file"), _return("new", "read_file", "contents")]
 
-    await processor._extract_memories(
-        chat_id="c1",
-        user_id="u1",
-        user_content="I moved to Lisbon" + wrap_in_system_reminder(RECALLED),
-        agent_content="Noted.",
-        messages=history,
-        prior_tool_call_ids=prior,
+    await ChatProcessor.__new__(ChatProcessor)._write_transcript(
+        "c1",
+        "I moved to Lisbon" + wrap_in_system_reminder(RECALLED),
+        "Noted.",
+        history,
+        prior,
     )
 
-    (turn,) = memory.turns
-    assert turn.user_message.content == "I moved to Lisbon"
-    assert [a.tool for a in turn.agent_actions] == ["read_file"]
-
-
-async def test_pre_compaction_flush_takes_only_user_words(memory):
-    messages = [
-        ModelRequest(
-            parts=[
-                SystemPromptPart(content="You are Suzent."),
-                UserPromptPart(
-                    content="Dentist tomorrow" + wrap_in_system_reminder(RECALLED),
-                    timestamp=datetime(2026, 10, 3, 12, tzinfo=timezone.utc),
-                ),
-            ]
-        ),
-        _call("c1", "web_search"),
-        _return("c1", "web_search", "search result"),
-        ModelResponse(parts=[TextPart(content="Noted.")]),
+    lines = (tmp_path / "transcripts" / "c1.jsonl").read_text().splitlines()
+    user, assistant = (json.loads(line) for line in lines)
+    assert user["content"] == "I moved to Lisbon"
+    assert assistant["actions"] == [
+        {"tool": "read_file", "args": {"q": "read_file"}, "output": "contents"}
     ]
-    compressor = SimpleNamespace(chat_id="c1", user_id="u1")
-
-    await ContextCompressor._pre_compaction_flush(compressor, messages)
-
-    (turn,) = memory.turns
-    assert turn.user_message.content.startswith("[2026-10-0")
-    assert turn.user_message.content.endswith("] Dentist tomorrow")
-    assert RECALLED not in turn.user_message.content
-    assert "You are Suzent" not in turn.user_message.content
-    assert memory.include_current_date is False
-    assert [(a.tool, a.output) for a in turn.agent_actions] == [
-        ("web_search", "search result")
-    ]
-
-
-def test_prompt_carries_current_date():
-    prompt = memory_context.format_fact_extraction_user_prompt(
-        "a turn", current_date="2026-10-10 (Saturday, UTC+0800)"
-    )
-
-    assert "Current date: 2026-10-10 (Saturday, UTC+0800)" in prompt
-    assert "Current date" not in memory_context.format_fact_extraction_user_prompt(
-        "a turn"
-    )

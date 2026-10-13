@@ -25,7 +25,7 @@ extraction_model: gemini/gemini-2.5-flash   # "" for heuristic extraction, no mo
 user_id: default-user
 ```
 
-The extraction model runs once per exchange, so a small fast model is the right choice
+The extraction model runs every few exchanges, so a small fast model is the right choice
 here. Leave it unset to use the default chat model.
 
 These settings change *how* memory works. To change *what* Suzent remembers, edit
