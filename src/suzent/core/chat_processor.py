@@ -406,6 +406,45 @@ def _cancel_unprocessed_tool_calls(
     return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
 
 
+def _expire_display_tool_parts(
+    messages: list[Any], tool_call_ids: set[str], notice: str
+) -> list[Any]:
+    """Mark stored tool cards still awaiting approval as settled with *notice*."""
+    expired: list[Any] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            expired.append(message)
+            continue
+        message = dict(message)
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            message["parts"] = [
+                {
+                    **{k: v for k, v in part.items() if k != "approvalId"},
+                    "state": "error",
+                    "output": notice,
+                }
+                if isinstance(part, dict)
+                and part.get("type") == "tool"
+                and part.get("toolCallId") in tool_call_ids
+                and part.get("output") is None
+                else part
+                for part in parts
+            ]
+        content = message.get("content")
+        if isinstance(content, str):
+            for tool_call_id in tool_call_ids:
+                content = re.sub(
+                    rf'(<details[^>]*data-tool-call-id="{re.escape(tool_call_id)}"'
+                    r'[^>]*data-approval-state=")pending(")',
+                    r"\1denied\2",
+                    content,
+                )
+            message["content"] = content
+        expired.append(message)
+    return expired
+
+
 def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
     """Build the pydantic-ai approval result, preserving rejection feedback."""
     if approval.get("approved"):
@@ -1196,16 +1235,43 @@ class ChatProcessor:
                     chat_id,
                     requested_tool_call_ids,
                 )
-                try:
-                    get_database().append_chat_message(
-                        chat_id,
-                        {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE},
+                # Settle the calls durably, not just in this stream: the client
+                # reloads from the database once the stream ends, and a stored
+                # card still awaiting approval would come straight back.
+                message_history, cancelled_tool_call_ids = (
+                    _cancel_unprocessed_tool_calls(
+                        message_history or [], "its approval expired"
                     )
-                except Exception as notice_err:
-                    logger.debug(
-                        "Failed to persist approval-expired notice for {}: {}",
+                )
+                try:
+                    db = get_database()
+                    chat = db.get_chat(chat_id)
+                    display_messages = _expire_display_tool_parts(
+                        list(chat.messages or []) if chat else [],
+                        set(requested_tool_call_ids),
+                        APPROVAL_EXPIRED_NOTICE,
+                    )
+                    display_messages.append(
+                        {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE}
+                    )
+                    db.update_chat(
                         chat_id,
-                        notice_err,
+                        messages=display_messages,
+                        agent_state=serialize_state(
+                            message_history,
+                            model_id=getattr(agent, "_model_id", None),
+                            tool_names=getattr(agent, "_tool_names", []),
+                        )
+                        if cancelled_tool_call_ids
+                        else None,
+                    )
+                    if cancelled_tool_call_ids:
+                        await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
+                except Exception as persist_err:
+                    logger.warning(
+                        "Failed to persist expired approvals for {}: {}",
+                        chat_id,
+                        persist_err,
                     )
                 expired_events = [
                     (

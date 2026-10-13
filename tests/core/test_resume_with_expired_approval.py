@@ -16,8 +16,12 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from suzent.core.agent_serializer import serialize_state
-from suzent.core.chat_processor import APPROVAL_EXPIRED_NOTICE, ChatProcessor
+from suzent.core.agent_serializer import deserialize_state, serialize_state
+from suzent.core.chat_processor import (
+    APPROVAL_EXPIRED_NOTICE,
+    ChatProcessor,
+    _collect_unprocessed_tool_call_ids,
+)
 
 
 class _Agent:
@@ -50,8 +54,28 @@ async def test_resume_with_only_expired_approvals_settles_the_card_without_runni
             ]
         ),
     ]
+    pending_card = {
+        "role": "assistant",
+        "content": (
+            '<details data-tool-call-id="call-1" data-approval-id="call-1" '
+            'data-approval-state="pending"><summary>run_command</summary></details>'
+        ),
+        "parts": [
+            {
+                "type": "tool",
+                "toolCallId": "call-1",
+                "toolName": "run_command",
+                "args": "cat config.xml",
+                "state": "approval-requested",
+                "approvalId": "call-1",
+            }
+        ],
+    }
     chat_id = temp_db.create_chat(
-        title="Expired", config={}, agent_state=serialize_state(history)
+        title="Expired",
+        config={},
+        messages=[{"role": "user", "content": "get the key"}, pending_card],
+        agent_state=serialize_state(history),
     )
 
     async def get_agent(config):
@@ -107,7 +131,14 @@ async def test_resume_with_only_expired_approvals_settles_the_card_without_runni
         }
     ]
     assert any(APPROVAL_EXPIRED_NOTICE in str(e.get("delta") or "") for e in events)
-    assert temp_db.get_chat(chat_id).messages[-1] == {
-        "role": "notice",
-        "content": APPROVAL_EXPIRED_NOTICE,
-    }
+    # The client reloads from the database when the stream ends, so the
+    # settled state has to be stored, not only streamed.
+    chat = temp_db.get_chat(chat_id)
+    assert chat.messages[-1] == {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE}
+    card = chat.messages[-2]
+    assert card["parts"][0]["state"] == "error"
+    assert card["parts"][0]["output"] == APPROVAL_EXPIRED_NOTICE
+    assert "approvalId" not in card["parts"][0]
+    assert 'data-approval-state="denied"' in card["content"]
+    stored_history = deserialize_state(chat.agent_state)["message_history"]
+    assert _collect_unprocessed_tool_call_ids(stored_history) == set()
