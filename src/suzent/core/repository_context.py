@@ -233,6 +233,10 @@ def discover_skill_roots(roots: RepositoryContextRoots) -> list[DiscoveredSkillR
                         source=scope,
                         source_id=_source_id(scope, base, source_suffix),
                         virtual_root=_virtual_root(resolved, roots.project_dir),
+                        # Home libraries belong to other agents (Codex bundles
+                        # its own under .system), so they are opt-in; a
+                        # project's own skills are part of the work at hand.
+                        default_enabled=scope != "home",
                     )
                 )
     return discovered

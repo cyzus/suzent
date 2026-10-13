@@ -97,6 +97,7 @@ def test_discovers_user_level_assistant_skills(tmp_path: Path):
     assert [(root.source, root.path) for root in discovered] == [
         ("home", (home_dir / ".claude" / "skills").resolve())
     ]
+    assert not discovered[0].default_enabled
 
 
 def test_discovers_namespaced_codex_system_skills(tmp_path: Path):
@@ -119,6 +120,18 @@ def test_discovers_namespaced_codex_system_skills(tmp_path: Path):
     assert [(root.source, root.path) for root in discovered] == [
         ("home", system_root.resolve())
     ]
+
+    manager = SkillManager(
+        skills_dir=tmp_path / "empty-global", discovered_roots=discovered
+    )
+    manager.enabled_skills.clear()
+    manager.disabled_skills.clear()
+    (skill,) = manager.loader.list_skills()
+
+    assert not manager.is_skill_enabled(skill.id)
+    assert not manager.has_enabled_skills()
+    manager.enable_skill(skill.id)
+    assert manager.is_skill_enabled(skill.id)
 
 
 def test_canonical_source_is_not_loaded_again_as_repository_skill(tmp_path: Path):
