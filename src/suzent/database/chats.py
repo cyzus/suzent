@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timezone
 import re
@@ -171,13 +172,70 @@ def _with_message_summary(
     return next_config
 
 
-def _copy_summary_keys(
-    target: Dict[str, Any], source: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    for key in (SUMMARY_VISIBLE_COUNT_KEY, SUMMARY_LAST_MESSAGE_KEY):
-        if key not in target and source and key in source:
-            target[key] = source[key]
-    return target
+def _message_summary(messages: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+    visible_count, last_message = _summarize_messages(messages)
+    return {
+        SUMMARY_VISIBLE_COUNT_KEY: visible_count,
+        SUMMARY_LAST_MESSAGE_KEY: last_message,
+    }
+
+
+def _config_path(key: str) -> str:
+    return '$."' + key.replace('"', '\\"') + '"'
+
+
+# Coerces a missing or non-object config to {} so json_set has an object to edit.
+_STORED_CONFIG_SQL = "CASE WHEN json_type(config) = 'object' THEN config ELSE '{}' END"
+
+
+def _set_config_keys(session: Any, chat_id: str, updates: Dict[str, Any]) -> None:
+    """Write *updates* into the stored config without touching any other key.
+
+    Copying the config out, editing it and writing the whole dict back loses
+    every key another writer committed in between: a streaming draft that read
+    the config just before a pending approval was saved would wipe that
+    approval, and the user's decision on it would then be rejected as stale.
+    ``json_set`` edits the row the UPDATE holds locked, so it cannot do that.
+    """
+    if not updates:
+        return
+    params: Dict[str, Any] = {"chat_id": chat_id}
+    assignments = []
+    for index, (key, value) in enumerate(updates.items()):
+        params[f"path_{index}"] = _config_path(key)
+        params[f"value_{index}"] = json.dumps(value, default=str)
+        assignments.append(f":path_{index}, json(:value_{index})")
+    session.execute(
+        text(
+            f"UPDATE chats SET config = json_set({_STORED_CONFIG_SQL}, "
+            f"{', '.join(assignments)}) WHERE id = :chat_id"
+        ),
+        params,
+    )
+
+
+def _replace_config(
+    session: Any, chat_id: str, config: Dict[str, Any], keep: List[str]
+) -> None:
+    """Replace the stored config, carrying the *keep* keys over from the row.
+
+    The kept values are read inside the UPDATE itself, so a key committed by a
+    concurrent writer is preserved rather than reverted to an earlier read.
+    """
+    params: Dict[str, Any] = {"chat_id": chat_id, "config": json.dumps(config)}
+    kept = []
+    for index, key in enumerate(keep):
+        params[f"keep_{index}"] = key
+        params[f"path_{index}"] = _config_path(key)
+        kept.append(f":keep_{index}, json(({_STORED_CONFIG_SQL}) -> :path_{index})")
+    expression = "json(:config)"
+    if kept:
+        # json_patch drops keys whose patch value is null, so a kept key that is
+        # absent from the row stays absent instead of becoming null.
+        expression = f"json_patch(json(:config), json_object({', '.join(kept)}))"
+    session.execute(
+        text(f"UPDATE chats SET config = {expression} WHERE id = :chat_id"), params
+    )
 
 
 class ChatOperationsMixin:
@@ -319,20 +377,19 @@ class ChatOperationsMixin:
                 next_config = dict(config)
                 # UI config snapshots must not erase or resurrect server-owned approvals.
                 next_config.pop("_pending_approvals", None)
-                if "_pending_approvals" in (chat.config or {}):
-                    next_config["_pending_approvals"] = chat.config[
-                        "_pending_approvals"
-                    ]
+                keep = ["_pending_approvals"]
                 if messages is None:
-                    next_config = _copy_summary_keys(next_config, chat.config)
-                chat.config = next_config
-                flag_modified(chat, "config")
+                    keep += [
+                        key
+                        for key in (SUMMARY_VISIBLE_COUNT_KEY, SUMMARY_LAST_MESSAGE_KEY)
+                        if key not in next_config
+                    ]
+                _replace_config(session, chat_id, next_config, keep)
 
             if messages is not None:
                 chat.messages = messages
-                chat.config = _with_message_summary(chat.config, messages)
+                _set_config_keys(session, chat_id, _message_summary(messages))
                 should_update_timestamp = True
-                flag_modified(chat, "config")
 
             if context_usage is not None:
                 chat.context_usage = context_usage
@@ -364,9 +421,8 @@ class ChatOperationsMixin:
             messages = list(chat.messages or [])
             messages.append(message)
             chat.messages = messages
-            chat.config = _with_message_summary(chat.config, messages)
+            _set_config_keys(session, chat_id, _message_summary(messages))
             chat.updated_at = datetime.now()
-            flag_modified(chat, "config")
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
             session.commit()
@@ -393,9 +449,8 @@ class ChatOperationsMixin:
             entry["_client_message_id"] = client_message_id
             messages.append(entry)
             chat.messages = messages
-            chat.config = _with_message_summary(chat.config, messages)
+            _set_config_keys(session, chat_id, _message_summary(messages))
             chat.updated_at = datetime.now()
-            flag_modified(chat, "config")
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
             session.commit()
@@ -449,9 +504,8 @@ class ChatOperationsMixin:
                 return False
 
             chat.messages = messages
-            chat.config = _with_message_summary(chat.config, messages)
+            _set_config_keys(session, chat_id, _message_summary(messages))
             flag_modified(chat, "messages")
-            flag_modified(chat, "config")
             if agent_state is not _UNSET:
                 chat.agent_state = agent_state
             if turn_count_delta:
@@ -462,8 +516,7 @@ class ChatOperationsMixin:
             return True
 
     def merge_chat_config(self, chat_id: str, updates: Dict[str, Any]) -> bool:
-        """Atomically merge top-level keys into a chat's config (read-modify-write
-        inside one DB session).
+        """Atomically merge top-level keys into a chat's config.
 
         Use this instead of ``update_chat(config=...)`` when only specific keys
         change, so concurrent writers to *other* config keys (e.g. one writing
@@ -475,11 +528,8 @@ class ChatOperationsMixin:
             if not chat:
                 return False
 
-            next_config = dict(chat.config or {})
-            next_config.update(updates)
-            chat.config = next_config
+            _set_config_keys(session, chat_id, updates)
             chat.updated_at = datetime.now()
-            flag_modified(chat, "config")
             session.add(chat)
             session.commit()
             return True
@@ -545,8 +595,9 @@ class ChatOperationsMixin:
                     # derived state as update_chat: without these, a search for
                     # the trigger misses the chat and the sidebar preview stays
                     # on the previous message whenever post-processing never runs.
-                    chat.config = _with_message_summary(chat.config, appended_messages)
-                    flag_modified(chat, "config")
+                    _set_config_keys(
+                        session, chat_id, _message_summary(appended_messages)
+                    )
 
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state
@@ -600,8 +651,7 @@ class ChatOperationsMixin:
             chat.agent_state = agent_state
             if messages is not None:
                 chat.messages = messages
-                chat.config = _with_message_summary(chat.config, messages)
-                flag_modified(chat, "config")
+                _set_config_keys(session, chat_id, _message_summary(messages))
                 self._reindex_in_session(session, chat_id, messages)
             chat.finalized_revision = expected_revision
             chat.state_stage = "finalized"
@@ -611,10 +661,15 @@ class ChatOperationsMixin:
             if update_lifecycle:
                 chat.last_active_at = now
                 chat.turn_count = (chat.turn_count or 0) + 1
-                config = dict(chat.config or {})
-                config["unread_count"] = config.get("unread_count", 0) + 1
-                chat.config = config
-                flag_modified(chat, "config")
+                session.execute(
+                    text(
+                        "UPDATE chats SET config = json_set("
+                        f"{_STORED_CONFIG_SQL}, '$.unread_count', "
+                        "COALESCE(json_extract(config, '$.unread_count'), 0) + 1"
+                        ") WHERE id = :chat_id"
+                    ),
+                    {"chat_id": chat_id},
+                )
 
             session.add(chat)
             session.commit()
@@ -698,11 +753,7 @@ class ChatOperationsMixin:
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if chat:
-                config = dict(chat.config or {})
-                config["unread_count"] = 0
-                chat.config = config
-                flag_modified(chat, "config")
-                session.add(chat)
+                _set_config_keys(session, chat_id, {"unread_count": 0})
                 session.commit()
 
     def get_chat_projects(
@@ -829,9 +880,7 @@ class ChatOperationsMixin:
                     messages = chat.messages if chat else []
                     visible_count, last_message = _summarize_messages(messages)
                     if chat:
-                        chat.config = _with_message_summary(chat.config, messages)
-                        flag_modified(chat, "config")
-                        session.add(chat)
+                        _set_config_keys(session, chat_id, _message_summary(messages))
                         summaries_backfilled = True
 
                 project = project_lookup.get(row_project_id) if row_project_id else None
