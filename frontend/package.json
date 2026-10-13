@@ -27,7 +27,7 @@
     "@types/marked": "^5.0.2",
     "@types/qrcode": "^1.5.6",
     "clsx": "^2.1.1",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.16",
     "marked": "^16.4.0",
     "mermaid": "^11.16.0",
     "monaco-editor": "^0.56.0",
