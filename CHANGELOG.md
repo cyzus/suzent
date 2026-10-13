@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.16.0] - 2026-10-13
+## [v0.16.0] - 2026-10-14
 
 ### Release notes
 - Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
 - Update DOMPurify to 3.4.16 for safer rendering of message content.
 - Update fsspec to 2026.6.0.
+- Update multidict to 6.9.1.
+- Update PyJWT to 2.15.0.
 - Update rustls to 0.23.45 for the desktop app's TLS connections.
+- Update urllib3 to 2.8.0.
 - Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background.
 - Extract memories from several exchanges at once, after a few turns or once a chat goes quiet, so a plan revised mid-conversation is saved once.
 - Memory extraction no longer re-stores recalled memories or earlier turns' tool calls, and writes relative dates as absolute dates.
