@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically."
+}

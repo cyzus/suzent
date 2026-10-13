@@ -53,6 +53,35 @@ export const zhCN = {
   },
 
   mobileAccess: {
+    editPermissions: '编辑权限',
+    cancelEdit: '取消',
+    savePermissions: '保存',
+
+    short_manage_chats: '管理',
+    shortAllChats: '所有会话',
+    short_create_chats: '创建',
+    short_send: '发送',
+    short_stop: '停止',
+    short_approve_tools: '工具审批',
+    shortManage: '管理会话',
+
+    deviceCount: '已配对 {count} 台手机',
+    prepareStep: '连接同一 Wi-Fi',
+    prepareStepHelp: '保持桌面端运行，并将手机连接到同一 Wi-Fi。',
+    scanStep: '用 Suzent 扫码',
+    scanStepHelp: '生成二维码后，打开 Suzent 手机应用中的配对扫码功能。',
+    confirmStep: '在手机上确认',
+    confirmStepHelp: '核对桌面设备和申请的权限，然后确认配对。',
+    accessSettings: '手机访问权限',
+    networkSettings: '连接设置',
+    waiting: '等待扫码',
+    ready: '连接手机',
+    qrHelp: '每个二维码都是一次性邀请。生成前可以调整手机权限和连接设置。',
+    generating: '正在生成二维码…',
+    regenerate: '重新生成',
+    pairedDevices: '已配对的手机',
+    noDevices: '暂无已配对手机',
+
     fullAccess: '完整访问',
     restrictedAccess: '受限访问',
     fullAccessHelp: '在手机上使用会话、发送和停止响应，并审批工具请求。',
@@ -61,18 +90,18 @@ export const zhCN = {
     approve_tools: '审批工具请求',
 
     choosePermissions: '先选择手机可访问的内容和操作，再生成二维码。',
-    cancelInvitation: '关闭二维码并取消邀请',
+    cancelInvitation: '取消配对',
 
     title: '移动端访问',
     description: '将 Suzent 手机应用与此桌面端配对。每台手机使用可单独撤销的访问凭证。',
     origin: '手机可以访问的后端地址',
     network: '局域网连接会自动加密，扫码后信任这台桌面设备。也可以填写已有的 HTTPS 地址。',
     generate: '配对手机',
-    expired: '邀请已过期，请生成新的二维码。',
+    expired: '二维码已过期',
     qrAlt: 'Suzent 移动端配对二维码',
-    scan: '在 Suzent 手机端扫码并确认连接。持有此一次性二维码的人可以获得上方已选择的权限。',
+    scan: '一次性访问邀请，请仅用于自己的手机。',
     expires: '{seconds} 秒后过期',
-    copy: '复制配对邀请',
+    copy: '复制邀请',
     compare: '请确认手机上显示的验证码为 {code}。',
     all_chats: '读取所有会话（包括未来的会话）',
     create_chats: '创建会话',
@@ -170,6 +199,16 @@ export const zhCN = {
       verifyFailed: '无法验证后端版本：{error}',
     },
   },
+  backgroundNotifications: {
+    title: 'Suzent · {name}',
+    taskFinished: '[{name}] 已完成，可在社交频道查看',
+    updateReady: '[{name}] 有新进展',
+    manyUpdates: '{count} 条后台更新',
+    replyReady: '回复已完成，打开聊天查看结果',
+    replyNeedsApproval: '需要你的批准才能继续',
+    replyFailed: '回复失败',
+    untitledChat: 'Suzent',
+  },
   hostPicker: {
     title: '选择文件夹',
     roots: '驱动器',
@@ -218,6 +257,15 @@ export const zhCN = {
     robotGallery: '机器人画廊',
   },
   sidebar: {
+    resizeLeft: '调整左侧边栏宽度',
+    resizeRight: '调整右侧边栏宽度',
+    resizeHint:
+      '拖动调整宽度，继续向窄处拖动可收起；按住可拉回，松手确认；双击恢复默认，方向键微调。',
+    resizeRightHint:
+      '拖过最小宽度可收起，拖过最大宽度可覆盖聊天；按住可拉回，松手确认；双击恢复默认。',
+    resizeCoverHint: '向右拖窄可回到聊天旁边；按住可拉回，松手确认；双击恢复默认宽度。',
+    dock: '回到聊天旁边',
+
     open: '打开侧栏',
     close: '关闭侧栏',
     tabs: {
@@ -252,6 +300,7 @@ export const zhCN = {
     },
   },
   backgroundTasks: {
+    memoryProcessing: '正在整理记忆…',
     heading: '后台任务（{count}）',
     empty: '当前会话暂无后台任务',
     shell: 'Shell 命令',
@@ -655,6 +704,7 @@ export const zhCN = {
     },
     mcp: {
       title: 'MCP 服务器',
+      viewTools: '工具',
       subtitle: '通过 MCP 连接外部工具与资源',
       addNewServerTitle: '添加新服务器',
       addNewServerDesc: '添加一个 MCP 服务器，用于连接外部工具与资源。',
@@ -1042,6 +1092,11 @@ export const zhCN = {
     },
     automation: {
       title: '自动化',
+      jobSource: {
+        agent: '智能体',
+        preset: '预设',
+        heartbeat: '心跳',
+      },
       subtitle: '调度周期性智能体任务并管理调度器',
       heartbeatToolsTitle: '心跳工具授权',
       heartbeatToolsDesc:
@@ -1141,6 +1196,10 @@ export const zhCN = {
     },
   },
   fileChanges: {
+    showOneMore: '再显示 1 个文件',
+    changedFile: '已修改 1 个文件',
+    changedFiles: '已修改 {count} 个文件',
+    reviewFile: '查看 {file} 的修改',
     editedFiles: '已编辑 {count} 个文件',
     diff: '差异',
     showMore: '再显示 {count} 个文件',
@@ -1249,6 +1308,13 @@ export const zhCN = {
       noResultsDesc: '试试换一个关键词',
       noChatsTitle: '暂无对话',
       noChatsDesc: '开始一个新对话以继续',
+    },
+    selection: {
+      moveCount: '将 {count} 个对话移动到项目',
+      deleteCount: '删除 {count} 个对话',
+      deleteTitle: '确定删除 {count} 个对话吗？',
+      deleteMessage: '此操作将永久删除所选对话及其所有消息。',
+      cascadeMessage: '部分所选对话包含子 Agent。是否一并删除？',
     },
     delete: {
       confirmTitle: '确定删除这个对话吗？',
@@ -1483,12 +1549,43 @@ export const zhCN = {
       cancelled: '已取消',
     },
   },
+  toolsPanel: {
+    loading: '加载中…',
+    noTools: '未配置任何工具',
+    tools: '工具',
+    mcpServers: 'MCP 服务器',
+  },
+  webActivities: {
+    returnToBrowser: '返回浏览器',
+    history: '历史',
+  },
+  a2uiForm: {
+    typeSomethingElse: '输入其他答案…',
+    back: '← 上一步',
+    skip: '跳过',
+    next: '下一步 →',
+    submit: '提交',
+  },
+  citations: {
+    sourceCount: '{count} 个来源',
+    sourcesCount: '{count} 个来源',
+  },
   projectBoard: {
     title: '项目看板',
     noTasks: '本项目暂无任务。',
     noGoals: '暂无活跃目标。',
     taskCount: '个项目任务',
     open: '打开看板',
+    openFull: '打开完整项目看板',
+    board: '看板',
+    columns: {
+      todo: '待办',
+      active: '进行中',
+      done: '已完成',
+    },
+    taskTitlePlaceholder: '任务标题…',
+    moveTo: '移到{status}',
+    addTask: '+ 添加任务',
   },
   archival: {
     title: '归档记忆',
@@ -1830,10 +1927,6 @@ export const zhCN = {
     title: '我可以{action}吗？',
     useTool: '使用 {tool}',
     localProject: '项目（本地）',
-    deny: '拒绝',
-    allowOnce: '仅允许一次',
-    allowSession: '本次会话允许',
-    allowGlobal: '始终允许',
     ctrlEnter: 'Ctrl+Enter',
     yes: '是',
     yesAnd: '是，并{action}',
@@ -1861,7 +1954,7 @@ export const zhCN = {
     maximize: '最大化（全屏）',
     openInExplorer: '在文件管理器中打开',
     uploadFile: '上传文件',
-    workspace: '工作区',
+    workspace: '项目库',
     shared: '共享',
     mounts: '挂载',
     scanning: '扫描中...',

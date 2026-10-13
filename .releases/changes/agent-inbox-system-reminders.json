@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format."
+}

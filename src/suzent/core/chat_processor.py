@@ -38,9 +38,8 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import remove_pending_approvals, stream_agent_responses
-from suzent.memory import ConversationTurn, Message, AgentAction
+from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
     PostProcessStep,
@@ -482,6 +481,18 @@ def _stripped_image_reminder(agent_paths: list[str]) -> str | None:
     )
 
 
+def _upload_index_reminder(agent_paths: list[str]) -> str | None:
+    """Ask the model to index this turn's uploads, or ``None`` if there were none."""
+    if not agent_paths:
+        return None
+    from suzent.prompts import UPLOAD_INDEX_REMINDER_TEMPLATE
+
+    return UPLOAD_INDEX_REMINDER_TEMPLATE.format(
+        count=len(agent_paths),
+        paths=", ".join(agent_paths),
+    )
+
+
 def build_steering_text(steer_message: str) -> str:
     """Render an interruption into the prompt text appended to history.
 
@@ -688,6 +699,7 @@ class ChatProcessor:
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
+        uploaded_paths: list[str] = []
 
         from suzent.core.model_registry import get_model_registry
 
@@ -745,6 +757,9 @@ class ChatProcessor:
                         result = await self._process_upload_file(
                             file_item, uploads_host_path, uploads_agent_path
                         )
+
+                    if result["agent_path"]:
+                        uploaded_paths.append(result["agent_path"])
 
                     if result["is_image"] and not _vision_ok:
                         # Active model can't read images — don't ship raw bytes
@@ -950,6 +965,11 @@ class ChatProcessor:
                     chat_id,
                 )
 
+        # Calls already answered before this turn (abandoned ones were just given a
+        # result above); post-processing reports only the rest, since the snapshot
+        # it receives is the whole (compacted) history.
+        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
+
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
@@ -1023,16 +1043,15 @@ class ChatProcessor:
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
         if _vision_reminder:
             _adhoc_reminders.append(_vision_reminder)
-        reminder = (
-            None
-            if getattr(deps, "stateless", False)
-            else await build_combined_reminder(
-                chat_id,
-                deps,
-                adhoc_reminders=_adhoc_reminders,
-                user_message=_turn_message,
-                display_trigger=display_trigger,
-            )
+        _upload_reminder = _upload_index_reminder(uploaded_paths)
+        if _upload_reminder:
+            _adhoc_reminders.append(_upload_reminder)
+        reminder = await build_combined_reminder(
+            chat_id,
+            deps,
+            adhoc_reminders=_adhoc_reminders,
+            user_message=_turn_message,
+            display_trigger=display_trigger,
         )
         if reminder:
             if message_content and message_content.strip():
@@ -1410,6 +1429,7 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
+                    prior_tool_call_ids=prior_tool_call_ids,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1492,6 +1512,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> bool:
         """Background post-processing for a completed turn.
 
@@ -1541,7 +1562,11 @@ class ChatProcessor:
                 # written/indexed — keeps their chatter out of memory (NEW-7).
                 if not self._is_system_chat(chat_id):
                     await self._write_transcript(
-                        chat_id, message_content, full_response, last_messages
+                        chat_id,
+                        message_content,
+                        full_response,
+                        last_messages,
+                        prior_tool_call_ids,
                     )
                 db.update_job_step_status(
                     job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
@@ -1576,13 +1601,20 @@ class ChatProcessor:
                 async def _run_memory_extraction() -> None:
                     memory_db = get_database()
                     try:
-                        await self._extract_memories(
-                            chat_id=chat_id,
-                            user_id=user_id,
-                            user_content=message_content,
-                            agent_content=full_response,
-                            messages=last_messages,
-                        )
+                        # The turn is already in the transcript (B1); the queue
+                        # decides whether this is the moment to extract it.
+                        if not self._is_system_chat(chat_id):
+                            from suzent.memory.extraction_queue import (
+                                get_extraction_queue,
+                            )
+
+                            queue = get_extraction_queue()
+                            if CONFIG.memory_enabled:
+                                await queue.note_turn(chat_id, user_id)
+                            else:
+                                # Turning memory on later must not sweep up
+                                # what was said while it was off.
+                                await queue.skip_pending(chat_id)
                         memory_db.update_job_step_status(
                             job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                         )
@@ -2054,52 +2086,34 @@ class ChatProcessor:
         except Exception:
             return False
 
-    async def _extract_memories(
-        self, chat_id, user_id, user_content, agent_content, messages
-    ):
-        """Extract memories from pydantic-ai message history."""
-        if not CONFIG.memory_enabled:
-            return
-        # Skip system/forked turns (dream, sub-agents). The per-chat platform — not
-        # the global CONFIG flag — is authoritative here.
-        if self._is_system_chat(chat_id):
-            return
-
-        try:
-            memory_mgr = get_memory_manager()
-            if not memory_mgr:
-                return
-
-            # Extract tool calls from messages
-            actions = _extract_tool_calls(messages)
-
-            conversation_turn = ConversationTurn(
-                user_message=Message(role="user", content=user_content),
-                assistant_message=Message(role="assistant", content=agent_content),
-                agent_actions=actions,
-            )
-
-            await memory_mgr.process_conversation_turn_for_memories(
-                conversation_turn=conversation_turn,
-                chat_id=chat_id,
-                user_id=user_id,
-            )
-        except Exception as e:
-            logger.error(f"Memory extraction failed for {chat_id}: {e}")
-
     async def _write_transcript(
-        self, chat_id: str, user_content: str, agent_content: str, messages: list
+        self,
+        chat_id: str,
+        user_content: str,
+        agent_content: str,
+        messages: list,
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> None:
-        """Write user and assistant turns to the JSONL transcript."""
+        """Write user and assistant turns to the JSONL transcript.
+
+        Memory extraction reads its turns from here, so the hidden reminder is
+        stripped (it carries recalled memories the extractor would store again)
+        and each tool call keeps the start of its result.
+        """
         try:
+            from suzent.core.system_reminder import strip_system_reminders
             from suzent.session.transcript import TranscriptManager
 
             tm = TranscriptManager()
-            await tm.append_turn(chat_id, "user", user_content)
+            await tm.append_turn(chat_id, "user", strip_system_reminders(user_content))
 
             actions = []
-            for action in _extract_tool_calls(messages):
-                actions.append({"tool": action.tool, "args": action.args})
+            for action in _extract_tool_calls(
+                messages, exclude_ids=prior_tool_call_ids
+            ):
+                actions.append(
+                    {"tool": action.tool, "args": action.args, "output": action.output}
+                )
 
             await tm.append_turn(
                 chat_id, "assistant", agent_content, actions=actions or None
@@ -2368,8 +2382,26 @@ def _strip_attachment_annotations(text: str) -> str:
     return _REFERENCE_PATTERN.sub("", text).strip()
 
 
-def _extract_tool_calls(messages: list) -> List[AgentAction]:
-    """Extract AgentAction records from pydantic-ai message history."""
+def _answered_tool_call_ids(messages: list) -> frozenset[str]:
+    """IDs of the tool calls in ``messages`` that already have a result."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    return frozenset(
+        call.tool_call_id
+        for msg in messages
+        if isinstance(msg, ModelResponse)
+        for call in msg.parts
+        if isinstance(call, ToolCallPart)
+    ) - _collect_unprocessed_tool_call_ids(messages)
+
+
+def _extract_tool_calls(
+    messages: list, exclude_ids: frozenset[str] = frozenset()
+) -> List[AgentAction]:
+    """Extract AgentAction records from pydantic-ai message history.
+
+    Calls whose ID is in *exclude_ids* are skipped.
+    """
     from pydantic_ai.messages import (
         ModelResponse,
         ModelRequest,
@@ -2390,7 +2422,10 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
     for msg in messages:
         if isinstance(msg, ModelResponse):
             for part in msg.parts:
-                if isinstance(part, ToolCallPart):
+                if (
+                    isinstance(part, ToolCallPart)
+                    and part.tool_call_id not in exclude_ids
+                ):
                     output = returns.get(part.tool_call_id, "")
                     actions.append(
                         AgentAction(

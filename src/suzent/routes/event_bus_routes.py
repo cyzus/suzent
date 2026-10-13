@@ -26,6 +26,7 @@ import json
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
+from suzent.core.memory_tasks import memory_task_snapshot
 from suzent.core.stream_registry import (
     background_queues,
     register_bus_subscriber,
@@ -48,7 +49,7 @@ async def event_bus_stream(request: Request) -> StreamingResponse:
                 for chat_id, queue in background_queues.items()
                 if queue.producer_active
             ]
-            yield f"data: {json.dumps({'event': 'snapshot', 'streams': active})}\n\n"
+            yield f"data: {json.dumps({'event': 'snapshot', 'streams': active, 'memory_chats': memory_task_snapshot()})}\n\n"
 
             while True:
                 try:
@@ -56,7 +57,7 @@ async def event_bus_stream(request: Request) -> StreamingResponse:
                     if payload is None:
                         return
                     yield f"data: {json.dumps(payload)}\n\n"
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keep-alive\n\n"
         except asyncio.CancelledError:
             pass

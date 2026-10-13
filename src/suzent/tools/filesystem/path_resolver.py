@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from suzent.core.scratch import SCRATCH_DIRNAME
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -220,18 +221,31 @@ class PathResolver:
         """Create necessary directories if they don't exist."""
 
         try:
-            self.project_dir.mkdir(parents=True, exist_ok=True)
+            self.scratch_dir.mkdir(parents=True, exist_ok=True)
             (self.sandbox_data_path / "shared").mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.warning(f"Could not create directories: {e}")
 
-    def get_working_dir(self) -> Path:
-        """The agent's cwd: the authorized working directory, else the project directory.
+    @property
+    def scratch_dir(self) -> Path:
+        """The project's folder for throwaway files, kept out of the library."""
+        return self.project_dir / SCRATCH_DIRNAME
 
-        The project directory is shared across all chats in the project; a chat
-        that was pointed at a specific folder works there instead.
+    def get_base_dir(self) -> Path:
+        """The authorized working directory, else the project library root.
+
+        This is where plan.md lives and what counts as the workspace for
+        permission checks; the default cwd sits below it in scratch/.
         """
         return self.cwd or self.project_dir
+
+    def get_working_dir(self) -> Path:
+        """The agent's cwd: the authorized working directory, else the project's scratch/.
+
+        A chat pointed at a specific folder works there. Otherwise relative paths
+        land in scratch/, so throwaway files stay out of the project library.
+        """
+        return self.cwd or self.scratch_dir
 
     def resolve(self, virtual_path: str) -> Path:
         """
@@ -632,11 +646,11 @@ class PathResolver:
         search_roots = []
 
         if search_path is None and not pattern.startswith("/"):
-            # No root and a relative pattern means "search the working directory",
-            # which is what the glob/grep tools document. Resolving "/" here made
-            # every such search fail in host mode, because the filesystem root is
-            # outside every grant.
-            search_roots = [(None, self.get_working_dir())]
+            # No root and a relative pattern searches the chat's base directory:
+            # the working folder, or the whole project (library and scratch/).
+            # Resolving "/" here made every such search fail in host mode,
+            # because the filesystem root is outside every grant.
+            search_roots = [(None, self.get_base_dir())]
         elif search_path == "/" or (search_path is None and pattern.startswith("/")):
             # Search all virtual roots
             search_roots = self.get_virtual_roots()

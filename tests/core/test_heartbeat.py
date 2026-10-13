@@ -43,3 +43,41 @@ class TestHeartbeatInterval:
 
         assert status["active_sessions"][0]["is_running"] is True
         assert status["active_sessions"][0]["unread_count"] == 3
+
+
+class TestHeartbeatAnnounce:
+    """A heartbeat alert reaches the desktop app's notification queue."""
+
+    def _capture(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
+        calls: list[tuple] = []
+        scheduler = SimpleNamespace(
+            add_notification=lambda source, result, title=None: calls.append(
+                (source, result, title)
+            )
+        )
+        monkeypatch.setattr(
+            "suzent.core.scheduler.get_active_scheduler", lambda: scheduler
+        )
+        return calls
+
+    def test_alert_is_queued_under_chat_title(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = self._capture(monkeypatch)
+        db = SimpleNamespace(
+            get_chat=lambda chat_id: SimpleNamespace(title="Inbox watch")
+        )
+
+        HeartbeatRunner._announce("chat-1234567890", "3 new invoices", db)
+
+        assert calls == [("heartbeat", "3 new invoices", "Inbox watch")]
+
+    def test_untitled_chat_falls_back_to_short_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = self._capture(monkeypatch)
+        db = SimpleNamespace(get_chat=lambda chat_id: None)
+
+        HeartbeatRunner._announce("chat-1234567890", "alert", db)
+
+        assert calls == [("heartbeat", "alert", "chat-123")]

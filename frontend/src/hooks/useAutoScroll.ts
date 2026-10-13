@@ -153,7 +153,8 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
 
   const performAutoScroll = useCallback(
     (behavior: ScrollBehavior = 'auto', { force = false }: { force?: boolean } = {}) => {
-      if (!bottomRef.current) return;
+      const container = scrollContainerRef.current;
+      if (!container) return;
 
       // Never move the viewport under an in-progress or existing selection —
       // doing so makes the selection run away from the cursor. Autoscroll stays
@@ -167,7 +168,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
 
       // Set flag to ignore subsequent scroll events triggered by this action
       autoScrollInProgress.current = true;
-      bottomRef.current.scrollIntoView({ behavior });
+      container.scrollTo({ top: container.scrollHeight, behavior });
 
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
@@ -236,19 +237,35 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    let settleFrame = 0;
     const resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(settleFrame);
       if (autoScrollEnabledRef.current) {
         performAutoScroll('auto');
+        // Sidebar drags can reflow descendants after this resize notification.
+        settleFrame = requestAnimationFrame(() => {
+          if (autoScrollEnabledRef.current) performAutoScroll('auto');
+        });
       }
     });
+    const observeMessages = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(el);
+      for (const child of el.children) {
+        resizeObserver.observe(child);
+      }
+    };
+    observeMessages();
 
-    // Observe the single child or the element itself
-    resizeObserver.observe(el);
-    if (el.firstElementChild) {
-      resizeObserver.observe(el.firstElementChild);
-    }
+    // Messages are siblings; the last one can grow after streaming finishes.
+    const mutationObserver = new MutationObserver(observeMessages);
+    mutationObserver.observe(el, { childList: true });
 
-    return () => resizeObserver.disconnect();
+    return () => {
+      cancelAnimationFrame(settleFrame);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
   }, [performAutoScroll]);
 
   useEffect(() => {

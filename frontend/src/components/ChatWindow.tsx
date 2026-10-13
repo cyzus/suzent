@@ -2,6 +2,7 @@ import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
+import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
@@ -62,7 +63,7 @@ import {
   subscribeToBusPayloads,
   subscribeToStreamEvents,
 } from '../hooks/useEventBus';
-import { useStatusStore } from '../hooks/useStatusStore';
+import { useNativeNotification } from '../hooks/useNativeNotification';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
@@ -706,7 +707,7 @@ interface ChatWindowProps {
   onRightSidebarToggle?: (isOpen: boolean) => void;
   onRightSidebarWidthChange?: (width: number | null) => void;
   rightSidebarMaxWidthPx?: number;
-  rightSidebarCanvasMaxWidthPx?: number;
+  rightSidebarWideDefaultWidthPx?: number;
   viewportWidthPx?: number;
   rightSidebarForceFullView?: boolean;
 }
@@ -721,7 +722,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onRightSidebarToggle = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
-  rightSidebarCanvasMaxWidthPx,
+  rightSidebarWideDefaultWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
 }) => {
@@ -826,7 +827,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onCompleted: onSubAgentCompleted,
     onFailed: onSubAgentFailed,
   } = useSubAgentStatus();
-  const { setStatus: setStatusBar } = useStatusStore();
+  const notify = useNativeNotification();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
   // Set while a stop has been accepted by the backend and we are waiting for the
@@ -1243,7 +1244,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ...prev,
           [p.task_id]: { status: 'completed', resultSummary: p.result_summary },
         }));
-        setStatusBar(`Sub-agent completed — ${p.task_id}`, 'success', 5000);
       } else if (name === 'subagent_failed') {
         const p = value as SubAgentFailedPayload;
         onSubAgentFailed(p);
@@ -1251,7 +1251,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ...prev,
           [p.task_id]: { status: 'failed', error: p.error },
         }));
-        setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
       } else if (name === 'image_not_supported') {
         // Active model lacks vision; backend stripped the image(s) but kept them
         // on disk so analyze_image can still inspect them. Surface the warning
@@ -1418,6 +1417,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // minted a newer one, and retiring that would leave the turn now running
       // nameless.
       const runToken = mintRunToken(chatId);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(chatId);
       // A resume is a start like any other -- the approval dialog already put
       // the chat back into streaming, so Stop is live over this request too.
       const resumeAbort = new AbortController();
@@ -1434,15 +1435,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       } catch (err) {
         // The turn never started; the name minted for it must not outlive it.
+        forgetReply(chatId);
         retireRunToken(runToken);
         throw err;
       }
 
       if (!resp.ok) {
+        forgetReply(chatId);
         retireRunToken(runToken);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
-        setStatusBar(msg, 'error', 4000);
+        notify(msg);
         throw new Error(msg);
       }
       // 202: the previous (suspended) stream has ended, but its onFinish pending-
@@ -1455,14 +1458,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Connect immediately rather than waiting for stream_started from the bus.
       tryConnectRef.current?.();
     },
-    [
-      currentChatId,
-      getStreamingParts,
-      mintRunToken,
-      retireRunToken,
-      setStatusBar,
-      trackPendingStart,
-    ]
+    [currentChatId, getStreamingParts, mintRunToken, retireRunToken, notify, trackPendingStart]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -1482,7 +1478,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       opts?: { seedParts?: AGUIPart[]; restoreInput?: string; runToken?: string }
     ): boolean => {
       const plan = planSendFailureRecovery(status, action);
-      setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
+      notify(t(plan.messageKey, plan.messageParams));
 
       // The turn this client named was never accepted -- a 409 means another
       // one is already running. Drop the name now: the reattach below is a
@@ -1503,6 +1499,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       retireStopAttempt();
 
       if (!plan.reattach) {
+        forgetReply(chatId);
         setIsStreaming(false, chatId);
         return false;
       }
@@ -1535,7 +1532,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, setStatusBar, t]
+    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, notify, t]
   );
 
   const { handleToolApproval } = useToolApproval({
@@ -1782,10 +1779,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         console.error('Failed to update cron model override:', error);
         setCronModelSelection({ jobId: cronJobId!, model: previousModel });
         setConfig((prev) => ({ ...prev, model: previousModel }));
-        setStatusBar(t('chatInput.modelUpdateError'), 'error', 4000);
+        notify(t('chatInput.modelUpdateError'));
       });
     },
-    [_isCronChat, cronJobId, safeConfig.model, setConfig, setStatusBar, t]
+    [_isCronChat, cronJobId, safeConfig.model, setConfig, notify, t]
   );
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
@@ -2011,7 +2008,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     !!currentChatId && safeMessages.length === 0 && (currentChatSummary?.messageCount ?? 0) > 0;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.
-  useEventBus();
+  const { memoryChats } = useEventBus();
 
   useEffect(() => {
     if (!currentChatId) return;
@@ -2350,6 +2347,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       const steerChatId = currentChatId;
       const steerRunToken = mintRunToken(steerChatId);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(steerChatId);
       const steerAbort = new AbortController();
       trackPendingStart(
         fetch(`${getApiBase()}/chat/steer-send`, {
@@ -2376,6 +2375,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           })
           .catch((err) => {
             if (!isAbortError(err)) console.error('[send] /chat/steer-send failed:', err);
+            forgetReply(steerChatId);
             retireRunToken(steerRunToken);
             setIsStreaming(false, steerChatId);
           })
@@ -2412,7 +2412,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // this check — the backend will return 409 if it's truly still busy, which gives
     // a cleaner error than blocking here during the brief cancel-propagation window.
     if (isBusStreaming(chatIdForSend) && isStreaming && activeStreamingChatId === chatIdForSend) {
-      setStatusBar('This chat is still responding — wait or use the redirect button', 'info', 4000);
       return;
     }
 
@@ -2476,6 +2475,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
     const sendRunToken = mintRunToken(chatIdForSend);
+    // Before the POST: a fast turn can end before its 202 arrives.
+    watchForReply(chatIdForSend);
     payload.client_run_token = sendRunToken;
 
     // Fire /chat/send — backend registers the background stream and returns 202.
@@ -2512,6 +2513,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           // Left installed, the next probe on this chat inherits it and a stop
           // goes out under a dead name -- answered 409, which reads as "already
           // stopped" while the turn that is running carries on.
+          forgetReply(chatIdForSend);
           retireRunToken(sendRunToken);
           setIsStreaming(false, chatIdForSend);
           clearPartsIfStillViewingSendChat();
@@ -2577,6 +2579,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     retireStopAttempt();
 
     const retryRunToken = mintRunToken(chatIdForRetry);
+    // Before the POST: a fast turn can end before its 202 arrives.
+    watchForReply(chatIdForRetry);
     const retryAbort = new AbortController();
     trackPendingStart(
       fetch(`${getApiBase()}/chat/send`, {
@@ -2601,6 +2605,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .catch((err) => {
           if (!isAbortError(err)) console.error('[handleRetry] /chat/send failed:', err);
+          forgetReply(chatIdForRetry);
           retireRunToken(retryRunToken);
           setIsStreaming(false, chatIdForRetry);
         }),
@@ -2671,6 +2676,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       retireStopAttempt();
 
       const editRunToken = mintRunToken(chatIdForEdit);
+      // Before the POST: a fast turn can end before its 202 arrives.
+      watchForReply(chatIdForEdit);
       const editAbort = new AbortController();
       trackPendingStart(
         fetch(`${getApiBase()}/chat/send`, {
@@ -2697,6 +2704,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           .catch((err) => {
             if (!isAbortError(err))
               console.error('[handleEditUserMessage] /chat/send failed:', err);
+            forgetReply(chatIdForEdit);
             retireRunToken(editRunToken);
             setIsStreaming(false, chatIdForEdit);
           }),
@@ -3025,7 +3033,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               className={
                 safeMessages.length === 0
                   ? 'h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900'
-                  : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
+                  : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
               }
             >
               {isProbablyLoadingChatMessages ? (
@@ -3152,6 +3160,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               {hasPendingTransientApprovals && (
                 <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
               )}
+              {currentChatId && memoryChats.has(currentChatId) && (
+                <div role="status" className="px-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  {t('backgroundTasks.memoryProcessing')}
+                </div>
+              )}
               <ChatInputPanel
                 input={input}
                 setInput={setInput}
@@ -3195,7 +3208,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           onOpen={() => onRightSidebarToggle(true)}
           onWidthChange={onRightSidebarWidthChange}
           maxWidthPx={rightSidebarMaxWidthPx}
-          canvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
+          wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
           viewportWidthPx={viewportWidthPx}
           forceFullView={rightSidebarForceFullView}
           goal={goal}

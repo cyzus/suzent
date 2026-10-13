@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 6
 title: Browser
 description: Let the agent browse in its own browser, or in your Chrome or Edge with your logins through the Suzent extension.
 ---

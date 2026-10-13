@@ -55,7 +55,9 @@ class SkillManager:
         self.uses_default_sources = skills_dir is None
         self.skills_dirs: list[Path]
         preferred_virtual_roots: dict[Path, str] = {}
+        default_enabled_roots: set[Path] = set()
         if skills_dir is None:
+            default_enabled_roots.add(OFFICIAL_SKILLS_DIR)
             sync_managed_skills_dirs()
             external_sources = get_external_skill_sources()
             external_dirs = [source for source, _ in external_sources]
@@ -92,7 +94,6 @@ class SkillManager:
             source_roots = {}
             source_ids = {}
 
-        default_enabled_roots: set[Path] = set()
         for discovered in discovered_roots or []:
             root = Path(discovered.path)
             if root.resolve() in {path.resolve() for path in self.skills_dirs}:

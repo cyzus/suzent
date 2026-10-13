@@ -178,7 +178,7 @@ GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，�
 | [模型与提供商](docs/04-models/README.md) | OpenAI、Anthropic、Gemini、Ollama 等，以及模型角色 |
 | [记忆](docs/03-features/memory/README.md) | 智能体记住了什么、存在哪里、如何修改 |
 | [笔记本](docs/03-features/memory/llm-wiki.md) | 由智能体维护、兼容 Obsidian 的知识库 |
-| [工具](docs/03-features/tools/tools.md) | 智能体能做的所有事，以及如何开关 |
+| [工具](docs/03-features/tools/README.md) | 智能体能做的所有事，以及如何开关 |
 | [权限与审批](docs/03-features/tools/human-in-the-loop.md) | Suzent 如何在行动前征求同意 |
 | [技能](docs/03-features/skills.md) | 安装、编写和管理可移植的 `SKILL.md` 技能包 |
 | [工作区与沙盒](docs/03-features/filesystem.md) | 文件夹、Docker 沙盒，以及撤销一轮对话 |

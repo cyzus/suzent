@@ -6,7 +6,7 @@ title: Tool system
 # Tool system
 
 This page is for contributors. For what tools do from a user's point of view, see
-[Tools](../../03-features/tools/tools.md).
+[Tools](../../03-features/tools/README.md).
 
 Tools extend the agent's capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a function owned by a named capability in the centralized registry.
 

@@ -2391,3 +2391,37 @@ async def test_a_reminder_without_deps_still_truncates(clean_hooks):
     body = _reminder_body(result)
     assert len(body) <= sr.REMINDER_BUDGET_CHARS
     assert "truncated" in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["Please review", "x" * 7000, None])
+async def test_stateless_turn_keeps_explicit_reminders_without_ambient_hooks(
+    clean_hooks, content
+):
+    from types import SimpleNamespace
+
+    from suzent.core import system_reminder as sr
+
+    async def unexpected_hook(*args):
+        pytest.fail("stateless turns must not invoke ambient reminder providers")
+
+    sr.register_global_hook(unexpected_hook)
+    sr.register_per_turn_hook(unexpected_hook)
+    constituents = [content] if content else []
+    result = await sr.build_combined_reminder(
+        "subagent",
+        SimpleNamespace(stateless=True),
+        adhoc_reminders=constituents,
+        user_message="Follow-up",
+        display_trigger=constituents,
+    )
+
+    if content is None:
+        assert result is None
+    else:
+        assert result is not None
+        trigger = sr.extract_system_reminder_display_trigger(result)
+        assert content[:100] in trigger
+        assert len(_reminder_body(result)) <= sr.REMINDER_BUDGET_CHARS
+        if len(content) > sr.REMINDER_BUDGET_CHARS:
+            assert "truncated" in trigger

@@ -8,7 +8,14 @@ import json
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    ValidationError,
+    model_validator,
+)
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -16,6 +23,7 @@ from starlette.routing import Route
 
 from suzent.auth_boundary import extract_token
 from suzent.database import get_database
+from suzent.mobile.attachments import attachment_registry
 from suzent.mobile.pairing import ClientGrant, PairingStore
 from suzent.routes.mobile_routes import get_mobile_store, reply
 
@@ -31,10 +39,23 @@ class ChatRequest(BaseModel):
     chat_id: str = Field(min_length=1, max_length=200, pattern=r"^[^/]+$")
 
 
+MAX_ATTACHMENTS_PER_MESSAGE = 10
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+
+
 class SendRequest(ChatRequest):
-    message: str = Field(min_length=1, max_length=100000)
+    message: str = Field(default="", max_length=100000)
     model: str | None = Field(default=None, min_length=1, max_length=300)
     client_message_id: str | None = Field(default=None, min_length=1, max_length=100)
+    attachments: list[Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]] = Field(
+        default_factory=list, max_length=MAX_ATTACHMENTS_PER_MESSAGE
+    )
+
+    @model_validator(mode="after")
+    def has_content(self) -> SendRequest:
+        if not self.message.strip() and not self.attachments:
+            raise ValueError("A message or an attachment is required")
+        return self
 
 
 class ManageRequest(ChatRequest):
@@ -91,6 +112,8 @@ async def session(request: Request) -> JSONResponse:
             "device": authorize(request).model_dump(),
             "client_protocol": 1,
             "stream_protocols": [1],
+            "attachments": 1,
+            "scheduled_tasks": 1,
         }
     )
 
@@ -104,6 +127,7 @@ async def chats(request: Request) -> JSONResponse:
     )
     projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
     pinned = db.get_pinned_chat_ids([chat_id for chat_id, _ in records])
+    navigation = db.get_chat_navigation([chat_id for chat_id, _ in records])
     from suzent.core.stream_registry import is_background_streaming
 
     return reply(
@@ -116,6 +140,15 @@ async def chats(request: Request) -> JSONResponse:
                     "isRunning": is_background_streaming(chat_id),
                     "projectId": projects_by_chat.get(chat_id, (None, None))[0],
                     "projectName": projects_by_chat.get(chat_id, (None, None))[1],
+                    "platform": navigation.get(chat_id, {}).get("platform"),
+                    "parentChatId": (
+                        parent_id
+                        if (
+                            parent_id := navigation.get(chat_id, {}).get("parentChatId")
+                        )
+                        and grant.permissions.permits_chat(parent_id)
+                        else None
+                    ),
                 }
                 for chat_id, title in records
             ]
@@ -125,7 +158,7 @@ async def chats(request: Request) -> JSONResponse:
 
 async def chat(request: Request) -> JSONResponse:
     chat_id = request.path_params["chat_id"]
-    authorize(request, chat_id)
+    grant = authorize(request, chat_id)
     from suzent.routes.chat_routes import get_chat
 
     response = await get_chat(request, include_runtime=False)
@@ -152,6 +185,13 @@ async def chat(request: Request) -> JSONResponse:
             "projectId": metadata[0],
             "projectName": metadata[1],
             "pinned": chat_id in get_database().get_pinned_chat_ids([chat_id]),
+            "platform": config.get("platform"),
+            "parentChatId": (
+                parent_id
+                if (parent_id := config.get("parent_chat_id"))
+                and grant.permissions.permits_chat(parent_id)
+                else None
+            ),
             "model": (
                 config.get("model")
                 or config.get("subagent_model")
@@ -162,6 +202,37 @@ async def chat(request: Request) -> JSONResponse:
             "models": get_enabled_models_from_db() if native else [],
         }
     )
+
+
+async def scheduled_tasks(request: Request) -> JSONResponse:
+    grant = authorize(request)
+    db = get_database()
+    from suzent.core.stream_registry import is_background_streaming
+    from suzent.routes.cron_routes import _task_chat_id
+
+    tasks: list[dict[str, object]] = []
+    for job in db.list_cron_jobs():
+        chat_id = _task_chat_id(job)
+        if not grant.permissions.permits_chat(chat_id):
+            continue
+        stored_chat = db.get_chat(chat_id)
+        tasks.append(
+            {
+                "id": str(job.id),
+                "name": job.name,
+                "chatId": chat_id if stored_chat else None,
+                "active": job.active,
+                "isRunning": is_background_streaming(chat_id),
+                "nextRunAt": job.next_run_at.astimezone().isoformat()
+                if job.next_run_at
+                else None,
+                "lastRunAt": job.last_run_at.astimezone().isoformat()
+                if job.last_run_at
+                else None,
+                "hasError": bool(job.last_error),
+            }
+        )
+    return reply({"tasks": tasks})
 
 
 def allowed_projects(grant: ClientGrant) -> list[dict[str, str]]:
@@ -221,9 +292,48 @@ async def create(request: Request) -> JSONResponse:
     )
 
 
+async def upload(request: Request) -> JSONResponse:
+    chat_id = request.query_params.get("chat_id", "")
+    if not chat_id or "/" in chat_id or len(chat_id) > 200:
+        raise HTTPException(400, "Invalid mobile request")
+    grant = authorize(request, chat_id, "send")
+    try:
+        declared = int(request.headers.get("content-length", ""))
+    except ValueError:
+        raise HTTPException(411, "Uploads must declare their length") from None
+    if declared > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Attachments are too large")
+    if get_database().get_chat(chat_id) is None:
+        raise HTTPException(404, "Conversation unavailable")
+    from starlette.datastructures import UploadFile
+
+    from suzent.routes.sandbox_routes import save_uploads
+
+    async with request.form(
+        max_files=MAX_ATTACHMENTS_PER_MESSAGE, max_fields=1
+    ) as form:
+        files = [item for item in form.getlist("files") if isinstance(item, UploadFile)]
+        if not files:
+            raise HTTPException(400, "No attachments provided")
+        saved = await save_uploads(chat_id, files)
+    return reply(
+        {
+            "attachments": [
+                {
+                    "id": attachment_registry.issue(grant.device_id, chat_id, meta),
+                    "filename": meta["filename"],
+                    "mime_type": meta["mime_type"],
+                    "size": meta["size"],
+                }
+                for meta in saved
+            ]
+        }
+    )
+
+
 async def send(request: Request) -> JSONResponse:
     body = await parse(request, SendRequest)
-    authorize(request, body.chat_id, "send")
+    grant = authorize(request, body.chat_id, "send")
     if body.message.lstrip().startswith("/"):
         raise HTTPException(403, "Desktop commands are not available to mobile clients")
     from suzent.routes.chat_routes import chat_send
@@ -235,7 +345,14 @@ async def send(request: Request) -> JSONResponse:
         raise HTTPException(404, "Conversation unavailable")
     config = dict(chat.config or {})
     native = str(config.get("runtime", "native")).lower() != "acp"
-    payload = body.model_dump(exclude={"model"}, exclude_none=True)
+    payload = body.model_dump(exclude={"model", "attachments"}, exclude_none=True)
+    if body.attachments:
+        files = attachment_registry.resolve(
+            grant.device_id, body.chat_id, body.attachments
+        )
+        if files is None:
+            raise HTTPException(400, "Attachment expired; attach it again")
+        payload["files"] = files
     if body.model is not None:
         if not native or body.model not in get_enabled_models_from_db():
             raise HTTPException(400, "Model unavailable for this conversation")
@@ -495,12 +612,14 @@ client_routes = [
     Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
     Route("/mobile/client/composer", composer, methods=["GET"]),
     Route("/mobile/client/projects", projects, methods=["GET"]),
+    Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),
     Route("/mobile/client/chats", chats, methods=["GET"]),
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
+    Route("/mobile/client/upload", upload, methods=["POST"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),
     Route("/mobile/client/stop", stop, methods=["POST"]),

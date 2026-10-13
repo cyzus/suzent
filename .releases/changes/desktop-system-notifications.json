@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background."
+}

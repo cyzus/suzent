@@ -23,10 +23,11 @@ import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
-import { useStatusStore } from './hooks/useStatusStore';
+import { useNativeNotification } from './hooks/useNativeNotification';
 import {
   BackendVersionTimeoutError,
   drainCronNotifications,
+  type CronNotification,
   fetchHeartbeatStatus,
   fetchSystemVersion,
   getApiBase,
@@ -37,14 +38,24 @@ import {
   startDesktopUpdateAndRestart,
   type UpdateStatus,
 } from './lib/desktopUpdates';
-import { isBusStreaming } from './hooks/useEventBus';
+import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
+import {
+  notifyDesktop,
+  recordReplyChunk,
+  takeReplyOutcome,
+  type ReplyOutcome,
+} from './lib/desktopNotifications';
+import { isDesktop } from './lib/runtime';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
   LEFT_SIDEBAR_WIDTH_PX,
-  MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  MIN_LEFT_SIDEBAR_WIDTH_PX,
+  MIN_RIGHT_SIDEBAR_WIDTH_PX,
+  MAX_LEFT_SIDEBAR_WIDTH_PX,
+  SQUEEZED_MIN_CHAT_WIDTH_PX,
   getCanvasSidebarWidth,
-  clampRightSidebarWidth,
+  getRightSidebarMaxWidth,
   shouldCollapseLeftSidebarOnRightOpen,
   shouldUseFullWidthRightSidebar,
 } from './lib/layout';
@@ -262,7 +273,7 @@ function NavTabs({
 
 function UpdateButton(): React.ReactElement | null {
   const { t } = useI18n();
-  const setStatusMsg = useStatusStore((s) => s.setStatus);
+  const notify = useNativeNotification();
   const [updateStatus, setUpdateStatus] = React.useState<UpdateStatus | null>(null);
   const [isStartingUpdate, setIsStartingUpdate] = React.useState(false);
 
@@ -298,7 +309,7 @@ function UpdateButton(): React.ReactElement | null {
     } catch (error) {
       setIsStartingUpdate(false);
       const message = error instanceof Error ? error.message : String(error);
-      setStatusMsg(t('updates.startFailed', { error: message }), 'error', 6000);
+      notify(t('updates.startFailed', { error: message }));
     }
   }
 
@@ -351,6 +362,7 @@ function AppInner(): React.ReactElement {
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
 
@@ -359,18 +371,34 @@ function AppInner(): React.ReactElement {
   // not a state change: we remember that *we* closed it (not the user) and
   // re-open it the moment there's room again.
   const leftCollapsedByLayoutRef = React.useRef(false);
-  const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(viewportWidth);
-  const leftSidebarReservedWidthPx = isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0;
-
-  const rightSidebarMaxWidthPx = clampRightSidebarWidth(
-    MAX_RIGHT_SIDEBAR_WIDTH_PX,
-    viewportWidth,
-    leftSidebarReservedWidthPx
+  const leftSidebarMaxWidth = Math.max(
+    MIN_LEFT_SIDEBAR_WIDTH_PX,
+    Math.min(
+      MAX_LEFT_SIDEBAR_WIDTH_PX,
+      viewportWidth -
+        SQUEEZED_MIN_CHAT_WIDTH_PX -
+        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 44)
+    )
   );
-  // Canvas scales with the viewport (ratio-based) and may squeeze the chat more
-  // than other tabs — see getCanvasSidebarWidth. This is both its default width
-  // and its drag ceiling.
-  const rightSidebarCanvasMaxWidthPx = getCanvasSidebarWidth(
+  const leftSidebarWidth = Math.max(
+    MIN_LEFT_SIDEBAR_WIDTH_PX,
+    Math.min(
+      preferredLeftWidth,
+      MAX_LEFT_SIDEBAR_WIDTH_PX,
+      viewportWidth -
+        SQUEEZED_MIN_CHAT_WIDTH_PX -
+        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 44)
+    )
+  );
+  const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(
+    viewportWidth,
+    leftSidebarWidth
+  );
+  const leftSidebarReservedWidthPx = isLeftSidebarOpen ? leftSidebarWidth : 0;
+
+  const rightSidebarMaxWidthPx = getRightSidebarMaxWidth(viewportWidth, leftSidebarReservedWidthPx);
+  // Wide content has its own starting width, but shares the manual resize limit.
+  const rightSidebarWideDefaultWidthPx = getCanvasSidebarWidth(
     viewportWidth,
     leftSidebarReservedWidthPx
   );
@@ -388,7 +416,6 @@ function AppInner(): React.ReactElement {
     chats,
     loadChat,
   } = useChatCoreStore();
-  const setStatusMsg = useStatusStore((s) => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
   const { t } = useI18n();
@@ -433,16 +460,75 @@ function AppInner(): React.ReactElement {
     setChatHeartbeatStatusRef.current = setChatHeartbeatStatus;
   }, [setChatHeartbeatStatus]);
 
+  const tRef = React.useRef(t);
+  React.useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
+  // Announce the outcome of a reply the user asked for.
+  React.useEffect(
+    () =>
+      subscribeToBusPayloads((msg) => {
+        if (typeof msg?.chat_id !== 'string') return;
+        if (msg.event === 'chat_title_updated') {
+          void refreshChatListSilentRef.current();
+          return;
+        }
+        if (msg.event === 'chunk' && typeof msg.data === 'string') {
+          recordReplyChunk(msg.chat_id, msg.data);
+          return;
+        }
+        if (msg.event !== 'stream_ended') return;
+        const reply = takeReplyOutcome(msg.chat_id);
+        if (!reply || reply.outcome === 'stopped') return;
+        const { outcome, preview } = reply;
+        const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
+          ready: 'backgroundNotifications.replyReady',
+          approval: 'backgroundNotifications.replyNeedsApproval',
+          failed: 'backgroundNotifications.replyFailed',
+        };
+        const chat = chatsRef.current.find((c) => c.id === msg.chat_id);
+        void notifyDesktop(
+          tRef.current('backgroundNotifications.title', {
+            name: chat?.title || tRef.current('backgroundNotifications.untitledChat'),
+          }),
+          outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
+        );
+      }),
+    []
+  );
+
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
+    const announceBackgroundNotifications = (notifications: CronNotification[]): void => {
+      const tr = tRef.current;
+      if (notifications.length === 1) {
+        const [only] = notifications;
+        void notifyDesktop(
+          tr('backgroundNotifications.title', { name: only.job_name }),
+          only.result
+        );
+      } else if (notifications.length > 1) {
+        const summary = tr('backgroundNotifications.manyUpdates', {
+          count: String(notifications.length),
+        });
+        void notifyDesktop(tr('app.title'), summary);
+      }
+    };
+
     const interval = setInterval(async () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      // Draining marks results delivered. A minimized desktop window can still
+      // show them as system notifications; a hidden browser tab cannot, so it
+      // leaves them queued until the user comes back.
+      if (!hidden || isDesktop()) {
+        announceBackgroundNotifications(await drainCronNotifications());
+      }
+      if (hidden) {
         return;
       }
-      // Heartbeat status runs in parallel with notification drain.
       const chatId = currentChatIdRef.current;
-      const [notifications] = await Promise.all([
-        drainCronNotifications(),
+      await Promise.all([
         fetchHeartbeatStatus()
           .then(setHeartbeatStatus)
           .catch(() => {}),
@@ -452,12 +538,6 @@ function AppInner(): React.ReactElement {
               .catch(() => {})
           : Promise.resolve(),
       ]);
-      if (notifications.length === 1) {
-        setStatusMsg(`[${notifications[0].job_name}] finished — view in Social`, 'info', 4000);
-      } else if (notifications.length > 1) {
-        setStatusMsg(`${notifications.length} tasks finished — view in Social`, 'info', 4000);
-      }
-
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
       const openChat = chatsRef.current.find((c) => c.id === chatId);
@@ -473,7 +553,7 @@ function AppInner(): React.ReactElement {
       }
     }, 8000);
     return () => clearInterval(interval);
-  }, [setStatusMsg, setHeartbeatStatus]); // stable Zustand actions
+  }, [setHeartbeatStatus]); // stable Zustand actions
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
@@ -489,7 +569,7 @@ function AppInner(): React.ReactElement {
       return;
     }
 
-    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth)) {
+    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth, leftSidebarWidth)) {
       if (isLeftSidebarOpen) {
         leftCollapsedByLayoutRef.current = true;
       }
@@ -616,6 +696,10 @@ function AppInner(): React.ReactElement {
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
+          width={leftSidebarWidth}
+          maxWidth={leftSidebarMaxWidth}
+          isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
+          onWidthChange={setPreferredLeftWidth}
           chatsContent={<ChatList onOpenAutomation={() => openSettings('automation')} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}
@@ -773,7 +857,7 @@ function AppInner(): React.ReactElement {
                 onRightSidebarToggle={handleRightSidebarToggle}
                 onRightSidebarWidthChange={setRightSidebarWidth}
                 rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
-                rightSidebarCanvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
+                rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                 viewportWidthPx={viewportWidth}
                 rightSidebarForceFullView={rightSidebarForceFullView}
               />

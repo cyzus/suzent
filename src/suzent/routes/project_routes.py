@@ -97,8 +97,13 @@ async def list_projects(request: Request) -> JSONResponse:
             request.query_params.get("include_archived", "").lower() == "true"
         )
         projects = db.list_projects(include_archived=include_archived)
+        unread_counts = db.get_project_unread_counts()
         payload = [
-            _project_to_dict(p, db.count_chats_in_project(p.id)) for p in projects
+            {
+                **_project_to_dict(p, db.count_chats_in_project(p.id)),
+                "unreadChatCounts": unread_counts.get(p.id, {}),
+            }
+            for p in projects
         ]
         return JSONResponse(payload)
     except Exception as e:

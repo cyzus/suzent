@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.mobile.attachments import AttachmentRegistry
 from suzent.mobile.client_api import client_routes, revocable_stream
 from suzent.mobile.pairing import ClientPermissions, PairingStore
 from suzent.routes.mobile_routes import mobile_routes
@@ -44,6 +45,15 @@ def setup_client(tmp_path, monkeypatch):
         merge_chat_config=merge_chat_config,
         has_client_message=lambda chat_id, message_id: False,
         get_pinned_chat_ids=lambda ids: set(),
+        get_chat_navigation=lambda ids: {
+            key: {
+                "platform": records[key].config.get("platform"),
+                "parentChatId": records[key].config.get("parent_chat_id"),
+            }
+            for key in ids
+            if key in records
+        },
+        list_cron_jobs=lambda: [],
         get_subagent_chat_ids_for_parent_chat=lambda chat_id: [],
         update_chat=update_chat,
         get_chat=records.get,
@@ -84,6 +94,8 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
             "isRunning": False,
             "projectId": "p-shared",
             "projectName": "Shared",
+            "platform": None,
+            "parentChatId": None,
         }
     ]
     assert client.get("/mobile/client/chats/private").status_code == 403
@@ -371,6 +383,8 @@ def test_transcript_excludes_backend_configuration(setup_client, monkeypatch):
         "messages",
         "projectId",
         "projectName",
+        "platform",
+        "parentChatId",
         "model",
         "models",
     }
@@ -427,7 +441,10 @@ def test_transcript_reports_current_run_without_loading_runtime(
     )
     monkeypatch.setattr(
         "suzent.routes.chat_routes.get_database",
-        lambda: SimpleNamespace(get_chat=lambda _: record),
+        lambda: SimpleNamespace(
+            get_chat=lambda _: record,
+            get_chat_project_id=lambda _: "p-shared",
+        ),
     )
     monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: None)
     for running in (True, False):
@@ -444,6 +461,8 @@ def test_transcript_reports_current_run_without_loading_runtime(
             "pinned": False,
             "projectId": "p-shared",
             "projectName": "Shared",
+            "platform": None,
+            "parentChatId": None,
             "model": "test/other" if runtime == "native" else None,
             "models": ["test/model", "test/other"] if runtime == "native" else [],
         }
@@ -1051,3 +1070,237 @@ def test_mobile_replay_rejects_hidden_state_changes(
         },
     )
     assert response.status_code == 409
+
+
+def test_attachments_are_sent_by_issued_id_only(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared", "private"], send=True)
+    other = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    monkeypatch.setattr(
+        "suzent.mobile.client_api.attachment_registry", AttachmentRegistry()
+    )
+    saved = []
+
+    async def save_uploads(chat_id, files):
+        names = [file.filename for file in files]
+        saved.append((chat_id, names))
+        return [
+            {
+                "id": "meta",
+                "filename": name,
+                "path": f"/workspace/uploads/{name}",
+                "size": 3,
+                "mime_type": "image/jpeg",
+                "uploaded_at": "now",
+            }
+            for name in names
+        ]
+
+    monkeypatch.setattr("suzent.routes.sandbox_routes.save_uploads", save_uploads)
+    calls = []
+
+    async def send(request):
+        calls.append(await request.json())
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    assert client.get("/mobile/client/session").json()["attachments"] == 1
+
+    photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
+    response = client.post("/mobile/client/upload?chat_id=shared", files=photo)
+    assert response.status_code == 200
+    attachment = response.json()["attachments"][0]
+    assert attachment["filename"] == "photo.jpg"
+    assert "path" not in attachment
+    assert saved == [("shared", ["photo.jpg"])]
+
+    body = {"chat_id": "shared", "attachments": [attachment["id"]]}
+    assert client.post("/mobile/client/send", json=body).status_code == 202
+    assert calls[-1]["files"][0]["path"] == "/workspace/uploads/photo.jpg"
+    assert calls[-1]["message"] == ""
+
+    assert (
+        client.post(
+            "/mobile/client/send", json={**body, "chat_id": "private"}
+        ).status_code
+        == 400
+    )
+    client.headers["Authorization"] = f"Bearer {other['token']}"
+    assert client.post("/mobile/client/send", json=body).status_code == 400
+    assert (
+        client.post(
+            "/mobile/client/send", json={**body, "attachments": ["0" * 32]}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/mobile/client/send", json={"chat_id": "shared", "message": " "}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post("/mobile/client/upload?chat_id=private", files=photo).status_code
+        == 403
+    )
+    assert len(calls) == 1
+
+
+def test_upload_requires_send_permission_and_bounded_size(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
+    assert (
+        client.post("/mobile/client/upload?chat_id=shared", files=photo).status_code
+        == 403
+    )
+    sender = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {sender['token']}"
+    monkeypatch.setattr("suzent.mobile.client_api.MAX_UPLOAD_BYTES", 10)
+    assert (
+        client.post(
+            "/mobile/client/upload?chat_id=shared",
+            files={"files": ("big.bin", b"x" * 100, "application/octet-stream")},
+        ).status_code
+        == 413
+    )
+    assert client.post("/mobile/client/upload?chat_id=shared").status_code in (
+        400,
+        411,
+        413,
+    )
+
+
+def test_attachment_registry_expires_entries(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr("suzent.mobile.attachments.time.monotonic", lambda: now[0])
+    registry = AttachmentRegistry(ttl=10)
+    first = registry.issue("device", "chat", {"filename": "a"})
+    assert registry.resolve("device", "chat", [first]) == [{"filename": "a"}]
+    assert registry.resolve("device", "other", [first]) is None
+    now[0] = 111.0
+    assert registry.resolve("device", "chat", [first]) is None
+
+
+def test_operator_can_replace_permissions_without_repairing(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    url = f"/mobile/devices/{result['device']['device_id']}/permissions"
+    permissions = ClientPermissions(chat_ids=["shared"], manage_chats=True).model_dump()
+    assert client.post(url, json={"permissions": permissions}).status_code == 401
+    with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
+        response = desktop.post(url, json={"permissions": permissions})
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert (
+            desktop.post(
+                "/mobile/devices/missing/permissions", json={"permissions": permissions}
+            ).status_code
+            == 404
+        )
+    assert store.verify(result["token"]).permissions.model_dump() == permissions
+    assert [
+        chat["id"] for chat in client.get("/mobile/client/chats").json()["chats"]
+    ] == ["shared"]
+    assert (
+        client.post(
+            "/mobile/client/send", json={"chat_id": "shared", "message": "hello"}
+        ).status_code
+        == 403
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"permissions": None},
+        {"permissions": {"send": "true"}},
+        {"permissions": {"unknown": True}},
+        {"permissions": {"chat_ids": [1]}},
+        {"permissions": {}, "extra": True},
+    ],
+)
+def test_permission_update_rejects_invalid_body(
+    setup_client: tuple[TestClient, PairingStore], body: dict[str, object]
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True)
+    url = f"/mobile/devices/{result['device']['device_id']}/permissions"
+    with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
+        assert desktop.post(url, json=body).status_code == 400
+    assert store.verify(result["token"]).permissions.all_chats
+
+
+def test_navigation_redacts_unshared_parent(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    db.get_chat("shared").config = {"platform": "subagent", "parent_chat_id": "private"}
+    for permissions, expected in [
+        ({"chat_ids": ["shared"]}, None),
+        ({"all_chats": True}, "private"),
+    ]:
+        result = grant(store, **permissions)
+        client.headers["Authorization"] = f"Bearer {result['token']}"
+        rows = client.get("/mobile/client/chats").json()["chats"]
+        row = next(row for row in rows if row["id"] == "shared")
+        assert row["platform"] == "subagent"
+        assert row["parentChatId"] == expected
+
+
+def test_scheduled_tasks_are_scoped_and_safe(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+    from datetime import datetime
+
+    db = get_database()
+
+    def job(id: int, mode: str, chat_id: str | None) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=id,
+            name=f"Task {id}",
+            context_mode=mode,
+            chat_id=chat_id,
+            active=True,
+            next_run_at=datetime(2026, 10, 7, 12, 30),
+            last_run_at=None,
+            last_error="private error",
+            prompt="private prompt",
+        )
+
+    db.list_cron_jobs = lambda: [
+        job(1, "bound", "shared"),
+        job(2, "bound", "private"),
+        job(3, "isolated", None),
+    ]
+    for permissions, expected in [
+        ({"chat_ids": ["shared"]}, ["1"]),
+        ({"all_chats": True}, ["1", "2", "3"]),
+        ({}, []),
+    ]:
+        result = grant(store, **permissions)
+        client.headers["Authorization"] = f"Bearer {result['token']}"
+        response = client.get("/mobile/client/scheduled-tasks")
+        assert response.status_code == 200
+        tasks = response.json()["tasks"]
+        assert [task["id"] for task in tasks] == expected
+        assert all("prompt" not in task and "lastError" not in task for task in tasks)
+        if tasks:
+            assert tasks[0]["chatId"] == "shared"
+            assert tasks[0]["hasError"] is True
+            assert datetime.fromisoformat(tasks[0]["nextRunAt"]).utcoffset() is not None
+        if len(tasks) == 3:
+            assert tasks[-1]["chatId"] is None
+    store.revoke(result["device"]["device_id"])
+    assert client.get("/mobile/client/scheduled-tasks").status_code == 401

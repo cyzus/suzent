@@ -786,9 +786,9 @@ class ContextCompressor:
 
         # Pre-compaction memory flush
         if background_flush:
-            self._schedule_pre_compaction_flush(messages_to_compress)
+            self._schedule_memory_flush()
         else:
-            await self._pre_compaction_flush(messages_to_compress)
+            await self._flush_pending_memories()
 
         # Adaptive chunk size
         budget = estimate_tokens(messages, self.context_limit)
@@ -935,25 +935,19 @@ class ContextCompressor:
         )
         return extract_summary_body(merged) or combined
 
-    def _schedule_pre_compaction_flush(self, messages_to_compress: list) -> None:
+    def _schedule_memory_flush(self) -> None:
         """Run the pre-compaction memory flush as a fire-and-forget background task.
 
-        Used from the mid-run history processor so heavy memory extraction never
-        blocks the model request that triggered compaction. Snapshot the slice so a
-        later mutation of the caller's list can't affect the deferred work.
+        Used from the mid-run history processor so memory extraction never blocks
+        the model request that triggered compaction.
         """
-        snapshot = list(messages_to_compress)
-
-        async def _flush() -> None:
-            await self._pre_compaction_flush(snapshot)
-
         try:
             from suzent.core.task_registry import register_background_task
             import uuid as _uuid
 
             asyncio.ensure_future(
                 register_background_task(
-                    _flush(),
+                    self._flush_pending_memories(),
                     task_id=f"precompact_flush_{self.chat_id or 'nochat'}_{_uuid.uuid4().hex}",
                     description=f"Pre-compaction memory flush for chat {self.chat_id}",
                 )
@@ -961,85 +955,19 @@ class ContextCompressor:
         except Exception as e:
             logger.debug(f"Failed to schedule pre-compaction flush: {e}")
 
-    async def _pre_compaction_flush(self, messages_to_compress: list) -> None:
-        """Extract memories from messages about to be compressed away."""
-        if not CONFIG.memory_enabled:
-            return
-        if not self.chat_id or not self.user_id:
-            return
+    async def _flush_pending_memories(self) -> None:
+        """Extract the chat's not-yet-extracted turns before its context shrinks.
 
+        The turns being compacted are still in the transcript, so nothing would be
+        lost by waiting; flushing now makes them recallable once the agent no
+        longer sees them.
+        """
+        if not CONFIG.memory_enabled or not self.chat_id or not self.user_id:
+            return
         try:
-            from suzent.memory.lifecycle import get_memory_manager
-            from suzent.memory import ConversationTurn, Message, AgentAction
+            from suzent.memory.extraction_queue import get_extraction_queue
 
-            memory_mgr = get_memory_manager()
-            if not memory_mgr:
-                return
-
-            user_parts = []
-            assistant_parts = []
-            actions = []
-
-            for msg in messages_to_compress:
-                if isinstance(msg, ModelRequest):
-                    for part in msg.parts:
-                        if hasattr(part, "content") and isinstance(part.content, str):
-                            user_parts.append(part.content)
-                        if isinstance(part, ToolReturnPart):
-                            actions.append(
-                                AgentAction(
-                                    tool=part.tool_name,
-                                    args={},
-                                    output=str(part.content)[:200],
-                                )
-                            )
-                elif isinstance(msg, ModelResponse):
-                    for part in msg.parts:
-                        if isinstance(part, TextPart):
-                            text = part.content
-                            if len(text) > 300:
-                                text = text[:300] + "..."
-                            assistant_parts.append(text)
-                        elif isinstance(part, ToolCallPart):
-                            actions.append(
-                                AgentAction(
-                                    tool=part.tool_name,
-                                    args=part.args
-                                    if isinstance(part.args, dict)
-                                    else {},
-                                )
-                            )
-
-            user_text = "\n".join(p for p in user_parts if p).strip()
-            assistant_text = "\n".join(p for p in assistant_parts if p).strip()
-
-            if not user_text and not assistant_text:
-                return
-
-            turn = ConversationTurn(
-                user_message=Message(
-                    role="user",
-                    content=user_text or "(context from previous messages)",
-                ),
-                assistant_message=Message(
-                    role="assistant",
-                    content=assistant_text or "(actions taken in previous messages)",
-                ),
-                agent_actions=actions[:10],
-            )
-
-            result = await memory_mgr.process_conversation_turn_for_memories(
-                conversation_turn=turn,
-                chat_id=self.chat_id,
-                user_id=self.user_id,
-            )
-
-            extracted_count = len(result.extracted_facts) if result else 0
-            logger.info(
-                f"Pre-compaction flush: extracted {extracted_count} facts "
-                f"from {len(messages_to_compress)} messages"
-            )
-
+            await get_extraction_queue().flush(self.chat_id, self.user_id)
         except Exception as e:
             logger.warning(f"Pre-compaction memory flush failed: {e}")
 

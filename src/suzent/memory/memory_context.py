@@ -4,6 +4,7 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 
@@ -11,6 +12,10 @@ from suzent.memory.markdown_store import MEMORY_GENERATED_END
 
 
 # ===== Core Memory Context Prompts =====
+
+
+# context.md is injected into every turn; past this it costs more than it helps.
+CONTEXT_CHAR_LIMIT = 8000
 
 
 def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
@@ -68,6 +73,16 @@ def format_core_memory_section(
     core_blocks_text = ""
     if blocks:
         for label, content in blocks.items():
+            if label == "context" and content and len(content) > CONTEXT_CHAR_LIMIT:
+                shown_path = project_context_path or (
+                    "/workspace/context.md"
+                    if sandbox_enabled
+                    else "${PROJECT_PATH}/context.md"
+                )
+                content = (
+                    content[:CONTEXT_CHAR_LIMIT]
+                    + f"\n\n[Truncated. Read `{shown_path}` for the rest, and condense it.]"
+                )
             core_blocks_text += f"\n**{label.capitalize()}**:\n{content or 'Not set'}\n"
     else:
         core_blocks_text = "\nNo core memory blocks configured.\n"
@@ -79,7 +94,7 @@ def format_core_memory_section(
             "- `/shared/memory/persona.md` — your identity, role, and workflow principles\n"
             "- `/shared/memory/user.md` — user preferences, tech stack, communication habits\n"
             "- `/shared/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** memory and file index\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_hint = _notebook_hint(
@@ -95,7 +110,7 @@ def format_core_memory_section(
             f"- `{_shared}/memory/persona.md` — your identity, role, and workflow principles\n"
             f"- `{_shared}/memory/user.md` — user preferences, tech stack, communication habits\n"
             f"- `{_shared}/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** memory and file index\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_hint = _notebook_hint(
@@ -135,7 +150,9 @@ Your memory lives in plain markdown files you can read and write directly:
 **Memory Guidelines:**
 - Search archival memory before asking the user for information they may have already shared
 - Write important new facts, decisions, and preferences to the appropriate memory file for durability
-- Keep `context.md` as a live scratchpad: task breakdown, current goal, key constraints
+- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
+  Current state, Decisions, File index (one line per library file), Related knowledge
+  (links to notebook pages). No step-by-step logs or temporary notes
 {curated_memory_hint}
 """
 
@@ -255,6 +272,12 @@ For each fact:
 - State facts directly: "Prefers X" not "User mentioned they prefer X"
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
+- Write dates as absolute dates. Resolve relative ones ("tomorrow", "next Friday")
+  against the date the turn is marked with.
+- The conversation may span several turns. When a later turn changes or reverses
+  something said earlier, extract only where it ended up.
+- Turns marked as earlier context were already processed. Use them to understand
+  the new turns; never extract from them.
 
 ## Already-known facts
 The prompt may list facts already in memory. They are context, not material:
@@ -289,6 +312,11 @@ Do not re-extract these. Extract only what is new, or what CHANGES one of them.
 """
 
 
+def format_local_date(moment: datetime) -> str:
+    """Render *moment* as the user's local date, e.g. "2026-10-10 (Saturday, UTC+0800)"."""
+    return moment.astimezone().strftime("%Y-%m-%d (%A, UTC%z)")
+
+
 def format_fact_extraction_user_prompt(
     content: str, known_facts: Optional[List[str]] = None
 ) -> str:
@@ -296,14 +324,14 @@ def format_fact_extraction_user_prompt(
     Format user prompt for fact extraction from a conversation turn.
 
     Args:
-        content: The formatted conversation turn text (user message + assistant response + actions)
+        content: The formatted conversation (one or more dated turns)
         known_facts: Facts already in memory, nearest-first. Omitted when retrieval
             is unavailable — extraction then behaves exactly as it did before.
 
     Returns:
         Formatted extraction prompt
     """
-    return f"""Extract memorable facts from this conversation turn. One concise sentence per fact.
+    return f"""Extract memorable facts from this conversation. One concise sentence per fact.
 
 {format_known_facts_block(known_facts)}---
 {content}

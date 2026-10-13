@@ -23,7 +23,8 @@ ask:
 
 > Send me a test message on Telegram.
 
-When the approval request appears, choose **Always allow**. Scheduled tasks run
+When the approval request appears, choose
+**Yes, and always allow globally**. Scheduled tasks run
 with nobody watching, and this saved rule lets them send without waiting for
 review (see [Permissions & approvals](../03-features/tools/human-in-the-loop.md#answering-a-request)).
 

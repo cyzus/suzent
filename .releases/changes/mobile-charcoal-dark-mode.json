@@ -1,0 +1,8 @@
+{
+  "products": {
+    "mobile": "patch",
+    "desktop": "none"
+  },
+  "summary": "Use charcoal surfaces, softer gray outlines, and near-black hard shadows in Android and iOS dark mode, with theme-aware code blocks and brighter links.",
+  "reason": "The updated dark palette is consumed by native mobile clients; desktop runtime colors and generated CSS are unchanged."
+}

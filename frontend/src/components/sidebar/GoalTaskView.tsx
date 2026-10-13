@@ -221,8 +221,8 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({
                 {t('task.title')}
               </span>
               {onOpenBoard && (
-                <BrutalButton size="sm" onClick={onOpenBoard} title="Open full project board">
-                  <BoardIcon /> Board
+                <BrutalButton size="sm" onClick={onOpenBoard} title={t('projectBoard.openFull')}>
+                  <BoardIcon /> {t('projectBoard.board')}
                 </BrutalButton>
               )}
             </div>

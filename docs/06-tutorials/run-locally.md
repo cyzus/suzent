@@ -49,7 +49,7 @@ still remembers facts about you, but memory search is turned off.
 The model is now local, but some tools still go online when the agent uses
 them, such as web search and the browser. If you want the agent fully offline,
 turn the **Web** group off in the chat's tool selector (see
-[Tools](../03-features/tools/tools.md)).
+[Tools](../03-features/tools/README.md)).
 
 ## Check it worked
 

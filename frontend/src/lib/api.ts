@@ -1371,9 +1371,10 @@ export interface CronJob {
 }
 
 export interface CronNotification {
-  job_id: number;
+  job_id: number | null;
   job_name: string;
   result: string;
+  source?: string;
   timestamp: string;
 }
 

@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Render sub-agent and scheduled system reminders as compact disclosure rows on iOS and Android, hiding inbox delivery metadata and collapsing long bodies like desktop."
+}
