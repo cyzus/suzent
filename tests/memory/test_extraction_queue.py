@@ -161,3 +161,44 @@ async def test_shutdown_cancels_idle_timers(tmp_path, queue, memory):
     assert timer.cancelled()
     await asyncio.sleep(0)
     assert memory.batches == []
+
+
+async def test_large_tool_payloads_do_not_overflow_a_batch(tmp_path, queue, memory):
+    transcript = TranscriptManager(str(tmp_path))
+    await transcript.append_turn("c1", "user", "save my notes")
+    await transcript.append_turn(
+        "c1",
+        "assistant",
+        "saved",
+        actions=[{"tool": "write_file", "args": {"content": "x" * 100_000}}],
+    )
+
+    await queue.flush("c1", "u1")
+
+    (batch,) = memory.batches
+    assert len(batch) <= extraction_queue.MAX_BATCH_CHARS
+
+
+async def test_skip_waits_for_a_batch_in_flight(tmp_path, queue, memory):
+    """Switching memory off mid-extraction must not let the batch rewind the cursor."""
+    release = asyncio.Event()
+    process = memory.process_conversation_for_memories
+
+    async def slow(*args, **kwargs):
+        await release.wait()
+        return await process(*args, **kwargs)
+
+    memory.process_conversation_for_memories = slow
+    await _say(tmp_path, "c1", "Dentist on Friday")
+    in_flight = asyncio.create_task(queue.flush("c1", "u1"))
+    await asyncio.sleep(0)
+    await _say(tmp_path, "c1", "said while memory was off")
+    skipping = asyncio.create_task(queue.skip_pending("c1"))
+    await asyncio.sleep(0)
+
+    release.set()
+    await in_flight
+    await skipping
+
+    assert _cursors(tmp_path)["c1"] == 4
+    assert all("memory was off" not in batch for batch in memory.batches)

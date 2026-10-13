@@ -831,37 +831,31 @@ class MemoryManager:
         """Append extracted facts to the daily markdown log (append-only).
 
         Returns the date string (YYYY-MM-DD, UTC) the facts were written to, or
-        None if the markdown store is unavailable or the write failed.
+        None if the markdown store is unavailable. A failed write raises, so the
+        extraction queue keeps the turns instead of skipping facts it never stored.
         """
         if not self.markdown_store:
             return None
 
-        try:
-            fact_dicts = [
-                {
-                    "content": f.content,
-                    "category": f.category or "general",
-                    "importance": f.importance,
-                    "tags": f.tags,
-                    "context": {
-                        "user_intent": f.context_user_intent,
-                        "agent_actions_summary": f.context_agent_actions_summary,
-                        "outcome": f.context_outcome,
-                    },
-                }
-                for f in facts
-            ]
-            from datetime import timezone
-
-            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            await self.markdown_store.append_daily_log(
-                chat_id=chat_id, facts=fact_dicts, date=date
-            )
-            return date
-        except Exception as e:
-            # Markdown write failure should not block the main flow
-            logger.warning(f"Failed to write facts to markdown daily log: {e}")
-            return None
+        fact_dicts = [
+            {
+                "content": f.content,
+                "category": f.category or "general",
+                "importance": f.importance,
+                "tags": f.tags,
+                "context": {
+                    "user_intent": f.context_user_intent,
+                    "agent_actions_summary": f.context_agent_actions_summary,
+                    "outcome": f.context_outcome,
+                },
+            }
+            for f in facts
+        ]
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        await self.markdown_store.append_daily_log(
+            chat_id=chat_id, facts=fact_dicts, date=date
+        )
+        return date
 
     async def _extract_facts_llm(
         self, content: str, known_facts: Optional[List[str]] = None

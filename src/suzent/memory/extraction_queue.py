@@ -32,8 +32,11 @@ IDLE_SECONDS = 600
 MAX_BATCH_CHARS = 16000
 # Already-extracted turns shown ahead of a batch so it does not start mid-topic.
 CONTEXT_TURNS = 2
-# Per-message cap inside a batch.
+# Caps inside a batch: tool arguments can be whole files.
 MESSAGE_CHARS = 4000
+ACTION_CHARS = 300
+TURN_CHARS = 8000
+CONTEXT_TURN_CHARS = 2000
 
 CURSORS_FILE = "memory_cursors.json"
 
@@ -55,6 +58,11 @@ def _entry_chars(entry: Entry) -> int:
     return len(str(entry.get("content", "")))
 
 
+def _clip(text: object, limit: int) -> str:
+    text = str(text)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 def _format_turn(turn: list[Entry]) -> str:
     lines: list[str] = []
     try:
@@ -63,16 +71,17 @@ def _format_turn(turn: list[Entry]) -> str:
     except (KeyError, TypeError, ValueError):
         lines.append("### Turn")
     for entry in turn:
-        content = str(entry.get("content", ""))[:MESSAGE_CHARS]
+        content = _clip(entry.get("content", ""), MESSAGE_CHARS)
         if entry.get("role") == "user":
             lines.append(f"USER: {content}")
             continue
         for action in entry.get("actions") or []:
+            args = _clip(action.get("args"), ACTION_CHARS)
             output = action.get("output")
-            result = f" -> {output}" if output else ""
-            lines.append(f"ACTION: {action.get('tool')}({action.get('args')}){result}")
+            result = f" -> {_clip(output, ACTION_CHARS)}" if output else ""
+            lines.append(f"ACTION: {action.get('tool')}({args}){result}")
         lines.append(f"ASSISTANT: {content}")
-    return "\n".join(lines)
+    return _clip("\n".join(lines), TURN_CHARS)
 
 
 def format_batch(context: list[list[Entry]], new: list[list[Entry]]) -> str:
@@ -80,7 +89,7 @@ def format_batch(context: list[list[Entry]], new: list[list[Entry]]) -> str:
     parts: list[str] = []
     if context:
         parts.append("## Earlier context (already processed; do not extract)")
-        parts.extend(_format_turn(t) for t in context)
+        parts.extend(_clip(_format_turn(t), CONTEXT_TURN_CHARS) for t in context)
     parts.append("## New turns")
     parts.extend(_format_turn(t) for t in new)
     return "\n\n".join(parts)
@@ -176,8 +185,13 @@ class ExtractionQueue:
 
     async def skip_pending(self, chat_id: str) -> None:
         """Mark everything in the transcript as handled without extracting it."""
+        from suzent.core.memory_tasks import memory_task
+
         self._cancel_timer(chat_id)
-        await self._advance(chat_id, len(await self._read_entries(chat_id)))
+        # Under the chat's memory lock, so a batch still in flight cannot write
+        # its older cursor over this one afterwards.
+        async with memory_task(chat_id):
+            await self._advance(chat_id, len(await self._read_entries(chat_id)))
 
     def _arm_timer(self, chat_id: str, user_id: str) -> None:
         self._cancel_timer(chat_id)
@@ -207,21 +221,27 @@ class ExtractionQueue:
 
         self._cancel_timer(chat_id)
         done = 0
+        # Only what was there when the flush began; later turns get their own
+        # trigger, and may have been said with memory switched off.
+        end: Optional[int] = None
         try:
             while True:
                 # One batch per hold of the chat's memory lock, so a long backlog
                 # does not run into the per-task timeout.
                 async with memory_task(chat_id):
                     entries = await self._read_entries(chat_id)
+                    if end is None:
+                        end = len(entries)
                     cursor = await self._cursor(chat_id)
-                    pending = _turns(entries[cursor:])
+                    pending = _turns(entries[cursor:end])
                     # The assistant half of the newest turn may not be written yet.
                     if pending and pending[-1][-1].get("role") == "user":
                         pending.pop()
                     if not pending:
                         break
-                    batch = self._split(pending)[0]
                     context = _turns(entries[:cursor])[-CONTEXT_TURNS:]
+                    budget = MAX_BATCH_CHARS - len(format_batch(context, []))
+                    batch = self._split(pending, budget)[0]
                     await memory_mgr.process_conversation_for_memories(
                         format_batch(context, batch),
                         chat_id=chat_id,
@@ -239,12 +259,16 @@ class ExtractionQueue:
         return done
 
     @staticmethod
-    def _split(turns: list[list[Entry]]) -> list[list[list[Entry]]]:
+    def _split(turns: list[list[Entry]], budget: int) -> list[list[list[Entry]]]:
+        """Group turns into batches whose rendered size fits *budget*.
+
+        A turn renders to at most TURN_CHARS, so every batch holds at least one.
+        """
         batches: list[list[list[Entry]]] = []
-        size = MAX_BATCH_CHARS
+        size = 0
         for turn in turns:
-            chars = sum(_entry_chars(e) for e in turn)
-            if size + chars > MAX_BATCH_CHARS:
+            chars = len(_format_turn(turn))
+            if not batches or size + chars > budget:
                 batches.append([])
                 size = 0
             batches[-1].append(turn)

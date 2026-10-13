@@ -168,3 +168,30 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
     )
 
     assert shown == [["on a page"]]
+
+
+async def test_failed_log_write_is_reported_so_the_turns_are_retried():
+    """A batch whose facts never reached the log must not count as extracted."""
+    mgr = MemoryManager.__new__(MemoryManager)
+
+    class _ReadOnlyStore:
+        async def append_daily_log(self, **kwargs):
+            raise OSError("read-only file system")
+
+    mgr.markdown_store = _ReadOnlyStore()
+
+    async def _recall(turn_text, user_id, chat_id=None):
+        return []
+
+    async def _extract(content, known_facts=None):
+        from suzent.memory.models import ExtractedFact
+
+        return [ExtractedFact(content="Prefers dark mode")]
+
+    mgr._recall_known_facts = _recall
+    mgr._extract_facts_llm = _extract
+
+    with pytest.raises(OSError):
+        await mgr.process_conversation_for_memories(
+            "USER: I prefer dark mode", chat_id="c1", user_id="user-1"
+        )
