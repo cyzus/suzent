@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
 - Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
 - Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background.
+- Extract memories from several exchanges at once, after a few turns or once a chat goes quiet, so a plan revised mid-conversation is saved once.
 - Memory extraction no longer re-stores recalled memories or earlier turns' tool calls, and writes relative dates as absolute dates.
 - Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
 - Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
