@@ -99,3 +99,25 @@ def test_notebook_skill_exposes_optional_okf_profile():
     assert (notebook_dir / "okf.md").is_file()
     assert "OKF-inspired profile" in schema
     assert "okf_version" not in schema
+
+
+def test_official_skills_are_enabled_by_default(tmp_path: Path, monkeypatch):
+    import suzent.skills.manager as manager_module
+
+    official = tmp_path / "official"
+    user = tmp_path / "user"
+    _write_skill(official, "bundled", "bundled", "Bundled", "body")
+    _write_skill(user, "mine", "mine", "Mine", "body")
+    monkeypatch.setattr(manager_module, "OFFICIAL_SKILLS_DIR", official)
+    monkeypatch.setattr(manager_module, "USER_SKILLS_DIR", user)
+    monkeypatch.setattr(manager_module, "LEGACY_USER_SKILLS_DIR", tmp_path / "none")
+    monkeypatch.setattr(manager_module, "USER_CONFIG_DIR", tmp_path / "config")
+    monkeypatch.setattr(manager_module, "sync_managed_skills_dirs", lambda: None)
+    monkeypatch.setattr(manager_module, "get_external_skill_sources", list)
+
+    manager = SkillManager()
+
+    assert manager.is_skill_enabled("bundled")
+    assert not manager.is_skill_enabled("mine")
+    manager.disable_skill("bundled")
+    assert not manager.is_skill_enabled("bundled")
