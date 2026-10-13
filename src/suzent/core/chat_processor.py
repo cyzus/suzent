@@ -97,7 +97,10 @@ def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
 
 
 def _emit_notice_stream(
-    chat_id: str, text: str, stopped: str | None = None
+    chat_id: str,
+    text: str,
+    stopped: str | None = None,
+    custom_events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
@@ -107,6 +110,9 @@ def _emit_notice_stream(
     *stopped* is a stop that was accepted for this run. It is reported the way
     every other path reports one -- tagged, so the client reads it as the stop
     it asked for rather than as a failure.
+
+    *custom_events* are emitted ahead of the notice, for paths that also have
+    to settle UI state the run would otherwise have updated.
     """
 
     async def _gen() -> AsyncGenerator[str, None]:
@@ -114,6 +120,8 @@ def _emit_notice_stream(
         run_id = str(uuid.uuid4())
         msg_id = str(uuid.uuid4())
         yield enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+        for name, value in custom_events or []:
+            yield enc.encode(CustomEvent(name=name, value=value))
         yield enc.encode(
             CustomEvent(name="stream_display_role", value={"role": "notice"})
         )
@@ -456,6 +464,10 @@ sent, but the assistant can still inspect them with analyze_image."""
 
 ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
+)
+
+APPROVAL_EXPIRED_NOTICE = (
+    "This approval had already expired, so nothing was run. Send a message to continue."
 )
 
 
@@ -1118,6 +1130,11 @@ class ChatProcessor:
                 for part in message.parts
                 if isinstance(part, ToolCallPart)
             }
+            requested_tool_call_ids = [
+                str(app.get("tool_call_id") or app.get("request_id"))
+                for app in resume_approvals
+                if app.get("tool_call_id") or app.get("request_id")
+            ]
             resume_approvals = _resolve_resume_approval_actions(
                 chat_id, resume_approvals
             )
@@ -1167,6 +1184,46 @@ class ChatProcessor:
                     chat_id,
                 )
                 approvals_dict = {}
+
+            if requested_tool_call_ids and not any(
+                tcid in approvals_dict for tcid in requested_tool_call_ids
+            ):
+                # None of the user's decisions can be applied. Running anyway
+                # would start a fresh turn in which the model re-issues the call
+                # under a new id, where policy rather than the user decides it.
+                logger.warning(
+                    "Rejecting resume for chat {}: approvals expired: {}",
+                    chat_id,
+                    requested_tool_call_ids,
+                )
+                try:
+                    get_database().append_chat_message(
+                        chat_id,
+                        {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE},
+                    )
+                except Exception as notice_err:
+                    logger.debug(
+                        "Failed to persist approval-expired notice for {}: {}",
+                        chat_id,
+                        notice_err,
+                    )
+                expired_events = [
+                    (
+                        "tool_approval_result",
+                        {
+                            "toolCallId": tcid,
+                            "toolName": tool_names.get(tcid, ""),
+                            "status": "expired",
+                            "output": APPROVAL_EXPIRED_NOTICE,
+                        },
+                    )
+                    for tcid in requested_tool_call_ids
+                ]
+                async for chunk in _emit_notice_stream(
+                    chat_id, APPROVAL_EXPIRED_NOTICE, custom_events=expired_events
+                ):
+                    yield chunk
+                return
 
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
