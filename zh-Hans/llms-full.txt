@@ -1072,7 +1072,7 @@ extraction_model: gemini/gemini-2.5-flash   # "" for heuristic extraction, no mo
 user_id: default-user
 ```
 
-The extraction model runs once per exchange, so a small fast model is the right choice
+The extraction model runs every few exchanges, so a small fast model is the right choice
 here. Leave it unset to use the default chat model.
 
 These settings change *how* memory works. To change *what* Suzent remembers, edit
@@ -1229,7 +1229,7 @@ Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next 
 |---|---|---|
 | **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
 | **Where** | `/shared/memory/` | your notebook folder |
-| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
+| **Written by** | Automatic extraction every few exchanges | The agent, using file tools |
 | **Found by** | Semantic search | Links, file search, and semantic search |
 
 The two meet in one place: consolidated facts about you end up as pages under
@@ -1259,7 +1259,7 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 ## 工作方式
 
-**对话过程中。** 每轮对话结束后，Suzent 会挑出值得保留的内容，比如一个偏好、一个项目细节或一件关于你的事，追加到当天的日志里。它保存的是事实，而不是整段对话。
+**对话过程中。** 每隔几轮对话，或者对话停下来大约十分钟后，Suzent 会把上次之后说过的内容读一遍，挑出值得保留的东西，比如一个偏好、一个项目细节或一件关于你的事，追加到当天的日志里。它保存的是事实，而不是整段对话。因为一次读好几轮，你中途改了主意的话，只会保存最后的结论。
 
 **夜间。** 一个名为 **dream** 的后台任务会读取新的日志，把它们整理成清晰的页面：每个主题一页，合并重复，解决矛盾。白天保存依然很快，整理工作留到之后再做。
 
@@ -4666,19 +4666,31 @@ flowchart LR
     RECALL --> TURN
 ```
 
-## Write path, per conversation turn
+## Write path, in batches of turns
 
-Runs after the assistant response completes, in
-`MemoryManager.process_conversation_turn_for_memories`.
+Extraction reads each chat's JSONL transcript (`transcripts/{chat_id}.jsonl`), which
+gets one user and one assistant entry per turn. `memory/extraction_queue.py` keeps a
+cursor per chat in `transcripts/memory_cursors.json` and extracts the turns past it:
 
-The turn text is the user's message with hidden reminders stripped, the tool calls made
-this turn (results cut to 200 characters), and the final reply. The main agent's system
-prompt and reminders are left out on purpose: the reminder carries recalled memories,
-and an extractor that saw them would store them again. Tool calls answered before the
-turn started are excluded, because the history snapshot spans the whole chat. The prompt
-also carries the user's current date so relative dates are written as absolute ones.
-The pre-compaction flush builds the same shape from the messages about to be compacted,
-but dates each user message with when it was sent instead of giving today's date.
+- at the end of a turn, when 6 or more turns or 8k characters are pending;
+- otherwise when the chat has been quiet for 10 minutes;
+- before the chat's context is compacted, so compacted turns stay recallable;
+- on start, for anything still pending when the app last closed.
+
+A batch (at most 16k characters) is the new turns, each dated with when it happened,
+after the last two already-extracted turns marked as context only. It goes through
+`MemoryManager.process_conversation_for_memories`. The cursor moves only once the batch
+is written, and a failed extraction raises, so the turns stay queued and are retried.
+The first run after upgrading from per-turn extraction starts every existing chat at
+its current end, since those turns were already extracted. Turns from a chat with
+memory switched off are skipped rather than queued.
+
+The transcript entry is the user's message with hidden reminders stripped, the tool
+calls made this turn with the start of each result, and the final reply. The main
+agent's system prompt and reminders are left out on purpose: the reminder carries
+recalled memories, and an extractor that saw them would store them again. Tool calls
+answered before the turn started are excluded, because the history snapshot spans the
+whole chat.
 
 ```mermaid
 %%{init: {'theme':'neutral'}}%%
@@ -4972,9 +4984,9 @@ Missing blocks fall back to built-in defaults.
 
 ### Extraction path
 
-`process_conversation_turn_for_memories()` extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
+`process_conversation_for_memories()` takes a batch of turns from `ExtractionQueue` (see memory-architecture.md), extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
 
-The current implementation reindexes the whole current-day archive file after a turn rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
+The current implementation reindexes the whole current-day archive file after a batch rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
 
 ### Retrieval path
 
