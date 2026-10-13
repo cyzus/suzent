@@ -97,7 +97,10 @@ def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
 
 
 def _emit_notice_stream(
-    chat_id: str, text: str, stopped: str | None = None
+    chat_id: str,
+    text: str,
+    stopped: str | None = None,
+    custom_events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
@@ -107,6 +110,9 @@ def _emit_notice_stream(
     *stopped* is a stop that was accepted for this run. It is reported the way
     every other path reports one -- tagged, so the client reads it as the stop
     it asked for rather than as a failure.
+
+    *custom_events* are emitted ahead of the notice, for paths that also have
+    to settle UI state the run would otherwise have updated.
     """
 
     async def _gen() -> AsyncGenerator[str, None]:
@@ -114,6 +120,8 @@ def _emit_notice_stream(
         run_id = str(uuid.uuid4())
         msg_id = str(uuid.uuid4())
         yield enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+        for name, value in custom_events or []:
+            yield enc.encode(CustomEvent(name=name, value=value))
         yield enc.encode(
             CustomEvent(name="stream_display_role", value={"role": "notice"})
         )
@@ -398,6 +406,45 @@ def _cancel_unprocessed_tool_calls(
     return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
 
 
+def _expire_display_tool_parts(
+    messages: list[Any], tool_call_ids: set[str], notice: str
+) -> list[Any]:
+    """Mark stored tool cards still awaiting approval as settled with *notice*."""
+    expired: list[Any] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            expired.append(message)
+            continue
+        message = dict(message)
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            message["parts"] = [
+                {
+                    **{k: v for k, v in part.items() if k != "approvalId"},
+                    "state": "error",
+                    "output": notice,
+                }
+                if isinstance(part, dict)
+                and part.get("type") == "tool"
+                and part.get("toolCallId") in tool_call_ids
+                and part.get("output") is None
+                else part
+                for part in parts
+            ]
+        content = message.get("content")
+        if isinstance(content, str):
+            for tool_call_id in tool_call_ids:
+                content = re.sub(
+                    rf'(<details[^>]*data-tool-call-id="{re.escape(tool_call_id)}"'
+                    r'[^>]*data-approval-state=")pending(")',
+                    r"\1denied\2",
+                    content,
+                )
+            message["content"] = content
+        expired.append(message)
+    return expired
+
+
 def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
     """Build the pydantic-ai approval result, preserving rejection feedback."""
     if approval.get("approved"):
@@ -456,6 +503,10 @@ sent, but the assistant can still inspect them with analyze_image."""
 
 ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
+)
+
+APPROVAL_EXPIRED_NOTICE = (
+    "This approval had already expired, so nothing was run. Send a message to continue."
 )
 
 
@@ -1118,6 +1169,11 @@ class ChatProcessor:
                 for part in message.parts
                 if isinstance(part, ToolCallPart)
             }
+            requested_tool_call_ids = [
+                str(app.get("tool_call_id") or app.get("request_id"))
+                for app in resume_approvals
+                if app.get("tool_call_id") or app.get("request_id")
+            ]
             resume_approvals = _resolve_resume_approval_actions(
                 chat_id, resume_approvals
             )
@@ -1167,6 +1223,73 @@ class ChatProcessor:
                     chat_id,
                 )
                 approvals_dict = {}
+
+            if requested_tool_call_ids and not any(
+                tcid in approvals_dict for tcid in requested_tool_call_ids
+            ):
+                # None of the user's decisions can be applied. Running anyway
+                # would start a fresh turn in which the model re-issues the call
+                # under a new id, where policy rather than the user decides it.
+                logger.warning(
+                    "Rejecting resume for chat {}: approvals expired: {}",
+                    chat_id,
+                    requested_tool_call_ids,
+                )
+                # Settle the calls durably, not just in this stream: the client
+                # reloads from the database once the stream ends, and a stored
+                # card still awaiting approval would come straight back.
+                message_history, cancelled_tool_call_ids = (
+                    _cancel_unprocessed_tool_calls(
+                        message_history or [], "its approval expired"
+                    )
+                )
+                try:
+                    db = get_database()
+                    chat = db.get_chat(chat_id)
+                    display_messages = _expire_display_tool_parts(
+                        list(chat.messages or []) if chat else [],
+                        set(requested_tool_call_ids),
+                        APPROVAL_EXPIRED_NOTICE,
+                    )
+                    display_messages.append(
+                        {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE}
+                    )
+                    db.update_chat(
+                        chat_id,
+                        messages=display_messages,
+                        agent_state=serialize_state(
+                            message_history,
+                            model_id=getattr(agent, "_model_id", None),
+                            tool_names=getattr(agent, "_tool_names", []),
+                        )
+                        if cancelled_tool_call_ids
+                        else None,
+                    )
+                    if cancelled_tool_call_ids:
+                        await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
+                except Exception as persist_err:
+                    logger.warning(
+                        "Failed to persist expired approvals for {}: {}",
+                        chat_id,
+                        persist_err,
+                    )
+                expired_events = [
+                    (
+                        "tool_approval_result",
+                        {
+                            "toolCallId": tcid,
+                            "toolName": tool_names.get(tcid, ""),
+                            "status": "expired",
+                            "output": APPROVAL_EXPIRED_NOTICE,
+                        },
+                    )
+                    for tcid in requested_tool_call_ids
+                ]
+                async for chunk in _emit_notice_stream(
+                    chat_id, APPROVAL_EXPIRED_NOTICE, custom_events=expired_events
+                ):
+                    yield chunk
+                return
 
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
