@@ -38,9 +38,8 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import remove_pending_approvals, stream_agent_responses
-from suzent.memory import ConversationTurn, Message, AgentAction
+from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
     PostProcessStep,
@@ -1602,18 +1601,20 @@ class ChatProcessor:
                 async def _run_memory_extraction() -> None:
                     memory_db = get_database()
                     try:
-                        from suzent.core.memory_tasks import memory_task
+                        # The turn is already in the transcript (B1); the queue
+                        # decides whether this is the moment to extract it.
+                        if not self._is_system_chat(chat_id):
+                            from suzent.memory.extraction_queue import (
+                                get_extraction_queue,
+                            )
 
-                        if CONFIG.memory_enabled and not self._is_system_chat(chat_id):
-                            async with memory_task(chat_id):
-                                await self._extract_memories(
-                                    chat_id=chat_id,
-                                    user_id=user_id,
-                                    user_content=message_content,
-                                    agent_content=full_response,
-                                    messages=last_messages,
-                                    prior_tool_call_ids=prior_tool_call_ids,
-                                )
+                            queue = get_extraction_queue()
+                            if CONFIG.memory_enabled:
+                                await queue.note_turn(chat_id, user_id)
+                            else:
+                                # Turning memory on later must not sweep up
+                                # what was said while it was off.
+                                await queue.skip_pending(chat_id)
                         memory_db.update_job_step_status(
                             job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                         )
@@ -2085,51 +2086,6 @@ class ChatProcessor:
         except Exception:
             return False
 
-    async def _extract_memories(
-        self,
-        chat_id: str,
-        user_id: str,
-        user_content: str,
-        agent_content: str,
-        messages: list,
-        prior_tool_call_ids: frozenset[str] = frozenset(),
-    ) -> None:
-        """Extract memories from this turn of the pydantic-ai message history."""
-        if not CONFIG.memory_enabled:
-            return
-        # Skip system/forked turns (dream, sub-agents). The per-chat platform — not
-        # the global CONFIG flag — is authoritative here.
-        if self._is_system_chat(chat_id):
-            return
-
-        try:
-            memory_mgr = get_memory_manager()
-            if not memory_mgr:
-                return
-
-            from suzent.core.system_reminder import strip_system_reminders
-
-            actions = _extract_tool_calls(messages, exclude_ids=prior_tool_call_ids)
-
-            # The hidden reminder carries recalled memories; left in, the extractor
-            # reads them as the user's words and stores them again.
-            conversation_turn = ConversationTurn(
-                user_message=Message(
-                    role="user", content=strip_system_reminders(user_content)
-                ),
-                assistant_message=Message(role="assistant", content=agent_content),
-                agent_actions=actions,
-            )
-
-            await memory_mgr.process_conversation_turn_for_memories(
-                conversation_turn=conversation_turn,
-                chat_id=chat_id,
-                user_id=user_id,
-            )
-        except Exception as e:
-            logger.warning(f"Memory extraction failed for {chat_id}: {e}")
-            raise
-
     async def _write_transcript(
         self,
         chat_id: str,
@@ -2138,18 +2094,26 @@ class ChatProcessor:
         messages: list,
         prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> None:
-        """Write user and assistant turns to the JSONL transcript."""
+        """Write user and assistant turns to the JSONL transcript.
+
+        Memory extraction reads its turns from here, so the hidden reminder is
+        stripped (it carries recalled memories the extractor would store again)
+        and each tool call keeps the start of its result.
+        """
         try:
+            from suzent.core.system_reminder import strip_system_reminders
             from suzent.session.transcript import TranscriptManager
 
             tm = TranscriptManager()
-            await tm.append_turn(chat_id, "user", user_content)
+            await tm.append_turn(chat_id, "user", strip_system_reminders(user_content))
 
             actions = []
             for action in _extract_tool_calls(
                 messages, exclude_ids=prior_tool_call_ids
             ):
-                actions.append({"tool": action.tool, "args": action.args})
+                actions.append(
+                    {"tool": action.tool, "args": action.args, "output": action.output}
+                )
 
             await tm.append_turn(
                 chat_id, "assistant", agent_content, actions=actions or None
