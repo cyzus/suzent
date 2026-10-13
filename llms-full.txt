@@ -1676,6 +1676,11 @@ Open **Skills** in the app's navigation to browse every skill Suzent found,
 read it, and switch it on or off. Click **Reload from disk** after adding or
 editing skill files.
 
+Built-in skills and skills in the project you are working in start switched on.
+Skills Suzent finds in your home folder, such as `~/.claude/skills/` or
+`~/.codex/skills/`, usually belong to other agents, so they start switched off
+until you turn them on. Your choices apply to every chat.
+
 ## Adding skills
 
 **Ask the agent.** The quickest way is to say "install the skill at
@@ -1726,6 +1731,8 @@ long material into `references/`.
   or `.claude/skills/`, `.agents/skills/`, `.codex/skills/`, or `.grok/skills/`.
   Skills written for other agents that use the same `SKILL.md` format work as
   they are.
+- **Personal** skills in the same folders under your home folder, for example
+  `~/.claude/skills/`. These start switched off.
 - **Custom** folders listed in the `SKILLS_DIR` environment variable.
 
 Suzent also follows `AGENTS.md` and `CLAUDE.md` files in your working directory
