@@ -7168,9 +7168,9 @@ Source: https://suzent.com/docs/developing/contributing/mobile-releases
 Mobile releases are independent of desktop releases. Prepare a mobile release with
 **Prepare Release → mobile**, review `release/mobile`, and merge after CI passes.
 The merge workflow validates the release plan, creates an immutable `mobile-vX.Y.Z`
-tag at the merge commit, and dispatches **Release mobile** against that tag for **Android only**.
+tag at the merge commit, and dispatches **Release mobile** against that tag for **Android and iOS**.
 Manual runs can choose `android`, `ios`, or `both`; Android is the default.
-iOS can be uploaded later using the same tag with `platforms=ios`, without
+An iOS-only retry can use the same tag with `platforms=ios`, without
 rebuilding Android or modifying its published assets.
 Tag pushes alone do not publish: the explicit dispatch also works with GitHub's
 built-in token, whose tag pushes do not trigger another workflow.
