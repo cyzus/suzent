@@ -1,5 +1,6 @@
 """Pydantic AI capability for a selected group of registered tools."""
 
+import traceback
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -12,6 +13,7 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.logger import get_logger
+from suzent.permissions.audit import redact_secrets
 
 logger = get_logger(__name__)
 
@@ -59,8 +61,21 @@ class ToolErrorCapability(AbstractCapability[AgentDeps]):
         args: dict[str, Any],
         error: Exception,
     ) -> Any:
-        logger.opt(exception=error).warning(
-            "Tool {} raised; reporting it as a failed call", call.tool_name
+        # The message goes to the model and into stored history, and exception
+        # text from clients and MCP servers can carry credentials. Logging the
+        # traceback as formatted text, not via loguru's exception hook, keeps
+        # local variable values out of the log too.
+        detail = redact_secrets(f"{type(error).__name__}: {error}")
+        logger.warning(
+            "Tool {} raised; reporting it as a failed call: {}",
+            call.tool_name,
+            detail[:_TOOL_ERROR_MESSAGE_LIMIT],
         )
-        detail = f"{type(error).__name__}: {error}"[:_TOOL_ERROR_MESSAGE_LIMIT]
-        raise ToolFailed(f"The tool failed with an error. {detail}") from error
+        logger.debug(
+            "Tool {} traceback:\n{}",
+            call.tool_name,
+            redact_secrets("".join(traceback.format_exception(error))),
+        )
+        raise ToolFailed(
+            f"The tool failed with an error. {detail[:_TOOL_ERROR_MESSAGE_LIMIT]}"
+        ) from error

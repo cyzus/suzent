@@ -107,3 +107,69 @@ async def test_a_long_error_is_cut_short():
 
     (returned,) = _tool_returns(await agent.run("go"))
     assert len(str(returned.content)) < 2200
+
+
+SECRET_ERROR = (
+    "connect to postgres://admin:hunter2@db.internal/app failed; "
+    "Authorization: Bearer sk-live-abc123 api_key=topsecret"
+)
+
+
+async def test_credentials_in_the_error_reach_neither_model_nor_log():
+    from loguru import logger
+
+    logged: list[str] = []
+    sink = logger.add(lambda message: logged.append(str(message)), level="DEBUG")
+    try:
+        agent = Agent(_call_then_answer("fetch"), capabilities=[ToolErrorCapability()])
+
+        @agent.tool_plain
+        def fetch() -> str:
+            raise ConnectionError(SECRET_ERROR)
+
+        (returned,) = _tool_returns(await agent.run("go"))
+    finally:
+        logger.remove(sink)
+
+    for text in (str(returned.content), "".join(logged)):
+        assert "hunter2" not in text
+        assert "sk-live-abc123" not in text
+        assert "topsecret" not in text
+    # Enough is left for the model to understand what went wrong.
+    assert "ConnectionError" in str(returned.content)
+    assert "db.internal" in str(returned.content)
+
+
+async def test_the_failure_reaches_the_ui_stream_as_a_failed_outcome():
+    from ag_ui.core import CustomEvent, RunAgentInput
+
+    from suzent.streaming import _SuzentAGUIEventStream
+
+    from pydantic_ai.models.test import TestModel
+
+    agent = Agent(TestModel(call_tools=["fetch"]), capabilities=[ToolErrorCapability()])
+
+    @agent.tool_plain
+    def fetch() -> str:
+        raise ConnectionError("crawler unreachable")
+
+    stream = _SuzentAGUIEventStream(
+        RunAgentInput(
+            thread_id="t",
+            run_id="r",
+            messages=[],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+    )
+    async with agent.run_stream_events("go") as native_events:
+        events = [e async for e in stream.transform_stream(native_events)]
+
+    outcomes = [
+        e.value["outcome"]
+        for e in events
+        if isinstance(e, CustomEvent) and e.name == "tool_call_outcome"
+    ]
+    assert outcomes == ["failed"]

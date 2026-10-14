@@ -29,13 +29,20 @@ _SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"(?i)\b(api[_-]?key|password|secret|token)\s*[:=]\s*([^\s,;]+)"),
         r"\1=[redacted]",
     ),
+    # Credentials embedded in a URL: scheme://user:password@host
+    (re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@"), r"\1[redacted]@"),
 )
 
 
-def _sanitize_text(value: str) -> str:
-    sanitized = value
+def redact_secrets(value: str) -> str:
+    """Mask credentials that commonly appear in free text such as error messages."""
     for pattern, replacement in _SENSITIVE_VALUE_PATTERNS:
-        sanitized = pattern.sub(replacement, sanitized)
+        value = pattern.sub(replacement, value)
+    return value
+
+
+def _sanitize_text(value: str) -> str:
+    sanitized = redact_secrets(value)
     return sanitized if len(sanitized) <= 300 else sanitized[:300] + "…"
 
 
