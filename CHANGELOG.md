@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows.
 - Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
 - Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
+- Fix parallel tool calls from ChatGPT Subscription models arriving with empty arguments and failing validation.
 - Update DOMPurify to 3.4.16 for safer rendering of message content.
 - Update fsspec to 2026.6.0.
 - Update multidict to 6.9.1.
