@@ -13,6 +13,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageResultGallery, hasVisualMediaResults } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
+import { toolCallFailed } from './toolSummary';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
@@ -294,6 +295,7 @@ const AGUIPartsContent: React.FC<{
                       permission: tp.permission,
                       permissionDecision: tp.permissionDecision,
                       permissionResolution: tp.permissionResolution,
+                      outcome: tp.outcome,
                       onApprove:
                         isActionablyPending && tp.approvalId && onToolApproval
                           ? (
@@ -331,7 +333,8 @@ const AGUIPartsContent: React.FC<{
                     const itemState =
                       t.approvalState === 'pending'
                         ? ('pending' as const)
-                        : t.approvalState === 'denied'
+                        : t.approvalState === 'denied' ||
+                            (t.output && toolCallFailed(t.outcome, t.output))
                           ? ('error' as const)
                           : isStreaming && !t.output
                             ? ('active' as const)
@@ -387,6 +390,7 @@ const AGUIPartsContent: React.FC<{
                           permission={t.permission}
                           permissionDecision={t.permissionDecision}
                           permissionResolution={t.permissionResolution}
+                          outcome={t.outcome}
                           isAutoApproved={isAutoApproved}
                           onRemovePolicy={onRemoveApprovalPolicy}
                           onForceWebContext={onForceWebContext}
@@ -429,6 +433,7 @@ const AGUIPartsContent: React.FC<{
               permission: tp.permission,
               permissionDecision: tp.permissionDecision,
               permissionResolution: tp.permissionResolution,
+              outcome: tp.outcome,
               onApprove:
                 isActionablyPending && tp.approvalId && onToolApproval
                   ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) =>

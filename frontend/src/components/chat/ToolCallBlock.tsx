@@ -5,7 +5,7 @@ import { useDisclosureBody } from '../../hooks/useDisclosureBody';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
-import { getToolSummary, normalizeToolName } from './toolSummary';
+import { getToolSummary, normalizeToolName, toolCallFailed } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
@@ -14,6 +14,7 @@ import type {
   PermissionAction,
   PermissionPrompt,
   ToolPermissionDecision,
+  ToolCallOutcome,
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
@@ -152,6 +153,8 @@ interface ToolCallBlockProps {
   permission?: PermissionPrompt;
   permissionDecision?: ToolPermissionDecision;
   permissionResolution?: ToolPermissionResolution;
+  /** Set when the backend reports the finished call failed (rejected or raised). */
+  outcome?: ToolCallOutcome;
   isAutoApproved?: boolean;
   /**
    * Takes the tool name rather than closing over it, so callers can hand it
@@ -178,6 +181,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   permission,
   permissionDecision,
   permissionResolution,
+  outcome,
   isAutoApproved = false,
   onRemovePolicy,
   toolCallId,
@@ -317,6 +321,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
   }, [output]);
+  const isFailed = hasOutput && toolCallFailed(outcome, output);
 
   const rendererMetadata = React.useMemo<Record<string, unknown> | undefined>(() => {
     const m = parsedOutput?.metadata;
@@ -346,7 +351,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     isPending || isDenied
       ? 'imperative'
       : hasOutput
-        ? parsedOutput?.success === false || parsedOutput?.error_code
+        ? isFailed
           ? 'failed'
           : 'past'
         : isStreaming
@@ -601,7 +606,23 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
           </span>
         )}
-        {hasOutput && !isPending && !isDenied && (
+        {hasOutput && !isPending && !isDenied && isFailed && (
+          <span
+            className="flex items-center gap-0.5 shrink-0"
+            aria-label={t('toolCallBlock.failed')}
+          >
+            <svg
+              className="w-2.5 h-2.5 text-red-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </span>
+        )}
+        {hasOutput && !isPending && !isDenied && !isFailed && (
           <span className="flex items-center gap-0.5 shrink-0">
             <svg
               className="w-2.5 h-2.5 text-green-600"
