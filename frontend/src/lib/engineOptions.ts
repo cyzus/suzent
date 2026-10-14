@@ -41,11 +41,19 @@ export function buildEngineOptions(params: {
 }): EngineOption[] {
   const { models, agents, canChooseRuntime, selectedAgentId, labels } = params;
 
-  const modelOptions: EngineOption[] = models.map((model) => ({
-    value: `${MODEL_PREFIX}${model}`,
-    label: model,
-    group: labels.models,
-  }));
+  const modelGroups = new Map<string, EngineOption[]>();
+  for (const model of models) {
+    const separator = model.indexOf('/');
+    const provider = separator > 0 ? model.slice(0, separator) : '';
+    const options = modelGroups.get(provider) ?? [];
+    options.push({
+      value: `${MODEL_PREFIX}${model}`,
+      label: provider ? model.slice(separator + 1) : model,
+      group: provider || labels.models,
+    });
+    modelGroups.set(provider, options);
+  }
+  const modelOptions = [...modelGroups.values()].flat();
 
   const isInstalled = (agent: AcpAgentDescriptor) => agent.status !== 'not_installed';
 
