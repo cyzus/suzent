@@ -350,13 +350,16 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         RepositoryContextRoots,
         build_repo_context_capabilities,
     )
-    from suzent.tools.capability import RegisteredToolCapability
+    from suzent.tools.capability import RegisteredToolCapability, ToolErrorCapability
 
     from suzent.core.system_reminder import (
         make_tool_output_sanitizer_history_processor,
     )
 
     capabilities = [
+        # Error hooks run last-to-first, so listing this ahead of our other
+        # capabilities lets any of them recover from a tool's exception first.
+        ToolErrorCapability(),
         # Sanitizer first: it must neutralize forged reminder delimiters before
         # compaction folds tool output into a summary that we can no longer inspect.
         ProcessHistory(make_tool_output_sanitizer_history_processor()),

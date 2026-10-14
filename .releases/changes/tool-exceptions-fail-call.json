@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "A tool that throws an error now fails just that call and lets the agent continue, instead of ending the whole turn."
+}
