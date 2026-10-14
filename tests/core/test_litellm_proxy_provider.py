@@ -116,3 +116,19 @@ async def test_unauthorized_proxy_returns_no_models(monkeypatch) -> None:
     )
 
     assert await LiteLLMProxyProvider("litellm_proxy", {}).list_models() == []
+
+
+@pytest.mark.asyncio
+async def test_secret_store_failure_falls_back_to_environment(monkeypatch) -> None:
+    class _BrokenSecrets:
+        def get(self, _key: str) -> str | None:
+            raise RuntimeError("keyring unavailable")
+
+    session = _FakeSession()
+    monkeypatch.setattr(litellm_proxy.aiohttp, "ClientSession", lambda: session)
+    monkeypatch.setattr("suzent.core.secrets.get_secret_manager", _BrokenSecrets)
+    monkeypatch.setenv("LITELLM_PROXY_API_BASE", "http://localhost:4000")
+
+    await LiteLLMProxyProvider("litellm_proxy", {}).list_models()
+
+    assert session.last_url == "http://localhost:4000/v1/models"

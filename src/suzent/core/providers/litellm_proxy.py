@@ -25,7 +25,13 @@ def _saved_value(*keys: str) -> Optional[str]:
     except Exception:
         sm = None
     for key in keys:
-        value = (sm.get(key) if sm else None) or os.environ.get(key)
+        value = None
+        if sm:
+            try:
+                value = sm.get(key)
+            except Exception as e:
+                logger.debug(f"Secret store read for {key} failed: {e}")
+        value = value or os.environ.get(key)
         if value:
             return value
     return None
