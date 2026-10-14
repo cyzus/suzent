@@ -1014,6 +1014,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Snapshot of streaming parts at the moment we abandoned a chat's live stream,
   // so reconnecting can seed them back (preserving steps and in-flight tools).
   const abandonedPartsRef = useRef<Map<string, AGUIPart[]>>(new Map());
+  // The suspended run's parts when a resume after approval starts. The resumed
+  // run's replay covers only itself, so these stay underneath it -- otherwise
+  // the approved card loses its args and badges and the turn splits in two.
+  const resumeBasePartsRef = useRef<Map<string, AGUIPart[]>>(new Map());
   // Wall-clock start time per streaming chat, so the activity timer resumes from
   // the original start instead of resetting when the transient message remounts.
   const streamStartByChatRef = useRef<Map<string, number>>(new Map());
@@ -1409,6 +1413,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const currentParts = getStreamingParts();
       if (currentParts.length > 0) {
         abandonedPartsRef.current.set(chatId, currentParts);
+        resumeBasePartsRef.current.set(chatId, currentParts);
       }
 
       // Name the turn: this POST starts one, and until /chat/live yields its
@@ -1437,12 +1442,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // The turn never started; the name minted for it must not outlive it.
         forgetReply(chatId);
         retireRunToken(runToken);
+        resumeBasePartsRef.current.delete(chatId);
         throw err;
       }
 
       if (!resp.ok) {
         forgetReply(chatId);
         retireRunToken(runToken);
+        resumeBasePartsRef.current.delete(chatId);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
         notify(msg);
@@ -2107,6 +2114,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // visible steps and in-flight tool states resume instead of resetting.
       const seedParts = abandonedPartsRef.current.get(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
+      const baseParts = resumeBasePartsRef.current.get(chatIdAtMount);
+      resumeBasePartsRef.current.delete(chatIdAtMount);
 
       let streamed: boolean;
       try {
@@ -2115,6 +2124,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           {
             urlOverride: liveUrl,
             seedParts,
+            baseParts,
             onStreamStart: () => {
               isLiveStreamRef.current = true;
               // Pin the streaming chat ID so onFinish uses the correct chat even if

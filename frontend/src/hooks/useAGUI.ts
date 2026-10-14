@@ -34,6 +34,7 @@ interface UseAGUIReturn {
       urlOverride?: string;
       onStreamStart?: () => void;
       seedParts?: AGUIPart[];
+      baseParts?: AGUIPart[];
     }
   ) => Promise<boolean>;
   stop: () => void;
@@ -135,6 +136,23 @@ function findLastToolPartIndex(parts: AGUIPart[], toolCallId: string): number {
     }
   }
   return -1;
+}
+
+/**
+ * The parts a stream batch applies its events to.
+ *
+ * A reset batch replays its run from the start, so it rebuilds rather than
+ * appends. A resume after approval is a new run: its replay holds only what
+ * happened since the approval, so the suspended run's parts -- the approved
+ * call's args and permission decision, the steps before it -- are passed as
+ * *baseParts* and kept under the replay instead of being wiped by it.
+ */
+export function partsForBatch(
+  reset: boolean,
+  current: AGUIPart[],
+  baseParts: AGUIPart[] = []
+): AGUIPart[] {
+  return reset ? baseParts.map((part) => ({ ...part })) : [...current];
 }
 
 export function processEvent(
@@ -791,6 +809,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         urlOverride?: string;
         onStreamStart?: () => void;
         seedParts?: AGUIPart[];
+        baseParts?: AGUIPart[];
       }
     ): Promise<boolean> => {
       const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
@@ -875,7 +894,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           isProbe ? undefined : { url: targetUrl, body: requestBody }
         )) {
           runIdRef.current = batch.runId;
-          let currentParts = batch.reset ? [] : [...partsRef.current];
+          let currentParts = partsForBatch(batch.reset, partsRef.current, opts?.baseParts);
           if (batch.reset) resetApprovalTracking();
           for (const data of batch.events) {
             const result = processEvent(
