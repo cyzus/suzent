@@ -117,7 +117,7 @@ export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) 
   if (!isSuccess) {
     return (
       <div className="text-[11px] bg-neutral-50 dark:bg-zinc-800/50 p-2 border border-neutral-200 dark:border-zinc-700/50 rounded-sm">
-        <MarkdownRenderer content={output} streamingLite={true} />
+        <MarkdownRenderer content={output} />
       </div>
     );
   }

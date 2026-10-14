@@ -8,12 +8,14 @@ interface CodeBlockComponentProps {
   lang?: string;
   content: string;
   isStreaming?: boolean;
+  showCursor?: boolean;
 }
 
 export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
   lang,
   content,
   isStreaming,
+  showCursor = true,
 }) => {
   const [expanded, setExpanded] = useState(true);
   const { t } = useI18n();
@@ -132,7 +134,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
           >
             <code className={`language-${safeLang}`}>
               {content}
-              {isStreaming && (
+              {isStreaming && showCursor && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>
               )}
             </code>

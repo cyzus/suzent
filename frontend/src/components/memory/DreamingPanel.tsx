@@ -120,7 +120,7 @@ function LastResultBox({
             className="h-44 overflow-y-auto overflow-x-hidden pr-1 text-xs leading-5 break-words"
             title={summary}
           >
-            <MarkdownRenderer content={summary} streamingLite />
+            <MarkdownRenderer content={summary} />
           </div>
         ) : (
           <div className="h-44 font-mono text-xs font-bold whitespace-pre-wrap break-words flex items-start">

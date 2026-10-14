@@ -54,14 +54,11 @@ import {
   normalizeProviderLogoUrl,
 } from '../../lib/providerVisuals';
 
-const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
-
 /**
  * One prose block of an assistant turn.
  *
  * While the block is the live one its text is revealed at a steady rate rather
- * than in the uneven bursts the stream delivers, and it renders through the
- * lightweight markdown path so the reveal stays cheap frame to frame.
+ * than in the uneven bursts the stream delivers.
  */
 const AssistantTextChunk: React.FC<{
   text: string;
@@ -76,7 +73,7 @@ const AssistantTextChunk: React.FC<{
         <MarkdownRenderer
           content={revealedText}
           onFileClick={onFileClick}
-          streamingLite={isStreaming}
+          isStreaming={isStreaming}
           caret={isStreaming}
         />
       </div>
@@ -538,7 +535,7 @@ const AGUIPartsContent: React.FC<{
                     <MarkdownRenderer
                       content={reasoningText}
                       onFileClick={onFileClick}
-                      streamingLite={isChunkStreaming}
+                      isStreaming={isChunkStreaming}
                     />
                   </div>
                 </div>
@@ -1241,10 +1238,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                               <MarkdownRenderer
                                 content={rb.content}
                                 onFileClick={onFileClick}
-                                streamingLite={
-                                  (isChunkStreaming && ri === chunk.blocks.length - 1) ||
-                                  rb.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD
-                                }
+                                isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
                               />
                             </div>
                           </div>
