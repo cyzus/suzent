@@ -26,6 +26,28 @@ const build = (over: Partial<Parameters<typeof buildEngineOptions>[0]> = {}) =>
   });
 
 describe('buildEngineOptions', () => {
+  it('groups interleaved providers and removes only the first prefix from labels', () => {
+    const options = build({
+      models: [
+        'chatgpt/gpt-5.6-sol',
+        'openrouter/org/model',
+        'chatgpt/gpt-5.6-luna',
+        'local-model',
+      ],
+      agents: [],
+    });
+    expect(options).toEqual([
+      { value: 'model:chatgpt/gpt-5.6-sol', label: 'gpt-5.6-sol', group: 'chatgpt' },
+      { value: 'model:chatgpt/gpt-5.6-luna', label: 'gpt-5.6-luna', group: 'chatgpt' },
+      { value: 'model:openrouter/org/model', label: 'org/model', group: 'openrouter' },
+      { value: 'model:local-model', label: 'local-model', group: 'Models' },
+    ]);
+    expect(parseEngineValue(options[2].value)).toEqual({
+      kind: 'model',
+      model: 'openrouter/org/model',
+    });
+  });
+
   it('lists models first, then ACP agents in their own group', () => {
     const options = build();
     expect(options.slice(0, 2).map((o) => o.label)).toEqual(['gpt-5', 'claude-opus-5']);
