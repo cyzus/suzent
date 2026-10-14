@@ -25,6 +25,13 @@ def test_node_config_reports_active_external_binding(monkeypatch) -> None:
     assert data["binding_active"] is True
 
 
+def test_node_config_reports_active_binding_on_custom_port(monkeypatch) -> None:
+    data = _config_response(monkeypatch, configured=True, host="0.0.0.0", port=25399)
+
+    assert data["binding_active"] is True
+    assert data["port"] == 25399
+
+
 def test_node_config_detects_restart_needed(monkeypatch) -> None:
     data = _config_response(monkeypatch, configured=True, host="127.0.0.1", port=5890)
 
