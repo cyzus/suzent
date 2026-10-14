@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.16.0] - 2026-10-14
 
+<!-- highlights -->
+### Highlights
+
+- **A fuller mobile companion.** Pair desktop 0.16.0 with mobile 0.3.0 to send photos, videos and files from your phone, browse nested sub-agent conversations, and view scheduled tasks. Phone pairing is simpler, and device permissions can be changed from the desktop without pairing again.
+- **A project library that keeps your work together.** Project notes and deliverables live alongside a `context.md` index. Generated images, videos and speech are saved under `artifacts/`, while temporary work uses a size-capped `scratch/` folder.
+- **More resilient agent runs.** An individual tool error no longer ends the whole turn. Failed calls are clearly marked, approved calls resume reliably, and repeating scheduled tasks stay enabled after a failed run.
+- **Less interruption, better continuity.** Replies finish without waiting for title generation. Memory extraction runs in the background, groups related exchanges, avoids re-saving recalled memories, and resolves relative dates.
+- **A smoother desktop workflow.** Move or delete multiple chats from the sidebar, keep chat content accessible as panels resize, and receive native notifications for replies and background work.
+
+**For mobile users:** update the desktop to 0.16.0 to use the full mobile 0.3.0 feature set. Android 0.3.0 is released and the iOS build has been uploaded to App Store Connect for TestFlight; this does not mean the iOS app is publicly available on the App Store.
+<!-- /highlights -->
+
 ### Release notes
 - Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
 - Stop approved tool calls from being dropped and re-run under automatic review when a chat saved while the approval was pending.
