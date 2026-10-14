@@ -7,6 +7,13 @@ from suzent.core.scheduler import SchedulerBrain
 from suzent.core.stream_registry import StreamControl, stream_controls
 
 
+# A retry that would land after the next regular fire is dropped, so tests
+# that expect a retry need that fire well past the first one-minute backoff.
+# A cron schedule cannot guarantee it: "*/5" fires within a minute whenever the
+# suite runs in the last minute before a five-minute boundary.
+_FAR_INTERVAL_MINUTES = 60
+
+
 class _FailingProcessor:
     async def process_turn_text(self, **kwargs) -> str:
         raise RuntimeError("model unavailable")
@@ -18,7 +25,8 @@ async def test_execute_job_retries_when_chat_processor_runtime_fails(
 ):
     job_id = temp_db.create_cron_job(
         name="failing-job",
-        cron_expr="*/5 * * * *",
+        schedule_kind="interval",
+        interval_minutes=_FAR_INTERVAL_MINUTES,
         prompt="run this",
         active=True,
     )
@@ -48,7 +56,8 @@ async def test_execute_job_defers_and_records_error_when_stream_is_active(
 ):
     job_id = temp_db.create_cron_job(
         name="busy-job",
-        cron_expr="*/5 * * * *",
+        schedule_kind="interval",
+        interval_minutes=_FAR_INTERVAL_MINUTES,
         prompt="run this",
         active=True,
     )
