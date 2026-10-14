@@ -1,6 +1,8 @@
 import type { A2UISurface } from './a2ui';
 import type { CitationSource } from '../lib/streamEvents';
 
+export type ToolCallOutcome = 'failed' | 'interrupted';
+
 export interface AGUIPart {
   type:
     'text' | 'reasoning' | 'tool' | 'a2ui' | 'citation-sources' | 'acp-permission' | 'acp-notice';
@@ -12,6 +14,8 @@ export interface AGUIPart {
   argsReplayPending?: boolean;
   output?: string;
   state?: 'running' | 'completed' | 'error' | 'approval-requested';
+  /** How a finished call ended when it did not succeed; `state` 'error' means denied. */
+  outcome?: ToolCallOutcome;
   approvalId?: string;
   permission?: PermissionPrompt;
   permissionDecision?: ToolPermissionDecision;

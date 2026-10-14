@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show failed tool calls as failed instead of with a checkmark, including calls rejected for bad arguments, MCP errors, timeouts and commands that exit non-zero."
+}

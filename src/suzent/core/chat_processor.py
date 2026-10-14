@@ -2797,6 +2797,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
+        RetryPromptPart,
         UserPromptPart,
         TextPart,
         ThinkingPart,
@@ -2804,6 +2805,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
         ToolReturnPart,
     )
     import json
+    from suzent.streaming import tool_call_outcome
     from suzent.core.system_reminder import (
         has_authenticated_block,
         strip_system_reminders,
@@ -2866,6 +2868,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     executed_tool_calls = set()
     denied_tool_calls = set()
     tool_returns_by_id: dict[str, str] = {}
+    tool_outcomes_by_id: dict[str, str] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
@@ -2876,6 +2879,15 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                     tool_returns_by_id[part.tool_call_id] = (
                         serialize_tool_return_content(part.content)
                     )
+                elif isinstance(part, RetryPromptPart) and part.tool_name:
+                    # A rejected call is answered by a retry prompt, not a
+                    # return; without this it would replay as a pending one.
+                    executed_tool_calls.add(part.tool_call_id)
+                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(
+                        part.model_response()
+                    )
+                if outcome := tool_call_outcome(part):
+                    tool_outcomes_by_id[part.tool_call_id] = outcome
 
     result = []
     for msg in messages:
@@ -2987,6 +2999,8 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                         structured_tool_part["output"] = normalize_tool_output_for_part(
                             tool_output
                         )
+                    if outcome := tool_outcomes_by_id.get(part.tool_call_id):
+                        structured_tool_part["outcome"] = outcome
                     structured_parts.append(structured_tool_part)
 
                     tc_dict = {
