@@ -444,7 +444,7 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
                 drop_foreign_reasoning_ids(messages),
                 model_settings,
                 model_request_parameters,
-                run_context,
+                run_context=run_context,
             ) as streamed:
                 yield streamed
 
