@@ -25,6 +25,7 @@
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/inchat-task-navigation.json",
+    ".releases/changes/litellm-proxy-discovery.json",
     ".releases/changes/memory-batch-extraction.json",
     ".releases/changes/memory-extraction-context.json",
     ".releases/changes/mobile-attachments.json",
