@@ -1929,6 +1929,7 @@ export const en = {
     },
   },
   toolCallBlock: {
+    failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',
     permissionContractUnavailable:
       'This approval is missing its server permission contract. Retry the request.',

@@ -61,6 +61,7 @@ export function buildAguiActivityChunks(parts: AGUIPart[]): AguiChunk[] {
           permission: part.permission ?? existing.permission,
           permissionDecision: part.permissionDecision ?? existing.permissionDecision,
           permissionResolution: part.permissionResolution ?? existing.permissionResolution,
+          outcome: part.outcome ?? existing.outcome,
           state: part.state ?? existing.state,
         };
         continue;

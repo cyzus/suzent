@@ -1874,6 +1874,7 @@ export const zhCN = {
     },
   },
   toolCallBlock: {
+    failed: '失败',
     permissionRejectPlaceholder: '可选：说明原因或建议更安全的做法',
     permissionContractUnavailable: '此审批缺少服务端权限契约，请重试该请求。',
     permissionDecisionTitle: '权限决策',

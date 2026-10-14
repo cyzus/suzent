@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "A server started with SUZENT_PORT now uses that port even when device-mesh network access is on, and on Windows a second server on a port already in use fails with a clear error instead of silently sharing it."
+}

@@ -26,6 +26,18 @@ def test_mesh_bind_replaces_stale_desktop_port():
     ) == ("0.0.0.0", 25314)
 
 
+def test_mesh_bind_keeps_explicit_port():
+    assert discovery.resolve_mesh_bind(
+        "127.0.0.1", 25399, enabled=True, default_port=25314, port_is_explicit=True
+    ) == ("0.0.0.0", 25399)
+
+
+def test_mesh_bind_replaces_explicit_dynamic_port():
+    assert discovery.resolve_mesh_bind(
+        "0.0.0.0", 0, enabled=True, default_port=25314, port_is_explicit=True
+    ) == ("0.0.0.0", 25314)
+
+
 def test_mesh_bind_leaves_normal_desktop_start_dynamic():
     assert discovery.resolve_mesh_bind(
         "127.0.0.1", 0, enabled=False, default_port=25314

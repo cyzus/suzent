@@ -14,6 +14,7 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import type {
   PermissionPrompt,
   ToolPermissionDecision,
+  ToolCallOutcome,
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
@@ -34,6 +35,7 @@ export const ToolSequenceGroup: React.FC<{
     permission?: PermissionPrompt;
     permissionDecision?: ToolPermissionDecision;
     permissionResolution?: ToolPermissionResolution;
+    outcome?: ToolCallOutcome;
   }>;
   isStreaming?: boolean;
   toolApprovalPolicy?: Record<string, string>;
@@ -71,6 +73,7 @@ export const ToolSequenceGroup: React.FC<{
               permission={t.permission}
               permissionDecision={t.permissionDecision}
               permissionResolution={t.permissionResolution}
+              outcome={t.outcome}
               isAutoApproved={isAutoApproved}
               onRemovePolicy={onRemoveApprovalPolicy}
               onForceWebContext={onForceWebContext}
@@ -155,6 +158,7 @@ export const ToolSequenceGroup: React.FC<{
                 permission={t.permission}
                 permissionDecision={t.permissionDecision}
                 permissionResolution={t.permissionResolution}
+                outcome={t.outcome}
                 isAutoApproved={isAutoApproved}
                 onRemovePolicy={onRemoveApprovalPolicy}
                 onForceWebContext={onForceWebContext}

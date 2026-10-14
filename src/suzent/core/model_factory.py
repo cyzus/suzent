@@ -25,6 +25,8 @@ import json
 import os
 import re
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -59,6 +61,39 @@ def _chatgpt_model_profile(default: dict[str, Any]) -> dict[str, Any]:
         **default,
         "supported_native_tools": supported_native_tools - {ToolSearchTool},
     }
+
+
+def drop_foreign_reasoning_ids(messages: list[Any]) -> list[Any]:
+    """Unbind thinking parts that are not Responses reasoning items.
+
+    The Responses API replays a thinking part as a ``reasoning`` item keyed by
+    its id, and rejects any id that does not start with ``rs_``. Chat-completions
+    models label their thinking with the field it came from (``reasoning_content``)
+    and report the same ``openai`` provider, so after a model switch pydantic-ai
+    takes those parts for its own and every later request in the chat fails
+    with a 400. Without an id the part is sent as tagged assistant text, which
+    keeps the reasoning in context.
+    """
+    from pydantic_ai.messages import ModelResponse, ThinkingPart
+
+    def foreign(part: Any) -> bool:
+        return (
+            isinstance(part, ThinkingPart)
+            and part.id is not None
+            and not part.id.startswith("rs_")
+        )
+
+    cleaned: list[Any] = []
+    for message in messages:
+        if isinstance(message, ModelResponse) and any(
+            foreign(p) for p in message.parts
+        ):
+            message = replace(
+                message,
+                parts=[replace(p, id=None) if foreign(p) else p for p in message.parts],
+            )
+        cleaned.append(message)
+    return cleaned
 
 
 def _rewrite_chatgpt_request(
@@ -397,6 +432,22 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
     from pydantic_ai.settings import ModelSettings
 
     class _ChatGPTResponsesModel(OpenAIResponsesModel):
+        @asynccontextmanager
+        async def request_stream(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+            run_context: Any = None,
+        ) -> AsyncIterator[Any]:
+            async with super().request_stream(
+                drop_foreign_reasoning_ids(messages),
+                model_settings,
+                model_request_parameters,
+                run_context=run_context,
+            ) as streamed:
+                yield streamed
+
         async def request(
             self,
             messages: list[ModelMessage],

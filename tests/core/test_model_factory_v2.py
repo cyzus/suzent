@@ -152,3 +152,69 @@ def test_hosted_providers_get_no_chat_template_switch() -> None:
 
 def test_local_server_thinking_left_on_auto_sends_nothing() -> None:
     assert model_factory.build_thinking_settings("auto", "sglang") == {}
+
+
+def _history_with_chat_completions_thinking():
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        ThinkingPart,
+        UserPromptPart,
+    )
+
+    return [
+        ModelRequest(parts=[UserPromptPart(content="news please")]),
+        ModelResponse(
+            parts=[
+                ThinkingPart(
+                    content="plan the search",
+                    id="reasoning_content",
+                    provider_name="openai",
+                ),
+                TextPart(content="done"),
+            ],
+            provider_name="openai",
+        ),
+        ModelResponse(
+            parts=[
+                ThinkingPart(content="native", id="rs_abc", provider_name="openai"),
+                TextPart(content="ok"),
+            ],
+            provider_name="openai",
+        ),
+        ModelRequest(parts=[UserPromptPart(content="again")]),
+    ]
+
+
+def test_drop_foreign_reasoning_ids_keeps_native_reasoning() -> None:
+    history = _history_with_chat_completions_thinking()
+
+    cleaned = model_factory.drop_foreign_reasoning_ids(history)
+
+    assert cleaned[1].parts[0].id is None
+    assert cleaned[1].parts[0].content == "plan the search"
+    assert cleaned[2].parts[0].id == "rs_abc"
+    assert cleaned[2] is history[2]
+    assert history[1].parts[0].id == "reasoning_content"
+
+
+async def test_responses_replay_sends_no_non_rs_reasoning_item() -> None:
+    from openai import AsyncOpenAI
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.models.openai import OpenAIResponsesModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    model = OpenAIResponsesModel(
+        "gpt-5",
+        provider=OpenAIProvider(openai_client=AsyncOpenAI(api_key="test")),
+    )
+    history = model_factory.drop_foreign_reasoning_ids(
+        _history_with_chat_completions_thinking()
+    )
+
+    _, items = await model._map_messages(history, {}, ModelRequestParameters())
+
+    reasoning_ids = [i["id"] for i in items if i.get("type") == "reasoning"]
+    assert all(rid.startswith("rs_") for rid in reasoning_ids)
+    assert any("plan the search" in str(i.get("content")) for i in items)
