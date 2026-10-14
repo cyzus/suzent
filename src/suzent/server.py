@@ -1580,7 +1580,12 @@ if __name__ == "__main__":
     _sock = None
     try:
         _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        # On Windows SO_REUSEADDR lets a second server bind a port that is
+        # already listening, so two backends silently split the requests.
+        if sys.platform == "win32":
+            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
         try:
             _sock.bind((host, port))
         except OSError as e:

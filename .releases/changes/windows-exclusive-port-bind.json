@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "On Windows, starting a second Suzent server on a port that is already in use now fails with a clear error instead of silently sharing the port with the running one."
+}
