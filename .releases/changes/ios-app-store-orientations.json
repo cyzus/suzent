@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Declare supported iOS screen orientations so App Store Connect accepts iPad-capable builds."
+}
