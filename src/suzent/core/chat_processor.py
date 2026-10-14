@@ -692,7 +692,9 @@ class ChatProcessor:
                     if chat.agent_state:
                         state = deserialize_state(chat.agent_state)
                         if state and state.get("message_history"):
-                            message_history = state["message_history"]
+                            message_history = _drop_unanswered_scheduled_triggers(
+                                state["message_history"]
+                            )
                             deps.last_messages = message_history
                             logger.debug(
                                 f"Restored {len(message_history)} messages for chat {chat_id}"
@@ -2713,19 +2715,72 @@ def _response_provider_matches_run(
     return response_provider_name in implementation_names
 
 
+def _drop_unanswered_scheduled_triggers(messages: list) -> list:
+    """Remove scheduled-task wake-ups the model never answered.
+
+    A run that fails before producing anything still leaves its wake-up prompt
+    in history. The display log collapses consecutive unanswered triggers, so
+    those prompts lose their stamped display row; after a restart their
+    reminder block can no longer be authenticated and they come back as plain
+    ``[system trigger: ...]`` user messages, once per failed attempt, forever.
+    The model gains nothing from them either -- the next wake-up repeats the
+    same instruction.
+
+    Called while loading history for a new turn, so a trailing wake-up counts
+    as unanswered too: whatever runs now supersedes it.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.system_reminder import is_scheduled_trigger_only
+
+    def is_wake_up(message: Any) -> bool:
+        if not isinstance(message, ModelRequest) or not message.parts:
+            return False
+        for part in message.parts:
+            if not isinstance(part, UserPromptPart):
+                return False
+            content = part.content
+            if isinstance(content, (list, tuple)):
+                if len(content) != 1:
+                    return False
+                content = content[0]
+            if not isinstance(content, str) or not is_scheduled_trigger_only(content):
+                return False
+        return True
+
+    kept = [
+        message
+        for index, message in enumerate(messages)
+        if not (
+            is_wake_up(message)
+            and (
+                index + 1 == len(messages)
+                or isinstance(messages[index + 1], ModelRequest)
+            )
+        )
+    ]
+    if len(kept) != len(messages):
+        logger.info(
+            f"Dropped {len(messages) - len(kept)} unanswered scheduled-task "
+            "wake-ups from history"
+        )
+    return kept
+
+
 def _coalesce_unanswered_cron_triggers(messages: list[dict]) -> list[dict]:
     """Keep only the latest of consecutive cron triggers with no visible output."""
+    from suzent.core.system_reminder import SCHEDULED_TASK_TRIGGER_PREFIX
+
     coalesced: list[dict] = []
     for message in messages:
         is_cron_trigger = message.get("role") == "system_triggered" and str(
             message.get("content", "")
-        ).lstrip().startswith("**Scheduled Task:")
+        ).lstrip().startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
         previous_is_cron_trigger = bool(
             coalesced
             and coalesced[-1].get("role") == "system_triggered"
             and str(coalesced[-1].get("content", ""))
             .lstrip()
-            .startswith("**Scheduled Task:")
+            .startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
         )
         if is_cron_trigger and previous_is_cron_trigger:
             coalesced[-1] = message
