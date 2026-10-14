@@ -66,3 +66,10 @@ def test_create_agent_applies_thinking_effort() -> None:
 def test_create_agent_leaves_model_defaults_alone_without_thinking() -> None:
     assert _create_agent({}).model_settings is None
     assert _create_agent({"thinking": "auto"}).model_settings is None
+
+
+def test_create_agent_turns_tool_exceptions_into_failed_calls() -> None:
+    from suzent.tools.capability import ToolErrorCapability
+
+    capabilities = _create_agent({}).root_capability.capabilities
+    assert sum(isinstance(c, ToolErrorCapability) for c in capabilities) == 1
