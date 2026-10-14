@@ -333,8 +333,7 @@ const AGUIPartsContent: React.FC<{
                     const itemState =
                       t.approvalState === 'pending'
                         ? ('pending' as const)
-                        : t.approvalState === 'denied' ||
-                            (t.output && toolCallFailed(t.outcome, t.output))
+                        : t.approvalState === 'denied' || toolCallFailed(t.outcome, t.output)
                           ? ('error' as const)
                           : isStreaming && !t.output
                             ? ('active' as const)

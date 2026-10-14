@@ -321,7 +321,8 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
   }, [output]);
-  const isFailed = hasOutput && toolCallFailed(outcome, output);
+  // A failed outcome stands on its own: an interrupted call can end with no output.
+  const isFailed = toolCallFailed(outcome, output);
 
   const rendererMetadata = React.useMemo<Record<string, unknown> | undefined>(() => {
     const m = parsedOutput?.metadata;
@@ -350,13 +351,13 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const tense: ToolTense =
     isPending || isDenied
       ? 'imperative'
-      : hasOutput
-        ? isFailed
-          ? 'failed'
-          : 'past'
-        : isStreaming
-          ? 'active'
-          : 'imperative';
+      : isFailed
+        ? 'failed'
+        : hasOutput
+          ? 'past'
+          : isStreaming
+            ? 'active'
+            : 'imperative';
 
   // Headline for the collapsed pill: an action verb plus the tool's own
   // arguments ("READ ToolCallBlock.tsx") instead of just the tool name.
@@ -606,7 +607,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
           </span>
         )}
-        {hasOutput && !isPending && !isDenied && isFailed && (
+        {!isPending && !isDenied && isFailed && (
           <span
             className="flex items-center gap-0.5 shrink-0"
             aria-label={t('toolCallBlock.failed')}

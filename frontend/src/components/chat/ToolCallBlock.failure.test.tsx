@@ -37,6 +37,12 @@ describe('failed tool calls', () => {
     expect(html).not.toContain(CHECK);
   });
 
+  it('shows a failure for a failed outcome that left no output', () => {
+    const html = renderTool({ outcome: 'interrupted' });
+    expect(html).toContain(CROSS);
+    expect(html).not.toContain(CHECK);
+  });
+
   it('keeps the checkmark for an ordinary result', () => {
     const html = renderTool({ output: JSON.stringify({ success: true, message: 'ok' }) });
     expect(html).toContain(CHECK);
