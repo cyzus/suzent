@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Fix LiteLLM Proxy's test connection reporting no models once the Base URL and Master Key were saved."
+}
