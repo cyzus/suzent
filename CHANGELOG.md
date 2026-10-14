@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
 - Turn on Suzent's built-in skills by default, and keep skills found in your home folder (such as ~/.claude or ~/.codex) off until you enable them.
 - Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
+- A server started with SUZENT_PORT now uses that port even when device-mesh network access is on, and on Windows a second server on a port already in use fails with a clear error instead of silently sharing it.
 
 ## [v0.15.2] - 2026-10-01
 
