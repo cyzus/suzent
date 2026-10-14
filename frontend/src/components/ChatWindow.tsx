@@ -371,12 +371,14 @@ const STREAM_SEED_KEY = 'chat_stream_seed_v1';
 interface StreamSeed {
   chatId: string;
   parts: AGUIPart[];
+  /** The suspended run's parts while a resume after approval is streaming. */
+  baseParts?: AGUIPart[];
   ts: number;
 }
 
-function _saveStreamSeed(chatId: string, parts: AGUIPart[]): void {
+function _saveStreamSeed(chatId: string, parts: AGUIPart[], baseParts?: AGUIPart[]): void {
   try {
-    const seed: StreamSeed = { chatId, parts, ts: Date.now() };
+    const seed: StreamSeed = { chatId, parts, baseParts, ts: Date.now() };
     sessionStorage.setItem(STREAM_SEED_KEY, JSON.stringify(seed));
   } catch {
     /* storage may be full or unavailable */
@@ -1390,7 +1392,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!chatId) return;
       const parts = getStreamingParts();
       if (parts.length > 0) {
-        _saveStreamSeed(chatId, parts);
+        _saveStreamSeed(chatId, parts, resumeBasePartsRef.current.get(chatId));
       }
     };
     document.addEventListener('visibilitychange', saveOnHide);
@@ -2034,6 +2036,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // as a visual seed — even if the snapshot hasn't arrived yet.
         abandonedPartsRef.current.set(chatIdAtMount, savedSeed.parts);
       }
+      if (savedSeed.baseParts?.length) {
+        resumeBasePartsRef.current.set(chatIdAtMount, savedSeed.baseParts);
+      }
       // Mark as abandoned so the existing reload-on-return logic triggers.
       abandonedStreamChatsRef.current.add(chatIdAtMount);
 
@@ -2114,8 +2119,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // visible steps and in-flight tool states resume instead of resetting.
       const seedParts = abandonedPartsRef.current.get(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
+      // Kept until the resumed run is over, not just until this connect: a chat
+      // switch abandons this connection, and the reconnect's reset replay again
+      // covers only the resumed run.
       const baseParts = resumeBasePartsRef.current.get(chatIdAtMount);
-      resumeBasePartsRef.current.delete(chatIdAtMount);
 
       let streamed: boolean;
       try {
@@ -2150,9 +2157,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!streamed || cancelled) {
         // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
         pendingConnectRef.current = false;
-        if (!cancelled) await loadChat(chatIdAtMount, { force: true }).catch(() => {});
+        if (!cancelled) {
+          resumeBasePartsRef.current.delete(chatIdAtMount);
+          await loadChat(chatIdAtMount, { force: true }).catch(() => {});
+        }
         return;
       }
+      resumeBasePartsRef.current.delete(chatIdAtMount);
 
       // If the stream paused for tool approval, keep the approval UI visible.
       // The event bus will fire stream_started again when the resume stream begins.
