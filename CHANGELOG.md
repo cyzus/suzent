@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
 - Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
 - Keep an approved tool card and the steps before it in place while the turn resumes, instead of splitting the turn and showing a bare "Ran" card.
+- Keep repeating scheduled tasks switched on after failed runs, stop ChatGPT Subscription rejecting histories with LiteLLM reasoning, and stop failed task runs from leaving system-trigger bubbles in the chat.
 - Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
 - Turn on Suzent's built-in skills by default, and keep skills found in your home folder (such as ~/.claude or ~/.codex) off until you enable them.
 - Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
