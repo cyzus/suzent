@@ -1521,8 +1521,17 @@ if __name__ == "__main__":
 
     mesh_enabled = bool(getattr(_CFG, "node_lan_bind", False))
     original_host, original_port = host, port
+    # The desktop app always sets SUZENT_PORT, but only as a hint for its child
+    # backend; any other SUZENT_PORT is the user's choice and must be honoured.
+    port_is_explicit = (
+        bool(_port_str) and os.getenv("SUZENT_RUN_MODE") != "desktop-child"
+    )
     host, port = resolve_mesh_bind(
-        host, port, enabled=mesh_enabled, default_port=MESH_PORT
+        host,
+        port,
+        enabled=mesh_enabled,
+        default_port=MESH_PORT,
+        port_is_explicit=port_is_explicit,
     )
     if mesh_enabled:
         if host != original_host:

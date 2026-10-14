@@ -33,12 +33,24 @@ VPN_BENCHMARK_NETWORK = ipaddress.ip_network("198.18.0.0/15")
 
 
 def resolve_mesh_bind(
-    host: str, port: int, *, enabled: bool, default_port: int
+    host: str,
+    port: int,
+    *,
+    enabled: bool,
+    default_port: int,
+    port_is_explicit: bool = False,
 ) -> tuple[str, int]:
-    """Use a predictable externally reachable endpoint for the device mesh."""
+    """Use a predictable externally reachable endpoint for the device mesh.
+
+    A port the user chose is kept; only a dynamic or desktop-hinted port is
+    replaced, since paired devices need a stable one to reconnect to.
+    """
     if not enabled:
         return host, port
-    return (host if host in ("0.0.0.0", "::") else "0.0.0.0", default_port)
+    mesh_host = host if host in ("0.0.0.0", "::") else "0.0.0.0"
+    if port_is_explicit and port != 0:
+        return mesh_host, port
+    return mesh_host, default_port
 
 
 def _local_ip() -> str:

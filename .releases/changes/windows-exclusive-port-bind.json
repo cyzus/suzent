@@ -2,5 +2,5 @@
   "products": {
     "desktop": "patch"
   },
-  "summary": "On Windows, starting a second Suzent server on a port that is already in use now fails with a clear error instead of silently sharing the port with the running one."
+  "summary": "A server started with SUZENT_PORT now uses that port even when device-mesh network access is on, and on Windows a second server on a port already in use fails with a clear error instead of silently sharing it."
 }
