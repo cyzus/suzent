@@ -3,6 +3,7 @@
 ## [mobile-v0.3.0] - 2026-10-14
 
 ### Release notes
+- Declare supported iOS screen orientations so App Store Connect accepts iPad-capable builds.
 - Reduce iOS message footer copy, edit, retry, and branch icons to a consistent 13-point size while preserving their existing touch areas.
 - Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
 - Use charcoal surfaces, softer gray outlines, and near-black hard shadows in Android and iOS dark mode, with theme-aware code blocks and brighter links.

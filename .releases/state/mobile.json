@@ -1,6 +1,7 @@
 {
   "version": "0.3.0",
   "consumed": [
+    ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-compact-chat-controls.json",
     ".releases/changes/ios-reconnect-timeout.json",
     ".releases/changes/mobile-attachments.json",
