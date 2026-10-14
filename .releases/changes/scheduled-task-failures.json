@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Keep repeating scheduled tasks switched on after failed runs, stop ChatGPT Subscription rejecting histories with LiteLLM reasoning, and stop failed task runs from leaving system-trigger bubbles in the chat."
+}
