@@ -560,7 +560,7 @@ const ReasoningRailItemComponent: React.FC<{
                 <MarkdownRenderer
                   content={revealedText}
                   onFileClick={onFileClick}
-                  streamingLite={isStreaming}
+                  isStreaming={isStreaming}
                 />
               </div>
             </div>

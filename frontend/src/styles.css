@@ -1556,15 +1556,26 @@ code {
  * stranded on its own line below the text, so it is drawn as an ::after
  * inside the final block instead, where it joins the text's own inline flow.
  *
- * One rule per block shape the lite renderer can end on: a list row is a flex
- * row, so the caret goes in the text cell rather than becoming a new column,
- * and a code block ends in <pre><code>, so it goes after the last character
- * rather than below the frame.
  */
-.streaming-caret > :last-child:not(.lite-list-row):not(.lite-code):not(.lite-table)::after,
-.streaming-caret > .lite-list-row:last-child > span:last-child::after,
-.streaming-caret > .lite-code:last-child pre code::after,
-.streaming-caret > .lite-table:last-child::after {
+.markdown-compact h1 {
+  font-size: 1rem;
+  line-height: 1.25rem;
+}
+.markdown-compact h2 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.markdown-compact h3 {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.streaming-caret > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.streaming-caret > :is(ul, ol):last-child > li:last-child:not(:has(ul, ol, p))::after,
+.streaming-caret > :is(ul, ol):last-child > li:last-child > p:last-child::after,
+.streaming-caret > blockquote:last-child > p:last-child::after,
+.streaming-caret > div:last-child pre code::after,
+.streaming-caret > div:last-child table tbody tr:last-child td:last-child::after {
   content: '';
   display: inline-block;
   width: 0.5em;

@@ -4,12 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
-import {
-  hasCitationMarker,
-  renderTextWithCitations,
-  useCitationSources,
-  type CitationSourcesMap,
-} from './Citations';
+import { hasCitationMarker, renderTextWithCitations, useCitationSources } from './Citations';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
@@ -77,12 +72,10 @@ export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {
 interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  streamingLite?: boolean;
+  isStreaming?: boolean;
   compact?: boolean;
   /**
-   * Draw a blinking caret after the last character. Only honoured on the
-   * lightweight streaming path, which is the only one that renders a partial
-   * message.
+   * Draw a blinking caret after the last character while streaming.
    */
   caret?: boolean;
 }
@@ -193,269 +186,11 @@ function extractNodeText(children: React.ReactNode): string {
   return '';
 }
 
-function renderLiteInline(text: string, sourcesMap?: CitationSourcesMap | null): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+const MarkdownStreamingContext = React.createContext(false);
 
-  // Plain-text segments are routed through the citation splitter so [[cite:..]]
-  // markers become badges; code/bold tokens pass through untouched. We route
-  // even when sourcesMap is null/empty so unresolvable markers are stripped
-  // rather than leaking their raw protocol glyphs.
-  const pushText = (value: string, key: string) => {
-    if (hasCitationMarker(value)) {
-      nodes.push(...renderTextWithCitations(value, sourcesMap ?? null, key));
-    } else {
-      nodes.push(value);
-    }
-  };
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      pushText(text.slice(lastIndex, match.index), `lite-${lastIndex}`);
-    }
-
-    const token = match[0];
-    if (token.startsWith('`')) {
-      nodes.push(
-        <code
-          key={`code-${match.index}`}
-          className="bg-brutal-yellow px-1.5 py-0.5 border border-brutal-black text-[11px] font-mono text-brutal-black font-bold break-words whitespace-pre-wrap box-decoration-clone"
-        >
-          {token.slice(1, -1)}
-        </code>
-      );
-    } else {
-      nodes.push(<strong key={`strong-${match.index}`}>{token.slice(2, -2)}</strong>);
-    }
-
-    lastIndex = pattern.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    pushText(text.slice(lastIndex), `lite-${lastIndex}`);
-  }
-
-  return nodes;
-}
-
-const LiteCodeBlock: React.FC<{ lang?: string; content: string }> = ({ lang, content }) => {
-  const safeLang = (lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-  const lineCount = content ? content.split('\n').length : 1;
-
-  return (
-    <div className="lite-code my-3 font-mono text-sm border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-brutal-black dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-500">
-        <span className="text-white dark:text-brutal-yellow font-black uppercase text-[10px] truncate">
-          {safeLang}
-        </span>
-        <span className="text-white/55 dark:text-neutral-400 text-[10px] font-bold shrink-0">
-          {lineCount} lines
-        </span>
-      </div>
-      <pre className="max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0">
-        <code>{content}</code>
-      </pre>
-    </div>
-  );
-};
-
-function splitLiteTableRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
-  return trimmed.split('|').map((cell) => cell.trim());
-}
-
-function isLiteTableSeparator(line: string): boolean {
-  const cells = splitLiteTableRow(line);
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
-}
-
-const LiteTable: React.FC<{ lines: string[]; sourcesMap?: CitationSourcesMap | null }> = ({
-  lines,
-  sourcesMap,
-}) => {
-  const headers = splitLiteTableRow(lines[0] || '');
-  const rows = lines.slice(2).map(splitLiteTableRow);
-
-  return (
-    <div className="lite-table overflow-x-auto">
-      <table className="text-xs border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900">
-        <thead>
-          <tr>
-            {headers.map((header, idx) => (
-              <th
-                key={idx}
-                className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 bg-brutal-yellow text-brutal-black font-black uppercase text-left align-top"
-              >
-                {renderLiteInline(header, sourcesMap)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIdx) => (
-            <tr key={rowIdx}>
-              {headers.map((_header, colIdx) => (
-                <td
-                  key={colIdx}
-                  className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 align-top text-brutal-black dark:text-neutral-100"
-                >
-                  {renderLiteInline(row[colIdx] ?? '', sourcesMap)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const LiteMarkdownRenderer: React.FC<{
-  content: string;
-  caret?: boolean;
-  compact?: boolean;
-}> = ({ content, caret, compact = false }) => {
-  const sourcesMap = useCitationSources();
-  const parts: React.ReactNode[] = [];
-  const fencePattern = /```([a-zA-Z0-9_-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  const pushText = (value: string, keyPrefix: string) => {
-    const lines = value.split('\n');
-    let paragraph: string[] = [];
-
-    const flushParagraph = () => {
-      const text = paragraph.join('\n').trim();
-      paragraph = [];
-      if (!text) return;
-
-      const key = `${keyPrefix}-p-${parts.length}`;
-      const multilineInlineCode = text.match(/^`([\s\S]*)`$/);
-      if (multilineInlineCode?.[1]?.includes('\n')) {
-        parts.push(
-          <LiteCodeBlock
-            key={key}
-            lang="text"
-            content={multilineInlineCode[1].replace(/^\n|\n$/g, '')}
-          />
-        );
-        return;
-      }
-
-      if (/^#{1,3}\s+/.test(text)) {
-        const level = text.match(/^#+/)?.[0].length ?? 3;
-        const body = text.replace(/^#{1,3}\s+/, '');
-        const className = compact
-          ? level === 1
-            ? 'text-base leading-5 font-brutal font-bold mb-1.5 break-words uppercase'
-            : level === 2
-              ? 'text-sm leading-5 font-brutal font-bold mb-1.5 break-words uppercase'
-              : 'text-xs leading-4 font-bold mb-1 break-words uppercase'
-          : level === 1
-            ? 'text-xl font-brutal font-bold mb-2 break-words uppercase'
-            : level === 2
-              ? 'text-lg font-brutal font-bold mb-2 break-words uppercase'
-              : 'text-base font-bold mb-1 break-words uppercase';
-        parts.push(
-          <div key={key} className={className}>
-            {renderLiteInline(body, sourcesMap)}
-          </div>
-        );
-        return;
-      }
-
-      parts.push(
-        <p key={key} className="leading-relaxed break-words whitespace-pre-wrap m-0">
-          {renderLiteInline(text, sourcesMap)}
-        </p>
-      );
-    };
-
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const line = lines[lineIndex];
-      if (!line.trim()) {
-        flushParagraph();
-        continue;
-      }
-
-      if (
-        line.includes('|') &&
-        lineIndex + 1 < lines.length &&
-        isLiteTableSeparator(lines[lineIndex + 1])
-      ) {
-        flushParagraph();
-        const tableLines = [line, lines[lineIndex + 1]];
-        lineIndex += 2;
-        while (
-          lineIndex < lines.length &&
-          lines[lineIndex].trim() &&
-          lines[lineIndex].includes('|')
-        ) {
-          tableLines.push(lines[lineIndex]);
-          lineIndex++;
-        }
-        lineIndex--;
-        parts.push(
-          <LiteTable
-            key={`${keyPrefix}-table-${parts.length}`}
-            lines={tableLines}
-            sourcesMap={sourcesMap}
-          />
-        );
-        continue;
-      }
-
-      const ordered = line.match(/^\s*(\d+)\.\s+(.+)$/);
-      const bullet = line.match(/^\s*[-*]\s+(.+)$/);
-      if (ordered || bullet) {
-        flushParagraph();
-        const body = ordered?.[2] ?? bullet?.[1] ?? line;
-        parts.push(
-          <div
-            key={`${keyPrefix}-li-${parts.length}-${lineIndex}`}
-            className="lite-list-row flex gap-2 leading-relaxed"
-          >
-            <span className="shrink-0 text-neutral-500">{ordered ? `${ordered[1]}.` : '•'}</span>
-            <span className="min-w-0 break-words">{renderLiteInline(body, sourcesMap)}</span>
-          </div>
-        );
-        continue;
-      }
-
-      paragraph.push(line);
-    }
-
-    flushParagraph();
-  };
-
-  while ((match = fencePattern.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      pushText(content.slice(lastIndex, match.index), `text-${lastIndex}`);
-    }
-    parts.push(
-      <LiteCodeBlock
-        key={`code-${match.index}`}
-        lang={match[1] || 'text'}
-        content={(match[2] || '').replace(/\n$/, '')}
-      />
-    );
-    lastIndex = fencePattern.lastIndex;
-  }
-
-  if (lastIndex < content.length) {
-    pushText(content.slice(lastIndex), `text-${lastIndex}`);
-  }
-
-  return (
-    <div
-      className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text ${compact ? 'space-y-2' : 'space-y-3'}${caret ? ' streaming-caret' : ''}`}
-    >
-      {parts}
-    </div>
-  );
+const MarkdownCodeBlock: React.FC<{ lang: string; content: string }> = (props) => {
+  const isStreaming = React.useContext(MarkdownStreamingContext);
+  return <CodeBlockComponent {...props} isStreaming={isStreaming} showCursor={false} />;
 };
 
 const REMARK_PLUGINS = [remarkGfm];
@@ -496,7 +231,7 @@ function safeUrlTransform(url: string): string {
 }
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
-  ({ content, onFileClick, streamingLite = false, compact = false, caret = false }) => {
+  ({ content, onFileClick, isStreaming = false, compact = false, caret = false }) => {
     const RM: any = ReactMarkdown;
     const sourcesMap = useCitationSources();
     const openingLinksRef = React.useRef(new Map<string, number>());
@@ -613,7 +348,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
             const match = /language-([a-zA-Z0-9_-]+)/.exec(className);
             const codeContent = extractCodeText(p.children).replace(/\n$/, '');
 
-            return <CodeBlockComponent lang={match?.[1] || 'text'} content={codeContent} />;
+            return <MarkdownCodeBlock lang={match?.[1] || 'text'} content={codeContent} />;
           }
           return (
             <div className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto">
@@ -675,14 +410,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           }
 
           if (isMultilineInlineCode || !isInline) {
-            if (streamingLite) {
-              return (
-                <pre className="bg-neutral-50 dark:bg-zinc-900 border border-neutral-300 dark:border-zinc-700 px-3 py-2.5 overflow-x-auto font-mono text-[12px] text-neutral-800 dark:text-neutral-200 leading-5 whitespace-pre-wrap break-all">
-                  <code>{codeContent}</code>
-                </pre>
-              );
-            }
-            return <CodeBlockComponent lang={lang || 'text'} content={codeContent} />;
+            return <MarkdownCodeBlock lang={lang || 'text'} content={codeContent} />;
           }
           return (
             <code
@@ -842,24 +570,24 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           </blockquote>
         ),
       }),
-      [applyCitations, handleFileClick, isExternalLink, openExternalLink, sourcesMap, streamingLite]
+      [applyCitations, handleFileClick, isExternalLink, openExternalLink, sourcesMap]
     );
 
-    if (streamingLite) {
-      return <LiteMarkdownRenderer content={sanitized} caret={caret} compact={compact} />;
-    }
-
     return (
-      <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text">
-        <RM
-          remarkPlugins={REMARK_PLUGINS}
-          rehypePlugins={REHYPE_PLUGINS}
-          urlTransform={safeUrlTransform}
-          components={components}
+      <MarkdownStreamingContext.Provider value={isStreaming}>
+        <div
+          className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text${compact ? ' markdown-compact' : ''}${isStreaming && caret ? ' streaming-caret' : ''}`}
         >
-          {sanitized}
-        </RM>
-      </div>
+          <RM
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            urlTransform={safeUrlTransform}
+            components={components}
+          >
+            {sanitized}
+          </RM>
+        </div>
+      </MarkdownStreamingContext.Provider>
     );
   }
 );
