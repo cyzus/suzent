@@ -171,21 +171,53 @@ function lowerFirst(value: string): string {
  * Whether a tool's own output says the call failed.
  *
  * Tools answer with a `ToolResult` envelope, so a failure is stated in the
- * payload rather than thrown — `success: false`, or an `error_code`. The check
+ * payload rather than thrown — `success: false`, an `error_code`, or a
+ * command's non-zero exit code. The check
  * is deliberately shallow: output that is not an envelope (plain text, a
  * truncated stream) is not a failure, it is just output.
  */
 export function isFailedToolOutput(output: string | undefined): boolean {
   if (!output) return false;
-  const trimmed = output.trim();
+  const trimmed = output
+    .trim()
+    .replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1')
+    .trim();
   if (!trimmed.startsWith('{')) return false;
   try {
     const parsed = JSON.parse(trimmed);
     if (!parsed || typeof parsed !== 'object') return false;
-    return parsed.success === false || typeof parsed.error_code === 'string';
+    const metadata = parsed.metadata && typeof parsed.metadata === 'object' ? parsed.metadata : {};
+    return (
+      parsed.success === false ||
+      typeof parsed.error_code === 'string' ||
+      isNonZeroExit(metadata.returncode) ||
+      isNonZeroExit(metadata.exit_code)
+    );
   } catch {
-    return false;
+    // Stored history can hold the envelope as a Python repr.
+    return (
+      /^\{\s*'success':\s*False\b/.test(trimmed) ||
+      /'error_code':\s*'/.test(trimmed) ||
+      /'(?:returncode|exit_code)':\s*-?[1-9]\d*\b/.test(trimmed)
+    );
   }
+}
+
+/**
+ * A command reports its exit status in metadata while the envelope itself says
+ * the tool ran fine -- host shells and process polls return `success: true`
+ * for a command that exited non-zero, where the sandbox reports a failure.
+ */
+function isNonZeroExit(code: unknown): boolean {
+  return typeof code === 'number' && code !== 0;
+}
+
+/**
+ * Whether a finished tool call failed: the backend said so (a rejected or
+ * raising call), or the tool's own envelope reports a failure.
+ */
+export function toolCallFailed(outcome: string | undefined, output: string | undefined): boolean {
+  return Boolean(outcome) || isFailedToolOutput(output);
 }
 
 /**

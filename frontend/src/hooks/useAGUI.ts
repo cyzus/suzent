@@ -337,6 +337,14 @@ export function processEvent(
             permissionDecision: decision,
           });
         }
+      } else if (name === 'tool_call_outcome') {
+        const outcome = value as { toolCallId?: string; outcome?: AGUIPart['outcome'] };
+        const existingIndex = outcome.toolCallId
+          ? findLastToolPartIndex(next, outcome.toolCallId)
+          : -1;
+        if (existingIndex >= 0) {
+          next[existingIndex] = { ...next[existingIndex], outcome: outcome.outcome };
+        }
       } else if (name === 'tool_permission_resolution') {
         const resolution = value as NonNullable<AGUIPart['permissionResolution']>;
         const tcId = resolution.toolCallId;
