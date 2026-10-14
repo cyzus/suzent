@@ -749,9 +749,13 @@ cancel tasks it created. Tasks you set up are yours.
 
 ### When a task fails
 
-The task's error is shown next to it in **Settings → Automation**. Failed runs
-are retried with increasing delays, and after 5 failures in a row the task is
-switched off. Fix the cause (often an expired API key), then switch it back on.
+The task's error is shown next to it in **Settings → Automation**. A failed run
+is retried up to 5 times with increasing delays. If it still fails, a repeating
+task skips that run and tries again at its next scheduled time, so it stays on.
+A one-time task is switched off instead. When the model rejects the request
+outright (for example an invalid request or an expired API key), Suzent does not
+retry and goes straight to the next scheduled time. Fix the cause and the next
+run picks it up.
 
 ### Cron expressions
 
@@ -864,8 +868,9 @@ suzent heartbeat run -c <chat_id>
 **A task never runs.** Check that it is switched on and that its next run time
 is in the future. If you closed the app, turn on the background service.
 
-**A task was switched off.** It failed 5 times in a row. Read its last error,
-fix the cause, and switch it back on.
+**A task keeps failing.** Read its last error in **Settings → Automation** and
+fix the cause; the next scheduled run uses the fix. A one-time task that failed
+is switched off, so switch it back on after fixing it.
 
 **A heartbeat seems to do nothing.** That usually means it ran and found
 nothing to report, so it removed itself from the chat. Use **Run Now** in the
