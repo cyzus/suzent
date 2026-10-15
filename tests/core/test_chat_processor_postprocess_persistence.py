@@ -115,6 +115,7 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         cancel_event=None,
         is_suspended=False,
         inline_a2ui_surfaces={},
+        context_sources={},
     )
 
     def fake_build_agent_deps(chat_id, user_id, config):
