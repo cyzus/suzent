@@ -6,13 +6,11 @@
 
 import React from 'react';
 import { useI18n } from '../../i18n';
-import { RefreshButton } from '../RefreshButton';
 import type { MemoryStats } from '../../types/memory';
 
 interface MemoryStatsProps {
   stats: MemoryStats | null;
   isLoading?: boolean;
-  onRefresh?: () => void;
 }
 
 const toPercent = (value?: number) => `${((value || 0) * 100).toFixed(1)}%`;
@@ -48,7 +46,6 @@ const Rate: React.FC<RateProps> = ({ label, value, detail, ratio }) => (
 export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
   stats,
   isLoading,
-  onRefresh,
 }) => {
   const { t } = useI18n();
 
@@ -127,15 +124,6 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
           detail={`${stats.cold_memories || 0}/${totalMemories}`}
           ratio={stats.cold_memory_ratio || 0}
         />
-
-        {onRefresh && (
-          <RefreshButton
-            onClick={onRefresh}
-            label={t('memoryStats.refresh')}
-            spinning={isLoading}
-            className="ml-auto"
-          />
-        )}
       </div>
 
       {distributionTotal > 0 ? (

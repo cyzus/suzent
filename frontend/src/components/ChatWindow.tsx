@@ -913,6 +913,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     setSubAgentTasks({});
     setViewingSubAgentTaskId(null);
+    setSidebarFilePreview(null);
+    setForcedWebContextId(null);
   }, [currentChatId]);
 
   useEffect(() => {
@@ -3006,53 +3008,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   ]);
 
   return (
-    <ChatImageGallery key={currentChatId || 'new'}>
-      <div
-        className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {isDragging && <DragOverlay />}
-        <BrutalDialog
-          open={pendingFork !== null}
-          title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
-          message={forkError || t('conversationFork.message')}
-          onClose={() => {
-            if (!forkBusy) {
-              setPendingFork(null);
-              setForkError(null);
-            }
-          }}
-          actions={
-            forkError
-              ? [
-                  {
-                    label: t('common.close'),
-                    onClick: () => {
-                      setPendingFork(null);
-                      setForkError(null);
-                    },
-                  },
-                ]
-              : [
-                  {
-                    label: t('conversationFork.cancel'),
-                    onClick: () => setPendingFork(null),
-                  },
-                  {
-                    label: forkBusy
-                      ? t('conversationFork.creating')
-                      : t('conversationFork.confirm'),
-                    tone: 'primary',
-                    preventDismiss: true,
-                    onClick: confirmFork,
-                  },
-                ]
+    <div
+      className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {isDragging && <DragOverlay />}
+      <BrutalDialog
+        open={pendingFork !== null}
+        title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
+        message={forkError || t('conversationFork.message')}
+        onClose={() => {
+          if (!forkBusy) {
+            setPendingFork(null);
+            setForkError(null);
           }
-        />
+        }}
+        actions={
+          forkError
+            ? [
+                {
+                  label: t('common.close'),
+                  onClick: () => {
+                    setPendingFork(null);
+                    setForkError(null);
+                  },
+                },
+              ]
+            : [
+                {
+                  label: t('conversationFork.cancel'),
+                  onClick: () => setPendingFork(null),
+                },
+                {
+                  label: forkBusy ? t('conversationFork.creating') : t('conversationFork.confirm'),
+                  tone: 'primary',
+                  preventDismiss: true,
+                  onClick: confirmFork,
+                },
+              ]
+        }
+      />
 
+      <ChatImageGallery key={currentChatId || 'new'}>
         {/* Main Chat Column */}
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
           <div className="relative flex-1 min-h-0">
@@ -3229,8 +3229,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
         </div>
+      </ChatImageGallery>
 
-        {/* Right Sidebar */}
+      {/* Right Sidebar */}
+      <ChatImageGallery resetKey={currentChatId}>
         <RightSidebar
           isOpen={isRightSidebarOpen}
           onClose={() => onRightSidebarToggle(false)}
@@ -3292,16 +3294,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           forcedWebContextId={forcedWebContextId}
           onClearForcedWebContext={() => setForcedWebContextId(null)}
         />
+      </ChatImageGallery>
 
-        <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
+      <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 
-        <FileViewer
-          filePath={viewingFile?.path ?? null}
-          fileName={viewingFile?.name ?? null}
-          chatId={currentChatId}
-          onClose={() => setViewingFile(null)}
-        />
-      </div>
-    </ChatImageGallery>
+      <FileViewer
+        filePath={viewingFile?.path ?? null}
+        fileName={viewingFile?.name ?? null}
+        chatId={currentChatId}
+        onClose={() => setViewingFile(null)}
+      />
+    </div>
   );
 };

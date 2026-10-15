@@ -115,10 +115,6 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
             <MemoryStatsComponent
               stats={stats}
               isLoading={statsLoading}
-              onRefresh={() => {
-                loadStats();
-                loadCoreMemory();
-              }}
             />
           </section>
 

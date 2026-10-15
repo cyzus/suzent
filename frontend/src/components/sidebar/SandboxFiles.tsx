@@ -206,6 +206,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -257,6 +258,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setDirContents(new Map());
       setSelectedFile(null);
       setFileContent(null);
+      setLoadingFile(false);
       setError(null);
       setContextMenu(null);
       fetchDirContents(WORKSPACE_PATH);
@@ -302,45 +304,57 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     expandedDirs.forEach((dir) => fetchDirContents(dir));
   }, [expandedDirs, fetchDirContents]);
 
-  const fetchFileContent = useCallback(
-    async (path: string) => {
-      if (!currentChatId) return;
-
-      setLoadingFile(true);
-      setError(null);
+  useEffect(() => {
+    if (!currentChatId || !selectedFile || isBinaryServedFile(selectedFile)) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async (initial = false): Promise<void> => {
+      if (initial) setLoadingFile(true);
       try {
         const base = getApiBase();
         const volumesParam = JSON.stringify(config.sandbox_volumes || []);
         const response = await fetch(
-          `${base}/sandbox/read_file?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`
+          `${base}/sandbox/read_file?chat_id=${currentChatId}&path=${encodeURIComponent(selectedFile)}&volumes=${encodeURIComponent(volumesParam)}`,
+          { signal: controller.signal }
         );
+        if (controller.signal.aborted) return;
         if (!response.ok) {
           setError(`Server error: ${response.status}`);
           return;
         }
         const data = await response.json();
+        if (controller.signal.aborted) return;
         if (data.error) setError(data.error);
-        else setFileContent(data.content);
+        else {
+          setFileContent(data.content);
+          setError(null);
+        }
       } catch {
-        setError('Failed to fetch file content');
+        if (!controller.signal.aborted) setError('Failed to fetch file content');
       } finally {
-        setLoadingFile(false);
+        if (!controller.signal.aborted) {
+          setLoadingFile(false);
+          timer = setTimeout(() => void refresh(), 5000);
+        }
       }
-    },
-    [currentChatId, config.sandbox_volumes]
-  );
+    };
+    void refresh(true);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [currentChatId, selectedFile, config.sandbox_volumes, previewRevision]);
 
   const handleSelectFile = useCallback(
-    (path: string, name: string) => {
+    (path: string) => {
       setSelectedFile(path);
       setError(null);
       setFileContent(null);
-      if (!isBinaryServedFile(name)) {
-        fetchFileContent(path);
-      }
+      setLoadingFile(false);
+      setPreviewRevision((revision) => revision + 1);
       onViewModeChange?.(true);
     },
-    [fetchFileContent, onViewModeChange]
+    [onViewModeChange]
   );
 
   const handleBack = () => {
@@ -355,14 +369,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setSelectedFile(externalFilePath);
       setError(null);
       setFileContent(null);
-      if (!isBinaryServedFile(externalFileName)) {
-        fetchFileContent(externalFilePath);
-      }
+      setLoadingFile(false);
+      setPreviewRevision((revision) => revision + 1);
       onViewModeChange?.(true);
     }
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".
-  }, [externalFilePath, externalFileName, externalFileNonce, fetchFileContent, onViewModeChange]);
+  }, [externalFilePath, externalFileName, externalFileNonce, onViewModeChange]);
 
   const openPathInExplorer = useCallback(
     async (path: string) => {
@@ -519,14 +532,6 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               {filename}
             </span>
           </div>
-          <RefreshButton
-            onClick={() => {
-              setFileContent(null);
-              setError(null);
-              if (!isBinaryServedFile(filename)) fetchFileContent(selectedFile);
-            }}
-            spinning={loadingFile}
-          />
           {onMaximize && (
             <BrutalButton
               variant="warning"
@@ -660,7 +665,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
           onOpen={() =>
             contextMenu.isDir
               ? handleToggleDir(contextMenu.path)
-              : handleSelectFile(contextMenu.path, contextMenu.name)
+              : handleSelectFile(contextMenu.path)
           }
           onReveal={() => openPathInExplorer(contextMenu.path)}
           onCopyPath={() => {

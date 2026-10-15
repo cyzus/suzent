@@ -9,7 +9,6 @@ import { useI18n } from '../../i18n';
 import { MemoryMarkdown } from './MemoryMarkdown';
 import { useChatStore } from '../../hooks/useChatStore';
 import { BrutalSelect } from '../BrutalSelect';
-import { RefreshButton } from '../RefreshButton';
 import type { TranscriptEntry } from '../../types/memory';
 
 function formatTimestamp(ts: string): string {
@@ -80,31 +79,39 @@ export const TranscriptPanel: React.FC = () => {
     }
   }, [currentChatId, selectedSessionId]);
 
-  const loadTranscript = async (sessionId: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await memoryApi.getSessionTranscript(sessionId, lastN);
-      setEntries(result.entries);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : t('transcripts.loadFailed');
-      if (msg.includes('404') || msg.includes('Not Found')) {
-        setEntries([]);
-        setError(null);
-      } else {
-        setError(msg);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load transcript when session or filter changes
   useEffect(() => {
-    if (selectedSessionId) {
-      loadTranscript(selectedSessionId);
-    }
-  }, [selectedSessionId, lastN]);
+    if (!selectedSessionId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async (initial = false): Promise<void> => {
+      if (initial) setLoading(true);
+      try {
+        const result = await memoryApi.getSessionTranscript(selectedSessionId, lastN);
+        if (!active) return;
+        setEntries(result.entries);
+        setError(null);
+      } catch (err) {
+        if (!active) return;
+        const msg = err instanceof Error ? err.message : t('transcripts.loadFailed');
+        if (msg.includes('404') || msg.includes('Not Found')) {
+          setEntries([]);
+          setError(null);
+        } else {
+          setError(msg);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+          timer = setTimeout(() => void refresh(), 5000);
+        }
+      }
+    };
+    void refresh(true);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [selectedSessionId, lastN, t]);
 
   const handleLastNSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,17 +183,13 @@ export const TranscriptPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Refresh */}
+        {/* Entry count */}
         {selectedSessionId && (
           <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
             <span>
               {t('transcripts.entriesCount', { count: String(entries.length) })}
               {lastN !== undefined && ` (${t('transcripts.lastN', { n: String(lastN) })})`}
             </span>
-            <RefreshButton
-              onClick={() => void loadTranscript(selectedSessionId)}
-              spinning={loading}
-            />
           </div>
         )}
       </div>
