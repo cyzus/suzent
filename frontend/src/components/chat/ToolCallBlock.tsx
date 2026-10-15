@@ -4,7 +4,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { useDisclosureBody } from '../../hooks/useDisclosureBody';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
-import { ToolGroupIcon } from './toolGroupIcon';
+import { pickToolRunningSurfaceClass, ToolGroupIcon } from './toolGroupIcon';
 import { getToolSummary, normalizeToolName, toolCallFailed } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
@@ -525,7 +525,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     isPending && inActivityRail
       ? 'tool-call-header-pending'
       : isStreaming && !hasOutput
-        ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white'
+        ? `${pickToolRunningSurfaceClass(toolName)} !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white`
         : 'border-2 border-transparent',
   ].join(' ');
 
