@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout."
+}
