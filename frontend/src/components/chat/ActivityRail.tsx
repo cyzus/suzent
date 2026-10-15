@@ -456,10 +456,10 @@ export const ActivityRail: React.FC<{
           {hasPending && !expanded ? (currentLabel ?? 'Approval needed') : headerLabel}
         </span>
         {hasPending && !expanded && <span className="activity-rail-pending-badge">Pending</span>}
-        <span className="text-neutral-300 dark:text-neutral-600" aria-hidden="true">
+        <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
           |
         </span>
-        <span className="text-neutral-500 dark:text-neutral-400">
+        <span className="shrink-0 whitespace-nowrap text-neutral-500 dark:text-neutral-400">
           {itemCount} {itemCount === 1 ? 'step' : 'steps'}
         </span>
         <DisclosureChevron

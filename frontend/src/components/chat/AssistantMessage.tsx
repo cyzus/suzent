@@ -717,7 +717,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 
   return (
     <div
-      className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
+      className="inline-flex min-w-0 flex-1 basis-24 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
       title={t('chatMessage.modelSignature', { model: modelId })}
     >
       <ProviderFavicon model={modelId} />
@@ -952,7 +952,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     ) : null;
 
   const messageFooter = (
-    <div className="flex min-w-0 items-center gap-1.5 px-1 pt-0.5 pb-1 text-[10px] leading-5">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
         {fullMessageText && !isThinking && (
           <CopyButton text={fullMessageText} className="relative" />
