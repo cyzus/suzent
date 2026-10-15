@@ -1631,6 +1631,8 @@ export const en = {
     sourcesCount: '{count} Sources',
   },
   taskFlow: {
+    checklist: 'Checklist',
+    checklistProgress: '{completed} / {total} done',
     scope: 'Task scope',
     entireProject: 'Entire project',
     expand: 'Expand',

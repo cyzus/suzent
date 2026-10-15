@@ -22,35 +22,53 @@ const task = (id: number, status: Task['status'], extra: Partial<Task> = {}): Ta
   ...extra,
 });
 const render = (tasks: Task[]): string =>
-  renderToStaticMarkup(
-    <ProjectKanbanView kanban={{ tasks, goals: [] }} onOpenTask={() => {}} onResult={() => {}} />
-  );
+  renderToStaticMarkup(<ProjectKanbanView kanban={{ tasks, goals: [] }} onOpenTask={() => {}} />);
 
 describe('Project task overview', () => {
+  it('renders conversation tasks as an ordered checklist with visible completed steps', () => {
+    const html = renderToStaticMarkup(
+      <ProjectKanbanView
+        scope="chat"
+        kanban={{
+          goals: [],
+          tasks: [
+            task(3, 'pending'),
+            task(1, 'completed'),
+            task(2, 'in_progress'),
+            task(4, 'cancelled'),
+          ],
+        }}
+        onOpenTask={() => {}}
+      />
+    );
+    expect(html).toContain('<ol');
+    expect(html).toContain('line-through');
+    expect(html).toContain('task.status.completed');
+    expect(html).toContain('task.status.inprogress');
+    expect(html.indexOf('Task 1')).toBeLessThan(html.indexOf('Task 2'));
+    expect(html.indexOf('Task 2')).toBeLessThan(html.indexOf('Task 3'));
+    expect(html).not.toContain('Task 4');
+    expect(html).not.toContain('<details');
+    expect(html).not.toContain('taskFlow.groups.');
+    expect(html).not.toContain('type="checkbox"');
+  });
   it.each(['chat', 'project'] as const)(
     'uses the selected %s scope for empty-state copy',
     (scope) => {
       const html = renderToStaticMarkup(
-        <ProjectKanbanView
-          scope={scope}
-          kanban={{ tasks: [], goals: [] }}
-          onOpenTask={() => {}}
-          onResult={() => {}}
-        />
+        <ProjectKanbanView scope={scope} kanban={{ tasks: [], goals: [] }} onOpenTask={() => {}} />
       );
       expect(html).toContain(scope === 'chat' ? 'taskFlow.chatEmpty' : 'taskFlow.projectEmpty');
       expect(html).not.toContain(scope === 'chat' ? 'taskFlow.projectEmpty' : 'taskFlow.chatEmpty');
     }
   );
   it('does not confuse an absent project with an active request', () => {
-    const html = renderToStaticMarkup(
-      <ProjectKanbanView kanban={null} onOpenTask={() => {}} onResult={() => {}} />
-    );
+    const html = renderToStaticMarkup(<ProjectKanbanView kanban={null} onOpenTask={() => {}} />);
     expect(html).toContain('taskFlow.projectEmpty');
     expect(html).not.toContain('taskFlow.loading');
   });
   it('shows loading only for an active request and offers retry on failure', () => {
-    const props = { kanban: null, onOpenTask: () => {}, onResult: () => {} };
+    const props = { kanban: null, onOpenTask: () => {} };
     const loading = renderToStaticMarkup(<ProjectKanbanView {...props} loading />);
     expect(loading).toContain('taskFlow.loading');
     expect(loading).not.toContain('taskFlow.projectEmpty');
@@ -66,7 +84,6 @@ describe('Project task overview', () => {
         selectedTaskId={1}
         pendingTaskId={1}
         onOpenTask={() => {}}
-        onResult={() => {}}
       />
     );
     expect(html).toContain('aria-current="true"');
@@ -105,7 +122,7 @@ describe('Project task overview', () => {
     expect(html).toContain('taskFlow.projectEmpty');
     expect(html).not.toContain('taskFlow.groups.pending');
   });
-  it('resolves dependency titles and renders progress, conversation and result destinations', () => {
+  it('shows dependency titles, progress and conversation links without an output action', () => {
     const html = render([
       task(1, 'pending', { title: 'Collect sources' }),
       task(2, 'blocked', {
@@ -123,6 +140,6 @@ describe('Project task overview', () => {
     expect(html).toContain('Waiting for research');
     expect(html).toContain('Report is ready');
     expect(html).toContain('taskFlow.openChat');
-    expect(html).toContain('taskFlow.viewResult');
+    expect(html).not.toContain('taskFlow.viewResult');
   });
 });

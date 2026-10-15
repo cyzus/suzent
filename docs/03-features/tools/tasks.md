@@ -26,20 +26,22 @@ it's assigned to.
 ## Follow task progress
 
 The task panel shows this conversation's goal, current steps, and anything
-waiting for your input. Completed steps are folded away. Goal details separate
+waiting for your input. This conversation uses a checklist in creation order,
+with checked, struck-through completed steps kept visible. Status markers are
+updated by the agent. Goal details separate
 the execution turn budget from the number of completed steps.
 
 Select **Entire project** at the top of the task panel to follow work across chats.
 Select **This conversation** to focus on the current chat and its goal. Drag the
 panel wider for the full list, or drag it narrower to keep it beside
 the conversation. Resizing keeps your scope and expanded groups.
-The list puts tasks needing your attention first, followed by work in
+The project list puts tasks needing your attention first, followed by work in
 progress, other waiting tasks, and to-dos. The same list adapts to the panel width.
-Completed tasks are collapsed in the list; cancelled tasks are hidden.
+Completed tasks are collapsed in the project list; cancelled tasks are hidden in both scopes.
 
 Click a task to open its conversation. Waiting tasks explain what is needed
 next when the agent has recorded that information. Completed tasks can include
-an outcome summary and a **View output** link to a file.
+an outcome summary. Open the conversation to review the full result.
 
 To start new work, describe it in the conversation and send your message.
 Tasks without a linked conversation are shown as information only; clicking

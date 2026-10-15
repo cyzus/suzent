@@ -1899,26 +1899,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const handleTaskResult = async (task: import('../types/api').Task): Promise<boolean> => {
-    setTaskNavigationError(null);
-    if (!task.chatId || !task.resultPath) {
-      return handleOpenTask(task);
-    }
-    try {
-      await loadChat(task.chatId, { throwOnError: true, validateBeforeSwitch: true });
-      setSidebarFilePreview({
-        path: task.resultPath,
-        name: task.resultPath.split(/[\\/]/).pop() || task.resultPath,
-        nonce: Date.now(),
-      });
-      onRightSidebarToggle(true);
-      return true;
-    } catch {
-      setTaskNavigationError(t('taskFlow.openError'));
-      return false;
-    }
-  };
-
   const handleOpenForkOrigin = useCallback(
     (chatId: string) => {
       void loadChat(chatId, { force: true });
@@ -3278,7 +3258,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           }
           chatTitles={Object.fromEntries([...pinnedChats, ...chats].map((c) => [c.id, c.title]))}
           onOpenTask={handleOpenTask}
-          onTaskResult={handleTaskResult}
+
           taskNavigationError={taskNavigationError}
           onDismissTaskError={() => setTaskNavigationError(null)}
           onTaskChat={async (chatId) => {

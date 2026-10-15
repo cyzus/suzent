@@ -1576,6 +1576,8 @@ export const zhCN = {
     sourcesCount: '{count} 个来源',
   },
   taskFlow: {
+    checklist: '任务清单',
+    checklistProgress: '已完成 {completed} / {total}',
     scope: '任务范围',
     entireProject: '整个项目',
     expand: '展开',

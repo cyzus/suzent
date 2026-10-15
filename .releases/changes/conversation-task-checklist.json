@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show conversation tasks as an ordered checklist and open task results through their conversations."
+}
