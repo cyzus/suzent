@@ -352,6 +352,8 @@ export const zhCN = {
     stopFailed: '无法停止任务',
   },
   subAgents: {
+    showTask: '完整任务',
+    hideTask: '收起',
     model: '模型',
     heading: '子智能体 ({count})',
     empty: '本次会话没有子智能体',

@@ -25,6 +25,41 @@ function renderRail(props: Partial<React.ComponentProps<typeof ActivityRail>>): 
   );
 }
 
+it('shows thinking animation instead of the previous tool in a collapsed rail', () => {
+  const props = {
+    isCurrent: true,
+    isThinking: true,
+    currentLabel: 'Thinking: Reviewing the result',
+    summaryTools: [{ toolName: 'read_file', running: false }],
+  };
+  const markup = renderRail(props);
+  expect(markup).not.toContain('robot-streaming');
+  expect(markup).toContain('reasoning-thinking-label');
+  expect(markup).not.toContain('tool-group-icon');
+  expect(renderRail({ ...props, isCurrent: false })).not.toContain('reasoning-thinking-label');
+  expect(renderRail({ ...props, defaultExpanded: true })).not.toContain('reasoning-thinking-label');
+});
+
+it('keeps the delegated agent avatar animated after the spawn call returns', () => {
+  const renderAgent = (status: string): string =>
+    renderRail({
+      isCurrent: true,
+      currentLabel: 'Delegated task',
+      summaryTools: [
+        {
+          toolName: 'agent',
+          running: false,
+          output: JSON.stringify({ metadata: { task_id: 'sub_test', status } }),
+        },
+      ],
+    });
+  expect(renderAgent('running')).toContain('animate-pulse');
+  expect(renderAgent('running')).toContain('activity-turn-tool');
+  expect(renderAgent('queued')).toContain('animate-pulse');
+  expect(renderAgent('completed')).not.toContain('animate-pulse');
+  expect(renderAgent('failed')).not.toContain('activity-turn-tool');
+});
+
 // A turn that interleaves prose with tool calls renders one rail per activity
 // group. Every rail used to claim the turn's worked-for time and to animate as
 // if it were live, so a long turn showed several identical running headers.

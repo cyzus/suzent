@@ -8,7 +8,6 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { toolLabel } from './toolSummary';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import { useSubAgentActivity } from '../../hooks/useSubAgentActivity';
@@ -17,7 +16,7 @@ import {
   isSubAgentTerminal,
   subAgentOutcomeLabel,
   SubAgentStatus,
-  SubAgentStatusBadge,
+  subAgentStatusLabel,
 } from './subAgentStatus';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { SubAgentSteerBox } from './SubAgentSteerBox';
@@ -106,7 +105,6 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   taskId: taskIdFromResult,
   toolCallId,
   description,
-  toolsAllowed,
   status: externalStatus,
   resultSummary: externalResultSummary,
   error: externalError,
@@ -147,7 +145,11 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
     return watchSubAgentTask(taskId);
   }, [taskId, status]);
 
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!runInBackground && isSubAgentActive(externalStatus));
+  const bodyId = React.useId();
+  const [showFullTask, setShowFullTask] = useState(false);
+  const compactTask = (description ?? '').replace(/\s+/g, ' ').trim();
+  const taskPreview = compactTask.length > 220 ? `${compactTask.slice(0, 220)}…` : compactTask;
   // Auto-collapse when completed
   useEffect(() => {
     if (status === 'completed') setExpanded(false);
@@ -167,7 +169,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
 
   const headerClassName = [
-    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none max-w-full min-w-0',
+    'group/agent-header hover-tint-text inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors select-none max-w-full min-w-0',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
       : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
@@ -177,15 +179,18 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   ].join(' ');
 
   return (
-    <div className="my-2 min-w-0 w-full">
+    <div className="my-1.5 [.activity-rail_&]:my-0 min-w-0 w-full">
       {/* Compact pill header — same shape as every other tool call */}
       <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={bodyId}
         onClick={() => setExpanded(!expanded)}
         className={headerClassName}
         title={description || undefined}
       >
         {/* Identity, not outcome. A green check here only repeated the DONE
-            badge two elements along, and said nothing about which agent ran.
+            outcome icon, and said nothing about which agent ran.
             The provider's own colour does, and the profile it was spawned as
             ('verify', 'explore') says what kind of agent it was -- both are in
             the tool result's metadata already. */}
@@ -194,11 +199,11 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         <span className="shrink-0">
           {subagentType ? subagentType.toUpperCase() : t('subAgents.delegated')}
         </span>
-        <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+        <span className="truncate min-w-0 font-normal normal-case tracking-normal opacity-80">
           {headline(description, t('subAgents.title'))}
         </span>
 
-        <SubAgentStatusBadge status={status} t={t} />
+        <span className="sr-only">{subAgentStatusLabel(status, t)}</span>
 
         {/* Chevron: points right while collapsed and turns down to open, the
             way the activity rail's own disclosures already behave. It used to
@@ -206,54 +211,65 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
             is something below" in both states. */}
         <DisclosureChevron
           expanded={expanded}
-          className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+          className="w-3 h-3 shrink-0 text-neutral-400 transition-all duration-150 [@media(hover:hover)]:opacity-0 group-hover/agent-header:opacity-100 group-focus-visible/agent-header:opacity-100"
         />
       </button>
 
       {/* Expandable body */}
       <div
+        id={bodyId}
+        aria-hidden={!expanded}
+        style={{ visibility: expanded ? 'visible' : 'hidden' }}
         className={`grid transition-[grid-template-rows] duration-200 ease-out overflow-hidden w-full
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className="ml-2 pl-3 border-l-2 border-neutral-200 dark:border-zinc-600 mt-1 mb-2 space-y-2 min-w-0 overflow-x-hidden">
-            {/* Task description */}
-            {description && (
-              <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
-                  {t('subAgents.task')}
-                </div>
-                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed break-words">
-                  {description}
-                </div>
-              </div>
-            )}
-
-            {/* Tools and id on one quiet line. They were two labelled
-                sections of their own, which gave setup detail the same weight
-                as the task and the result and pushed the outcome — the part
-                anyone actually opens this for — below the fold. */}
-            {((toolsAllowed && toolsAllowed.length > 0) || taskId) && (
-              <div className="flex flex-wrap items-center gap-1 min-w-0">
-                {toolsAllowed?.map((toolName) => (
-                  <span
-                    key={toolName}
-                    className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 rounded-sm"
-                    title={toolName}
+          <div className="ml-2 pl-3 border-l border-neutral-200 dark:border-zinc-700 mt-2 mb-2 space-y-3 min-w-0">
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 min-h-6">
+              <span className="mr-auto text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+                {subAgentStatusLabel(status, t)}
+              </span>
+              {taskId && onOpenSidebar && (
+                <button
+                  onClick={() => onOpenSidebar(taskId)}
+                  title={taskId}
+                  className="inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 hover:text-brutal-black dark:hover:text-white transition-colors"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
                   >
-                    {toolLabel(toolName)}
-                  </span>
-                ))}
-                {taskId && (
-                  <span
-                    className="text-[10px] font-mono text-neutral-300 dark:text-neutral-600 ml-auto shrink-0"
-                    title={taskId}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  {t('subAgents.viewLog')}
+                </button>
+              )}
+              {taskId && isRunning && onStop && (
+                <button
+                  onClick={() => onStop(taskId)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-red-700 dark:text-red-300 border border-transparent rounded-sm hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
                   >
-                    {taskId}
-                  </span>
-                )}
-              </div>
-            )}
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                  {t('subAgents.stop')}
+                </button>
+              )}
+            </div>
 
             {/* What it is doing right now — blocking calls only, and only
                 while the run is live. The sidebar keeps the full log. */}
@@ -275,9 +291,9 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 >
                   {subAgentOutcomeLabel(status, t)}
                 </div>
-                <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
+                <div className="min-w-0">
                   <pre
-                    className={`subagent-result-pre text-[11px] leading-relaxed font-mono w-full ${
+                    className={`subagent-result-pre whitespace-pre-wrap break-words text-xs leading-relaxed font-mono w-full ${
                       status === 'failed'
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-neutral-600 dark:text-neutral-300'
@@ -289,47 +305,28 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
               </div>
             )}
 
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 pt-1">
-              {taskId && onOpenSidebar && (
-                <button
-                  onClick={() => onOpenSidebar(taskId)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                    />
-                  </svg>
-                  {t('subAgents.viewLog')}
-                </button>
-              )}
-              {taskId && isRunning && onStop && (
-                <button
-                  onClick={() => onStop(taskId)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-2 border-red-600 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2.5}
-                  >
-                    <rect x="6" y="6" width="12" height="12" rx="1" />
-                  </svg>
-                  {t('subAgents.stop')}
-                </button>
-              )}
-            </div>
+            {description && headline(description, '') !== description.trim() && (
+              <div className="min-w-0 rounded-sm bg-neutral-100/60 dark:bg-zinc-800/50 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <span className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide">
+                    {t('subAgents.task')}
+                  </span>
+                  {compactTask.length > 220 && (
+                    <button
+                      type="button"
+                      aria-expanded={showFullTask}
+                      onClick={() => setShowFullTask((value) => !value)}
+                      className="shrink-0 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white underline-offset-2 hover:underline focus-visible:underline"
+                    >
+                      {t(showFullTask ? 'subAgents.hideTask' : 'subAgents.showTask')}
+                    </button>
+                  )}
+                </div>
+                <p className="m-0 whitespace-pre-wrap break-words text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed [overflow-wrap:anywhere]">
+                  {showFullTask ? description : taskPreview}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
