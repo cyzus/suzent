@@ -85,6 +85,7 @@ async def _run_command_turn(
             cancel_event=None,
             is_suspended=False,
             inline_a2ui_surfaces={},
+            context_sources={},
         ),
     )
     monkeypatch.setattr("suzent.core.chat_processor.get_database", lambda: db)

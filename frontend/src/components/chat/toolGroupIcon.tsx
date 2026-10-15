@@ -56,9 +56,7 @@ export type ToolIconAnimationKind =
   | 'cursor';
 
 export type ToolRunningSurfaceClass =
-  | 'brutal-running-mono'
-  | 'brutal-running-dots'
-  | 'brutal-running-scan';
+  'brutal-running-mono' | 'brutal-running-dots' | 'brutal-running-scan';
 
 const EXACT_TOOL_ICONS = {
   // Filesystem

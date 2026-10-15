@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Fix test fakes and frontend formatting so CI passes.",
+  "reason": "Only tests and whitespace formatting change; desktop runtime behavior is unchanged."
+}
