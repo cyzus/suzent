@@ -1,6 +1,7 @@
 {
   "version": "0.17.0",
   "consumed": [
+    ".releases/changes/activity-rail-disclosure.json",
     ".releases/changes/agent-inbox-system-reminders.json",
     ".releases/changes/approval-config-race.json",
     ".releases/changes/approved-tool-names.json",
