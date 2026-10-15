@@ -1291,8 +1291,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
         const { chatId: _eventChatId, ...surfaceData } = rawSurface;
         const surface = surfaceData as A2UISurface;
-        const isFirst = !canvas.hasSurfaces;
-        canvas.setSurface(surface);
+        const targetChatId = sourceChatId || viewedChatId;
+        const isFirst = !canvas.hasSurfaces || canvas.surfacesChatId !== targetChatId;
+        canvas.setSurface(surface, targetChatId);
         if (isFirst) {
           onRightSidebarToggle(true);
         }
@@ -3232,69 +3233,68 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </ChatImageGallery>
 
       {/* Right Sidebar */}
-      <ChatImageGallery resetKey={currentChatId}>
-        <RightSidebar
-          isOpen={isRightSidebarOpen}
-          onClose={() => onRightSidebarToggle(false)}
-          onOpen={() => onRightSidebarToggle(true)}
-          onWidthChange={onRightSidebarWidthChange}
-          maxWidthPx={rightSidebarMaxWidthPx}
-          wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-          viewportWidthPx={viewportWidthPx}
-          forceFullView={rightSidebarForceFullView}
-          goal={goal}
-          tasks={tasks}
-          goalChatId={goalChatId}
-          kanban={kanban}
-          currentProjectName={
-            (
-              chats.find((c) => c.id === currentChatId) ??
-              pinnedChats.find((c) => c.id === currentChatId)
-            )?.projectName ?? null
-          }
-          currentProjectId={
-            (
-              chats.find((c) => c.id === currentChatId) ??
-              pinnedChats.find((c) => c.id === currentChatId)
-            )?.projectId ?? null
-          }
-          chatTitles={Object.fromEntries([...pinnedChats, ...chats].map((c) => [c.id, c.title]))}
-          onOpenTask={handleOpenTask}
+      <RightSidebar
+        isOpen={isRightSidebarOpen}
+        onClose={() => onRightSidebarToggle(false)}
+        onOpen={() => onRightSidebarToggle(true)}
+        onWidthChange={onRightSidebarWidthChange}
+        maxWidthPx={rightSidebarMaxWidthPx}
+        wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+        viewportWidthPx={viewportWidthPx}
+        forceFullView={rightSidebarForceFullView}
+        goal={goal}
+        tasks={tasks}
+        goalChatId={goalChatId}
+        kanban={kanban}
+        currentProjectName={
+          (
+            chats.find((c) => c.id === currentChatId) ??
+            pinnedChats.find((c) => c.id === currentChatId)
+          )?.projectName ?? null
+        }
+        currentProjectId={
+          (
+            chats.find((c) => c.id === currentChatId) ??
+            pinnedChats.find((c) => c.id === currentChatId)
+          )?.projectId ?? null
+        }
+        chatTitles={Object.fromEntries([...pinnedChats, ...chats].map((c) => [c.id, c.title]))}
+        onOpenTask={handleOpenTask}
 
-          taskNavigationError={taskNavigationError}
-          onDismissTaskError={() => setTaskNavigationError(null)}
-          onTaskChat={async (chatId) => {
-            setTaskNavigationError(null);
-            try {
-              await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
-              return true;
-            } catch {
-              setTaskNavigationError(t('taskFlow.openError'));
-              return false;
-            }
-          }}
-          isNewChat={
-            safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages
+        taskNavigationError={taskNavigationError}
+        onDismissTaskError={() => setTaskNavigationError(null)}
+        onTaskChat={async (chatId) => {
+          setTaskNavigationError(null);
+          try {
+            await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
+            return true;
+          } catch {
+            setTaskNavigationError(t('taskFlow.openError'));
+            return false;
           }
-          fileToPreview={sidebarFilePreview}
-          onMaximizeFile={handleMaximizeFile}
-          canvas={canvas}
-          onCanvasDispatch={handleCanvasDispatch}
-          viewingSubAgentTaskId={viewingSubAgentTaskId}
-          onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
-          onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
-          currentChatId={currentChatId}
-          hasSubAgents={
-            Object.keys(subAgentTasks).length > 0 ||
-            currentChatSummary?.platform === 'subagent' ||
-            safeConfig?.platform === 'subagent'
-          }
-          hasSubAgentHistory={transcriptHasSubAgentCall}
-          messages={safeMessages}
-          forcedWebContextId={forcedWebContextId}
-          onClearForcedWebContext={() => setForcedWebContextId(null)}
-        />
-      </ChatImageGallery>
+        }}
+        // Only an unsaved chat is "new". A saved chat whose messages are still
+        // loading must not count, or the sidebar collapses for a frame on every
+        // switch and re-expands once the transcript lands.
+        isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
+        fileToPreview={sidebarFilePreview}
+        onMaximizeFile={handleMaximizeFile}
+        canvas={canvas}
+        onCanvasDispatch={handleCanvasDispatch}
+        viewingSubAgentTaskId={viewingSubAgentTaskId}
+        onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
+        onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
+        currentChatId={currentChatId}
+        hasSubAgents={
+          Object.keys(subAgentTasks).length > 0 ||
+          currentChatSummary?.platform === 'subagent' ||
+          safeConfig?.platform === 'subagent'
+        }
+        hasSubAgentHistory={transcriptHasSubAgentCall}
+        messages={safeMessages}
+        forcedWebContextId={forcedWebContextId}
+        onClearForcedWebContext={() => setForcedWebContextId(null)}
+      />
 
       <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 

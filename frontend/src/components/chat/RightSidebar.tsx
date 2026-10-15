@@ -34,7 +34,69 @@ import { ToolsPanel } from './ToolsPanel';
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
+export type TabId =
+  | 'files'
+  | 'context'
+  | 'browser'
+  | 'canvas'
+  | 'agents'
+  | 'plan'
+  | 'project'
+  | 'tools';
+
+export interface AutoOpenFlags {
+  chatId: string | null | undefined;
+  file: boolean;
+  fileToPreview: { path: string; name: string; nonce?: number } | null | undefined;
+  canvas: boolean;
+  canvasResolved: boolean;
+  subAgent: boolean;
+  viewingSubAgentTaskId: string | null | undefined;
+  webContext: boolean;
+  forcedWebContextId: string | null | undefined;
+  goal: boolean;
+  goalResolved: boolean;
+}
+
+export function evaluateSidebarAutoOpen(
+  prev: AutoOpenFlags,
+  flags: AutoOpenFlags
+): { nextTab: TabId | null; shouldOpen: boolean } {
+  if (prev.chatId !== flags.chatId) {
+    return { nextTab: null, shouldOpen: false };
+  }
+
+  const fileTriggered = flags.file && prev.fileToPreview !== flags.fileToPreview;
+  const subAgentTriggered =
+    flags.subAgent && prev.viewingSubAgentTaskId !== flags.viewingSubAgentTaskId;
+  const webContextTriggered =
+    flags.webContext && prev.forcedWebContextId !== flags.forcedWebContextId;
+  // Only treat canvas/goal as rising when it was already resolved for THIS
+  // chat in the previous render (not transitioning from unresolved → resolved
+  // after the initial fetch for the switched chat lands).
+  const canvasRose = prev.canvasResolved && flags.canvasResolved && !prev.canvas && flags.canvas;
+  const goalRose = prev.goalResolved && flags.goalResolved && !prev.goal && flags.goal;
+
+  let nextTab: TabId | null = null;
+  if (fileTriggered) {
+    nextTab = 'files';
+  } else if (subAgentTriggered) {
+    nextTab = 'agents';
+  } else if (webContextTriggered) {
+    nextTab = 'browser';
+  } else if (canvasRose && !flags.file) {
+    nextTab = 'canvas';
+  } else if (goalRose && !flags.file) {
+    // Async task refreshes must not hide an explicitly requested output file.
+    nextTab = 'plan';
+  }
+
+  return {
+    nextTab,
+    shouldOpen:
+      fileTriggered || subAgentTriggered || webContextTriggered || canvasRose || goalRose,
+  };
+}
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -255,19 +317,21 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // chat while false.
   const autoOpenRef = useRef({
     chatId: currentChatId,
-    file: false,
+    file: !!fileToPreview,
     fileToPreview,
-    canvas: false,
-    canvasResolved: false,
-    subAgent: false,
+    canvas: hasCanvasContent,
+    canvasResolved: canvasMatchesChat,
+    subAgent: !!viewingSubAgentTaskId,
     viewingSubAgentTaskId,
-    goal: false,
-    goalResolved: false,
+    webContext: !!forcedWebContextId,
+    forcedWebContextId,
+    goal: hasGoalContent,
+    goalResolved: goalMatchesChat,
   });
 
   useEffect(() => {
     const prev = autoOpenRef.current;
-    const flags = {
+    const flags: AutoOpenFlags = {
       chatId: currentChatId,
       file: !!fileToPreview,
       fileToPreview,
@@ -275,31 +339,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       canvasResolved: canvasMatchesChat,
       subAgent: !!viewingSubAgentTaskId,
       viewingSubAgentTaskId,
+      webContext: !!forcedWebContextId,
+      forcedWebContextId,
       goal: hasGoalContent,
       goalResolved: goalMatchesChat,
     };
 
-    if (prev.chatId === currentChatId) {
-      const fileTriggered = flags.file && prev.fileToPreview !== fileToPreview;
-      const subAgentTriggered =
-        flags.subAgent && prev.viewingSubAgentTaskId !== viewingSubAgentTaskId;
-      const canvasRose = prev.canvasResolved && !prev.canvas && flags.canvas;
-      const goalRose = prev.goalResolved && !prev.goal && flags.goal;
-
-      if (fileTriggered) {
-        setActiveTab('files');
-      } else if (subAgentTriggered) {
-        setActiveTab('agents');
-      } else if (canvasRose && !flags.file) {
-        setActiveTab('canvas');
-      } else if (goalRose && !flags.file) {
-        // Async task refreshes must not hide an explicitly requested output file.
-        setActiveTab('plan');
-      }
-
-      if (!isOpen && (fileTriggered || subAgentTriggered || canvasRose || goalRose)) {
-        onOpen();
-      }
+    const { nextTab, shouldOpen } = evaluateSidebarAutoOpen(prev, flags);
+    if (nextTab) {
+      setActiveTab(nextTab);
+    }
+    if (!isOpen && shouldOpen) {
+      onOpen();
     }
 
     autoOpenRef.current = flags;
@@ -309,6 +360,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     hasCanvasContent,
     canvasMatchesChat,
     viewingSubAgentTaskId,
+    forcedWebContextId,
     hasGoalContent,
     goalMatchesChat,
     isOpen,
