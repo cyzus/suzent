@@ -16,23 +16,26 @@ interface GoalTasksContextValue {
    *  Consumers use this to tell "data for the chat I'm in" from stale data
    *  mid-switch, without relying on load-timing heuristics. */
   goalChatId: string | null;
+  chatError: boolean;
+  chatLoading: boolean;
+  kanbanError: boolean;
+  kanbanLoading: boolean;
   refresh: (projectId?: string | null, chatId?: string | null) => Promise<void>;
   goalAction: (action: 'pause' | 'resume' | 'clear') => Promise<void>;
-  // Project-scoped (kanban tab)
+  // Project-scoped task list
   kanban: KanbanData | null;
   refreshKanban: (projectId?: string | null) => Promise<void>;
-  // Human-operated mutations
-  updateTask: (
-    taskId: number,
-    updates: { status?: string; title?: string; description?: string }
-  ) => Promise<void>;
-  createTask: (projectId: string, title: string, status?: string) => Promise<void>;
-  deleteTask: (taskId: number) => Promise<void>;
 }
 
 const GoalTasksContext = createContext<GoalTasksContextValue | null>(null);
 
 export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState(false);
+  const [kanbanLoading, setKanbanLoading] = useState(false);
+  const [kanbanError, setKanbanError] = useState(false);
+  const chatRequest = useRef(0);
+  const boardRequest = useRef(0);
   const [goal, setGoal] = useState<Goal | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goalChatId, setGoalChatId] = useState<string | null>(null);
@@ -45,62 +48,90 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshKanbanRef = useRef<GoalTasksContextValue['refreshKanban'] | null>(null);
 
   const refresh = useCallback(async (projectId?: string | null, chatId?: string | null) => {
+    const sequence = ++chatRequest.current;
+    const changed =
+      (projectId !== undefined && projectId !== currentProjectIdRef.current) ||
+      (chatId !== undefined && chatId !== currentChatIdRef.current);
     if (projectId !== undefined) currentProjectIdRef.current = projectId ?? null;
     if (chatId !== undefined) currentChatIdRef.current = chatId ?? null;
     const pid = currentProjectIdRef.current;
     const cid = currentChatIdRef.current;
-    if (!pid || !cid) {
+    setChatError(false);
+    if (changed || !pid || !cid) {
       setGoal(null);
       setTasks([]);
-      setGoalChatId(cid ?? null);
+      setGoalChatId(null);
+    }
+    if (!pid || !cid) {
+      setChatLoading(false);
       return;
     }
+    setChatLoading(true);
     try {
+      const query = new URLSearchParams({
+        project_id: pid,
+        chat_id: cid,
+        include_completed: 'true',
+        include_cancelled: 'true',
+      });
+      const signal = AbortSignal.timeout(15000);
       const [goalRes, tasksRes] = await Promise.all([
-        fetch(`${getApiBase()}/project/goal?project_id=${pid}&chat_id=${cid}`),
-        fetch(`${getApiBase()}/project/tasks?project_id=${pid}&chat_id=${cid}`),
+        fetch(`${getApiBase()}/project/goal?${query}`, { signal }),
+        fetch(`${getApiBase()}/project/tasks?${query}`, { signal }),
       ]);
-      if (goalRes.ok) setGoal(await goalRes.json());
-      if (tasksRes.ok) setTasks(await tasksRes.json());
-      // Stamp which chat this data belongs to (guard against out-of-order
-      // responses: only stamp if the request's chat is still the current one).
-      if (currentChatIdRef.current === cid) setGoalChatId(cid);
-    } catch (err) {
-      console.warn('Failed to fetch goal/tasks:', err);
+      if (!goalRes.ok || !tasksRes.ok) throw new Error('Task fetch failed');
+      const [nextGoal, nextTasks] = await Promise.all([goalRes.json(), tasksRes.json()]);
+      if (sequence !== chatRequest.current) return;
+      setGoal(nextGoal);
+      setTasks(nextTasks);
+      setGoalChatId(cid);
+    } catch {
+      if (sequence === chatRequest.current) setChatError(true);
+    } finally {
+      if (sequence === chatRequest.current) setChatLoading(false);
     }
   }, []);
 
   const goalAction = useCallback(async (action: 'pause' | 'resume' | 'clear') => {
     const pid = currentProjectIdRef.current;
     const cid = currentChatIdRef.current;
-    if (!pid || !cid) return;
-    try {
-      const res = await fetch(`${getApiBase()}/project/goal/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: pid, chat_id: cid, action }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setGoal(updated && updated.id ? (updated as Goal) : null);
-      }
-    } catch (err) {
-      console.warn('Failed to update goal:', err);
+    if (!pid || !cid) throw new Error('No active conversation');
+    const res = await fetch(`${getApiBase()}/project/goal/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: pid, chat_id: cid, action }),
+    });
+    if (!res.ok) throw new Error('Goal action failed');
+    const updated = await res.json();
+    if (pid === currentProjectIdRef.current && cid === currentChatIdRef.current) {
+      setGoal(updated && updated.id ? updated : null);
     }
   }, []);
 
   const refreshKanban = useCallback(async (projectId?: string | null) => {
+    const sequence = ++boardRequest.current;
+    if (projectId !== undefined && projectId !== currentKanbanProjectIdRef.current) setKanban(null);
     if (projectId !== undefined) currentKanbanProjectIdRef.current = projectId ?? null;
     const pid = currentKanbanProjectIdRef.current;
+    setKanbanError(false);
     if (!pid) {
-      setKanban(null);
+      setKanban({ goals: [], tasks: [] });
+      setKanbanLoading(false);
       return;
     }
+    setKanbanLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/project/kanban?project_id=${pid}`);
-      if (res.ok) setKanban(await res.json());
-    } catch (err) {
-      console.warn('Failed to fetch project kanban:', err);
+      const res = await fetch(
+        `${getApiBase()}/project/kanban?${new URLSearchParams({ project_id: pid })}`,
+        { signal: AbortSignal.timeout(15000) }
+      );
+      if (!res.ok) throw new Error('Project task fetch failed');
+      const data = await res.json();
+      if (sequence === boardRequest.current) setKanban(data);
+    } catch {
+      if (sequence === boardRequest.current) setKanbanError(true);
+    } finally {
+      if (sequence === boardRequest.current) setKanbanLoading(false);
     }
   }, []);
 
@@ -129,88 +160,32 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  const updateTask = useCallback(
-    async (taskId: number, updates: { status?: string; title?: string; description?: string }) => {
-      try {
-        const res = await fetch(`${getApiBase()}/project/tasks/${taskId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
-        if (res.ok) {
-          const updated: Task = await res.json();
-          // Optimistically update kanban state
-          setKanban((prev) => {
-            if (!prev) return prev;
-            return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) };
-          });
-          // Also update chat-scoped tasks if relevant
-          setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-        }
-      } catch (err) {
-        console.warn('Failed to update task:', err);
-      }
-    },
-    []
-  );
-
-  const createTask = useCallback(
-    async (projectId: string, title: string, status = 'pending') => {
-      try {
-        const res = await fetch(`${getApiBase()}/project/tasks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_id: projectId, title, status }),
-        });
-        if (res.ok) {
-          // Refresh the full kanban after creation
-          await refreshKanban(projectId);
-        }
-      } catch (err) {
-        console.warn('Failed to create task:', err);
-      }
-    },
-    [refreshKanban]
-  );
-
-  const deleteTask = useCallback(async (taskId: number) => {
-    try {
-      const res = await fetch(`${getApiBase()}/project/tasks/${taskId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setKanban((prev) =>
-          prev ? { ...prev, tasks: prev.tasks.filter((t) => t.id !== taskId) } : prev
-        );
-        setTasks((prev) => prev.filter((t) => t.id !== taskId));
-      }
-    } catch (err) {
-      console.warn('Failed to delete task:', err);
-    }
-  }, []);
-
   const contextValue = React.useMemo(
     () => ({
       goal,
       tasks,
       goalChatId,
+      chatError,
+      chatLoading,
+      kanbanError,
+      kanbanLoading,
       refresh,
       goalAction,
       kanban,
       refreshKanban,
-      updateTask,
-      createTask,
-      deleteTask,
     }),
     [
       goal,
       tasks,
       goalChatId,
+      chatError,
+      chatLoading,
+      kanbanError,
+      kanbanLoading,
       refresh,
       goalAction,
       kanban,
       refreshKanban,
-      updateTask,
-      createTask,
-      deleteTask,
     ]
   );
 

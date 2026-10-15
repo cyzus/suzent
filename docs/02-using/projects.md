@@ -1,7 +1,7 @@
 ---
 sidebar_position: 2
 title: Organizing work into projects
-description: Use projects to give related chats a shared folder, standing context, and one board of goals and tasks.
+description: Use projects to give related chats a shared folder, standing context, and one list of goals and tasks.
 ---
 
 # Organizing work into projects
@@ -17,7 +17,7 @@ three things:
   every chat in the project reads first. The agent keeps it up to date with the
   project's goal, current state, decisions, and a list of the files in the
   library.
-- **A board** of the project's goals and tasks, from every chat.
+- **A task list** of the project's goals and tasks, from every chat.
 
 ## When to start a project
 
@@ -55,13 +55,16 @@ working folder wins.
 Project context is about this project. What the agent learns about *you* is
 kept in [memory](../03-features/memory/README.md) and applies everywhere.
 
-## Track the work on the board
+## Track task progress
 
 Set a goal with `/goal` and the agent keeps working until it's met. The
-**Goal** tab shows this chat's goal and the tasks assigned to it, with
-**Pause**, **Resume**, and **Clear**. **Open Board** shows every task in the
-project, from every chat, so you can see where the whole project stands and add
-or move tasks yourself. See [Goal mode](../03-features/automation.md#goal-mode).
+task panel shows this chat's goal and execution steps, with **Pause** and
+**Resume** for automatic goal progress. **Entire project** in the same panel shows work
+across conversations, prioritizing anything that needs your input. Click a task
+to return to its conversation, or open its output when available. The agent
+maintains the states; you can focus on the work itself. See
+[Tasks & planning](../03-features/tools/tasks.md) and
+[Goal mode](../03-features/automation.md#goal-mode).
 
 ## Keep an eye on what it's doing
 

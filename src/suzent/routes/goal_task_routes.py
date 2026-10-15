@@ -35,6 +35,11 @@ def _task_to_dict(task) -> dict:
         "title": task.title,
         "description": task.description,
         "activeForm": task.active_form,
+        "waitingKind": task.waiting_kind,
+        "waitingReason": task.waiting_reason,
+        "nextAction": task.next_action,
+        "resultSummary": task.result_summary,
+        "resultPath": task.result_path,
         "status": effective_status,
         "assignee": task.assignee,
         "blocks": task.blocks or [],
@@ -160,7 +165,7 @@ async def get_project_kanban(request: Request) -> JSONResponse:
         tasks = db.list_tasks(
             project_id=project_id,
             include_completed=True,
-            include_cancelled=False,
+            include_cancelled=True,
         )
         return JSONResponse(
             {

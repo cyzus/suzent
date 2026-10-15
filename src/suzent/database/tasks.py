@@ -86,12 +86,52 @@ class TaskOperationsMixin:
             task = session.get(TaskModel, task_id)
             if not task:
                 return None
+            if "status" in kwargs:
+                kwargs["completed_at"] = (
+                    datetime.now(timezone.utc)
+                    if kwargs["status"] == "completed"
+                    else None
+                )
+                if kwargs["status"] != "blocked":
+                    kwargs.update(
+                        waiting_kind=None, waiting_reason=None, next_action=None
+                    )
             for key, value in kwargs.items():
                 setattr(task, key, value)
+            changed_dependents: list[TaskModel] = []
+            if kwargs.get("status") == "completed":
+                dependents = session.exec(
+                    select(TaskModel).where(TaskModel.project_id == task.project_id)
+                ).all()
+                for dependent in dependents:
+                    if task_id in dependent.blocked_by:
+                        dependent.blocked_by = [
+                            item for item in dependent.blocked_by if item != task_id
+                        ]
+                        if (
+                            not dependent.blocked_by
+                            and dependent.status == "blocked"
+                            and dependent.waiting_kind == "dependency"
+                        ):
+                            dependent.status = "pending"
+                            dependent.waiting_kind = None
+                            dependent.waiting_reason = None
+                            dependent.next_action = None
+                        session.add(dependent)
+                        dependent.updated_at = datetime.now(timezone.utc)
+                        changed_dependents.append(dependent)
             task.updated_at = datetime.now(timezone.utc)
             session.add(task)
             session.commit()
             session.refresh(task)
+            for dependent in changed_dependents:
+                emit_goal_task_changed(
+                    entity="task",
+                    action="updated",
+                    project_id=dependent.project_id,
+                    chat_id=dependent.chat_id,
+                    task_id=dependent.id,
+                )
             emit_goal_task_changed(
                 entity="task",
                 action="updated",
