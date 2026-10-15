@@ -5,8 +5,16 @@ import { getApiBase } from './api';
 import type { Message } from '../types/api';
 
 const STORAGE_KEY = 'suzent.inputSuggestions.enabled';
+const CACHE_KEY = 'suzent.inputSuggestions.cache';
 const CHANGE_EVENT = 'suzent:input-suggestions-changed';
 const CONTEXT_MESSAGES = 6;
+const CACHE_CHATS = 50;
+
+interface CachedSuggestion {
+  reply: string;
+  text: string;
+  at: number;
+}
 
 export function isInputSuggestionEnabled(): boolean {
   try {
@@ -55,6 +63,59 @@ export function suggestionContext(messages: Message[]): { role: string; content:
     .filter((m) => typeof m.content === 'string' && m.content.trim() !== '')
     .slice(-CONTEXT_MESSAGES)
     .map((m) => ({ role: m.role, content: m.content }));
+}
+
+/**
+ * Identifies the reply a suggestion was predicted from. Messages carry no
+ * stable id, so the reply's text stands in for one.
+ */
+function replyFingerprint(messages: Message[]): string | null {
+  const context = suggestionContext(messages);
+  const last = context[context.length - 1];
+  if (!last || last.role !== 'assistant') return null;
+  let hash = 5381;
+  for (let i = 0; i < last.content.length; i++) {
+    hash = ((hash << 5) + hash + last.content.charCodeAt(i)) | 0;
+  }
+  return `${last.content.length}:${(hash >>> 0).toString(36)}`;
+}
+
+function readCache(): Record<string, CachedSuggestion> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, CachedSuggestion>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The suggestion saved for this chat, while its last reply is still the one it was made for. */
+export function loadCachedSuggestion(chatId: string, messages: Message[]): string | null {
+  const entry = readCache()[chatId];
+  const reply = replyFingerprint(messages);
+  return entry && reply && entry.reply === reply && typeof entry.text === 'string'
+    ? entry.text
+    : null;
+}
+
+export function saveCachedSuggestion(
+  chatId: string,
+  messages: Message[],
+  suggestion: string | null
+): void {
+  const cache = readCache();
+  const reply = replyFingerprint(messages);
+  // Re-inserting puts this chat last, so it wins a same-millisecond tie below.
+  delete cache[chatId];
+  if (suggestion && reply) cache[chatId] = { reply, text: suggestion, at: Date.now() };
+  const kept = Object.entries(cache)
+    .sort(([, a], [, b]) => a.at - b.at)
+    .slice(-CACHE_CHATS);
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    // Storage blocked or full: the suggestion still shows until the app closes.
+  }
 }
 
 export async function fetchInputSuggestion(

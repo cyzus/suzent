@@ -3,7 +3,9 @@ import type { Message } from '../../types/api';
 import {
   fetchInputSuggestion,
   isInputSuggestionEnabled,
+  loadCachedSuggestion,
   onInputSuggestionEnabledChange,
+  saveCachedSuggestion,
   suggestionContext,
 } from '../../lib/inputSuggestion';
 
@@ -21,7 +23,9 @@ interface UseInputSuggestionOptions {
  * Predicts the user's next message once the agent finishes a turn.
  *
  * Only a turn ending in this view asks for one: opening an old chat does not
- * spend a model call on a conversation the user may only be reading.
+ * spend a model call on a conversation the user may only be reading. Each
+ * prediction is saved on this device, so reopening the chat or restarting the
+ * app shows it again while its reply is still the last message.
  */
 export function useInputSuggestion({
   chatId,
@@ -56,6 +60,12 @@ export function useInputSuggestion({
   }, [enabled]);
 
   useEffect(() => {
+    if (!chatId || !enabled || streaming || pending || suggestion) return;
+    const cached = loadCachedSuggestion(chatId, messages);
+    if (cached) setSuggestion(cached);
+  }, [chatId, enabled, streaming, pending, suggestion, messages]);
+
+  useEffect(() => {
     if (!pending || !enabled || streaming) return;
     const context = suggestionContext(messages);
     if (context.length === 0 || context[context.length - 1].role !== 'assistant') return;
@@ -65,6 +75,7 @@ export function useInputSuggestion({
       try {
         const next = await fetchInputSuggestion(context, controller.signal);
         if (!controller.signal.aborted) {
+          if (chatId) saveCachedSuggestion(chatId, messages, next);
           setSuggestion(next);
           setPending(false);
         }
@@ -77,7 +88,7 @@ export function useInputSuggestion({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [pending, enabled, streaming, messages]);
+  }, [chatId, pending, enabled, streaming, messages]);
 
   return enabled ? suggestion : null;
 }
