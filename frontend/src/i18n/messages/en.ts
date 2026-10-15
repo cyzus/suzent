@@ -1665,6 +1665,7 @@ export const en = {
   },
   a2uiForm: {
     typeSomethingElse: 'Type something else…',
+    otherPlaceholder: 'Type your answer…',
     back: '← Back',
     skip: 'Skip',
     next: 'Next →',

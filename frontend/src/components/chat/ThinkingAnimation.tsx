@@ -162,17 +162,21 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   // doing now instead of staying frozen on the last failure.
   const [errorFlash, setErrorFlash] = useState(false);
   const seenErrorCountRef = React.useRef(errorCount);
+  const flashTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
 
+  // The timer lives outside the effect's cleanup: a count that drops (parts
+  // reconciled after a resume) re-runs the effect, and cancelling the timer
+  // there left the badge shaking for good.
   useEffect(() => {
-    if (errorCount <= seenErrorCountRef.current) {
-      seenErrorCountRef.current = errorCount;
-      return;
-    }
+    const isNewError = errorCount > seenErrorCountRef.current;
     seenErrorCountRef.current = errorCount;
+    if (!isNewError) return;
     setErrorFlash(true);
-    const timeout = setTimeout(() => setErrorFlash(false), ERROR_FLASH_MS);
-    return () => clearTimeout(timeout);
+    clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setErrorFlash(false), ERROR_FLASH_MS);
   }, [errorCount]);
+
+  useEffect(() => () => clearTimeout(flashTimerRef.current), []);
 
   // Effect to handle snoozing
   useEffect(() => {
