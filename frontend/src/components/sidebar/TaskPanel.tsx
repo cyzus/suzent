@@ -15,7 +15,6 @@ interface TaskPanelProps {
   projectName?: string | null;
   chatTitles?: Record<string, string>;
   onOpenTask?: (task: Task) => Promise<boolean>;
-  onResult?: (task: Task) => Promise<boolean>;
   onOpenChat?: (chatId: string) => void;
 }
 
@@ -28,7 +27,6 @@ export function TaskPanel({
   projectName,
   chatTitles,
   onOpenTask,
-  onResult,
   onOpenChat,
 }: TaskPanelProps): React.ReactElement {
   const { t } = useI18n();
@@ -39,12 +37,12 @@ export function TaskPanel({
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
   const opening = useRef(false);
-  const openTask = async (task: Task, result = false): Promise<void> => {
+  const openTask = async (task: Task): Promise<void> => {
     if (opening.current) return;
     opening.current = true;
     setPendingTaskId(task.id);
     try {
-      const opened = await (result ? onResult?.(task) : onOpenTask?.(task));
+      const opened = await onOpenTask?.(task);
       if (opened) setSelectedTaskId(task.id);
     } finally {
       opening.current = false;
@@ -70,7 +68,6 @@ export function TaskPanel({
         error={chatScope ? chatError : kanbanError}
         onRetry={() => void (chatScope ? refresh() : refreshKanban())}
         onOpenTask={(task) => void openTask(task)}
-        onResult={(task) => void openTask(task, true)}
         onOpenChat={onOpenChat}
         summary={
           chatScope && goal && goal.status !== 'cancelled' ? (

@@ -7,11 +7,11 @@ interface TaskProgressCardProps {
   tasks: Task[];
   chatTitle?: string;
   compact?: boolean;
+  checklist?: boolean;
   selected?: boolean;
   opening?: boolean;
   disabled?: boolean;
   onOpen?: (task: Task) => void;
-  onResult?: (task: Task) => void;
 }
 
 export function TaskProgressCard({
@@ -19,11 +19,11 @@ export function TaskProgressCard({
   tasks,
   chatTitle,
   compact = false,
+  checklist = false,
   selected = false,
   opening = false,
   disabled = false,
   onOpen,
-  onResult,
 }: TaskProgressCardProps): React.ReactElement {
   const { t, locale } = useI18n();
   const openTask = task.chatId?.trim() ? onOpen : undefined;
@@ -62,8 +62,23 @@ export function TaskProgressCard({
             className="absolute inset-0 w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 focus-visible:outline-offset-[-2px]"
           />
         )}
+        {checklist && (
+          <span
+            role="img"
+            aria-label={t(`task.status.${statusKey}`)}
+            title={t(`task.status.${statusKey}`)}
+            className={`pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center border-2 border-brutal-black text-xs font-black ${done ? 'bg-brutal-green text-brutal-black' : waiting ? 'bg-brutal-yellow text-brutal-black' : task.status === 'in_progress' ? 'bg-brutal-blue text-white' : 'bg-white dark:bg-zinc-800'}`}
+          >
+            <span aria-hidden="true">
+              {done ? '✓' : waiting ? '!' : task.status === 'in_progress' ? '›' : ''}
+            </span>
+          </span>
+        )}
         <div className="min-w-0 flex-1 pointer-events-none">
-          <h3 className="truncate text-sm font-bold" title={task.title}>
+          <h3
+            className={`truncate text-sm font-bold ${checklist && done ? 'line-through text-neutral-500 dark:text-zinc-400' : ''}`}
+            title={task.title}
+          >
             {task.title}
           </h3>
           {summary && (
@@ -77,17 +92,7 @@ export function TaskProgressCard({
         </div>
         <div className="flex shrink-0 items-center gap-3 text-xs">
           {opening && <span role="status">{t('taskFlow.loading')}</span>}
-          {done && task.chatId && task.resultPath && onResult && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onResult(task)}
-              className="relative border-2 border-brutal-black bg-white dark:bg-zinc-800 px-2 py-1 font-mono font-bold shadow-[2px_2px_0_0_#000] hover:bg-brutal-green/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-            >
-              {t('taskFlow.viewResult')} ↗
-            </button>
-          )}
-          {updated && !Number.isNaN(updated.getTime()) && (
+          {!checklist && updated && !Number.isNaN(updated.getTime()) && (
             <time
               className="pointer-events-none font-mono text-neutral-500 dark:text-zinc-400"
               dateTime={task.updatedAt}
@@ -164,7 +169,7 @@ export function TaskProgressCard({
           </p>
         )}
       </div>
-      {(openTask || (done && task.chatId && task.resultPath && onResult)) && (
+      {openTask && (
         <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1 text-xs">
           {openTask && (
             <button
@@ -180,16 +185,6 @@ export function TaskProgressCard({
                   ? t('taskFlow.start')
                   : t('taskFlow.discuss')}{' '}
               →
-            </button>
-          )}
-          {done && task.chatId && task.resultPath && onResult && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onResult(task)}
-              className="max-w-full text-left break-words font-bold underline underline-offset-4"
-            >
-              {t('taskFlow.viewResult')} ↗
             </button>
           )}
         </div>

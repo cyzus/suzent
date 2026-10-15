@@ -53,7 +53,6 @@ interface RightSidebarProps {
   currentProjectId?: string | null;
   chatTitles?: Record<string, string>;
   onOpenTask?: (task: Task) => Promise<boolean>;
-  onTaskResult?: (task: Task) => Promise<boolean>;
   taskNavigationError?: string | null;
   onDismissTaskError?: () => void;
   onTaskChat?: (chatId: string) => Promise<boolean>;
@@ -103,7 +102,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   taskNavigationError,
   onDismissTaskError,
   onOpenTask,
-  onTaskResult,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -661,7 +659,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               }
               return opened;
             }}
-            onResult={onTaskResult}
             onOpenChat={async (chatId) => {
               const opened = await onTaskChat?.(chatId);
               if (opened) {

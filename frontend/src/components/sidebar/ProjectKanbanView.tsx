@@ -15,7 +15,7 @@ interface ProjectKanbanViewProps {
   selectedTaskId?: number | null;
   pendingTaskId?: number | null;
   onOpenTask: (task: Task) => void;
-  onResult: (task: Task) => void;
+
   onOpenChat?: (chatId: string) => void;
   loading?: boolean;
   error?: boolean;
@@ -32,7 +32,6 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   selectedTaskId,
   pendingTaskId,
   onOpenTask,
-  onResult,
   onOpenChat,
   loading = false,
   error,
@@ -70,6 +69,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
     items.map((task) => (
       <TaskProgressCard
         compact
+        checklist={scope === 'chat'}
         key={task.id}
         selected={task.id === selectedTaskId}
         opening={task.id === pendingTaskId}
@@ -78,7 +78,6 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
         tasks={tasks}
         chatTitle={task.chatId ? chatTitles[task.chatId] : undefined}
         onOpen={onOpenTask}
-        onResult={onResult}
       />
     ));
   return (
@@ -86,9 +85,11 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
       <header className="task-header shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-5 py-4 space-y-4">
         <div className="task-heading flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-neutral-500 dark:text-zinc-400">{projectName}</p>
+            {scope === 'project' && (
+              <p className="text-xs text-neutral-500 dark:text-zinc-400">{projectName}</p>
+            )}
             <h1 className="text-xl font-black mt-1">{t('sidebar.tabs.plan')}</h1>
-            {kanban && !error && (
+            {scope === 'project' && kanban && !error && (
               <p className="mt-2 text-sm text-neutral-500 dark:text-zinc-400">
                 {t('taskFlow.overview', {
                   attention: groups[0].tasks.length,
@@ -120,6 +121,31 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
               {t(scope === 'chat' ? 'taskFlow.chatEmpty' : 'taskFlow.projectEmpty')}
             </p>
           </div>
+        ) : scope === 'chat' ? (
+          <section className="max-w-3xl mx-auto" aria-label={t('taskFlow.checklist')}>
+            {visibleCount > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-3 text-xs font-mono text-neutral-500 dark:text-zinc-400">
+                <span className="font-bold text-brutal-black dark:text-white">
+                  {t('taskFlow.checklist')}
+                </span>
+                <span>
+                  {t('taskFlow.checklistProgress', {
+                    completed: groups[4].tasks.length,
+                    total: visibleCount,
+                  })}
+                </span>
+              </div>
+            )}
+            <ol className="list-none m-0 p-0">
+              {tasks
+                .filter((task) => task.status !== 'cancelled')
+                .slice()
+                .sort((a, b) => a.id - b.id)
+                .map((task) => (
+                  <li key={task.id}>{renderTasks([task])}</li>
+                ))}
+            </ol>
+          </section>
         ) : (
           <div className="max-w-5xl mx-auto space-y-3">
             {goalsWithoutTasks.map((goal) => (

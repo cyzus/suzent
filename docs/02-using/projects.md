@@ -61,7 +61,7 @@ Set a goal with `/goal` and the agent keeps working until it's met. The
 task panel shows this chat's goal and execution steps, with **Pause** and
 **Resume** for automatic goal progress. **Entire project** in the same panel shows work
 across conversations, prioritizing anything that needs your input. Click a task
-to return to its conversation, or open its output when available. The agent
+to return to its conversation and review its results. The agent
 maintains the states; you can focus on the work itself. See
 [Tasks & planning](../03-features/tools/tasks.md) and
 [Goal mode](../03-features/automation.md#goal-mode).
