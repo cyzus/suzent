@@ -53,6 +53,7 @@
     ".releases/changes/sidebar-resize-settle.json",
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/skill-default-enablement.json",
+    ".releases/changes/task-progress-panel.json",
     ".releases/changes/tool-argument-conventions.json",
     ".releases/changes/tool-exceptions-fail-call.json",
     ".releases/changes/tool-failure-display.json",
