@@ -1122,7 +1122,10 @@ class ChatProcessor:
             else:
                 content = full_prompt
             parts = [make_user_prompt_part(content, runtime_authored=True)]
-            new_request = ModelRequest(parts=parts)
+            new_request = ModelRequest(
+                parts=parts,
+                metadata={"context_sources": dict(deps.context_sources)},
+            )
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
