@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion."
+}

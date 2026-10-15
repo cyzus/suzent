@@ -5,6 +5,56 @@ import pytest
 from suzent.core.chat_processor import ChatProcessor
 
 
+@pytest.mark.parametrize(
+    "complete_history,suspended", [(False, False), (True, False), (False, True)]
+)
+async def test_postprocess_keeps_streamed_reply_without_duplicating_or_resolving_approvals(
+    monkeypatch, complete_history: bool, suspended: bool
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    history = [ModelRequest(parts=[UserPromptPart(content="hello")])]
+    if complete_history:
+        history.append(ModelResponse(parts=[TextPart(content="reply")]))
+    monkeypatch.setattr("suzent.core.chat_processor.get_database", MagicMock())
+    processor = ChatProcessor()
+    persist = AsyncMock(return_value=True)
+    monkeypatch.setattr(processor, "_persist_state", persist)
+    monkeypatch.setattr(processor, "_write_transcript", AsyncMock())
+    if not suspended:
+        monkeypatch.setattr(
+            "suzent.core.task_registry.register_background_task",
+            AsyncMock(side_effect=lambda coro, **kwargs: coro.close()),
+        )
+    await processor._post_process_turn(
+        chat_id="chat-1",
+        user_id="user-1",
+        message_content="hello",
+        full_response="reply",
+        stream_failed=False,
+        snapshot_messages=history,
+        snapshot_revision=1,
+        is_heartbeat=False,
+        deps=SimpleNamespace(is_suspended=suspended, inline_a2ui_surfaces={}),
+        agent=SimpleNamespace(_model_id="test", _tool_names=[]),
+        postprocess_job_id="job",
+        file_snapshot=[],
+    )
+    saved = persist.call_args.kwargs["messages"]
+    responses = [message for message in saved if isinstance(message, ModelResponse)]
+    assert len(responses) == (0 if suspended else 1)
+    if not suspended:
+        assert responses[0].parts[0].content == "reply"
+    assert len(history) == (2 if complete_history else 1)
+
+
 @pytest.mark.asyncio
 async def test_persist_agent_state_snapshot_updates_only_agent_state(monkeypatch):
     class FakeDB:
@@ -83,6 +133,13 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         draft_run_id=None,
     ):
         called["snapshot"] += 1
+        from pydantic_ai.messages import ModelResponse, TextPart
+
+        assert isinstance(messages[-1], ModelResponse)
+        assert any(
+            isinstance(part, TextPart) and part.content == "ok"
+            for part in messages[-1].parts
+        )
 
     async def fake_register_background_task(
         coro, task_id=None, description="", allow_overflow=False

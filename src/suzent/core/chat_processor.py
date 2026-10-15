@@ -461,9 +461,9 @@ def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
 def _preserve_partial_response(messages: list, full_response: str) -> list:
     """Append generated text as a ModelResponse when the stream didn't emit one.
 
-    On an interrupted or failed stream pydantic-ai may never produce the final
-    ``ModelResponse``. Preserve the visible partial assistant text so the next
-    turn (and the display log) can continue from it. No-op when ``messages``
+    Some streams finish without handing off the final ``ModelResponse``.
+    Preserve the visible assistant text so the next turn (and the display log)
+    can continue from it. No-op when ``messages``
     already ends in a ``ModelResponse`` or there's nothing to preserve.
     """
     if not full_response.strip():
@@ -475,7 +475,7 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
     if not messages or not isinstance(messages[-1], ModelResponse):
         logger.debug(
             "[ChatProcessor] Preserving partial assistant text for "
-            "interrupted/failed stream: {} chars",
+            "stream missing its final response: {} chars",
             len(full_response),
         )
         messages.append(ModelResponse(parts=[TextPart(content=full_response.strip())]))
@@ -1498,10 +1498,7 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
-                is_cancelled = (
-                    getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
-                )
-                if is_cancelled or stream_failed:
+                if not getattr(deps, "is_suspended", False):
                     snapshot_messages = _preserve_partial_response(
                         snapshot_messages, full_response
                     )
@@ -1666,13 +1663,9 @@ class ChatProcessor:
         try:
             last_messages = snapshot_messages or []
 
-            # If the stream was interrupted or failed, pydantic-ai may not emit
-            # the final ModelResponse. Preserve generated text so the next turn
-            # can continue from the visible partial assistant response.
-            is_cancelled = (
-                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
-            )
-            if is_cancelled or stream_failed:
+            # Streamed text must survive even when a successful stream never
+            # handed its final ModelResponse back to the history collector.
+            if not getattr(deps, "is_suspended", False):
                 last_messages = _preserve_partial_response(last_messages, full_response)
 
             msg_count = len(last_messages) if last_messages else 0
