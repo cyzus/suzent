@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.17.0] - 2026-10-15
 
 ### Release notes
+- Show conversation tasks as an ordered checklist and open task results through their conversations.
 - Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
 - Unify task progress into a responsive list with waiting reasons, results, and reliable conversation and project navigation.
 
