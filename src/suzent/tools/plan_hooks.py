@@ -120,6 +120,14 @@ def _build_plan_reminder(chat_id: str) -> Optional[str]:
     )
     if active_tasks:
         parts.append(f"\n[ACTIVE TASKS] (project: {project_id})")
+        parts.append(
+            "Maintain task progress automatically with update_task. Use active_form for "
+            "the current step. When unable to proceed, set blocked with waiting_kind, "
+            "waiting_reason and next_action; never imply that execution continues while "
+            "waiting for the user. On completion, record result_summary and result_path "
+            "if a file was produced. If the user abandons a task, mark it cancelled. "
+            "Reuse existing tasks rather than creating duplicates."
+        )
         for task in active_tasks:
             assignee_str = f" ({task.assignee})" if task.assignee else ""
             blocks_str = (
@@ -136,5 +144,11 @@ def _build_plan_reminder(chat_id: str) -> Optional[str]:
                 f"  [#{task.id}] {task.title}{assignee_str} — {task.status}{blocks_str}{blocked_by_str}"
             )
             parts.append(f"    {task.description}")
+            if task.waiting_reason:
+                parts.append(
+                    f"    Waiting ({task.waiting_kind}): {task.waiting_reason}"
+                )
+            if task.next_action:
+                parts.append(f"    Next action: {task.next_action}")
 
     return "\n".join(parts) if parts else None

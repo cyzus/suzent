@@ -1595,3 +1595,45 @@ code {
     opacity: 0;
   }
 }
+/* Task layout follows the panel width, including while its resize handle is dragged. */
+@container (max-width: 480px) {
+  .task-panel .task-heading {
+    display: none;
+  }
+  .task-panel .task-header {
+    padding: 10px 12px;
+  }
+  .task-panel .task-header > * {
+    margin-top: 0;
+  }
+  .task-panel .task-empty {
+    padding: 24px 4px;
+    text-align: left;
+  }
+  .task-panel .task-empty h2 {
+    font-size: 14px;
+  }
+  .task-panel .task-goal h3 {
+    font-size: 14px;
+  }
+  .task-panel .task-goal > details {
+    display: none;
+  }
+
+  .task-panel .task-scroll {
+    padding: 12px;
+  }
+  .task-panel .task-row {
+    padding: 14px 12px;
+    gap: 8px;
+  }
+  .task-panel .task-row h3 {
+    white-space: normal;
+  }
+  .task-panel .task-row p {
+    display: none;
+  }
+  .task-panel .task-row time {
+    display: none;
+  }
+}

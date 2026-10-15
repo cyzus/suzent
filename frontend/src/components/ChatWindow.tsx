@@ -55,7 +55,6 @@ import { planSendFailureRecovery, type SendAction } from './chat/sendRecovery';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
-import { ProjectKanbanView } from './sidebar/ProjectKanbanView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import {
   useEventBus,
@@ -748,6 +747,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isStreaming,
     activeStreamingChatId,
     chats,
+    pinnedChats,
     refreshChatListSilently,
     updateChatTitleLocally,
   } = useChatStore();
@@ -805,7 +805,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   >({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
-  const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
     composerDraft.mentions
   );
@@ -890,7 +889,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     activeChatIdRef.current = currentChatId;
     compactNoticeMessageRef.current = null;
     setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
-    setIsBoardFullscreen(false);
     prependScrollSnapshotRef.current = null;
     clearActivatedTools();
     // A compaction pass belongs to the chat that started it.
@@ -1880,6 +1878,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const fallbackModelSignature = safeConfig.acp_agent_id
     ? `acp/${safeConfig.acp_agent_id}`
     : safeConfig.model;
+
+  const [taskNavigationError, setTaskNavigationError] = useState<string | null>(null);
+
+  const handleOpenTask = async (task: import('../types/api').Task): Promise<boolean> => {
+    setTaskNavigationError(null);
+    if (!task.chatId?.trim()) return false;
+    try {
+      await loadChat(task.chatId, { throwOnError: true, validateBeforeSwitch: true });
+      return true;
+    } catch {
+      setTaskNavigationError(t('taskFlow.openError'));
+      return false;
+    }
+  };
+
+  const handleTaskResult = async (task: import('../types/api').Task): Promise<boolean> => {
+    setTaskNavigationError(null);
+    if (!task.chatId || !task.resultPath) {
+      return handleOpenTask(task);
+    }
+    try {
+      await loadChat(task.chatId, { throwOnError: true, validateBeforeSwitch: true });
+      setSidebarFilePreview({
+        path: task.resultPath,
+        name: task.resultPath.split(/[\\/]/).pop() || task.resultPath,
+        nonce: Date.now(),
+      });
+      onRightSidebarToggle(true);
+      return true;
+    } catch {
+      setTaskNavigationError(t('taskFlow.openError'));
+      return false;
+    }
+  };
 
   const handleOpenForkOrigin = useCallback(
     (chatId: string) => {
@@ -3037,18 +3069,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Main Chat Column */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-          {/* Project board full-screen overlay */}
-          {isBoardFullscreen && (
-            <div className="absolute inset-0 z-30 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
-              <ProjectKanbanView
-                projectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
-                projectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
-                kanban={kanban}
-                chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
-                onClose={() => setIsBoardFullscreen(false)}
-              />
-            </div>
-          )}
           <div className="relative flex-1 min-h-0">
             <div
               ref={scrollContainerRef}
@@ -3167,7 +3187,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
             {/* The board overlay covers the chat, so the rail would otherwise
               float on top of a view it cannot scroll. */}
-            {safeMessages.length > 0 && !isBoardFullscreen && (
+            {safeMessages.length > 0 && (
               <ChatMinimap
                 messages={safeMessages}
                 scrollContainerRef={scrollContainerRef}
@@ -3237,10 +3257,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           tasks={tasks}
           goalChatId={goalChatId}
           kanban={kanban}
-          currentProjectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
-          currentProjectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
-          chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
-          onProjectBoardChange={setIsBoardFullscreen}
+          currentProjectName={
+            (
+              chats.find((c) => c.id === currentChatId) ??
+              pinnedChats.find((c) => c.id === currentChatId)
+            )?.projectName ?? null
+          }
+          currentProjectId={
+            (
+              chats.find((c) => c.id === currentChatId) ??
+              pinnedChats.find((c) => c.id === currentChatId)
+            )?.projectId ?? null
+          }
+          chatTitles={Object.fromEntries([...pinnedChats, ...chats].map((c) => [c.id, c.title]))}
+          onOpenTask={handleOpenTask}
+          onTaskResult={handleTaskResult}
+          taskNavigationError={taskNavigationError}
+          onDismissTaskError={() => setTaskNavigationError(null)}
+          onTaskChat={async (chatId) => {
+            setTaskNavigationError(null);
+            try {
+              await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
+              return true;
+            } catch {
+              setTaskNavigationError(t('taskFlow.openError'));
+              return false;
+            }
+          }}
           isNewChat={
             safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages
           }

@@ -116,6 +116,7 @@ interface ChatCoreContextValue {
   currentChatId: string | null;
   chats: ChatSummary[];
   pinnedChats: ChatSummary[];
+  currentChatProjectId: string | null;
   loadingChats: boolean;
   refreshingChats: boolean;
   searchQuery: string;
@@ -129,6 +130,7 @@ interface ChatCoreContextValue {
       authoritative?: boolean;
       trusted?: boolean;
       throwOnError?: boolean;
+      validateBeforeSwitch?: boolean;
     }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
@@ -398,6 +400,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [pinnedChats, setPinnedChats] = useState<ChatSummary[]>([]);
+  const [loadedChatProjects, setLoadedChatProjects] = useState<Record<string, string | null>>({});
+  const currentChatProjectId = currentChatId
+    ? ((
+        chats.find((chat) => chat.id === currentChatId) ??
+        pinnedChats.find((chat) => chat.id === currentChatId)
+      )?.projectId ??
+      loadedChatProjects[currentChatId] ??
+      null)
+    : null;
   const [chatTotal, setChatTotal] = useState<number>(0);
   const [chatKindTotals, setChatKindTotals] = useState<ChatKindCounts>(emptyChatKindCounts);
   const [chatOffset, setChatOffset] = useState<number>(0);
@@ -1397,9 +1408,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         authoritative?: boolean;
         trusted?: boolean;
         throwOnError?: boolean;
+        validateBeforeSwitch?: boolean;
       }
     ) => {
-      const force = !!options?.force || !!options?.authoritative || !!options?.trusted;
+      // Task links can outlive their chat. Validate before changing the active conversation.
+      let validatedResponse: Response | undefined;
+      if (options?.validateBeforeSwitch) {
+        validatedResponse = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}`);
+        if (!validatedResponse.ok)
+          throw new Error(`Failed to load chat: HTTP ${validatedResponse.status}`);
+      }
+      const force =
+        !!options?.force || !!options?.authoritative || !!options?.trusted || !!validatedResponse;
       // authoritative: the backend rejected whatever the client did optimistically,
       // so its snapshot replaces local state outright. The guards below all exist
       // to protect optimistic content the backend is about to catch up with —
@@ -1449,9 +1469,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       }
 
       try {
-        const res = await fetch(`${getApiBase()}/chats/${chatId}`);
+        const res = validatedResponse ?? (await fetch(`${getApiBase()}/chats/${chatId}`));
         if (res.ok) {
           const chat: Chat = await res.json();
+          setLoadedChatProjects((previous) => ({ ...previous, [chatId]: chat.projectId ?? null }));
           setCurrentChatTitle(chat.title);
 
           if (chat.contextUsage || chat.contextTokens) {
@@ -1915,6 +1936,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatId,
       chats,
       pinnedChats,
+      currentChatProjectId,
       chatTotal,
       chatKindTotals,
       loadingChats,
@@ -1961,6 +1983,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatId,
       chats,
       pinnedChats,
+      currentChatProjectId,
       chatTotal,
       chatKindTotals,
       loadingChats,

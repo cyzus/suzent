@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
-import { GoalTaskView } from '../sidebar/GoalTaskView';
+import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
@@ -52,7 +52,11 @@ interface RightSidebarProps {
   currentProjectName?: string | null;
   currentProjectId?: string | null;
   chatTitles?: Record<string, string>;
-  onProjectBoardChange?: (open: boolean) => void;
+  onOpenTask?: (task: Task) => Promise<boolean>;
+  onTaskResult?: (task: Task) => Promise<boolean>;
+  taskNavigationError?: string | null;
+  onDismissTaskError?: () => void;
+  onTaskChat?: (chatId: string) => Promise<boolean>;
   fileToPreview?: { path: string; name: string; nonce?: number } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
@@ -94,9 +98,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   goalChatId,
   kanban,
   currentProjectName,
-  currentProjectId,
   chatTitles = {},
-  onProjectBoardChange,
+  onTaskChat,
+  taskNavigationError,
+  onDismissTaskError,
+  onOpenTask,
+  onTaskResult,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -221,8 +228,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'plan',
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
-      fallbackLabel: 'Goal',
-      hasContent: true, // always accessible — shows empty state + board button
+      fallbackLabel: 'Tasks',
+      hasContent: true,
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
     },
@@ -251,7 +258,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   useEffect(() => {
     if (hasGoalContent) setActiveTab('plan');
-  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasGoalContent]);
 
   // ── Open sidebar automatically when content arrives ─────────────────
   // Auto-open only when content transitions absent → present *within the same
@@ -526,18 +533,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                   )}
                 </div>
-                <div
-                  className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
-                >
-                  <GoalTaskView
-                    goal={goal}
-                    tasks={tasks}
-                    onOpenBoard={
-                      onProjectBoardChange ? () => onProjectBoardChange(true) : undefined
-                    }
-                    projectTaskCount={kanban?.tasks.length}
-                  />
-                </div>
+
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
@@ -628,18 +624,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                   )}
                 </div>
-                <div
-                  className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
-                >
-                  <GoalTaskView
-                    goal={goal}
-                    tasks={tasks}
-                    onOpenBoard={
-                      onProjectBoardChange ? () => onProjectBoardChange(true) : undefined
-                    }
-                    projectTaskCount={kanban?.tasks.length}
-                  />
-                </div>
+
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
@@ -650,9 +635,45 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </>
         )}
 
+        <div
+          className={`absolute inset-y-0 z-10 overflow-hidden border-r-3 border-brutal-black bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? '' : 'hidden'}`}
+          style={
+            isOverlayMode
+              ? { right: '100%', width: Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH) }
+              : { left: 0, right: ICON_STRIP_WIDTH }
+          }
+        >
+          <TaskPanel
+            navigationError={taskNavigationError}
+            onDismissError={onDismissTaskError}
+            goal={goalMatchesChat ? goal : null}
+            tasks={goalMatchesChat ? tasks : []}
+            kanban={kanban}
+            projectName={currentProjectName}
+            chatTitles={chatTitles}
+
+            onOpenTask={async (task) => {
+              const opened = (await onOpenTask?.(task)) ?? false;
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
+              }
+              return opened;
+            }}
+            onResult={onTaskResult}
+            onOpenChat={async (chatId) => {
+              const opened = await onTaskChat?.(chatId);
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
+              }
+            }}
+          />
+        </div>
+
         {/* ── Icon Strip — always visible (except new chat) ─────────── */}
         <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 py-1 gap-0.5">
-          {isCoveringChat && (
+          {isCoveringChat && activeTab !== 'plan' && (
             <button
               type="button"
               onClick={() => dockSidebar()}

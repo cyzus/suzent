@@ -26,8 +26,8 @@ class TaskListTool(Tool):
             ],
             Field(
                 description=(
-                    "Return only tasks in this status. 'blocked' is derived "
-                    "(pending with a non-empty blocked_by), not a stored status."
+                    "Return only tasks in this status. 'blocked' includes explicit waits "
+                    "and pending tasks with dependencies."
                 )
             ),
         ] = None,
@@ -48,7 +48,6 @@ class TaskListTool(Tool):
         if no_project:
             return no_project
         db = get_database()
-        # "blocked" is a derived status (pending + non-empty blocked_by), not stored in DB
         db_status = None if status == "blocked" else status
         tasks = db.list_tasks(
             project_id=project_id,
@@ -58,7 +57,11 @@ class TaskListTool(Tool):
             include_cancelled=include_cancelled,
         )
         if status == "blocked":
-            tasks = [t for t in tasks if t.blocked_by]
+            tasks = [
+                t
+                for t in tasks
+                if t.status == "blocked" or (t.status == "pending" and t.blocked_by)
+            ]
         if not tasks:
             return ToolResult.success_result("No tasks found.")
 
@@ -77,6 +80,10 @@ class TaskListTool(Tool):
             )
             lines.append(
                 f"  [#{task.id}] {task.title}{assignee_str} — {task.status}{blocks_str}{blocked_by_str}\n"
-                f"    {task.description}"
+                f"    {task.description}\n"
+                f"    Progress: {task.active_form or ''}\n"
+                f"    Waiting: {task.waiting_kind or ''} {task.waiting_reason or ''}\n"
+                f"    Next action: {task.next_action or ''}\n"
+                f"    Result: {task.result_summary or ''} {task.result_path or ''}"
             )
         return ToolResult.success_result("\n".join(lines))

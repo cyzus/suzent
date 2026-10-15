@@ -1,7 +1,7 @@
 ---
 sidebar_position: 8
 title: Tasks & planning
-description: How the agent breaks work into tracked tasks, how the project board works, and how it schedules its own follow-ups.
+description: How the agent breaks work into tracked tasks, how to follow project progress, and how it schedules its own follow-ups.
 ---
 
 # Tasks & planning
@@ -23,21 +23,28 @@ Tasks belong to the [project](../../02-using/projects.md), not just the chat.
 Every chat in the project sees the same list, and each task shows which chat
 it's assigned to.
 
-## The board
+## Follow task progress
 
-The **Goal** tab in the chat's side panel shows this chat's goal and the tasks
-assigned to it, with what each one blocks or is blocked by.
+The task panel shows this conversation's goal, current steps, and anything
+waiting for your input. Completed steps are folded away. Goal details separate
+the execution turn budget from the number of completed steps.
 
-Click **Open Board** (or **Board**, once the chat has tasks) to see every task
-in the project, from every chat, in three columns: **Todo**, **Active**, and
-**Done**. On the board you can:
+Select **Entire project** at the top of the task panel to follow work across chats.
+Select **This conversation** to focus on the current chat and its goal. Drag the
+panel wider for the full list, or drag it narrower to keep it beside
+the conversation. Resizing keeps your scope and expanded groups.
+The list puts tasks needing your attention first, followed by work in
+progress, other waiting tasks, and to-dos. The same list adapts to the panel width.
+Completed tasks are collapsed in the list; cancelled tasks are hidden.
 
-- add a task with **+ Add task** at the bottom of the **Todo** column;
-- move a task to the next column with its arrow button, or send a finished
-  task back to **Todo**;
-- delete a task with its **✕** button.
+Click a task to open its conversation. Waiting tasks explain what is needed
+next when the agent has recorded that information. Completed tasks can include
+an outcome summary and a **View output** link to a file.
 
-The agent sees your changes on its next turn.
+To start new work, describe it in the conversation and send your message.
+Tasks without a linked conversation are shown as information only; clicking
+them does not start a new conversation or execute the task. The agent maintains task states as it works. To abandon a
+task, tell the agent in the conversation rather than moving cards yourself.
 
 ## Goals
 

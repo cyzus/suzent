@@ -203,8 +203,13 @@ class TaskModel(SQLModel, table=True):
     )
     status: str = Field(
         default="pending"
-    )  # pending | in_progress | completed | cancelled
+    )  # pending | in_progress | blocked | completed | cancelled
     assignee: Optional[str] = None
+    waiting_kind: Optional[str] = None
+    waiting_reason: Optional[str] = None
+    next_action: Optional[str] = None
+    result_summary: Optional[str] = None
+    result_path: Optional[str] = None
     blocks: list = Field(default_factory=list, sa_column=Column(JSON))
     blocked_by: list = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
