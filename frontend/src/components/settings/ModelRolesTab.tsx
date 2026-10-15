@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import { BrutalOnOff } from '../BrutalOnOff';
+import {
+  isInputSuggestionEnabled,
+  onInputSuggestionEnabledChange,
+  setInputSuggestionEnabled,
+} from '../../lib/inputSuggestion';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsPage } from './SettingsCard';
 
@@ -19,6 +25,12 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
   { key: 'cheap', labelKey: 'roles.cheap', descKey: 'roles.cheapDesc', fallback: 'primary' },
   { key: 'decision', labelKey: 'roles.decision', descKey: 'roles.decisionDesc', fallback: 'cheap' },
   { key: 'title', labelKey: 'roles.autoTitle', descKey: 'roles.autoTitleDesc', fallback: 'cheap' },
+  {
+    key: 'suggestion',
+    labelKey: 'roles.suggestion',
+    descKey: 'roles.suggestionDesc',
+    fallback: 'cheap',
+  },
   {
     key: 'memory_extraction',
     labelKey: 'roles.memoryExtraction',
@@ -216,6 +228,10 @@ interface RoleRowProps {
   suggestions: string[];
   unregisteredModels: string[];
   onChange: (models: string[]) => void;
+  /** Role-specific controls shown at the top of the open row. */
+  extra?: React.ReactNode;
+  /** Replaces the status line when the role's feature is switched off. */
+  offStatus?: string;
 }
 
 function RoleRow({
@@ -226,6 +242,8 @@ function RoleRow({
   suggestions,
   unregisteredModels,
   onChange,
+  extra,
+  offStatus,
 }: RoleRowProps): React.ReactElement {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
@@ -262,12 +280,12 @@ function RoleRow({
             setEditing(true);
           }
         }}
-        className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brutal-blue dark:hover:bg-zinc-900 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.5fr)_auto]"
+        className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brutal-blue dark:hover:bg-zinc-900 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.5fr)_auto]`}
       >
         <span className="text-sm font-black uppercase tracking-wide">{label}</span>
         <span className="col-start-1 row-start-2 min-w-0 sm:col-start-2 sm:row-start-1">
           <span
-            className={`block truncate font-mono text-xs ${effective.length ? '' : 'font-sans text-neutral-400'}`}
+            className={`block truncate font-mono text-xs ${effective.length ? '' : 'font-sans text-neutral-400'} ${offStatus ? 'text-neutral-400 line-through' : ''}`}
             title={effective.join(', ')}
           >
             {effective[0] || t('settings.roles.notConfigured')}
@@ -276,16 +294,18 @@ function RoleRow({
             )}
           </span>
           <span className="mt-1 block text-[11px] text-neutral-500 dark:text-neutral-400">
-            {isInherited
-              ? t('settings.roles.fromRole', { role: source })
-              : selected.length
-                ? t('settings.roles.customStatus')
-                : t('settings.roles.chooseModel')}
+            {offStatus
+              ? offStatus
+              : isInherited
+                ? t('settings.roles.fromRole', { role: source })
+                : selected.length
+                  ? t('settings.roles.customStatus')
+                  : t('settings.roles.chooseModel')}
           </span>
         </span>
         <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 sm:col-start-3 sm:row-span-1">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${selected.length ? 'bg-brutal-green' : isInherited ? 'bg-brutal-blue' : 'bg-neutral-300'}`}
+            className={`h-1.5 w-1.5 rounded-full ${offStatus ? 'bg-neutral-300' : selected.length ? 'bg-brutal-green' : isInherited ? 'bg-brutal-blue' : 'bg-neutral-300'}`}
             aria-hidden="true"
           />
           <span aria-hidden="true">{editing ? '−' : '+'}</span>
@@ -299,6 +319,7 @@ function RoleRow({
           <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
             {t(`settings.${role.descKey}`)}
           </p>
+          {extra}
           {role.fallback !== 'none' && (
             <fieldset className="flex flex-wrap gap-4 text-xs font-bold">
               <legend className="sr-only">{t('settings.roles.modelSource')}</legend>
@@ -447,6 +468,8 @@ export function ModelRolesTab({
   onOpenVoiceSettings,
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
+  const [suggestionsEnabled, setSuggestionsEnabled] = useState(isInputSuggestionEnabled);
+  useEffect(() => onInputSuggestionEnabledChange(setSuggestionsEnabled), []);
 
   function resolveParent(fallback: FallbackBehavior): { models: string[]; source: string | null } {
     if (fallback === 'none') return { models: [], source: null };
@@ -492,13 +515,31 @@ export function ModelRolesTab({
           role.key === 'image_edit' ? suggestions._image_edit_unknown || [] : unregisteredModels
         }
         onChange={(selected) => onChange({ ...roleModels, [role.key]: selected })}
+        offStatus={
+          role.key === 'suggestion' && !suggestionsEnabled
+            ? t('settings.roles.suggestionOff')
+            : undefined
+        }
+        extra={
+          role.key === 'suggestion' && (
+            <label className="flex cursor-pointer items-center justify-between gap-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs font-bold dark:bg-zinc-800">
+              {t('settings.roles.suggestionToggle')}
+              <BrutalOnOff
+                size="sm"
+                checked={suggestionsEnabled}
+                onChange={setInputSuggestionEnabled}
+                aria-label={t('settings.roles.suggestionToggle')}
+              />
+            </label>
+          )
+        }
       />
     );
   }
 
   const groups = [
     { key: 'defaultsGroup', roles: ['primary', 'cheap', 'decision'] },
-    { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
+    { key: 'tasksGroup', roles: ['title', 'suggestion', 'memory_extraction', 'dream'] },
     {
       key: 'specialistsGroup',
       roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'video_generation', 'tts'],

@@ -26,6 +26,10 @@ export interface MentionTextAreaHandle {
   insertMention: (path: string, label: string) => void;
   /** The `@…` query text immediately before the caret, or null. */
   getActiveQuery: () => { query: string } | null;
+  /** True when the caret is collapsed after all of the content. */
+  isCaretAtEnd: () => boolean;
+  /** Type `text` at the end of the content, as the user would (undoable). */
+  appendText: (text: string) => void;
   /** DOM rect of the caret, for positioning popups (unused for now). */
   element: HTMLDivElement | null;
 }
@@ -39,6 +43,7 @@ interface MentionTextAreaProps {
   onCompositionEnd?: () => void;
   /** Fired whenever the caret's active `@` query changes (or clears). */
   onQueryChange?: (query: string | null) => void;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -241,6 +246,7 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
       onCompositionStart,
       onCompositionEnd,
       onQueryChange,
+      onScroll,
       placeholder,
       disabled,
       className,
@@ -258,7 +264,9 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
     const emitChange = React.useCallback(() => {
       const el = divRef.current;
       if (!el) return;
-      const next = serialize(el);
+      // Clearing the editor leaves a lone <br> behind; it is empty, not a newline.
+      const cleared = el.textContent === '' && !el.querySelector('[data-mention-path]');
+      const next = cleared ? '' : serialize(el);
       lastSerializedRef.current = next;
       onChange(next);
       onQueryChange?.(readActiveQuery(el));
@@ -352,6 +360,31 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
         focus: () => divRef.current?.focus(),
         blur: () => divRef.current?.blur(),
         insertMention,
+        isCaretAtEnd: () => {
+          const el = divRef.current;
+          const sel = window.getSelection();
+          if (!el || !sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+          const caret = sel.getRangeAt(0);
+          if (!el.contains(caret.endContainer)) return false;
+          const rest = document.createRange();
+          rest.selectNodeContents(el);
+          rest.setStart(caret.endContainer, caret.endOffset);
+          return rest.toString() === '';
+        },
+        appendText: (text: string) => {
+          const el = divRef.current;
+          const sel = window.getSelection();
+          if (!el || !sel) return;
+          el.focus();
+          const end = document.createRange();
+          end.selectNodeContents(el);
+          end.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(end);
+          // execCommand keeps the edit on the native undo stack and fires
+          // `input`, so the value flows back through emitChange.
+          document.execCommand('insertText', false, text);
+        },
         getActiveQuery: () => {
           const q = divRef.current ? readActiveQuery(divRef.current) : null;
           return q == null ? null : { query: q };
@@ -375,6 +408,7 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
         data-placeholder={placeholder}
         className={`${className ?? ''} ${isEmpty ? 'is-empty' : ''}`.trim()}
         onInput={emitChange}
+        onScroll={onScroll}
         onKeyDown={(e) => {
           // Backspace onto a chip decomposes it to an editable `@name`
           // query (and reopens search) instead of deleting it whole.

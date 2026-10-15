@@ -128,6 +128,7 @@ nearest configured parent, including its ordered model list:
 primary
 ├── cheap
 │   ├── title
+│   ├── suggestion
 │   ├── memory_extraction
 │   └── decision
 │       ├── goal_judge
@@ -136,6 +137,9 @@ primary
 ```
 
 - `title`: conversation titles.
+- `suggestion`: next-message prediction for the composer's ghost text
+  (`POST /chat/input-suggestion`; the client sends its recent messages because
+  the turn's final save can land after the stream ends).
 - `memory_extraction`: extract durable facts from conversations.
 - `decision`: shared default for goal completion and automatic permission review.
 - `goal_judge` / `permission_review`: optional overrides under Advanced decision roles.
