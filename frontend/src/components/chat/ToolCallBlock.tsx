@@ -256,15 +256,15 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const isShellCommand = toolName === 'run_command' || toolName === 'start_command';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
+  // Spelled out in the permission panel below, but deliberately not in the
+  // header badge: an auto-allowed call is the common case, and appending it
+  // turned "自动允许 / Auto allowed" into a sentence the rail ellipsised anyway.
   const confidenceValueLabel =
     visibleDecision?.confidence == null
       ? null
       : typeof visibleDecision.confidence === 'number'
         ? `${Math.round(visibleDecision.confidence * 100)}%`
         : t(`toolCallBlock.permissionConfidenceLevels.${visibleDecision.confidence}`);
-  const confidenceBadgeLabel = confidenceValueLabel
-    ? t('toolCallBlock.permissionConfidenceBadge', { value: confidenceValueLabel })
-    : null;
   const decisionBadge = (() => {
     if (!visibleDecision) return null;
     if (visibleDecision.source === 'full_access') {
@@ -297,9 +297,8 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
       };
     }
     if (visibleDecision.source === 'auto_classifier') {
-      const suffix = confidenceBadgeLabel ? ` · ${confidenceBadgeLabel}` : '';
       return {
-        label: `${t('toolCallBlock.permissionAutoAllowed')}${suffix}`,
+        label: t('toolCallBlock.permissionAutoAllowed'),
         className: 'border-blue-500 text-blue-700 dark:text-blue-300',
       };
     }
@@ -643,10 +642,11 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             still animating open. One home, no motion. */}
         {decisionBadge && (
           <span
-            // Not shrink-0 like the icon badges: this one carries a sentence
-            // ("Auto allowed · high confidence"), so on a narrow row it went on
-            // pushing past the rail's hidden overflow and was cut off mid-word
-            // with no way to read it. Let it give ground and ellipsise instead.
+            // Not shrink-0 like the icon badges: the needs-review and denied
+            // badges carry a sentence ("Review required · high"), so on a narrow
+            // row one went on pushing past the rail's hidden overflow and was
+            // cut off mid-word with no way to read it. Let it give ground and
+            // ellipsise instead.
             title={decisionBadge.label}
             className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
           >

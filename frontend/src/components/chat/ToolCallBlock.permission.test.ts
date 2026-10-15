@@ -1,7 +1,9 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ToolPermissionDecision } from '../../types/agui';
-import { tForLocale } from '../../i18n';
-import { shouldShowPolicyAllowedBadge } from './ToolCallBlock';
+import { I18nProvider, tForLocale } from '../../i18n';
+import { shouldShowPolicyAllowedBadge, ToolCallBlock } from './ToolCallBlock';
 
 function decision(overrides: Partial<ToolPermissionDecision> = {}): ToolPermissionDecision {
   return {
@@ -33,17 +35,40 @@ describe('policy permission badge', () => {
   });
 });
 
-describe('permission confidence labels', () => {
-  it('identifies confidence explicitly instead of showing a bare level', () => {
-    expect(
-      tForLocale('en', 'toolCallBlock.permissionConfidenceBadge', {
-        value: tForLocale('en', 'toolCallBlock.permissionConfidenceLevels.high'),
+const autoAllowed = decision({
+  behavior: 'allow',
+  source: 'auto_classifier',
+  reasonCode: 'auto_classifier_allow',
+  confidence: 'high',
+});
+
+function renderAutoAllowed({ expanded }: { expanded: boolean }): string {
+  return renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ToolCallBlock, {
+        toolName: 'run_command',
+        defaultCollapsed: !expanded,
+        inActivityRail: true,
+        permissionDecision: autoAllowed,
       })
-    ).toBe('High confidence');
-    expect(
-      tForLocale('zh-CN', 'toolCallBlock.permissionConfidenceBadge', {
-        value: tForLocale('zh-CN', 'toolCallBlock.permissionConfidenceLevels.high'),
-      })
-    ).toBe('置信度：高');
+    )
+  );
+}
+
+// Matches the confidence wording in either locale, so this holds whichever
+// language the provider resolves to.
+const confidenceWording = /confidence|置信度/i;
+
+describe('auto-allowed permission badge', () => {
+  it('names the decision without restating the confidence level', () => {
+    const html = renderAutoAllowed({ expanded: false });
+    expect(html).toContain(tForLocale('en', 'toolCallBlock.permissionAutoAllowed'));
+    expect(html).not.toMatch(confidenceWording);
+  });
+
+  it('still reports the confidence in the permission panel', () => {
+    expect(renderAutoAllowed({ expanded: true })).toMatch(confidenceWording);
   });
 });

@@ -2049,7 +2049,6 @@ export const en = {
     permissionReviewer: 'Reviewer',
     permissionReview: 'Review',
     permissionConfidence: 'Confidence',
-    permissionConfidenceBadge: '{value} confidence',
     permissionConfidenceSummary: 'Confidence: {value}',
     permissionConfidenceLevels: {
       low: 'Low',
