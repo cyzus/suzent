@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
+- Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
 - Show conversation tasks as an ordered checklist and open task results through their conversations.
 - Clicking a Suzent system notification now brings the app window back to the front.
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
