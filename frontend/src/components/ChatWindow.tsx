@@ -33,6 +33,7 @@ import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
+import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
@@ -1646,6 +1647,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stableMessagesRef.current = reconciledMessages;
     return reconciledMessages;
   }, [reconciledMessages]);
+  const inputSuggestion = useInputSuggestion({
+    chatId: currentChatId,
+    messages: safeMessages,
+    streaming: streamingForCurrentChat,
+  });
   const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
@@ -3212,6 +3218,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onPaste={handlePaste}
                 onImageClick={setViewingImage}
                 currentChatId={currentChatId}
+                inputSuggestion={inputSuggestion}
                 onFileMentionSelected={(mention) =>
                   setFileMentions((prev) => [
                     ...prev.filter((item) => item.name !== mention.name),

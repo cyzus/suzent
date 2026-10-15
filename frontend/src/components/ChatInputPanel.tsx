@@ -17,6 +17,7 @@ import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
+import { ghostRemainder } from '../lib/inputSuggestion';
 import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
@@ -47,6 +48,8 @@ interface ChatInputPanelProps {
   onImageClick?: (src: string) => void;
   currentChatId?: string | null;
   onFileMentionSelected?: (mention: FileMentionSelection) => void;
+  /** Predicted next message, shown as ghost text the user can accept. */
+  inputSuggestion?: string | null;
 }
 
 export interface FileMentionSelection {
@@ -134,6 +137,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onImageClick,
   currentChatId,
   onFileMentionSelected,
+  inputSuggestion = null,
 }) => {
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
@@ -152,6 +156,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const isComposingRef = React.useRef(false);
   const mentionActive = mentionQuery !== null;
   const suggestions = useSlashCommands(input);
+  const ghostOverlayRef = React.useRef<HTMLDivElement | null>(null);
+  const [dismissedSuggestion, setDismissedSuggestion] = React.useState<string | null>(null);
+  const ghost =
+    configReady &&
+    !streamingForCurrentChat &&
+    !mentionActive &&
+    suggestions.length === 0 &&
+    inputSuggestion !== dismissedSuggestion
+      ? ghostRemainder(input, inputSuggestion)
+      : null;
   const permissionMode = normalizePermissionMode(config.permission_mode);
   const thinkingEffort = normalizeThinkingEffort(config.thinking);
   const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
@@ -532,19 +546,39 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         )}
 
         <div className="relative">
+          {ghost && (
+            <div
+              ref={ghostOverlayRef}
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 overflow-hidden px-2 py-1.5 whitespace-pre-wrap break-words text-left ${INPUT_TEXT_METRIC_CLASS}`}
+            >
+              <span className="invisible">{input}</span>
+              <span className="text-neutral-400 dark:text-neutral-500">{ghost}</span>
+              <kbd className="ml-2 align-middle rounded-[3px] border border-neutral-300 dark:border-neutral-600 px-1 font-mono text-[10px] leading-4 text-neutral-400 dark:text-neutral-500">
+                {t('chatInput.suggestionAcceptKey')}
+              </kbd>
+            </div>
+          )}
           <MentionTextArea
             ref={editorRef}
             value={input}
             onChange={setInput}
             onQueryChange={setMentionQuery}
+            onScroll={(e) => {
+              if (ghostOverlayRef.current) {
+                ghostOverlayRef.current.scrollTop = e.currentTarget.scrollTop;
+              }
+            }}
             disabled={!configReady}
             className={`mention-editor block w-full overflow-y-auto min-h-[40px] max-h-[120px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white border-none px-2 py-1.5 whitespace-pre-wrap break-words selection:bg-brutal-blue/30 text-left text-brutal-black dark:text-white ${INPUT_TEXT_METRIC_CLASS}`}
             placeholder={
-              !configReady
-                ? t('chatInput.placeholderLoading').toUpperCase()
-                : streamingForCurrentChat
-                  ? t('chatInput.placeholderRedirect')
-                  : t('chatInput.placeholderReady')
+              ghost
+                ? ''
+                : !configReady
+                  ? t('chatInput.placeholderLoading').toUpperCase()
+                  : streamingForCurrentChat
+                    ? t('chatInput.placeholderRedirect')
+                    : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
               isComposingRef.current = true;
@@ -644,6 +678,23 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 // Passive hint mode: Escape clears, but Enter/Tab/Arrows act normally
                 if (e.key === 'Escape') {
                   setInput('');
+                  return;
+                }
+              }
+
+              if (ghost && !isComposingRef.current && !e.nativeEvent.isComposing) {
+                const noModifiers = !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
+                if (
+                  noModifiers &&
+                  (e.key === 'Tab' || (e.key === 'ArrowRight' && editorRef.current?.isCaretAtEnd()))
+                ) {
+                  e.preventDefault();
+                  editorRef.current?.appendText(ghost);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setDismissedSuggestion(inputSuggestion);
                   return;
                 }
               }

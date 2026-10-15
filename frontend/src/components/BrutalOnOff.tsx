@@ -9,6 +9,7 @@ interface BrutalOnOffProps {
   size?: 'sm' | 'md';
   disabled?: boolean;
   className?: string;
+  'aria-label'?: string;
 }
 
 /**
@@ -21,6 +22,7 @@ export function BrutalOnOff({
   size = 'md',
   disabled = false,
   className = '',
+  'aria-label': ariaLabel,
 }: BrutalOnOffProps): React.ReactElement {
   const { t } = useI18n();
   const sm = size === 'sm';
@@ -30,6 +32,7 @@ export function BrutalOnOff({
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       disabled={disabled}
       className={`relative shrink-0 border-2 border-brutal-black shadow-brutal-sm active:shadow-none active:translate-x-[1px] active:translate-y-[1px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${sm ? 'w-12 h-5' : 'w-16 h-7'} ${

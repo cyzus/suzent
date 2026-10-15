@@ -58,6 +58,7 @@ from suzent.routes.chat_routes import (
     undo_chat_files,
 )
 from suzent.routes.compact_routes import compact_chat
+from suzent.routes.suggestion_routes import get_input_suggestion
 from suzent.routes.chatgpt_routes import (
     get_chatgpt_status,
     logout_chatgpt,
@@ -1158,6 +1159,7 @@ app = Starlette(
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
+        Route("/chat/input-suggestion", get_input_suggestion, methods=["POST"]),
         Route("/chat/retry", retry_chat, methods=["POST"]),
         Route(
             "/api/chats/{chat_id}/file-changes",
