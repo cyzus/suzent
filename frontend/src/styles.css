@@ -819,15 +819,29 @@ code {
   position: relative;
   overflow: hidden;
   color: #111;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.06),
-    rgba(0, 0, 0, 0.06) 8px,
-    transparent 8px,
-    transparent 16px
-  );
-  background-size: 22.62px 22.62px;
-  animation: brutal-stripes-move 1s linear infinite;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.05) 35%,
+      rgba(0, 0, 0, 0.12) 50%,
+      rgba(0, 0, 0, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  background-size:
+    200% 100%,
+    6px 100%;
+  background-position:
+    100% 0,
+    0 0;
+  animation: brutal-stripes-move 1.35s linear infinite;
 }
 
 .activity-rail-header-pending {
@@ -862,13 +876,22 @@ code {
 
 .dark .activity-rail-header-active {
   color: #fff;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 35%,
+      rgba(255, 255, 255, 0.14) 50%,
+      rgba(255, 255, 255, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
 }
 
 .dark .activity-rail-header-pending {
@@ -1054,24 +1077,24 @@ code {
 }
 
 .activity-rail-dot-active {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.18),
-    rgba(0, 0, 0, 0.18) 4px,
-    transparent 4px,
-    transparent 8px
-  );
-  animation: brutal-stripes-move 1s linear infinite;
+  background-color: rgba(0, 0, 0, 0.16);
+  animation: activity-rail-dot-pulse 1.2s ease-in-out infinite;
 }
 
 .dark .activity-rail-dot-active {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.28),
-    rgba(255, 255, 255, 0.28) 4px,
-    transparent 4px,
-    transparent 8px
-  );
+  background-color: rgba(255, 255, 255, 0.26);
+}
+
+@keyframes activity-rail-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.88);
+  }
 }
 
 .activity-rail-dot-pending {
@@ -1784,35 +1807,66 @@ code {
 .animate-neo-scan {
   animation: neo-scan 2s linear infinite;
 }
+/* 1. Compute, Shell & Process Surface: Vertical precision tick ruler + horizontal clock wave */
 .brutal-running-mono {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.08),
-    rgba(0, 0, 0, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
-  background-size: 22.62px 22.62px;
-  animation: brutal-stripes-move 1s linear infinite;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.06) 35%,
+      rgba(0, 0, 0, 0.15) 50%,
+      rgba(0, 0, 0, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.06) 0px,
+      rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  background-size:
+    200% 100%,
+    6px 100%;
+  background-position:
+    100% 0,
+    0 0;
+  animation: brutal-stripes-move 1.35s linear infinite;
   box-shadow: 2px 2px 0px #000;
   position: relative;
   overflow: hidden;
 }
 
 .dark .brutal-running-mono {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 35%,
+      rgba(255, 255, 255, 0.16) 50%,
+      rgba(255, 255, 255, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.07) 0px,
+      rgba(255, 255, 255, 0.07) 1px,
+      transparent 1px,
+      transparent 6px
+    );
   box-shadow: 2px 2px 0px #fff;
 }
 
 @keyframes brutal-stripes-move {
+  0% {
+    background-position:
+      100% 0,
+      0 0;
+  }
   100% {
-    background-position: 22.62px 0;
+    background-position:
+      -100% 0,
+      12px 0;
   }
 }
 
@@ -2027,6 +2081,44 @@ code {
   transition:
     color 150ms,
     background-color 150ms;
+}
+
+.activity-turn-tool.brutal-running-mono {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.05) 35%,
+      rgba(0, 0, 0, 0.12) 50%,
+      rgba(0, 0, 0, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+}
+
+.dark .activity-turn-tool.brutal-running-mono {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 35%,
+      rgba(255, 255, 255, 0.13) 50%,
+      rgba(255, 255, 255, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
 }
 
 .activity-turn-tool.brutal-running-dots {
