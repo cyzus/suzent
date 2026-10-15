@@ -862,7 +862,10 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   let isPendingApproval: boolean = false;
 
   if (effectiveParts && effectiveParts.length > 0) {
-    errorCount = effectiveParts.filter((p) => p.type === 'tool' && p.state === 'error').length;
+    // `state: 'error'` is a user denial, not a failure, so it must not startle the robot.
+    errorCount = effectiveParts.filter(
+      (p) => p.type === 'tool' && toolCallFailed(p.outcome, p.output)
+    ).length;
     isPendingApproval = effectiveParts.some(
       (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
     );
