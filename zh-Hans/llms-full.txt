@@ -435,6 +435,10 @@ reports into a one-page brief in `brief.md`" gets better results than
 - **Bigger jobs can run on their own.** For work that takes many steps, set a
   goal with `/goal` and the agent keeps working until it's met. For work that
   should repeat, schedule it. See [Automation](https://suzent.com/zh-Hans/docs/features/automation).
+- **Take the suggested reply.** After each answer, a guess at your next
+  message may appear in grey in the chat box. Press **Tab** or **→** to accept
+  it, keep typing to ignore it, or press **Esc** to hide it. Turn it off by opening
+  the **Input Suggestion** row in **Settings → Model Roles**.
 
 ## Give it the right material
 
@@ -5649,6 +5653,7 @@ nearest configured parent, including its ordered model list:
 primary
 ├── cheap
 │   ├── title
+│   ├── suggestion
 │   ├── memory_extraction
 │   └── decision
 │       ├── goal_judge
@@ -5657,6 +5662,9 @@ primary
 ```
 
 - `title`: conversation titles.
+- `suggestion`: next-message prediction for the composer's ghost text
+  (`POST /chat/input-suggestion`; the client sends its recent messages because
+  the turn's final save can land after the stream ends).
 - `memory_extraction`: extract durable facts from conversations.
 - `decision`: shared default for goal completion and automatic permission review.
 - `goal_judge` / `permission_review`: optional overrides under Advanced decision roles.
