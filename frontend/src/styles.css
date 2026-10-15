@@ -4,6 +4,101 @@
 @tailwind components;
 @tailwind utilities;
 
+.app-main {
+  container: app-main / inline-size;
+}
+
+.chat-column {
+  container: chat-column / inline-size;
+}
+
+.chat-composer {
+  container: chat-composer / inline-size;
+}
+
+.new-chat-view {
+  padding: clamp(0.75rem, 3cqi, 2rem);
+}
+
+@container app-main (max-width: 640px) {
+  .app-header {
+    padding-inline: 0.5rem;
+  }
+
+  .app-header-actions {
+    gap: 0.25rem;
+  }
+
+  .app-sidebar-trigger {
+    margin-right: 0;
+  }
+
+  .app-header-title h1 {
+    font-size: 1.125rem;
+  }
+
+  .app-header-title > div {
+    display: none;
+  }
+}
+
+@container app-main (max-width: 440px) {
+  .app-header-title {
+    display: none;
+  }
+}
+
+@container chat-column (max-width: 640px) {
+  .new-chat-view {
+    padding-inline: 0;
+  }
+
+  .new-chat-greeting {
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .new-chat-title {
+    font-size: clamp(1.5rem, 6cqi, 2.25rem);
+    overflow-wrap: anywhere;
+  }
+
+  .new-chat-greeting .suzent-greeting-presence {
+    zoom: 0.8;
+  }
+}
+
+@container chat-composer (max-width: 420px) {
+  .chat-composer-model {
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .chat-composer-model > div {
+    max-width: none;
+  }
+}
+
+@media (max-height: 650px) {
+  .new-chat-view {
+    padding-block: 0.75rem;
+  }
+
+  .new-chat-greeting {
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .new-chat-greeting .suzent-greeting-presence {
+    zoom: 0.6;
+  }
+
+  .new-chat-title {
+    font-size: 1.75rem;
+    margin-bottom: 0;
+  }
+}
+
 @keyframes speech-wave-breathe {
   0%,
   100% {
