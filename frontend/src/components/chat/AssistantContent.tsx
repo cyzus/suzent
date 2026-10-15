@@ -10,7 +10,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { parseSubAgentArgs, SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { ToolCallBlock } from './ToolCallBlock';
-import { ToolGroupIcon } from './toolGroupIcon';
+import { pickToolRunningSurfaceClass, ToolGroupIcon } from './toolGroupIcon';
 import type {
   PermissionPrompt,
   ToolPermissionDecision,
@@ -41,7 +41,11 @@ export const ToolSequenceGroup: React.FC<{
   onForceWebContext?: (contextId: string) => void;
 }> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
   const hasPending = tools.some((t) => t.approvalState === 'pending');
-  const isAnyRunning = isStreaming && tools.some((t) => !t.output);
+  const activeTool = isStreaming ? [...tools].reverse().find((t) => !t.output) : undefined;
+  const isAnyRunning = Boolean(activeTool);
+  const runningSurfaceClass = activeTool
+    ? pickToolRunningSurfaceClass(activeTool.toolName)
+    : 'brutal-running-mono';
   const [expanded, setExpanded] = useState(hasPending);
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export const ToolSequenceGroup: React.FC<{
           hasPending ? 'active-approval' : ''
         } ${
           isAnyRunning
-            ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white'
+            ? `${runningSurfaceClass} border-2 !border-brutal-black dark:!border-white`
             : 'border-2 border-transparent'
         }`}
       >

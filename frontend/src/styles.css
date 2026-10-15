@@ -585,10 +585,195 @@ code {
 
 .tool-group-icon {
   @apply text-xs leading-none;
+  position: relative;
 }
 
 .tool-group-icon--mono {
   filter: grayscale(1) saturate(0) brightness(0.8);
+}
+
+/* ── Tool Icon Micro-Mechanical Animations (Neo-Brutalist stepped motion) ── */
+
+@keyframes tool-icon-pending-tick {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(15deg);
+  }
+  50% {
+    transform: rotate(0deg);
+  }
+  75% {
+    transform: rotate(-15deg);
+  }
+}
+
+@keyframes tool-icon-terminal-blink {
+  0%,
+  49% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+    transform: translateX(0.5px);
+  }
+}
+
+@keyframes tool-icon-scan-sweep {
+  0% {
+    transform: translateY(-2.5px);
+  }
+  50% {
+    transform: translateY(2.5px);
+  }
+  100% {
+    transform: translateY(-2.5px);
+  }
+}
+
+@keyframes tool-icon-typewriter-strike {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(1px, -1.5px) rotate(-6deg);
+  }
+  50% {
+    transform: translate(-0.5px, 0.5px) rotate(2deg);
+  }
+  75% {
+    transform: translate(1px, -1px) rotate(-4deg);
+  }
+}
+
+@keyframes tool-icon-radar-lock {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  33% {
+    transform: scale(1.22);
+  }
+  66% {
+    transform: scale(0.9);
+  }
+}
+
+@keyframes tool-icon-signal-pulse {
+  0%,
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scaleY(1.2) translateY(-1px);
+    opacity: 0.55;
+  }
+}
+
+@keyframes tool-icon-memory-hdd {
+  0%,
+  18%,
+  22%,
+  50%,
+  54%,
+  75%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  20%,
+  52%,
+  72% {
+    opacity: 0.2;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes tool-icon-snap-lock {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40%,
+  60% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes tool-icon-cursor-hop {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  35% {
+    transform: translate(1.5px, -1px) scale(1.05);
+  }
+  55% {
+    transform: translate(1.5px, -1px) scale(0.82);
+  }
+  80% {
+    transform: translate(-1px, 1px) scale(1);
+  }
+}
+
+.tool-icon-anim-pending > svg {
+  animation: tool-icon-pending-tick 1s steps(2, end) infinite;
+}
+
+.tool-icon-anim-terminal > svg {
+  animation: tool-icon-terminal-blink 0.8s steps(2, start) infinite;
+}
+
+.tool-icon-anim-scan {
+  overflow: hidden;
+}
+
+.tool-icon-anim-scan::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  animation: tool-icon-scan-sweep 0.9s steps(5, end) infinite;
+  pointer-events: none;
+}
+
+.tool-icon-anim-typewriter > svg {
+  animation: tool-icon-typewriter-strike 0.45s steps(2, end) infinite;
+}
+
+.tool-icon-anim-radar > svg {
+  animation: tool-icon-radar-lock 0.85s steps(3, end) infinite;
+}
+
+.tool-icon-anim-signal > svg {
+  animation: tool-icon-signal-pulse 0.7s steps(2, end) infinite;
+}
+
+.tool-icon-anim-memory > svg {
+  animation: tool-icon-memory-hdd 1.1s steps(1, end) infinite;
+}
+
+.tool-icon-anim-snap > svg {
+  animation: tool-icon-snap-lock 0.75s steps(3, end) infinite;
+}
+
+.tool-icon-anim-cursor > svg {
+  animation: tool-icon-cursor-hop 0.9s steps(3, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-group-icon > svg,
+  .tool-icon-anim-scan::after {
+    animation: none !important;
+  }
 }
 
 /* Assistant internal activity timeline */
@@ -1628,6 +1813,77 @@ code {
 @keyframes brutal-stripes-move {
   100% {
     background-position: 22.62px 0;
+  }
+}
+
+/* 2. I/O Transfer & File/Media Mutation Surface: Punched-tape data dot matrix */
+.brutal-running-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.22) 1.25px, transparent 1.25px);
+  background-size: 8px 8px;
+  animation: brutal-dots-flow 0.65s steps(4, end) infinite;
+  box-shadow: 2px 2px 0px #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .brutal-running-dots {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1.25px, transparent 1.25px);
+  box-shadow: 2px 2px 0px #fff;
+}
+
+@keyframes brutal-dots-flow {
+  100% {
+    background-position: 16px 0;
+  }
+}
+
+/* 3. Search, Recall & Observation Surface: Vertical laser scan sweep */
+.brutal-running-scan {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 42%,
+    rgba(0, 0, 0, 0.09) 48%,
+    rgba(0, 0, 0, 0.28) 50%,
+    rgba(0, 0, 0, 0.09) 52%,
+    transparent 58%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: brutal-scan-sweep 1.2s linear infinite;
+  box-shadow: 2px 2px 0px #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .brutal-running-scan {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 42%,
+    rgba(255, 255, 255, 0.09) 48%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.09) 52%,
+    transparent 58%,
+    transparent 100%
+  );
+  box-shadow: 2px 2px 0px #fff;
+}
+
+@keyframes brutal-scan-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brutal-running-mono,
+  .brutal-running-dots,
+  .brutal-running-scan {
+    animation: none !important;
   }
 }
 
