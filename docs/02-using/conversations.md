@@ -27,10 +27,10 @@ reports into a one-page brief in `brief.md`" gets better results than
   should repeat, schedule it. See [Automation](../03-features/automation.md).
 - **Take the suggested reply.** After each answer, a guess at your next
   message may appear in grey in the chat box. Press **Tab** or **→** to accept
-  it, keep typing to ignore it, or press **Esc** to hide it. The guess is kept
-  on your device, so it's still there when you reopen the chat or restart the
-  app, until the conversation moves on. Turn it off by opening the **Input
-  Suggestion** row in **Settings → Model Roles**.
+  it, keep typing to ignore it, or press **Esc** to hide it. The guess is saved
+  with the chat, so it's still there when you reopen the chat, restart the app
+  or open it on another device, until the conversation moves on. Turn it off
+  by opening the **Input Suggestion** row in **Settings → Model Roles**.
 
 ## Give it the right material
 

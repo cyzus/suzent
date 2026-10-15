@@ -139,7 +139,10 @@ primary
 - `title`: conversation titles.
 - `suggestion`: next-message prediction for the composer's ghost text
   (`POST /chat/input-suggestion`; the client sends its recent messages because
-  the turn's final save can land after the stream ends).
+  the turn's final save can land after the stream ends). With `chat_id` and
+  `reply_key` the prediction is stored in the `input_suggestions` table, and
+  `GET /chat/input-suggestion?chat_id=` returns it so any device can restore it
+  while the chat's last reply still matches `reply_key`.
 - `memory_extraction`: extract durable facts from conversations.
 - `decision`: shared default for goal completion and automatic permission review.
 - `goal_judge` / `permission_review`: optional overrides under Advanced decision roles.

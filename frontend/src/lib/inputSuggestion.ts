@@ -5,16 +5,8 @@ import { getApiBase } from './api';
 import type { Message } from '../types/api';
 
 const STORAGE_KEY = 'suzent.inputSuggestions.enabled';
-const CACHE_KEY = 'suzent.inputSuggestions.cache';
 const CHANGE_EVENT = 'suzent:input-suggestions-changed';
 const CONTEXT_MESSAGES = 6;
-const CACHE_CHATS = 50;
-
-interface CachedSuggestion {
-  reply: string;
-  text: string;
-  at: number;
-}
 
 export function isInputSuggestionEnabled(): boolean {
   try {
@@ -66,10 +58,11 @@ export function suggestionContext(messages: Message[]): { role: string; content:
 }
 
 /**
- * Identifies the reply a suggestion was predicted from. Messages carry no
- * stable id, so the reply's text stands in for one.
+ * Identifies the reply a suggestion was predicted from, or null when the last
+ * message is not a reply. Messages carry no stable id, so the reply's text
+ * stands in for one.
  */
-function replyFingerprint(messages: Message[]): string | null {
+export function replyKey(messages: Message[]): string | null {
   const context = suggestionContext(messages);
   const last = context[context.length - 1];
   if (!last || last.role !== 'assistant') return null;
@@ -80,52 +73,37 @@ function replyFingerprint(messages: Message[]): string | null {
   return `${last.content.length}:${(hash >>> 0).toString(36)}`;
 }
 
-function readCache(): Record<string, CachedSuggestion> {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, CachedSuggestion>) : {};
-  } catch {
-    return {};
-  }
+export interface SavedSuggestion {
+  replyKey: string;
+  suggestion: string;
 }
 
-/** The suggestion saved for this chat, while its last reply is still the one it was made for. */
-export function loadCachedSuggestion(chatId: string, messages: Message[]): string | null {
-  const entry = readCache()[chatId];
-  const reply = replyFingerprint(messages);
-  return entry && reply && entry.reply === reply && typeof entry.text === 'string'
-    ? entry.text
+/** The suggestion last saved for a chat, from whichever device made it. */
+export async function fetchSavedSuggestion(
+  chatId: string,
+  signal: AbortSignal
+): Promise<SavedSuggestion | null> {
+  const res = await fetch(
+    `${getApiBase()}/chat/input-suggestion?chat_id=${encodeURIComponent(chatId)}`,
+    { signal }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return typeof data.reply_key === 'string' && typeof data.suggestion === 'string'
+    ? { replyKey: data.reply_key, suggestion: data.suggestion }
     : null;
 }
 
-export function saveCachedSuggestion(
-  chatId: string,
-  messages: Message[],
-  suggestion: string | null
-): void {
-  const cache = readCache();
-  const reply = replyFingerprint(messages);
-  // Re-inserting puts this chat last, so it wins a same-millisecond tie below.
-  delete cache[chatId];
-  if (suggestion && reply) cache[chatId] = { reply, text: suggestion, at: Date.now() };
-  const kept = Object.entries(cache)
-    .sort(([, a], [, b]) => a.at - b.at)
-    .slice(-CACHE_CHATS);
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(kept)));
-  } catch {
-    // Storage blocked or full: the suggestion still shows until the app closes.
-  }
-}
-
+/** Predicts the next message; with a chat and reply key, the server also saves it. */
 export async function fetchInputSuggestion(
   messages: { role: string; content: string }[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  save?: { chatId: string; replyKey: string }
 ): Promise<string | null> {
   const res = await fetch(`${getApiBase()}/chat/input-suggestion`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, chat_id: save?.chatId, reply_key: save?.replyKey }),
     signal,
   });
   if (!res.ok) return null;

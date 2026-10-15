@@ -1,11 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Message } from '../types/api';
-import {
-  ghostRemainder,
-  loadCachedSuggestion,
-  saveCachedSuggestion,
-  suggestionContext,
-} from './inputSuggestion';
+import { ghostRemainder, replyKey, suggestionContext } from './inputSuggestion';
 
 describe('ghostRemainder', () => {
   it('offers the whole suggestion for an empty input', () => {
@@ -52,49 +47,22 @@ describe('suggestionContext', () => {
   });
 });
 
-describe('suggestion cache', () => {
+describe('replyKey', () => {
   const turn = [
     { role: 'user', content: 'Write a haiku about rain' },
     { role: 'assistant', content: 'Soft rain on the roof' },
   ] as Message[];
 
-  beforeEach(() => {
-    const store = new Map<string, string>();
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => store.set(k, v),
-    });
+  it('stays the same while the reply is still the last message', () => {
+    const reloaded = turn.map((m) => ({ ...m })) as Message[];
+    expect(replyKey(turn)).not.toBeNull();
+    expect(replyKey(reloaded)).toBe(replyKey(turn));
   });
 
-  it('restores the suggestion while its reply is still the last message', () => {
-    saveCachedSuggestion('chat-1', turn, 'Now one about snow');
-
-    expect(loadCachedSuggestion('chat-1', turn)).toBe('Now one about snow');
-    expect(loadCachedSuggestion('chat-2', turn)).toBeNull();
-  });
-
-  it('drops the suggestion once the conversation moves on', () => {
-    saveCachedSuggestion('chat-1', turn, 'Now one about snow');
-
+  it('changes once the conversation moves on', () => {
     const later = [...turn, { role: 'user', content: 'Now one about snow' }] as Message[];
     const newReply = [...later, { role: 'assistant', content: 'White hush' }] as Message[];
-    expect(loadCachedSuggestion('chat-1', later)).toBeNull();
-    expect(loadCachedSuggestion('chat-1', newReply)).toBeNull();
-  });
-
-  it('forgets a chat when the model had no prediction', () => {
-    saveCachedSuggestion('chat-1', turn, 'Now one about snow');
-    saveCachedSuggestion('chat-1', turn, null);
-
-    expect(loadCachedSuggestion('chat-1', turn)).toBeNull();
-  });
-
-  it('keeps only the most recent chats', () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1);
-    for (let i = 0; i < 60; i++) saveCachedSuggestion(`chat-${i}`, turn, `guess ${i}`);
-    vi.restoreAllMocks();
-
-    expect(loadCachedSuggestion('chat-59', turn)).toBe('guess 59');
-    expect(loadCachedSuggestion('chat-0', turn)).toBeNull();
+    expect(replyKey(later)).toBeNull();
+    expect(replyKey(newReply)).not.toBe(replyKey(turn));
   });
 });
