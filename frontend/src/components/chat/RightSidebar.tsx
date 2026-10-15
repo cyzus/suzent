@@ -241,41 +241,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     },
   ];
 
-  // ── Auto-switch tab when content arrives ───────────────────────────
-  useEffect(() => {
-    if (fileToPreview) setActiveTab('files');
-  }, [fileToPreview]);
-
-  useEffect(() => {
-    if (hasCanvasContent && !fileToPreview) setActiveTab('canvas');
-  }, [hasCanvasContent, fileToPreview]);
-
-  useEffect(() => {
-    if (viewingSubAgentTaskId) setActiveTab('agents');
-  }, [viewingSubAgentTaskId]);
-
-  useEffect(() => {
-    // Async task refreshes must not hide an explicitly requested output file.
-    if (hasGoalContent && !fileToPreview) setActiveTab('plan');
-  }, [hasGoalContent, fileToPreview]);
-
-  // ── Open sidebar automatically when content arrives ─────────────────
-  // Auto-open only when content transitions absent → present *within the same
-  // chat*. On a chat switch we re-baseline without opening, so loading an
-  // existing chat's content doesn't pop the sidebar.
+  // ── Auto-switch tab & open sidebar when content arrives ────────────
+  // Only auto-switch or auto-open when content transitions absent → present
+  // *within the same chat*. On a chat switch we re-baseline without changing
+  // the active tab or popping the sidebar, so switching chats preserves the
+  // user's current sidebar state.
   //
   // Canvas and goal load asynchronously, so right after a switch their flags
   // read false simply because the fetch hasn't landed — baselining on that and
-  // then seeing the data arrive would look like a rise and pop the sidebar
-  // (collapsing the left one with it). Each carries a "resolved" signal
-  // (surfacesChatId / goalChatId stamped for the chat we're viewing); a rise
-  // only counts if the flag was already resolved for this chat while false.
+  // then seeing the data arrive would look like a rise. Each carries a
+  // "resolved" signal (surfacesChatId / goalChatId stamped for the chat we're
+  // viewing); a rise only counts if the flag was already resolved for this
+  // chat while false.
   const autoOpenRef = useRef({
     chatId: currentChatId,
     file: false,
+    fileToPreview,
     canvas: false,
     canvasResolved: false,
     subAgent: false,
+    viewingSubAgentTaskId,
     goal: false,
     goalResolved: false,
   });
@@ -285,21 +270,36 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const flags = {
       chatId: currentChatId,
       file: !!fileToPreview,
+      fileToPreview,
       canvas: hasCanvasContent,
       canvasResolved: canvasMatchesChat,
       subAgent: !!viewingSubAgentTaskId,
+      viewingSubAgentTaskId,
       goal: hasGoalContent,
       goalResolved: goalMatchesChat,
     };
 
-    // Same chat + a flag rose false→true + sidebar closed → open it.
-    if (prev.chatId === currentChatId && !isOpen) {
-      const rose =
-        (!prev.file && flags.file) ||
-        (prev.canvasResolved && !prev.canvas && flags.canvas) ||
-        (!prev.subAgent && flags.subAgent) ||
-        (prev.goalResolved && !prev.goal && flags.goal);
-      if (rose) onOpen();
+    if (prev.chatId === currentChatId) {
+      const fileTriggered = flags.file && prev.fileToPreview !== fileToPreview;
+      const subAgentTriggered =
+        flags.subAgent && prev.viewingSubAgentTaskId !== viewingSubAgentTaskId;
+      const canvasRose = prev.canvasResolved && !prev.canvas && flags.canvas;
+      const goalRose = prev.goalResolved && !prev.goal && flags.goal;
+
+      if (fileTriggered) {
+        setActiveTab('files');
+      } else if (subAgentTriggered) {
+        setActiveTab('agents');
+      } else if (canvasRose && !flags.file) {
+        setActiveTab('canvas');
+      } else if (goalRose && !flags.file) {
+        // Async task refreshes must not hide an explicitly requested output file.
+        setActiveTab('plan');
+      }
+
+      if (!isOpen && (fileTriggered || subAgentTriggered || canvasRose || goalRose)) {
+        onOpen();
+      }
     }
 
     autoOpenRef.current = flags;
