@@ -380,7 +380,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="chat-composer min-w-0 flex flex-col gap-1">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -737,7 +737,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         </div>
 
         {/* Button row */}
-        <div className="flex flex-nowrap items-center gap-2 px-1 pb-0.5">
+        <div className="chat-composer-toolbar flex flex-wrap items-center gap-2 px-1 pb-0.5">
           {/* Left: folder + attachment */}
           <FolderContextPicker
             onMount={handleMountFolder}
@@ -770,7 +770,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           {/* Right: model picker (shrinks) + action button (fixed) */}
           {configReady && (
             <div
-              className="relative min-w-0 shrink"
+              className="chat-composer-model relative min-w-0 shrink"
               title={isAcpRuntime && !canChooseRuntime ? t('chatWindow.acpAgentLocked') : undefined}
             >
               <BrutalSelect
@@ -825,7 +825,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
       {/* Permission mode stays on the left; the thinking slider is pushed right so
           it sits directly under the model picker it applies to. */}
-      <div className="flex items-center justify-between gap-4 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
         <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
           <BrutalSelect
             value={permissionMode}

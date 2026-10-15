@@ -202,7 +202,7 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 md:gap-3 cursor-pointer select-none"
+      className="app-header-title flex min-w-0 items-center gap-2 md:gap-3 cursor-pointer select-none"
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       role="button"
@@ -709,9 +709,9 @@ function AppInner(): React.ReactElement {
             ) : null
           }
         />
-        <div className="flex-1 flex flex-col overflow-hidden w-full">
+        <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
           <header
-            className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
+            className="app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
             onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -725,7 +725,7 @@ function AppInner(): React.ReactElement {
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
               ) : (
                 <div
-                  className="mr-3 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
+                  className="app-sidebar-trigger mr-3 shrink-0 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
                   onClick={toggleLeftSidebar}
                   role="button"
                   aria-label={t('sidebar.open')}
@@ -747,7 +747,7 @@ function AppInner(): React.ReactElement {
             </div>
 
             <div
-              className={`flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
+              className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
             >
               <NavTabs
                 mainView={mainView}

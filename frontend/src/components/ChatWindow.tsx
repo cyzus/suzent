@@ -3054,13 +3054,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         />
 
         {/* Main Chat Column */}
-        <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+        <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
           <div className="relative flex-1 min-h-0">
             <div
               ref={scrollContainerRef}
               className={
                 safeMessages.length === 0
-                  ? 'h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900'
+                  ? 'h-full overflow-y-auto overflow-x-hidden p-3 md:p-6 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
                   : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
               }
             >

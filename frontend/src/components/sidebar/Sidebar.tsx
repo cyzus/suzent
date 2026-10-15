@@ -60,9 +60,14 @@ export function Sidebar({
 
       <aside
         ref={panelRef}
+        aria-hidden={!isOpen}
         style={{
           width: isDesktop ? width : Math.min(LEFT_SIDEBAR_WIDTH_PX, window.innerWidth),
           marginLeft: isDesktop && !isOpen ? -width : 0,
+          // The web console adds a navigation rail before this panel. Anchor the
+          // drawer to the viewport so translating it out cannot leave that rail's width visible.
+          left: isDesktop ? undefined : 0,
+          visibility: isOpen ? 'visible' : 'hidden',
         }}
         className={`
         fixed lg:relative z-50 h-full shrink-0
