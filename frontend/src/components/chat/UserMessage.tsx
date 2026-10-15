@@ -444,8 +444,8 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             }}
             className="w-full resize-none bg-white dark:bg-zinc-800 border-3 border-brutal-blue shadow-[3px_3px_0_0_#000] px-4 py-3 text-sm font-sans text-brutal-black dark:text-white focus:outline-none"
           />
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="min-w-0 basis-40 text-xs text-neutral-500 dark:text-neutral-400 flex-1">
               {t('chatMessage.editHint')}
             </span>
             <div className="flex gap-2 shrink-0">
