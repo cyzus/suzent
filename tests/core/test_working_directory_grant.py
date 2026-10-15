@@ -187,6 +187,12 @@ def test_grants_are_persisted_so_a_later_turn_keeps_the_folder():
     assert persistable_grants(config, None) == config
 
 
+def test_a_parent_deny_is_persisted_so_a_later_turn_cannot_regain_the_tool():
+    config = {"denied_tools": ["RunCommandTool"]}
+
+    assert persistable_grants(config, None) == config
+
+
 def test_a_disposable_worktree_cwd_is_not_persisted():
     # The worktree is removed in _run_subagent's finally block, so a resumed turn
     # would otherwise point at a deleted directory.

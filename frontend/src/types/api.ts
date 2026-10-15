@@ -54,6 +54,7 @@ export interface ChatConfig {
   model: string;
   agent: string;
   tools: string[];
+  denied_tools?: string[];
   mcp_urls?: string[] | Record<string, string>;
   mcp_enabled?: Record<string, boolean>;
   memory_enabled?: boolean;

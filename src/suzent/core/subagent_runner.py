@@ -488,7 +488,8 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
 
     process_turn_text carries the config for this turn, but a resumed or
     follow-up turn rebuilds deps from the database — without persisting these
-    the sub-agent loses access to the folder it was spawned to work in.
+    the sub-agent loses access to the folder it was spawned to work in, and
+    regains any tool its parent had denied.
 
     A worktree cwd is the exception: _run_subagent tears the worktree down in
     its finally block, so persisting it would point a resumed turn at a deleted
@@ -496,7 +497,7 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
     """
     grants = {
         key: base_config[key]
-        for key in ("cwd", "sandbox_volumes")
+        for key in ("cwd", "sandbox_volumes", "denied_tools")
         if base_config.get(key)
     }
     if isolation == "worktree":
@@ -690,6 +691,10 @@ async def _run_subagent(
             base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
+        # A tool denied to the parent stays denied to its workers, or spawning a
+        # sub-agent would be a way around the restriction.
+        if parent_denied := parent_config.get("denied_tools"):
+            base_config["denied_tools"] = list(parent_denied)
         if task.cwd:
             granted_cwd = resolve_granted_cwd(parent_chat, task.cwd)
             if granted_cwd is None:

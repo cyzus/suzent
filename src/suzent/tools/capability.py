@@ -40,6 +40,52 @@ class RegisteredToolCapability(AbstractCapability[AgentDeps]):
 
 
 @dataclass
+class ToolDenyCapability(AbstractCapability[AgentDeps]):
+    """Withhold denied tools from the model, from execution and from ToolSearch.
+
+    Unchecking a tool only demotes it to the ToolSearch pool, so "denied" needs
+    its own layer. ``prepare_tools`` sees the assembled toolset -- our own
+    tools, deferred ones and MCP tools alike -- and pydantic-ai wraps
+    ``ToolSearch`` outside it, so a definition dropped here is neither offered,
+    callable nor searchable. It runs every step, which is what lets an
+    ``always_deny`` recorded mid-run take effect on the next request.
+    """
+
+    denied_names: frozenset[str] = frozenset()
+
+    async def prepare_tools(
+        self, ctx: RunContext[AgentDeps], tool_defs: list[ToolDefinition]
+    ) -> list[ToolDefinition]:
+        policy = getattr(ctx.deps, "tool_approval_policy", {}) or {}
+        if not self.denied_names and not policy:
+            return tool_defs
+        return [
+            tool_def
+            for tool_def in tool_defs
+            if not is_denied(tool_def.name, self.denied_names, policy)
+        ]
+
+
+def is_denied(runtime_name: str, denied_names: frozenset[str], policy: dict) -> bool:
+    """Whether a model-facing tool name is denied by selection or by policy.
+
+    Both the picker and an approval policy may name a tool by its class name, its
+    runtime name or a legacy shell alias, so every spelling is checked. Builtins
+    are the floor every agent keeps and are never denied.
+    """
+    from suzent.tools.names import BUILTIN_TOOL_NAMES, policy_alias_names
+    from suzent.tools.registry import get_tool_class_name
+
+    class_name = get_tool_class_name(runtime_name)
+    if class_name in BUILTIN_TOOL_NAMES:
+        return False
+    names = {*policy_alias_names(runtime_name), class_name} - {None}
+    return bool(names & denied_names) or any(
+        policy.get(name) == "always_deny" for name in names
+    )
+
+
+@dataclass
 class ToolErrorCapability(AbstractCapability[AgentDeps]):
     """Report a tool that raised as a failed call instead of ending the turn.
 
