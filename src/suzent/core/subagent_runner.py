@@ -713,6 +713,14 @@ async def _run_subagent(
         if task.runtime == "acp":
             if not task.acp_agent_id:
                 raise ValueError("acp_agent_id is required when runtime='acp'")
+            # An ACP agent brings its own tools, which Suzent's deny list cannot
+            # reach, so it would be a way around a denial the user set.
+            if base_config.get("denied_tools"):
+                raise RuntimeError(
+                    "This chat has denied tools, and an ACP agent's own tools "
+                    "cannot be held to that denial. Use a native sub-agent, or "
+                    "ask the user to allow the denied tools first."
+                )
             base_config.update(
                 {
                     "runtime": "acp",

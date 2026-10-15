@@ -183,6 +183,8 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
     // into a new chat.
     'sandbox_volumes',
     'tool_approval_policy',
+    // A denial is a decision about one chat, not a default for the next.
+    'denied_tools',
     'permission_policies',
     'permission_mode',
     'heartbeat_enabled',
@@ -317,6 +319,7 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     a.model === b.model &&
     a.agent === b.agent &&
     arrayEqual(a.tools, b.tools) &&
+    arrayEqual(a.denied_tools, b.denied_tools) &&
     mcpUrlsEqual(a.mcp_urls, b.mcp_urls) &&
     // Chat-scoped fields that affect a turn must be compared too, otherwise a
     // mid-chat change (e.g. mounting a folder via the working-dir picker) is

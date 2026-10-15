@@ -40,7 +40,7 @@ Tools opt out of deferral by setting `deferrable = False` on their class (e.g. `
 
 Unchecking a tool only demotes it to the search pool. A chat's `denied_tools` config (registry class names, written by the picker's deny button) removes a tool outright. `create_agent` drops denied names from the equipped list and the deferred pool, and adds `ToolDenyCapability` (`tools/capability.py`), whose `prepare_tools` hook filters every function tool definition each step. pydantic-ai wraps `ToolSearch` outside `prepare_tools`, so a definition removed there is not offered, not executable and not in the search corpus, and the hook sees MCP tools as well as ours.
 
-The same hook also honours `always_deny` in the session `tool_approval_policy`, which previously had no effect on an equipped tool that needs no approval. Names are matched by class name, runtime name and legacy shell aliases. Builtins are never denied. Sub-agents inherit their parent's `denied_tools`, and the list is persisted on the child chat so a resumed turn cannot regain the tool.
+The same hook also honours `always_deny` in the session `tool_approval_policy`, which previously had no effect on an equipped tool that needs no approval. Names are matched by class name, runtime name and legacy shell aliases. Builtins are never denied. Sub-agents inherit their parent's `denied_tools`, and the list is persisted on the child chat so a resumed turn cannot regain the tool. An ACP sub-agent brings its own tools, which this list cannot reach, so `_run_subagent` refuses to start one while the parent has any denied tools. The list is per chat: the frontend keeps it out of the settings a new chat inherits.
 
 ### AgentDeps
 

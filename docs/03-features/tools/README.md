@@ -49,4 +49,6 @@ Switching a tool off only keeps it out of the way. To make sure a chat never
 uses a tool, press the **⊘** button at the end of its row. The tool shows
 **Denied**: the agent can't use it, can't find it by searching, and neither
 can any helper agent it starts. Press **⊘** again, or tick the tool, to allow
-it again. The always-on tools can't be denied.
+it again. The always-on tools can't be denied. A denial applies to that chat
+only, and while a chat has any denied tools it can't hand work to an
+[external ACP agent](./sub-agents.md), whose own tools Suzent can't restrict.
