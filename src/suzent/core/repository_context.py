@@ -310,10 +310,23 @@ def discover_instruction_files(
 def build_repo_context_capabilities(roots: RepositoryContextRoots) -> list[object]:
     """Create a RepoContext capability for working-tree instructions."""
     from pydantic_ai_harness import RepoContext
+    from pydantic_ai import RunContext
+    from suzent.core.agent_deps import AgentDeps
+    from suzent.core.context_usage import register_context_source
+
+    class TrackedRepoContext(RepoContext[AgentDeps]):
+        async def for_run(self, ctx: RunContext[AgentDeps]) -> RepoContext[AgentDeps]:
+            capability = await super().for_run(ctx)
+            content = capability.get_instructions()
+            if isinstance(content, str):
+                register_context_source(
+                    ctx.deps, content, "repository", "repository_instructions"
+                )
+            return capability
 
     working_dir = roots.working_dir.resolve()
     return [
-        RepoContext(
+        TrackedRepoContext(
             workspace_dir=working_dir,
             home_dir=roots.repository_root,
             filenames=INSTRUCTION_FILENAMES,

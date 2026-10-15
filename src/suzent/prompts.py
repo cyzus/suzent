@@ -745,13 +745,16 @@ def register_dynamic_instructions(
         if manager is None:
             return ""
         try:
-            return await manager.get_core_memory_context(
+            content = await manager.get_core_memory_context(
                 chat_id=getattr(deps, "chat_id", "") or None,
                 user_id=getattr(deps, "user_id", "") or None,
                 sandbox_enabled=getattr(deps, "sandbox_enabled", True),
                 path_resolver=getattr(deps, "path_resolver", None),
                 notebook_skill_available=_notebook_skill_available(deps),
             )
+            from suzent.core.context_usage import register_context_source
+
+            return register_context_source(deps, content, "memory", "core_memory")
         except Exception as e:
             # Better a prompt with no core memory than one carrying someone
             # else's.

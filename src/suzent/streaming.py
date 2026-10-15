@@ -1944,6 +1944,11 @@ async def stream_agent_responses(
                                 "requests": usage.requests,
                                 "details": usage.details,
                             }
+                            if deps.context_breakdown is not None:
+                                usage_data["context_breakdown"] = deps.context_breakdown
+                                usage_data["context_tokens"] = deps.context_breakdown[
+                                    "estimated_tokens"
+                                ]
                             await out_queue.put(
                                 ("chunk", _encode_custom("usage_update", usage_data))
                             )

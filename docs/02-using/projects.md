@@ -55,6 +55,29 @@ working folder wins.
 Project context is about this project. What the agent learns about *you* is
 kept in [memory](../03-features/memory/README.md) and applies everywhere.
 
+## See what uses the context window
+
+The **Context** side panel shows a colored usage bar and category totals
+for messages, tool calls and results, system tools, MCP tools, skills, memory,
+and repository instructions. Tool, skill, memory, and repository categories with
+source details can be expanded to see their individual contributions.
+Expand **Memory & project context** to find **Project context (context.md)**
+and its estimated token usage. Only the portion loaded into the model is counted.
+Older saved breakdowns combine core memory and project context; send another
+message to collect the file-level breakdown.
+Project context and repository instruction files
+are listed below; open a file to read its contents.
+
+Counts marked **≈** are text-length estimates, not exact model token counts.
+The provider's input count for the last request is shown separately when available.
+Images and provider-managed content may add costs that the text estimate cannot
+measure. **Compaction reserve** is space budgeted before automatic compaction;
+tools marked **not loaded** are listed separately and excluded from used space.
+
+The breakdown updates during a chat and is saved when the turn completes.
+Older chats need a new message to collect it. After manual compaction, the total
+updates immediately and the next model request refreshes the categories.
+
 ## Track task progress
 
 Set a goal with `/goal` and the agent keeps working until it's met. The
