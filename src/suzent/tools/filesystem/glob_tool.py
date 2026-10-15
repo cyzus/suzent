@@ -48,13 +48,14 @@ class GlobTool(Tool):
         """Find files matching a glob pattern.
 
         Searches for files matching the given glob pattern in the specified directory
-        (or working directory if not specified). Supports patterns like *.py, **/*.py,
+        (or, if not specified, the chat's working folder or the whole project). Supports patterns like *.py, **/*.py,
         data/*.csv, etc.
 
         Args:
             ctx: The run context with agent dependencies.
             pattern: Glob pattern to match (e.g., '**/*.py', '*.csv').
-            path: Directory to search in (default: working directory).
+            path: Directory to search in (default: the chat's working folder, or the
+                whole project including scratch/).
 
         Returns:
             List of matching file paths, or a message if no matches found.
@@ -106,7 +107,7 @@ class GlobTool(Tool):
             results.sort(key=lambda x: (not x[1], x[0].lower()))
 
             if not results:
-                target_desc = path or "working directory"
+                target_desc = path or "the default folder"
                 if path == "/" or (path is None and pattern.startswith("/")):
                     target_desc = "all virtual roots"
 

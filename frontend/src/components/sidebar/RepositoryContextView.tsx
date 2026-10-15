@@ -98,7 +98,7 @@ function ContextFileCard({
 
   const body = (
     <div className="break-words px-3 py-2.5 text-[13px] leading-5 text-slate-700 dark:text-zinc-200 [&_blockquote]:my-2 [&_li]:my-0 [&_ol]:my-1.5 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-1.5">
-      <MarkdownRenderer content={content} streamingLite compact />
+      <MarkdownRenderer content={content} compact />
     </div>
   );
 

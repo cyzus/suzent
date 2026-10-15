@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Extract memories from several exchanges at once, after a few turns or once a chat goes quiet, so a plan revised mid-conversation is saved once."
+}

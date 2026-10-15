@@ -775,6 +775,68 @@ async def serve_sandbox_file_wildcard(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def save_uploads(chat_id: str, uploaded_files: list) -> list[dict]:
+    """Write multipart uploads into the chat's /workspace/uploads directory.
+
+    Returns the metadata a chat turn accepts in its ``files`` list.
+    """
+    resolver = _get_resolver_for_request(chat_id)
+
+    # Resolve uploads under the project workspace. The resolver still accepts
+    # /uploads as a legacy alias, but new metadata should use /workspace.
+    uploads_virtual_path = "/workspace/uploads"
+    uploads_host_path = resolver.resolve(uploads_virtual_path)
+    uploads_host_path.mkdir(parents=True, exist_ok=True)
+
+    result_files = []
+
+    for upload_file in uploaded_files:
+        if not getattr(upload_file, "filename", None):
+            continue
+
+        # Comprehensive filename sanitization
+        safe_filename = sanitize_filename(upload_file.filename)
+
+        # Handle filename conflicts by appending a random token. A timestamp
+        # is NOT unique here: a single multipart request carrying several
+        # same-named files (e.g. pasted screenshots, all named "image.png")
+        # is written in a tight loop within the same millisecond, so a
+        # millisecond stamp collides and later files overwrite earlier ones.
+        target_path = uploads_host_path / safe_filename
+        if target_path.exists():
+            stem = target_path.stem
+            suffix = target_path.suffix
+            while target_path.exists():
+                token = uuid.uuid4().hex[:8]
+                safe_filename = f"{stem}_{token}{suffix}"
+                target_path = uploads_host_path / safe_filename
+
+        # Copied in chunks: phone videos run to hundreds of megabytes.
+        with target_path.open("wb") as out:
+            while chunk := await upload_file.read(1 << 20):
+                out.write(chunk)
+
+        stat = target_path.stat()
+        mime_type = mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
+        virtual_path = f"{uploads_virtual_path}/{safe_filename}"
+
+        result_files.append(
+            {
+                "id": str(uuid.uuid4()),
+                "filename": safe_filename,
+                "path": virtual_path,
+                "size": stat.st_size,
+                "mime_type": mime_type,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        logger.info(
+            f"Uploaded file: {safe_filename} ({stat.st_size} bytes) to {virtual_path}"
+        )
+
+    return result_files
+
+
 async def upload_files(request: Request) -> JSONResponse:
     """
     Upload files to sandbox /workspace/uploads/ directory.
@@ -797,68 +859,7 @@ async def upload_files(request: Request) -> JSONResponse:
         if not uploaded_files:
             return JSONResponse({"error": "No files provided"}, status_code=400)
 
-        # Create resolver for this chat session
-        resolver = _get_resolver_for_request(chat_id)
-
-        # Resolve uploads under the project workspace. The resolver still accepts
-        # /uploads as a legacy alias, but new metadata should use /workspace.
-        uploads_virtual_path = "/workspace/uploads"
-        uploads_host_path = resolver.resolve(uploads_virtual_path)
-
-        # Create uploads directory if it doesn't exist
-        uploads_host_path.mkdir(parents=True, exist_ok=True)
-
-        result_files = []
-
-        for upload_file in uploaded_files:
-            if not upload_file.filename:
-                continue
-
-            # Comprehensive filename sanitization
-            safe_filename = sanitize_filename(upload_file.filename)
-
-            # Handle filename conflicts by appending a random token. A timestamp
-            # is NOT unique here: a single multipart request carrying several
-            # same-named files (e.g. pasted screenshots, all named "image.png")
-            # is written in a tight loop within the same millisecond, so a
-            # millisecond stamp collides and later files overwrite earlier ones.
-            target_path = uploads_host_path / safe_filename
-            if target_path.exists():
-                stem = target_path.stem
-                suffix = target_path.suffix
-                while target_path.exists():
-                    token = uuid.uuid4().hex[:8]
-                    safe_filename = f"{stem}_{token}{suffix}"
-                    target_path = uploads_host_path / safe_filename
-
-            # Write file to disk
-            content = await upload_file.read()
-            target_path.write_bytes(content)
-
-            # Get file metadata
-            stat = target_path.stat()
-            mime_type = (
-                mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
-            )
-
-            # Virtual path for agent to use
-            virtual_path = f"{uploads_virtual_path}/{safe_filename}"
-
-            # Build metadata for frontend
-
-            file_metadata = {
-                "id": str(uuid.uuid4()),
-                "filename": safe_filename,
-                "path": virtual_path,
-                "size": stat.st_size,
-                "mime_type": mime_type,
-                "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            }
-
-            result_files.append(file_metadata)
-            logger.info(
-                f"Uploaded file: {safe_filename} ({stat.st_size} bytes) to {virtual_path}"
-            )
+        result_files = await save_uploads(chat_id, uploaded_files)
 
         return JSONResponse({"files": result_files})
 

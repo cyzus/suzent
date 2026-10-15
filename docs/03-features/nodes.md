@@ -45,6 +45,13 @@ The Suzent app for Android and iOS pairs from **Settings → Devices → Mobile
 access**, with its own permissions for each phone. See
 [Mobile app](./mobile.md).
 
+A phone that may send messages can also attach things to them: tap **+** next
+to the message box to take a photo or video, pick from your photo library, or
+choose a file. Attachments are saved in the conversation's workspace on your
+computer, under `uploads/`, never on a cloud service. Up to 10 items go with one
+message. If the model reads images, it sees photos directly; videos and other
+files are handed to the agent to open with its tools.
+
 ## Connect another device
 
 Open **Settings → Devices → Discover**. Suzent lists devices on your local

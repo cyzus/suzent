@@ -1,6 +1,8 @@
 package com.suzent.mobile
 
 import android.app.Application
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -33,6 +35,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var reconnecting by mutableStateOf(false)
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
+    var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
+        private set
     var projects by mutableStateOf<List<Project>>(emptyList())
     var selectedModel by mutableStateOf<String?>(null)
     private val modelPreferences = application.getSharedPreferences("model_preferences", android.content.Context.MODE_PRIVATE)
@@ -45,6 +49,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
     var draft by mutableStateOf("")
+    var attachments by mutableStateOf<List<PendingAttachment>>(emptyList())
+    var attachmentsSupported by mutableStateOf(false)
     var liveParts by mutableStateOf<List<MessagePart>>(emptyList())
     var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
     var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
@@ -66,6 +72,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private fun text(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 
     init {
+        AttachmentFiles.clear(application)
         try {
             connection = store.load()
             origin = connection?.origin.orEmpty()
@@ -120,7 +127,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             try {
                 bootstrap.capabilities()
                 val previous = connection?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
-                val claim = bootstrap.claim(invitation, android.os.Build.MODEL,
+                val deviceName = pairingDeviceName(android.os.Build.MODEL) {
+                    Settings.Global.getString(getApplication<Application>().contentResolver, Settings.Global.DEVICE_NAME)
+                }
+                val claim = bootstrap.claim(invitation, deviceName,
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
                     rotate = connection?.origin != bootstrap.backend.origin.toString())
@@ -205,14 +215,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val session = candidate.session()
             val listing = candidate.chats()
             val projectList = candidate.projects()
+            val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
             store.save(saved); connection = saved; origin = saved.origin
             client?.close()
             client = candidate
             device = session
+            attachmentsSupported = candidate.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
             connected = true
@@ -272,10 +285,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val session = api.session()
             val listing = api.chats()
             val projectList = api.projects()
+            val taskList = api.scheduledTasks()
             if (current != generation) return
             device = session
+            attachmentsSupported = api.supportsAttachments
             chats = listing
             projects = projectList
+            scheduledTasks = taskList
             val id = selected?.id
             if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
@@ -306,7 +322,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     if (selected?.id == chat.id) {
                         streamJob?.cancel(); api.cancelLive()
                         selected = null; streaming = false
-                        liveParts = emptyList(); pendingApprovals = emptyList(); draft = ""
+                        liveParts = emptyList(); pendingApprovals = emptyList(); draft = ""; discardAttachments()
                     }
                 }
                 val listing = api.chats()
@@ -330,6 +346,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         streamJob?.cancel()
         streaming = false
         pendingApprovals = emptyList()
+        if (chat.id != selected?.id) discardAttachments()
         selected = chat
         selectedModel = modelPreferences.getString("chatModel.$origin.${chat.id}", null)
         draft = drafts[chat.id].orEmpty()
@@ -401,16 +418,48 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 selected = composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
                 restoreModel(composer)
                 draft = ""
+                discardAttachments()
             } catch (failure: Exception) { handle(failure) }
             finally { busy = false }
         }
+    }
+
+    fun attach(uris: List<Uri>) {
+        val room = MAX_ATTACHMENTS - attachments.size
+        if (uris.isEmpty() || busy) return
+        if (room <= 0) { error = text(R.string.attachment_limit, MAX_ATTACHMENTS); return }
+        if (uris.size > room) error = text(R.string.attachment_limit, MAX_ATTACHMENTS)
+        val context = getApplication<Application>()
+        viewModelScope.launch {
+            try {
+                val copied = withContext(Dispatchers.IO) { uris.take(room).map { AttachmentFiles.copy(context, it) } }
+                attachments = (attachments + copied).take(MAX_ATTACHMENTS)
+            } catch (failure: CancellationException) { throw failure }
+            catch (_: Exception) { error = text(R.string.attachment_read_error) }
+        }
+    }
+
+    fun attachCaptured(attachment: PendingAttachment) {
+        if (attachments.size >= MAX_ATTACHMENTS) { attachment.file.delete(); error = text(R.string.attachment_limit, MAX_ATTACHMENTS); return }
+        attachments = attachments + attachment
+    }
+
+    fun removeAttachment(attachment: PendingAttachment) {
+        attachments = attachments - attachment
+        attachment.file.delete()
+    }
+
+    private fun discardAttachments() {
+        attachments.forEach { it.file.delete() }
+        attachments = emptyList()
     }
 
     fun send() {
         val api = client ?: return
         var id = selected?.id ?: return
         val message = draft.trim()
-        if (busy || streaming || message.isEmpty() || device?.permissions?.send != true) return
+        val outgoing = attachments
+        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return
         busy = true
         error = null
         val current = generation
@@ -425,13 +474,18 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     modelPreferences.edit().putString("chatModel.$origin.$id", selectedModel).apply()
                     chats = listOf(created) + chats
                 }
-                api.send(id, message, selectedModel)
+                val issued = if (outgoing.isEmpty()) emptyList() else api.upload(id, outgoing)
+                if (current != generation) return@launch
+                api.send(id, message, selectedModel, issued)
                 if (current != generation) return@launch
                 draft = ""
                 drafts.remove(id)
+                outgoing.forEach { it.file.delete() }
+                attachments = attachments - outgoing.toSet()
                 sentVersion++
                 selected?.takeIf { it.id == id }?.let { chat ->
-                    selected = chat.copy(running = true, messages = chat.messages + ChatMessage("user", message))
+                    selected = chat.copy(running = true, messages = chat.messages + ChatMessage("user", message,
+                        files = outgoing.map { FileAttachment(it.name, it.mimeType) }))
                 }
                 chats = chats.map { if (it.id == id) it.copy(running = true) else it }
                 if (foreground) observe(id)
@@ -629,7 +683,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun forget() {
-        projects = emptyList(); selectedModel = null; drafts.clear()
+        scheduledTasks = emptyList()
+        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
         pairingJob?.cancel()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }

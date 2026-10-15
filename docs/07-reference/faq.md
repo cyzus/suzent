@@ -38,7 +38,7 @@ Type `/status` in a conversation to see that conversation's tokens and cost.
 ### Where are my files?
 
 Everything is in the `.suzent` folder in your home folder. Files the agent
-creates go to the project's workspace, in `~/.suzent/sandbox/projects/<project>/`.
+keeps go to the project's library, in `~/.suzent/sandbox/projects/<project>/`.
 See [The data folder](./configuration.md#the-data-folder) for the full layout.
 
 ### Is my data sent anywhere?
@@ -74,7 +74,7 @@ can edit yourself. See
 
 ### The agent can't see my folder.
 
-The agent only reaches its workspace and folders you mount. Click
+The agent only reaches its project library, the shared folder, and folders you mount. Click
 **Working Dir** in the chat box and choose the folder. See
 [Giving the agent access to your folders](../03-features/filesystem.md#giving-the-agent-access-to-your-folders).
 

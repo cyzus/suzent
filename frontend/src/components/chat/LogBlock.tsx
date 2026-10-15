@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useStatusStore } from '../../hooks/useStatusStore';
 import { useI18n } from '../../i18n';
 
 interface LogBlockProps {
@@ -11,7 +10,6 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
   const [expanded, setExpanded] = useState(() => {
     return content.length < 300 && content.split('\n').length <= 5;
   });
-  const { setStatus } = useStatusStore();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const lineCount = content.split('\n').length;
@@ -19,7 +17,6 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(content);
-    setStatus(t('status.logCopiedToClipboard'), 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

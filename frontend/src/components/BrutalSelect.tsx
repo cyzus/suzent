@@ -59,9 +59,6 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
 
   const selectedOption = normalizedOptions.find((opt) => opt.value === value);
 
-  // Heuristic for scrollbar: average item height is ~38px. max-h-60 is 240px. 6 items ~ 228px.
-  const showScrollbar = normalizedOptions.length > 6;
-
   // Auto-flip determination
   const [effectiveDropUp, setEffectiveDropUp] = useState(dropUp);
 
@@ -139,7 +136,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
     createPortal(
       <div
         ref={dropdownRef}
-        className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'overflow-y-auto scrollbar-thin' : 'overflow-y-hidden'} ${dropdownClassName}`}
+        className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden overflow-y-auto scrollbar-thin animate-brutal-drop ${dropdownClassName}`}
         style={{
           top: dropdownPosition.top,
           left: dropdownPosition.left,
@@ -205,11 +202,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         className={`w-full bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'} ${buttonClassName}`}
       >
         <span className="truncate">
-          {selectedOption
-            ? selectedOption.label.includes('/')
-              ? selectedOption.label.split('/').pop()
-              : selectedOption.label
-            : effectivePlaceholder}
+          {selectedOption ? selectedOption.label : effectivePlaceholder}
         </span>
         {!hideChevron && (
           <svg

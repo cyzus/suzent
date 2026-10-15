@@ -13,6 +13,7 @@ HeartbeatRunner still owns heartbeat *execution*; this module owns the clock.
 
 import asyncio
 import random
+import re
 import dateutil.parser
 from collections import deque
 from datetime import datetime, timedelta
@@ -192,6 +193,24 @@ def is_missed_run(job, now: datetime) -> bool:
     if not period:
         return False
     return (now - job.next_run_at).total_seconds() > period
+
+
+MAX_RUN_RETRIES = 5
+
+# Model errors reach the scheduler flattened to text by the streaming layer, so
+# the status code is recovered from pydantic-ai's ModelHTTPError message format.
+_HTTP_STATUS_RE = re.compile(r"status_code: (\d{3}),")
+# Client errors that can still succeed on a later attempt.
+_TRANSIENT_CLIENT_STATUSES = {408, 409, 425, 429}
+
+
+def _is_retryable_error(error: str) -> bool:
+    """Whether retrying could plausibly change the outcome of a failed run."""
+    match = _HTTP_STATUS_RE.search(error or "")
+    if not match:
+        return True
+    status = int(match.group(1))
+    return not (400 <= status < 500) or status in _TRANSIENT_CLIENT_STATUSES
 
 
 HEARTBEAT_SOURCE = "heartbeat"
@@ -461,19 +480,23 @@ class SchedulerBrain(BaseBrain):
         self._pending_notifications.clear()
         return notifications
 
-    def add_notification(self, source: str, result: str) -> None:
+    def add_notification(
+        self, source: str, result: str, title: Optional[str] = None
+    ) -> None:
         """Persist a notification from a non-cron source (e.g. goal mode)."""
+        title = title or source
         try:
             get_database().create_background_notification(
-                source=source, title=source, result=result
+                source=source, title=title, result=result
             )
         except Exception as exc:
             logger.warning(f"Failed to persist background notification: {exc}")
             self._pending_notifications.append(
                 {
                     "job_id": None,
-                    "job_name": source,
+                    "job_name": title,
                     "result": result[:500],
+                    "source": source,
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -720,6 +743,7 @@ class SchedulerBrain(BaseBrain):
                             "job_id": job.id,
                             "job_name": job.name,
                             "result": response_text[:500],
+                            "source": "cron",
                             "timestamp": datetime.now().isoformat(),
                         }
                     )
@@ -825,24 +849,62 @@ class SchedulerBrain(BaseBrain):
     def _handle_retry(
         self, db, job_id: int, current_retry: int, now: datetime, error: str
     ):
-        """Apply exponential backoff retry or deactivate after max retries."""
-        max_retries = 5
-        if current_retry < max_retries:
-            backoff = timedelta(minutes=2**current_retry)
+        """Back off and retry a failed run, or give up on it.
+
+        Giving up means different things by schedule. A one-shot has no later
+        fire to fall back on, so it is deactivated. A recurring task only gives
+        up on *this* occurrence and is re-armed for its next regular fire:
+        deactivating it turned one bad morning into days of silence, since
+        nothing ever re-enables a task the user did not pause.
+
+        A rejected request is not retried at all -- a 400 comes back identical
+        every time, and each retry only adds another unanswered trigger to the
+        task's chat.
+        """
+        job = db.get_cron_job(job_id)
+        if job is None:
+            return
+        one_shot = (job.schedule_kind or "cron") == "once"
+        retryable = _is_retryable_error(error)
+
+        if retryable and current_retry < MAX_RUN_RETRIES:
+            retry_at = now + timedelta(minutes=2**current_retry)
+            regular_next = None if one_shot else self._safe_next_run(job, now)
+            # A retry that would land after the next regular fire is redundant:
+            # that fire is the retry.
+            if regular_next is None or retry_at < regular_next:
+                db.update_cron_job_run_state(
+                    job_id,
+                    last_error=error,
+                    next_run_at=retry_at,
+                    retry_count=current_retry + 1,
+                )
+                return
+
+        reason = error if retryable else f"Not retried: {error}"
+        if one_shot:
             db.update_cron_job_run_state(
-                job_id,
-                last_error=error,
-                next_run_at=now + backoff,
-                retry_count=current_retry + 1,
-            )
-        else:
-            db.update_cron_job_run_state(
-                job_id, last_error=f"Max retries exceeded: {error}"
+                job_id, last_error=f"Max retries exceeded: {reason}"
             )
             db.update_cron_job(job_id, active=False)
             logger.warning(
-                f"Cron job {job_id} deactivated after {current_retry} retries"
+                f"One-shot task {job_id} deactivated after {current_retry} retries"
             )
+            return
+
+        db.update_cron_job_run_state(job_id, last_error=reason, retry_count=0)
+        self._arm(db, job, after=now)
+        logger.warning(
+            f"Scheduled task {job_id} gave up on this run after "
+            f"{current_retry} retries; waiting for its next scheduled fire"
+        )
+
+    @staticmethod
+    def _safe_next_run(job, now: datetime) -> Optional[datetime]:
+        try:
+            return compute_next_run(job, after=now)
+        except Exception:
+            return None
 
     def _ensure_cron_chat(self, chat_id: str, job):
         """Ensure a chat record exists for this cron job."""

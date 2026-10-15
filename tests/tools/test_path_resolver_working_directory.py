@@ -37,10 +37,10 @@ def test_working_directory_is_the_agent_cwd(tmp_path, target_folder):
     assert resolver.get_working_dir() == target_folder.resolve()
 
 
-def test_project_dir_remains_the_cwd_when_no_folder_is_authorized(tmp_path):
+def test_scratch_is_the_cwd_when_no_folder_is_authorized(tmp_path):
     resolver = make_resolver(tmp_path)
 
-    assert resolver.get_working_dir() == resolver.project_dir
+    assert resolver.get_working_dir() == resolver.scratch_dir
 
 
 def test_absolute_paths_inside_the_working_directory_resolve(tmp_path, target_folder):

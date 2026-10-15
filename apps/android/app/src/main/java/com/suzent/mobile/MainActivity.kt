@@ -90,11 +90,28 @@ private fun MobileScreen(model: MobileModel) {
                         val label = stringResource(R.string.open_sidebar)
                         IconButton(onClick = { focus.clearFocus(); scope.launch { drawer.open() } }, modifier = Modifier.size(PresentationTokens.controlHeight.dp)) { Icon(painterResource(R.drawable.ic_menu), contentDescription = label, tint = MaterialTheme.colorScheme.onSurface) }
                     }
-                    Box(Modifier.weight(1f)) { SuzentWordmark() }
+                    Box(Modifier.weight(1f), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        val chat = model.selected
+                        if (model.connected && showSettings) {
+                            Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        } else if (model.connected && chat != null && chat.id.isNotEmpty()) {
+                            Column(Modifier.padding(horizontal = 8.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                chat.projectName?.let { Text(it, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                                Text(chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                        } else if (!model.connected && model.canReconnect) {
+                            Text("SUZENT", modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else SuzentWordmark()
+                    }
                     if (model.connected) IconButton(onClick = { focus.clearFocus(); model.create(); showSettings = false }, modifier = Modifier.size(PresentationTokens.controlHeight.dp),
                         enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Icon(painterResource(R.drawable.ic_new_chat), contentDescription = stringResource(R.string.new_chat)) }
                 }
-                HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+                if (model.connected || !model.canReconnect) HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
@@ -102,17 +119,37 @@ private fun MobileScreen(model: MobileModel) {
                     SuzentNotice(message) { model.error = null }
                 }
                 when {
-                    !model.connected && model.canReconnect -> Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        Column(Modifier.widthIn(max = 480.dp).padding(PresentationTokens.spaceLarge.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                            SuzentAssistantBadge()
-                            Text(stringResource(R.string.reconnect), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
-                            if (model.busy) {
-                                StreamingPulse()
-                                if (model.reconnecting) SuzentAction(stringResource(R.string.cancel_reconnect), model::cancelReconnect)
-                            } else SuzentAction(stringResource(R.string.reconnect), model::connect, prominent = true)
-                            SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
-                            SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
+                    !model.connected && model.canReconnect -> {
+                        var helpOpen by remember { mutableStateOf(false) }
+                        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Spacer(Modifier.weight(1f))
+                            Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                ReconnectIndicator(active = model.busy)
+                                Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
+                                    fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Box(Modifier.heightIn(min = 44.dp)) {
+                                    if (model.busy) {
+                                        if (model.reconnecting) TextButton(onClick = model::cancelReconnect) {
+                                            Text(stringResource(R.string.cancel_reconnect), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    } else TextButton(onClick = model::connect) {
+                                        Text(stringResource(R.string.reconnect), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { helpOpen = true }) {
+                                Text(stringResource(R.string.connection_help), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
+                        if (helpOpen) AlertDialog(onDismissRequest = { helpOpen = false },
+                            title = { Text(stringResource(R.string.connection_help)) },
+                            text = { Column {
+                                Text(stringResource(R.string.connection_help_detail))
+                                TextButton(onClick = { helpOpen = false; model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming) { Text(stringResource(R.string.pair_again)) }
+                                TextButton(onClick = { helpOpen = false; model.forget() }, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
+                            } },
+                            confirmButton = { TextButton(onClick = { helpOpen = false }) { Text(stringResource(R.string.cancel_reconnect)) } })
                     }
                     !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                     showSettings -> SettingsView(model)
@@ -138,6 +175,20 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
     }
     var collapsedProjects by remember { mutableStateOf(setOf<String>()) }
+    var expandedAgents by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(model.selected?.id, model.chats.map { it.id }) {
+        var current = model.chats.firstOrNull { it.id == model.selected?.id }
+        val parents = mutableSetOf<String>()
+        while (current?.isSubagent == true) {
+            val parent = current.parentChatId ?: break
+            if (!parents.add(parent)) break
+            current = model.chats.firstOrNull { it.id == parent }
+        }
+        expandedAgents = expandedAgents + parents
+    }
+    fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
+    val scheduledIds = remember(model.chats) { scheduledChatIds(model.chats) }
+    val normalRows = sidebarChats(model.chats.filter { it.id !in scheduledIds }, search, expandedAgents)
     val projects = remember(model.projects, model.chats) {
         (model.projects + model.chats.mapNotNull { chat -> chat.projectId?.let { Project(it, chat.projectName ?: it) } }).distinctBy { it.id }
     }
@@ -149,10 +200,10 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
         SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
-            if (model.chats.any { it.pinned }) {
+            if (normalRows.any { it.root.pinned }) {
                 item(key = "pinned-heading") { Text(stringResource(R.string.pinned_chats), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
-                items(model.chats.filter { it.pinned && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+                items(normalRows.filter { it.root.pinned }, key = { it.chat.id }) {
+                    SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
             projects.forEach { project ->
@@ -166,12 +217,32 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                             modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("+") }
                     }
                 }
-                if (project.id !in collapsedProjects || search.isNotEmpty()) items(model.chats.filter { !it.pinned && it.projectId == project.id && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+                if (project.id !in collapsedProjects || search.isNotEmpty()) items(normalRows.filter { !it.root.pinned && it.root.projectId == project.id }, key = { it.chat.id }) {
+                    SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
-            items(model.chats.filter { !it.pinned && it.projectId == null && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+            items(normalRows.filter { !it.root.pinned && it.root.projectId == null }, key = { it.chat.id }) {
+                SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
+            }
+            val groups = scheduledSidebarGroups(model.chats, model.scheduledTasks, search, expandedAgents)
+            if (groups.isNotEmpty()) {
+                item(key = "scheduled-heading") { Text(stringResource(R.string.scheduled_tasks), fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
+                items(groups, key = { it.id }) { group ->
+                    Column {
+                        val task = group.task
+                        val root = group.root
+                        if (task != null) ScheduledTaskRow(task, model, !settingsSelected && model.selected?.id == task.chatId,
+                            root?.childCount ?: 0, task.chatId in expandedAgents, { task.chatId?.let(::toggleAgents) }) {
+                            task.chatId?.let { id -> open(model.chats.firstOrNull { it.id == id } ?: Chat(id, task.name, task.running, emptyList())) }
+                        }
+                        else if (root != null) SidebarEntry(root, model.selected?.id == root.chat.id && !settingsSelected,
+                            model, open, root.chat.id in expandedAgents) { toggleAgents(root.chat.id) }
+                        group.children.forEach { entry ->
+                            SidebarEntry(entry, model.selected?.id == entry.chat.id && !settingsSelected, model, open, false) {}
+                        }
+                    }
+                }
             }
             if (projects.isEmpty() && model.chats.isEmpty()) item {
                 SuzentTextButton(onClick = { create(null) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
@@ -183,7 +254,66 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
 }
 
 @Composable
-private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit) {
+private fun SidebarEntry(entry: SidebarChatEntry, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
+                         expanded: Boolean, toggle: () -> Unit) {
+    val rail = MaterialTheme.colorScheme.outlineVariant
+    Box(Modifier.padding(start = if (entry.depth > 0) 12.dp else 0.dp).drawBehind {
+        if (entry.depth > 0) drawRect(rail, size = Size(1.dp.toPx(), size.height))
+    }.padding(start = if (entry.depth > 0) 8.dp else 0.dp)) {
+        SidebarChat(entry.chat, selected, model, open, entry.childCount, expanded, toggle, entry.depth > 0)
+    }
+}
+
+@Composable
+private fun SidebarFoldControl(childCount: Int, expanded: Boolean, toggle: () -> Unit) {
+    val railColor = MaterialTheme.colorScheme.onSurfaceVariant
+            val label = stringResource(if (expanded) R.string.collapse_subagents else R.string.expand_subagents, childCount)
+            SuzentTextButton(onClick = toggle, modifier = Modifier.size(width = 52.dp, height = 44.dp).semantics { contentDescription = label },
+                contentPadding = PaddingValues(0.dp)) {
+                Row(Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f)).padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(childCount.toString(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.foundation.Canvas(Modifier.size(10.dp)) {
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            if (expanded) { moveTo(1.dp.toPx(), 3.dp.toPx()); lineTo(5.dp.toPx(), 7.dp.toPx()); lineTo(9.dp.toPx(), 3.dp.toPx()) }
+                            else { moveTo(3.dp.toPx(), 1.dp.toPx()); lineTo(7.dp.toPx(), 5.dp.toPx()); lineTo(3.dp.toPx(), 9.dp.toPx()) }
+                        }
+                        drawPath(path, railColor, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                    }
+                }
+            }
+}
+
+@Composable
+private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: Boolean,
+                             childCount: Int, expanded: Boolean, toggle: () -> Unit, open: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = .08f) else MaterialTheme.colorScheme.surface)
+        .clickable(enabled = !model.busy && task.chatId != null, onClick = open).padding(12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(task.name, fontSize = PresentationTokens.typeChat.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            val status = when {
+                task.running -> stringResource(R.string.task_running)
+                !task.active -> stringResource(R.string.task_paused)
+                task.hasError -> stringResource(R.string.task_failed)
+                task.nextRunAt != null -> stringResource(R.string.task_next_run, formatTaskDate(task.nextRunAt))
+                else -> stringResource(R.string.task_active)
+            }
+            Text(status, fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (task.chatId == null) Text(stringResource(R.string.task_no_conversation), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
+    }
+}
+
+private fun formatTaskDate(raw: String): String = runCatching {
+    java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT))
+}.getOrDefault(raw)
+
+@Composable
+private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
+                        childCount: Int, expanded: Boolean, toggle: () -> Unit, nested: Boolean) {
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
@@ -201,8 +331,17 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             onLongClick = { moving = false; menu = true }, onClick = { open(chat) })
         .heightIn(min = 48.dp).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(14.dp))
-        Text(chat.title, Modifier.weight(1f), color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-        if (chat.running) Text("…", color = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f)) {
+            Text(chat.title, color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            if (chat.isSubagent && !nested) {
+                val parent = model.chats.firstOrNull { it.id == chat.parentChatId }
+                Text(if (parent != null) stringResource(R.string.subagent_of, parent.title) else stringResource(R.string.subagent),
+                    fontSize = PresentationTokens.typeCaption.sp, color = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            } else if (chat.isScheduled) Text(stringResource(R.string.scheduled_task), fontSize = PresentationTokens.typeCaption.sp,
+                color = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (chat.running) Text("…", color = suzentLink)
+        if (childCount > 0) SidebarFoldControl(childCount, expanded, toggle)
     }
     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RectangleShape,
         containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
@@ -299,10 +438,6 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
-    if (chat.id.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        chat.projectName?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Text(if (chat.id.isEmpty()) stringResource(R.string.new_chat) else chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-    }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
         detectTapGestures(onTap = { keyboard?.hide(); focus.clearFocus() })
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
@@ -332,18 +467,22 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
     }
     val composerOutline = MaterialTheme.colorScheme.outline
+    val composerShadow = suzentShadow
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).drawBehind {
         val offset = PresentationTokens.shadowOffset.dp.toPx()
-        drawRect(composerOutline, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
+        drawRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (model.attachmentsSupported && model.device?.permissions?.send == true)
+            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
             modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
         if (!expanded) SendAction(model, chat)
         }
@@ -369,7 +508,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 private fun SendAction(model: MobileModel, chat: Chat) {
             if (model.streaming || chat.running) SuzentAction(stringResource(R.string.stop), model::stop, prominent = true, enabled = model.device?.permissions?.stop == true, compact = true)
             else SuzentAction(stringResource(R.string.send), model::send, prominent = true,
-                enabled = !model.busy && model.draft.isNotBlank() && model.device?.permissions?.send == true, compact = true)
+                enabled = !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true, compact = true)
 }
 
 @Composable

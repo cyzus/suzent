@@ -249,7 +249,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               {/* Core memory is markdown on disk, so read it as markdown. Tightened
                 block spacing — default prose margins turn a short list into a page. */}
               <div className="scrollbar-thin max-h-[400px] overflow-y-auto overflow-x-hidden break-words bg-neutral-50 px-3 py-2 text-sm leading-6 dark:bg-zinc-900 [&_h1]:mt-3 [&_h1]:mb-1 [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:mt-3 [&_h3]:mb-1 [&_li]:my-0 [&_ol]:my-1 [&_p]:my-1 [&_ul]:my-1">
-                <MarkdownRenderer content={content} streamingLite />
+                <MarkdownRenderer content={content} />
               </div>
               <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
                 <span>{t('coreMemory.charactersCount', { count: characterCount })}</span>

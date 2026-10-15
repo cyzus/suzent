@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes."
+}

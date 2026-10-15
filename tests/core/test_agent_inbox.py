@@ -160,7 +160,8 @@ async def test_peer_delivery_uses_offline_tolerant_retry_window(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch):
+@pytest.mark.parametrize("kind", ["agent_message", "remote_agent_message"])
+async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch, kind):
     captured = {}
     target = SimpleNamespace(title="Target", config={"platform": "personal"})
     sender = SimpleNamespace(title="Review agent", config={})
@@ -184,6 +185,7 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
     monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
 
     message = _message()
+    message["kind"] = kind
     message["payload"] = {
         "citation_sources": [
             {
@@ -198,12 +200,13 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
 
     assert captured["chat_id"] == "agent-target"
     assert captured["config_override"]["interaction_profile"] == "headless"
-    assert (
-        "[Agent message from Review agent (agent-source)]"
-        in captured["message_content"]
-    )
-    assert "<!-- suzent-agent-inbox:msg-1 -->" in captured["message_content"]
-    assert captured["message_content"].endswith("Please review")
+    assert captured["message_content"] == ""
+    reminder = captured["system_reminders"][0]
+    assert "[Agent message from Review agent (agent-source)]" in reminder
+    assert "<!-- suzent-agent-inbox:msg-1 -->" in reminder
+    assert reminder.endswith("Please review")
+    if kind == "remote_agent_message":
+        assert captured["config_override"]["permission_mode"] == "auto"
     assert captured["incoming_citation_sources"][0]["id"] == "sa_sub_a_src_1"
 
 
@@ -240,3 +243,39 @@ async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch, kind
     assert captured["system_reminders"] == [
         "Please review\n<!-- suzent-agent-inbox:msg-1 -->"
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["agent_message", "remote_agent_message"])
+async def test_acp_inbox_messages_use_local_reminder_wrapper(monkeypatch, kind):
+    from suzent.core.system_reminder import (
+        PUA_START,
+        RUNTIME_NONCE,
+        extract_system_reminder_display_trigger,
+    )
+
+    captured = {}
+    target = SimpleNamespace(title="Target", config={"runtime": "acp"})
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return target
+
+    async def run_turn(chat_id, content, config, run_id, **kwargs):
+        captured.update(content=content, **kwargs)
+
+    monkeypatch.delenv("SUZENT_XML_SYSTEM_REMINDER", raising=False)
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.agent_manager.build_agent_config",
+        lambda base_config, require_social_tool=False: base_config,
+    )
+    monkeypatch.setattr("suzent.acp.runtime.run_acp_turn_text", run_turn)
+    monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
+    await AgentInboxDispatcher()._run_target_turn({**_message(), "kind": kind})
+
+    assert captured["runtime_authored"] is True
+    assert PUA_START + RUNTIME_NONCE in captured["content"]
+    trigger = extract_system_reminder_display_trigger(captured["content"])
+    assert "Please review" in trigger
+    assert "<!-- suzent-agent-inbox:msg-1 -->" in trigger

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { processEvent } from './useAGUI';
+import { partsForBatch, processEvent } from './useAGUI';
 import type { AGUIPart } from '../types/agui';
 
 describe('permission approval events', () => {
@@ -208,4 +208,58 @@ it('shows the resolved tool name immediately without an earlier tool start', () 
   ).parts;
   expect(result[0].toolName).toBe('BashTool');
   expect(result[0].state).toBe('running');
+});
+
+it('keeps the approved card intact when the resumed run replays from a reset', () => {
+  const suspended: AGUIPart[] = [
+    {
+      type: 'tool',
+      toolCallId: 'call-0',
+      toolName: 'run_command',
+      args: '{"content":"cat compose.yml"}',
+      state: 'completed',
+      output: 'ok',
+    },
+    {
+      type: 'tool',
+      toolCallId: 'call-1',
+      toolName: 'run_command',
+      args: '{"description":"Add REDIS_HOST","content":"sed -i ..."}',
+      state: 'running',
+      permissionDecision: {
+        toolCallId: 'call-1',
+        toolName: 'run_command',
+        behavior: 'ask',
+        source: 'auto_classifier',
+        reason: 'Writes a config file',
+        risk: 'high',
+      } as AGUIPart['permissionDecision'],
+    },
+  ];
+  const replay = [
+    { type: 'TOOL_CALL_START', toolCallId: 'call-1', toolCallName: 'run_command' },
+    {
+      type: 'CUSTOM',
+      name: 'tool_permission_resolution',
+      value: { toolCallId: 'call-1', toolName: 'run_command', behavior: 'allow', source: 'user' },
+    },
+    { type: 'TOOL_CALL_RESULT', toolCallId: 'call-1', content: 'done' },
+  ];
+
+  let parts = partsForBatch(true, [], suspended);
+  for (const data of replay) parts = processEvent({ type: data.type, data }, parts).parts;
+
+  expect(parts.map((part) => part.toolCallId)).toEqual(['call-0', 'call-1']);
+  expect(parts[1].args).toContain('Add REDIS_HOST');
+  expect(parts[1].permissionDecision?.behavior).toBe('ask');
+  expect(parts[1].permissionResolution?.behavior).toBe('allow');
+  expect(parts[1].state).toBe('completed');
+  // The suspended parts passed in are not mutated by the replay.
+  expect(suspended[1].state).toBe('running');
+});
+
+it('rebuilds a reset batch from nothing when there is no earlier run', () => {
+  const current: AGUIPart[] = [{ type: 'text', text: 'stale' }];
+  expect(partsForBatch(true, current)).toEqual([]);
+  expect(partsForBatch(false, current)).toEqual(current);
 });

@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { useStatusStore } from '../../hooks/useStatusStore';
 import { useI18n } from '../../i18n';
 import { MermaidDiagram } from '../MermaidDiagram';
 import { useSelectionContainment } from '../../hooks/useSelectionContainment';
@@ -9,15 +8,16 @@ interface CodeBlockComponentProps {
   lang?: string;
   content: string;
   isStreaming?: boolean;
+  showCursor?: boolean;
 }
 
 export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
   lang,
   content,
   isStreaming,
+  showCursor = true,
 }) => {
   const [expanded, setExpanded] = useState(true);
-  const { setStatus } = useStatusStore();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const lineCount = content.split('\n').length;
@@ -43,7 +43,6 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(content);
-    setStatus(t('status.codeCopiedToClipboard'), 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -135,7 +134,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
           >
             <code className={`language-${safeLang}`}>
               {content}
-              {isStreaming && (
+              {isStreaming && showCursor && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>
               )}
             </code>

@@ -294,17 +294,20 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
     >
       <div
         className={[
-          'flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:text-neutral-300',
+          'flex min-w-0 items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs text-brutal-black dark:text-neutral-300',
           embedded
-            ? 'border-b border-neutral-300 bg-white/50 dark:border-zinc-700 dark:bg-white/[0.025]'
-            : 'border-b-2 border-brutal-black bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800',
+            ? 'border-b border-neutral-200 bg-neutral-50 text-[11px] text-neutral-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-400'
+            : 'border-b-2 border-brutal-black bg-neutral-100 font-bold tracking-wider dark:border-zinc-600 dark:bg-zinc-800',
         ].join(' ')}
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className={`${showFullPath ? '' : 'uppercase'} truncate`} title={filePath}>
+          <span
+            className={`${showFullPath || embedded ? '' : 'uppercase'} truncate`}
+            title={filePath}
+          >
             {showFullPath ? filePath : namePart}
           </span>
-          {isDiff && (counts.addedLines > 0 || counts.removedLines > 0) && (
+          {!embedded && isDiff && (counts.addedLines > 0 || counts.removedLines > 0) && (
             <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
               {counts.addedLines > 0 && (
                 <span className="text-green-600 dark:text-green-400">+{counts.addedLines}</span>

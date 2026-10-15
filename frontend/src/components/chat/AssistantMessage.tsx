@@ -13,6 +13,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageResultGallery, hasVisualMediaResults } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
+import { toolCallFailed } from './toolSummary';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
@@ -53,14 +54,11 @@ import {
   normalizeProviderLogoUrl,
 } from '../../lib/providerVisuals';
 
-const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
-
 /**
  * One prose block of an assistant turn.
  *
  * While the block is the live one its text is revealed at a steady rate rather
- * than in the uneven bursts the stream delivers, and it renders through the
- * lightweight markdown path so the reveal stays cheap frame to frame.
+ * than in the uneven bursts the stream delivers.
  */
 const AssistantTextChunk: React.FC<{
   text: string;
@@ -75,7 +73,7 @@ const AssistantTextChunk: React.FC<{
         <MarkdownRenderer
           content={revealedText}
           onFileClick={onFileClick}
-          streamingLite={isStreaming}
+          isStreaming={isStreaming}
           caret={isStreaming}
         />
       </div>
@@ -294,6 +292,7 @@ const AGUIPartsContent: React.FC<{
                       permission: tp.permission,
                       permissionDecision: tp.permissionDecision,
                       permissionResolution: tp.permissionResolution,
+                      outcome: tp.outcome,
                       onApprove:
                         isActionablyPending && tp.approvalId && onToolApproval
                           ? (
@@ -331,7 +330,7 @@ const AGUIPartsContent: React.FC<{
                     const itemState =
                       t.approvalState === 'pending'
                         ? ('pending' as const)
-                        : t.approvalState === 'denied'
+                        : t.approvalState === 'denied' || toolCallFailed(t.outcome, t.output)
                           ? ('error' as const)
                           : isStreaming && !t.output
                             ? ('active' as const)
@@ -387,6 +386,7 @@ const AGUIPartsContent: React.FC<{
                           permission={t.permission}
                           permissionDecision={t.permissionDecision}
                           permissionResolution={t.permissionResolution}
+                          outcome={t.outcome}
                           isAutoApproved={isAutoApproved}
                           onRemovePolicy={onRemoveApprovalPolicy}
                           onForceWebContext={onForceWebContext}
@@ -429,6 +429,7 @@ const AGUIPartsContent: React.FC<{
               permission: tp.permission,
               permissionDecision: tp.permissionDecision,
               permissionResolution: tp.permissionResolution,
+              outcome: tp.outcome,
               onApprove:
                 isActionablyPending && tp.approvalId && onToolApproval
                   ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) =>
@@ -534,7 +535,7 @@ const AGUIPartsContent: React.FC<{
                     <MarkdownRenderer
                       content={reasoningText}
                       onFileClick={onFileClick}
-                      streamingLite={isChunkStreaming}
+                      isStreaming={isChunkStreaming}
                     />
                   </div>
                 </div>
@@ -632,7 +633,9 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
     <button
       onClick={handleClick}
       disabled={retrying}
+      type="button"
       title={t('common.retry')}
+      aria-label={t('common.retry')}
       className={`group/retry w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className ?? ''}`}
     >
       <svg
@@ -714,12 +717,12 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 
   return (
     <div
-      className="inline-flex min-w-0 max-w-[14rem] items-center gap-1.5 border border-neutral-200 bg-white/70 px-1.5 py-0.5 text-neutral-500 dark:border-neutral-700 dark:bg-zinc-900/70 dark:text-neutral-400 select-none"
+      className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
       title={t('chatMessage.modelSignature', { model: modelId })}
     >
       <ProviderFavicon model={modelId} />
-      <span className="truncate font-mono text-[10px] font-semibold normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
-        {modelId}
+      <span className="truncate font-mono text-[10px] font-medium normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
+        {modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1) : modelId}
       </span>
     </div>
   );
@@ -949,16 +952,20 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     ) : null;
 
   const messageFooter = (
-    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-0.5">
-      {fullMessageText && !isThinking && <CopyButton text={fullMessageText} className="relative" />}
-      {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
-      {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
+    <div className="flex min-w-0 items-center gap-1.5 px-1 pt-0.5 pb-1 text-[10px] leading-5">
+      <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
+        {fullMessageText && !isThinking && (
+          <CopyButton text={fullMessageText} className="relative" />
+        )}
+        {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
+        {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
+      </div>
       {!isThinking && <SourcesPanel sources={citationSourcesList} />}
       {!isThinking && <ModelSignature model={modelSignature} />}
       {message.timestamp && !isStreamingThis && (
-        <div className="ml-auto text-[10px] text-neutral-400 select-none">
+        <time className="ml-auto shrink-0 whitespace-nowrap font-mono text-neutral-400 select-none">
           {formatMessageTime(message.timestamp)}
-        </div>
+        </time>
       )}
     </div>
   );
@@ -972,9 +979,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           {badgeContainer}
 
           <div
-            className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+            className={
+              isStreamingThis
+                ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+                : 'flow-root'
+            }
           >
-            <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
+            <div
+              className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+            >
               {hasParts ? (
                 <AGUIPartsContent
                   parts={effectiveParts}
@@ -1104,9 +1117,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         {badgeContainer}
 
         <div
-          className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+          className={
+            isStreamingThis
+              ? `grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`
+              : 'flow-root'
+          }
         >
-          <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
+          <div
+            className={`${isStreamingThis ? 'overflow-hidden' : ''} min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2`}
+          >
             {legacyRenderGroups.map((group, groupIndex) => {
               if (group.type === 'activity') {
                 const activityGroupOrdinal = getActivityGroupOrdinal(
@@ -1219,10 +1238,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                               <MarkdownRenderer
                                 content={rb.content}
                                 onFileClick={onFileClick}
-                                streamingLite={
-                                  (isChunkStreaming && ri === chunk.blocks.length - 1) ||
-                                  rb.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD
-                                }
+                                isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
                               />
                             </div>
                           </div>

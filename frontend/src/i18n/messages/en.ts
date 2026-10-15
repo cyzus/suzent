@@ -56,6 +56,37 @@ export const en = {
   },
 
   mobileAccess: {
+    editPermissions: 'Edit permissions',
+    cancelEdit: 'Cancel',
+    savePermissions: 'Save',
+
+    short_manage_chats: 'Manage',
+    shortAllChats: 'All chats',
+    short_create_chats: 'Create',
+    short_send: 'Send',
+    short_stop: 'Stop',
+    short_approve_tools: 'Tool approvals',
+    shortManage: 'Manage chats',
+
+    deviceCount: '{count} paired phones',
+    prepareStep: 'Use the same Wi-Fi',
+    prepareStepHelp: 'Keep this desktop running and connect your phone to the same Wi-Fi.',
+    scanStep: 'Scan with Suzent',
+    scanStepHelp: 'Generate a QR code, then open the pairing scanner in the Suzent mobile app.',
+    confirmStep: 'Confirm on your phone',
+    confirmStepHelp:
+      'Review this desktop and the requested permissions, then accept the connection.',
+    accessSettings: 'Phone permissions',
+    networkSettings: 'Connection settings',
+    waiting: 'Waiting for scan',
+    ready: 'Pair your phone',
+    qrHelp:
+      'Each QR code is a one-time invitation. Permissions and connection settings can be adjusted before generating it.',
+    generating: 'Generating QR code…',
+    regenerate: 'New QR code',
+    pairedDevices: 'Paired phones',
+    noDevices: 'No paired phones yet.',
+
     fullAccess: 'Full access',
     restrictedAccess: 'Restricted access',
     fullAccessHelp:
@@ -65,7 +96,7 @@ export const en = {
     approve_tools: 'Approve tool requests',
 
     choosePermissions: 'Choose what this phone can access before generating its QR code.',
-    cancelInvitation: 'Close QR code and cancel invitation',
+    cancelInvitation: 'Cancel pairing',
 
     title: 'Mobile access',
     description:
@@ -74,11 +105,11 @@ export const en = {
     network:
       'LAN connections are encrypted automatically. Scan to trust this desktop. You can also enter an existing HTTPS address.',
     generate: 'Pair a phone',
-    expired: 'Invitation expired. Generate a new QR code.',
+    expired: 'QR code expired.',
     qrAlt: 'Suzent mobile pairing QR code',
-    scan: 'Scan in the Suzent app and confirm the connection on your phone. Anyone with this one-time QR code can accept the permissions above.',
+    scan: 'One-time access invitation. Share only with your phone.',
     expires: 'Expires in {seconds}s',
-    copy: 'Copy pairing invitation',
+    copy: 'Copy invitation',
     compare: 'Confirm that the phone shows code {code}.',
     all_chats: 'Read all conversations, including future ones',
     create_chats: 'Create conversations',
@@ -180,6 +211,16 @@ export const en = {
       verifyFailed: 'Failed to verify backend version: {error}',
     },
   },
+  backgroundNotifications: {
+    title: 'Suzent · {name}',
+    taskFinished: '[{name}] finished — view in Social',
+    updateReady: '[{name}] has an update',
+    manyUpdates: '{count} background updates',
+    replyReady: 'Reply completed — open the chat to view the result',
+    replyNeedsApproval: 'Needs your approval to continue',
+    replyFailed: 'Reply failed',
+    untitledChat: 'Suzent',
+  },
   hostPicker: {
     title: 'Choose a folder',
     roots: 'Drives',
@@ -229,6 +270,16 @@ export const en = {
     robotGallery: 'ROBOT GALLERY',
   },
   sidebar: {
+    resizeLeft: 'Resize left sidebar',
+    resizeRight: 'Resize right sidebar',
+    resizeHint:
+      'Drag to resize; keep dragging narrower to collapse. Keep holding to pull back; release to confirm. Double-click to reset. Arrow keys adjust width.',
+    resizeRightHint:
+      'Drag to resize; drag past the narrow limit to collapse, or past the wide limit to cover the chat. Keep holding to pull back; release to confirm. Double-click to reset.',
+    resizeCoverHint:
+      'Drag narrower to return beside the chat. Keep holding to pull back; release to confirm. Double-click to restore the default width.',
+    dock: 'Return beside chat',
+
     open: 'Open Sidebar',
     close: 'Close Sidebar',
     tabs: {
@@ -263,6 +314,7 @@ export const en = {
     },
   },
   backgroundTasks: {
+    memoryProcessing: 'Organizing memory…',
     heading: 'Background tasks ({count})',
     empty: 'No background tasks in this session',
     shell: 'Shell command',
@@ -1192,6 +1244,10 @@ export const en = {
     },
   },
   fileChanges: {
+    showOneMore: 'Show 1 more file',
+    changedFile: '1 file changed',
+    changedFiles: '{count} files changed',
+    reviewFile: 'View changes to {file}',
     editedFiles: 'Edited {count} file(s)',
     diff: 'Diff',
     showMore: 'Show {count} more files',
@@ -1303,6 +1359,13 @@ export const en = {
       noResultsDesc: 'Try a different search term',
       noChatsTitle: 'No chats yet',
       noChatsDesc: 'Start a new conversation to get started',
+    },
+    selection: {
+      moveCount: 'Move {count} chats to project',
+      deleteCount: 'Delete {count} chats',
+      deleteTitle: 'Delete {count} chats?',
+      deleteMessage: 'This will permanently delete the selected chats and their messages.',
+      cascadeMessage: 'Some selected chats have sub-agents. Do you want to delete them too?',
     },
     delete: {
       confirmTitle: 'Delete this chat?',
@@ -1866,6 +1929,7 @@ export const en = {
     },
   },
   toolCallBlock: {
+    failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',
     permissionContractUnavailable:
       'This approval is missing its server permission contract. Retry the request.',
@@ -1947,7 +2011,7 @@ export const en = {
     maximize: 'Maximize (full screen)',
     openInExplorer: 'Open in Explorer',
     uploadFile: 'Upload file',
-    workspace: 'Workspace',
+    workspace: 'Library',
     shared: 'Shared',
     mounts: 'Mounts',
     scanning: 'Scanning...',

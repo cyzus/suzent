@@ -17,9 +17,12 @@ conversations. Memory is on by default and needs no setup.
 
 ## How it works
 
-**During a conversation.** After each exchange, Suzent picks out anything worth
-keeping, such as a preference, a project detail, or a fact about you, and adds
-it to that day's log. It saves facts, not whole conversations.
+**During a conversation.** Every few exchanges, or once a chat has been quiet for
+about ten minutes, Suzent reads what was said since it last looked and picks out
+anything worth keeping, such as a preference, a project detail, or a fact about
+you. It adds those to that day's log. It saves facts, not whole conversations.
+Reading several exchanges at once means that if you change your mind partway
+through, only where you ended up is saved.
 
 **Overnight.** A background pass called the **dream** reads the new logs and
 folds them into tidy pages: one page per topic, duplicates merged,

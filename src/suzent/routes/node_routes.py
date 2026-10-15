@@ -606,15 +606,12 @@ def _pairing_addresses(port: int) -> list[dict]:
 
 async def get_node_config(request: Request) -> JSONResponse:
     """GET /nodes/config — Current node configuration + pairing addresses."""
-    from suzent.config import MESH_PORT
-
     port = _server_port(request)
     bind_host = str(getattr(request.app.state, "server_host", ""))
-    binding_active = (
-        bool(getattr(CONFIG, "node_lan_bind", False))
-        and bind_host in {"0.0.0.0", "::"}
-        and port == MESH_PORT
-    )
+    binding_active = bool(getattr(CONFIG, "node_lan_bind", False)) and bind_host in {
+        "0.0.0.0",
+        "::",
+    }
     addresses = _pairing_addresses(port)
     primary = addresses[0] if addresses else None
     return JSONResponse(

@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Keep an approved tool card and the steps before it in place while the turn resumes, instead of splitting the turn and showing a bare \"Ran\" card."
+}

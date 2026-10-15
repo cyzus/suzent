@@ -155,6 +155,15 @@ def build_agent_deps(
         cwd=cwd,
     )
 
+    from suzent.core.scratch import schedule_scratch_prune
+
+    schedule_scratch_prune(
+        path_resolver.scratch_dir,
+        int(_get_config_value(config, "scratch_max_mb", CONFIG.scratch_max_mb))
+        * 1024
+        * 1024,
+    )
+
     # Memory manager — skip if explicitly disabled in config
     from suzent.memory.lifecycle import get_memory_manager
 

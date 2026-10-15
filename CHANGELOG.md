@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.16.0] - 2026-10-14
+
+<!-- highlights -->
+### Highlights
+
+- **A fuller mobile companion.** Pair desktop 0.16.0 with mobile 0.3.0 to send photos, videos and files from your phone, browse nested sub-agent conversations, and view scheduled tasks. Phone pairing is simpler, and device permissions can be changed from the desktop without pairing again.
+- **A project library that keeps your work together.** Project notes and deliverables live alongside a `context.md` index. Generated images, videos and speech are saved under `artifacts/`, while temporary work uses a size-capped `scratch/` folder.
+- **More resilient agent runs.** An individual tool error no longer ends the whole turn. Failed calls are clearly marked, approved calls resume reliably, and repeating scheduled tasks stay enabled after a failed run.
+- **Less interruption, better continuity.** Replies finish without waiting for title generation. Memory extraction runs in the background, groups related exchanges, avoids re-saving recalled memories, and resolves relative dates.
+- **A smoother desktop workflow.** Move or delete multiple chats from the sidebar, keep chat content accessible as panels resize, and receive native notifications for replies and background work.
+
+**For mobile users:** update the desktop to 0.16.0 to use the full mobile 0.3.0 feature set. Android 0.3.0 is released and the iOS build has been uploaded to App Store Connect for TestFlight; this does not mean the iOS app is publicly available on the App Store.
+<!-- /highlights -->
+
+### Release notes
+- Deliver cross-session and cross-device agent inbox messages through the existing system-reminder format.
+- Stop approved tool calls from being dropped and re-run under automatic review when a chat saved while the approval was pending.
+- Generated images, videos and speech now save to the project library's artifacts/ folder and are listed in context.md automatically.
+- Finish replies independently of title generation and show memory extraction as background work.
+- Improve file-change cards and compact message footers in narrow chat panels, and keep final message content visible as it grows.
+- Selecting several chats no longer shows checkboxes or a bottom bar: selected chats are highlighted and the right-click menu moves or deletes them together.
+- Select several chats in the sidebar and move or delete them together, using Command/Ctrl-click, Shift-click, select all and Delete as each OS's file manager does, or a long press on touch screens.
+- Fix parallel tool calls from ChatGPT Subscription models arriving with empty arguments and failing validation.
+- Update DOMPurify to 3.4.16 for safer rendering of message content.
+- Update fsspec to 2026.6.0.
+- Update multidict to 6.9.1.
+- Update PyJWT to 2.15.0.
+- Update rustls to 0.23.45 for the desktop app's TLS connections.
+- Update urllib3 to 2.8.0.
+- Show a system notification when a reply, scheduled task, goal update, or heartbeat alert finishes while the Suzent window is in the background.
+- Fix LiteLLM Proxy's test connection reporting no models once the Base URL and Master Key were saved.
+- Extract memories from several exchanges at once, after a few turns or once a chat goes quiet, so a plan revised mid-conversation is saved once.
+- Memory extraction no longer re-stores recalled memories or earlier turns' tool calls, and writes relative dates as absolute dates.
+- Attach photos, videos, and files to messages from the iOS and Android apps, including taking a photo or video with the camera.
+- Use the Android system device name during pairing and refresh stored names when re-pairing with an existing credential.
+- Simplify phone pairing and let desktop operators edit all paired-phone permissions without pairing again.
+- Show nested sub-agent conversations and a separate scheduled-tasks section in both mobile sidebars, backed by scoped navigation metadata and scheduled-task reads.
+- Keep the status bar dedicated to persistent service and context information, route reply, background task, and operation error notifications through native desktop notifications even while focused, and stop notifying for copy, compaction, and sub-agent activity.
+- Treat each project's folder as a project library: the agent keeps notes, deliverables and a file index in context.md there, and works in a size-capped scratch/ folder for throwaway files.
+- Keep an approved tool card and the steps before it in place while the turn resumes, instead of splitting the turn and showing a bare "Ran" card.
+- Keep repeating scheduled tasks switched on after failed runs, stop ChatGPT Subscription rejecting histories with LiteLLM reasoning, and stop failed task runs from leaving system-trigger bubbles in the chat.
+- Keep sidebar resizing live after snapping, settle to the threshold-selected layout on release, and preserve access to chat content after width changes.
+- Turn on Suzent's built-in skills by default, and keep skills found in your home folder (such as ~/.claude or ~/.codex) off until you enable them.
+- A tool that throws an error now fails just that call and lets the agent continue, instead of ending the whole turn.
+- Show failed tool calls as failed instead of with a checkmark, including calls rejected for bad arguments, MCP errors, timeouts and commands that exit non-zero.
+- Render WebFetch tool results as full Markdown, including tables, for native and ACP tool names.
+- A server started with SUZENT_PORT now uses that port even when device-mesh network access is on, and on Windows a second server on a port already in use fails with a clear error instead of silently sharing it.
+
 ## [v0.15.2] - 2026-10-01
 
 ### Release notes

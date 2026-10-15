@@ -37,6 +37,13 @@ class TestChatOperations:
         db.create_chat("Private", {})
         assert db.list_chat_titles([shared, "missing"]) == [(shared, "Shared")]
         assert db.list_chat_titles([]) == []
+        assert db.get_chat_navigation([]) == {}
+        db.update_chat(
+            shared, config={"platform": "subagent", "parent_chat_id": "parent"}
+        )
+        assert db.get_chat_navigation([shared, "missing"]) == {
+            shared: {"platform": "subagent", "parentChatId": "parent"}
+        }
         assert len(db.list_chat_titles(limit=1)) == 1
         db.create_chat("Internal", {"platform": "dream"})
         assert {title for _, title in db.list_chat_titles()} == {"Shared", "Private"}

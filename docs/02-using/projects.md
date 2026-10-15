@@ -10,12 +10,13 @@ A project is how you keep one piece of ongoing work together, such as a
 report, a codebase, or a trip you're planning. Every chat in a project shares
 three things:
 
-- **A folder.** Files the agent writes in one chat are there in the next, and
-  other projects can't see them. See
-  [Workspace & sandbox](../03-features/filesystem.md#where-files-go).
+- **A library folder.** Notes and deliverables saved in one chat are there in
+  the next, and other projects can't see them. See
+  [What goes in the project library](../03-features/filesystem.md#what-goes-in-the-project-library).
 - **Project context.** A short note, `context.md` in the project folder, that
-  every chat in the project reads first. The agent keeps it up to date as it
-  learns about the work.
+  every chat in the project reads first. The agent keeps it up to date with the
+  project's goal, current state, decisions, and a list of the files in the
+  library.
 - **A board** of the project's goals and tasks, from every chat.
 
 ## When to start a project
@@ -28,6 +29,17 @@ want kept apart from everything else. Quick, one-off questions are fine in
 Create a project from the **Projects** list in the sidebar, or pick one on the
 new-chat screen. A chat can be moved to another project later; deleting a
 project moves its chats to **Home**.
+
+To move or delete several chats at once, select them the way you would select
+files on your computer:
+
+- **macOS:** ⌘-click adds a chat, ⇧-click selects a range, ⌘A selects every
+  chat in view, and ⌘⌫ deletes the selection.
+- **Windows and Linux:** Ctrl-click adds a chat, Shift-click selects a range,
+  Ctrl+A selects every chat in view, and Delete deletes the selection.
+
+Selected chats are highlighted. Right-click any of them to move or delete them
+all together. A plain click or Esc clears the selection.
 
 ## Give it standing instructions
 

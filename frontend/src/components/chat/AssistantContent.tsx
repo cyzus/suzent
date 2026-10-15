@@ -14,11 +14,10 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import type {
   PermissionPrompt,
   ToolPermissionDecision,
+  ToolCallOutcome,
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
-
-const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
 /** Extract sub-agent task_id from agent tool output text. */
 
@@ -34,6 +33,7 @@ export const ToolSequenceGroup: React.FC<{
     permission?: PermissionPrompt;
     permissionDecision?: ToolPermissionDecision;
     permissionResolution?: ToolPermissionResolution;
+    outcome?: ToolCallOutcome;
   }>;
   isStreaming?: boolean;
   toolApprovalPolicy?: Record<string, string>;
@@ -71,6 +71,7 @@ export const ToolSequenceGroup: React.FC<{
               permission={t.permission}
               permissionDecision={t.permissionDecision}
               permissionResolution={t.permissionResolution}
+              outcome={t.outcome}
               isAutoApproved={isAutoApproved}
               onRemovePolicy={onRemoveApprovalPolicy}
               onForceWebContext={onForceWebContext}
@@ -155,6 +156,7 @@ export const ToolSequenceGroup: React.FC<{
                 permission={t.permission}
                 permissionDecision={t.permissionDecision}
                 permissionResolution={t.permissionResolution}
+                outcome={t.outcome}
                 isAutoApproved={isAutoApproved}
                 onRemovePolicy={onRemoveApprovalPolicy}
                 onForceWebContext={onForceWebContext}
@@ -244,7 +246,7 @@ const StreamingMarkdownBlock: React.FC<{
     <MarkdownRenderer
       content={renderedContent}
       onFileClick={onFileClick}
-      streamingLite={isLastBlock}
+      isStreaming={isLastBlock}
       caret={isLastBlock && showCursor}
     />
   );
@@ -278,20 +280,13 @@ export const StreamingContent: React.FC<{
           return null;
         } else if (b.type === 'code') {
           return (
-            <div
+            <CodeBlockComponent
               key={blockKey}
-              className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900/70"
-            >
-              <div className="px-3 py-1 border-b-2 border-brutal-black text-[10px] font-mono font-bold uppercase text-neutral-600 dark:text-neutral-300 bg-white dark:bg-zinc-800">
-                {(b as any).lang || 'text'}
-              </div>
-              <pre className="p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all overflow-x-auto max-h-[48vh]">
-                <code>{b.content}</code>
-                {isLastBlock && showCursor && (
-                  <span className="animate-brutal-blink inline-block w-2 h-4 bg-neutral-700 dark:bg-neutral-300 align-middle ml-1" />
-                )}
-              </pre>
-            </div>
+              lang={b.lang || 'text'}
+              content={b.content}
+              isStreaming={isLastBlock}
+              showCursor={showCursor}
+            />
           );
         } else {
           return (
@@ -300,6 +295,7 @@ export const StreamingContent: React.FC<{
               lang={(b as any).lang}
               content={b.content}
               isStreaming={isLastBlock}
+              showCursor={showCursor}
             />
           );
         }
@@ -349,14 +345,7 @@ export const StaticContent: React.FC<{
       {blocks.map((b, bi) => {
         const blockKey = generateBlockKey(b, bi, messageIndex);
         if (b.type === 'markdown') {
-          return (
-            <MarkdownRenderer
-              key={blockKey}
-              content={b.content}
-              onFileClick={onFileClick}
-              streamingLite={b.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD}
-            />
-          );
+          return <MarkdownRenderer key={blockKey} content={b.content} onFileClick={onFileClick} />;
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'a2ui' && b.a2uiSurface) {

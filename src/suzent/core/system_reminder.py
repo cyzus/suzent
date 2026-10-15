@@ -801,6 +801,33 @@ def extract_system_reminder_display_trigger(text: str) -> str:
     return "\n\n".join(parts)
 
 
+SCHEDULED_TASK_TRIGGER_PREFIX = "**Scheduled Task:"
+
+
+def is_scheduled_trigger_only(text: str) -> bool:
+    """Whether a stored prompt is nothing but a scheduled task's wake-up.
+
+    Recognises both forms such a prompt takes in history: the reminder block it
+    was sent as, and the placeholder line the history sanitizer leaves once a
+    restart makes that block unauthenticatable. Used only to *discard* prompts,
+    never to trust one, so an unauthenticated block is acceptable evidence.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    placeholder = _TRIGGER_PLACEHOLDER_RE.fullmatch(stripped)
+    if placeholder:
+        inner = placeholder.group(0)[len(TRIGGER_MARK) + len("[system trigger: ") :]
+        return inner.lstrip().startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
+    if strip_system_reminders(stripped):
+        return False
+    return (
+        extract_system_reminder_display_trigger(stripped)
+        .lstrip()
+        .startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Global hooks — always-on, no user message required
 # ---------------------------------------------------------------------------
@@ -1152,11 +1179,16 @@ async def build_combined_reminder(
     # Providers are independent, so they run together. Serially, a slow one
     # delayed every one after it — and global hooks had no timeout at all, so a
     # single hung provider stalled the whole message pipeline indefinitely.
-    scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
-    if user_message and user_message.strip():
-        scheduled += [
-            (hook, _run(hook, chat_id, deps, user_message)) for hook in _per_turn_hooks
-        ]
+    scheduled = []
+    # Stateless agents need explicit turn inputs, but ambient context can make
+    # their fixed task prompts drift (for example, a dream run skipping its task).
+    if not getattr(deps, "stateless", False):
+        scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
+        if user_message and user_message.strip():
+            scheduled += [
+                (hook, _run(hook, chat_id, deps, user_message))
+                for hook in _per_turn_hooks
+            ]
 
     if scheduled:
         # Registration order is the priority order, and gather preserves it, so

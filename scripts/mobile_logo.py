@@ -75,6 +75,12 @@ def logo_outputs(root: Path) -> dict[Path, str]:
         )
         + "    ]\n}\n"
     )
+    kotlin = "// Generated from frontend/public/favicon.svg.\npackage com.suzent.mobile\n\nobject SuzentLogoGeometry {\n    val rectangles = listOf(\n"
+    kotlin += "".join(
+        "        listOf(" + ", ".join(f"{value}f" for value in rect) + "),\n"
+        for rect in geometry
+    )
+    kotlin += "    )\n}\n"
     faces = [
         ("M28,36 L95,27 L143,45 L65,57 Z", "#2E2E2E"),
         ("M28,36 L65,57 L65,141 L28,109 Z", "#0A0A0A"),
@@ -82,6 +88,8 @@ def logo_outputs(root: Path) -> dict[Path, str]:
     ]
     drawable = root / "apps/android/app/src/main/res/drawable"
     return {
+        root
+        / "apps/android/app/src/main/java/com/suzent/mobile/SuzentLogoGeometry.kt": kotlin,
         drawable / "suzent_logo.xml": vector(
             24,
             [

@@ -38,9 +38,8 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import remove_pending_approvals, stream_agent_responses
-from suzent.memory import ConversationTurn, Message, AgentAction
+from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
     PostProcessStep,
@@ -98,7 +97,10 @@ def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
 
 
 def _emit_notice_stream(
-    chat_id: str, text: str, stopped: str | None = None
+    chat_id: str,
+    text: str,
+    stopped: str | None = None,
+    custom_events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
@@ -108,6 +110,9 @@ def _emit_notice_stream(
     *stopped* is a stop that was accepted for this run. It is reported the way
     every other path reports one -- tagged, so the client reads it as the stop
     it asked for rather than as a failure.
+
+    *custom_events* are emitted ahead of the notice, for paths that also have
+    to settle UI state the run would otherwise have updated.
     """
 
     async def _gen() -> AsyncGenerator[str, None]:
@@ -115,6 +120,8 @@ def _emit_notice_stream(
         run_id = str(uuid.uuid4())
         msg_id = str(uuid.uuid4())
         yield enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+        for name, value in custom_events or []:
+            yield enc.encode(CustomEvent(name=name, value=value))
         yield enc.encode(
             CustomEvent(name="stream_display_role", value={"role": "notice"})
         )
@@ -399,6 +406,45 @@ def _cancel_unprocessed_tool_calls(
     return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
 
 
+def _expire_display_tool_parts(
+    messages: list[Any], tool_call_ids: set[str], notice: str
+) -> list[Any]:
+    """Mark stored tool cards still awaiting approval as settled with *notice*."""
+    expired: list[Any] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            expired.append(message)
+            continue
+        message = dict(message)
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            message["parts"] = [
+                {
+                    **{k: v for k, v in part.items() if k != "approvalId"},
+                    "state": "error",
+                    "output": notice,
+                }
+                if isinstance(part, dict)
+                and part.get("type") == "tool"
+                and part.get("toolCallId") in tool_call_ids
+                and part.get("output") is None
+                else part
+                for part in parts
+            ]
+        content = message.get("content")
+        if isinstance(content, str):
+            for tool_call_id in tool_call_ids:
+                content = re.sub(
+                    rf'(<details[^>]*data-tool-call-id="{re.escape(tool_call_id)}"'
+                    r'[^>]*data-approval-state=")pending(")',
+                    r"\1denied\2",
+                    content,
+                )
+            message["content"] = content
+        expired.append(message)
+    return expired
+
+
 def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
     """Build the pydantic-ai approval result, preserving rejection feedback."""
     if approval.get("approved"):
@@ -459,6 +505,10 @@ ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
 )
 
+APPROVAL_EXPIRED_NOTICE = (
+    "This approval had already expired, so nothing was run. Send a message to continue."
+)
+
 
 def _stripped_image_notice(model_id: str | None, count: int) -> str:
     """Render the user-facing notice for image(s) dropped from a blind model.
@@ -477,6 +527,18 @@ def _stripped_image_reminder(agent_paths: list[str]) -> str | None:
     from suzent.prompts import STRIPPED_IMAGE_REMINDER_TEMPLATE
 
     return STRIPPED_IMAGE_REMINDER_TEMPLATE.format(
+        count=len(agent_paths),
+        paths=", ".join(agent_paths),
+    )
+
+
+def _upload_index_reminder(agent_paths: list[str]) -> str | None:
+    """Ask the model to index this turn's uploads, or ``None`` if there were none."""
+    if not agent_paths:
+        return None
+    from suzent.prompts import UPLOAD_INDEX_REMINDER_TEMPLATE
+
+    return UPLOAD_INDEX_REMINDER_TEMPLATE.format(
         count=len(agent_paths),
         paths=", ".join(agent_paths),
     )
@@ -630,7 +692,9 @@ class ChatProcessor:
                     if chat.agent_state:
                         state = deserialize_state(chat.agent_state)
                         if state and state.get("message_history"):
-                            message_history = state["message_history"]
+                            message_history = _drop_unanswered_scheduled_triggers(
+                                state["message_history"]
+                            )
                             deps.last_messages = message_history
                             logger.debug(
                                 f"Restored {len(message_history)} messages for chat {chat_id}"
@@ -688,6 +752,7 @@ class ChatProcessor:
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
+        uploaded_paths: list[str] = []
 
         from suzent.core.model_registry import get_model_registry
 
@@ -745,6 +810,9 @@ class ChatProcessor:
                         result = await self._process_upload_file(
                             file_item, uploads_host_path, uploads_agent_path
                         )
+
+                    if result["agent_path"]:
+                        uploaded_paths.append(result["agent_path"])
 
                     if result["is_image"] and not _vision_ok:
                         # Active model can't read images — don't ship raw bytes
@@ -950,6 +1018,11 @@ class ChatProcessor:
                     chat_id,
                 )
 
+        # Calls already answered before this turn (abandoned ones were just given a
+        # result above); post-processing reports only the rest, since the snapshot
+        # it receives is the whole (compacted) history.
+        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
+
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
@@ -1023,16 +1096,15 @@ class ChatProcessor:
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
         if _vision_reminder:
             _adhoc_reminders.append(_vision_reminder)
-        reminder = (
-            None
-            if getattr(deps, "stateless", False)
-            else await build_combined_reminder(
-                chat_id,
-                deps,
-                adhoc_reminders=_adhoc_reminders,
-                user_message=_turn_message,
-                display_trigger=display_trigger,
-            )
+        _upload_reminder = _upload_index_reminder(uploaded_paths)
+        if _upload_reminder:
+            _adhoc_reminders.append(_upload_reminder)
+        reminder = await build_combined_reminder(
+            chat_id,
+            deps,
+            adhoc_reminders=_adhoc_reminders,
+            user_message=_turn_message,
+            display_trigger=display_trigger,
         )
         if reminder:
             if message_content and message_content.strip():
@@ -1099,6 +1171,11 @@ class ChatProcessor:
                 for part in message.parts
                 if isinstance(part, ToolCallPart)
             }
+            requested_tool_call_ids = [
+                str(app.get("tool_call_id") or app.get("request_id"))
+                for app in resume_approvals
+                if app.get("tool_call_id") or app.get("request_id")
+            ]
             resume_approvals = _resolve_resume_approval_actions(
                 chat_id, resume_approvals
             )
@@ -1148,6 +1225,73 @@ class ChatProcessor:
                     chat_id,
                 )
                 approvals_dict = {}
+
+            if requested_tool_call_ids and not any(
+                tcid in approvals_dict for tcid in requested_tool_call_ids
+            ):
+                # None of the user's decisions can be applied. Running anyway
+                # would start a fresh turn in which the model re-issues the call
+                # under a new id, where policy rather than the user decides it.
+                logger.warning(
+                    "Rejecting resume for chat {}: approvals expired: {}",
+                    chat_id,
+                    requested_tool_call_ids,
+                )
+                # Settle the calls durably, not just in this stream: the client
+                # reloads from the database once the stream ends, and a stored
+                # card still awaiting approval would come straight back.
+                message_history, cancelled_tool_call_ids = (
+                    _cancel_unprocessed_tool_calls(
+                        message_history or [], "its approval expired"
+                    )
+                )
+                try:
+                    db = get_database()
+                    chat = db.get_chat(chat_id)
+                    display_messages = _expire_display_tool_parts(
+                        list(chat.messages or []) if chat else [],
+                        set(requested_tool_call_ids),
+                        APPROVAL_EXPIRED_NOTICE,
+                    )
+                    display_messages.append(
+                        {"role": "notice", "content": APPROVAL_EXPIRED_NOTICE}
+                    )
+                    db.update_chat(
+                        chat_id,
+                        messages=display_messages,
+                        agent_state=serialize_state(
+                            message_history,
+                            model_id=getattr(agent, "_model_id", None),
+                            tool_names=getattr(agent, "_tool_names", []),
+                        )
+                        if cancelled_tool_call_ids
+                        else None,
+                    )
+                    if cancelled_tool_call_ids:
+                        await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
+                except Exception as persist_err:
+                    logger.warning(
+                        "Failed to persist expired approvals for {}: {}",
+                        chat_id,
+                        persist_err,
+                    )
+                expired_events = [
+                    (
+                        "tool_approval_result",
+                        {
+                            "toolCallId": tcid,
+                            "toolName": tool_names.get(tcid, ""),
+                            "status": "expired",
+                            "output": APPROVAL_EXPIRED_NOTICE,
+                        },
+                    )
+                    for tcid in requested_tool_call_ids
+                ]
+                async for chunk in _emit_notice_stream(
+                    chat_id, APPROVAL_EXPIRED_NOTICE, custom_events=expired_events
+                ):
+                    yield chunk
+                return
 
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
@@ -1410,6 +1554,7 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
+                    prior_tool_call_ids=prior_tool_call_ids,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1492,6 +1637,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> bool:
         """Background post-processing for a completed turn.
 
@@ -1541,7 +1687,11 @@ class ChatProcessor:
                 # written/indexed — keeps their chatter out of memory (NEW-7).
                 if not self._is_system_chat(chat_id):
                     await self._write_transcript(
-                        chat_id, message_content, full_response, last_messages
+                        chat_id,
+                        message_content,
+                        full_response,
+                        last_messages,
+                        prior_tool_call_ids,
                     )
                 db.update_job_step_status(
                     job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
@@ -1576,13 +1726,20 @@ class ChatProcessor:
                 async def _run_memory_extraction() -> None:
                     memory_db = get_database()
                     try:
-                        await self._extract_memories(
-                            chat_id=chat_id,
-                            user_id=user_id,
-                            user_content=message_content,
-                            agent_content=full_response,
-                            messages=last_messages,
-                        )
+                        # The turn is already in the transcript (B1); the queue
+                        # decides whether this is the moment to extract it.
+                        if not self._is_system_chat(chat_id):
+                            from suzent.memory.extraction_queue import (
+                                get_extraction_queue,
+                            )
+
+                            queue = get_extraction_queue()
+                            if CONFIG.memory_enabled:
+                                await queue.note_turn(chat_id, user_id)
+                            else:
+                                # Turning memory on later must not sweep up
+                                # what was said while it was off.
+                                await queue.skip_pending(chat_id)
                         memory_db.update_job_step_status(
                             job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                         )
@@ -2054,52 +2211,34 @@ class ChatProcessor:
         except Exception:
             return False
 
-    async def _extract_memories(
-        self, chat_id, user_id, user_content, agent_content, messages
-    ):
-        """Extract memories from pydantic-ai message history."""
-        if not CONFIG.memory_enabled:
-            return
-        # Skip system/forked turns (dream, sub-agents). The per-chat platform — not
-        # the global CONFIG flag — is authoritative here.
-        if self._is_system_chat(chat_id):
-            return
-
-        try:
-            memory_mgr = get_memory_manager()
-            if not memory_mgr:
-                return
-
-            # Extract tool calls from messages
-            actions = _extract_tool_calls(messages)
-
-            conversation_turn = ConversationTurn(
-                user_message=Message(role="user", content=user_content),
-                assistant_message=Message(role="assistant", content=agent_content),
-                agent_actions=actions,
-            )
-
-            await memory_mgr.process_conversation_turn_for_memories(
-                conversation_turn=conversation_turn,
-                chat_id=chat_id,
-                user_id=user_id,
-            )
-        except Exception as e:
-            logger.error(f"Memory extraction failed for {chat_id}: {e}")
-
     async def _write_transcript(
-        self, chat_id: str, user_content: str, agent_content: str, messages: list
+        self,
+        chat_id: str,
+        user_content: str,
+        agent_content: str,
+        messages: list,
+        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> None:
-        """Write user and assistant turns to the JSONL transcript."""
+        """Write user and assistant turns to the JSONL transcript.
+
+        Memory extraction reads its turns from here, so the hidden reminder is
+        stripped (it carries recalled memories the extractor would store again)
+        and each tool call keeps the start of its result.
+        """
         try:
+            from suzent.core.system_reminder import strip_system_reminders
             from suzent.session.transcript import TranscriptManager
 
             tm = TranscriptManager()
-            await tm.append_turn(chat_id, "user", user_content)
+            await tm.append_turn(chat_id, "user", strip_system_reminders(user_content))
 
             actions = []
-            for action in _extract_tool_calls(messages):
-                actions.append({"tool": action.tool, "args": action.args})
+            for action in _extract_tool_calls(
+                messages, exclude_ids=prior_tool_call_ids
+            ):
+                actions.append(
+                    {"tool": action.tool, "args": action.args, "output": action.output}
+                )
 
             await tm.append_turn(
                 chat_id, "assistant", agent_content, actions=actions or None
@@ -2368,8 +2507,26 @@ def _strip_attachment_annotations(text: str) -> str:
     return _REFERENCE_PATTERN.sub("", text).strip()
 
 
-def _extract_tool_calls(messages: list) -> List[AgentAction]:
-    """Extract AgentAction records from pydantic-ai message history."""
+def _answered_tool_call_ids(messages: list) -> frozenset[str]:
+    """IDs of the tool calls in ``messages`` that already have a result."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    return frozenset(
+        call.tool_call_id
+        for msg in messages
+        if isinstance(msg, ModelResponse)
+        for call in msg.parts
+        if isinstance(call, ToolCallPart)
+    ) - _collect_unprocessed_tool_call_ids(messages)
+
+
+def _extract_tool_calls(
+    messages: list, exclude_ids: frozenset[str] = frozenset()
+) -> List[AgentAction]:
+    """Extract AgentAction records from pydantic-ai message history.
+
+    Calls whose ID is in *exclude_ids* are skipped.
+    """
     from pydantic_ai.messages import (
         ModelResponse,
         ModelRequest,
@@ -2390,7 +2547,10 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
     for msg in messages:
         if isinstance(msg, ModelResponse):
             for part in msg.parts:
-                if isinstance(part, ToolCallPart):
+                if (
+                    isinstance(part, ToolCallPart)
+                    and part.tool_call_id not in exclude_ids
+                ):
                     output = returns.get(part.tool_call_id, "")
                     actions.append(
                         AgentAction(
@@ -2555,19 +2715,72 @@ def _response_provider_matches_run(
     return response_provider_name in implementation_names
 
 
+def _drop_unanswered_scheduled_triggers(messages: list) -> list:
+    """Remove scheduled-task wake-ups the model never answered.
+
+    A run that fails before producing anything still leaves its wake-up prompt
+    in history. The display log collapses consecutive unanswered triggers, so
+    those prompts lose their stamped display row; after a restart their
+    reminder block can no longer be authenticated and they come back as plain
+    ``[system trigger: ...]`` user messages, once per failed attempt, forever.
+    The model gains nothing from them either -- the next wake-up repeats the
+    same instruction.
+
+    Called while loading history for a new turn, so a trailing wake-up counts
+    as unanswered too: whatever runs now supersedes it.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.system_reminder import is_scheduled_trigger_only
+
+    def is_wake_up(message: Any) -> bool:
+        if not isinstance(message, ModelRequest) or not message.parts:
+            return False
+        for part in message.parts:
+            if not isinstance(part, UserPromptPart):
+                return False
+            content = part.content
+            if isinstance(content, (list, tuple)):
+                if len(content) != 1:
+                    return False
+                content = content[0]
+            if not isinstance(content, str) or not is_scheduled_trigger_only(content):
+                return False
+        return True
+
+    kept = [
+        message
+        for index, message in enumerate(messages)
+        if not (
+            is_wake_up(message)
+            and (
+                index + 1 == len(messages)
+                or isinstance(messages[index + 1], ModelRequest)
+            )
+        )
+    ]
+    if len(kept) != len(messages):
+        logger.info(
+            f"Dropped {len(messages) - len(kept)} unanswered scheduled-task "
+            "wake-ups from history"
+        )
+    return kept
+
+
 def _coalesce_unanswered_cron_triggers(messages: list[dict]) -> list[dict]:
     """Keep only the latest of consecutive cron triggers with no visible output."""
+    from suzent.core.system_reminder import SCHEDULED_TASK_TRIGGER_PREFIX
+
     coalesced: list[dict] = []
     for message in messages:
         is_cron_trigger = message.get("role") == "system_triggered" and str(
             message.get("content", "")
-        ).lstrip().startswith("**Scheduled Task:")
+        ).lstrip().startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
         previous_is_cron_trigger = bool(
             coalesced
             and coalesced[-1].get("role") == "system_triggered"
             and str(coalesced[-1].get("content", ""))
             .lstrip()
-            .startswith("**Scheduled Task:")
+            .startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
         )
         if is_cron_trigger and previous_is_cron_trigger:
             coalesced[-1] = message
@@ -2584,6 +2797,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
+        RetryPromptPart,
         UserPromptPart,
         TextPart,
         ThinkingPart,
@@ -2591,6 +2805,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
         ToolReturnPart,
     )
     import json
+    from suzent.streaming import tool_call_outcome
     from suzent.core.system_reminder import (
         has_authenticated_block,
         strip_system_reminders,
@@ -2653,6 +2868,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     executed_tool_calls = set()
     denied_tool_calls = set()
     tool_returns_by_id: dict[str, str] = {}
+    tool_outcomes_by_id: dict[str, str] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
@@ -2663,6 +2879,15 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                     tool_returns_by_id[part.tool_call_id] = (
                         serialize_tool_return_content(part.content)
                     )
+                elif isinstance(part, RetryPromptPart) and part.tool_name:
+                    # A rejected call is answered by a retry prompt, not a
+                    # return; without this it would replay as a pending one.
+                    executed_tool_calls.add(part.tool_call_id)
+                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(
+                        part.model_response()
+                    )
+                if outcome := tool_call_outcome(part):
+                    tool_outcomes_by_id[part.tool_call_id] = outcome
 
     result = []
     for msg in messages:
@@ -2774,6 +2999,8 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                         structured_tool_part["output"] = normalize_tool_output_for_part(
                             tool_output
                         )
+                    if outcome := tool_outcomes_by_id.get(part.tool_call_id):
+                        structured_tool_part["outcome"] = outcome
                     structured_parts.append(structured_tool_part)
 
                     tc_dict = {

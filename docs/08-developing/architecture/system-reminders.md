@@ -18,6 +18,9 @@ present. Hooks run concurrently with a two-second timeout per provider; failed
 or timed-out providers are skipped with a warning. Blocking provider work uses
 `run_provider_blocking` so it does not block the event loop.
 
+Stateless turns skip global and per-turn hooks while retaining explicit ad-hoc
+reminders, including inbox deliveries and attachment instructions.
+
 Ad-hoc caller directives precede hook output. Hook registration order determines
 priority. Fragments are sanitized before deduplication and budget measurement.
 The assembled body has a 6,000-character budget including display-trigger markup
@@ -27,6 +30,12 @@ marker. With dependencies available, the implementation attempts to spill that
 fragment to a file and includes its accessible path and retention hint; if the
 spill fails, the truncation marker remains. This does not guarantee every dropped
 fragment is saved.
+
+This budget belongs to `build_combined_reminder`, not to
+`wrap_in_system_reminder`. Directly wrapped live inbox injections and ACP inbox
+turns do not use the assembly budget. Native inbox background turns do, so long
+messages can be truncated there; their visible trigger reflects the budgeted
+text.
 
 Providers should read state without mutating it: goal turn accounting belongs to
 turn completion, not prompt construction. Log metadata rather than prompt or

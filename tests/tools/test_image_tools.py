@@ -104,7 +104,7 @@ async def test_save_formats_and_unique_paths(tmp_path: Path) -> None:
         for data in [PNG, jpeg]
     ]
     with patch(
-        "suzent.tools.creative.image_output.CONFIG",
+        "suzent.core.library_index.CONFIG",
         SimpleNamespace(workspace_root=str(tmp_path)),
     ):
         paths = await save_images(images, SimpleNamespace(chat_id=None))
@@ -113,6 +113,8 @@ async def test_save_formats_and_unique_paths(tmp_path: Path) -> None:
     assert Path(paths[1]).suffix == ".jpg"
     assert Path(paths[1]).read_bytes() == jpeg
     assert not set(paths) & set(more)
+    assert Path(paths[0]).parent == tmp_path / "artifacts" / "images"
+    assert "artifacts/images/" in (tmp_path / "context.md").read_text()
 
 
 async def test_generate_tool_keeps_style_and_passes_size() -> None:

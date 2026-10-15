@@ -23,6 +23,10 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -59,6 +63,39 @@ def _chatgpt_model_profile(default: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def drop_foreign_reasoning_ids(messages: list[Any]) -> list[Any]:
+    """Unbind thinking parts that are not Responses reasoning items.
+
+    The Responses API replays a thinking part as a ``reasoning`` item keyed by
+    its id, and rejects any id that does not start with ``rs_``. Chat-completions
+    models label their thinking with the field it came from (``reasoning_content``)
+    and report the same ``openai`` provider, so after a model switch pydantic-ai
+    takes those parts for its own and every later request in the chat fails
+    with a 400. Without an id the part is sent as tagged assistant text, which
+    keeps the reasoning in context.
+    """
+    from pydantic_ai.messages import ModelResponse, ThinkingPart
+
+    def foreign(part: Any) -> bool:
+        return (
+            isinstance(part, ThinkingPart)
+            and part.id is not None
+            and not part.id.startswith("rs_")
+        )
+
+    cleaned: list[Any] = []
+    for message in messages:
+        if isinstance(message, ModelResponse) and any(
+            foreign(p) for p in message.parts
+        ):
+            message = replace(
+                message,
+                parts=[replace(p, id=None) if foreign(p) else p for p in message.parts],
+            )
+        cleaned.append(message)
+    return cleaned
+
+
 def _rewrite_chatgpt_request(
     request: httpx.Request, default_instructions: str
 ) -> httpx.Request:
@@ -91,16 +128,111 @@ def _rewrite_chatgpt_request(
     )
 
 
+_SSE_EVENT_BOUNDARY = re.compile(rb"\r?\n\r?\n")
+
+
+def _sse_event_data(block: bytes) -> dict[str, Any] | None:
+    for line in block.splitlines():
+        if line.startswith(b"data:"):
+            try:
+                data = json.loads(line[5:].strip())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return None
+            return data if isinstance(data, dict) else None
+    return None
+
+
+def _sse_args_delta(item_id: str, output_index: Any, arguments: str) -> bytes:
+    event = {
+        "type": "response.function_call_arguments.delta",
+        "item_id": item_id,
+        "output_index": output_index,
+        "delta": arguments,
+        "sequence_number": 0,
+    }
+    return (
+        b"event: response.function_call_arguments.delta\ndata: "
+        + json.dumps(event).encode()
+        + b"\n\n"
+    )
+
+
+class _ChatGPTFunctionArgsStream(httpx.AsyncByteStream):
+    """Re-emit function-call arguments the ChatGPT backend only puts in done events.
+
+    When a response holds several parallel function calls, the ChatGPT backend
+    streams no ``function_call_arguments.delta`` for them: each call's
+    arguments appear only in ``function_call_arguments.done`` and
+    ``output_item.done``. pydantic-ai assembles arguments from the added item
+    and the deltas alone, so every parallel call reached its tool with ``{}``
+    and failed validation. A call whose arguments never arrived gets a single
+    delta carrying them, inserted just before its done event; calls that did
+    stream are passed through untouched.
+    """
+
+    def __init__(self, inner: httpx.AsyncByteStream) -> None:
+        self._inner = inner
+        self._streamed: dict[str, bool] = {}
+
+    def _rewrite(self, block: bytes) -> bytes:
+        data = _sse_event_data(block)
+        if data is None:
+            return block
+        event_type = data.get("type")
+        item = data.get("item") if isinstance(data.get("item"), dict) else {}
+        if event_type == "response.output_item.added":
+            if item.get("type") == "function_call" and item.get("id"):
+                self._streamed[item["id"]] = bool(item.get("arguments"))
+            return block
+        if event_type == "response.function_call_arguments.delta":
+            if data.get("delta"):
+                self._streamed[str(data.get("item_id"))] = True
+            return block
+
+        if event_type == "response.function_call_arguments.done":
+            item_id, arguments = str(data.get("item_id")), data.get("arguments")
+        elif (
+            event_type == "response.output_item.done"
+            and item.get("type") == "function_call"
+        ):
+            item_id, arguments = str(item.get("id")), item.get("arguments")
+        else:
+            return block
+        if self._streamed.get(item_id, True) or not isinstance(arguments, str):
+            return block
+        self._streamed[item_id] = True
+        if not arguments:
+            return block
+        return _sse_args_delta(item_id, data.get("output_index"), arguments) + block
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        buffer = b""
+        async for chunk in self._inner:
+            buffer += chunk
+            while match := _SSE_EVENT_BOUNDARY.search(buffer):
+                block = buffer[: match.end()]
+                buffer = buffer[match.end() :]
+                yield self._rewrite(block)
+        if buffer:
+            yield self._rewrite(buffer)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
 class _ChatGPTHTTPClient(httpx.AsyncClient):
     """HTTPX client that preserves default system-proxy transport selection."""
 
-    def __init__(self, default_instructions: str) -> None:
-        super().__init__()
+    def __init__(self, default_instructions: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._default_instructions = default_instructions
 
     async def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
         request = _rewrite_chatgpt_request(request, self._default_instructions)
-        return await super().send(request, **kwargs)
+        response = await super().send(request, **kwargs)
+        if request.url.path.endswith("/responses"):
+            response.stream = _ChatGPTFunctionArgsStream(response.stream)
+        return response
 
 
 def _merge_system_content(messages: list[dict[str, Any]]) -> str | list[Any]:
@@ -300,6 +432,22 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
     from pydantic_ai.settings import ModelSettings
 
     class _ChatGPTResponsesModel(OpenAIResponsesModel):
+        @asynccontextmanager
+        async def request_stream(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+            run_context: Any = None,
+        ) -> AsyncIterator[Any]:
+            async with super().request_stream(
+                drop_foreign_reasoning_ids(messages),
+                model_settings,
+                model_request_parameters,
+                run_context=run_context,
+            ) as streamed:
+                yield streamed
+
         async def request(
             self,
             messages: list[ModelMessage],
