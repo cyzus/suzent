@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - Show conversation tasks as an ordered checklist and open task results through their conversations.
+- Clicking a Suzent system notification now brings the app window back to the front.
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
 - Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
 - Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
