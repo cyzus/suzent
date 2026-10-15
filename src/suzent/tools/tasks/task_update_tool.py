@@ -23,11 +23,15 @@ class TaskUpdateTool(Tool):
         ctx: RunContext[AgentDeps],
         task_id: Annotated[int, Field(description="ID of the task to update")],
         status: Annotated[
-            Optional[Literal["pending", "in_progress", "completed", "cancelled"]],
+            Optional[
+                Literal["pending", "in_progress", "blocked", "completed", "cancelled"]
+            ],
             Field(
                 description=(
                     "New status. Setting 'completed' stamps completed_at; any "
-                    "other value clears it."
+                    "other value clears it. Use blocked when execution cannot continue, "
+                    "and provide waiting_kind, waiting_reason and next_action. "
+                    "On completion, provide result_summary and result_path if a file was produced."
                 )
             ),
         ] = None,
@@ -45,6 +49,28 @@ class TaskUpdateTool(Tool):
             Optional[List[int]],
             Field(description="Additional task IDs that block this task"),
         ] = None,
+        active_form: Annotated[
+            str | None, Field(description="Current progress, in plain language")
+        ] = None,
+        waiting_kind: Annotated[
+            Literal["user", "dependency", "paused", "error"] | None,
+            Field(
+                description="Why blocked: user input, dependency, explicit pause, or failed recovery"
+            ),
+        ] = None,
+        waiting_reason: Annotated[
+            str | None, Field(description="Explain what prevents progress")
+        ] = None,
+        next_action: Annotated[
+            str | None, Field(description="Concrete action needed to continue")
+        ] = None,
+        result_summary: Annotated[
+            str | None, Field(description="Completed outcome and validation summary")
+        ] = None,
+        result_path: Annotated[
+            str | None,
+            Field(description="Path to the output file in this chat's workspace"),
+        ] = None,
     ) -> ToolResult:
         db = get_database()
         task = db.get_task(task_id)
@@ -54,13 +80,25 @@ class TaskUpdateTool(Tool):
             )
 
         project_id = resolve_project_id(ctx.deps.chat_id)
-        if project_id and task.project_id != project_id:
+        if not project_id or task.project_id != project_id:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
                 f"Task [#{task_id}] does not belong to the current project.",
             )
 
         updates = {}
+        if not task.chat_id:
+            updates["chat_id"] = ctx.deps.chat_id
+        for key, value in {
+            "active_form": active_form,
+            "waiting_kind": waiting_kind,
+            "waiting_reason": waiting_reason,
+            "next_action": next_action,
+            "result_summary": result_summary,
+            "result_path": result_path,
+        }.items():
+            if value is not None:
+                updates[key] = value
         if status is not None:
             updates["status"] = status
             if status == "completed":

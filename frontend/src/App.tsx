@@ -414,6 +414,7 @@ function AppInner(): React.ReactElement {
     refreshChatList,
     refreshChatListSilently,
     chats,
+    currentChatProjectId,
     loadChat,
   } = useChatCoreStore();
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
@@ -619,13 +620,11 @@ function AppInner(): React.ReactElement {
     setViewSwitcher?.(setMainView as (view: 'chat' | 'memory') => void);
   }, [setViewSwitcher, setMainView]);
 
+  const taskProjectId = currentChatProjectId;
+
   React.useEffect(() => {
-    // Use chatsRef (not chats) so this effect only re-runs on chat selection change,
-    // not on every chat list update (which would cause spurious re-renders mid-stream).
-    const chat = currentChatId ? chatsRef.current.find((c) => c.id === currentChatId) : null;
-    const projectId = chat?.projectId ?? null;
-    refreshGoalTasks(projectId, currentChatId ?? null);
-    refreshKanban(projectId);
+    refreshGoalTasks(taskProjectId, currentChatId ?? null);
+    refreshKanban(taskProjectId);
 
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
@@ -635,7 +634,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, refreshGoalTasks, refreshKanban]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentChatId, taskProjectId, refreshGoalTasks, refreshKanban]);
 
   // Both open and the room ran out: the left one steps aside, on loan.
   React.useEffect(() => {
