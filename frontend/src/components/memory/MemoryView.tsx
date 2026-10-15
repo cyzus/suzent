@@ -112,10 +112,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
         <div className="space-y-6 animate-view-fade">
           {/* Stats Dashboard */}
           <section>
-            <MemoryStatsComponent
-              stats={stats}
-              isLoading={statsLoading}
-            />
+            <MemoryStatsComponent stats={stats} isLoading={statsLoading} />
           </section>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
