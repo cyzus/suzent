@@ -96,6 +96,8 @@ class AgentDeps:
 
     # --- Prompt Context Cache ---
     section_cache: dict[str, str] = field(default_factory=dict)
+    context_sources: dict[str, dict[str, str]] = field(default_factory=dict)
+    context_breakdown: dict[str, Any] | None = None
 
     # --- File change tracker (for lightweight retry checkpoints) ---
     file_tracker: Any = None  # FileTracker instance; set by build_agent_deps

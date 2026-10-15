@@ -262,6 +262,7 @@ def emit_context_usage_event(
     context_tokens: int,
     usage: Any = None,
     context_limit: Optional[int] = None,
+    context_breakdown: dict[str, Any] | None = None,
 ) -> None:
     """Broadcast the live context-window size to every connected client.
 
@@ -282,6 +283,11 @@ def emit_context_usage_event(
                 "chat_id": chat_id,
                 "usage": build_live_context_usage(
                     context_tokens, usage, context_limit=context_limit
+                )
+                | (
+                    {"context_breakdown": context_breakdown}
+                    if context_breakdown is not None
+                    else {}
                 ),
             }
         )

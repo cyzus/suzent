@@ -1082,7 +1082,24 @@ async def _apply_budget(
                         f"{len(part)} chars to {room} at "
                         f"{used}/{REMINDER_BUDGET_CHARS}"
                     )
-                    kept.append(part[:room] + marker)
+                    trimmed = part[:room] + marker
+                    if getattr(deps, "context_sources", None):
+                        from suzent.core.context_usage import (
+                            register_context_source,
+                            source_key,
+                        )
+
+                        source = deps.context_sources.get(
+                            source_key(part.replace(FRAGMENT_SEPARATOR, "\n---\n"))
+                        )
+                        if source:
+                            register_context_source(
+                                deps,
+                                trimmed.replace(FRAGMENT_SEPARATOR, "\n---\n"),
+                                source["category"],
+                                source["name"],
+                            )
+                    kept.append(trimmed)
                     used = REMINDER_BUDGET_CHARS
                     continue
             dropped = len(parts) - index
@@ -1193,9 +1210,26 @@ async def build_combined_reminder(
     if scheduled:
         # Registration order is the priority order, and gather preserves it, so
         # what a caller registered first is what survives truncation.
-        for content in await asyncio.gather(*(coro for _, coro in scheduled)):
+        contents = await asyncio.gather(*(coro for _, coro in scheduled))
+        for (hook, _), content in zip(scheduled, contents):
             if content and content.strip():
                 parts.append(content.strip())
+                from suzent.core.context_usage import register_context_source
+
+                category = {
+                    "skills_reminder_hook": "skills",
+                    "_memory_rag_hook": "memory",
+                    "repository_agents_reminder_hook": "repository",
+                }.get(hook.__name__, "system_prompt")
+                if hasattr(deps, "context_sources"):
+                    register_context_source(
+                        deps,
+                        sanitize_untrusted_text(content.strip()).replace(
+                            FRAGMENT_SEPARATOR, "\n---\n"
+                        ),
+                        category,
+                        hook.__name__,
+                    )
 
     # Caller-supplied directives go first, so they survive truncation. They are
     # specific to this turn — a peer's attribution, the analyze_image directive

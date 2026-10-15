@@ -118,6 +118,7 @@ export interface Chat {
     cache_read_tokens?: number;
     requests?: number;
     details?: Record<string, number>;
+    context_breakdown?: import('./contextUsage').ContextBreakdown | null;
   };
 }
 

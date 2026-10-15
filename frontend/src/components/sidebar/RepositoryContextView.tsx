@@ -11,10 +11,10 @@ import { useI18n } from '../../i18n';
 import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
-import { BrutalIconButton } from '../BrutalButton';
-import { RefreshButton } from '../RefreshButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { FullscreenOverlay } from '../FullscreenOverlay';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { ContextUsageSummary } from './ContextUsageSummary';
 
 interface RepositoryContextViewProps {
   chatId: string;
@@ -299,23 +299,26 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
   const hasInstructions = Boolean(data?.instructions.length);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-neutral-100 dark:bg-zinc-900">
-      <header className="flex items-center gap-3 border-b-3 border-brutal-black bg-white px-3 py-2.5 dark:bg-zinc-800">
+    <div className="flex h-full min-h-0 flex-col bg-neutral-50 dark:bg-zinc-900">
+      <header className="flex items-center gap-3 border-b-2 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
         <div className="min-w-0 flex-1">
-          <h2 className="font-brutal text-base uppercase leading-none text-brutal-black dark:text-white">
+          <h2 className="font-brutal text-lg uppercase leading-none text-neutral-900 dark:text-white">
             {t('repositoryContext.title')}
           </h2>
           <p className="mt-1 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400">
             {data?.project.projectName || t('repositoryContext.description')}
           </p>
         </div>
-        <RefreshButton onClick={() => void load()} disabled={loading} spinning={loading} />
       </header>
 
-      <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden p-3">
+      <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-4">
+        <ContextUsageSummary chatId={chatId} />
         {error && (
           <div className="border-2 border-brutal-red bg-white p-3 font-mono text-xs text-brutal-red dark:bg-zinc-800">
-            {error}
+            <p>{error}</p>
+            <BrutalButton size="xs" className="mt-3" onClick={() => void load()} disabled={loading}>
+              {t('common.retry')}
+            </BrutalButton>
           </div>
         )}
 
@@ -326,9 +329,12 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
         )}
 
         {data && hasProjectContext && (
-          <section className="space-y-2">
-            <h3 className="font-brutal text-[11px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+          <section className="space-y-3">
+            <h3 className="flex items-center gap-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
               {t('repositoryContext.projectContext')}
+              <span className="ml-auto border border-brutal-black/20 bg-white px-1.5 py-0.5 tabular-nums dark:border-zinc-600 dark:bg-zinc-800">
+                1
+              </span>
             </h3>
             <ContextFileCard
               name="context.md"
@@ -342,15 +348,13 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
         )}
 
         {data && hasInstructions && (
-          <section className="space-y-2">
-            <div>
-              <h3 className="font-brutal text-[11px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
-                {t('repositoryContext.repositoryInstructions')}
-              </h3>
-              <p className="mt-1 font-mono text-[9px] leading-3 text-neutral-500 dark:text-neutral-400">
-                {t('repositoryContext.repositoryInstructionsDesc')}
-              </p>
-            </div>
+          <section className="space-y-3">
+            <h3 className="flex items-center gap-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
+              {t('repositoryContext.repositoryInstructions')}
+              <span className="ml-auto border border-brutal-black/20 bg-white px-1.5 py-0.5 tabular-nums dark:border-zinc-600 dark:bg-zinc-800">
+                {data.instructions.length}
+              </span>
+            </h3>
             {data.instructions.map((instruction: RepositoryInstruction) => (
               <ContextFileCard
                 key={instruction.path}

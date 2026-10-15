@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ContextBreakdown } from '../types/contextUsage';
 
 export interface ContextUsage {
   input_tokens: number;
@@ -15,6 +16,7 @@ export interface ContextUsage {
   cache_read_tokens: number;
   requests: number;
   details?: Record<string, number>;
+  context_breakdown?: ContextBreakdown | null;
 }
 
 /**
@@ -81,6 +83,12 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
         Object.entries(partial).filter(([, value]) => value !== undefined && value !== null)
       ) as Partial<ContextUsage>;
       const merged: ContextUsage = { ...base, ...defined };
+      if (
+        partial.context_breakdown === null ||
+        (partial.context_tokens != null && partial.context_breakdown === undefined)
+      ) {
+        merged.context_breakdown = null;
+      }
       return {
         usage: merged,
         usageByChatId: { ...state.usageByChatId, [chatId]: merged },

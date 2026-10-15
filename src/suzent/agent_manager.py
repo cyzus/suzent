@@ -93,11 +93,15 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     for name, url in mcp_urls.items():
         if mcp_enabled.get(name, False) and url:
             headers = mcp_headers.get(name)
-            server = MCPToolset(
-                url,
-                headers=headers,
-                id=name,
-            ).prefixed(name)
+            server = (
+                MCPToolset(
+                    url,
+                    headers=headers,
+                    id=name,
+                )
+                .prefixed(name)
+                .with_metadata(suzent_context_source="mcp")
+            )
             servers.append(server)
 
     # Build stdio servers
@@ -109,7 +113,11 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
                     args=params.get("args", []),
                     env=params.get("env"),
                 )
-                server = MCPToolset(transport, id=name).prefixed(name)
+                server = (
+                    MCPToolset(transport, id=name)
+                    .prefixed(name)
+                    .with_metadata(suzent_context_source="mcp")
+                )
                 servers.append(server)
 
     return servers
@@ -401,6 +409,9 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         RegisteredToolCapability(capability_id, tuple(selected_tools))
         for capability_id, selected_tools in capability_groups.items()
     )
+    from suzent.core.context_usage import ContextUsageCapability
+
+    capabilities.append(ContextUsageCapability(model_id=model_id))
 
     agent = Agent(
         model,
