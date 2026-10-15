@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles."
+}

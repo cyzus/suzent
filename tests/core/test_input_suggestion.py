@@ -10,12 +10,12 @@ from suzent.core.input_suggestion import (
 
 
 class _Router:
-    def __init__(self, model: str | None) -> None:
-        self.model = model
+    def __init__(self, models: list[str]) -> None:
+        self.models = models
 
-    def get_model_id(self, role: str) -> str | None:
+    def get_model_ids(self, role: str) -> list[str]:
         assert role == "suggestion"
-        return self.model
+        return self.models
 
 
 _FINISHED_TURN = [
@@ -24,10 +24,9 @@ _FINISHED_TURN = [
 ]
 
 
-def _patch(monkeypatch, client_cls, model: str | None = "m1") -> None:
-    monkeypatch.setattr(
-        "suzent.core.role_router.get_role_router", lambda: _Router(model)
-    )
+def _patch(monkeypatch, client_cls, models: list[str] | None = None) -> None:
+    router = _Router(["m1"] if models is None else models)
+    monkeypatch.setattr("suzent.core.role_router.get_role_router", lambda: router)
     monkeypatch.setattr("suzent.llm.LLMClient", client_cls)
 
 
@@ -115,12 +114,31 @@ def test_suggest_next_input_swallows_model_errors(monkeypatch) -> None:
     assert asyncio.run(suggest_next_input(_FINISHED_TURN)) is None
 
 
+def test_suggest_next_input_falls_back_to_backup_models(monkeypatch) -> None:
+    tried: list[str] = []
+
+    class _Client:
+        def __init__(self, model: str) -> None:
+            self.model = model
+
+        async def complete(self, **_kwargs) -> str:
+            tried.append(self.model)
+            if self.model == "m1":
+                raise RuntimeError("provider down")
+            return "Now one about snow"
+
+    _patch(monkeypatch, _Client, models=["m1", "m2", "m3"])
+
+    assert asyncio.run(suggest_next_input(_FINISHED_TURN)) == "Now one about snow"
+    assert tried == ["m1", "m2"]
+
+
 def test_suggest_next_input_skips_the_model_when_it_cannot_help(monkeypatch) -> None:
     class _Client:
         def __init__(self, model: str) -> None:
             raise AssertionError("no model should be called")
 
-    _patch(monkeypatch, _Client, model=None)
+    _patch(monkeypatch, _Client, models=[])
     assert asyncio.run(suggest_next_input(_FINISHED_TURN)) is None
 
     _patch(monkeypatch, _Client)

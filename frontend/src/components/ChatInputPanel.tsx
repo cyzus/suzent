@@ -158,6 +158,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const suggestions = useSlashCommands(input);
   const ghostOverlayRef = React.useRef<HTMLDivElement | null>(null);
   const [dismissedSuggestion, setDismissedSuggestion] = React.useState<string | null>(null);
+  // Every new turn clears the suggestion before predicting again, so an Esc
+  // only hides the guess on screen, not the same text on a later turn.
+  React.useEffect(() => setDismissedSuggestion(null), [inputSuggestion]);
   const ghost =
     configReady &&
     !streamingForCurrentChat &&

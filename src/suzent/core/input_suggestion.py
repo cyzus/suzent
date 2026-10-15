@@ -90,11 +90,23 @@ async def _suggest_with_model(model: str, transcript: str) -> str | None:
     return clean_suggestion(raw)
 
 
+async def _suggest_with_fallbacks(models: list[str], transcript: str) -> str | None:
+    for model in models:
+        try:
+            return await _suggest_with_model(model, transcript)
+        except Exception as e:
+            logger.warning(
+                f"Input suggestion failed (model={model!r}): {type(e).__name__}"
+            )
+    return None
+
+
 async def suggest_next_input(messages: list[dict[str, Any]]) -> str | None:
     """Return a predicted next user message for a conversation, or None.
 
-    Uses the ``suggestion`` role, which inherits the cheap model. Every failure
-    yields None: the feature is a convenience and must never surface an error.
+    Uses the ``suggestion`` role, which inherits the cheap model, trying its
+    backup models in order when one fails. Every failure yields None: the
+    feature is a convenience and must never surface an error.
     """
     from suzent.core.role_router import ModelRole, get_role_router
 
@@ -102,17 +114,16 @@ async def suggest_next_input(messages: list[dict[str, Any]]) -> str | None:
     if transcript is None:
         return None
 
-    model = get_role_router().get_model_id(ModelRole.SUGGESTION)
-    if not model:
+    models = get_role_router().get_model_ids(ModelRole.SUGGESTION)
+    if not models:
         return None
 
     try:
+        # One deadline for the whole chain: a late guess is worse than none.
         return await asyncio.wait_for(
-            _suggest_with_model(model, transcript),
+            _suggest_with_fallbacks(models, transcript),
             timeout=SUGGESTION_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        logger.debug(f"Input suggestion timed out (model={model!r})")
-    except Exception as e:
-        logger.warning(f"Input suggestion failed (model={model!r}): {type(e).__name__}")
+        logger.debug(f"Input suggestion timed out (models={models!r})")
     return None
