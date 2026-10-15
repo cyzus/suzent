@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails."
+}

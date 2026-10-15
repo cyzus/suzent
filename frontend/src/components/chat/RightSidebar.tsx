@@ -35,14 +35,7 @@ import { ToolsPanel } from './ToolsPanel';
 const ICON_STRIP_WIDTH = 44;
 
 export type TabId =
-  | 'files'
-  | 'context'
-  | 'browser'
-  | 'canvas'
-  | 'agents'
-  | 'plan'
-  | 'project'
-  | 'tools';
+  'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
 
 export interface AutoOpenFlags {
   chatId: string | null | undefined;
@@ -93,8 +86,7 @@ export function evaluateSidebarAutoOpen(
 
   return {
     nextTab,
-    shouldOpen:
-      fileTriggered || subAgentTriggered || webContextTriggered || canvasRose || goalRose,
+    shouldOpen: fileTriggered || subAgentTriggered || webContextTriggered || canvasRose || goalRose,
   };
 }
 
