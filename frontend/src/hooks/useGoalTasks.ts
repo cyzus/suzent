@@ -52,15 +52,19 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const changed =
       (projectId !== undefined && projectId !== currentProjectIdRef.current) ||
       (chatId !== undefined && chatId !== currentChatIdRef.current);
+    const chatChanged = chatId !== undefined && chatId !== currentChatIdRef.current;
     if (projectId !== undefined) currentProjectIdRef.current = projectId ?? null;
     if (chatId !== undefined) currentChatIdRef.current = chatId ?? null;
     const pid = currentProjectIdRef.current;
     const cid = currentChatIdRef.current;
     setChatError(false);
-    if (changed || !pid || !cid) {
+    if (chatChanged || !cid) {
       setGoal(null);
       setTasks([]);
       setGoalChatId(null);
+    } else if (changed && !pid) {
+      setGoal(null);
+      setTasks([]);
     }
     if (!pid || !cid) {
       setChatLoading(false);
