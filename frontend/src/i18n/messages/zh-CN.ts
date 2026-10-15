@@ -1609,6 +1609,7 @@ export const zhCN = {
   },
   a2uiForm: {
     typeSomethingElse: '输入其他答案…',
+    otherPlaceholder: '输入你的答案…',
     back: '← 上一步',
     skip: '跳过',
     next: '下一步 →',
