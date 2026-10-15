@@ -14,7 +14,6 @@ import {
 } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
-import { RefreshButton } from '../RefreshButton';
 import { SettingsHeader } from './SettingsHeader';
 import { Badge, SettingsCard, SectionCardHeader, SettingsPage } from './SettingsCard';
 import { SocialPlatformBadge, SocialPlatformIcon, socialPlatformLabel } from './SocialPlatformIcon';
@@ -105,7 +104,6 @@ export function SocialTab({
   const enabledCount = channels.filter(([, config]) => config.enabled).length;
 
   const [pairings, setPairings] = useState<PairingRequest[]>([]);
-  const [pairingLoading, setPairingLoading] = useState(false);
   const [wechatLogin, setWechatLogin] = useState<WeChatLoginSession | null>(null);
   const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
   const [wechatLoginError, setWechatLoginError] = useState<string | null>(null);
@@ -114,17 +112,21 @@ export function SocialTab({
 
   const refreshPairings = useCallback(async () => {
     if (!handshakeEnabled) return;
-    setPairingLoading(true);
     try {
       setPairings(await fetchPairings());
-    } finally {
-      setPairingLoading(false);
+    } catch {
+      // Ignore transient polling failures
     }
   }, [handshakeEnabled]);
 
   useEffect(() => {
-    refreshPairings();
-  }, [refreshPairings]);
+    void refreshPairings();
+    if (!handshakeEnabled) return;
+    const timer = window.setInterval(() => {
+      void refreshPairings();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [handshakeEnabled, refreshPairings]);
 
   const handleApprove = async (token: string) => {
     await approvePairing(token);
@@ -622,24 +624,15 @@ export function SocialTab({
           title={t('settings.social.pairingTitle')}
           description={t('settings.social.pairingDesc')}
           actions={
-            <>
-              {handshakeEnabled && (
-                <RefreshButton
-                  onClick={() => void refreshPairings()}
-                  disabled={pairingLoading}
-                  spinning={pairingLoading}
-                />
-              )}
-              <BrutalOnOff
-                checked={handshakeEnabled}
-                onChange={(checked) =>
-                  onConfigChange({
-                    ...socialConfig,
-                    handshake: { ...((socialConfig.handshake as any) || {}), enabled: checked },
-                  })
-                }
-              />
-            </>
+            <BrutalOnOff
+              checked={handshakeEnabled}
+              onChange={(checked) =>
+                onConfigChange({
+                  ...socialConfig,
+                  handshake: { ...((socialConfig.handshake as any) || {}), enabled: checked },
+                })
+              }
+            />
           }
         />
 
