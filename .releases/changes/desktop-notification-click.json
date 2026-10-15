@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Clicking a Suzent system notification now brings the app window back to the front."
+}

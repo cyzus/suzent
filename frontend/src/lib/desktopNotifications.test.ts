@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const plugin = vi.hoisted(() => ({
   isPermissionGranted: vi.fn(async () => true),
   requestPermission: vi.fn(async () => 'granted'),
-  sendNotification: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-notification', () => plugin);
+
+const core = vi.hoisted(() => ({ invoke: vi.fn(async () => undefined) }));
+vi.mock('@tauri-apps/api/core', () => core);
 
 import {
   forgetReply,
@@ -24,7 +26,7 @@ function setFocus(focused: boolean): void {
 
 describe('desktop notifications', () => {
   beforeEach(() => {
-    plugin.sendNotification.mockClear();
+    core.invoke.mockClear();
     vi.stubGlobal('window', { __TAURI__: {} });
   });
 
@@ -33,7 +35,7 @@ describe('desktop notifications', () => {
   it('notifies when the window has lost focus', async () => {
     setFocus(false);
     await notifyDesktop('Daily report', 'All systems operational');
-    expect(plugin.sendNotification).toHaveBeenCalledWith({
+    expect(core.invoke).toHaveBeenCalledWith('show_notification', {
       title: 'Daily report',
       body: 'All systems operational',
     });
@@ -42,14 +44,17 @@ describe('desktop notifications', () => {
   it('also notifies while the user is looking at Suzent', async () => {
     setFocus(true);
     await notifyDesktop('Daily report', 'done');
-    expect(plugin.sendNotification).toHaveBeenCalledWith({ title: 'Daily report', body: 'done' });
+    expect(core.invoke).toHaveBeenCalledWith('show_notification', {
+      title: 'Daily report',
+      body: 'done',
+    });
   });
 
-  it('never calls the Tauri plugin in web mode', async () => {
+  it('never calls into the desktop shell in web mode', async () => {
     vi.stubGlobal('window', {});
     setFocus(false);
     await notifyDesktop('Daily report', 'done');
-    expect(plugin.sendNotification).not.toHaveBeenCalled();
+    expect(core.invoke).not.toHaveBeenCalled();
   });
 
   it('announces each watched reply once', () => {
