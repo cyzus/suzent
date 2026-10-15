@@ -249,16 +249,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [fileToPreview]);
 
   useEffect(() => {
-    if (hasCanvasContent) setActiveTab('canvas');
-  }, [hasCanvasContent]);
+    if (hasCanvasContent && !fileToPreview) setActiveTab('canvas');
+  }, [hasCanvasContent, fileToPreview]);
 
   useEffect(() => {
     if (viewingSubAgentTaskId) setActiveTab('agents');
   }, [viewingSubAgentTaskId]);
 
   useEffect(() => {
-    if (hasGoalContent) setActiveTab('plan');
-  }, [hasGoalContent]);
+    // Async task refreshes must not hide an explicitly requested output file.
+    if (hasGoalContent && !fileToPreview) setActiveTab('plan');
+  }, [hasGoalContent, fileToPreview]);
 
   // ── Open sidebar automatically when content arrives ─────────────────
   // Auto-open only when content transitions absent → present *within the same

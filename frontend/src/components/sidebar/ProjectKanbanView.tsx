@@ -11,7 +11,7 @@ interface ProjectKanbanViewProps {
   chatTitles?: Record<string, string>;
   headerControls?: React.ReactNode;
   summary?: React.ReactNode;
-  narrow?: boolean;
+  scope?: 'chat' | 'project';
   selectedTaskId?: number | null;
   pendingTaskId?: number | null;
   onOpenTask: (task: Task) => void;
@@ -28,7 +28,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   chatTitles = {},
   headerControls,
   summary,
-  narrow = false,
+  scope = 'project',
   selectedTaskId,
   pendingTaskId,
   onOpenTask,
@@ -117,7 +117,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
           <div className="task-empty max-w-md mx-auto py-12 space-y-3 text-center">
             <h2 className="text-lg font-bold">{t('taskFlow.emptyTitle')}</h2>
             <p className="text-sm leading-relaxed text-neutral-600 dark:text-zinc-300">
-              {t(narrow ? 'taskFlow.chatEmpty' : 'taskFlow.projectEmpty')}
+              {t(scope === 'chat' ? 'taskFlow.chatEmpty' : 'taskFlow.projectEmpty')}
             </p>
           </div>
         ) : (

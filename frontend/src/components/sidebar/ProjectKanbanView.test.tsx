@@ -27,6 +27,21 @@ const render = (tasks: Task[]): string =>
   );
 
 describe('Project task overview', () => {
+  it.each(['chat', 'project'] as const)(
+    'uses the selected %s scope for empty-state copy',
+    (scope) => {
+      const html = renderToStaticMarkup(
+        <ProjectKanbanView
+          scope={scope}
+          kanban={{ tasks: [], goals: [] }}
+          onOpenTask={() => {}}
+          onResult={() => {}}
+        />
+      );
+      expect(html).toContain(scope === 'chat' ? 'taskFlow.chatEmpty' : 'taskFlow.projectEmpty');
+      expect(html).not.toContain(scope === 'chat' ? 'taskFlow.projectEmpty' : 'taskFlow.chatEmpty');
+    }
+  );
   it('does not confuse an absent project with an active request', () => {
     const html = renderToStaticMarkup(
       <ProjectKanbanView kanban={null} onOpenTask={() => {}} onResult={() => {}} />

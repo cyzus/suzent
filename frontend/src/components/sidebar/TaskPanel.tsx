@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { Goal, Task } from '../../types/api';
 import { useGoalTasks, type KanbanData } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
@@ -51,23 +51,10 @@ export function TaskPanel({
       setPendingTaskId(null);
     }
   };
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(true);
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width <= 480));
-    observer.observe(panel);
-    return () => observer.disconnect();
-  }, []);
   return (
-    <div
-      ref={panelRef}
-      className="task-panel h-full min-h-0"
-      style={{ containerType: 'inline-size' }}
-    >
+    <div className="task-panel h-full min-h-0" style={{ containerType: 'inline-size' }}>
       <ProjectKanbanView
-        narrow={narrow}
+        scope={scope}
         selectedTaskId={selectedTaskId}
         pendingTaskId={pendingTaskId}
         projectName={projectName}
