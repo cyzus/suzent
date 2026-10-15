@@ -42,6 +42,10 @@ export default defineConfig(async ({ command }) => {
       host: '127.0.0.1',
       // Use a high fixed port outside current Windows dynamic range/exclusions.
       port: 18080,
+      watch: {
+        // Editors can briefly truncate a file during save; don't cache that empty module.
+        awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 25 },
+      },
       proxy: {
         // Proxy API routes to backend
         '/config': DEV_BACKEND,

@@ -1,9 +1,11 @@
+import { ToolGroupIcon, pickToolRunningSurfaceClass } from './toolGroupIcon';
+import { summarizeActivity, type ActivitySummaryTool } from './activitySummary';
 import React, { useEffect, useState } from 'react';
 import type { AGUIPart } from '../../hooks/useAGUI';
 import { useDisclosureBody } from '../../hooks/useDisclosureBody';
 import type { ContentBlock } from '../../lib/chatUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
+import { getToolSummary, normalizeToolName } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { tForLocale, useI18n } from '../../i18n';
@@ -129,13 +131,6 @@ export function getActivityGroupOrdinal<T>(
   return groups.slice(0, index).filter((group) => group.type === 'activity').length;
 }
 
-function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    if (predicate(items[i])) return i;
-  }
-  return -1;
-}
-
 export function getReasoningHeader(text: string, isStreaming: boolean = false): string {
   const firstLine = text
     .trim()
@@ -198,13 +193,6 @@ export function formatActivityToolName(
   return summary.detail ? `${summary.verb} ${summary.detail}` : summary.verb;
 }
 
-const REPEAT_LABEL_THRESHOLD = 3;
-
-/**
- * How many calls to the same tool the run ends with, e.g. ten `run_command`
- * calls in a row. One line saying "Ran 10 commands" beats a label that keeps
- * flickering between ten near-identical command names.
- */
 export function trailingToolRunLength(toolNames: Array<string | undefined>): number {
   if (toolNames.length === 0) return 0;
   const last = toolNames[toolNames.length - 1];
@@ -217,28 +205,6 @@ export function trailingToolRunLength(toolNames: Array<string | undefined>): num
     count += 1;
   }
   return count;
-}
-
-/**
- * Status label for the tool the rail is on now: the repeat summary when the
- * same tool has been called several times running, otherwise the single call.
- *
- * `tense` says whether that last call is still in flight, which decides whether
- * the label reads "Running 10 commands" or "Ran 10 commands".
- */
-function formatActiveToolLabel(
-  toolNames: Array<string | undefined>,
-  toolName: string | undefined,
-  args: string | undefined,
-  tense: ToolTense
-): string {
-  // Two calls still read fine individually; from three on, the count says more
-  // than a label that rewrites itself every second.
-  const streak = trailingToolRunLength(toolNames);
-  if (streak >= REPEAT_LABEL_THRESHOLD && toolName) {
-    return getRepeatedToolLabel(toolName, streak, railT, tense);
-  }
-  return formatActivityToolName(toolName, args, tense);
 }
 
 export function isActionableAguiApproval(part: AGUIPart): boolean {
@@ -255,23 +221,13 @@ export function getAguiActivityLabel(
       const pendingTool = [...(chunk.items ?? [])].reverse().find(isActionableAguiApproval);
       if (pendingTool)
         return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.args)}`;
-      // Count the streak across the whole group, not just this chunk: the
-      // agent's own thinking between two shell calls does not make them
-      // unrelated pieces of work.
       const items = chunks
         .slice(0, i + 1)
         .flatMap((entry) => (entry.chunk.type === 'tool' ? (entry.chunk.items ?? []) : []));
-      // Prefer the call still in flight; once the group has finished, describe
-      // what it ended on so a settled rail still says what it did.
-      const unfinishedIndex = findLastIndex(
-        items,
-        (part) => !part.output || part.state === 'approval-requested'
-      );
-      const toolIndex = unfinishedIndex >= 0 ? unfinishedIndex : items.length - 1;
+      const toolIndex = items.length - 1;
       if (toolIndex >= 0) {
         const tool = items[toolIndex];
-        return formatActiveToolLabel(
-          items.slice(0, toolIndex + 1).map((part) => part.toolName),
+        return formatActivityToolName(
           tool.toolName,
           tool.args,
           isStreaming && !tool.output ? 'active' : 'past'
@@ -312,15 +268,10 @@ export function getLegacyActivityLabel(
       const blocks = chunks
         .slice(0, i + 1)
         .flatMap((entry) => (entry.chunk.type === 'toolCall' ? (entry.chunk.blocks ?? []) : []));
-      const unfinishedIndex = findLastIndex(
-        blocks,
-        (block) => !block.content || block.approvalState === 'pending'
-      );
-      const toolIndex = unfinishedIndex >= 0 ? unfinishedIndex : blocks.length - 1;
+      const toolIndex = blocks.length - 1;
       if (toolIndex >= 0) {
         const tool = blocks[toolIndex];
-        return formatActiveToolLabel(
-          blocks.slice(0, toolIndex + 1).map((block) => block.toolName),
+        return formatActivityToolName(
           tool.toolName,
           tool.toolArgs,
           isStreaming && !tool.content ? 'active' : 'past'
@@ -357,44 +308,19 @@ function formatActivityDuration(totalSeconds: number): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-export const ActivityRail: React.FC<{
-  children: React.ReactNode;
-  itemCount: number;
+export const WorkedDuration: React.FC<{
   durationSeconds?: number;
   startedAtMs?: number;
-  showDuration?: boolean;
-  defaultExpanded?: boolean;
-  /** The turn is still streaming — keeps the worked-for clock running. */
   isActive?: boolean;
-  /**
-   * This rail is the one the agent is working in right now. A turn that
-   * interleaves prose with tool calls renders several rails, and only the last
-   * of them is live: the earlier ones are finished work and must not animate.
-   */
-  isCurrent?: boolean;
-  hasPending?: boolean;
-  currentLabel?: string;
-}> = ({
-  children,
-  itemCount,
-  durationSeconds,
-  startedAtMs,
-  showDuration = true,
-  defaultExpanded = false,
-  isActive = false,
-  isCurrent = isActive,
-  hasPending = false,
-  currentLabel,
-}) => {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  // Once the user has opened or closed a rail themselves, stop steering it —
-  // auto-collapsing a rail they deliberately opened is worse than leaving it.
-  const userToggledRef = React.useRef(false);
+}> = ({ durationSeconds, startedAtMs, isActive = false }) => {
+  const { t } = useI18n();
   // Use the caller-provided start time when available so the timer resumes from
   // the original start across remounts (e.g. reconnecting to a stream after a
   // chat switch); otherwise fall back to mount time.
   const startedAtRef = React.useRef(startedAtMs ?? Date.now());
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000))
+  );
 
   // Adopt a later-arriving start time (the prop may be undefined on first render
   // and resolve once the streaming chat's start timestamp is known).
@@ -407,13 +333,6 @@ export const ActivityRail: React.FC<{
     }
   }, [startedAtMs]);
 
-  // Follow the caller in both directions so a rail the agent has moved past
-  // folds itself away instead of leaving the whole turn expanded at once.
-  useEffect(() => {
-    if (userToggledRef.current) return;
-    setExpanded(defaultExpanded);
-  }, [defaultExpanded]);
-
   useEffect(() => {
     if (!isActive) return undefined;
     const updateElapsed = () => {
@@ -424,55 +343,208 @@ export const ActivityRail: React.FC<{
     return () => window.clearInterval(timer);
   }, [isActive]);
 
+  return (
+    <span className="shrink-0 whitespace-nowrap py-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">
+      {t('activityRail.workedFor', {
+        duration: formatActivityDuration(
+          isActive ? elapsedSeconds : (durationSeconds ?? elapsedSeconds)
+        ),
+      })}
+    </span>
+  );
+};
+
+export function getFinalContentStart<T extends { type: string }>(
+  groups: ActivityRenderGroup<T>[]
+): number {
+  let index = groups.length;
+  while (index > 0) {
+    const group = groups[index - 1];
+    if (group.type !== 'single' || !['text', 'content', 'a2ui'].includes(group.chunk.type)) break;
+    index -= 1;
+  }
+  return index;
+}
+
+export const TurnActivity: React.FC<{
+  children: React.ReactNode[];
+  finalStart: number;
+  isStreaming: boolean;
+  durationSeconds?: number;
+  startedAtMs?: number;
+}> = ({ children, finalStart, isStreaming, durationSeconds, startedAtMs }) => {
+  const bodyId = React.useId();
+  const [expanded, setExpanded] = useState(false);
+  const wasStreaming = React.useRef(isStreaming);
+  useEffect(() => {
+    if (wasStreaming.current && !isStreaming) setExpanded(false);
+    wasStreaming.current = isStreaming;
+  }, [isStreaming]);
+  const mounted = useDisclosureBody(expanded);
+  if (isStreaming)
+    return (
+      <>
+        <div className="activity-rail-header activity-turn-duration">
+          <WorkedDuration startedAtMs={startedAtMs} isActive />
+        </div>
+        <div className="activity-turn-history space-y-2 py-1">{children.slice(0, finalStart)}</div>
+        {children.slice(finalStart)}
+      </>
+    );
+  return (
+    <>
+      {finalStart > 0 && (
+        <div className="min-w-0 w-full">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            onClick={() => setExpanded(!expanded)}
+            className="activity-rail-header activity-turn-duration"
+          >
+            <WorkedDuration durationSeconds={durationSeconds} startedAtMs={startedAtMs} />
+            <DisclosureChevron
+              expanded={expanded}
+              className="w-3 h-3 shrink-0 text-neutral-400 transition-transform duration-200"
+            />
+          </button>
+          <div
+            id={bodyId}
+            aria-hidden={!expanded}
+            style={{ visibility: expanded ? 'visible' : 'hidden' }}
+            className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="activity-turn-history space-y-2 py-1">
+                {expanded || mounted ? children.slice(0, finalStart) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {children.slice(finalStart)}
+    </>
+  );
+};
+
+export const ActivityRail: React.FC<{
+  children: React.ReactNode;
+  itemCount: number;
+  summaryTools?: ActivitySummaryTool[];
+  defaultExpanded?: boolean;
+  /** The turn is still streaming. */
+  isActive?: boolean;
+  /**
+   * This rail is the one the agent is working in right now. A turn that
+   * interleaves prose with tool calls renders several rails, and only the last
+   * of them is live: the earlier ones are finished work and must not animate.
+   */
+  isCurrent?: boolean;
+  hasPending?: boolean;
+  currentLabel?: string;
+}> = ({
+  children,
+  itemCount,
+  summaryTools,
+  defaultExpanded = false,
+  isActive = false,
+  isCurrent = isActive,
+  hasPending = false,
+  currentLabel,
+}) => {
+  const { t } = useI18n();
+  const bodyId = React.useId();
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  // Once the user has opened or closed a rail themselves, stop steering it —
+  // auto-collapsing a rail they deliberately opened is worse than leaving it.
+  const userToggledRef = React.useRef(false);
+  // Follow the caller in both directions so a rail the agent has moved past
+  // folds itself away instead of leaving the whole turn expanded at once.
+  useEffect(() => {
+    if (userToggledRef.current) return;
+    setExpanded(defaultExpanded);
+  }, [defaultExpanded]);
+
   // See useDisclosureBody: the body is not mounted while collapsed, is held one
   // transition past close so the animation still plays, and stays pinned while
   // an approval is pending so a half-typed rejection reason survives.
-  const bodyMounted = useDisclosureBody(expanded, { keepMounted: hasPending });
+  const visible = expanded || hasPending;
+  const bodyMounted = useDisclosureBody(visible, { keepMounted: hasPending });
 
-  const displayedSeconds = durationSeconds ?? elapsedSeconds;
-  const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
-  // Only the turn's first rail reports the worked time. When assistant text
-  // splits a turn into several rails they all belong to one stretch of work, so
-  // the later ones show what is happening instead of starting a second clock.
-  const headerLabel = showDuration ? durationLabel : (currentLabel ?? 'Activity');
+  const scrollClassName =
+    'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain';
+  const summary = !hasPending && summaryTools ? summarizeActivity(summaryTools, t) : undefined;
+  const latestTool = summaryTools?.[summaryTools.length - 1];
+  const runningTool =
+    isCurrent && !visible && !hasPending && latestTool?.running && !latestTool.failed
+      ? latestTool.toolName
+      : undefined;
+  const headerLabel =
+    (isCurrent && !visible ? currentLabel : summary) ?? currentLabel ?? t('activityRail.activity');
 
   return (
-    <div className="activity-rail-shell min-w-0 w-full">
+    <div className="activity-rail-shell min-w-0 w-full" data-current-activity={isCurrent}>
       <button
         type="button"
+        aria-expanded={visible}
+        aria-controls={bodyId}
         onClick={() => {
           userToggledRef.current = true;
           setExpanded((value) => !value);
         }}
         className={`activity-rail-header ${
-          hasPending && !expanded
+          hasPending
             ? 'activity-rail-header-pending'
-            : isCurrent && !expanded
-              ? 'activity-rail-header-active'
+            : isCurrent && !visible
+              ? runningTool
+                ? `activity-turn-tool ${pickToolRunningSurfaceClass(runningTool)}`
+                : latestTool
+                  ? ''
+                  : 'activity-rail-header-active'
               : ''
         }`}
       >
-        <span className="truncate min-w-0">
-          {hasPending && !expanded ? (currentLabel ?? 'Approval needed') : headerLabel}
+        {isCurrent && !visible && latestTool?.toolName && (
+          <ToolGroupIcon
+            toolName={latestTool.toolName}
+            isStreaming={Boolean(runningTool)}
+            hasOutput={!runningTool}
+          />
+        )}
+        <span className="truncate min-w-0" title={headerLabel}>
+          {hasPending ? (currentLabel ?? t('activityRail.approvalNeeded')) : headerLabel}
         </span>
-        {hasPending && !expanded && <span className="activity-rail-pending-badge">Pending</span>}
-        <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
-          |
-        </span>
-        <span className="shrink-0 whitespace-nowrap text-neutral-500 dark:text-neutral-400">
-          {itemCount} {itemCount === 1 ? 'step' : 'steps'}
-        </span>
+        {hasPending && (
+          <span className="activity-rail-pending-badge">{t('activityRail.pending')}</span>
+        )}
+        {!summary && (
+          <>
+            <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
+              |
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-neutral-500 dark:text-neutral-400">
+              {t(itemCount === 1 ? 'activityRail.step' : 'activityRail.steps', {
+                count: itemCount,
+              })}
+            </span>
+          </>
+        )}
         <DisclosureChevron
-          expanded={expanded}
-          className="w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200"
+          expanded={visible}
+          className="activity-rail-chevron w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-all duration-200"
         />
       </button>
       <div
-        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+        id={bodyId}
+        aria-hidden={!visible}
+        style={{ visibility: visible ? 'visible' : 'hidden' }}
+        className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none overflow-hidden ${visible ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="activity-rail-scroll min-w-0 w-full">
-            <div className="activity-rail min-w-0 w-full">{bodyMounted ? children : null}</div>
+          <div className={scrollClassName}>
+            <div className="activity-rail min-w-0 w-full">
+              {visible || bodyMounted ? children : null}
+            </div>
           </div>
         </div>
       </div>
@@ -481,38 +553,68 @@ export const ActivityRail: React.FC<{
 };
 
 export const ActivityRailItem: React.FC<{
+  toolName?: string;
   state?: 'active' | 'done' | 'error' | 'neutral' | 'pending';
   children: React.ReactNode;
-}> = ({ state = 'neutral', children }) => (
-  <div className="activity-rail-item min-w-0">
-    <span
-      className={`activity-rail-dot ${
-        state === 'pending'
-          ? 'activity-rail-dot-pending'
-          : state === 'active'
-            ? 'activity-rail-dot-active'
-            : state === 'error'
-              ? 'activity-rail-dot-error'
-              : state === 'done'
-                ? 'activity-rail-dot-done'
-                : ''
-      }`}
-    />
+}> = ({ state = 'neutral', toolName, children }) => {
+  const rowRef = React.useRef<HTMLDivElement>(null);
+  const dotRef = React.useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    const dot = dotRef.current;
+    const header = row?.querySelector<HTMLElement>(
+      '.activity-rail-card button, .activity-rail-card [role="button"]'
+    );
+    if (!row || !dot || !header) return;
+    const align = (): void => {
+      const bounds = header.getBoundingClientRect();
+      // Anchor to the header, not the full row, whose details can expand independently.
+      dot.style.top = `${bounds.top - row.getBoundingClientRect().top + bounds.height / 2}px`;
+      dot.style.transform = 'translateY(-50%)';
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(header);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [state]);
+  return (
     <div
-      className={`activity-rail-card ${
-        state === 'pending'
-          ? 'activity-rail-card-pending'
-          : state === 'error'
-            ? 'activity-rail-card-error'
-            : state === 'active'
-              ? 'activity-rail-card-active'
-              : ''
-      }`}
+      ref={rowRef}
+      className="activity-rail-item min-w-0"
+      data-activity-state={state}
+      data-tool-name={toolName}
     >
-      {children}
+      <span
+        ref={dotRef}
+        className={`activity-rail-dot ${
+          state === 'pending'
+            ? 'activity-rail-dot-pending'
+            : state === 'active'
+              ? 'activity-rail-dot-active'
+              : state === 'error'
+                ? 'activity-rail-dot-error'
+                : state === 'done'
+                  ? 'activity-rail-dot-done'
+                  : ''
+        }`}
+      />
+      <div
+        className={`activity-rail-card ${
+          state === 'pending'
+            ? 'activity-rail-card-pending'
+            : state === 'error'
+              ? 'activity-rail-card-error'
+              : state === 'active'
+                ? 'activity-rail-card-active'
+                : ''
+        }`}
+      >
+        {children}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ReasoningRailItemComponent: React.FC<{
   text: string;

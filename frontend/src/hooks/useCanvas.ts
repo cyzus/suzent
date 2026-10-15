@@ -93,7 +93,9 @@ export function useCanvas(chatId: string | null): CanvasState {
         return next;
       });
       setSurfacesChatId(effectiveChatId ?? null);
-      setActiveSurfaceId((prev) => (surfacesChatId === effectiveChatId ? (prev ?? surface.id) : surface.id));
+      setActiveSurfaceId((prev) =>
+        surfacesChatId === effectiveChatId ? (prev ?? surface.id) : surface.id
+      );
       if (surface.deferred) {
         setDeferredIds((prev) => new Set([...prev, surface.id]));
       }

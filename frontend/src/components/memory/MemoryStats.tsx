@@ -43,10 +43,7 @@ const Rate: React.FC<RateProps> = ({ label, value, detail, ratio }) => (
   </div>
 );
 
-export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
-  stats,
-  isLoading,
-}) => {
+export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoading }) => {
   const { t } = useI18n();
 
   if (isLoading && !stats) {
