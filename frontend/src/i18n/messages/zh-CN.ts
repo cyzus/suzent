@@ -1990,7 +1990,6 @@ export const zhCN = {
     permissionReviewer: '审核模型',
     permissionReview: '审核',
     permissionConfidence: '置信度',
-    permissionConfidenceBadge: '置信度：{value}',
     permissionConfidenceSummary: '置信度：{value}',
     permissionConfidenceLevels: {
       low: '低',
