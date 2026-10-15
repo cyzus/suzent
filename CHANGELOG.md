@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
 - Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
 - Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
+- Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout.
 - Unify task progress into a responsive list with waiting reasons, results, and reliable conversation and project navigation.
 
 ## [v0.16.0] - 2026-10-14
