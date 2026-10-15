@@ -30,9 +30,9 @@ fn build_notification<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -
     notification.action("default", "Open");
 
     // Mirrors the plugin: the AppUserModel ID only resolves for the installed
-    // app, and a dev build would otherwise show nothing.
+    // app, so a binary run straight from `target/` would otherwise show nothing.
     #[cfg(windows)]
-    if !tauri::is_dev() {
+    if !runs_from_build_dir() {
         notification.app_id(&identifier);
     }
 
@@ -46,6 +46,16 @@ fn build_notification<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -
     }
 
     notification
+}
+
+#[cfg(windows)]
+fn runs_from_build_dir() -> bool {
+    let Ok(exe) = tauri::utils::platform::current_exe() else {
+        return false;
+    };
+    exe.parent()
+        .map(|dir| dir.ends_with("target/debug") || dir.ends_with("target/release"))
+        .unwrap_or(false)
 }
 
 #[tauri::command]
