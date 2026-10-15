@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed."
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../types/api';
-import { ghostRemainder, suggestionContext } from './inputSuggestion';
+import { ghostRemainder, replyKey, suggestionContext } from './inputSuggestion';
 
 describe('ghostRemainder', () => {
   it('offers the whole suggestion for an empty input', () => {
@@ -44,5 +44,25 @@ describe('suggestionContext', () => {
     expect(context).toHaveLength(6);
     expect(context[0]).toEqual({ role: 'user', content: 'm0' });
     expect(context[5]).toEqual({ role: 'assistant', content: 'm5' });
+  });
+});
+
+describe('replyKey', () => {
+  const turn = [
+    { role: 'user', content: 'Write a haiku about rain' },
+    { role: 'assistant', content: 'Soft rain on the roof' },
+  ] as Message[];
+
+  it('stays the same while the reply is still the last message', () => {
+    const reloaded = turn.map((m) => ({ ...m })) as Message[];
+    expect(replyKey(turn)).not.toBeNull();
+    expect(replyKey(reloaded)).toBe(replyKey(turn));
+  });
+
+  it('changes once the conversation moves on', () => {
+    const later = [...turn, { role: 'user', content: 'Now one about snow' }] as Message[];
+    const newReply = [...later, { role: 'assistant', content: 'White hush' }] as Message[];
+    expect(replyKey(later)).toBeNull();
+    expect(replyKey(newReply)).not.toBe(replyKey(turn));
   });
 });
