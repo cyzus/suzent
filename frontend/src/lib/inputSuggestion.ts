@@ -57,14 +57,53 @@ export function suggestionContext(messages: Message[]): { role: string; content:
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
+/**
+ * Identifies the reply a suggestion was predicted from, or null when the last
+ * message is not a reply. Messages carry no stable id, so the reply's text
+ * stands in for one.
+ */
+export function replyKey(messages: Message[]): string | null {
+  const context = suggestionContext(messages);
+  const last = context[context.length - 1];
+  if (!last || last.role !== 'assistant') return null;
+  let hash = 5381;
+  for (let i = 0; i < last.content.length; i++) {
+    hash = ((hash << 5) + hash + last.content.charCodeAt(i)) | 0;
+  }
+  return `${last.content.length}:${(hash >>> 0).toString(36)}`;
+}
+
+export interface SavedSuggestion {
+  replyKey: string;
+  suggestion: string;
+}
+
+/** The suggestion last saved for a chat, from whichever device made it. */
+export async function fetchSavedSuggestion(
+  chatId: string,
+  signal: AbortSignal
+): Promise<SavedSuggestion | null> {
+  const res = await fetch(
+    `${getApiBase()}/chat/input-suggestion?chat_id=${encodeURIComponent(chatId)}`,
+    { signal }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return typeof data.reply_key === 'string' && typeof data.suggestion === 'string'
+    ? { replyKey: data.reply_key, suggestion: data.suggestion }
+    : null;
+}
+
+/** Predicts the next message; with a chat and reply key, the server also saves it. */
 export async function fetchInputSuggestion(
   messages: { role: string; content: string }[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  save?: { chatId: string; replyKey: string }
 ): Promise<string | null> {
   const res = await fetch(`${getApiBase()}/chat/input-suggestion`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, chat_id: save?.chatId, reply_key: save?.replyKey }),
     signal,
   });
   if (!res.ok) return null;

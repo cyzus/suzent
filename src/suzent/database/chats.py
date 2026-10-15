@@ -6,11 +6,12 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, or_, text, update
 from sqlalchemy.orm.attributes import flag_modified
-from sqlmodel import select
+from sqlmodel import col, delete, select
 
 from .models import (
     ChatModel,
     ChatSummaryModel,
+    InputSuggestionModel,
     ProjectModel,
     _postprocess_metrics,
     messages_search_filter,
@@ -682,13 +683,20 @@ class ChatOperationsMixin:
             if not chat:
                 return False
 
+            deleted_ids = [chat_id]
             if cascade_subagents:
                 all_chats = session.exec(select(ChatModel)).all()
                 for c in all_chats:
                     if self._is_subagent_child(c, {chat_id}):
                         session.delete(c)
+                        deleted_ids.append(c.id)
 
             session.delete(chat)
+            session.exec(
+                delete(InputSuggestionModel).where(
+                    col(InputSuggestionModel.chat_id).in_(deleted_ids)
+                )
+            )
             self._remove_from_fts_in_session(session, chat_id)
             session.commit()
             return True
