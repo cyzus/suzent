@@ -1498,7 +1498,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 serverUsage?.cache_read_tokens ?? existingUsage?.cache_read_tokens ?? 0,
               requests: serverUsage?.requests ?? existingUsage?.requests ?? 0,
               details: serverUsage?.details ?? existingUsage?.details,
-              context_breakdown: serverUsage ? serverUsage.context_breakdown ?? null : existingUsage?.context_breakdown,
+              context_breakdown: serverUsage
+                ? (serverUsage.context_breakdown ?? null)
+                : existingUsage?.context_breakdown,
             });
           }
           const loadedConfig = hydrateChatConfig(

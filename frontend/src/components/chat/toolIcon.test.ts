@@ -33,11 +33,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { describe, expect, it } from 'vitest';
 
-import {
-  pickToolAnimationKind,
-  pickToolIcon,
-  pickToolRunningSurfaceClass,
-} from './toolGroupIcon';
+import { pickToolAnimationKind, pickToolIcon, pickToolRunningSurfaceClass } from './toolGroupIcon';
 import { getToolIcon, getToolIconClassName } from './toolIcon';
 
 describe('tool icon helpers', () => {
