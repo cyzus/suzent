@@ -10,6 +10,10 @@ import type { ToolTense } from './toolSummary';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { tForLocale, useI18n } from '../../i18n';
 import { DisclosureChevron } from '../DisclosureChevron';
+import { AgentAvatar } from '../sidebar/subAgentDisplay';
+import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
+import { parseSubAgentResult } from './subAgentResult';
+import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
 
 export type AguiChunkType =
   'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
@@ -440,6 +444,7 @@ export const ActivityRail: React.FC<{
    * of them is live: the earlier ones are finished work and must not animate.
    */
   isCurrent?: boolean;
+  isThinking?: boolean;
   hasPending?: boolean;
   currentLabel?: string;
 }> = ({
@@ -449,6 +454,7 @@ export const ActivityRail: React.FC<{
   defaultExpanded = false,
   isActive = false,
   isCurrent = isActive,
+  isThinking = false,
   hasPending = false,
   currentLabel,
 }) => {
@@ -475,9 +481,35 @@ export const ActivityRail: React.FC<{
     'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain';
   const summary = !hasPending && summaryTools ? summarizeActivity(summaryTools, t) : undefined;
   const latestTool = summaryTools?.[summaryTools.length - 1];
+  const thinking = isCurrent && isThinking;
+  const { taskStates } = useSubAgentStatus();
+  const agentResult =
+    normalizeToolName(latestTool?.toolName ?? '') === 'agent'
+      ? parseSubAgentResult(latestTool?.output)
+      : undefined;
+  const agentTask = agentResult
+    ? agentResult.taskId
+      ? taskStates[agentResult.taskId]
+      : Object.values(taskStates).find(
+          (task) => latestTool?.toolCallId && task.tool_call_id === latestTool.toolCallId
+        )
+    : undefined;
+  const agentStatus =
+    agentTask?.status ??
+    agentResult?.status ??
+    (latestTool?.failed ? 'failed' : latestTool?.running ? 'running' : 'completed');
+  const agentTaskId = agentTask?.task_id ?? agentResult?.taskId;
+  useEffect(() => {
+    if (!agentTaskId || isSubAgentTerminal(agentStatus)) return;
+    return watchSubAgentTask(agentTaskId);
+  }, [agentTaskId, agentStatus]);
   const runningTool =
-    isCurrent && !visible && !hasPending && latestTool?.running && !latestTool.failed
-      ? latestTool.toolName
+    isCurrent &&
+    !thinking &&
+    !visible &&
+    !hasPending &&
+    (agentResult ? isSubAgentActive(agentStatus) : latestTool?.running && !latestTool.failed)
+      ? latestTool?.toolName
       : undefined;
   const headerLabel =
     (isCurrent && !visible ? currentLabel : summary) ?? currentLabel ?? t('activityRail.activity');
@@ -496,22 +528,33 @@ export const ActivityRail: React.FC<{
           hasPending
             ? 'activity-rail-header-pending'
             : isCurrent && !visible
-              ? runningTool
-                ? `activity-turn-tool ${pickToolRunningSurfaceClass(runningTool)}`
-                : latestTool
-                  ? ''
-                  : 'activity-rail-header-active'
+              ? thinking
+                ? ''
+                : runningTool
+                  ? `activity-turn-tool ${pickToolRunningSurfaceClass(runningTool)}`
+                  : latestTool
+                    ? ''
+                    : 'activity-rail-header-active'
               : ''
         }`}
       >
-        {isCurrent && !visible && latestTool?.toolName && (
+        {thinking ? null : isCurrent && !visible && agentResult ? (
+          <AgentAvatar
+            model={agentTask?.model_override ?? agentResult.model}
+            status={agentStatus}
+            className="w-4 h-4 text-[7px] leading-none"
+          />
+        ) : isCurrent && !visible && latestTool?.toolName ? (
           <ToolGroupIcon
             toolName={latestTool.toolName}
             isStreaming={Boolean(runningTool)}
             hasOutput={!runningTool}
           />
-        )}
-        <span className="truncate min-w-0" title={headerLabel}>
+        ) : null}
+        <span
+          className={`truncate min-w-0 ${thinking && !visible ? 'reasoning-thinking-label' : ''}`}
+          title={headerLabel}
+        >
           {hasPending ? (currentLabel ?? t('activityRail.approvalNeeded')) : headerLabel}
         </span>
         {hasPending && (

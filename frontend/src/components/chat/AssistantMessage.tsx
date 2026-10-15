@@ -247,6 +247,8 @@ const AGUIPartsContent: React.FC<{
                   chunk.type === 'tool'
                     ? chunk.items.map((part) => ({
                         toolName: part.toolName,
+                        toolCallId: part.toolCallId,
+                        output: part.output,
                         args: part.args,
                         running: Boolean(isStreaming && !part.output && part.state !== 'completed'),
                         failed: part.state === 'error' || toolCallFailed(part.outcome, part.output),
@@ -256,6 +258,10 @@ const AGUIPartsContent: React.FC<{
                 defaultExpanded={hasAguiPendingApproval(group.chunks)}
                 isActive={Boolean(isStreaming)}
                 isCurrent={isCurrentGroup}
+                isThinking={
+                  group.chunks.at(-1)?.chunk.type === 'reasoning' &&
+                  group.chunks.at(-1)?.index === chunks.length - 1
+                }
                 hasPending={hasAguiPendingApproval(group.chunks)}
                 currentLabel={getAguiActivityLabel(group.chunks, isCurrentGroup)}
               >
@@ -1127,6 +1133,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                           chunk.type === 'toolCall'
                             ? chunk.blocks.map((block) => ({
                                 toolName: block.toolName,
+                                toolCallId: block.toolCallId,
+                                output: block.content,
                                 args: block.toolArgs,
                                 running: Boolean(isStreamingThis && !block.content),
                                 failed:
@@ -1138,6 +1146,10 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                         defaultExpanded={hasLegacyPendingApproval(group.chunks)}
                         isActive={isStreamingThis}
                         isCurrent={isCurrentGroup}
+                        isThinking={
+                          group.chunks.at(-1)?.chunk.type === 'reasoning' &&
+                          group.chunks.at(-1)?.index === validChunks.length - 1
+                        }
                         hasPending={hasLegacyPendingApproval(group.chunks)}
                         currentLabel={getLegacyActivityLabel(group.chunks, isCurrentGroup)}
                       >

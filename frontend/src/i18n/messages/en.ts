@@ -367,6 +367,8 @@ export const en = {
     stopFailed: 'Could not stop task',
   },
   subAgents: {
+    showTask: 'Full task',
+    hideTask: 'Less',
     model: 'Model',
     heading: 'Sub-agents ({count})',
     empty: 'No sub-agents in this session',

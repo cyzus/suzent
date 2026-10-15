@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions."
+}

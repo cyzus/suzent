@@ -5,6 +5,8 @@ export interface ActivitySummaryTool {
   args?: string;
   failed?: boolean;
   running?: boolean;
+  toolCallId?: string;
+  output?: string;
 }
 
 export function summarizeActivity(
