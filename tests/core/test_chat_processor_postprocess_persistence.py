@@ -83,6 +83,13 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         draft_run_id=None,
     ):
         called["snapshot"] += 1
+        from pydantic_ai.messages import ModelResponse, TextPart
+
+        assert isinstance(messages[-1], ModelResponse)
+        assert any(
+            isinstance(part, TextPart) and part.content == "ok"
+            for part in messages[-1].parts
+        )
 
     async def fake_register_background_task(
         coro, task_id=None, description="", allow_overflow=False

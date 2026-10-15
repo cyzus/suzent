@@ -1569,6 +1569,11 @@ async def stream_agent_responses(
 
                             if isinstance(event, AgentRunResultEvent):
                                 last_run_result = event.result
+                                # The AG-UI consumer may finish before consuming
+                                # this event. Capture history at its source.
+                                partial_history = event.result.all_messages()
+                                deps.last_messages = partial_history
+                                agent._last_messages = partial_history
                                 final_response_text = str(event.result.output)
 
                                 # HITL BUG FIX: Emit deferred tool recovery events with output.
