@@ -2001,11 +2001,16 @@ fill in, cards, lists, progress bars, and buttons. For anything richer, such as
 a chart or a custom dashboard, it can build a self-contained web page that runs
 in a sealed-off frame.
 
-It shows these either in the **Canvas** tab of the chat's side panel or
-directly in the chat. When there are several on the Canvas, a tab strip at
-the top switches between them, and a full-screen button gives the Canvas the
-whole window. The agent can update a panel in place, for example to
-refresh a table as work progresses.
+These normally appear right in the chat. Each one has two buttons in its
+header: **Open in side panel** moves a copy to the **Canvas** tab of the side
+panel, so it stays in view while you keep chatting, and **Fullscreen** gives it
+the whole window. When the agent shows a newer version of the same panel
+later on, the older one folds down to a single line you can expand again.
+
+For something you'll want to watch as work progresses, such as a live progress
+board, the agent can put the panel straight into the Canvas tab and leave a
+small card in the chat to reopen it from. When there are several on the
+Canvas, a tab strip at the top switches between them.
 
 Clicking a button or submitting a form sends your action and any form values
 to the agent as a new message, and it responds. This tool is **Render UI** in
@@ -4369,7 +4374,7 @@ A surface is a named, renderable UI panel. It has:
 - **`surface_id`** — a stable slug (e.g. `"search_results"`). Calling `render_ui` with the same id replaces the surface in place (upsert semantics).
 - **`component`** — the root of a component tree (see below).
 - **`title`** — optional display name shown in the canvas tab strip.
-- **`target`** — where to render: `"canvas"` (sidebar, default) or `"inline"` (inside the chat message).
+- **`target`** — where to render: `"inline"` (inside the chat message, default) or `"canvas"` (the side panel).
 
 ### Component Tree
 
@@ -4407,8 +4412,12 @@ Components are plain dicts with a `"type"` field. They nest recursively via `"ch
 
 | Target | Behaviour |
 |--------|-----------|
-| `"canvas"` | Renders in the sidebar Canvas tab. Persists across the session. Auto-opens the sidebar on first render. |
-| `"inline"` | Embeds the component tree directly inside the current chat message. Useful for compact, one-shot panels. Persists in message history. |
+| `"inline"` (default) | Embeds the component tree in the current chat message, under a slim header with **Open in side panel** and **Fullscreen** buttons. Persists in message history. |
+| `"canvas"` | Renders in the side panel's Canvas tab and leaves a compact pointer card in the chat message to reopen it from. Auto-opens the side panel on the chat's first canvas surface. Use it only for a surface kept in view and updated while the conversation continues (live progress, a dashboard being iterated on). |
+
+Popping an inline surface out copies it into the Canvas tab and focuses it; the inline copy stays where it is.
+
+Layout surfaces for a narrow column (roughly 360–700px): the chat column and the side panel are both about that wide.
 
 ### Interaction Callbacks
 
@@ -4660,7 +4669,11 @@ Canvas surfaces are persisted to `localStorage` keyed by chat ID. They survive p
 
 ## Upsert Semantics
 
-Calling `render_ui` with the same `surface_id` **replaces** the existing surface in place. There is no `remove_ui` — to clear a surface, replace it with an empty stack or stop sending updates.
+Calling `render_ui` with the same `surface_id` **replaces** the existing surface. There is no `remove_ui` — to clear a surface, replace it with an empty stack or stop sending updates.
+
+- In the Canvas tab, the surface is replaced in place.
+- Within one turn, the inline part is replaced in place, so live progress updates rather than stacking copies.
+- Across turns, the new version renders at the latest message. Every render carries a `rev` (milliseconds, stamped by `render_ui`), and an inline copy collapses to a one-line "updated later" row with a **Show** toggle once a copy of the same id with a larger `rev` is mounted. Copies saved before `rev` existed never collapse.
 
 
 ---
