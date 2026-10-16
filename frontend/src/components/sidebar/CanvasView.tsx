@@ -12,6 +12,7 @@ import type { CanvasState } from '../../hooks/useCanvas';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import { BrutalButton } from '../BrutalButton';
 import { FullscreenOverlay } from '../FullscreenOverlay';
+import { useI18n } from '../../i18n';
 
 interface CanvasViewProps {
   canvas: CanvasState;
@@ -19,6 +20,7 @@ interface CanvasViewProps {
 }
 
 export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) => {
+  const { t } = useI18n();
   const { surfaces, activeSurfaceId, setActiveSurface } = canvas;
   const hasMultipleSurfaces = surfaces.length > 1;
   const activeSurface = surfaces.find((s) => s.id === activeSurfaceId) ?? surfaces[0] ?? null;
@@ -35,10 +37,10 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12 gap-2">
         <p className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400 dark:text-neutral-500">
-          No canvas surfaces
+          {t('a2uiSurface.emptyCanvas')}
         </p>
         <p className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-          The agent will render interactive surfaces here.
+          {t('a2uiSurface.emptyCanvasHint')}
         </p>
       </div>
     );
@@ -89,7 +91,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
               variant="default"
               size="icon"
               onClick={() => setIsFullscreen(true)}
-              title="Fullscreen"
+              title={t('a2uiSurface.fullscreen')}
             >
               <ArrowsPointingOutIcon className="w-4 h-4" />
             </BrutalButton>
@@ -105,14 +107,14 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
       >
         <div className="flex items-center justify-between px-3 py-2 border-b-3 border-brutal-black bg-brutal-yellow dark:bg-zinc-800 shrink-0">
           <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-brutal-black dark:text-white">
-            Canvas Fullscreen
+            {activeSurface.title ?? activeSurface.id}
           </span>
           <div className="flex items-center gap-2">
             <BrutalButton
               variant="primary"
               className="px-2 py-0.5 text-[10px] h-full"
               onClick={() => setIsFullscreen(false)}
-              title="Exit fullscreen"
+              title={t('a2uiSurface.exitFullscreen')}
             >
               <ArrowsPointingInIcon className="w-4 h-4" />
             </BrutalButton>

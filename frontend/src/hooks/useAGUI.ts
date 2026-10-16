@@ -532,17 +532,18 @@ export function processEvent(
           ),
         };
       } else if (name === 'a2ui.render') {
-        const surface = value as A2UISurface & { target?: string; deferred?: boolean };
-        if (surface?.target === 'inline') {
-          // Inline: embed as a part inside the current message
-          next.push({ type: 'a2ui', surface });
-          if (surface.deferred && surface.id) {
-            onMarkDeferred?.(surface.id as string);
-          }
-        } else {
-          // Canvas: forward to ChatWindow's onCustomEvent handler
-          onCustomEvent?.(name, value);
-        }
+        const raw = value as A2UISurface | null;
+        if (!raw || typeof raw !== 'object') break;
+        const surface: A2UISurface = { ...raw, rev: raw.rev ?? Date.now() };
+        // A canvas surface still leaves a part in the message: a pointer the
+        // user can reopen it from once the side panel has moved on.
+        if (surface.target === 'canvas') onCustomEvent?.(name, value);
+        // Re-rendering within one turn updates the part in place, so live
+        // progress ticks instead of stacking copies down the message.
+        const existing = next.findIndex((p) => p.type === 'a2ui' && p.surface?.id === surface.id);
+        if (existing >= 0) next[existing] = { ...next[existing], surface };
+        else next.push({ type: 'a2ui', surface });
+        if (surface.deferred && surface.id) onMarkDeferred?.(surface.id);
       } else {
         // Forward other custom events (plan_refresh, usage_update, etc.)
         onCustomEvent?.(name, value);

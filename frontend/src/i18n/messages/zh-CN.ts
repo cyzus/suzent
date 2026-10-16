@@ -1607,6 +1607,18 @@ export const zhCN = {
     returnToBrowser: '返回浏览器',
     history: '历史',
   },
+  a2uiSurface: {
+    openInSidePanel: '在侧栏打开',
+    fullscreen: '全屏',
+    exitFullscreen: '退出全屏',
+    inSidePanel: '显示在侧栏中',
+    open: '打开',
+    updatedLater: '已在后面的对话中更新',
+    show: '显示',
+    hide: '隐藏',
+    emptyCanvas: '暂无画布内容',
+    emptyCanvasHint: '在侧栏打开的界面会显示在这里。',
+  },
   a2uiForm: {
     typeSomethingElse: '输入其他答案…',
     otherPlaceholder: '输入你的答案…',

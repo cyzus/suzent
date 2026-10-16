@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "minor" },
+  "summary": "Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated."
+}

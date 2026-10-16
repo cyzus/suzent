@@ -1,11 +1,12 @@
 """
-RenderUITool — push structured A2UI surfaces to the frontend canvas.
+RenderUITool — push structured A2UI surfaces to the frontend.
 
 Agents call render_ui() to display rich interactive components (tables, forms,
-cards, buttons) in the canvas panel alongside the chat. The same surface_id
+cards, buttons) inside the chat, or in the side panel canvas. The same surface_id
 performs an upsert: calling again with the same id replaces the existing surface.
 """
 
+import time
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, TypeAdapter, ValidationError
@@ -86,18 +87,20 @@ class RenderUITool(Tool):
             Literal["canvas", "inline"],
             Field(
                 description=(
-                    "'canvas' renders in the side panel, 'inline' inside the "
-                    "chat message."
+                    "'inline' (default) renders inside the chat message; the user "
+                    "can pop it out to the side panel or fullscreen. Use 'canvas' "
+                    "only for a surface kept in view and updated while the "
+                    "conversation continues, such as live progress or a dashboard."
                 )
             ),
-        ] = "canvas",
+        ] = "inline",
         id: Annotated[
             Any,
             Field(description="Alias for surface_id."),
         ] = None,
         **kwargs: Any,
     ) -> ToolResult:
-        """Render a structured UI surface in the canvas panel or inline in chat.
+        """Render a structured UI surface inline in chat or in the side panel canvas.
 
         The A2UI schema is defined in suzent.a2ui.models. Use `content` for text
         components, `label` and `action` for buttons, and `columns` plus `rows`
@@ -111,6 +114,10 @@ class RenderUITool(Tool):
             window.parent.postMessage(
                 {type: 'a2ui:action', action: 'my_action', context: {...}}, '*')
         which is delivered exactly like a button click or form submit.
+
+        Lay surfaces out for a narrow column (roughly 360-700px wide): stack
+        rather than spread wide, and let HTML size to its container instead of
+        using fixed widths.
         """
         try:
             surface = _SURFACE_ADAPTER.validate_python(
@@ -135,6 +142,9 @@ class RenderUITool(Tool):
         target_value = surface.target
         title_value = surface.title or sid
         payload["title"] = title_value
+        # Orders re-renders of one surface id across turns, so the chat can
+        # collapse the older copies, including ones reloaded from history.
+        payload["rev"] = time.time_ns() // 1_000_000
 
         if ctx.deps.a2ui_queue is not None:
             await ctx.deps.a2ui_queue.put({"event": "a2ui.render", **payload})
