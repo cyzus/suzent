@@ -114,6 +114,8 @@ interface ChatCoreContextValue {
   setIsStreaming: (streaming: boolean, chatId?: string | null) => void;
   removeEmptyAssistantMessage: (chatId?: string | null) => void;
   currentChatId: string | null;
+  /** True once the current chat's messages have been fetched (or created locally). */
+  currentChatMessagesLoaded: boolean;
   chats: ChatSummary[];
   pinnedChats: ChatSummary[];
   currentChatProjectId: string | null;
@@ -590,6 +592,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     () => getMessagesForChat(currentChatId),
     [getMessagesForChat, currentChatId]
   );
+  const currentChatMessagesLoaded = keyForChat(currentChatId) in messagesByChat;
 
   // Fetch backend config with retry logic.
   //
@@ -1937,6 +1940,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       setIsStreaming: setStreamingState,
       removeEmptyAssistantMessage,
       currentChatId,
+      currentChatMessagesLoaded,
       chats,
       pinnedChats,
       currentChatProjectId,
@@ -1984,6 +1988,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       setStreamingState,
       removeEmptyAssistantMessage,
       currentChatId,
+      currentChatMessagesLoaded,
       chats,
       pinnedChats,
       currentChatProjectId,

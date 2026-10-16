@@ -154,7 +154,9 @@ class AgentTool(Tool):
                 description=(
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
-                    "Invalid or disabled IDs are rejected instead of silently falling back."
+                    "Invalid or disabled IDs are rejected instead of silently falling back. "
+                    "With inherit_context it defaults to your current model, which reuses "
+                    "the cached conversation prefix."
                 ),
             ),
         ] = None,
@@ -298,6 +300,10 @@ class AgentTool(Tool):
                         "enabled_models": enabled_models,
                     },
                 )
+
+        # Another model would have to prefill the whole inherited history again.
+        if inherit_context and not model_override and runtime != "acp":
+            model_override = ctx.deps.model_id
 
         if runtime == "acp":
             effective_tools = []
