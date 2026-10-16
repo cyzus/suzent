@@ -7,7 +7,8 @@
  * same surface id lands further down the chat.
  */
 
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
@@ -39,6 +40,16 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({ surface, onAction 
   const superseded = useIsSuperseded(surface, interactive);
   const [showOld, setShowOld] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  // The body is portaled into one host node that moves between the inline
+  // slot and the fullscreen slot, so form input survives the switch instead
+  // of living in two independent renderers.
+  const [host] = useState(() => document.createElement('div'));
+  const [inlineSlot, setInlineSlot] = useState<HTMLDivElement | null>(null);
+  const [fullscreenSlot, setFullscreenSlot] = useState<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const slot = fullscreen ? fullscreenSlot : inlineSlot;
+    if (slot && host.parentNode !== slot) slot.appendChild(host);
+  }, [fullscreen, inlineSlot, fullscreenSlot, host]);
   const title = surface.title || surface.id;
 
   const body = <A2UIRenderer component={surface.component} onAction={onAction} />;
@@ -114,7 +125,8 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({ surface, onAction 
           <ArrowsPointingOutIcon className="w-3.5 h-3.5" />
         </button>
       </div>
-      {body}
+      <div ref={setInlineSlot} />
+      {createPortal(body, host)}
 
       <FullscreenOverlay
         open={fullscreen}
@@ -132,7 +144,7 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({ surface, onAction 
             <ArrowsPointingInIcon className="w-4 h-4" />
           </BrutalButton>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4">{body}</div>
+        <div ref={setFullscreenSlot} className="flex-1 min-h-0 overflow-y-auto p-4" />
       </FullscreenOverlay>
     </div>
   );

@@ -1878,9 +1878,10 @@ async def stream_agent_responses(
                                     "id": ev["id"],
                                     "title": ev.get("title", ""),
                                     "component": ev["component"],
-                                    "target": ev.get("target", "canvas"),
+                                    "target": ev.get("target", "inline"),
                                     "deferred": ev.get("deferred", False),
                                     "chatId": chat_id,
+                                    **({"rev": ev["rev"]} if "rev" in ev else {}),
                                 },
                             ),
                         )
