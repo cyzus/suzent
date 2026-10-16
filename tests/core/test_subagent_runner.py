@@ -319,3 +319,31 @@ def test_parent_wakeup_is_persisted_with_model(monkeypatch):
     assert "Model: openai/gpt-4.1" in captured["content"]
     assert "Choose A." in captured["content"]
     assert "[sa_sub_a_src_1] Evidence" in captured["content"]
+
+
+def _fake_db(chat):
+    return SimpleNamespace(get_chat=lambda chat_id: chat)
+
+
+def test_parent_model_id_prefers_model_history_ran_on(monkeypatch):
+    chat = SimpleNamespace(agent_state=b"state", config={"model": "configured/model"})
+    monkeypatch.setattr("suzent.database.get_database", lambda: _fake_db(chat))
+    monkeypatch.setattr(
+        "suzent.core.agent_serializer.deserialize_state",
+        lambda state: {"model_id": "ran/model"},
+    )
+
+    assert subagent_runner._parent_model_id("chat-1") == "ran/model"
+
+
+def test_parent_model_id_falls_back_to_configured_model(monkeypatch):
+    chat = SimpleNamespace(agent_state=None, config={"model": "configured/model"})
+    monkeypatch.setattr("suzent.database.get_database", lambda: _fake_db(chat))
+
+    assert subagent_runner._parent_model_id("chat-1") == "configured/model"
+
+
+def test_parent_model_id_is_none_without_parent(monkeypatch):
+    monkeypatch.setattr("suzent.database.get_database", lambda: _fake_db(None))
+
+    assert subagent_runner._parent_model_id("gone") is None

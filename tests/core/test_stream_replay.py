@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 import pytest
 
@@ -200,3 +201,11 @@ async def test_replacing_a_run_signals_supersession_not_successful_completion():
     frames = [decode(frame) async for frame in old.replay.subscribe()]
     assert frames[-1]["superseded"] is True
     unregister_background_stream("replace-test", new)
+
+
+def test_snapshot_carries_wall_clock_start_for_late_observers():
+    before = int(time.time() * 1000)
+    replay = StreamReplay()
+    replay.append(chunk(delta="a"))
+    snapshot = replay.read(None, None)[0]
+    assert before <= snapshot["started_at_ms"] <= int(time.time() * 1000)

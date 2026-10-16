@@ -33,6 +33,8 @@ interface UseAGUIReturn {
     opts?: {
       urlOverride?: string;
       onStreamStart?: () => void;
+      /** When the attached run began, per the backend, on every reset replay. */
+      onRunStartedAt?: (startedAtMs: number) => void;
       seedParts?: AGUIPart[];
       baseParts?: AGUIPart[];
     }
@@ -816,6 +818,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       opts?: {
         urlOverride?: string;
         onStreamStart?: () => void;
+        onRunStartedAt?: (startedAtMs: number) => void;
         seedParts?: AGUIPart[];
         baseParts?: AGUIPart[];
       }
@@ -902,6 +905,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           isProbe ? undefined : { url: targetUrl, body: requestBody }
         )) {
           runIdRef.current = batch.runId;
+          if (batch.startedAtMs !== undefined) opts?.onRunStartedAt?.(batch.startedAtMs);
           let currentParts = partsForBatch(batch.reset, partsRef.current, opts?.baseParts);
           if (batch.reset) resetApprovalTracking();
           for (const data of batch.events) {

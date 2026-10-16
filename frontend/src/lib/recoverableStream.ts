@@ -9,6 +9,8 @@ export interface StreamBatch {
   /** The run these events belong to, so a caller can name it back to the backend. */
   runId: string;
   events: StreamEvent[];
+  /** Wall-clock start of the run, carried by reset snapshots. */
+  startedAtMs?: number;
 }
 
 export class StreamRecoveryError extends Error {
@@ -123,7 +125,14 @@ export async function* recoverableStream(
             runId = frame.run_id;
             seq = nextSeq;
             failures = 0;
-            yield { reset: true, runId: frame.run_id, events: frame.events as StreamEvent[] };
+            yield {
+              reset: true,
+              runId: frame.run_id,
+              events: frame.events as StreamEvent[],
+              startedAtMs: Number.isFinite(frame.started_at_ms)
+                ? (frame.started_at_ms as number)
+                : undefined,
+            };
           } else if (frame.type === 'STREAM_EVENT') {
             if (!isStreamEvent(frame.event)) throw new ProtocolError('Invalid stream event');
             if (frame.run_id !== runId || seq === undefined || nextSeq > seq + 1) {

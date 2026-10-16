@@ -674,6 +674,7 @@ class ChatProcessor:
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
+        deps.model_id = getattr(agent, "_model_id", None) or config.get("model")
         deps.incoming_citation_sources = list(incoming_citation_sources or [])
         # System/forked chats never persist agent_state — they reset before each run.
         deps.stateless = self._is_system_chat(chat_id)
@@ -1099,6 +1100,7 @@ class ChatProcessor:
         _upload_reminder = _upload_index_reminder(uploaded_paths)
         if _upload_reminder:
             _adhoc_reminders.append(_upload_reminder)
+        visible_prompt = message_content
         reminder = await build_combined_reminder(
             chat_id,
             deps,
@@ -1160,6 +1162,14 @@ class ChatProcessor:
                             _db.update_chat(chat_id, messages=_existing + [_user_entry])
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
+
+            if self._is_subagent_chat(chat_id):
+                await asyncio.to_thread(
+                    _presave_turn_rows,
+                    chat_id,
+                    visible_prompt,
+                    pending_trigger_rows,
+                )
 
         # Handle stateless resume
         deferred_tool_results = None
@@ -2207,6 +2217,13 @@ class ChatProcessor:
         except Exception:
             return False
 
+    def _is_subagent_chat(self, chat_id: str) -> bool:
+        try:
+            chat = get_database().get_chat(chat_id)
+            return bool(chat) and (chat.config or {}).get("platform") == "subagent"
+        except Exception:
+            return False
+
     async def _write_transcript(
         self,
         chat_id: str,
@@ -3241,6 +3258,37 @@ def trigger_rows_for_snapshot(
     if stamp:
         row["timestamp"] = stamp.isoformat()
     return [row]
+
+
+def _presave_turn_rows(
+    chat_id: str, visible_prompt: str, trigger_rows: list[dict]
+) -> None:
+    """Show a sub-agent's prompt and reminders while its turn is still running.
+
+    Sub-agent chats are stateless, so nothing reaches ``messages`` until
+    post-processing rebuilds them from the finished history; anyone watching
+    the child meanwhile saw only the streamed answer. The rebuild replaces
+    these rows wholesale, and ``_preserve_display_triggers`` keeps the
+    trigger rows' stored content, so writing them early duplicates nothing.
+    """
+    rows: list[dict] = []
+    if visible_prompt and visible_prompt.strip():
+        rows.append({"role": "user", "content": visible_prompt})
+    rows.extend(trigger_rows)
+    if not rows:
+        return
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return
+        existing = list(chat.messages or [])
+        # Only the tail: a resumed child may legitimately repeat an earlier prompt.
+        added = [row for row in rows if row not in existing[-len(rows) :]]
+        if added:
+            db.update_chat(chat_id, messages=existing + added)
+    except Exception as e:
+        logger.warning(f"Could not pre-save turn rows for {chat_id}: {e}")
 
 
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
