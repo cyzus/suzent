@@ -66,6 +66,10 @@ for binary in "$@"; do
   codesign --verify --strict --verbose=2 "$binary"
   cp "$binary" "$signing_dir/assets/$(basename "$binary")"
 done
+# Preserve the exact signed bytes before waiting: a timeout does not cancel Apple's scan.
+if [[ -n "${MACOS_SIGNED_ARCHIVE:-}" ]]; then
+  tar -czf "$MACOS_SIGNED_ARCHIVE" -C "$signing_dir/assets" .
+fi
 ditto -c -k "$signing_dir/assets" "$signing_dir/assets.zip"
 xcrun notarytool submit "$signing_dir/assets.zip" \
   --key "$signing_dir/AuthKey.p8" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID" \

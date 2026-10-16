@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,7 @@ def test_notarization_gate_and_cleanup(tmp_path: Path, status: str) -> None:
         "RUNNER_TEMP": str(tmp_path),
         "CALL_LOG": str(log),
         "NOTARY_STATUS": status,
+        "MACOS_SIGNED_ARCHIVE": str(tmp_path / "candidate.tar.gz"),
     }
     result = subprocess.run(
         ["bash", str(SCRIPT), str(binary)],
@@ -63,5 +65,9 @@ def test_notarization_gate_and_cleanup(tmp_path: Path, status: str) -> None:
     assert (result.returncode == 0) == (status == "Accepted"), result.stderr
     assert ("--check-notarization" in calls) == (status == "Accepted")
     assert "codesign --force --timestamp --options runtime" in calls
+    with tarfile.open(tmp_path / "candidate.tar.gz") as archive:
+        member = archive.extractfile("./suzent")
+        assert member is not None
+        assert member.read() == binary.read_bytes()
     assert "security delete-keychain" in calls
     assert not list(tmp_path.glob("suzent-macos-signing.*"))

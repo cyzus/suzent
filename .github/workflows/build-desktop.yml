@@ -332,17 +332,15 @@ jobs:
       - name: Sign and notarize existing binaries
         run: bash scripts/sign-macos-release.sh signed-assets/*
         env:
+          MACOS_SIGNED_ARCHIVE: signed-macos-${{ matrix.arch }}.tar.gz
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
           APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      - name: Archive signed binaries
-        run: tar -czf "signed-macos-$ARCH.tar.gz" -C signed-assets .
-        env:
-          ARCH: ${{ matrix.arch }}
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: signed-macos-${{ matrix.arch }}
           path: signed-macos-${{ matrix.arch }}.tar.gz

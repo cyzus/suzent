@@ -48,3 +48,10 @@ notarizes the existing Intel and Apple Silicon binaries, then uploads
 `signed-macos-*` tar archives as Actions artifacts for seven days. It does not
 modify the GitHub Release. This also allows validation from a workflow branch
 before merging the signing changes.
+
+The verification job preserves the signed archive before waiting for Apple and
+uploads it even when notarization times out or fails. An artifact alone is not
+proof of notarization. Before distributing a preserved candidate, require
+`codesign --verify --strict -R="notarized" --check-notarization` to succeed for
+every executable. Do not re-sign the preserved files: doing so changes the code
+signature and requires a new notarization submission.
