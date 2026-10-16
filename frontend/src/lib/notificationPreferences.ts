@@ -60,8 +60,7 @@ function isWhen(value: unknown): value is NotificationWhen {
 
 function isSound(value: unknown): value is NotificationSound {
   return (
-    typeof value === 'string' &&
-    (NOTIFICATION_SOUND_OPTIONS as readonly string[]).includes(value)
+    typeof value === 'string' && (NOTIFICATION_SOUND_OPTIONS as readonly string[]).includes(value)
   );
 }
 
@@ -121,10 +120,7 @@ export function useNotificationPreferences(): NotificationPreferencesApi {
     readNotificationPreferences
   );
 
-  useEffect(
-    () => subscribe(() => setPreferences(readNotificationPreferences())),
-    []
-  );
+  useEffect(() => subscribe(() => setPreferences(readNotificationPreferences())), []);
 
   return {
     preferences,
