@@ -18,6 +18,7 @@ import type { ComponentType, SVGProps } from 'react';
 import {
   SpeakerWaveIcon,
   AdjustmentsHorizontalIcon,
+  BellIcon,
   BoltIcon,
   ChartBarIcon,
   ChatBubbleLeftRightIcon,
@@ -160,6 +161,13 @@ export const WEB_DESTINATION_GROUPS: WebDestinationGroup[] = [
         labelKey: 'settings.categories.appearance',
         icon: PaintBrushIcon,
         category: 'appearance',
+        framed: true,
+      },
+      {
+        path: '/notifications',
+        labelKey: 'settings.categories.notifications',
+        icon: BellIcon,
+        category: 'notifications',
         framed: true,
       },
       // No `category`: the desktop's Background Service tab drives Tauri

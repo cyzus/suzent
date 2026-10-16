@@ -760,6 +760,7 @@ export const en = {
       data: 'Data & Sync',
       usage: 'Usage',
       appearance: 'Appearance',
+      notifications: 'Notifications',
       about: 'About',
     },
     service: {
@@ -1000,6 +1001,29 @@ export const en = {
       colorScheme: 'Color Scheme',
       colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
+    },
+    notifications: {
+      title: 'Notifications',
+      subtitle: 'Choose when finished tasks may interrupt you and how they sound',
+      whenTitle: 'When to notify',
+      whenDesc: 'Decide when a finished task may raise a notification.',
+      when: {
+        always: 'Always',
+        background: 'Only in background',
+        never: 'Never',
+      },
+      soundTitle: 'Sound',
+      soundDesc: 'The sound played when a notification fires.',
+      sounds: {
+        none: 'None',
+        chime: 'Chime',
+        ping: 'Ping',
+        bell: 'Bell',
+        resonance: 'Resonance',
+        success: 'Success',
+      },
+      desktopNoteTitle: 'Desktop only',
+      desktopNoteDesc: 'Native notifications only appear in the desktop app. Sounds still play here.',
     },
     about: {
       title: 'About',
