@@ -31,6 +31,7 @@ import { DataTab } from './DataTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
+import { NotificationsTab } from './NotificationsTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
 import { DevicesTab } from './DevicesTab';
@@ -689,6 +690,8 @@ export function SettingsModal({
       {activeCategory === 'usage' && <UsageTab />}
 
       {activeCategory === 'appearance' && <AppearanceTab />}
+
+      {activeCategory === 'notifications' && <NotificationsTab />}
 
       {activeCategory === 'about' && <AboutTab />}
     </>

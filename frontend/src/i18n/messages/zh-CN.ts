@@ -821,6 +821,7 @@ export const zhCN = {
       data: '数据与同步',
       usage: '用量',
       appearance: '外观',
+      notifications: '通知',
       about: '关于',
     },
     service: {
@@ -1042,6 +1043,29 @@ export const zhCN = {
       colorScheme: '颜色方案',
       colorSchemeDesc: '选择浅色与深色模式使用的强调色。',
       schemes: { warm: '暖色', cold: '冷色', green: '绿色' },
+    },
+    notifications: {
+      title: '通知',
+      subtitle: '选择任务完成后何时可以弹出通知，以及使用哪种提示音',
+      whenTitle: '何时通知',
+      whenDesc: '决定任务完成后何时可以弹出通知。',
+      when: {
+        always: '总是',
+        background: '仅在后台',
+        never: '从不',
+      },
+      soundTitle: '提示音',
+      soundDesc: '弹出通知时播放的声音。',
+      sounds: {
+        none: '无',
+        chime: '钟声',
+        ping: '叮',
+        bell: '铃声',
+        resonance: '共鸣',
+        success: '成功',
+      },
+      desktopNoteTitle: '仅桌面端',
+      desktopNoteDesc: '系统通知仅在桌面应用中显示，提示音仍会在此播放。',
     },
     about: {
       title: '关于',

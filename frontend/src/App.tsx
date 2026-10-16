@@ -45,6 +45,11 @@ import {
   takeReplyOutcome,
   type ReplyOutcome,
 } from './lib/desktopNotifications';
+import {
+  readNotificationPreferences,
+  shouldNotifyForCompletion,
+} from './lib/notificationPreferences';
+import { playNotificationSound } from './lib/notificationSound';
 import { isDesktop } from './lib/runtime';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
@@ -483,6 +488,8 @@ function AppInner(): React.ReactElement {
         const reply = takeReplyOutcome(msg.chat_id);
         if (!reply || reply.outcome === 'stopped') return;
         const { outcome, preview } = reply;
+        const preferences = readNotificationPreferences();
+        if (!shouldNotifyForCompletion(preferences.when)) return;
         const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
           ready: 'backgroundNotifications.replyReady',
           approval: 'backgroundNotifications.replyNeedsApproval',
@@ -495,6 +502,7 @@ function AppInner(): React.ReactElement {
           }),
           outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
         );
+        playNotificationSound(preferences.sound);
       }),
     []
   );
@@ -502,19 +510,23 @@ function AppInner(): React.ReactElement {
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
     const announceBackgroundNotifications = (notifications: CronNotification[]): void => {
+      if (notifications.length === 0) return;
       const tr = tRef.current;
+      const preferences = readNotificationPreferences();
+      if (!shouldNotifyForCompletion(preferences.when)) return;
       if (notifications.length === 1) {
         const [only] = notifications;
         void notifyDesktop(
           tr('backgroundNotifications.title', { name: only.job_name }),
           only.result
         );
-      } else if (notifications.length > 1) {
+      } else {
         const summary = tr('backgroundNotifications.manyUpdates', {
           count: String(notifications.length),
         });
         void notifyDesktop(tr('app.title'), summary);
       }
+      playNotificationSound(preferences.sound);
     };
 
     const interval = setInterval(async () => {
