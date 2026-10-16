@@ -1023,7 +1023,8 @@ export const en = {
         success: 'Success',
       },
       desktopNoteTitle: 'Desktop only',
-      desktopNoteDesc: 'Native notifications only appear in the desktop app. Sounds still play here.',
+      desktopNoteDesc:
+        'Native notifications only appear in the desktop app. Sounds still play here.',
     },
     about: {
       title: 'About',

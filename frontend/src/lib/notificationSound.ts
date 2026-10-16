@@ -56,8 +56,7 @@ function ensureContext(): AudioContext | null {
       // Safari still exposes the prefixed constructor.
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    if (!context) context = new Ctor();
-    if (context.state === 'suspended') void context.resume().catch(() => {});
+    if (!context || context.state === 'closed') context = new Ctor();
     return context;
   } catch {
     return null;
@@ -75,7 +74,7 @@ let unlockBound = false;
 function unlockAudio(): void {
   try {
     const ctx = ensureContext();
-    if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
+    if (ctx && ctx.state !== 'running') void ctx.resume().catch(() => {});
   } catch {
     /* ignore */
   }
@@ -84,8 +83,11 @@ function unlockAudio(): void {
 function bindUnlock(): void {
   if (unlockBound || typeof window === 'undefined') return;
   unlockBound = true;
-  window.addEventListener('pointerdown', unlockAudio, { once: true });
-  window.addEventListener('keydown', unlockAudio, { once: true });
+  // WebKit may interrupt audio again after the window loses focus. Keep
+  // retrying within user gestures, including click (pointerdown is not
+  // consistently treated as audio activation by WebKit).
+  window.addEventListener('click', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
 }
 
 bindUnlock();
@@ -117,43 +119,47 @@ function playSampledSound(url: string, generation: number): void {
     }
     const ctx = ensureContext();
     if (ctx && typeof ctx.createBufferSource === 'function' && typeof fetch === 'function') {
-      void loadSampleBuffer(ctx, url).then((buffer) => {
-        if (generation !== playbackGeneration) return;
-        try {
-          if (buffer) {
-            if (stopActiveSample) {
-              stopActiveSample();
-              stopActiveSample = null;
+      const ready = ctx.state === 'running' ? Promise.resolve() : ctx.resume();
+      void ready
+        .then(() => loadSampleBuffer(ctx, url))
+        .then((buffer) => {
+          if (generation !== playbackGeneration) return;
+          try {
+            if (buffer) {
+              if (stopActiveSample) {
+                stopActiveSample();
+                stopActiveSample = null;
+              }
+              const source = ctx.createBufferSource();
+              source.buffer = buffer;
+              source.connect(ctx.destination);
+              stopActiveSample = () => {
+                try {
+                  source.stop();
+                  source.disconnect();
+                } catch {
+                  /* ignore */
+                }
+              };
+              source.start(0);
+              return;
             }
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(ctx.destination);
-            stopActiveSample = () => {
-              try {
-                source.stop();
-                source.disconnect();
-              } catch {
-                /* ignore */
-              }
-            };
-            source.start(0);
-            return;
+            if (typeof Audio !== 'undefined') {
+              const audio = new Audio(url);
+              stopActiveSample = () => {
+                try {
+                  audio.pause();
+                } catch {
+                  /* ignore */
+                }
+              };
+              void audio.play().catch(() => {});
+            }
+          } catch {
+            /* ignore */
           }
-          if (typeof Audio !== 'undefined') {
-            const audio = new Audio(url);
-            stopActiveSample = () => {
-              try {
-                audio.pause();
-              } catch {
-                /* ignore */
-              }
-            };
-            void audio.play().catch(() => {});
-          }
-        } catch {
-          /* ignore */
-        }
-      });
+        })
+        .catch(() => {});
       return;
     }
     if (typeof Audio !== 'undefined') {
@@ -217,8 +223,17 @@ export function playNotificationSound(sound: NotificationSound): void {
     }
     const ctx = ensureContext();
     if (!ctx) return;
-    const now = ctx.currentTime;
-    for (const note of SOUNDS[sound]) scheduleNote(ctx, note, now);
+    const play = (): void => {
+      if (generation !== playbackGeneration) return;
+      const now = ctx.currentTime;
+      for (const note of SOUNDS[sound]) scheduleNote(ctx, note, now);
+    };
+    if (ctx.state === 'running') play();
+    else
+      void ctx
+        .resume()
+        .then(play)
+        .catch(() => {});
   } catch {
     // No audio device, a context that cannot resume, or a note that fails
     // mid-schedule: a notification cue must never interrupt the work that
