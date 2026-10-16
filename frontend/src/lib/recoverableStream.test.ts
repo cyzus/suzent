@@ -61,6 +61,18 @@ describe('recoverable streaming transport', () => {
       [false, '!'],
     ]);
   });
+  it('carries the run start from a snapshot so a late observer can time the turn', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          response({ ...snapshot(1), started_at_ms: 1700000000000 }, event(2, '!'), end(2))
+        )
+    );
+    const batches = await collect();
+    expect(batches.map((b) => b.startedAtMs)).toEqual([1700000000000, undefined]);
+  });
   it('reconnects an unexpected EOF from the last applied cursor and ignores duplicates', async () => {
     const fetch = vi
       .fn()

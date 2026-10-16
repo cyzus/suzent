@@ -42,6 +42,9 @@ class AgentDeps:
     # prompt. This is intentionally separate from stateless so sub-agents can keep
     # the normal host/sandbox guidance while still avoiding persisted agent_state.
     suppress_environment_context: bool = False
+    # The model this run is on. A sub-agent that inherits this chat's history
+    # defaults to it so the provider can reuse the cached prefix.
+    model_id: Optional[str] = None
 
     # --- Sandbox / filesystem ---
     sandbox_enabled: bool = False

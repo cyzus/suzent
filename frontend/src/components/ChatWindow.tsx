@@ -743,6 +743,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     markChatRollbackExpected,
     setIsStreaming,
     currentChatId,
+    currentChatMessagesLoaded,
     createNewChat,
     loadChat,
     isStreaming,
@@ -2035,8 +2036,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
   // social, and regular chats receiving a subagent wakeup).
   const currentChatSummary = chats.find((c) => c.id === currentChatId);
+  // The summary's count can be stale (a sub-agent chat is rebuilt after every
+  // run), so it only means "still loading" until the fetch lands -- and never
+  // when a live stream has something to show.
   const isProbablyLoadingChatMessages =
-    !!currentChatId && safeMessages.length === 0 && (currentChatSummary?.messageCount ?? 0) > 0;
+    !!currentChatId &&
+    !currentChatMessagesLoaded &&
+    !showTransientAssistant &&
+    safeMessages.length === 0 &&
+    (currentChatSummary?.messageCount ?? 0) > 0;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.
   const { memoryChats } = useEventBus();
@@ -2166,6 +2174,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               }
               setIsStreaming(true, chatIdAtMount);
               loadChat(chatIdAtMount, { force: true }).catch(() => {});
+            },
+            // Attaching mid-run (a sub-agent opened while it works, a reload)
+            // must time the turn from when it began, not from when we connected.
+            onRunStartedAt: (startedAtMs) => {
+              streamStartByChatRef.current.set(chatIdAtMount, startedAtMs);
             },
           }
         );
