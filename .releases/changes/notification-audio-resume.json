@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Make notification sounds play reliably after the desktop window loses focus by resuming interrupted audio before playback."
+}
