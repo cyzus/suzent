@@ -150,52 +150,74 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           const directory = displayPath.slice(0, displayPath.lastIndexOf('/') + 1);
           const isOpen = reviewing && selectedFile?.path === file.path;
           return (
-            <div
-              key={file.path}
-              className={`flex min-w-0 items-center gap-1 px-2 py-1 ${isOpen ? 'bg-neutral-100/70 dark:bg-white/[0.04]' : ''}`}
-            >
-              <button
-                type="button"
-                onClick={() => openDiffForFile(file)}
-                title={displayPath}
-                aria-label={t('fileChanges.reviewFile', { file: fileName })}
-                aria-expanded={isOpen}
-                aria-controls={isOpen ? diffPanelId : undefined}
-                className="group flex min-w-0 flex-1 items-center gap-2 px-1 py-2 text-left transition-colors hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/[0.04]"
+            <React.Fragment key={file.path}>
+              <div
+                className={`flex min-w-0 items-center gap-1 px-2 py-1 ${isOpen ? 'bg-neutral-100/70 dark:bg-white/[0.04]' : ''}`}
               >
-                <DocumentTextIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-mono text-xs font-semibold leading-5">
-                    {fileName}
-                  </span>
-                  {directory && (
-                    <span className="block truncate font-mono text-[10px] leading-4 text-neutral-500 dark:text-neutral-400">
-                      {directory}
-                    </span>
-                  )}
-                  <span className="mt-0.5 flex flex-wrap gap-x-2 font-mono text-[11px] leading-4 tabular-nums">
-                    <span className="text-emerald-700 dark:text-emerald-400">
-                      +{file.additions}
-                    </span>
-                    <span className="text-red-600 dark:text-red-400">−{file.deletions}</span>
-                  </span>
-                </span>
-                <ChevronDownIcon
-                  className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              {onFileClick && (
                 <button
                   type="button"
-                  onClick={(event) => openFilePreview(file, event.shiftKey)}
-                  title={t('fileChanges.openFile')}
-                  aria-label={t('fileChanges.openFile')}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/5 dark:hover:text-neutral-200"
+                  onClick={() => openDiffForFile(file)}
+                  title={displayPath}
+                  aria-label={t('fileChanges.reviewFile', { file: fileName })}
+                  aria-expanded={isOpen}
+                  aria-controls={isOpen ? diffPanelId : undefined}
+                  className="group flex min-w-0 flex-1 items-center gap-2 px-1 py-2 text-left transition-colors hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/[0.04]"
                 >
-                  <EyeIcon className="h-4 w-4" />
+                  <DocumentTextIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-xs font-semibold leading-5">
+                      {fileName}
+                    </span>
+                    {directory && (
+                      <span className="block truncate font-mono text-[10px] leading-4 text-neutral-500 dark:text-neutral-400">
+                        {directory}
+                      </span>
+                    )}
+                    <span className="mt-0.5 flex flex-wrap gap-x-2 font-mono text-[11px] leading-4 tabular-nums">
+                      <span className="text-emerald-700 dark:text-emerald-400">
+                        +{file.additions}
+                      </span>
+                      <span className="text-red-600 dark:text-red-400">−{file.deletions}</span>
+                    </span>
+                  </span>
+                  <ChevronDownIcon
+                    className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                  />
                 </button>
+                {onFileClick && (
+                  <button
+                    type="button"
+                    onClick={(event) => openFilePreview(file, event.shiftKey)}
+                    title={t('fileChanges.openFile')}
+                    aria-label={t('fileChanges.openFile')}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/5 dark:hover:text-neutral-200"
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {isOpen && (
+                <div
+                  id={diffPanelId}
+                  className="min-w-0 border-t border-neutral-200 dark:border-zinc-700"
+                >
+                  {selectedDiff ? (
+                    <FileContentDiffViewer
+                      filePath={displayPath}
+                      original={selectedDiff.original}
+                      modified={selectedDiff.modified}
+                      addedLines={file.additions}
+                      removedLines={file.deletions}
+                      embedded
+                    />
+                  ) : (
+                    <div className="px-3 py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                      {t('fileChanges.binaryDiff')}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+            </React.Fragment>
           );
         })}
       </div>
@@ -222,24 +244,6 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           className="break-words border-t border-neutral-200 px-3 py-2 text-xs leading-relaxed text-neutral-500 dark:border-zinc-700 dark:text-neutral-400"
         >
           {message}
-        </div>
-      )}
-      {reviewing && selectedFile && (
-        <div id={diffPanelId} className="min-w-0 border-t border-neutral-200 dark:border-zinc-700">
-          {selectedDiff ? (
-            <FileContentDiffViewer
-              filePath={getDisplayPath(selectedFile)}
-              original={selectedDiff.original}
-              modified={selectedDiff.modified}
-              addedLines={selectedFile.additions}
-              removedLines={selectedFile.deletions}
-              embedded
-            />
-          ) : (
-            <div className="px-3 py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
-              {t('fileChanges.binaryDiff')}
-            </div>
-          )}
         </div>
       )}
     </section>
