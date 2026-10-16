@@ -35,11 +35,16 @@ fill in, cards, lists, progress bars, and buttons. For anything richer, such as
 a chart or a custom dashboard, it can build a self-contained web page that runs
 in a sealed-off frame.
 
-It shows these either in the **Canvas** tab of the chat's side panel or
-directly in the chat. When there are several on the Canvas, a tab strip at
-the top switches between them, and a full-screen button gives the Canvas the
-whole window. The agent can update a panel in place, for example to
-refresh a table as work progresses.
+These normally appear right in the chat. Each one has two buttons in its
+header: **Open in side panel** moves a copy to the **Canvas** tab of the side
+panel, so it stays in view while you keep chatting, and **Fullscreen** gives it
+the whole window. When the agent shows a newer version of the same panel
+later on, the older one folds down to a single line you can expand again.
+
+For something you'll want to watch as work progresses, such as a live progress
+board, the agent can put the panel straight into the Canvas tab and leave a
+small card in the chat to reopen it from. When there are several on the
+Canvas, a tab strip at the top switches between them.
 
 Clicking a button or submitting a form sends your action and any form values
 to the agent as a new message, and it responds. This tool is **Render UI** in

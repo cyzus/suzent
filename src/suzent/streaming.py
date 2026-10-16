@@ -1854,7 +1854,9 @@ async def stream_agent_responses(
                     ev = a2ui_queue.get_nowait()
                     if (
                         ev.get("event") == "a2ui.render"
-                        and ev.get("target") == "inline"
+                        # Canvas surfaces are cached too: the chat keeps a
+                        # pointer to each one it can reopen it from.
+                        and ev.get("target") in ("inline", "canvas")
                         and ev.get("id")
                         # Deferred (ask_question) surfaces must not be cached:
                         # the cache is replayed into the persisted display log,
@@ -1876,9 +1878,10 @@ async def stream_agent_responses(
                                     "id": ev["id"],
                                     "title": ev.get("title", ""),
                                     "component": ev["component"],
-                                    "target": ev.get("target", "canvas"),
+                                    "target": ev.get("target", "inline"),
                                     "deferred": ev.get("deferred", False),
                                     "chatId": chat_id,
+                                    **({"rev": ev["rev"]} if "rev" in ev else {}),
                                 },
                             ),
                         )

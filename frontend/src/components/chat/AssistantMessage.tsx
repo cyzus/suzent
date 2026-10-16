@@ -22,7 +22,7 @@ import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
-import { A2UIRenderer } from '../a2ui/A2UIRenderer';
+import { InlineSurface } from '../a2ui/InlineSurface';
 import type { A2UISurface } from '../../types/a2ui';
 import { StaticContent, StepPills, StreamingContent, ToolSequenceGroup } from './AssistantContent';
 import {
@@ -592,14 +592,13 @@ const AGUIPartsContent: React.FC<{
                 const surface = p.surface as A2UISurface | undefined;
                 if (!surface) return null;
                 return (
-                  <div key={pi} className="my-2">
-                    <A2UIRenderer
-                      component={surface.component}
-                      onAction={(action, context) =>
-                        onInlineAction?.(surface.id, action, context ?? {})
-                      }
-                    />
-                  </div>
+                  <InlineSurface
+                    key={pi}
+                    surface={surface}
+                    onAction={(action, context) =>
+                      onInlineAction?.(surface.id, action, context ?? {})
+                    }
+                  />
                 );
               })}
             </React.Fragment>
@@ -1303,14 +1302,13 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                         const surface = b.a2uiSurface as A2UISurface | undefined;
                         if (!surface) return null;
                         return (
-                          <div key={bi} className="my-2">
-                            <A2UIRenderer
-                              component={surface.component}
-                              onAction={(action, context) =>
-                                onInlineAction?.(surface.id, action, context ?? {})
-                              }
-                            />
-                          </div>
+                          <InlineSurface
+                            key={bi}
+                            surface={surface}
+                            onAction={(action, context) =>
+                              onInlineAction?.(surface.id, action, context ?? {})
+                            }
+                          />
                         );
                       })}
                     </div>

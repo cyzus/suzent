@@ -3,7 +3,7 @@ import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 import type { A2UISurface } from '../../types/a2ui';
 import { generateBlockKey, type ContentBlock } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
-import { A2UIRenderer } from '../a2ui/A2UIRenderer';
+import { InlineSurface } from '../a2ui/InlineSurface';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { LogBlock } from './LogBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -355,12 +355,11 @@ export const StaticContent: React.FC<{
         } else if (b.type === 'a2ui' && b.a2uiSurface) {
           const surface = b.a2uiSurface as A2UISurface;
           return (
-            <div key={blockKey} className="my-2">
-              <A2UIRenderer
-                component={surface.component}
-                onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
-              />
-            </div>
+            <InlineSurface
+              key={blockKey}
+              surface={surface}
+              onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+            />
           );
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending' && !b.content;

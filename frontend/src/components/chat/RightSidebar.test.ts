@@ -153,4 +153,13 @@ describe('evaluateSidebarAutoOpen', () => {
       shouldOpen: true,
     });
   });
+
+  it('switches to the canvas each time a chat surface is popped out', () => {
+    const prev = baseFlags({ canvas: true, canvasRequestNonce: 1 });
+    expect(evaluateSidebarAutoOpen(prev, { ...prev, canvasRequestNonce: 2 })).toEqual({
+      nextTab: 'canvas',
+      shouldOpen: true,
+    });
+    expect(evaluateSidebarAutoOpen(prev, prev)).toEqual({ nextTab: null, shouldOpen: false });
+  });
 });

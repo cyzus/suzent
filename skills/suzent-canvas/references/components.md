@@ -3,11 +3,13 @@
 ## Tool shape
 
 ```text
-render_ui(surface_id, component, title="", target="canvas")
+render_ui(surface_id, component, title="", target="inline")
 ```
 
-`target` is `canvas` or `inline`. Calling the tool again with the same `surface_id`
-replaces the existing surface.
+`target` is `inline` (default, inside the chat) or `canvas` (the side panel, for a
+surface kept in view while the conversation continues). Calling the tool again with
+the same `surface_id` replaces the existing surface; an inline surface reappears at the
+latest message and the older copy collapses.
 
 ## Containers
 

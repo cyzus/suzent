@@ -206,11 +206,12 @@ class A2UISurface(BaseModel):
     title:     Optional display title shown in the canvas tab strip.
     component: Root component — can be any A2UIComponent, typically a Card or Stack
                to group multiple sub-components.
-    target:    "canvas" (default) renders in the sidebar canvas panel.
-               "inline" renders the surface directly inside the chat message.
+    target:    "inline" (default) renders the surface inside the chat message.
+               "canvas" renders it in the side panel, for surfaces kept in view
+               and updated while the conversation continues.
     """
 
     id: str = Field(validation_alias=AliasChoices("id", "surface_id", "surfaceId"))
     title: Optional[str] = None
     component: A2UIComponent
-    target: Literal["canvas", "inline"] = "canvas"
+    target: Literal["canvas", "inline"] = "inline"

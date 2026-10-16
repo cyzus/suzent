@@ -12,9 +12,11 @@ headless automation.
 ## Workflow
 
 1. Choose a stable `surface_id` that describes the content.
-2. Select `target="inline"` for a small interaction tied to one message, or
-   `target="canvas"` for a persistent workspace surface.
-3. Build the smallest component tree that communicates the result.
+2. Leave `target` as `inline` (the default); the user can pop a surface out to the side
+   panel or fullscreen. Use `target="canvas"` only for a surface kept in view and
+   updated while the conversation continues, such as live progress or a dashboard.
+3. Build the smallest component tree that communicates the result, laid out for a
+   narrow column (roughly 360-700px): stack rather than spread wide.
 4. Reuse the same `surface_id` to update an existing surface.
 5. Set an `action` on every button and form; use `context` for stable identifiers.
 
