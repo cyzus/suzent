@@ -21,6 +21,7 @@ import {
 import { DisclosureChevron } from '../DisclosureChevron';
 import { SubAgentSteerBox } from './SubAgentSteerBox';
 import { SubAgentActivityFeed } from './SubAgentActivityFeed';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -292,15 +293,15 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                   {subAgentOutcomeLabel(status, t)}
                 </div>
                 <div className="min-w-0">
-                  <pre
-                    className={`subagent-result-pre whitespace-pre-wrap break-words text-xs leading-relaxed font-mono w-full ${
+                  <div
+                    className={`break-words text-xs leading-relaxed w-full ${
                       status === 'failed'
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-neutral-600 dark:text-neutral-300'
                     }`}
                   >
-                    {outcomeText}
-                  </pre>
+                    <MarkdownRenderer content={outcomeText} compact />
+                  </div>
                 </div>
               </div>
             )}
