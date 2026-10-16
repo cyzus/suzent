@@ -1663,6 +1663,18 @@ export const en = {
     returnToBrowser: 'Return to Browser',
     history: 'History',
   },
+  a2uiSurface: {
+    openInSidePanel: 'Open in side panel',
+    fullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit fullscreen',
+    inSidePanel: 'Shown in the side panel',
+    open: 'Open',
+    updatedLater: 'Updated later in the chat',
+    show: 'Show',
+    hide: 'Hide',
+    emptyCanvas: 'No canvas surfaces',
+    emptyCanvasHint: 'Surfaces you open in the side panel appear here.',
+  },
   a2uiForm: {
     typeSomethingElse: 'Type something else…',
     otherPlaceholder: 'Type your answer…',

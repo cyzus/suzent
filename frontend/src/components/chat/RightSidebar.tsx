@@ -47,6 +47,8 @@ export interface AutoOpenFlags {
   viewingSubAgentTaskId: string | null | undefined;
   webContext: boolean;
   forcedWebContextId: string | null | undefined;
+  /** Bumped when the user pops a chat surface out to the side panel. */
+  canvasRequestNonce?: number;
   goal: boolean;
   goalResolved: boolean;
 }
@@ -68,6 +70,8 @@ export function evaluateSidebarAutoOpen(
   // chat in the previous render (not transitioning from unresolved → resolved
   // after the initial fetch for the switched chat lands).
   const canvasRose = prev.canvasResolved && flags.canvasResolved && !prev.canvas && flags.canvas;
+  const canvasRequested =
+    !!flags.canvasRequestNonce && prev.canvasRequestNonce !== flags.canvasRequestNonce;
   const goalRose = prev.goalResolved && flags.goalResolved && !prev.goal && flags.goal;
 
   let nextTab: TabId | null = null;
@@ -77,6 +81,8 @@ export function evaluateSidebarAutoOpen(
     nextTab = 'agents';
   } else if (webContextTriggered) {
     nextTab = 'browser';
+  } else if (canvasRequested) {
+    nextTab = 'canvas';
   } else if (canvasRose && !flags.file) {
     nextTab = 'canvas';
   } else if (goalRose && !flags.file) {
@@ -86,7 +92,13 @@ export function evaluateSidebarAutoOpen(
 
   return {
     nextTab,
-    shouldOpen: fileTriggered || subAgentTriggered || webContextTriggered || canvasRose || goalRose,
+    shouldOpen:
+      fileTriggered ||
+      subAgentTriggered ||
+      webContextTriggered ||
+      canvasRequested ||
+      canvasRose ||
+      goalRose,
   };
 }
 
@@ -123,6 +135,7 @@ interface RightSidebarProps {
   hasSubAgentHistory?: boolean;
   messages?: Message[];
   forcedWebContextId?: string | null;
+  canvasRequestNonce?: number;
   onClearForcedWebContext?: () => void;
   isNewChat?: boolean;
 }
@@ -168,6 +181,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   hasSubAgentHistory = false,
   messages = [],
   forcedWebContextId,
+  canvasRequestNonce,
   onClearForcedWebContext,
   isNewChat = false,
 }) => {
@@ -307,7 +321,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // "resolved" signal (surfacesChatId / goalChatId stamped for the chat we're
   // viewing); a rise only counts if the flag was already resolved for this
   // chat while false.
-  const autoOpenRef = useRef({
+  const autoOpenRef = useRef<AutoOpenFlags>({
     chatId: currentChatId,
     file: !!fileToPreview,
     fileToPreview,
@@ -317,6 +331,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     viewingSubAgentTaskId,
     webContext: !!forcedWebContextId,
     forcedWebContextId,
+    canvasRequestNonce,
     goal: hasGoalContent,
     goalResolved: goalMatchesChat,
   });
@@ -333,6 +348,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       viewingSubAgentTaskId,
       webContext: !!forcedWebContextId,
       forcedWebContextId,
+      canvasRequestNonce,
       goal: hasGoalContent,
       goalResolved: goalMatchesChat,
     };
@@ -353,6 +369,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     canvasMatchesChat,
     viewingSubAgentTaskId,
     forcedWebContextId,
+    canvasRequestNonce,
     hasGoalContent,
     goalMatchesChat,
     isOpen,

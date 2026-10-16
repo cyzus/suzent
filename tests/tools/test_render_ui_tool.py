@@ -74,3 +74,21 @@ def test_render_ui_schema_allows_extra_root_fields():
 
     assert schema["additionalProperties"] is True
     assert "id" in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_render_ui_defaults_to_inline_and_stamps_rev():
+    queue: asyncio.Queue = asyncio.Queue()
+    ctx = SimpleNamespace(deps=SimpleNamespace(a2ui_queue=queue))
+
+    await RenderUITool().forward(
+        ctx, surface_id="first", component={"type": "text", "content": "a"}
+    )
+    await RenderUITool().forward(
+        ctx, surface_id="first", component={"type": "text", "content": "b"}
+    )
+
+    older, newer = queue.get_nowait(), queue.get_nowait()
+    assert older["target"] == "inline"
+    assert isinstance(older["rev"], int)
+    assert newer["rev"] >= older["rev"]

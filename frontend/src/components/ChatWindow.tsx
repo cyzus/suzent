@@ -29,6 +29,7 @@ import {
 import { useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
+import { InlineSurfaceProvider } from './a2ui/InlineSurfaceContext';
 import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
@@ -806,6 +807,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   >({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
+  // Bumped each time the user pops a chat surface out to the side panel.
+  const [canvasRequestNonce, setCanvasRequestNonce] = useState(0);
   const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
     composerDraft.mentions
   );
@@ -2988,6 +2991,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     [handleCanvasDispatch]
   );
 
+  const { setSurface: setCanvasSurface, setActiveSurface: setActiveCanvasSurface } = canvas;
+  const handleOpenSurfaceInCanvas = useCallback(
+    (surface: A2UISurface) => {
+      setCanvasSurface({ ...surface, target: 'canvas' }, currentChatId);
+      setActiveCanvasSurface(surface.id);
+      setCanvasRequestNonce((n) => n + 1);
+    },
+    [setCanvasSurface, setActiveCanvasSurface, currentChatId]
+  );
+
   // Handle maximize button from sidebar
   const handleMaximizeFile = (path: string, name: string) => {
     setViewingFile({ path, name });
@@ -3096,7 +3109,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   }
                 />
               ) : (
-                <>
+                <InlineSurfaceProvider openInCanvas={handleOpenSurfaceInCanvas}>
                   {safeMessages.length > 0 && (
                     <MessageListMemo
                       messages={visibleMessages}
@@ -3165,7 +3178,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       </div>
                     </div>
                   )}
-                </>
+                </InlineSurfaceProvider>
               )}
 
               {!configReady && <LoadingIndicator />}
@@ -3293,6 +3306,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         hasSubAgentHistory={transcriptHasSubAgentCall}
         messages={safeMessages}
         forcedWebContextId={forcedWebContextId}
+        canvasRequestNonce={canvasRequestNonce}
         onClearForcedWebContext={() => setForcedWebContextId(null)}
       />
 
