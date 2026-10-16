@@ -158,7 +158,7 @@ GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，�
 | 入口 | 传输方式 | 支持内容 | 配置 |
 |---|---|---|---|
 | **桌面应用** | 本地后端 | 完整界面、Canvas、记忆与技能面板 | `suzent start` |
-| **移动应用**（预览版） | 与桌面端配对 | 共享的对话 | [指南](docs/03-features/nodes.md#pair-your-phone) |
+| **移动应用**（预览版） | 与桌面端配对 | 共享的对话 | [指南](docs/03-features/mobile.md) |
 | **Telegram** | Bot API | 文本、图片、文件 | [指南](docs/05-chat-apps/telegram.md) |
 | **Slack** | Socket Mode（Events API） | 文本、文件 | [指南](docs/05-chat-apps/slack.md) |
 | **Discord** | Gateway | 文本、文件 | [指南](docs/05-chat-apps/discord.md) |
