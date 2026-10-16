@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Sub-agents that inherit the conversation now run on your current model, so the shared history is not processed again. A running sub-agent's timer, prompt and reminders now show correctly, and an empty sub-agent no longer sticks on \"Connecting\"."
+}
