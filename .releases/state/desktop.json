@@ -50,6 +50,7 @@
     ".releases/changes/mobile-sidebar-agents-schedules.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/native-notifications-only.json",
+    ".releases/changes/notification-audio-resume.json",
     ".releases/changes/persist-completed-stream-response.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/product-release-plans.json",
