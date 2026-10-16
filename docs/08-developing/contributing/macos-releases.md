@@ -24,7 +24,8 @@ Configure this variable in the same environment:
 
 `scripts/sign-macos-release.sh` imports the certificate into a temporary keychain,
 signs both executables, submits a ZIP to `notarytool`, requires `Accepted`, and
-checks each executable with Gatekeeper. It restores the keychain search list and
+checks each executable with `codesign -R="notarized" --check-notarization`.
+`spctl --assess` targets app bundles and is not suitable for these raw executables. It restores the keychain search list and
 removes the temporary credentials on exit. Missing credentials or verification
 failures prevent the build from publishing its assets.
 

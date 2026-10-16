@@ -81,5 +81,5 @@ if result.get('status') != 'Accepted':
 PY
 # Mach-O files cannot carry a stapled ticket; Gatekeeper retrieves it online.
 for binary in "$@"; do
-  spctl --assess --type execute --verbose=2 "$binary"
+  codesign --verify --strict --verbose=4 -R="notarized" --check-notarization "$binary"
 done

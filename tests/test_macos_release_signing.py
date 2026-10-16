@@ -40,7 +40,7 @@ def test_notarization_gate_and_cleanup(tmp_path: Path, status: str) -> None:
         "fi\n"
     )
     stub.chmod(0o755)
-    for name in ("security", "codesign", "ditto", "xcrun", "spctl"):
+    for name in ("security", "codesign", "ditto", "xcrun"):
         (commands / name).symlink_to(stub)
     binary = tmp_path / "suzent"
     binary.write_text("test executable")
@@ -61,7 +61,7 @@ def test_notarization_gate_and_cleanup(tmp_path: Path, status: str) -> None:
     )
     calls = log.read_text()
     assert (result.returncode == 0) == (status == "Accepted"), result.stderr
-    assert ("spctl --assess" in calls) == (status == "Accepted")
+    assert ("--check-notarization" in calls) == (status == "Accepted")
     assert "codesign --force --timestamp --options runtime" in calls
     assert "security delete-keychain" in calls
     assert not list(tmp_path.glob("suzent-macos-signing.*"))
