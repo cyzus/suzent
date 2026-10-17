@@ -21,6 +21,7 @@ import {
   getProviderInitials,
   normalizeProviderLogoUrl,
 } from '../../lib/providerVisuals';
+import { isImeComposing } from '../../lib/ime';
 
 const API_TYPES = [
   'openai',
@@ -953,6 +954,7 @@ export function ProvidersTab({
                                         }))
                                       }
                                       onKeyDown={(e) => {
+                                        if (isImeComposing(e)) return;
                                         if (e.key === 'Enter' && canConfirm) confirmEditing(field);
                                       }}
                                       placeholder={field.placeholder}
@@ -1061,6 +1063,7 @@ export function ProvidersTab({
                           placeholder={t('settings.providers.addModelIdPlaceholder')}
                           className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                           onKeyDown={(e) => {
+                            if (isImeComposing(e)) return;
                             if (e.key === 'Enter') {
                               onAddCustomModel(provider.id, e.currentTarget.value);
                               setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));

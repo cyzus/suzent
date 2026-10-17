@@ -19,6 +19,7 @@ import {
 } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
 import { InformationPopover } from './InformationPopover';
+import { isImeComposing } from '../lib/ime';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -96,6 +97,7 @@ function useStatusHoverPopover() {
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       if (event.key === 'Escape') {
         closePopover();
       }

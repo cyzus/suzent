@@ -6,6 +6,7 @@ import { BrutalButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
 import { useI18n } from '../../i18n';
 import { Skill } from '../../types/skills';
+import { isImeComposing } from '../../lib/ime';
 
 /** Strip the light markdown skill descriptions carry so rows stay single-line. */
 function plainDescription(description?: string): string {
@@ -37,6 +38,7 @@ export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
     if (!selectedSkill) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       if (event.key === 'Escape') {
         setSelectedSkill(null);
       }
