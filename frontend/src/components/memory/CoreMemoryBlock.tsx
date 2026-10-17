@@ -15,6 +15,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import type { CoreMemoryLabel } from '../../types/memory';
+import { isImeComposing } from '../../lib/ime';
 
 interface CoreMemoryBlockProps {
   label: CoreMemoryLabel;
@@ -120,6 +121,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposing(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       handleCancel();

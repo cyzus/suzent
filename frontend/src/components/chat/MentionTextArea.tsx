@@ -1,4 +1,5 @@
 import React from 'react';
+import { isImeComposing } from '../../lib/ime';
 
 /**
  * A contenteditable input that renders `@[path]` file mentions as atomic,
@@ -412,7 +413,7 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
         onKeyDown={(e) => {
           // Backspace onto a chip decomposes it to an editable `@name`
           // query (and reopens search) instead of deleting it whole.
-          if (e.key === 'Backspace' && !e.nativeEvent.isComposing && divRef.current) {
+          if (e.key === 'Backspace' && !isImeComposing(e) && divRef.current) {
             const chip = chipBeforeCollapsedCaret(divRef.current);
             if (chip) {
               e.preventDefault();

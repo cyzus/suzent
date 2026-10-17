@@ -14,6 +14,7 @@
 import React, { useCallback, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { sendSubAgentSteer, useSentSteers } from '../../hooks/useSubAgentSteer';
+import { isImeComposing } from '../../lib/ime';
 
 interface SubAgentSteerBoxProps {
   taskId: string;
@@ -62,6 +63,7 @@ export const SubAgentSteerBox: React.FC<SubAgentSteerBoxProps> = ({ taskId, canS
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 void send();

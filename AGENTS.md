@@ -49,6 +49,7 @@ Full documentation lives in `docs/`. Each numbered folder is a sidebar section o
 - TypeScript strict mode; always type props and return values
 - Follow existing component patterns in `frontend/src/components/`
 - Use `i18n` for all user-visible strings
+- Return early on `isImeComposing(e)` (`frontend/src/lib/ime.ts`) in any key handler that can fire while typing text, including document/window listeners: on macOS the Enter that confirms an IME candidate otherwise sends or submits
 
 ## Testing (`tests/`)
 
