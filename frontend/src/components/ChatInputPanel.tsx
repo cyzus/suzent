@@ -22,6 +22,7 @@ import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import { isImeComposing } from '../lib/ime';
 
 interface ChatInputPanelProps {
   input: string;
@@ -603,14 +604,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               }, 0);
             }}
             onKeyDown={(e) => {
-              // Always ignore Enter if IME composition is active to allow selecting characters
-              // Including e.keyCode === 229 for broad cross-browser compatibility
-              if (
-                e.key === 'Enter' &&
-                (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229)
-              ) {
-                return;
-              }
+              // Every key the IME consumes — Enter to commit, arrows and Escape
+              // in its candidate list — belongs to it, not to send or suggestions.
+              if (isComposingRef.current || isImeComposing(e)) return;
 
               // Ahead of mention and slash-command handling, which treat any
               // Enter as accept-and-send and would redirect the running turn.
@@ -704,7 +700,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 }
               }
 
-              if (ghost && !isComposingRef.current && !e.nativeEvent.isComposing) {
+              if (ghost) {
                 const noModifiers = !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
                 if (
                   noModifiers &&

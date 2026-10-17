@@ -32,6 +32,7 @@ import {
 } from './SettingsCard';
 import { relativeTime } from '../../lib/chatUtils';
 import { NetworkAccessCard } from './NetworkAccessCard';
+import { isImeComposing } from '../../lib/ime';
 
 const POLL_MS = 4000;
 
@@ -112,6 +113,7 @@ function AnswerPrompt({
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === 'Enter' && draft.trim()) onAnswer(draft.trim());
           }}
         />
@@ -444,6 +446,7 @@ export function MeshTab(): React.ReactElement {
                       disabled={busy === `send:${agent.agent_id}`}
                       onChange={(e) => setDelegateText(e.target.value)}
                       onKeyDown={(e) => {
+                        if (isImeComposing(e)) return;
                         if (e.key === 'Enter' && delegateText.trim()) {
                           handleDelegate(agent.agent_id);
                         }
@@ -481,6 +484,7 @@ export function MeshTab(): React.ReactElement {
               disabled={busy === 'add'}
               onChange={(e) => setAddUrl(e.target.value)}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
                 if (e.key === 'Enter' && addUrl.trim()) handleAdd();
               }}
             />

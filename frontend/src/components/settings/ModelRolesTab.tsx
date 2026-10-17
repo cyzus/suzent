@@ -9,6 +9,7 @@ import {
 } from '../../lib/inputSuggestion';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsPage } from './SettingsCard';
+import { isImeComposing } from '../../lib/ime';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -162,6 +163,7 @@ export function ModelDropdown({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
                 if (e.key === 'Enter' && trimmed && options.includes(trimmed))
                   handleSelect(trimmed);
                 if (e.key === 'Escape') {

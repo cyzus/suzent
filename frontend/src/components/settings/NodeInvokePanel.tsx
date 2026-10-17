@@ -7,6 +7,7 @@ import {
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsListAction } from './SettingsCard';
+import { isImeComposing } from '../../lib/ime';
 
 type InvokeFn = (
   command: string,
@@ -98,6 +99,7 @@ function InvokeForm({
               disabled={busy}
               onChange={(e) => setValues((v) => ({ ...v, [`${command}:${name}`]: e.target.value }))}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
                 if (e.key === 'Enter') run();
               }}
             />

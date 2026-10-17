@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
+import { isImeComposing } from '../lib/ime';
 
 interface ChatRowMenuProps {
   /** Screen-space anchor: usually the right-click point or the dots-button rect. */
@@ -89,6 +90,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
       else onClose();
     };
     const onKey = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === 'Escape') {
         if (view === 'move') setView('root');
         else onClose();
