@@ -283,8 +283,18 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         get_tool_function,
         get_tool_session_guidance,
     )
+    from suzent.tools.names import BUILTIN_TOOL_NAMES, migrate_shell_tool_names
 
-    tool_names = expand_tool_dependencies(tool_names)
+    # Denied tools are dropped here, kept out of the ToolSearch pool below, and
+    # filtered again per step by ToolDenyCapability, which also reaches MCP tools.
+    denied_tools = frozenset(
+        migrate_shell_tool_names(list(config.get("denied_tools") or []))
+    ) - set(BUILTIN_TOOL_NAMES)
+    tool_names = [
+        name
+        for name in expand_tool_dependencies(tool_names)
+        if name not in denied_tools
+    ]
     capability_groups = group_tools_by_capability(tool_names)
     capability_tool_names = {
         tool_name for names in capability_groups.values() for tool_name in names
@@ -315,13 +325,17 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # All remaining deferrable tools are registered once with defer_loading=True.
     # Pydantic AI exposes its native provider-side search where supported and
     # transparently falls back to a local keyword search elsewhere.
-    tool_functions.extend(get_deferred_tool_functions(enabled_tool_names))
+    tool_functions.extend(
+        get_deferred_tool_functions(enabled_tool_names | denied_tools)
+    )
 
     # Auto-equip SocialMessageTool
     social_ctx = config.get("social_context")
     if (
-        social_ctx or "SocialMessageTool" in tool_names
-    ) and "SocialMessageTool" not in capability_tool_names:
+        (social_ctx or "SocialMessageTool" in tool_names)
+        and "SocialMessageTool" not in capability_tool_names
+        and "SocialMessageTool" not in denied_tools
+    ):
         fn = get_tool_function("SocialMessageTool")
         if fn and fn not in tool_functions:
             tool_functions.append(fn)
@@ -358,7 +372,11 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         RepositoryContextRoots,
         build_repo_context_capabilities,
     )
-    from suzent.tools.capability import RegisteredToolCapability, ToolErrorCapability
+    from suzent.tools.capability import (
+        RegisteredToolCapability,
+        ToolDenyCapability,
+        ToolErrorCapability,
+    )
 
     from suzent.core.system_reminder import (
         make_tool_output_sanitizer_history_processor,
@@ -373,6 +391,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         ProcessHistory(make_tool_output_sanitizer_history_processor()),
         ProcessHistory(make_compaction_history_processor(model_id=model_id)),
         ToolSearch(),
+        ToolDenyCapability(denied_names=denied_tools),
     ]
     project_context_dir = config.get("_project_context_dir")
     working_context_dir = config.get("_working_context_dir")
