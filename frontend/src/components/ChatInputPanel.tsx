@@ -21,6 +21,7 @@ import { ghostRemainder } from '../lib/inputSuggestion';
 import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
+import { detectDesktopPlatform } from '../lib/titleBarPlatform';
 
 interface ChatInputPanelProps {
   input: string;
@@ -32,6 +33,8 @@ interface ChatInputPanelProps {
   isUploading?: boolean;
   fileError?: string | null;
   send: () => void;
+  /** Cmd/Ctrl+Enter: hold the message until the running turn ends. */
+  queue?: () => void;
   config: ChatConfig;
   setConfig: React.Dispatch<React.SetStateAction<ChatConfig>>;
   backendConfig: ConfigOptions | null;
@@ -121,6 +124,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   isUploading = false,
   fileError = null,
   send,
+  queue,
   config,
   setConfig,
   backendConfig,
@@ -141,6 +145,13 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 }) => {
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
+  const queueKey = React.useMemo(
+    () =>
+      detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos'
+        ? '⌘+Enter'
+        : 'Ctrl+Enter',
+    []
+  );
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
   const [mentionSuggestions, setMentionSuggestions] = React.useState<FileMentionSuggestion[]>([]);
   const [selectedMentionSuggestion, setSelectedMentionSuggestion] = React.useState(0);
@@ -580,7 +591,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 : !configReady
                   ? t('chatInput.placeholderLoading').toUpperCase()
                   : streamingForCurrentChat
-                    ? t('chatInput.placeholderRedirect')
+                    ? t('chatInput.placeholderRedirect', { queueKey })
                     : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
@@ -705,7 +716,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 if (configReady && input.trim()) {
-                  send();
+                  if (queue && (e.metaKey || e.ctrlKey)) queue();
+                  else send();
                 }
               }
             }}

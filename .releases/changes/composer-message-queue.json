@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Press ⌘/Ctrl+Enter while the agent is working to queue a message for when the turn ends; queued messages can be cancelled or sent right away as a redirect."
+}
