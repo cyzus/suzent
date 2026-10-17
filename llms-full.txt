@@ -2314,6 +2314,16 @@ didn't. A tool the agent turns on still asks for approval as usual.
 Commands and **Social Message** are the exception: when you switch them off,
 they show **Off** and the agent can't turn them back on.
 
+### Denying a tool
+
+Switching a tool off only keeps it out of the way. To make sure a chat never
+uses a tool, press the **⊘** button at the end of its row. The tool shows
+**Denied**: the agent can't use it, can't find it by searching, and neither
+can any helper agent it starts. Press **⊘** again, or tick the tool, to allow
+it again. The always-on tools can't be denied. A denial applies to that chat
+only, and while a chat has any denied tools it can't hand work to an
+[external ACP agent](https://suzent.com/docs/features/tools/sub-agents), whose own tools Suzent can't restrict.
+
 
 ---
 
@@ -6279,6 +6289,12 @@ whole category, while every tool remains independently selectable.
 Not all tools need to be loaded at session start. The agent can call `tool_search` mid-conversation to activate additional tools on demand. Activated tools are injected into the agent's toolset before each LLM step via a `@agent.toolset` with `per_run_step=True`, and persist for the rest of the session.
 
 Tools opt out of deferral by setting `deferrable = False` on their class (e.g. `MemorySearchTool`, `SkillTool`, `SocialMessageTool` — always-on internals that the agent shouldn't re-activate).
+
+### Denied tools
+
+Unchecking a tool only demotes it to the search pool. A chat's `denied_tools` config (registry class names, written by the picker's deny button) removes a tool outright. `create_agent` drops denied names from the equipped list and the deferred pool, and adds `ToolDenyCapability` (`tools/capability.py`), whose `prepare_tools` hook filters every function tool definition each step. pydantic-ai wraps `ToolSearch` outside `prepare_tools`, so a definition removed there is not offered, not executable and not in the search corpus, and the hook sees MCP tools as well as ours.
+
+The same hook also honours `always_deny` in the session `tool_approval_policy`, which previously had no effect on an equipped tool that needs no approval. Names are matched by class name, runtime name and legacy shell aliases. Builtins are never denied. Sub-agents inherit their parent's `denied_tools`, and the list is persisted on the child chat so a resumed turn cannot regain the tool. An ACP sub-agent brings its own tools, which this list cannot reach, so `_run_subagent` refuses to start one while the parent has any denied tools. The list is per chat: the frontend keeps it out of the settings a new chat inherits.
 
 ### AgentDeps
 
