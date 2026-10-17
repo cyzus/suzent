@@ -21,7 +21,16 @@ interface SkillsViewProps {
   chatId?: string | null;
 }
 
-const SOURCE_ORDER = ['official', 'user', 'external', 'plugin', 'repository', 'working', 'home', 'custom'];
+const SOURCE_ORDER = [
+  'official',
+  'user',
+  'external',
+  'plugin',
+  'repository',
+  'working',
+  'home',
+  'custom',
+];
 
 export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
   const { skills, loading, error, loadSkills, reload, toggle } = useSkills();
