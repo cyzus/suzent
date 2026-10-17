@@ -1338,7 +1338,8 @@ class ChatProcessor:
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
         )
 
-        # 7. Pre-send tool result trimming (in-memory only, never persisted)
+        # 7. Pre-send tool result trimming. The run returns this trimmed history and
+        # it is persisted, so the trimmer keeps it stable from turn to turn.
         from suzent.core.context_compressor import (
             ToolResultTrimmer,
             estimate_tokens,

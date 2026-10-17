@@ -110,6 +110,11 @@ export function ToolsPanel(): React.ReactElement | null {
             removeActivatedTool(tool);
             deactivateTool(currentChatId || '', tool);
           }}
+          denied={config.denied_tools ?? []}
+          onDeniedChange={(tools, denied_tools) => {
+            update({ tools, denied_tools });
+            for (const tool of denied_tools) removeActivatedTool(tool);
+          }}
           compact
         />
 

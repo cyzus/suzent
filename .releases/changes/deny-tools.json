@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching."
+}

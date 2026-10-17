@@ -9,6 +9,8 @@ type CapabilityToolPickerProps = {
   activatedByAI?: Set<string>;
   onChange: (tools: string[]) => void;
   onDeactivate?: (tool: string) => void;
+  denied?: string[];
+  onDeniedChange?: (selected: string[], denied: string[]) => void;
   emptyMessage?: string;
   compact?: boolean;
 };
@@ -52,6 +54,23 @@ export function toggleCapabilitySelection(
   return [...new Set([...next, ...tools.filter((tool) => locked.has(tool))])];
 }
 
+/** Flip a tool between denied and searchable; a builtin can never be denied. */
+export function toggleToolDenied(
+  selected: string[],
+  denied: string[],
+  tool: string,
+  locked: Set<string> = new Set()
+): { selected: string[]; denied: string[] } {
+  if (locked.has(tool)) return { selected, denied };
+  if (denied.includes(tool)) {
+    return { selected, denied: denied.filter((value) => value !== tool) };
+  }
+  return {
+    selected: selected.filter((value) => value !== tool),
+    denied: [...denied, tool],
+  };
+}
+
 export function getLockedTools(config: ConfigOptions): Set<string> {
   const fromList = Array.isArray(config.builtinTools) ? config.builtinTools : [];
   const fromCatalog = (config.toolCapabilities ?? []).flatMap((capability) =>
@@ -75,6 +94,8 @@ export function CapabilityToolPicker({
   activatedByAI = new Set<string>(),
   onChange,
   onDeactivate,
+  denied = [],
+  onDeniedChange,
   emptyMessage,
   compact = false,
 }: CapabilityToolPickerProps): React.ReactElement {
@@ -92,8 +113,17 @@ export function CapabilityToolPicker({
     );
   }
 
+  const deniedSet = new Set(denied.filter((tool) => !locked.has(tool)));
+
   const toggleTool = (tool: string): void => {
     if (locked.has(tool)) return;
+    if (deniedSet.has(tool) && onDeniedChange) {
+      onDeniedChange(
+        [...selected, tool],
+        denied.filter((value) => value !== tool)
+      );
+      return;
+    }
     onChange(toggleToolSelection(selected, tool, locked));
   };
 
@@ -101,10 +131,17 @@ export function CapabilityToolPicker({
     onChange(toggleCapabilitySelection(selected, tools, locked));
   };
 
+  const toggleDenied = (tool: string): void => {
+    if (!onDeniedChange) return;
+    const next = toggleToolDenied(selected, denied, tool, locked);
+    onDeniedChange(next.selected, next.denied);
+  };
+
   return (
     <div className="flex flex-col bg-neutral-50 dark:bg-zinc-900">
       {capabilities.map((capability) => {
-        const toolIds = capability.tools.map((tool) => tool.id);
+        // The header never re-enables a denied tool; that takes the tool's own button.
+        const toolIds = capability.tools.map((tool) => tool.id).filter((id) => !deniedSet.has(id));
         const allSelected = toolIds.every((tool) => selected.includes(tool));
         const someSelected = toolIds.some((tool) => selected.includes(tool));
         const capabilityName = translated(
@@ -159,11 +196,12 @@ export function CapabilityToolPicker({
                 // server equips it either way, and a cleared checkbox would be a
                 // lie about what the agent can do.
                 const active = selected.includes(tool.id) || isLocked;
-                const aiActive = activatedByAI.has(tool.id) && !active;
+                const isDenied = !isLocked && deniedSet.has(tool.id);
+                const aiActive = activatedByAI.has(tool.id) && !active && !isDenied;
                 // An empty checkbox means two different things. Most tools stay
                 // in the ToolSearch pool and the agent can load them mid-task;
                 // a non-deferrable one is the only kind unchecking truly denies.
-                const isOff = !active && !aiActive && tool.deferrable === false;
+                const isOff = !active && !aiActive && !isDenied && tool.deferrable === false;
                 const toolName = translated(`config.toolCatalog.tools.${tool.id}.name`, tool.name);
                 const toolDescription = translated(
                   `config.toolCatalog.tools.${tool.id}.description`,
@@ -172,7 +210,7 @@ export function CapabilityToolPicker({
                 return (
                   <div
                     key={tool.id}
-                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-neutral-300 text-brutal-black dark:bg-zinc-700 dark:text-white' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-neutral-300 text-brutal-black dark:bg-zinc-700 dark:text-white' : isDenied ? 'border-brutal-black bg-neutral-100 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
                   >
                     <button
                       type="button"
@@ -201,7 +239,9 @@ export function CapabilityToolPicker({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] font-black uppercase leading-tight">
+                          <span
+                            className={`text-[11px] font-black uppercase leading-tight ${isDenied ? 'line-through' : ''}`}
+                          >
                             {toolName}
                           </span>
                           {isLocked && (
@@ -218,6 +258,14 @@ export function CapabilityToolPicker({
                                 <path d="M8 11V7a4 4 0 0 1 8 0v4" />
                               </svg>
                               {t('config.toolCatalog.builtin')}
+                            </span>
+                          )}
+                          {isDenied && (
+                            <span
+                              title={t('config.toolCatalog.deniedHint')}
+                              className="border border-brutal-red px-1 py-px text-[8px] font-bold uppercase text-brutal-red"
+                            >
+                              {t('config.toolCatalog.denied')}
                             </span>
                           )}
                           {isOff && (
@@ -246,6 +294,33 @@ export function CapabilityToolPicker({
                         )}
                       </span>
                     </button>
+                    {onDeniedChange && !isLocked && (
+                      <button
+                        type="button"
+                        title={t(
+                          isDenied ? 'config.toolCatalog.allowHint' : 'config.toolCatalog.denyHint'
+                        )}
+                        aria-label={t(
+                          isDenied ? 'config.toolCatalog.allowTool' : 'config.toolCatalog.denyTool',
+                          { name: toolName }
+                        )}
+                        aria-pressed={isDenied}
+                        onClick={() => toggleDenied(tool.id)}
+                        className={`flex w-8 flex-shrink-0 items-center justify-center border-l-2 border-brutal-black ${isDenied ? 'bg-brutal-red text-white' : 'opacity-60 hover:bg-black/10 hover:opacity-100'}`}
+                      >
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={3}
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
+                        </svg>
+                      </button>
+                    )}
                     {aiActive && onDeactivate && (
                       <button
                         type="button"

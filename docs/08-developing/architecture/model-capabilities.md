@@ -172,3 +172,53 @@ built-in cards after the registry reloads. The ChatGPT Subscription provider
 (`chatgpt/...` model IDs) authenticates through LiteLLM's ChatGPT device-code
 flow; its tokens live in Suzent's local config directory and are never returned
 by the HTTP status endpoint.
+
+## Prompt caching
+
+Long agent runs resend the same prefix (tools, instructions, history) on every
+request, so cache hits decide most of the input cost. Providers differ in what
+the client has to do:
+
+| Provider | How caching is enabled | Where Suzent sets it |
+|---|---|---|
+| Gemini, DeepSeek, local servers | Automatic prefix caching on the server | Nothing to send |
+| Anthropic | Only when the request marks `cache_control` breakpoints | `anthropic_cache_settings()` in `core/model_factory.py`: tool and instruction breakpoints plus top-level automatic caching. Endpoints with a custom `base_url` get a last-message breakpoint instead, since compatible gateways may not implement automatic caching |
+| OpenAI API | Automatic, routed by `prompt_cache_key` | `PromptCacheRoutingCapability` in `core/prompt_cache.py` sets the key to the chat id on every request |
+| ChatGPT Subscription | Automatic, routed by the `session_id` header | Same capability, as a `session_id` header carrying the chat id |
+
+The routing key has to be the chat being served, not a value fixed on the
+model: agents are cached and shared across chats. Without it, consecutive
+requests of one chat land on machines that never saw its prefix, and hits swing
+between almost all and almost none on a context that only grew.
+
+`cost_ledger` records one row per model request with `cache_read_tokens` and
+`cache_write_tokens`, which is the place to check hit rates per model or chat.
+
+The prefix is ordered tool definitions, then the system prompt, then the
+history. Anything that changes early in that order makes the provider re-read
+everything after it at full price, so the runtime keeps the prefix
+byte-identical from one request to the next:
+
+- **Core memory is pinned per chat.** The system prompt carries the core-memory
+  version the chat started with (`memory/core_memory_pin.py`). Later edits to
+  persona, user, `MEMORY.md` or the project's `context.md` reach the model once,
+  as a diff in a system reminder on the next turn, which lands after the cached
+  history. A diff counts as seen only if it survives the reminder budget;
+  otherwise it is offered again next turn. The pin follows the live files only
+  when that costs nothing extra: a chat with no reply yet, after compaction,
+  after a restart, or when the diff is larger than `MAX_DIFF_CHARS`. Pins are keyed by chat and user and never held on
+  the shared agent instance.
+- **Tool-result trimming moves in steps.** `ToolResultTrimmer` trims results
+  older than a boundary that advances `TRIM_STEP` messages at a time, and
+  trimming an already trimmed result is a no-op. The trimmed history is what the
+  run persists, so most turns resend the earlier prefix unchanged. A hard clear
+  keeps the exact cutoff: it runs at the compaction threshold, where freeing
+  space matters more than the cache.
+- **Discovered tools depend on the provider profile.** With the local
+  `search_tools` fallback, pydantic-ai adds a discovered tool's definition to the
+  `tools` array on providers whose profile has no `tool_addition_mode` (Gemini,
+  Chat Completions, OpenAI-compatible endpoints), which invalidates the whole
+  prefix once per discovery. First-party OpenAI Responses, including ChatGPT,
+  uses `with_definitions` and appends the definition after the history instead.
+  Closing the gap for the other providers needs an upstream wire format, or
+  sending every deferred schema up front.
