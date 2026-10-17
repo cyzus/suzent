@@ -1,9 +1,10 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "consumed": [
     ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-compact-chat-controls.json",
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/ios-scroll-invalidation.json",
     ".releases/changes/mobile-attachments.json",
     ".releases/changes/mobile-charcoal-dark-mode.json",
     ".releases/changes/mobile-chat-management.json",
