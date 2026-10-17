@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show conversation tasks as an ordered checklist and open task results through their conversations.
 - Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching.
 - Clicking a Suzent system notification now brings the app window back to the front.
+- Typing with a Chinese, Japanese or Korean input method no longer sends, submits or closes things when Enter or Escape is pressed to pick or dismiss a candidate.
 - Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated.
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
 - Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
