@@ -1,13 +1,35 @@
 """Shared pytest fixtures and configuration."""
 
 import os
+import shutil
 import tempfile
 import uuid
 
 import pytest
 from cryptography.fernet import Fernet
 
-from suzent.database import ChatDatabase
+# suzent.config resolves DATA_DIR once at import, and test modules import the app
+# during collection, before any fixture runs. Without this, get_database() and
+# config writes land in the real ~/.suzent (e.g. test volumes like C:/data showing
+# up in the desktop app). The marker keeps the dir non-empty so the legacy
+# repo-local .suzent migration does not copy into it.
+_session_data_dir: str | None = None
+if "SUZENT_DATA_DIR" not in os.environ:
+    _session_data_dir = tempfile.mkdtemp(prefix="suzent_test_data_")
+    open(os.path.join(_session_data_dir, ".pytest"), "w").close()
+    os.environ["SUZENT_DATA_DIR"] = _session_data_dir
+
+from suzent.database import ChatDatabase  # noqa: E402
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if _session_data_dir is None:
+        return
+    import suzent.database as database
+
+    if database._db_instance is not None:
+        database._db_instance.engine.dispose()
+    shutil.rmtree(_session_data_dir, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
