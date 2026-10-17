@@ -1,4 +1,10 @@
 export const zhCN = {
+  modelResponseWaiting: '正在等待模型响应，你可以随时停止。',
+  modelResponseSlow: '模型响应较慢，你可以停止，或允许等待更长时间。',
+  modelWaitExtended: '已延长等待时间，你可以随时停止。',
+  modelWaitContinue: '继续等待',
+  modelWaitExtending: '正在延长等待…',
+  modelWaitExtensionFailed: '未能延长等待，当前等待可能已经结束，你可以重试。',
   contextPanel: {
     usage: '上下文用量',
     percentUsed: '已使用 {percent}%',

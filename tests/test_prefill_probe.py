@@ -178,7 +178,7 @@ async def test_the_idle_wait_also_gets_the_probe(monkeypatch) -> None:
     """The wait after a tool result is another prefill, not an idle model."""
     monkeypatch.setattr(streaming, "_PREFILL_PROBE_INTERVAL_SECONDS", 0.01)
     monkeypatch.setattr(streaming, "_PREFILL_STALL_LIMIT_SECONDS", 0.05)
-    monkeypatch.setattr(streaming, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(streaming, "_stream_idle_timeout", lambda _: 0.001)
     progress = iter(range(1, 10_000))
 
     async def advancing():
@@ -187,7 +187,7 @@ async def test_the_idle_wait_also_gets_the_probe(monkeypatch) -> None:
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(
             _first_event(
-                _NeverArrives(), streaming._STREAM_IDLE_TIMEOUT_SECONDS, advancing
+                _NeverArrives(), streaming._stream_idle_timeout(None), advancing
             ),
             timeout=0.4,
         )

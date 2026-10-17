@@ -54,6 +54,7 @@ from suzent.routes.chat_routes import (
     steer_chat_send,
     set_permission_mode,
     stop_chat,
+    extend_model_wait,
     update_chat,
     undo_chat_files,
 )
@@ -1157,6 +1158,7 @@ app = Starlette(
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
+        Route("/chat/extend-wait", extend_model_wait, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),

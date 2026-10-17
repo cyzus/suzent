@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "crawl4ai>=0.7.3",
-    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.18,<3",
+    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.56,<3",
     "litellm",
     "starlette>=1.0.0,<2.0.0",
     "uvicorn",

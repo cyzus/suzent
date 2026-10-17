@@ -1,4 +1,10 @@
 export const en = {
+  modelResponseWaiting: 'Waiting for the model to respond. You can stop at any time.',
+  modelResponseSlow: 'The model is taking longer than usual. You can stop or allow more time.',
+  modelWaitExtended: 'More waiting time allowed. You can stop at any time.',
+  modelWaitContinue: 'Continue waiting',
+  modelWaitExtending: 'Allowing more time…',
+  modelWaitExtensionFailed: 'Could not extend the wait. It may have ended; you can try again.',
   contextPanel: {
     usage: 'Context usage',
     percentUsed: '{percent}% used',

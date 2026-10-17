@@ -31,6 +31,7 @@ class WriteFileTool(Tool):
 
     name = "WriteFileTool"
     tool_name = "write_file"
+    model_excluded_metadata = frozenset({"old_content"})
     group = ToolGroup.FILESYSTEM
     requires_approval = True
 

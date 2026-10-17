@@ -1,3 +1,5 @@
+import { ModelWaitNotice } from './chat/ModelWaitNotice';
+import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -1030,6 +1032,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // the original start instead of resetting when the transient message remounts.
   const streamStartByChatRef = useRef<Map<string, number>>(new Map());
   const [streamDisplayRole, setStreamDisplayRole] = useState<Message['role']>('assistant');
+  const [modelResponseWaiting, setModelResponseWaiting] = useState<ModelWaitState | null>(null);
+  useEffect(() => {
+    setModelResponseWaiting(null);
+  }, [currentChatId, isStreaming]);
   const streamDisplayRoleRef = useRef<Message['role']>('assistant');
 
   const setCurrentStreamDisplayRole = useCallback((role: Message['role']) => {
@@ -1219,6 +1225,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       canvas.markDeferred(surfaceId);
     },
     onCustomEvent: (name, value) => {
+      if (name === 'model_response_wait') {
+        setModelResponseWaiting(parseModelWait(value));
+        return;
+      }
       if (name === 'stream_display_role') {
         const role = (value as { role?: Message['role'] })?.role;
         if (role === 'assistant' || role === 'notice') {
@@ -3148,6 +3158,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                       fallbackModel={fallbackModelSignature}
                     />
+                  )}
+                  {streamingForCurrentChat && modelResponseWaiting && (
+                    <ModelWaitNotice key={modelResponseWaiting.waitId} wait={modelResponseWaiting} onExtend={async (waitId) => {
+                      const runId = getStreamingRunId();
+                      if (!currentChatId || !runId) return false;
+                      return requestModelWaitExtension(getApiBase(), currentChatId, runId, waitId);
+                    }} />
                   )}
                   {/* Streaming/transient message from AG-UI */}
                   {showTransientAssistant && (

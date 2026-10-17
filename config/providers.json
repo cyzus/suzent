@@ -50,6 +50,7 @@
     {
       "id": "gemini",
       "label": "Google Gemini",
+      "stream_idle_timeout_seconds": 300,
       "logo_url": "https://cdn.simpleicons.org/googlegemini",
       "api_type": "google",
       "aliases": ["google"],
