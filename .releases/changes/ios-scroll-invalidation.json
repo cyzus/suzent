@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Reduce iOS chat scrolling work by keeping scroll measurements out of SwiftUI rendering updates and avoiding repeated message-history scans."
+}

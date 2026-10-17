@@ -2,11 +2,16 @@
  * Notification sounds.
  *
  * Short tonal cues (`chime`, `ping`, `bell`, `success`) are synthesized with a
- * few Web Audio oscillators, while `resonance` plays the sampled "The Board"
- * audio clip from `/sounds/resonance.mp3` decoded into a cached AudioBuffer.
+ * few Web Audio oscillators, while `resonance` plays a voiced "Suzent. <state>"
+ * clip from `/sounds/resonance/<locale>/<cue>.mp3`, decoded into a cached
+ * AudioBuffer, so the sound itself tells done, approval, failure and work apart.
  * Works in the desktop shell and in a plain browser.
  */
+import { getInitialLocale } from '../i18n';
 import type { NotificationSound } from './notificationPreferences';
+
+/** What a notification is announcing; only `resonance` voices it. */
+export type NotificationCue = 'ready' | 'approval' | 'failed' | 'working';
 
 interface Note {
   /** Frequency in Hz. */
@@ -41,7 +46,9 @@ const SOUNDS: Record<SynthesizedSound, Note[]> = {
   ],
 };
 
-const RESONANCE_SAMPLE_URL = '/sounds/resonance.mp3?v=7';
+function resonanceSampleUrl(cue: NotificationCue): string {
+  return `/sounds/resonance/${getInitialLocale()}/${cue}.mp3?v=1`;
+}
 
 let context: AudioContext | null = null;
 const bufferCache = new Map<string, Promise<AudioBuffer | null>>();
@@ -203,7 +210,10 @@ function isSynthesizedSound(sound: Exclude<NotificationSound, 'none'>): sound is
 }
 
 /** Play a notification sound; `none` and any failure are silent no-ops. */
-export function playNotificationSound(sound: NotificationSound): void {
+export function playNotificationSound(
+  sound: NotificationSound,
+  cue: NotificationCue = 'ready'
+): void {
   const generation = ++playbackGeneration;
   if (sound === 'none') {
     if (stopActiveSample) {
@@ -213,7 +223,7 @@ export function playNotificationSound(sound: NotificationSound): void {
     return;
   }
   if (!isSynthesizedSound(sound)) {
-    playSampledSound(RESONANCE_SAMPLE_URL, generation);
+    playSampledSound(resonanceSampleUrl(cue), generation);
     return;
   }
   try {

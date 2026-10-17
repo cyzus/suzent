@@ -1265,6 +1265,14 @@ private struct ChatContentFrameKey: PreferenceKey {
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
 
+// Scroll measurements drive imperative scrolling, not rendered content. Keeping
+// them unobserved avoids rebuilding the message list on every scroll frame.
+private final class ChatScrollTracking {
+    var following = true
+    var dragging = false
+    var contentFrame = CGRect.zero
+}
+
 struct FollowingChatScrollView<Content: View>: View {
     let openedVersion: Int
     let sentVersion: Int
@@ -1272,9 +1280,7 @@ struct FollowingChatScrollView<Content: View>: View {
     let dismissKeyboard: () -> Void
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var following = true
-    @State private var dragging = false
-    @State private var contentFrame = CGRect.zero
+    @State private var tracking = ChatScrollTracking()
 
     var body: some View {
         GeometryReader { viewport in
@@ -1293,35 +1299,35 @@ struct FollowingChatScrollView<Content: View>: View {
                 .simultaneousGesture(TapGesture().onEnded(dismissKeyboard))
                 .simultaneousGesture(DragGesture(minimumDistance: 4)
                     .onChanged { _ in
-                        dragging = true
-                        following = false
+                        tracking.dragging = true
+                        tracking.following = false
                     }
                     .onEnded { _ in
-                        dragging = false
-                        following = contentFrame.maxY <= viewport.size.height + 2
+                        tracking.dragging = false
+                        tracking.following = tracking.contentFrame.maxY <= viewport.size.height + 2
                     })
                 .onPreferenceChange(ChatContentFrameKey.self) { frame in
-                    let heightChanged = abs(frame.height - contentFrame.height) > 0.5
-                    contentFrame = frame
-                    if !following && !dragging && frame.maxY <= viewport.size.height + 2 {
-                        following = true
+                    let heightChanged = abs(frame.height - tracking.contentFrame.height) > 0.5
+                    tracking.contentFrame = frame
+                    if !tracking.following && !tracking.dragging && frame.maxY <= viewport.size.height + 2 {
+                        tracking.following = true
                     }
                     // Scroll only after layout adds height, never for each received token.
-                    if heightChanged && following && !dragging && startsAtBottom {
+                    if heightChanged && tracking.following && !tracking.dragging && startsAtBottom {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
                             reader.scrollTo("bottom", anchor: .bottom)
                         }
                     }
                 }
                 .onChange(of: viewport.size.height) { _, _ in
-                    if following && !dragging && startsAtBottom { reader.scrollTo("bottom", anchor: .bottom) }
+                    if tracking.following && !tracking.dragging && startsAtBottom { reader.scrollTo("bottom", anchor: .bottom) }
                 }
                 .onChange(of: openedVersion) { _, _ in
-                    following = true
+                    tracking.following = true
                     reader.scrollTo("bottom", anchor: .bottom)
                 }
                 .onChange(of: sentVersion) { _, _ in
-                    following = true
+                    tracking.following = true
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
                         reader.scrollTo("bottom", anchor: .bottom)
                     }
