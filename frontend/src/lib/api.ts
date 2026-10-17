@@ -288,10 +288,6 @@ export async function getChatPermissionState(chatId: string): Promise<ChatPermis
   return response.json();
 }
 
-// Legacy constant for backward compatibility - but callers should prefer getApiBase()
-// Legacy constant removed - callers must use getApiBase() to ensure dynamic port resolution
-// export const API_BASE = getApiBase();
-
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
@@ -362,20 +358,6 @@ async function postOk(path: string, body: Record<string, unknown>): Promise<bool
   } catch {
     return false;
   }
-}
-
-export async function approveTool(
-  chatId: string,
-  requestId: string,
-  approved: boolean,
-  remember?: 'session' | 'global' | null
-): Promise<boolean> {
-  return postOk('/chat/approve-tool', {
-    chat_id: chatId,
-    request_id: requestId,
-    approved,
-    remember: remember || null,
-  });
 }
 
 export async function deactivateTool(chatId: string, toolName: string): Promise<boolean> {

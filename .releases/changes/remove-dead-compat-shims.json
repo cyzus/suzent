@@ -1,0 +1,7 @@
+{
+  "products": {
+    "desktop": "none"
+  },
+  "summary": "Remove dead compatibility shims, an unused approval endpoint, and legacy leftovers.",
+  "reason": "Nothing called the removed code; no shipped behavior changes."
+}

@@ -49,7 +49,6 @@ def format_core_memory_section(
     sandbox_enabled: bool = True,
     chat_id: Optional[str] = None,
     shared_path: Optional[str] = None,
-    mount_skills: Optional[str] = None,
     mount_notebook: Optional[str] = None,
     project_context_path: Optional[str] = None,
     notebook_skill_available: bool = True,
@@ -62,7 +61,6 @@ def format_core_memory_section(
         sandbox_enabled: Whether sandbox mode is active
         chat_id: Retained for backwards-compatible callers.
         shared_path: Host path for /shared (non-sandbox mode only)
-        mount_skills: Deprecated; skill locations come from the active skill catalog.
         mount_notebook: Host path for /mnt/notebook (non-sandbox mode only)
         project_context_path: Visible path to the project-scoped context.md file.
 
