@@ -190,29 +190,3 @@ def _restore_v3(raw: dict) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
         return None
-
-
-# ─── Backward-compatible shims ─────────────────────────────────────────
-# These are kept for callers that haven't been updated yet.
-
-
-def serialize_agent(agent) -> Optional[bytes]:
-    """Legacy shim: serialize from an agent that has ``_last_messages``."""
-    messages = getattr(agent, "_last_messages", None)
-    if not messages:
-        return None
-
-    model_id = getattr(agent, "_model_id", None)
-    tool_names = getattr(agent, "_tool_names", [])
-    return serialize_state(messages, model_id=model_id, tool_names=tool_names)
-
-
-def deserialize_agent(
-    agent_data: bytes, config: Dict[str, Any], create_agent_fn=None
-) -> None:
-    """Legacy shim: returns None — pydantic-ai agents don't need to be
-    'restored' since message history is passed at run time.
-
-    Callers should use ``deserialize_state()`` + ``message_history=`` instead.
-    """
-    return None
