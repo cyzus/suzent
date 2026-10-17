@@ -447,7 +447,14 @@ export const en = {
       off: 'Off',
       offHint: 'Turned off — the agent cannot use this one, and cannot find it by searching.',
       searchableNote:
-        'Unchecked tools are not loaded up front, but the agent can still find and load most of them mid-task. Ones marked OFF are the exception.',
+        'Unchecked tools are not loaded up front, but the agent can still find and load most of them mid-task. Ones marked OFF are the exception. Use the ⊘ button to deny a tool outright.',
+      denied: 'Denied',
+      deniedHint:
+        'Denied — the agent cannot use this tool or find it by searching, and neither can its sub-agents.',
+      denyHint: 'Deny this tool for this chat',
+      allowHint: 'Allow this tool again',
+      denyTool: 'Deny {name}',
+      allowTool: 'Allow {name} again',
       deactivate: 'Deactivate',
       deactivateTool: 'Deactivate {name}',
       capabilityAria: '{name} capability',
