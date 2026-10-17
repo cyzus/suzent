@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "minor" },
+  "summary": "Render inline and display LaTeX formulas in chat, including dollar and backslash delimiters."
+}
