@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { isImeComposing } from '../lib/ime';
 
 interface FullscreenOverlayProps {
   open: boolean;
@@ -34,6 +35,7 @@ export const FullscreenOverlay: React.FC<FullscreenOverlayProps> = ({
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (closeOnEscape && e.key === 'Escape') {
         onClose?.();
       }

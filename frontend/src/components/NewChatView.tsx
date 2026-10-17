@@ -6,6 +6,7 @@ import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
+import { isImeComposing } from '../lib/ime';
 
 interface NewChatViewProps {
   input: string;
@@ -124,6 +125,7 @@ const ProjectPicker: React.FC = () => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       if (event.key !== 'Escape') return;
       setOpen(false);
       setCreating(false);
@@ -198,6 +200,7 @@ const ProjectPicker: React.FC = () => {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
+                  if (isImeComposing(e)) return;
                   if (e.key === 'Escape') setCreating(false);
                 }}
                 placeholder={t('chatList.newProjectPlaceholder')}

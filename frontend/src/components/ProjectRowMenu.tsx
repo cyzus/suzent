@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
+import { isImeComposing } from '../lib/ime';
 
 interface ProjectRowMenuProps {
   anchor: { x: number; y: number } | { rect: DOMRect };
@@ -65,6 +66,7 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       else onClose();
     };
     const onKey = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('mousedown', onMouseDown);

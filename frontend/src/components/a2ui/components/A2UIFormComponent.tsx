@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { A2UIForm, A2UIFormField } from '../../../types/a2ui';
 import { BrutalButton } from '../../BrutalButton';
 import { useI18n } from '../../../i18n';
+import { isImeComposing } from '../../../lib/ime';
 
 interface Props {
   component: A2UIForm;
@@ -453,7 +454,7 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
   // Enter moves on from anywhere in the question (Shift+Enter keeps a newline);
   // the nav buttons keep their own Enter so Back/Skip still work from the keyboard.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+    if (e.key !== 'Enter' || e.shiftKey || isImeComposing(e)) return;
     if (navRef.current?.contains(e.target as Node)) return;
     e.preventDefault();
     if (hasValue()) advance();
