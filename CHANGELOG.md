@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
 - Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
+- Press ⌘/Ctrl+Enter while the agent is working to queue a message for when the turn ends; queued messages can be cancelled or sent right away as a redirect.
 - Show conversation tasks as an ordered checklist and open task results through their conversations.
 - Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching.
 - Clicking a Suzent system notification now brings the app window back to the front.
