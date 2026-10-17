@@ -10,6 +10,7 @@ import {
   getLockedTools,
   resolveCatalogText,
   toggleCapabilitySelection,
+  toggleToolDenied,
   toggleToolSelection,
 } from './CapabilityToolPicker';
 
@@ -258,6 +259,50 @@ describe('capability tool picker', () => {
 
     expect(html).not.toContain('role="button"');
     expect(html).toMatch(/aria-label="(?:Deactivate Run command|停用运行命令)"/);
+  });
+
+  it('denying a tool unchecks it, and allowing it again leaves it searchable', () => {
+    expect(toggleToolDenied(['RunCommandTool', 'CheckCommandTool'], [], 'RunCommandTool')).toEqual({
+      selected: ['CheckCommandTool'],
+      denied: ['RunCommandTool'],
+    });
+    expect(toggleToolDenied(['CheckCommandTool'], ['RunCommandTool'], 'RunCommandTool')).toEqual({
+      selected: ['CheckCommandTool'],
+      denied: [],
+    });
+  });
+
+  it('refuses to deny a builtin', () => {
+    const locked = new Set(['ReadFileTool']);
+
+    expect(toggleToolDenied(['ReadFileTool'], [], 'ReadFileTool', locked)).toEqual({
+      selected: ['ReadFileTool'],
+      denied: [],
+    });
+  });
+
+  it('renders a denied tool as unchecked and badged, with no deny control on builtins', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(CapabilityToolPicker, {
+          backendConfig: builtinConfig,
+          selected: [],
+          denied: ['WriteFileTool', 'ReadFileTool'],
+          onChange: () => undefined,
+          onDeniedChange: () => undefined,
+        })
+      )
+    );
+
+    // A stale deny on a builtin is ignored: it still renders locked and checked.
+    expect(html.match(/M5 13l4 4L19 7/g)?.length).toBe(2);
+    expect(html.match(/>Denied<|>已禁用</g)?.length).toBe(1);
+    // A denied tool is not also badged OFF, though it is non-deferrable.
+    expect(html).not.toMatch(/>Off<|>已关闭</);
+    expect(html.match(/aria-pressed=/g)?.length).toBe(1);
+    expect(html).toContain('aria-pressed="true"');
   });
 
   it('localizes capability and tool metadata by stable IDs', () => {
