@@ -236,9 +236,29 @@ _MAX_PREFILL_PROGRESS_WAIT_SECONDS = 1800.0
 _PREFILL_RATE_RECOVERY = 0.05
 # model id -> slowest `k` (seconds per 100k tokens) observed for it this process.
 _observed_prefill_k: Dict[str, float] = {}
-_STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
+
+
+def _stream_idle_timeout(model_id: str | None) -> float:
+    from suzent.config import CONFIG
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+    overrides = CONFIG.stream_idle_timeout_overrides
+    if model_id and model_id in overrides:
+        return overrides[model_id]
+    provider_id = (model_id or "").partition("/")[0]
+    provider = PROVIDER_REGISTRY_BY_ID.get(provider_id)
+    canonical_id = provider.id if provider else provider_id
+    default = (
+        provider.stream_idle_timeout_seconds
+        if provider and provider.stream_idle_timeout_seconds is not None
+        else CONFIG.stream_idle_timeout_seconds
+    )
+    return overrides.get(
+        provider_id,
+        overrides.get(canonical_id, default),
+    )
 
 
 def _env_float(name: str) -> Optional[float]:
@@ -859,7 +879,13 @@ def _make_run_injector(stream: Any) -> Any:
     return inject
 
 
-async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
+async def _await_model_event(
+    stream: Any,
+    deadline: float,
+    probe: Any,
+    chat_id: str | None = None,
+    control: StreamControl | None = None,
+) -> Any:
     """Await an event the model owes us, extending the wait while it works.
 
     Used for both waits that sit behind a model request: the run's first event,
@@ -884,28 +910,81 @@ async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
     or metrics-less server this degrades to the plain deadline.
     """
     task = asyncio.ensure_future(anext(stream))
+    from suzent.config import CONFIG
+    from suzent.core.stream_registry import push_custom_event
+
+    from suzent.core.stream_registry import ModelWait
+
+    wait = ModelWait(deadline, CONFIG.stream_wait_extension_seconds)
+    extension_task = asyncio.create_task(wait.extended.wait())
+    if control is not None:
+        control.model_wait = wait
+    stage: str | None = None
+    started = time.monotonic()
+
+    async def publish(new_stage: str) -> None:
+        nonlocal stage
+        stage = new_stage
+        if chat_id:
+            await push_custom_event(
+                chat_id,
+                "model_response_wait",
+                {
+                    "active": True,
+                    "stage": stage,
+                    "wait_id": wait.wait_id,
+                    "can_extend": control is not None and wait.can_extend,
+                    "timeout_seconds": wait.timeout_seconds,
+                },
+            )
+
     try:
-        waited = 0.0
         stalled = 0.0
         previous = await probe() if probe is not None else None
         probing = previous is not None
         while True:
+            waited = time.monotonic() - started
+            if wait.extended.is_set() and stage != "extended":
+                deadline = wait.timeout_seconds
+                await publish("extended")
+            if chat_id and stage != "extended":
+                if waited >= CONFIG.stream_wait_slow_seconds and stage != "slow":
+                    await publish("slow")
+                elif waited >= CONFIG.stream_wait_notice_seconds and stage is None:
+                    await publish("waiting")
             slice_seconds = (
                 _PREFILL_PROBE_INTERVAL_SECONDS
                 if probing
                 else max(deadline - waited, 0.0)
             )
-            done, _ = await asyncio.wait({task}, timeout=slice_seconds)
-            if done:
+            if chat_id and stage != "extended":
+                notice_at = (
+                    min(
+                        CONFIG.stream_wait_notice_seconds,
+                        CONFIG.stream_wait_slow_seconds,
+                    )
+                    if stage is None
+                    else CONFIG.stream_wait_slow_seconds
+                )
+                if notice_at > waited:
+                    slice_seconds = min(slice_seconds, notice_at - waited)
+            pending = {task}
+            if not extension_task.done():
+                pending.add(extension_task)
+            done, _ = await asyncio.wait(
+                pending, timeout=slice_seconds, return_when=asyncio.FIRST_COMPLETED
+            )
+            if task in done:
                 return task.result()
-            waited += slice_seconds
-
+            if extension_task in done:
+                continue
+            waited = time.monotonic() - started
             if not probing:
-                raise asyncio.TimeoutError
+                if waited >= deadline:
+                    raise asyncio.TimeoutError
+                continue
             current = await probe()
             if current is None:
-                # Metrics just became unavailable; finish under the deadline the
-                # curve predicted rather than waiting on a signal that is gone.
                 probing = False
                 if waited >= deadline:
                     raise asyncio.TimeoutError
@@ -920,8 +999,14 @@ async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
             ) or waited >= _MAX_PREFILL_PROGRESS_WAIT_SECONDS:
                 raise asyncio.TimeoutError
     finally:
-        if not task.done():
-            task.cancel()
+        for pending_task in (task, extension_task):
+            if not pending_task.done():
+                pending_task.cancel()
+        await asyncio.gather(task, extension_task, return_exceptions=True)
+        if control is not None and control.model_wait is wait:
+            control.model_wait = None
+        if stage is not None and chat_id:
+            await push_custom_event(chat_id, "model_response_wait", {"active": False})
 
 
 async def _iter_stream_events_with_timeout(
@@ -937,6 +1022,7 @@ async def _iter_stream_events_with_timeout(
             control.inject = _make_run_injector(stream)
         try:
             first_event = True
+            last_event_type: str | None = None
             _model_id = getattr(agent, "_model_id", None)
             _started = time.monotonic()
             _probe = make_prefill_probe(_model_id)
@@ -956,7 +1042,7 @@ async def _iter_stream_events_with_timeout(
                     timeout = max(in_flight.values())
                     phase = "tool result"
                 else:
-                    timeout = _STREAM_IDLE_TIMEOUT_SECONDS
+                    timeout = _stream_idle_timeout(_model_id)
                     phase = "next event"
                 try:
                     if phase != "tool result":
@@ -964,7 +1050,9 @@ async def _iter_stream_events_with_timeout(
                         # answered by asking whether the server is still working.
                         # A tool-result wait is not: the model is idle by
                         # definition while our own tool runs.
-                        event = await _await_model_event(stream, timeout, _probe)
+                        event = await _await_model_event(
+                            stream, timeout, _probe, chat_id
+                        )
                     elif timeout == math.inf:
                         event = await anext(stream)
                     else:
@@ -972,6 +1060,14 @@ async def _iter_stream_events_with_timeout(
                 except StopAsyncIteration:
                     break
                 except asyncio.TimeoutError as exc:
+                    logger.warning(
+                        "[Streaming] Event wait timed out: model={} phase={} "
+                        "timeout_s={} last_event={}",
+                        _model_id,
+                        phase,
+                        timeout,
+                        last_event_type,
+                    )
                     if phase == "tool result":
                         # A single tool hung; let the run loop recover by feeding a
                         # failed tool result back to the agent rather than aborting.
@@ -999,6 +1095,7 @@ async def _iter_stream_events_with_timeout(
                         _model_id, _prefill_tokens, time.monotonic() - _started
                     )
                 first_event = False
+                last_event_type = type(event).__name__
                 event_kind = getattr(event, "event_kind", "")
                 if event_kind == "function_tool_call":
                     call_part = getattr(event, "part", None)

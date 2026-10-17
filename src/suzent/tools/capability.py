@@ -1,13 +1,20 @@
 """Pydantic AI capability for a selected group of registered tools."""
 
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities.abstract import WrapModelRequestHandler
 from pydantic_ai.exceptions import ToolFailed
-from pydantic_ai.messages import ToolCallPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    ToolCallPart,
+    ToolReturnPart,
+)
+from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -19,6 +26,52 @@ logger = get_logger(__name__)
 
 # Long enough for a traceback's last line, short enough not to flood context.
 _TOOL_ERROR_MESSAGE_LIMIT = 2000
+
+
+@dataclass
+class ToolResultContextCapability(AbstractCapability[AgentDeps]):
+    """Keep display-only tool metadata out of requests, preserving stored history."""
+
+    async def wrap_model_request(
+        self,
+        ctx: RunContext[AgentDeps],
+        *,
+        request_context: ModelRequestContext,
+        handler: WrapModelRequestHandler,
+    ) -> ModelResponse:
+        from suzent.tools.registry import get_model_excluded_metadata
+        from suzent.tools.base import ToolResult
+
+        excluded_by_tool = get_model_excluded_metadata()
+        messages = []
+        for message in request_context.messages:
+            if not isinstance(message, ModelRequest):
+                messages.append(message)
+                continue
+            parts = []
+            for part in message.parts:
+                excluded = excluded_by_tool.get(getattr(part, "tool_name", ""))
+                content = getattr(part, "content", None)
+                if excluded and isinstance(content, ToolResult):
+                    content = content.model_dump(mode="json")
+                if (
+                    excluded
+                    and isinstance(part, ToolReturnPart)
+                    and isinstance(content, dict)
+                    and isinstance(content.get("metadata"), dict)
+                ):
+                    content = {
+                        **content,
+                        "metadata": {
+                            key: value
+                            for key, value in content["metadata"].items()
+                            if key not in excluded
+                        },
+                    }
+                    part = replace(part, content=content)
+                parts.append(part)
+            messages.append(replace(message, parts=parts))
+        return await handler(replace(request_context, messages=messages))
 
 
 @dataclass

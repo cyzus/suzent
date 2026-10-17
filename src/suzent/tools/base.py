@@ -196,6 +196,7 @@ class Tool:
     guidance_priority: int = 100
     output_char_limit: int = OUTPUT_CHAR_LIMIT
     keep_output_tail: bool = False
+    model_excluded_metadata: frozenset[str] = frozenset()
 
     def __init__(self, *args, **kwargs):
         pass
