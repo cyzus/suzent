@@ -7,9 +7,9 @@ also import pydantic, the permissions schema and this loader. See
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from suzent.logger import get_logger
 from suzent.permissions.loader import load_permission_overrides
@@ -221,6 +221,16 @@ class ConfigModel(BaseModel):
     compaction_keep_recent_turns: int = 3
     compaction_chunk_size: int = 20
     compaction_timeout_seconds: int = 60
+
+    stream_idle_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
+    stream_wait_notice_seconds: float = Field(default=15.0, gt=0, allow_inf_nan=False)
+    stream_wait_slow_seconds: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+    stream_wait_extension_seconds: float = Field(
+        default=1200.0, gt=0, allow_inf_nan=False
+    )
+    stream_idle_timeout_overrides: dict[
+        str, Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    ] = Field(default_factory=dict)
 
     plan_watcher_interval: float = 2.0
 
