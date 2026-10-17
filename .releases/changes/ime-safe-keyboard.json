@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Typing with a Chinese, Japanese or Korean input method no longer sends, submits or closes things when Enter or Escape is pressed to pick or dismiss a candidate."
+}

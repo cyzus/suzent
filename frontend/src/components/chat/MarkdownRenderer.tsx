@@ -2,6 +2,10 @@ import { ChatMarkdownImage } from '../ChatImageGallery';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import { remarkLatexMath } from '../../lib/remarkLatexMath';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
 import { hasCitationMarker, renderTextWithCitations, useCitationSources } from './Citations';
@@ -193,8 +197,8 @@ const MarkdownCodeBlock: React.FC<{ lang: string; content: string }> = (props) =
   return <CodeBlockComponent {...props} isStreaming={isStreaming} showCursor={false} />;
 };
 
-const REMARK_PLUGINS = [remarkGfm];
-const REHYPE_PLUGINS: never[] = [];
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkLatexMath];
+const REHYPE_PLUGINS = [rehypeKatex];
 
 /**
  * Block dangerous protocols while allowing standard ones. Pure, so it lives at

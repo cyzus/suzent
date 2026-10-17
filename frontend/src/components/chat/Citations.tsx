@@ -5,6 +5,7 @@ import type { CitationSource } from '../../lib/streamEvents';
 import { InformationPopover } from '../InformationPopover';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { useI18n } from '../../i18n';
+import { isImeComposing } from '../../lib/ime';
 
 /**
  * Inline-citation rendering.
@@ -604,6 +605,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
       setExpanded(false);
     };
     const onKey = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === 'Escape') setExpanded(false);
     };
     document.addEventListener('mousedown', onDown);

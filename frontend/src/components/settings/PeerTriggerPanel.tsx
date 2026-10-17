@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { triggerPeer } from '../../lib/api';
 import { SettingsListAction } from './SettingsCard';
+import { isImeComposing } from '../../lib/ime';
 
 /**
  * Send a prompt to a Suzent peer's agent and watch its reply stream back.
@@ -61,6 +62,7 @@ export function PeerTriggerPanel({
           disabled={busy}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === 'Enter') run();
           }}
         />

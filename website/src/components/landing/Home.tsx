@@ -285,7 +285,8 @@ function InstallerDownloads(): ReactNode {
   }, []);
   const name =
     os === "macos" ? "macOS" : os === "windows" ? "Windows" : "Linux";
-  const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${os === "windows" ? ".exe" : ""}`;
+  const extension = os === "windows" ? ".exe" : os === "macos" ? ".dmg" : "";
+  const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${extension}`;
   const activeTerminal = terminalOS ?? (os === "windows" ? "windows" : "unix");
   const cmd = activeTerminal === "windows" ? WIN_CMD : UNIX_CMD;
   return (

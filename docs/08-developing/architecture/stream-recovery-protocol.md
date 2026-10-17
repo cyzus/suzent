@@ -73,6 +73,38 @@ also returns 204 and the UI reloads history. Reconnects with a cursor can drain
 retained terminal events. A dropped event-bus subscriber receives an EOF so
 EventSource reconnects and refreshes its active-stream snapshot.
 
+## Model response waiting
+
+The first-event prefill policy remains separate from subsequent event waits.
+Subsequent model waits resolve `stream_idle_timeout_overrides` by full model ID,
+then provider ID (including the canonical provider for aliases), then the provider's
+`stream_idle_timeout_seconds` in `config/providers.json`, then the global
+`stream_idle_timeout_seconds`. Tool-result waits retain their own deadlines.
+The Google provider ships a 300-second default; other providers fall back to
+120 seconds. Local server activity probes can still extend a model wait.
+
+After `stream_wait_notice_seconds` (15 by default) without a model event, the
+stream emits `model_response_wait` with `active: true`, stage `waiting`, and a
+unique `wait_id`. At `stream_wait_slow_seconds` (60 by default), stage `slow`
+offers Continue waiting when an extension is available. POST `/chat/extend-wait`
+requires `chat_id`, the active `run_id` or its client token, and the same `wait_id`.
+Stale runs and replaced waits return 409. An accepted extension wakes the pending
+wait and raises its deadline to `stream_wait_extension_seconds` (1,200 by default),
+measured from the start of this silence, not the button click. It is applied once
+per silent wait. Resumption, timeout, or cancellation clears the notice and active
+wait handle. The UI retains the existing Stop and Retry controls.
+
+`ObservedGoogleModel` records SDK response chunk arrival gaps, response IDs,
+part counts, and finish reasons at DEBUG level before pydantic-ai converts the
+chunks to events. It never records text, tool arguments, or thought signatures.
+Chunks without model events therefore remain visible in diagnostics. This is
+SDK-chunk observation, not a packet-level network trace.
+
+Tools declare display-only fields in `model_excluded_metadata`.
+`ToolResultContextCapability` removes those fields from copies of model-bound
+tool returns. Original tool events and persisted history retain their snapshots
+for display and rollback, including when a saved conversation is resumed.
+
 ## Auxiliary work after a reply
 
 Automatic titles run as registered background tasks. Reply completion never waits

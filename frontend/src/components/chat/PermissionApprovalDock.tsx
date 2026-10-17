@@ -1,6 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
+import { isImeComposing } from '../../lib/ime';
 
 interface PermissionApprovalDockProps {
   parts: AGUIPart[];
@@ -335,6 +336,7 @@ const ApprovalCard: React.FC<{
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
             onKeyDown={(event) => {
+              if (isImeComposing(event)) return;
               if (event.key === 'Enter' && feedback.trim()) {
                 event.preventDefault();
                 submitAction(rejectAction, feedback);

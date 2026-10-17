@@ -21,6 +21,8 @@ import { ghostRemainder } from '../lib/inputSuggestion';
 import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
+import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import { isImeComposing } from '../lib/ime';
 
 interface ChatInputPanelProps {
   input: string;
@@ -32,6 +34,8 @@ interface ChatInputPanelProps {
   isUploading?: boolean;
   fileError?: string | null;
   send: () => void;
+  /** Cmd/Ctrl+Enter: hold the message until the running turn ends. */
+  queue?: () => void;
   config: ChatConfig;
   setConfig: React.Dispatch<React.SetStateAction<ChatConfig>>;
   backendConfig: ConfigOptions | null;
@@ -121,6 +125,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   isUploading = false,
   fileError = null,
   send,
+  queue,
   config,
   setConfig,
   backendConfig,
@@ -141,6 +146,13 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 }) => {
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
+  const queueKey = React.useMemo(
+    () =>
+      detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos'
+        ? '⌘+Enter'
+        : 'Ctrl+Enter',
+    []
+  );
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
   const [mentionSuggestions, setMentionSuggestions] = React.useState<FileMentionSuggestion[]>([]);
   const [selectedMentionSuggestion, setSelectedMentionSuggestion] = React.useState(0);
@@ -580,7 +592,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 : !configReady
                   ? t('chatInput.placeholderLoading').toUpperCase()
                   : streamingForCurrentChat
-                    ? t('chatInput.placeholderRedirect')
+                    ? t('chatInput.placeholderRedirect', { queueKey })
                     : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
@@ -592,12 +604,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               }, 0);
             }}
             onKeyDown={(e) => {
-              // Always ignore Enter if IME composition is active to allow selecting characters
-              // Including e.keyCode === 229 for broad cross-browser compatibility
-              if (
-                e.key === 'Enter' &&
-                (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229)
-              ) {
+              // Every key the IME consumes — Enter to commit, arrows and Escape
+              // in its candidate list — belongs to it, not to send or suggestions.
+              if (isComposingRef.current || isImeComposing(e)) return;
+
+              // Ahead of mention and slash-command handling, which treat any
+              // Enter as accept-and-send and would redirect the running turn.
+              if (e.key === 'Enter' && queue && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+                e.preventDefault();
+                if (configReady && input.trim()) queue();
                 return;
               }
 
@@ -685,7 +700,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 }
               }
 
-              if (ghost && !isComposingRef.current && !e.nativeEvent.isComposing) {
+              if (ghost) {
                 const noModifiers = !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
                 if (
                   noModifiers &&

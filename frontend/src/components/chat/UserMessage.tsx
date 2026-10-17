@@ -17,6 +17,7 @@ import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 import { CopyButton } from './CopyButton';
 import { BrutalButton } from '../BrutalButton';
+import { isImeComposing } from '../../lib/ime';
 
 // Must match the CSS max-w-sm / max-h-64 constraints on the rendered <img>.
 const IMG_MAX_W = 384;
@@ -434,6 +435,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 240)}px`;
             }}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Escape') {
                 e.preventDefault();
                 cancelEditing();

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Show early model waiting notices, allow more time explicitly, and avoid interrupting Gemini reasoning after two minutes. Keep file snapshots out of model requests."
+}

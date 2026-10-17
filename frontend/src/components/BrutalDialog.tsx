@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { isImeComposing } from '../lib/ime';
 
 export interface BrutalDialogAction {
   label: string;
@@ -48,6 +49,7 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);

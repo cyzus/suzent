@@ -189,6 +189,17 @@
     content-visibility: visible;
   }
 
+  /* Following the live tail needs actual heights: revealing an estimated
+     history row can otherwise move the bottom after the scroll target is read.
+     Native scroll anchoring must not compete with the hook in this mode. */
+  [data-following-bottom='true'] {
+    overflow-anchor: none;
+  }
+
+  [data-following-bottom='true'] .chat-msg-row {
+    content-visibility: visible;
+  }
+
   .chat-minimap {
     /* Wide enough for the longest tick at full hover extension (1.2rem base +
        0.75rem wave), so clipping the track vertically never cuts a tick's
@@ -339,6 +350,17 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25rem;
+}
+
+.prose .katex {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .prose pre {

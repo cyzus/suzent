@@ -204,6 +204,7 @@ class EditFileTool(Tool):
 
     name = "EditFileTool"
     tool_name = "edit_file"
+    model_excluded_metadata = frozenset({"old_content", "new_content"})
     group = ToolGroup.FILESYSTEM
     requires_approval = True
 

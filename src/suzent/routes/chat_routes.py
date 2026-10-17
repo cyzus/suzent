@@ -19,6 +19,7 @@ from pydantic import (
     Field,
     StrictBool,
     StrictInt,
+    StrictStr,
     ValidationError,
 )
 from starlette.requests import Request
@@ -824,6 +825,38 @@ async def _append_notice_after_turn(chat_id: str, notice: str) -> None:
         )
     except Exception as exc:
         logger.debug(f"Failed to persist stopped sub-agent notice: {exc}")
+
+
+class ExtendModelWaitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    chat_id: StrictStr = Field(min_length=1)
+    run_id: StrictStr = Field(min_length=1)
+    wait_id: StrictStr = Field(min_length=1)
+
+
+async def extend_model_wait(request: Request) -> JSONResponse:
+    from suzent.core.stream_registry import stream_controls
+
+    try:
+        data = ExtendModelWaitRequest.model_validate(await request.json())
+    except (json.JSONDecodeError, ValidationError):
+        return JSONResponse(
+            {"error": "Invalid wait extension request"}, status_code=400
+        )
+    control = stream_controls.get(data.chat_id)
+    queue = get_background_queue(data.chat_id)
+    names = (queue.replay.run_id, queue.replay.client_token) if queue else ()
+    if (
+        control is None
+        or control.cancel_event.is_set()
+        or control.run_id != (queue.replay.run_id if queue else data.run_id)
+        or (data.run_id not in names if queue else data.run_id != control.run_id)
+    ):
+        return JSONResponse({"error": "Run is no longer active"}, status_code=409)
+    wait = control.model_wait
+    if wait is None or wait.wait_id != data.wait_id or not wait.extend():
+        return JSONResponse({"error": "Wait is no longer extendable"}, status_code=409)
+    return JSONResponse({"status": "extended", "timeout_seconds": wait.timeout_seconds})
 
 
 async def stop_chat(request: Request) -> JSONResponse:

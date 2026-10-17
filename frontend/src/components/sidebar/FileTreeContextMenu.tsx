@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardDocumentIcon, FolderOpenIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
+import { isImeComposing } from '../../lib/ime';
 
 interface FileTreeContextMenuProps {
   anchor: { x: number; y: number };
@@ -49,6 +50,7 @@ export const FileTreeContextMenu: React.FC<FileTreeContextMenuProps> = ({
       else onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       if (event.key === 'Escape') onClose();
     };
     const handleScroll = () => onClose();

@@ -1,3 +1,5 @@
+import { ModelWaitNotice } from './chat/ModelWaitNotice';
+import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -54,6 +56,7 @@ import {
   NoticeMessage,
 } from './chat';
 import { planSendFailureRecovery, type SendAction } from './chat/sendRecovery';
+import { QueuedMessages, type QueuedMessage } from './chat/QueuedMessages';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -706,6 +709,13 @@ const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
   mentions: [],
 };
 
+/**
+ * Queued messages, kept at module scope for the same reason as the draft:
+ * leaving for Memory or Skills mid-turn unmounts this component, and a queue
+ * held in its state would be dropped without ever being sent.
+ */
+let queuedMessageStore: Record<string, QueuedMessage[]> = {};
+
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   onRightSidebarToggle?: (isOpen: boolean) => void;
@@ -782,6 +792,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       return next;
     });
   }, []);
+  // Messages held back until the running turn ends, keyed by chat.
+  const [messageQueues, setMessageQueuesState] = useState(queuedMessageStore);
+  const setMessageQueues = useCallback(
+    (update: (prev: Record<string, QueuedMessage[]>) => Record<string, QueuedMessage[]>) => {
+      setMessageQueuesState((current) => {
+        queuedMessageStore = update(current);
+        return queuedMessageStore;
+      });
+    },
+    []
+  );
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [pendingFork, setPendingFork] = useState<{ messageIndex?: number } | null>(null);
@@ -1030,6 +1051,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // the original start instead of resetting when the transient message remounts.
   const streamStartByChatRef = useRef<Map<string, number>>(new Map());
   const [streamDisplayRole, setStreamDisplayRole] = useState<Message['role']>('assistant');
+  const [modelResponseWaiting, setModelResponseWaiting] = useState<ModelWaitState | null>(null);
+  useEffect(() => {
+    setModelResponseWaiting(null);
+  }, [currentChatId, isStreaming]);
   const streamDisplayRoleRef = useRef<Message['role']>('assistant');
 
   const setCurrentStreamDisplayRole = useCallback((role: Message['role']) => {
@@ -1219,6 +1244,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       canvas.markDeferred(surfaceId);
     },
     onCustomEvent: (name, value) => {
+      if (name === 'model_response_wait') {
+        setModelResponseWaiting(parseModelWait(value));
+        return;
+      }
       if (name === 'stream_display_role') {
         const role = (value as { role?: Message['role'] })?.role;
         if (role === 'assistant' || role === 'notice') {
@@ -1596,6 +1625,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Custom hooks
   const {
     selectedFiles,
+    setSelectedFiles,
     isDragging,
     fileInputRef,
     handleFileSelect,
@@ -1925,13 +1955,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Depend on the message count, not the array identity: `safeMessages` is a
   // fresh array on every streaming chunk, which would fire a scroll per token.
   // Growth within a message is already covered by the hook's ResizeObserver.
-  const { scrollContainerRef, bottomRef, scrollToBottom, isSelectionDragActive } = useAutoScroll(
-    [safeMessages.length, isStreaming],
-    {
-      resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
-      smooth: !isStreaming,
-    }
-  );
+  const {
+    scrollContainerRef,
+    attachScrollContainer,
+    bottomRef,
+    scrollToBottom,
+    isSelectionDragActive,
+  } = useAutoScroll([safeMessages.length, isStreaming], {
+    resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
+    smooth: !isStreaming,
+  });
 
   // When a tool transitions into a pending approval, force-scroll to the bottom
   // so the approval buttons are visible — even if the user had scrolled up.
@@ -2356,23 +2389,89 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [input, isRightSidebarOpen]);
 
   // Send message handler (also handles steering when streaming)
-  const send = async () => {
+  const send = async (queued?: QueuedMessage, steerNow = false) => {
     if (sendInFlightRef.current) return;
     sendInFlightRef.current = true;
     try {
-      await sendTurn();
+      await sendTurn(queued, steerNow);
     } finally {
       sendInFlightRef.current = false;
     }
   };
 
-  const sendTurn = async () => {
+  // Cmd/Ctrl+Enter: hold the message until the running turn ends instead of
+  // redirecting it. With nothing running there is nothing to wait for.
+  const queueMessage = () => {
     const prompt = input.trim();
-    if (!prompt || !configReady || isUploading) return;
+    if (!prompt || !configReady) return;
+    if (!currentChatId || !(streamingForCurrentChat || hasPendingTransientApprovals)) {
+      void send();
+      return;
+    }
+    const item: QueuedMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      text: prompt,
+      fileMentions: extractSelectedFileMentions(prompt, fileMentions),
+      files: [...selectedFiles],
+    };
+    setMessageQueues((prev) => ({
+      ...prev,
+      [currentChatId]: [...(prev[currentChatId] ?? []), item],
+    }));
+    setInput('');
+    clearFiles();
+    setFileMentions([]);
+  };
+
+  const currentQueue = currentChatId ? messageQueues[currentChatId] : undefined;
+
+  const removeQueuedMessage = (id: string) => {
+    if (!currentChatId) return;
+    setMessageQueues((prev) => ({
+      ...prev,
+      [currentChatId]: (prev[currentChatId] ?? []).filter((item) => item.id !== id),
+    }));
+  };
+
+  const clearQueuedMessages = () => {
+    if (!currentChatId) return;
+    setMessageQueues((prev) => ({ ...prev, [currentChatId]: [] }));
+  };
+
+  // Pull one message out of line and redirect the running turn with it now.
+  const steerQueuedMessage = (id: string) => {
+    const item = currentQueue?.find((queued) => queued.id === id);
+    if (!item || sendInFlightRef.current) return;
+    removeQueuedMessage(id);
+    // A redirect carries text only, as with Enter mid-turn: hand the
+    // attachments back to the composer rather than drop them.
+    if (item.files.length > 0) setSelectedFiles((prev) => [...item.files, ...prev]);
+    void send(item, true);
+  };
+
+  // Release the next queued message once this chat's turn has fully ended.
+  // `isStreaming` is global: a send while any stream is watched is refused.
+  useEffect(() => {
+    if (!currentChatId || !currentQueue?.length || !configReady) return;
+    if (isStreaming || hasPendingTransientApprovals || sendInFlightRef.current) return;
+    const [next, ...rest] = currentQueue;
+    setMessageQueues((prev) => ({ ...prev, [currentChatId]: rest }));
+    void send(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChatId, currentQueue, configReady, isStreaming, hasPendingTransientApprovals]);
+
+  const sendTurn = async (queued?: QueuedMessage, steerNow = false) => {
+    const prompt = queued ? queued.text : input.trim();
+    // A queued item has already left the queue: refusing it here would drop it.
+    if (!prompt || !configReady || (!queued && isUploading)) return;
 
     // If currently streaming (or paused on pending approvals) for this chat,
     // steer instead of starting a brand-new turn.
-    if ((streamingForCurrentChat || hasPendingTransientApprovals) && currentChatId) {
+    if (
+      (!queued || steerNow) &&
+      (streamingForCurrentChat || hasPendingTransientApprovals) &&
+      currentChatId
+    ) {
       const interruptedMessage = aguiPartsToStoreMessage(
         finalizeInterruptedParts(streamingParts),
         currentUsage,
@@ -2382,7 +2481,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (interruptedMessage.content.trim()) {
         addMessage(interruptedMessage, currentChatId);
       }
-      setInput('');
+      if (!queued) setInput('');
       addMessage(
         { role: 'user', content: prompt, timestamp: new Date().toISOString() },
         currentChatId
@@ -2474,7 +2573,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       return;
     }
 
-    const filesToSend = [...selectedFiles];
+    // A queued message brings the files it was queued with; whatever is in the
+    // composer now belongs to the message the user is still writing.
+    const filesToSend = queued ? queued.files : [...selectedFiles];
 
     // Upload all files to server + generate base64 for images
     let uploadedFileMetadata: FileAttachment[] | undefined;
@@ -2496,9 +2597,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const resetFlag = shouldResetNext;
     if (resetFlag) consumeResetFlag();
-    setInput('');
-    clearFiles();
-    setFileMentions([]);
+    if (!queued) {
+      setInput('');
+      clearFiles();
+      setFileMentions([]);
+    }
     setCurrentUsage(null);
 
     addMessage(
@@ -2524,7 +2627,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     };
 
-    const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
+    const mentionsToSend = queued
+      ? queued.fileMentions
+      : extractSelectedFileMentions(prompt, fileMentions);
     const payload: Record<string, unknown> = {
       message: prompt,
       config: safeConfig,
@@ -2832,6 +2937,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopInFlightRef.current = true;
 
     const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
+    // Stopping means "not that" — firing off the queue next would carry on
+    // regardless. Hand the queued text back to the composer to revise instead.
+    const stoppedQueue = targetChatId ? messageQueues[targetChatId] : undefined;
+    if (targetChatId && stoppedQueue?.length) {
+      setMessageQueues((prev) => ({ ...prev, [targetChatId]: [] }));
+      const restored = stoppedQueue.map((item) => item.text).join('\n\n');
+      setInput((current) => (current.trim() ? `${restored}\n\n${current}` : restored));
+      setFileMentions((prev) => [...prev, ...stoppedQueue.flatMap((item) => item.fileMentions)]);
+      setSelectedFiles((prev) => [...stoppedQueue.flatMap((item) => item.files), ...prev]);
+    }
     if (!targetChatId) {
       abandonStream(null);
       return;
@@ -3084,7 +3199,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
           <div className="relative flex-1 min-h-0">
             <div
-              ref={scrollContainerRef}
+              ref={attachScrollContainer}
               className={
                 safeMessages.length === 0
                   ? 'h-full overflow-y-auto overflow-x-hidden p-3 md:p-6 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
@@ -3147,6 +3262,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       onOpenForkOrigin={handleOpenForkOrigin}
                       onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                       fallbackModel={fallbackModelSignature}
+                    />
+                  )}
+                  {streamingForCurrentChat && modelResponseWaiting && (
+                    <ModelWaitNotice
+                      key={modelResponseWaiting.waitId}
+                      wait={modelResponseWaiting}
+                      onExtend={async (waitId) => {
+                        const runId = getStreamingRunId();
+                        if (!currentChatId || !runId) return false;
+                        return requestModelWaitExtension(
+                          getApiBase(),
+                          currentChatId,
+                          runId,
+                          waitId
+                        );
+                      }}
                     />
                   )}
                   {/* Streaming/transient message from AG-UI */}
@@ -3220,6 +3351,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   {t('backgroundTasks.memoryProcessing')}
                 </div>
               )}
+              {currentQueue && currentQueue.length > 0 && (
+                <QueuedMessages
+                  items={currentQueue}
+                  onSteer={steerQueuedMessage}
+                  onRemove={removeQueuedMessage}
+                  onClear={clearQueuedMessages}
+                />
+              )}
               <ChatInputPanel
                 input={input}
                 setInput={setInput}
@@ -3230,6 +3369,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isUploading={isUploading}
                 fileError={fileError}
                 send={send}
+                queue={queueMessage}
                 config={safeConfig}
                 setConfig={setConfig}
                 backendConfig={safeBackendConfig}
