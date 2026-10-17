@@ -55,6 +55,7 @@ function OtherInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
           if (e.key === 'Escape') {
             e.preventDefault();
             onEscape();
