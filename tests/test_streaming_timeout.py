@@ -203,7 +203,7 @@ async def test_first_event_timeout_is_not_recoverable(monkeypatch):
 
 
 async def test_stream_events_do_not_idle_timeout_while_tool_is_running(monkeypatch):
-    monkeypatch.setattr(streaming, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_stream_idle_timeout", lambda _: 0.01)
 
     events = []
     async for event in streaming._iter_stream_events_with_timeout(
@@ -493,7 +493,7 @@ class _SlowAgentToolStreamAgent:
 async def test_blocking_agent_call_is_not_timed_out(monkeypatch):
     # Every bounded window is far shorter than the sub-agent takes.
     monkeypatch.setattr(streaming, "_DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS", 0.01)
-    monkeypatch.setattr(streaming, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_stream_idle_timeout", lambda _: 0.01)
 
     events = []
     async for event in streaming._iter_stream_events_with_timeout(

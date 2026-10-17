@@ -22,9 +22,33 @@ import asyncio
 import contextlib
 import contextvars
 import time
+import uuid
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 
 from suzent.core.stream_replay import StreamReplay
+
+
+@dataclass
+class ModelWait:
+    timeout_seconds: float
+    extension_timeout_seconds: float
+    wait_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    extended: asyncio.Event = field(default_factory=asyncio.Event)
+
+    @property
+    def can_extend(self) -> bool:
+        return (
+            not self.extended.is_set()
+            and self.extension_timeout_seconds > self.timeout_seconds
+        )
+
+    def extend(self) -> bool:
+        if not self.can_extend:
+            return False
+        self.timeout_seconds = self.extension_timeout_seconds
+        self.extended.set()
+        return True
 
 
 class StreamControl:
@@ -39,6 +63,7 @@ class StreamControl:
         "import_citations",
         "_injected",
         "_durable",
+        "model_wait",
     )
 
     def __init__(self):
@@ -46,6 +71,7 @@ class StreamControl:
         # claimed the chat. A stop names its run, and a control for a different
         # one must refuse it rather than cancel a turn nobody asked to stop.
         self.run_id: str | None = None
+        self.model_wait: ModelWait | None = None
         self.cancel_event = asyncio.Event()
         self.completed_event = asyncio.Event()  # Set when post-processing finishes
         self.reason = "Stream stopped by user"

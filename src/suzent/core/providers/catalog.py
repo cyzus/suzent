@@ -15,7 +15,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
+
+from pydantic import Field, TypeAdapter
 
 from suzent.logger import get_logger
 
@@ -50,6 +52,7 @@ class ProviderSpec:
     logo_url: Optional[str] = None
     api_key_optional: bool = False
     user_defined: bool = False
+    stream_idle_timeout_seconds: float | None = None
 
     @property
     def is_compat(self) -> bool:
@@ -83,6 +86,13 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
         logo_url=raw.get("logo_url"),
         api_key_optional=raw.get("api_key_optional", False),
         user_defined=user_defined,
+        stream_idle_timeout_seconds=(
+            TypeAdapter(
+                Annotated[float, Field(gt=0, allow_inf_nan=False)]
+            ).validate_python(raw["stream_idle_timeout_seconds"])
+            if raw.get("stream_idle_timeout_seconds") is not None
+            else None
+        ),
     )
 
 

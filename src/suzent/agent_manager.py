@@ -376,6 +376,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         RegisteredToolCapability,
         ToolDenyCapability,
         ToolErrorCapability,
+        ToolResultContextCapability,
     )
 
     from suzent.core.system_reminder import (
@@ -412,6 +413,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     from suzent.core.context_usage import ContextUsageCapability
     from suzent.core.prompt_cache import PromptCacheRoutingCapability
 
+    capabilities.append(ToolResultContextCapability())
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
 

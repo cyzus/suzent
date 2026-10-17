@@ -385,7 +385,7 @@ def _create_anthropic_model(
 
 
 def _create_google_model(model_name: str, api_key: str, spec: ProviderSpec) -> object:
-    from pydantic_ai.models.google import GoogleModel
+    from suzent.core.providers.google_stream import ObservedGoogleModel
     from pydantic_ai.providers.google import GoogleProvider
     from pydantic_ai.settings import ModelSettings
 
@@ -393,7 +393,7 @@ def _create_google_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
         "google_thinking_config": {"include_thoughts": True}
     }
     settings = ModelSettings(**settings_kwargs)
-    return GoogleModel(
+    return ObservedGoogleModel(
         model_name, provider=GoogleProvider(api_key=api_key), settings=settings
     )
 
