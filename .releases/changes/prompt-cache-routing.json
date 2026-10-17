@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Enable prompt caching for Anthropic models and keep ChatGPT and OpenAI requests of one chat on the same cache, cutting repeated input cost in long agent runs."
+}
