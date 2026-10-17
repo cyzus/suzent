@@ -184,14 +184,17 @@ prefix byte-identical from one request to the next:
   version the chat started with (`memory/core_memory_pin.py`). Later edits to
   persona, user, `MEMORY.md` or the project's `context.md` reach the model once,
   as a diff in a system reminder on the next turn, which lands after the cached
-  history. The pin follows the live files only when that costs nothing extra: a
+  history. A diff counts as seen only if it survives the reminder budget;
+  otherwise it is offered again next turn. The pin follows the live files only when that costs nothing extra: a
   chat with no reply yet, after compaction, after a restart, or when the diff is
   larger than `MAX_DIFF_CHARS`. Pins are keyed by chat and user and never held on
   the shared agent instance.
 - **Tool-result trimming moves in steps.** `ToolResultTrimmer` trims results
   older than a boundary that advances `TRIM_STEP` messages at a time, and
   trimming an already trimmed result is a no-op. The trimmed history is what the
-  run persists, so most turns resend the earlier prefix unchanged.
+  run persists, so most turns resend the earlier prefix unchanged. A hard clear
+  keeps the exact cutoff: it runs at the compaction threshold, where freeing
+  space matters more than the cache.
 - **Discovered tools depend on the provider profile.** With the local
   `search_tools` fallback, pydantic-ai adds a discovered tool's definition to the
   `tools` array on providers whose profile has no `tool_addition_mode` (Gemini,

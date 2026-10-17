@@ -56,6 +56,8 @@ class _Pin:
     pinned: str
     #: The latest version the model has been told about, by prompt or reminder.
     seen: str
+    #: A version offered in a reminder that has not been confirmed delivered.
+    pending: str | None = None
 
 
 def render_diff(old: str, new: str) -> str:
@@ -91,7 +93,9 @@ class CoreMemoryPins:
     def take_update(self, key: PinKey, live: str) -> str | None:
         """A reminder describing what changed since the model last saw core memory.
 
-        Marks *live* as seen, so each change is delivered once. Returns None when
+        *live* becomes seen only once ``acknowledge`` confirms the reminder
+        survived the reminder budget; until then the same change is offered
+        again, so a dropped reminder is retried rather than lost. Returns None when
         nothing changed, when the chat has no pin yet (the next request pins
         *live* directly), or when the change is too large for a diff — then the
         pin itself moves to *live* and the system prompt carries it.
@@ -108,9 +112,18 @@ class CoreMemoryPins:
                 )
                 pin.pinned = live
                 pin.seen = live
+                pin.pending = None
                 return None
-            pin.seen = live
+            pin.pending = live
         return f"{UPDATE_HEADER}\n```diff\n{diff}\n```"
+
+    def acknowledge(self, key: PinKey) -> None:
+        """The reminder from the last ``take_update`` reached the model."""
+        with self._lock:
+            pin = self._pins.get(key)
+            if pin is not None and pin.pending is not None:
+                pin.seen = pin.pending
+                pin.pending = None
 
     def forget(self, chat_id: str) -> None:
         """Drop the chat's pin, for when its history was rewritten anyway."""
@@ -151,3 +164,12 @@ async def core_memory_reminder_hook(chat_id: str, deps: Any) -> str | None:
         # deleted would be worse than saying nothing this turn.
         return None
     return core_memory_pins.take_update(key, live)
+
+
+def _acknowledge_delivery(chat_id: str, deps: Any) -> None:
+    key = pin_key(deps)
+    if key is not None:
+        core_memory_pins.acknowledge(key)
+
+
+core_memory_reminder_hook.on_delivered = _acknowledge_delivery  # type: ignore[attr-defined]

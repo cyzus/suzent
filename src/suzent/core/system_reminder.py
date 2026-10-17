@@ -1197,6 +1197,9 @@ async def build_combined_reminder(
     # delayed every one after it — and global hooks had no timeout at all, so a
     # single hung provider stalled the whole message pipeline indefinitely.
     scheduled = []
+    # Hooks that deliver something exactly once mark it delivered only if it
+    # survives the budget below; otherwise they offer it again next turn.
+    awaiting_delivery: list[tuple[Any, str]] = []
     # Stateless agents need explicit turn inputs, but ambient context can make
     # their fixed task prompts drift (for example, a dream run skipping its task).
     if not getattr(deps, "stateless", False):
@@ -1214,6 +1217,10 @@ async def build_combined_reminder(
         for (hook, _), content in zip(scheduled, contents):
             if content and content.strip():
                 parts.append(content.strip())
+                if hasattr(hook, "on_delivered"):
+                    awaiting_delivery.append(
+                        (hook, sanitize_untrusted_text(content.strip()))
+                    )
                 from suzent.core.context_usage import register_context_source
 
                 category = {
@@ -1288,6 +1295,17 @@ async def build_combined_reminder(
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = len(render_trigger_block(display_trigger)) if display_trigger else 0
     parts = await _apply_budget(parts, chat_id, reserved=trigger_cost, deps=deps)
+
+    if awaiting_delivery:
+        kept = set(parts)
+        for hook, content in awaiting_delivery:
+            if content in kept:
+                try:
+                    hook.on_delivered(chat_id, deps)
+                except Exception as e:
+                    logger.warning(
+                        f"Reminder hook {hook.__name__} delivery callback failed: {e}"
+                    )
 
     if not parts and not display_trigger:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")

@@ -92,6 +92,43 @@ async def test_the_edit_arrives_once_as_a_diff_reminder():
 
     assert reminder is not None
     assert "-facts: a\n+facts: a, b" in reminder
+    core_memory_reminder_hook.on_delivered("chat-1", deps)
+    assert await core_memory_reminder_hook("chat-1", deps) is None
+
+
+async def test_an_undelivered_update_is_offered_again():
+    """A reminder dropped by the budget must not count as seen."""
+    memory = _Memory(alice="facts: a")
+    deps = _deps(memory)
+    await _injector()(SimpleNamespace(deps=deps, messages=FRESH))
+    memory.by_user["alice"] = "facts: b"
+
+    first = await core_memory_reminder_hook("chat-1", deps)
+    again = await core_memory_reminder_hook("chat-1", deps)
+
+    assert first is not None and again == first
+
+
+async def test_combined_reminder_acknowledges_only_what_survives_the_budget(
+    monkeypatch,
+):
+    from suzent.core import system_reminder
+
+    monkeypatch.setattr(system_reminder, "_global_hooks", [core_memory_reminder_hook])
+    monkeypatch.setattr(system_reminder, "_per_turn_hooks", [])
+    memory = _Memory(alice="facts: a")
+    deps = _deps(memory)
+    await _injector()(SimpleNamespace(deps=deps, messages=FRESH))
+    memory.by_user["alice"] = "facts: b"
+
+    crowded = "y" * system_reminder.REMINDER_BUDGET_CHARS
+    dropped = await system_reminder.build_combined_reminder(
+        "chat-1", deps, adhoc_reminders=[crowded]
+    )
+    assert "+facts: b" not in dropped
+
+    delivered = await system_reminder.build_combined_reminder("chat-1", deps)
+    assert "+facts: b" in delivered
     assert await core_memory_reminder_hook("chat-1", deps) is None
 
 

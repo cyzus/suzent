@@ -594,6 +594,8 @@ class ToolResultTrimmer:
     advances in steps of TRIM_STEP messages rather than with every message,
     and trimming an already trimmed result is a no-op. Either one moving by a
     single message each turn rewrote content the provider had already cached.
+    A hard clear ignores the step: it only runs over the hard limit, where
+    freeing space comes before the cache.
     """
 
     SOFT_HEAD = 1000
@@ -604,21 +606,23 @@ class ToolResultTrimmer:
     TRIM_STEP = 16
 
     @classmethod
-    def trim_cutoff(cls, message_count: int) -> int:
+    def trim_cutoff(cls, message_count: int, *, stepped: bool = True) -> int:
         """Index before which tool results may be trimmed.
 
-        Rounded down to a multiple of TRIM_STEP, so it holds still while the
-        history grows and up to TRIM_STEP - 1 extra messages stay untrimmed.
+        Stepped, it is rounded down to a multiple of TRIM_STEP, so it holds
+        still while the history grows and up to TRIM_STEP - 1 extra messages
+        stay untrimmed. A hard clear is an emergency over the limit and uses the
+        exact cutoff: rounding would leave short histories untouched.
         """
         keep_recent = CONFIG.compaction_keep_recent_turns * 2
         cutoff = max(0, message_count - keep_recent)
-        return cutoff - cutoff % cls.TRIM_STEP
+        return cutoff - cutoff % cls.TRIM_STEP if stepped else cutoff
 
     @classmethod
     def _rewrite_old_results(
-        cls, messages: list, rewrite: Callable[[str], str]
+        cls, messages: list, rewrite: Callable[[str], str], *, stepped: bool
     ) -> list:
-        cutoff = cls.trim_cutoff(len(messages))
+        cutoff = cls.trim_cutoff(len(messages), stepped=stepped)
         result = []
         for i, msg in enumerate(messages):
             if i >= cutoff or not isinstance(msg, ModelRequest):
@@ -656,12 +660,12 @@ class ToolResultTrimmer:
     @classmethod
     def apply_soft_trim(cls, messages: list, budget: TokenBudget) -> list:
         """Truncate large ToolReturnPart content to head + tail for older messages."""
-        return cls._rewrite_old_results(messages, cls._soft)
+        return cls._rewrite_old_results(messages, cls._soft, stepped=True)
 
     @classmethod
     def apply_hard_clear(cls, messages: list, budget: TokenBudget) -> list:
         """Replace ToolReturnPart content with placeholder for oldest messages."""
-        return cls._rewrite_old_results(messages, cls._hard)
+        return cls._rewrite_old_results(messages, cls._hard, stepped=False)
 
 
 # ---------------------------------------------------------------------------

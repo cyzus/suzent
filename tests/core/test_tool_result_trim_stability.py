@@ -6,7 +6,6 @@ resent part — a boundary that moves one message per turn, or a re-trim of an
 already trimmed result — throws away the provider's cached prefix.
 """
 
-import pytest
 from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
     ModelRequest,
@@ -55,9 +54,10 @@ def _wire(messages: list) -> list[bytes]:
     return [repr(m).encode() for m in dumped]
 
 
-@pytest.mark.parametrize("trim", ["apply_soft_trim", "apply_hard_clear"])
-def test_most_turns_resend_the_previous_request_unchanged(trim):
-    apply = getattr(ToolResultTrimmer, trim)
+def test_most_turns_resend_the_previous_request_unchanged():
+    """Soft trim only: a hard clear runs at the compaction threshold, where the
+    history is about to be rewritten anyway, so it keeps the exact cutoff."""
+    apply = ToolResultTrimmer.apply_soft_trim
     history: list = []
     previous: list[bytes] | None = None
     unchanged = changed = 0
@@ -105,3 +105,18 @@ def test_untouched_messages_are_passed_through_as_is():
     history = _turn(0, rounds=1)
 
     assert ToolResultTrimmer.apply_soft_trim(history, BUDGET)[0] is history[0]
+
+
+def test_hard_clear_still_frees_space_in_a_short_history():
+    """The step is a cache optimisation; over the hard limit, space comes first."""
+    history = _turn(0, rounds=6)
+    assert ToolResultTrimmer.trim_cutoff(len(history)) == 0
+
+    cleared = ToolResultTrimmer.apply_hard_clear(history, BUDGET)
+
+    assert any(
+        part.content == ToolResultTrimmer.HARD_PLACEHOLDER
+        for message in cleared
+        for part in getattr(message, "parts", [])
+        if isinstance(part, ToolReturnPart)
+    )
