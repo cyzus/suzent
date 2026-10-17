@@ -13,6 +13,7 @@ from suzent.core import model_factory
 from suzent.core.prompt_cache import (
     CacheRouting,
     PromptCacheRoutingCapability,
+    cache_key_for,
     cache_routing_settings,
     register_cache_routing,
 )
@@ -63,6 +64,26 @@ def test_only_first_party_openai_gets_a_prompt_cache_key() -> None:
         "openai_prompt_cache_key": "chat-1"
     }
     assert cache_routing_settings(compatible, "chat-1") is None
+
+
+def test_openai_lookalike_host_gets_no_prompt_cache_key(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com.proxy.example/v1")
+    proxied = model_factory._create_openai_model(
+        "gpt-5.6", "test-key", PROVIDER_REGISTRY_BY_ID["openai"]
+    )
+
+    assert cache_routing_settings(proxied, "chat-1") is None
+
+
+def test_long_chat_ids_hash_to_a_stable_64_char_key() -> None:
+    long_id = "a2a:device-1234567890:" + "c" * 80
+
+    key = cache_key_for(long_id)
+
+    assert len(key) == 64
+    assert key == cache_key_for(long_id)
+    assert key != cache_key_for(long_id + "x")
+    assert cache_key_for("chat-1") == "chat-1"
 
 
 def test_session_header_keeps_existing_extra_headers() -> None:

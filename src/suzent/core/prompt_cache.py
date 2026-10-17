@@ -10,6 +10,7 @@ rather than baked into the model, which is cached and shared across chats.
 
 from __future__ import annotations
 
+import hashlib
 import weakref
 from dataclasses import dataclass
 from enum import StrEnum
@@ -55,6 +56,17 @@ def _resolve_routing(model: Model) -> CacheRouting | None:
         model = model.wrapped
 
 
+# OpenAI caps `prompt_cache_key` at 64 characters, and A2A chat ids embed the
+# caller's context id, so a long id is hashed to a stable key of that length.
+_MAX_CACHE_KEY_CHARS = 64
+
+
+def cache_key_for(chat_id: str) -> str:
+    if len(chat_id) <= _MAX_CACHE_KEY_CHARS:
+        return chat_id
+    return hashlib.sha256(chat_id.encode()).hexdigest()
+
+
 def cache_routing_settings(
     model: Model, chat_id: str, settings: ModelSettings | None = None
 ) -> ModelSettings | None:
@@ -62,14 +74,15 @@ def cache_routing_settings(
     routing = _resolve_routing(model)
     if routing is None or not chat_id:
         return settings
+    key = cache_key_for(chat_id)
     merged: dict[str, Any] = dict(settings or {})
     match routing:
         case CacheRouting.PROMPT_CACHE_KEY:
-            merged["openai_prompt_cache_key"] = chat_id
+            merged["openai_prompt_cache_key"] = key
         case CacheRouting.SESSION_HEADER:
             merged["extra_headers"] = {
                 **(merged.get("extra_headers") or {}),
-                "session_id": chat_id,
+                "session_id": key,
             }
     return ModelSettings(**merged)
 

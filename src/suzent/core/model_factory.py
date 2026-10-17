@@ -28,6 +28,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -341,7 +342,9 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
     )
     # OpenAI-compatible third parties share this handler, and pydantic-ai sends
     # `prompt_cache_key` to whatever endpoint it is given; only OpenAI documents it.
-    if spec.id == "openai" and (not base_url or "api.openai.com" in base_url):
+    if spec.id == "openai" and (
+        not base_url or urlparse(base_url).hostname == "api.openai.com"
+    ):
         register_cache_routing(model, CacheRouting.PROMPT_CACHE_KEY)
     return model
 
