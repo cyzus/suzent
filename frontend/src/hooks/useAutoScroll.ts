@@ -10,10 +10,17 @@ interface UseAutoScrollOptions {
   smooth?: boolean;
 }
 
-export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions = {}) {
+export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOptions = {}) {
   const { tolerance = 50, resetKey, smooth = true } = options;
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // A keyed chat subtree replaces the DOM node without remounting this hook.
+  // Ref.current alone cannot rebind observers or event listeners to that node.
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const attachScrollContainer = useCallback((node: HTMLDivElement | null) => {
+    scrollContainerRef.current = node;
+    setScrollContainer(node);
+  }, []);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const autoScrollEnabledRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -45,6 +52,17 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
   // the user happens to click the selection away.
   const isSelectionDragActive = useCallback(() => isPointerSelectingRef.current, []);
 
+  // Only the bottom-following mode owns scroll geometry. History browsing
+  // keeps native anchoring and off-screen rendering optimizations.
+  useLayoutEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.dataset.followingBottom = String(!showScrollButton);
+    return () => {
+      delete el.dataset.followingBottom;
+    };
+  }, [showScrollButton, scrollContainer]);
+
   // Set up scroll listeners
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -58,6 +76,31 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
       userScrollIntentTimeoutRef.current = setTimeout(() => {
         userScrollIntentRef.current = false;
       }, 250);
+    };
+
+    const pauseFollowing = () => {
+      autoScrollEnabledRef.current = false;
+      autoScrollInProgress.current = false;
+      setShowScrollButton(true);
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      markUserIntent();
+      // Pause before the browser scrolls: streaming resizes can otherwise
+      // pull a small upward gesture back into the bottom tolerance zone.
+      if (event.deltaY < 0) pauseFollowing();
+    };
+
+    let touchY: number | undefined;
+    const onTouchStart = (event: TouchEvent) => {
+      markUserIntent();
+      touchY = event.touches[0]?.clientY;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      markUserIntent();
+      const nextY = event.touches[0]?.clientY;
+      if (nextY !== undefined && touchY !== undefined && nextY > touchY) pauseFollowing();
+      touchY = nextY;
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -92,15 +135,33 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
     ]);
     const onKeyDown = (event: KeyboardEvent) => {
       if (SCROLL_KEYS.has(event.key)) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
         markUserIntent();
+        if (
+          ['PageUp', 'ArrowUp', 'Home'].includes(event.key) ||
+          (event.key === ' ' && event.shiftKey)
+        ) {
+          pauseFollowing();
+        }
       }
     };
 
     const onUserScroll = () => {
       // A deliberate user scroll wins even mid-animation: our own programmatic
       // scrolls never set the intent flag, so this cannot swallow itself.
+      if (!userScrollIntentRef.current && autoScrollEnabledRef.current && !smooth) {
+        // Layout/anchoring can move scrollTop without resizing an observed
+        // box. Streaming must repair that drift too, not wait for another token.
+        if (!isSelectionDragActive() && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+        }
+        return;
+      }
       if (autoScrollInProgress.current && !userScrollIntentRef.current) return;
-      const atBottom = isAtBottom(el);
+      const atBottom = autoScrollEnabledRef.current
+        ? isAtBottom(el)
+        : el.scrollHeight - el.scrollTop - el.clientHeight <= 1;
 
       // Always re-enable autoscroll once we are back at bottom.
       if (atBottom) {
@@ -121,8 +182,9 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
     };
 
     el.addEventListener('scroll', onUserScroll, { passive: true });
-    el.addEventListener('wheel', markUserIntent, { passive: true });
-    el.addEventListener('touchstart', markUserIntent, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
     el.addEventListener('pointerdown', onPointerDown, { passive: true });
     el.addEventListener('keydown', onKeyDown, { passive: true });
     window.addEventListener('pointerup', endPointerSelection, { passive: true });
@@ -134,8 +196,9 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
 
     return () => {
       el.removeEventListener('scroll', onUserScroll);
-      el.removeEventListener('wheel', markUserIntent);
-      el.removeEventListener('touchstart', markUserIntent);
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('pointerup', endPointerSelection);
@@ -145,8 +208,10 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
       if (userScrollIntentTimeoutRef.current) {
         clearTimeout(userScrollIntentTimeoutRef.current);
       }
+      userScrollIntentRef.current = false;
+      isPointerSelectingRef.current = false;
     };
-  }, [isAtBottom]);
+  }, [isAtBottom, isSelectionDragActive, smooth, scrollContainer]);
 
   // Helper for programmatically scrolling
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -156,9 +221,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
       const container = scrollContainerRef.current;
       if (!container) return;
 
-      // Never move the viewport under an in-progress or existing selection —
-      // doing so makes the selection run away from the cursor. Autoscroll stays
-      // armed and resumes as soon as the selection is cleared.
+      // Keep the viewport still while the user is dragging a text selection.
       if (!force && isSelectionDragActive()) {
         if (!isAtBottom(scrollContainerRef.current)) {
           setShowScrollButton(true);
@@ -183,7 +246,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
           // Double check if we need to update state after forced scroll
           if (scrollContainerRef.current) {
             const atBottom = isAtBottom(scrollContainerRef.current);
-            if (atBottom) {
+            if (atBottom && autoScrollEnabledRef.current) {
               setShowScrollButton(false);
               autoScrollEnabledRef.current = true;
             }
@@ -266,7 +329,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
-  }, [performAutoScroll]);
+  }, [performAutoScroll, scrollContainer]);
 
   useEffect(() => {
     return () => {
@@ -288,6 +351,7 @@ export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions
 
   return {
     scrollContainerRef,
+    attachScrollContainer,
     bottomRef,
     showScrollButton,
     scrollToBottom,
