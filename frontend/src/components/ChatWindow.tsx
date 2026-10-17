@@ -3160,11 +3160,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     />
                   )}
                   {streamingForCurrentChat && modelResponseWaiting && (
-                    <ModelWaitNotice key={modelResponseWaiting.waitId} wait={modelResponseWaiting} onExtend={async (waitId) => {
-                      const runId = getStreamingRunId();
-                      if (!currentChatId || !runId) return false;
-                      return requestModelWaitExtension(getApiBase(), currentChatId, runId, waitId);
-                    }} />
+                    <ModelWaitNotice
+                      key={modelResponseWaiting.waitId}
+                      wait={modelResponseWaiting}
+                      onExtend={async (waitId) => {
+                        const runId = getStreamingRunId();
+                        if (!currentChatId || !runId) return false;
+                        return requestModelWaitExtension(
+                          getApiBase(),
+                          currentChatId,
+                          runId,
+                          waitId
+                        );
+                      }}
+                    />
                   )}
                   {/* Streaming/transient message from AG-UI */}
                   {showTransientAssistant && (
