@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.17.0] - 2026-10-17
+
+### Release notes
+- Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
+- Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
+- Show conversation tasks as an ordered checklist and open task results through their conversations.
+- Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching.
+- Clicking a Suzent system notification now brings the app window back to the front.
+- Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated.
+- The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
+- Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
+- Show early model waiting notices, allow more time explicitly, and avoid interrupting Gemini reasoning after two minutes. Keep file snapshots out of model requests.
+- Make notification sounds play reliably after the desktop window loses focus by resuming interrupted audio before playback.
+- Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
+- Enable prompt caching for Anthropic models and keep ChatGPT and OpenAI requests of one chat on the same cache, cutting repeated input cost in long agent runs.
+- Keep the prompt prefix stable across turns so providers reuse more of their cache: core-memory edits arrive as a reminder instead of rewriting the system prompt, and old tool results are trimmed in steps rather than every turn.
+- The Resonance notification sound now speaks the outcome — done, needs approval or failed — in the app's language.
+- Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout.
+- Sub-agents that inherit the conversation now run on your current model, so the shared history is not processed again. A running sub-agent's timer, prompt and reminders now show correctly, and an empty sub-agent no longer sticks on "Connecting".
+- Unify task progress into a responsive list with waiting reasons, results, and reliable conversation and project navigation.
+
 ## [v0.16.0] - 2026-10-14
 
 <!-- highlights -->
