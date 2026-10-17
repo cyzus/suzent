@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.3.1] - 2026-10-17
+## [mobile-v0.3.1] - 2026-10-18
 
 ### Release notes
 - Reduce iOS chat scrolling work by keeping scroll measurements out of SwiftUI rendering updates and avoiding repeated message-history scans.
