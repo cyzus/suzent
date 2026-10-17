@@ -19,12 +19,14 @@ import TabItem from '@theme/TabItem';
 
 从[首页](/#download)下载适合你电脑的安装程序。M 系列 Mac 选择 Apple Silicon，Intel Mac 选择 Intel。Windows 和 Linux 下载适用于 x86_64。
 
-在 Windows 上打开下载的 `.exe`。在 macOS 或 Linux 上，在下载文件夹中打开终端，将 `<filename>` 替换为下载的安装程序的完整文件名后运行：
+- **macOS：** 打开下载的 `.dmg`，然后双击 **Suzent Installer**。也可以先把它拖到“应用程序”文件夹，再从那里打开。
+- **Windows：** 打开下载的 `.exe`。
+- **Linux：** 在下载文件夹中打开终端，将 `<filename>` 替换为下载的安装程序的完整文件名后运行：
 
-```bash
-chmod +x ./<filename>
-./<filename>
-```
+  ```bash
+  chmod +x ./<filename>
+  ./<filename>
+  ```
 
 按照安装程序的引导选择工作区并安装 Suzent。安装需要联网。当前发行版在 macOS 和 Linux 上需要 Git；如果安装程序提示缺少 Git，请先安装 Git。
 
