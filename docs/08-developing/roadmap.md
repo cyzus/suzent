@@ -28,24 +28,26 @@ Planned, in order:
 
 ## Chat storage
 
-See [Chat storage](./architecture/chat-storage.md) for what exists today: SQLite
-is authoritative and every write is mirrored to a per-chat JSONL log.
+See [Chat storage](./architecture/chat-storage.md) for what exists today: each
+chat's JSONL log is authoritative and `chats.db` is rebuilt from the logs.
 
-Planned, in order:
+Not done yet:
 
-1. **Log first** — append the events before the SQLite commit, record the
-   indexed offset per chat, fsync turn-level events, and replay any unindexed
-   tail on startup. `chat_store` defaults to `jsonl`; `shadow` remains as the
-   way back.
-2. **Rebuildable index** — `suzent chats rebuild-index` and an automatic
-   rebuild when `chats.db` is missing; retry checkpoints become log events.
-3. **Clean-up** — retire `StateMirror` and derive the memory-extraction
-   transcripts from the log.
-
-Ideas taken from pydantic-ai-harness `StepPersistence` for these steps: store
-large media outside the log by content hash, keep a tool-effect ledger so a
-restart can tell which tool calls may already have run, and mark saved history
-as complete or interrupted.
+- **Memory-extraction transcripts** (`transcripts/*.jsonl`) are still written
+  separately. They double as the extraction queue, with per-chat cursors, so
+  deriving them from the chat log means moving those cursors onto log `seq`s.
+- **Media and log compaction.** Nothing removes `.media/` files once no log
+  refers to them, and a log never shrinks: compaction and rollbacks keep the
+  replaced turns in earlier lines. A `suzent chats compact-log` would rewrite a
+  log as one `chat.imported` snapshot plus the events after its retry
+  checkpoint.
+- **Ideas from pydantic-ai-harness `StepPersistence`** not yet taken: a
+  tool-effect ledger (`tool.started` / `tool.finished`) so a restart can tell
+  which tool calls may already have run, and marking saved history as complete
+  or interrupted so an interrupted history is repaired before it is replayed.
+- **System chats.** Dream and sub-agent chats still keep no agent history.
+  Logging it, with an explicit `run.reset` event where dream deliberately
+  starts over, would let a sub-agent woken by `agent_send` keep its context.
 
 ## A2A
 

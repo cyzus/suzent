@@ -339,12 +339,8 @@ class ProjectOperationsMixin:
             for moved_chat in moved_chats:
                 moved_chat.project_id = project_id
                 session.add(moved_chat)
-            session.commit()
-            moved_ids = [moved_chat.id for moved_chat in moved_chats]
-
-        for moved_id in moved_ids:
-            self.record_chat_change(moved_id)
-        return True
+            self.commit_chat_changes(session, [c.id for c in moved_chats])
+            return True
 
     def move_all_chats(self, from_project_id: str, to_project_id: str) -> int:
         """Reassign every chat from one project plus their subagents."""
@@ -363,12 +359,8 @@ class ProjectOperationsMixin:
             for chat in moved_chats:
                 chat.project_id = to_project_id
                 session.add(chat)
-            session.commit()
-            moved_ids = [chat.id for chat in moved_chats]
-
-        for moved_id in moved_ids:
-            self.record_chat_change(moved_id)
-        return len(moved_ids)
+            self.commit_chat_changes(session, [chat.id for chat in moved_chats])
+            return len(moved_chats)
 
     def get_chat_ids_in_project(self, project_id: str) -> List[str]:
         """Return chat ids assigned to a project plus direct subagents of those chats."""

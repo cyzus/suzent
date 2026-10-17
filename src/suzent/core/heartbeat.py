@@ -227,8 +227,7 @@ class HeartbeatRunner(BaseBrain):
                     chat.config.pop("heartbeat_last_result", None)  # clear stale result
                     chat.updated_at = datetime.now()
                     flag_modified(chat, "config")
-                    session.commit()
-            db.record_chat_change(chat_id)
+                    db.commit_chat_changes(session, [chat_id])
         except Exception as e:
             logger.error(f"Failed to update heartbeat_last_run_at: {e}")
 
@@ -261,8 +260,7 @@ class HeartbeatRunner(BaseBrain):
                         _chat.config["heartbeat_last_result"] = response_text
                         _chat.updated_at = datetime.now()
                         _fm(_chat, "config")
-                        _s.commit()
-                db.record_chat_change(chat_id)
+                        db.commit_chat_changes(_s, [chat_id])
             except Exception as _e:
                 logger.warning(f"Failed to persist heartbeat_last_result: {_e}")
 

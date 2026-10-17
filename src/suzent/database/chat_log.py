@@ -1,33 +1,44 @@
-"""Append-only JSONL event log for each chat.
+"""Append-only JSONL event log for each chat: the source of truth for chats.
 
 Each chat gets ``<root>/<chat_id>.jsonl``. Every line is one event:
 
     {"v": 1, "seq": 7, "ts": "...", "type": "messages.splice", "data": {...}}
 
 Folding a chat's events with :func:`apply_event` yields its *projection*: the
-durable parts of the ``chats`` row in a JSON-only form (see :func:`project_chat`).
-The log only ever records differences between successive projections, so its
-size grows with the conversation rather than with the number of writes.
+durable parts of the ``chats`` row in a JSON-only form (see :func:`project_chat`),
+plus the chat's retry checkpoint, which has no row of its own. The log records
+only differences between successive projections, so its size grows with the
+conversation rather than with the number of writes.
 
-In ``shadow`` mode SQLite stays the source of truth: after a chat write commits,
-the database layer projects the stored row and :meth:`ChatEventLog.sync` appends
-whatever changed. ``suzent chats verify`` folds each log and compares it with
-the row, which is the evidence needed before the log can become authoritative.
+Writes go to the log first. The database layer applies a write to SQLite
+without committing, projects the uncommitted row, and :meth:`ChatEventLog.prepare`
+appends and fsyncs whatever changed. Only then does SQLite commit; if the commit
+fails the append is truncated away. A crash between the two leaves the log
+ahead of SQLite, and the next start replays it into the row. ``chats.db`` is
+therefore an index that can be rebuilt from the logs at any time.
+
+Strings of 64 KiB or more (pasted images, large tool output) are stored once
+under ``<root>/.media/<sha256>`` and referenced as ``{"$media": "<sha256>"}``,
+which keeps the logs small enough to read and grep.
 """
 
 from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import os
 import shutil
 import threading
+import time
 from collections import OrderedDict
+from dataclasses import dataclass, field
+from functools import cached_property
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from suzent.logger import get_logger
 
@@ -54,6 +65,13 @@ META_FIELDS = (
     "context_usage",
 )
 
+# Projection keys that come from events rather than from the row.
+LOG_ONLY_FIELDS = ("checkpoint",)
+
+MEDIA_THRESHOLD = 64 * 1024
+MEDIA_KEY = "$media"
+TRASH_RETENTION_DAYS = 30
+
 # Leaves room for ".jsonl" and the ".trash" timestamp within a 255-byte name.
 _MAX_FILE_STEM = 200
 
@@ -62,7 +80,7 @@ class ChatLogError(Exception):
     """A chat log cannot be read or folded."""
 
 
-def _normalize(value: Any) -> Any:
+def normalize_json(value: Any) -> Any:
     """Return *value* exactly as it reads back from the log."""
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
@@ -120,8 +138,13 @@ def state_bytes(state: dict[str, Any]) -> Optional[bytes]:
             return json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
 
 
+def visible_messages(messages: Optional[list[Any]]) -> list[Any]:
+    """Display messages without the streaming draft, which the log leaves out."""
+    return [m for m in (messages or []) if not _is_streaming_draft(m)]
+
+
 def project_chat(chat: Any) -> Projection:
-    """Project a ``ChatModel`` row onto the fields the log records.
+    """Project a ``chats`` row (ORM object or Core row) onto the logged fields.
 
     Streaming drafts are dropped: they are overwritten every fraction of a
     second and replaced by the turn's real write, so recording them would fill
@@ -142,11 +165,10 @@ def project_chat(chat: Any) -> Projection:
         "turn_count": chat.turn_count or 0,
         "context_usage": chat.context_usage or {},
     }
-    messages = [m for m in (chat.messages or []) if not _is_streaming_draft(m)]
     return {
-        **_normalize(meta),
+        **normalize_json(meta),
         "config": chat.config or {},
-        "messages": messages,
+        "messages": visible_messages(chat.messages),
         "state": project_state(chat.agent_state),
     }
 
@@ -184,7 +206,7 @@ def apply_splice(items: list[Any], splice: dict[str, Any]) -> list[Any]:
 
 
 def diff_projections(old: Projection, new: Projection) -> list[tuple[str, Any]]:
-    """Return the events that turn projection *old* into *new*."""
+    """Return the events that turn the row part of *old* into *new*."""
     events: list[tuple[str, Any]] = []
 
     meta = {key: new[key] for key in META_FIELDS if old.get(key) != new[key]}
@@ -225,7 +247,9 @@ def apply_event(projection: Optional[Projection], event: Event) -> Optional[Proj
     kind, data = event["type"], event["data"]
 
     if kind in ("chat.created", "chat.imported"):
-        return copy.deepcopy(data)
+        created = copy.deepcopy(data)
+        created.setdefault("checkpoint", None)
+        return created
     if kind == "chat.deleted":
         return None
     if projection is None:
@@ -246,9 +270,101 @@ def apply_event(projection: Optional[Projection], event: Event) -> Optional[Proj
         case "history.splice":
             state = projection["state"]
             state["history"] = apply_splice(state["history"], data)
+        case "checkpoint.set":
+            projection["checkpoint"] = copy.deepcopy(data)
+        case "checkpoint.update":
+            checkpoint = projection.get("checkpoint")
+            # An update names the checkpoint it belongs to, so one that lost a
+            # race with the next turn's checkpoint changes nothing.
+            if checkpoint is not None and checkpoint["id"] == data["id"]:
+                checkpoint.update(copy.deepcopy(data["set"]))
         case _:
             raise ChatLogError(f"unknown chat log event type {kind!r}")
     return projection
+
+
+def projection_differences(
+    logged: Optional[Projection], stored: Optional[Projection]
+) -> list[str]:
+    """Name the row fields where a folded log disagrees with the row."""
+    if logged is None or stored is None:
+        if logged is stored:
+            return []
+        return ["<missing log>" if logged is None else "<missing row>"]
+    fields = sorted((set(logged) | set(stored)) - set(LOG_ONLY_FIELDS))
+    return [field for field in fields if logged.get(field) != stored.get(field)]
+
+
+@dataclass
+class PendingAppend:
+    """Events appended to a chat's log whose SQLite commit has not happened yet."""
+
+    chat_id: str
+    size_before: int
+    projection: Optional[Projection]
+    seq: int
+    size: int
+    mtime_ns: int
+
+
+@dataclass
+class RetryCheckpoint:
+    """A chat's retry checkpoint, as its log records it.
+
+    ``before`` is either ``{"seq": n}``, the log position whose state a retry
+    restores, or a copy of that state for checkpoints that did not match the
+    stored chat. The restored state is read only when a retry needs it.
+    """
+
+    chat_id: str
+    id: str
+    user_message: str
+    user_files: list[Any]
+    config_snapshot: dict[str, Any]
+    has_file_snapshot: bool
+    file_snapshot: list[Any]
+    created_at: Optional[datetime]
+    before: dict[str, Any]
+    chat_log: ChatEventLog = field(repr=False, compare=False)
+
+    @classmethod
+    def from_logged(
+        cls, chat_id: str, data: dict[str, Any], chat_log: ChatEventLog
+    ) -> RetryCheckpoint:
+        created_at = data.get("created_at")
+        return cls(
+            chat_id=chat_id,
+            id=data["id"],
+            user_message=data["user_message"],
+            user_files=data["user_files"],
+            config_snapshot=data["config_snapshot"],
+            has_file_snapshot=data["has_file_snapshot"],
+            file_snapshot=data["file_snapshot"],
+            created_at=datetime.fromisoformat(created_at) if created_at else None,
+            before=data["before"],
+            chat_log=chat_log,
+        )
+
+    @cached_property
+    def _restore_point(self) -> tuple[list[Any], Optional[bytes]]:
+        if "seq" in self.before:
+            projection, _ = self.chat_log.fold(
+                self.chat_id, until_seq=self.before["seq"]
+            )
+            if projection is None:
+                raise ChatLogError(
+                    f"{self.chat_id} has no state at seq {self.before['seq']}"
+                )
+            return projection["messages"], state_bytes(projection["state"])
+        return self.before["messages"], state_bytes(self.before["state"])
+
+    @property
+    def messages_before(self) -> list[Any]:
+        return self._restore_point[0]
+
+    @property
+    def agent_state_before(self) -> Optional[bytes]:
+        return self._restore_point[1]
 
 
 class ChatEventLog:
@@ -258,6 +374,7 @@ class ChatEventLog:
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
+        self.media_root = self.root / ".media"
         self._cache: OrderedDict[str, tuple[Optional[Projection], int]] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._chat_locks: dict[str, threading.Lock] = {}
@@ -277,11 +394,65 @@ class ChatEventLog:
     def chat_ids(self) -> list[str]:
         if not self.root.is_dir():
             return []
-        return sorted(unquote(path.stem) for path in self.root.glob("*.jsonl"))
+        return sorted(
+            unquote(path.stem) for path in self.root.glob("*.jsonl") if path.is_file()
+        )
 
-    def _lock(self, chat_id: str) -> threading.Lock:
+    def stat(self, chat_id: str) -> Optional[tuple[int, int]]:
+        """Return the log's (size, mtime_ns), or None if it has no log."""
+        try:
+            result = self.path(chat_id).stat()
+        except FileNotFoundError:
+            return None
+        return result.st_size, result.st_mtime_ns
+
+    def lock(self, chat_id: str) -> threading.Lock:
+        """The lock to hold from reading a chat's row until its write commits."""
         with self._cache_lock:
             return self._chat_locks.setdefault(chat_id, threading.Lock())
+
+    # Media -----------------------------------------------------------------
+
+    def _store_media(self, text: str) -> str:
+        data = text.encode("utf-8")
+        digest = hashlib.sha256(data).hexdigest()
+        target = self.media_root / digest
+        if not target.exists():
+            self.media_root.mkdir(parents=True, exist_ok=True)
+            partial = target.with_name(f"{digest}.{os.getpid()}.tmp")
+            with partial.open("wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(partial, target)
+        return digest
+
+    def _externalize(self, value: Any) -> Any:
+        if isinstance(value, str):
+            if len(value) >= MEDIA_THRESHOLD:
+                return {MEDIA_KEY: self._store_media(value)}
+            return value
+        if isinstance(value, list):
+            return [self._externalize(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self._externalize(item) for key, item in value.items()}
+        return value
+
+    def _resolve(self, value: Any) -> Any:
+        if isinstance(value, list):
+            return [self._resolve(item) for item in value]
+        if isinstance(value, dict):
+            if len(value) == 1 and isinstance(value.get(MEDIA_KEY), str):
+                try:
+                    return (self.media_root / value[MEDIA_KEY]).read_text("utf-8")
+                except OSError as exc:
+                    raise ChatLogError(
+                        f"media {value[MEDIA_KEY]} is missing: {exc}"
+                    ) from exc
+            return {key: self._resolve(item) for key, item in value.items()}
+        return value
+
+    # Reading ---------------------------------------------------------------
 
     def events(self, chat_id: str) -> Iterator[Event]:
         """Yield the log's events, ignoring a torn final line from a crash."""
@@ -304,13 +475,21 @@ class ChatEventLog:
                 and "data" in event
             ):
                 raise ChatLogError(f"{path}:{number}: not a chat log event")
+            event["data"] = self._resolve(event["data"])
             yield event
 
-    def fold(self, chat_id: str) -> tuple[Optional[Projection], int]:
-        """Replay a chat's log. Returns its projection and last sequence number."""
+    def fold(
+        self, chat_id: str, until_seq: Optional[int] = None
+    ) -> tuple[Optional[Projection], int]:
+        """Replay a chat's log, optionally stopping after event *until_seq*.
+
+        Returns the projection and the last sequence number applied.
+        """
         projection: Optional[Projection] = None
         seq = 0
         for event in self.events(chat_id):
+            if until_seq is not None and event["seq"] > until_seq:
+                break
             try:
                 projection = apply_event(projection, event)
             except (KeyError, TypeError, AttributeError) as exc:
@@ -320,31 +499,28 @@ class ChatEventLog:
             seq = event["seq"]
         return projection, seq
 
-    def _drop_torn_tail(self, path: Path) -> None:
-        if not path.exists():
-            return
-        with path.open("rb+") as handle:
-            data = handle.read()
-            if data and not data.endswith(b"\n"):
-                handle.truncate(data.rfind(b"\n") + 1)
+    def logged(self, chat_id: str) -> tuple[Optional[Projection], int]:
+        """The chat's current projection and sequence number, from the cache.
 
-    def _append(self, path: Path, events: list[Event]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        payload = "".join(
-            json.dumps(event, ensure_ascii=False, default=str) + "\n"
-            for event in events
-        )
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-
-    def _cached(self, chat_id: str) -> tuple[Optional[Projection], int]:
+        Hold :meth:`lock` while using the result: the cached projection is
+        shared and is replaced by the next write.
+        """
         with self._cache_lock:
             if chat_id in self._cache:
                 self._cache.move_to_end(chat_id)
                 return self._cache[chat_id]
-        self._drop_torn_tail(self.path(chat_id))
-        return self.fold(chat_id)
+        path = self.path(chat_id)
+        self._drop_torn_tail(path)
+        try:
+            projection, seq = self.fold(chat_id)
+        except ChatLogError as exc:
+            # The row is now the best remaining copy; the next write starts a
+            # fresh log from it and the unreadable one is kept for inspection.
+            kept = self._move_aside(path, ".corrupt")
+            logger.warning("Chat log {} is unreadable, kept as {}: {}", path, kept, exc)
+            projection, seq = None, 0
+        self._remember(chat_id, projection, seq)
+        return projection, seq
 
     def _remember(
         self, chat_id: str, projection: Optional[Projection], seq: int
@@ -359,59 +535,143 @@ class ChatEventLog:
         with self._cache_lock:
             self._cache.pop(chat_id, None)
 
-    def sync(
+    # Writing ---------------------------------------------------------------
+
+    def _drop_torn_tail(self, path: Path) -> None:
+        if not path.exists():
+            return
+        with path.open("rb+") as handle:
+            data = handle.read()
+            if data and not data.endswith(b"\n"):
+                handle.truncate(data.rfind(b"\n") + 1)
+
+    def _append(self, path: Path, events: list[Event]) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        payload = "".join(
+            json.dumps(
+                {**event, "data": self._externalize(event["data"])},
+                ensure_ascii=False,
+                default=str,
+            )
+            + "\n"
+            for event in events
+        )
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    def prepare(
         self,
         chat_id: str,
-        load: Callable[[], Optional[Projection]],
+        current: Optional[Projection],
         *,
         created: bool = False,
-    ) -> int:
-        """Append the events that bring the log up to the chat's current state.
+        extra: tuple[tuple[str, Any], ...] = (),
+    ) -> Optional[PendingAppend]:
+        """Append and fsync the events that bring the log up to *current*.
 
-        *load* reads the committed row and returns its projection, or None once
-        the chat no longer exists: the log then records the deletion and moves
-        to ``.trash/``. It runs under the chat's lock, so two writers syncing at
-        once cannot append an older state after a newer one. Returns the number
-        of events written.
+        *current* is the projection of the chat's uncommitted row, or None if
+        the write deletes it. *extra* holds log-only events (``checkpoint.*``)
+        appended after the row's changes; a ``checkpoint.set`` whose ``before``
+        is ``{"seq": None}`` is pinned to the event just ahead of it.
+
+        The caller holds :meth:`lock` and then either commits SQLite and calls
+        :meth:`confirm`, or calls :meth:`undo`. Returns None if nothing changed.
         """
         path = self.path(chat_id)
-        with self._lock(chat_id):
-            try:
-                current = load()
-                logged, seq = self._cached(chat_id)
-                if current is None:
-                    if logged is None:
-                        return 0
-                    self._append(path, [self._event(seq + 1, "chat.deleted", {})])
-                    self._move_to_trash(path)
-                    self._remember(chat_id, None, 0)
-                    return 1
-                if logged is None:
-                    pending = [
-                        ("chat.created" if created else "chat.imported", current)
-                    ]
-                else:
-                    pending = diff_projections(logged, current)
-                if not pending:
-                    return 0
-                events = [
-                    self._event(seq + offset, kind, data)
-                    for offset, (kind, data) in enumerate(pending, start=1)
-                ]
-                self._append(path, events)
-                # load() built this projection fresh and nothing else holds it.
-                self._remember(chat_id, current, events[-1]["seq"])
-                return len(events)
-            except Exception:
-                # A failed append may leave a torn line; refold on the next write.
-                self.forget(chat_id)
-                raise
+        logged, seq = self.logged(chat_id)
+        if current is None:
+            if logged is None:
+                return None
+            pending: list[tuple[str, Any]] = [("chat.deleted", {})]
+        else:
+            if logged is None:
+                kind = "chat.created" if created else "chat.imported"
+                pending = [(kind, {**current})]
+            else:
+                pending = diff_projections(logged, current)
+            current["checkpoint"] = (
+                copy.deepcopy(logged.get("checkpoint")) if logged else None
+            )
+            pending += list(extra)
+        if not pending:
+            return None
 
-    def _move_to_trash(self, path: Path) -> None:
-        trash = self.root / ".trash"
-        trash.mkdir(parents=True, exist_ok=True)
+        events = []
+        for offset, (kind, data) in enumerate(pending, start=1):
+            if kind == "checkpoint.set" and data.get("before") == {"seq": None}:
+                data = {**data, "before": {"seq": seq + offset - 1}}
+            events.append(self._event(seq + offset, kind, data))
+        if current is not None:
+            for event in events[len(events) - len(extra) :]:
+                apply_event(current, event)
+
+        size_before = path.stat().st_size if path.exists() else 0
+        try:
+            self._append(path, events)
+        except BaseException:
+            self._truncate(path, size_before)
+            raise
+        stat = path.stat()
+        return PendingAppend(
+            chat_id=chat_id,
+            size_before=size_before,
+            projection=current,
+            seq=events[-1]["seq"],
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+
+    def confirm(self, pending: PendingAppend) -> None:
+        """SQLite committed: cache the new projection, retire a deleted log."""
+        if pending.projection is None:
+            self.retire(pending.chat_id)
+            return
+        self._remember(pending.chat_id, pending.projection, pending.seq)
+
+    def undo(self, pending: PendingAppend) -> None:
+        """SQLite did not commit: take the appended events back out."""
+        self._truncate(self.path(pending.chat_id), pending.size_before)
+        self.forget(pending.chat_id)
+
+    def _truncate(self, path: Path, size: int) -> None:
+        if not path.exists():
+            return
+        if size == 0:
+            path.unlink()
+        else:
+            os.truncate(path, size)
+
+    def retire(self, chat_id: str) -> None:
+        """Move a deleted chat's log to ``.trash/``."""
+        path = self.path(chat_id)
+        if path.exists():
+            self._move_aside(path, ".trash")
+        self._remember(chat_id, None, 0)
+
+    def _move_aside(self, path: Path, folder: str) -> Path:
+        target_dir = self.root / folder
+        target_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        shutil.move(str(path), trash / f"{path.stem}.{stamp}.jsonl")
+        target = target_dir / f"{path.stem}.{stamp}.jsonl"
+        shutil.move(str(path), target)
+        # Retention counts from when the log was set aside, not its last write.
+        os.utime(target)
+        return target
+
+    def purge_trash(self, max_age_days: int = TRASH_RETENTION_DAYS) -> int:
+        """Delete trashed logs older than *max_age_days*. Returns how many."""
+        trash = self.root / ".trash"
+        if not trash.is_dir():
+            return 0
+        cutoff = time.time() - max_age_days * 86400
+        purged = 0
+        for path in trash.glob("*.jsonl"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                purged += 1
+        return purged
 
     @staticmethod
     def _event(seq: int, kind: str, data: Any) -> Event:
@@ -424,30 +684,6 @@ class ChatEventLog:
         }
 
 
-def projection_differences(
-    logged: Optional[Projection], stored: Optional[Projection]
-) -> list[str]:
-    """Name the top-level fields where a folded log disagrees with the row."""
-    if logged is None or stored is None:
-        if logged is stored:
-            return []
-        return ["<missing log>" if logged is None else "<missing row>"]
-    fields = sorted(set(logged) | set(stored))
-    return [field for field in fields if logged.get(field) != stored.get(field)]
-
-
 def default_log_root(db_path: Path) -> Path:
     """``<data>/chats.db`` keeps its logs in ``<data>/chats/``."""
     return db_path.parent / db_path.stem
-
-
-def shadow_enabled() -> bool:
-    """Whether chat writes are mirrored to the JSONL log."""
-    if os.getenv("SUZENT_CHAT_STORE"):
-        return os.environ["SUZENT_CHAT_STORE"] == "shadow"
-    try:
-        from suzent.config import CONFIG
-
-        return getattr(CONFIG, "chat_store", "shadow") == "shadow"
-    except Exception:
-        return True

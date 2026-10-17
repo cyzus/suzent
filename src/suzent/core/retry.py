@@ -33,7 +33,6 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -110,7 +109,7 @@ def save_retry_checkpoint(
     file_snapshot: Optional[list] = None,
 ) -> str | None:
     """
-    Persist a retry checkpoint for *chat_id*.
+    Persist a retry checkpoint for *chat_id* in its chat log.
 
     ``file_snapshot`` is the serialised output of FileTracker.make_snapshot()
     (a list of dicts).  When provided, no directory copies are made.
@@ -119,13 +118,12 @@ def save_retry_checkpoint(
     Replaces any previously stored checkpoint for this chat.
     """
     try:
-        from suzent.database import RetryCheckpointModel, get_database
-        from sqlmodel import Session
+        from suzent.database import get_database
 
-        db = get_database()
         checkpoint_id = uuid.uuid4().hex
-        checkpoint = RetryCheckpointModel(
-            chat_id=chat_id,
+        saved = get_database().save_retry_checkpoint(
+            chat_id,
+            checkpoint_id=checkpoint_id,
             agent_state_before=agent_state_before,
             messages_before=list(messages_before),
             user_message=user_message,
@@ -138,17 +136,10 @@ def save_retry_checkpoint(
                 },
                 "_retry_checkpoint_id": checkpoint_id,
             },
-            has_file_snapshot=bool(file_snapshot is not None),
-            file_snapshot=file_snapshot or [],
-            created_at=datetime.now(timezone.utc),
+            file_snapshot=file_snapshot,
         )
-        with Session(db.engine) as session:
-            existing = session.get(RetryCheckpointModel, chat_id)
-            if existing:
-                session.delete(existing)
-                session.flush()
-            session.add(checkpoint)
-            session.commit()
+        if not saved:
+            return None
 
         logger.debug(
             f"[retry] checkpoint saved for {chat_id}: "
@@ -165,33 +156,30 @@ def record_retry_checkpoint_revision(
     chat_id: str, checkpoint_id: str, revision: int
 ) -> None:
     """Bind a checkpoint to its own completed turn, never a later autonomous turn."""
-    from suzent.database import RetryCheckpointModel, get_database
-    from sqlmodel import Session
+    from suzent.database import get_database
 
-    with Session(get_database().engine) as session:
-        checkpoint = session.get(RetryCheckpointModel, chat_id)
-        if (
-            checkpoint is None
-            or checkpoint.config_snapshot.get("_retry_checkpoint_id") != checkpoint_id
-        ):
-            return
-        checkpoint.config_snapshot = {
-            **checkpoint.config_snapshot,
-            "_retry_revision": revision,
-        }
-        session.add(checkpoint)
-        session.commit()
+    db = get_database()
+    checkpoint = db.get_retry_checkpoint(chat_id)
+    if checkpoint is None or checkpoint.id != checkpoint_id:
+        return
+    db.update_retry_checkpoint(
+        chat_id,
+        checkpoint_id,
+        {
+            "config_snapshot": {
+                **checkpoint.config_snapshot,
+                "_retry_revision": revision,
+            }
+        },
+    )
 
 
 def load_retry_checkpoint(chat_id: str) -> Optional[Any]:
-    """Return the stored RetryCheckpointModel for *chat_id*, or None."""
+    """Return the chat's ``RetryCheckpoint``, or None."""
     try:
-        from suzent.database import RetryCheckpointModel, get_database
-        from sqlmodel import Session
+        from suzent.database import get_database
 
-        db = get_database()
-        with Session(db.engine) as session:
-            return session.get(RetryCheckpointModel, chat_id)
+        return get_database().get_retry_checkpoint(chat_id)
     except Exception as e:
         logger.error(f"[retry] load_retry_checkpoint failed for {chat_id}: {e}")
         return None

@@ -20,7 +20,8 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 | Path | What it holds |
 |---|---|
 | `config/` | Your settings files (see below). |
-| `chats.db` | Your conversations. |
+| `chats/` | Your conversations, one plain-text file each. This is the master copy. |
+| `chats.db` | An index of your conversations, plus your projects, tasks, and schedules. Suzent rebuilds the conversations in it from `chats/` if it goes missing. |
 | `sandbox/projects/<project>/` | Each [project's library](../03-features/filesystem.md#where-files-go). |
 | `sandbox/shared/` | The folder shared by all projects. Your memory's Markdown files are in `sandbox/shared/memory/`. |
 | `notebook/` | The [notebook](../03-features/memory/llm-wiki.md) vault. |
@@ -117,7 +118,6 @@ See [Memory](../03-features/memory/README.md). More tuning is on
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
 | `goals_max_turns` | `20` | How many turns [goal mode](../03-features/automation.md#goal-mode) runs before pausing. |
 | `jsonl_transcripts_enabled` | `true` | Keep a transcript of each conversation. |
-| `chat_store` | `shadow` | `shadow` also writes every conversation to a plain-text file in `~/.suzent/chats/`. `sqlite` keeps conversations in the database only. |
 | `transcript_indexing_enabled` | `false` | Make past conversations searchable, at the cost of extra embedding calls. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |

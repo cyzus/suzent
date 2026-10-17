@@ -43,12 +43,13 @@ class ChatDatabaseBase:
         self._init_chat_search()
         self._repair_stale_chat_summaries()
 
-        from .chat_log import ChatEventLog, default_log_root, shadow_enabled
+        from .chat_log import ChatEventLog, default_log_root
 
-        # Set last so startup migrations above don't each write a log entry.
-        self.chat_log = (
-            ChatEventLog(default_log_root(self.db_path)) if shadow_enabled() else None
-        )
+        # Each chat's JSONL log is its source of truth; chats.db indexes them.
+        self.chat_log = ChatEventLog(default_log_root(self.db_path))
+        # Before anything can write: a write diffs the row against its log, so
+        # a log still ahead of its row from a crash would otherwise be undone.
+        self.reconcile_chat_logs()
 
     def _session(self) -> Session:
         """Create a new database session."""
