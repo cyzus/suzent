@@ -206,12 +206,14 @@ Source: https://suzent.com/zh-Hans/docs/getting-started/quickstart
 
 从[首页](https://suzent.com/zh-Hans#download)下载适合你电脑的安装程序。M 系列 Mac 选择 Apple Silicon，Intel Mac 选择 Intel。Windows 和 Linux 下载适用于 x86_64。
 
-在 Windows 上打开下载的 `.exe`。在 macOS 或 Linux 上，在下载文件夹中打开终端，将 `<filename>` 替换为下载的安装程序的完整文件名后运行：
+- **macOS：** 打开下载的 `.dmg`，然后双击 **Suzent Installer**。也可以先把它拖到“应用程序”文件夹，再从那里打开。
+- **Windows：** 打开下载的 `.exe`。
+- **Linux：** 在下载文件夹中打开终端，将 `<filename>` 替换为下载的安装程序的完整文件名后运行：
 
-```bash
-chmod +x ./<filename>
-./<filename>
-```
+  ```bash
+  chmod +x ./<filename>
+  ./<filename>
+  ```
 
 按照安装程序的引导选择工作区并安装 Suzent。安装需要联网。当前发行版在 macOS 和 Linux 上需要 Git；如果安装程序提示缺少 Git，请先安装 Git。
 
@@ -7218,9 +7220,22 @@ Source: https://suzent.com/zh-Hans/docs/developing/contributing/macos-releases
 
 
 The desktop workflow publishes raw Mach-O executables for the main app and the
-installer. Both must be signed with a **Developer ID Application** certificate,
-with hardened runtime and a secure timestamp, and accepted by Apple's notary
-service before upload. An iOS Apple Distribution certificate does not work here.
+installer, plus a disk image (`suzent-installer-macos-<arch>.dmg`) that the
+landing page offers for download. Everything must be signed with a
+**Developer ID Application** certificate, with hardened runtime and a secure
+timestamp, and accepted by Apple's notary service before upload. An iOS Apple
+Distribution certificate does not work here.
+
+| Asset | Consumer |
+| --- | --- |
+| `suzent-macos-<arch>` | `setup.sh`, the installer, and `suzent update` |
+| `suzent-installer-macos-<arch>` | `setup.sh` and `suzent update` (standalone updater) |
+| `suzent-installer-macos-<arch>.dmg` | Browser downloads from the landing page |
+
+Browsers drop the execute bit, so a downloaded raw executable appears as a
+"Document" in Finder. The disk image contains `Suzent Installer.app`, which
+users can double-click. Keep the raw asset names unchanged: older `setup.sh`
+copies and installed CLIs download them by name.
 
 The desktop build uses the existing `mobile-release` GitHub environment to share
 the Apple notarization credentials with iOS. Configure these environment secrets:
@@ -7247,8 +7262,32 @@ removes the temporary credentials on exit. Missing credentials or verification
 failures prevent the build from publishing its assets.
 
 Raw executables cannot have a notarization ticket stapled to them. Gatekeeper
-needs network access to retrieve their tickets. An offline-friendly release
-would need a stapled app bundle, DMG, or installer package.
+needs network access to retrieve their tickets.
+
+### Installer disk image
+
+When `MACOS_INSTALLER_APP`, `MACOS_INSTALLER_BINARY` and `MACOS_INSTALLER_DMG`
+are set, the script also packages the installer:
+
+1. Copies the Tauri bundle (`Suzent Installer.app`) and adds the signed
+   standalone installer as `Contents/Helpers/suzent-installer`.
+2. Signs the app bundle, builds a compressed HFS+ disk image with the app and an
+   `Applications` link, and signs the disk image.
+3. Submits the disk image to `notarytool` alongside the executable ZIP, so the
+   two submissions wait in parallel.
+4. Staples the ticket to the disk image, then requires `stapler validate`,
+   `spctl --assess --type open --context context:primary-signature` for the
+   disk image, and `spctl --assess --type execute` for the mounted app.
+
+`MACOS_INSTALLER_BINARY` must be one of the executables passed to the script, so
+the helper is byte-for-byte the published `suzent-installer-macos-<arch>`. The
+installer copies its own executable to `~/.suzent/updater/suzent-installer`.
+Inside an app, the main executable's signature is bound to the bundle's
+`Info.plist`, so a copy taken out of `Contents/MacOS` fails verification. The
+installer stages the `Contents/Helpers` copy instead.
+
+The stapled ticket lets Gatekeeper accept the disk image offline. The
+app inside it is covered by the same ticket once the disk image is mounted.
 
 These changes apply to newly built assets. Rebuild an affected release with
 `.release-assets-mode` set to `build`; `reuse` preserves the previous binaries,
@@ -7260,17 +7299,22 @@ See Apple's [notarization requirements](https://developer.apple.com/documentatio
 ## Verify existing assets
 
 Dispatch **Build and Publish Desktop Release** with an existing desktop tag and
-`verify_signing=true`. This path verifies the published checksums, signs and
-notarizes the existing Intel and Apple Silicon binaries, then uploads
-`signed-macos-*` tar archives as Actions artifacts for seven days. It does not
-modify the GitHub Release. This also allows validation from a workflow branch
-before merging the signing changes.
+`verify_signing=true`. This path verifies the published checksum of the main app
+binary for each architecture. It builds the installer executable and app bundle
+from the dispatched ref, because releases before the disk image do not contain
+an app bundle. It then signs and notarizes the main app and installer
+executables, and packages, notarizes and staples the installer disk image with
+the same Gatekeeper checks as a release build. The job uploads the
+`signed-macos-*` tar archives and the stapled `suzent-installer-macos-*.dmg` as
+Actions artifacts for seven days. It does not modify the GitHub Release. Dispatch
+it from a workflow branch to validate signing changes before merging them.
 
 The verification job preserves the signed archive before waiting for Apple and
 uploads it even when notarization times out or fails. An artifact alone is not
 proof of notarization. Before distributing a preserved candidate, require
 `codesign --verify --strict -R="notarized" --check-notarization` to succeed for
-every executable. Do not re-sign the preserved files: doing so changes the code
+every executable, and `xcrun stapler staple` plus `stapler validate` to succeed
+for the disk image. Do not re-sign the preserved files: doing so changes the code
 signature and requires a new notarization submission.
 
 
