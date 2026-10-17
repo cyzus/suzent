@@ -73,8 +73,13 @@ When it does ask, you can allow once, for the session, or always. See
 ## Steer while it works
 
 You don't have to wait for a turn to finish. Type while the agent is working
-and send it as a **Redirect**: the agent keeps what it has done so far and
-continues with your correction. You can redirect or stop a single sub-agent the
+and press Enter to send it as a **Redirect**: the agent keeps what it has done
+so far and continues with your correction.
+
+If it isn't a correction, just the next thing to do, press Cmd+Enter (Ctrl+Enter
+on Windows and Linux) instead. The message waits under **Queued messages** and
+is sent when the turn ends. You can cancel it, or click **Steer** to send it
+right away as a redirect. You can redirect or stop a single sub-agent the
 same way, from its box in the chat.
 
 ## When a turn goes wrong

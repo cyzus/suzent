@@ -158,7 +158,7 @@ One agent, one memory, reachable from several surfaces. Messaging channels are o
 | Surface | Transport | Supports | Setup |
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
-| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/nodes.md#pair-your-phone) |
+| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/mobile.md) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/05-chat-apps/telegram.md) |
 | **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/05-chat-apps/slack.md) |
 | **Discord** | Gateway | Text, files | [Guide](docs/05-chat-apps/discord.md) |

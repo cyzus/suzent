@@ -54,8 +54,9 @@ A helper:
   and anything the reviewer can't clear is denied. See
   [When nobody is watching](./human-in-the-loop.md#when-nobody-is-watching).
 
-Unless the agent picks one of your enabled models, a helper runs on Suzent's
-default model, which may not be the one your chat uses. A helper can also be a
+A helper that gets a copy of the conversation uses the same model as your
+chat. Otherwise, unless the agent picks one of your enabled models, it runs on
+Suzent's default model. A helper can also be a
 coding agent such as Claude Code or Codex, set up under **Settings → ACP
 Agents** (see [Devices & other agents](../nodes.md#use-suzent-from-your-editor-acp)).
 
