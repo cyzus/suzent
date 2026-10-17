@@ -25,10 +25,11 @@ chat id, so a peer chat `suzent:<peer>` lives in `suzent%3A<peer>.jsonl`.
 
 ## Event format
 
-Each line is one event:
+Each line is one event. Most lines are one message, as in Codex CLI and Claude
+Code transcripts:
 
 ```json
-{"v": 1, "seq": 7, "ts": "2026-10-17T16:00:00+00:00", "type": "messages.splice", "data": {"start": 4, "delete": 0, "insert": [{"role": "assistant", "content": "..."}]}}
+{"v": 1, "seq": 7, "ts": "2026-10-17T16:00:00+00:00", "type": "message.append", "data": {"role": "assistant", "content": "..."}}
 ```
 
 `seq` increases by one per event within a file. Folding the events in order with
@@ -38,12 +39,14 @@ checkpoint, which has no row.
 
 | `type` | `data` |
 |---|---|
-| `chat.created` / `chat.imported` | The whole projection. `imported` marks a chat that existed before its log. |
+| `chat.created` / `chat.imported` | The projection with both lists empty; their items follow as appends. `imported` marks a chat that existed before its log. |
 | `meta.set` | Changed values among `title`, `pinned`, `project_id`, `working_directory`, `created_at`, `updated_at`, `last_active_at`, `turn_count`, `context_usage`. |
 | `config.merge` | `{"set": {...}, "unset": [...]}` for changed config keys. |
-| `messages.splice` | `{"start", "delete", "insert"}` applied to the display messages. |
+| `message.append` | One display message added at the end. |
+| `messages.splice` | `{"start", "delete", "insert"}` applied to the display messages, for any change other than appending. |
 | `state.set` | Changed fields of the agent state other than its history: `kind` (`none`, `empty`, `json`, `raw`), `meta` (`version`, `model_id`, `tool_names`) and `raw` (base64, for state that is not the JSON format). |
-| `history.splice` | A splice applied to the pydantic-ai message history. |
+| `history.append` | One pydantic-ai message added at the end of the history. |
+| `history.splice` | A splice applied to the history, for any change other than appending. |
 | `checkpoint.set` | The retry checkpoint for the coming turn (see below). |
 | `checkpoint.update` | `{"id", "set"}`: fields of that checkpoint, ignored if a newer checkpoint replaced it. |
 | `chat.deleted` | Empty. The file then moves to `.trash/`. |
@@ -70,9 +73,9 @@ directly (heartbeat config, the heartbeat route, the turn-end file snapshot).
 2. The chat's in-process lock is taken.
 3. The uncommitted row is projected and compared with the log's projection,
    which `ChatEventLog` keeps for the 64 most recent chats. Lists are diffed by
-   common prefix and suffix, so an appended turn is one small splice and a
-   compaction or rollback is one replacement in place. The log grows with the
-   conversation, not with the number of writes.
+   common prefix and suffix: items added at the end become one append event
+   each, and any other change (a compaction, a rollback, a retry) is one
+   splice. The log grows with the conversation, not with the number of writes.
 4. The events are appended and fsynced, and `chat_log_index` is updated in the
    same SQLite transaction.
 5. SQLite commits. If the commit fails, the log is truncated back to its old
@@ -118,6 +121,7 @@ an ordinary rewrite, so the log keeps every turn that was retried away.
 ## Commands
 
 ```bash
+suzent chats show <chat_id>  # print the conversation the log holds
 suzent chats verify          # fold every log, compare it with its row, exit 1 on any difference
 suzent chats rebuild-index   # rewrite every row from its log; stop the server first
 ```

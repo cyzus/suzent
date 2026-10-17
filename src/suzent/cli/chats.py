@@ -2,13 +2,41 @@
 CLI subcommands for the chat store.
 
 Usage:
+    suzent chats show <chat_id>
     suzent chats verify
     suzent chats rebuild-index
 """
 
+import json
+
 import typer
 
 chats_app = typer.Typer(help="Inspect and repair how chats are stored.")
+
+
+@chats_app.command("show")
+def show(chat_id: str = typer.Argument(..., help="The chat to print")):
+    """Print a chat as its JSONL log records it."""
+    from suzent.database import get_database
+    from suzent.database.chat_log import ChatLogError
+
+    db = get_database()
+    try:
+        chat, seq = db.chat_log.fold(chat_id)
+    except ChatLogError as exc:
+        typer.echo(f"The log of {chat_id} cannot be read: {exc}", err=True)
+        raise typer.Exit(code=1)
+    if chat is None:
+        typer.echo(f"No chat {chat_id} in {db.chat_log.root}.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"{chat['title']}  ({len(chat['messages'])} messages, {seq} events)")
+    for message in chat["messages"]:
+        content = message.get("content") if isinstance(message, dict) else message
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False)
+        role = message.get("role", "?") if isinstance(message, dict) else "?"
+        typer.echo(f"\n[{role}]\n{content}")
 
 
 @chats_app.command("verify")

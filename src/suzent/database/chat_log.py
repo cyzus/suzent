@@ -2,7 +2,7 @@
 
 Each chat gets ``<root>/<chat_id>.jsonl``. Every line is one event:
 
-    {"v": 1, "seq": 7, "ts": "...", "type": "messages.splice", "data": {...}}
+    {"v": 1, "seq": 7, "ts": "...", "type": "message.append", "data": {...}}
 
 Folding a chat's events with :func:`apply_event` yields its *projection*: the
 durable parts of the ``chats`` row in a JSON-only form (see :func:`project_chat`),
@@ -205,6 +205,22 @@ def apply_splice(items: list[Any], splice: dict[str, Any]) -> list[Any]:
     return items[:start] + list(splice["insert"]) + items[start + delete :]
 
 
+def _list_changes(
+    old: list[Any], new: list[Any], append_kind: str, splice_kind: str
+) -> list[tuple[str, Any]]:
+    """One event per item appended at the end, otherwise a single splice.
+
+    Nearly every write only appends, so most of a log reads as one message
+    per line; rewrites (retry, compaction, rollback) stay one splice.
+    """
+    splice = splice_diff(old, new)
+    if splice is None:
+        return []
+    if splice["delete"] == 0 and splice["start"] == len(old):
+        return [(append_kind, item) for item in splice["insert"]]
+    return [(splice_kind, splice)]
+
+
 def diff_projections(old: Projection, new: Projection) -> list[tuple[str, Any]]:
     """Return the events that turn the row part of *old* into *new*."""
     events: list[tuple[str, Any]] = []
@@ -223,8 +239,9 @@ def diff_projections(old: Projection, new: Projection) -> list[tuple[str, Any]]:
     if changed or removed:
         events.append(("config.merge", {"set": changed, "unset": removed}))
 
-    if splice := splice_diff(old["messages"], new["messages"]):
-        events.append(("messages.splice", splice))
+    events += _list_changes(
+        old["messages"], new["messages"], "message.append", "messages.splice"
+    )
 
     old_state, new_state = old["state"], new["state"]
     state_fields = {
@@ -234,8 +251,9 @@ def diff_projections(old: Projection, new: Projection) -> list[tuple[str, Any]]:
     }
     if state_fields:
         events.append(("state.set", state_fields))
-    if splice := splice_diff(old_state["history"], new_state["history"]):
-        events.append(("history.splice", splice))
+    events += _list_changes(
+        old_state["history"], new_state["history"], "history.append", "history.splice"
+    )
 
     return events
 
@@ -263,10 +281,14 @@ def apply_event(projection: Optional[Projection], event: Event) -> Optional[Proj
             config.update(copy.deepcopy(data["set"]))
             for key in data["unset"]:
                 config.pop(key, None)
+        case "message.append":
+            projection["messages"].append(copy.deepcopy(data))
         case "messages.splice":
             projection["messages"] = apply_splice(projection["messages"], data)
         case "state.set":
             projection["state"].update(copy.deepcopy(data))
+        case "history.append":
+            projection["state"]["history"].append(copy.deepcopy(data))
         case "history.splice":
             state = projection["state"]
             state["history"] = apply_splice(state["history"], data)
@@ -587,8 +609,15 @@ class ChatEventLog:
             pending: list[tuple[str, Any]] = [("chat.deleted", {})]
         else:
             if logged is None:
+                # The opening event carries everything but the two lists, whose
+                # items follow one per line like any later append.
                 kind = "chat.created" if created else "chat.imported"
-                pending = [(kind, {**current})]
+                empty = {
+                    **current,
+                    "messages": [],
+                    "state": {**current["state"], "history": []},
+                }
+                pending = [(kind, empty), *diff_projections(empty, current)]
             else:
                 pending = diff_projections(logged, current)
             current["checkpoint"] = (

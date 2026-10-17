@@ -149,9 +149,31 @@ def test_log_grows_with_the_turn_not_the_conversation(temp_db) -> None:
     for turn in range(10):
         db.append_chat_message(chat_id, {"role": "user", "content": f"m{turn}"})
 
-    splices = [e for e in _events(db, chat_id) if e["type"] == "messages.splice"]
-    assert len(splices) == 10
-    assert all(len(e["data"]["insert"]) == 1 for e in splices)
+    appends = [e for e in _events(db, chat_id) if e["type"] == "message.append"]
+    assert [e["data"]["content"] for e in appends] == [f"m{t}" for t in range(10)]
+
+
+def test_a_log_reads_one_message_per_line(temp_db) -> None:
+    db = temp_db
+    messages = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    chat_id = db.create_chat(
+        title="Lines", config={}, messages=messages, agent_state=_state(1)
+    )
+
+    events = _events(db, chat_id)
+    assert [e["type"] for e in events] == [
+        "chat.created",
+        "message.append",
+        "message.append",
+        "history.append",
+        "history.append",
+    ]
+    assert events[0]["data"]["messages"] == []
+    assert [e["data"] for e in events[1:3]] == messages
+
+    db.rewrite_chat_messages(chat_id, messages[:1])
+    assert _events(db, chat_id)[-1]["type"] == "messages.splice"
+    _assert_log_matches(db)
 
 
 def test_streaming_drafts_stay_out_of_the_log(temp_db) -> None:
@@ -541,3 +563,21 @@ def test_concurrent_writers_leave_the_log_equal_to_sqlite(temp_db) -> None:
     assert errors == []
     _assert_log_matches(db)
     assert db.get_retry_checkpoint(chat_id).user_message == 14
+
+
+def test_chats_show_prints_the_logged_conversation(temp_db, monkeypatch) -> None:
+    from typer.testing import CliRunner
+
+    from suzent.cli.chats import chats_app
+
+    db = temp_db
+    chat_id = db.create_chat(
+        title="Shown", config={}, messages=[{"role": "user", "content": "hello"}]
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+
+    result = CliRunner().invoke(chats_app, ["show", chat_id])
+    assert result.exit_code == 0
+    assert "Shown" in result.output
+    assert "[user]\nhello" in result.output
+    assert CliRunner().invoke(chats_app, ["show", "missing"]).exit_code == 1
