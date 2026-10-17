@@ -5770,10 +5770,35 @@ between almost all and almost none on a context that only grew.
 
 `cost_ledger` records one row per model request with `cache_read_tokens` and
 `cache_write_tokens`, which is the place to check hit rates per model or chat.
-Anything that rewrites the start of the prompt between requests still
-invalidates the cache on every provider: a changed core memory section in the
-instructions, a tool discovered through local tool search (it is added to the
-tools list), or tool-result trimming and compaction of older history.
+
+The prefix is ordered tool definitions, then the system prompt, then the
+history. Anything that changes early in that order makes the provider re-read
+everything after it at full price, so the runtime keeps the prefix
+byte-identical from one request to the next:
+
+- **Core memory is pinned per chat.** The system prompt carries the core-memory
+  version the chat started with (`memory/core_memory_pin.py`). Later edits to
+  persona, user, `MEMORY.md` or the project's `context.md` reach the model once,
+  as a diff in a system reminder on the next turn, which lands after the cached
+  history. A diff counts as seen only if it survives the reminder budget;
+  otherwise it is offered again next turn. The pin follows the live files only
+  when that costs nothing extra: a chat with no reply yet, after compaction,
+  after a restart, or when the diff is larger than `MAX_DIFF_CHARS`. Pins are keyed by chat and user and never held on
+  the shared agent instance.
+- **Tool-result trimming moves in steps.** `ToolResultTrimmer` trims results
+  older than a boundary that advances `TRIM_STEP` messages at a time, and
+  trimming an already trimmed result is a no-op. The trimmed history is what the
+  run persists, so most turns resend the earlier prefix unchanged. A hard clear
+  keeps the exact cutoff: it runs at the compaction threshold, where freeing
+  space matters more than the cache.
+- **Discovered tools depend on the provider profile.** With the local
+  `search_tools` fallback, pydantic-ai adds a discovered tool's definition to the
+  `tools` array on providers whose profile has no `tool_addition_mode` (Gemini,
+  Chat Completions, OpenAI-compatible endpoints), which invalidates the whole
+  prefix once per discovery. First-party OpenAI Responses, including ChatGPT,
+  uses `with_definitions` and appends the definition after the history instead.
+  Closing the gap for the other providers needs an upstream wire format, or
+  sending every deferred schema up front.
 
 
 ---
