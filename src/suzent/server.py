@@ -647,6 +647,7 @@ def _rebuild_webui_if_stale() -> None:
 
 async def startup():
     """Initialize services on application startup."""
+    from suzent.memory.core_memory_pin import core_memory_reminder_hook
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
@@ -676,8 +677,10 @@ async def startup():
 
     # Registration order is priority order under the reminder budget, so the
     # goal objective goes first: a large skill catalog crowding it out leaves
-    # the agent working on a goal it can no longer see.
+    # the agent working on a goal it can no longer see. A core-memory update is
+    # delivered once, so it goes before anything that will be offered again.
     register_global_hook(plan_reminder_hook)
+    register_global_hook(core_memory_reminder_hook)
     register_global_hook(skills_reminder_hook)
     register_global_hook(repository_agents_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
