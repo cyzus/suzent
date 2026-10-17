@@ -57,6 +57,7 @@
     ".releases/changes/product-release-plans.json",
     ".releases/changes/project-library.json",
     ".releases/changes/prompt-cache-routing.json",
+    ".releases/changes/prompt-prefix-stability.json",
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/resonance-state-cues.json",
     ".releases/changes/restructure-user-docs.json",

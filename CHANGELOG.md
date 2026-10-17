@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make notification sounds play reliably after the desktop window loses focus by resuming interrupted audio before playback.
 - Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
 - Enable prompt caching for Anthropic models and keep ChatGPT and OpenAI requests of one chat on the same cache, cutting repeated input cost in long agent runs.
+- Keep the prompt prefix stable across turns so providers reuse more of their cache: core-memory edits arrive as a reminder instead of rewriting the system prompt, and old tool results are trimmed in steps rather than every turn.
 - The Resonance notification sound now speaks the outcome — done, needs approval or failed — in the app's language.
 - Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout.
 - Sub-agents that inherit the conversation now run on your current model, so the shared history is not processed again. A running sub-agent's timer, prompt and reminders now show correctly, and an empty sub-agent no longer sticks on "Connecting".
