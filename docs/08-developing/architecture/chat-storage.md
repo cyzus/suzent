@@ -18,7 +18,8 @@ The remaining steps are tracked in the [roadmap](../roadmap.md#chat-storage).
 | `<data>/chats/.trash/` | Logs of deleted chats, renamed `<chat_id>.<utc timestamp>.jsonl`. |
 
 The log directory is named after the database file, so a test database at
-`/tmp/abc.db` keeps its logs in `/tmp/abc/`.
+`/tmp/abc.db` keeps its logs in `/tmp/abc/`. File names are the percent-encoded
+chat id, so a peer chat `suzent:<peer>` lives in `suzent%3A<peer>.jsonl`.
 
 ## Event format
 

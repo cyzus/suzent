@@ -26,6 +26,7 @@ import threading
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote, unquote
 from typing import Any, Callable, Iterator, Optional
 
 from suzent.logger import get_logger
@@ -53,9 +54,8 @@ META_FIELDS = (
     "context_usage",
 )
 
-_SAFE_ID_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
-)
+# Leaves room for ".jsonl" and the ".trash" timestamp within a 255-byte name.
+_MAX_FILE_STEM = 200
 
 
 class ChatLogError(Exception):
@@ -263,14 +263,21 @@ class ChatEventLog:
         self._chat_locks: dict[str, threading.Lock] = {}
 
     def path(self, chat_id: str) -> Path:
-        if not chat_id or ".." in chat_id or not set(chat_id) <= _SAFE_ID_CHARS:
-            raise ChatLogError(f"chat id {chat_id!r} is not safe as a file name")
-        return self.root / f"{chat_id}.jsonl"
+        """Map a chat id to its log file.
+
+        Ids are percent-encoded, so peer chats (``suzent:<peer>``) and channel
+        ids with any character get a file name that is valid everywhere,
+        contains no path separator, and decodes back to the id.
+        """
+        stem = quote(chat_id, safe="")
+        if not stem or len(stem) > _MAX_FILE_STEM:
+            raise ChatLogError(f"chat id {chat_id!r} cannot be used as a file name")
+        return self.root / f"{stem}.jsonl"
 
     def chat_ids(self) -> list[str]:
         if not self.root.is_dir():
             return []
-        return sorted(path.stem for path in self.root.glob("*.jsonl"))
+        return sorted(unquote(path.stem) for path in self.root.glob("*.jsonl"))
 
     def _lock(self, chat_id: str) -> threading.Lock:
         with self._cache_lock:
@@ -287,16 +294,29 @@ class ChatEventLog:
             if not line.strip():
                 continue
             try:
-                yield json.loads(line)
+                event = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ChatLogError(f"{path}:{number}: {exc}") from exc
+            if not (
+                isinstance(event, dict)
+                and isinstance(event.get("seq"), int)
+                and isinstance(event.get("type"), str)
+                and "data" in event
+            ):
+                raise ChatLogError(f"{path}:{number}: not a chat log event")
+            yield event
 
     def fold(self, chat_id: str) -> tuple[Optional[Projection], int]:
         """Replay a chat's log. Returns its projection and last sequence number."""
         projection: Optional[Projection] = None
         seq = 0
         for event in self.events(chat_id):
-            projection = apply_event(projection, event)
+            try:
+                projection = apply_event(projection, event)
+            except (KeyError, TypeError, AttributeError) as exc:
+                raise ChatLogError(
+                    f"{chat_id} event {event['seq']} is malformed: {exc!r}"
+                ) from exc
             seq = event["seq"]
         return projection, seq
 

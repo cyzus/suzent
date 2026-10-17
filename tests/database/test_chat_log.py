@@ -184,11 +184,58 @@ def test_backfill_logs_chats_written_before_the_log_existed(temp_db) -> None:
     _assert_log_matches(db)
 
 
-def test_unsafe_chat_ids_are_refused(tmp_path) -> None:
+def test_any_chat_id_maps_to_a_file_inside_the_log_directory(tmp_path) -> None:
     chat_log = ChatEventLog(tmp_path)
-    for chat_id in ("../escape", "a/b", ""):
-        with pytest.raises(ChatLogError):
-            chat_log.path(chat_id)
+    chat_ids = ["suzent:peer-1", "a/b", "../escape", "..", "social-tg-@ü"]
+    for chat_id in chat_ids:
+        path = chat_log.path(chat_id)
+        assert path.parent == tmp_path
+        path.write_text("")
+    assert chat_log.chat_ids() == sorted(chat_ids)
+    with pytest.raises(ChatLogError):
+        chat_log.path("")
+
+
+def test_peer_chats_are_logged(temp_db) -> None:
+    db = temp_db
+    chat_id = db.create_chat(title="Peer", config={}, chat_id="suzent:peer-1")
+    db.append_chat_message(chat_id, {"role": "user", "content": "hi"})
+
+    assert _events(db, chat_id)[0]["type"] == "chat.created"
+    _assert_log_matches(db)
+
+
+def test_backfill_retires_the_log_of_a_deletion_that_crashed(temp_db) -> None:
+    db = temp_db
+    chat_id = db.create_chat(title="Gone", config={})
+    chat_log, db.chat_log = db.chat_log, None
+    db.delete_chat(chat_id)
+    db.chat_log = chat_log
+    chat_log.forget(chat_id)
+
+    assert db.chat_log_differences(chat_log) == {chat_id: ["<missing row>"]}
+    db.sync_chat_logs()
+    _assert_log_matches(db)
+    assert not chat_log.path(chat_id).exists()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "[]",
+        '{"v": 1, "seq": 2, "data": {}}',
+        '{"v": 1, "seq": 2, "type": "messages.splice", "data": {"start": 0}}',
+    ],
+)
+def test_verify_reports_malformed_events(temp_db, line) -> None:
+    db = temp_db
+    chat_id = db.create_chat(title="Bad", config={})
+    with db.chat_log.path(chat_id).open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+    report = db.chat_log_differences(db.chat_log)
+    assert list(report) == [chat_id]
+    assert report[chat_id][0].startswith("<unreadable log")
 
 
 def test_sqlite_mode_writes_no_log(tmp_path, monkeypatch) -> None:

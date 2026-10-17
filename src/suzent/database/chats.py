@@ -350,7 +350,9 @@ class ChatOperationsMixin:
         if chat_log is None:
             return 0
         written = 0
-        for chat_id in self.all_chat_ids():
+        # Logs without a row belong to deletions that crashed before the log
+        # was retired; syncing them against the missing row finishes the job.
+        for chat_id in sorted(set(self.all_chat_ids()) | set(chat_log.chat_ids())):
             try:
                 written += chat_log.sync(
                     chat_id, lambda chat_id=chat_id: self._project_row(chat_id)
