@@ -11,7 +11,7 @@ import platform
 from typing import Any, Callable, Sequence
 
 from pydantic_ai import RunContext
-from pydantic_ai.messages import ModelMessage, UserContent
+from pydantic_ai.messages import ModelMessage, ModelResponse, UserContent
 from pydantic_ai.usage import RunUsage
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
@@ -738,20 +738,25 @@ def register_dynamic_instructions(
         to the next one is exactly the cross-user bleed this section must not
         cause. On failure, and when memory is off, the answer is nothing.
 
+        What is served is the chat's pinned version rather than the live files,
+        so an edit mid-chat does not invalidate the cached prompt; the edit
+        arrives as a reminder instead (see `memory.core_memory_pin`). The pin is
+        keyed by chat and user, never held on the agent.
+
         `deps.memory_manager` is None precisely when memory is disabled.
         """
+        from suzent.memory.core_memory_pin import core_memory_pins, pin_key
+
         deps = getattr(ctx, "deps", None)
-        manager = getattr(deps, "memory_manager", None)
-        if manager is None:
+        if getattr(deps, "memory_manager", None) is None:
             return ""
         try:
-            content = await manager.get_core_memory_context(
-                chat_id=getattr(deps, "chat_id", "") or None,
-                user_id=getattr(deps, "user_id", "") or None,
-                sandbox_enabled=getattr(deps, "sandbox_enabled", True),
-                path_resolver=getattr(deps, "path_resolver", None),
-                notebook_skill_available=_notebook_skill_available(deps),
-            )
+            content = await render_core_memory(deps)
+            key = pin_key(deps)
+            if key is not None and content:
+                content = core_memory_pins.resolve(
+                    key, content, fresh=_is_fresh_conversation(ctx)
+                )
             from suzent.core.context_usage import register_context_source
 
             return register_context_source(deps, content, "memory", "core_memory")
@@ -768,6 +773,23 @@ def register_dynamic_instructions(
         if not ctx.deps.social_context:
             return ""
         return build_social_context(ctx.deps.social_context)
+
+
+async def render_core_memory(deps: Any) -> str:
+    """The live core-memory section for the chat and user on *deps*."""
+    return await deps.memory_manager.get_core_memory_context(
+        chat_id=getattr(deps, "chat_id", "") or None,
+        user_id=getattr(deps, "user_id", "") or None,
+        sandbox_enabled=getattr(deps, "sandbox_enabled", True),
+        path_resolver=getattr(deps, "path_resolver", None),
+        notebook_skill_available=_notebook_skill_available(deps),
+    )
+
+
+def _is_fresh_conversation(ctx: Any) -> bool:
+    """No model response yet, so no cached prefix that a new pin would break."""
+    messages = getattr(ctx, "messages", None) or []
+    return not any(isinstance(m, ModelResponse) for m in messages)
 
 
 def build_social_context(social_ctx: dict) -> str:

@@ -1219,6 +1219,7 @@ async def build_combined_reminder(
                 category = {
                     "skills_reminder_hook": "skills",
                     "_memory_rag_hook": "memory",
+                    "core_memory_reminder_hook": "memory",
                     "repository_agents_reminder_hook": "repository",
                 }.get(hook.__name__, "system_prompt")
                 if hasattr(deps, "context_sources"):

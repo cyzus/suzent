@@ -172,3 +172,31 @@ built-in cards after the registry reloads. The ChatGPT Subscription provider
 (`chatgpt/...` model IDs) authenticates through LiteLLM's ChatGPT device-code
 flow; its tokens live in Suzent's local config directory and are never returned
 by the HTTP status endpoint.
+
+## Prompt caching
+
+Every provider caches a request prefix: tool definitions, then the system
+prompt, then the history. Anything that changes early in that order makes the
+provider re-read everything after it at full price, so the runtime keeps the
+prefix byte-identical from one request to the next:
+
+- **Core memory is pinned per chat.** The system prompt carries the core-memory
+  version the chat started with (`memory/core_memory_pin.py`). Later edits to
+  persona, user, `MEMORY.md` or the project's `context.md` reach the model once,
+  as a diff in a system reminder on the next turn, which lands after the cached
+  history. The pin follows the live files only when that costs nothing extra: a
+  chat with no reply yet, after compaction, after a restart, or when the diff is
+  larger than `MAX_DIFF_CHARS`. Pins are keyed by chat and user and never held on
+  the shared agent instance.
+- **Tool-result trimming moves in steps.** `ToolResultTrimmer` trims results
+  older than a boundary that advances `TRIM_STEP` messages at a time, and
+  trimming an already trimmed result is a no-op. The trimmed history is what the
+  run persists, so most turns resend the earlier prefix unchanged.
+- **Discovered tools depend on the provider profile.** With the local
+  `search_tools` fallback, pydantic-ai adds a discovered tool's definition to the
+  `tools` array on providers whose profile has no `tool_addition_mode` (Gemini,
+  Chat Completions, OpenAI-compatible endpoints), which invalidates the whole
+  prefix once per discovery. First-party OpenAI Responses, including ChatGPT,
+  uses `with_definitions` and appends the definition after the history instead.
+  Closing the gap for the other providers needs an upstream wire format, or
+  sending every deferred schema up front.
