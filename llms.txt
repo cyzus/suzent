@@ -76,6 +76,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Tool system](https://suzent.com/docs/developing/architecture/tool-system)
 - [Development Guide](https://suzent.com/docs/developing/contributing/development-guide)
 - [Docker Services (Optional)](https://suzent.com/docs/developing/contributing/docker-services)
+- [macOS release signing](https://suzent.com/docs/developing/contributing/macos-releases)
 - [Mobile release distribution](https://suzent.com/docs/developing/contributing/mobile-releases)
 - [Updating Model Capabilities](https://suzent.com/docs/developing/contributing/model-capability-updates)
 - [Release guide](https://suzent.com/docs/developing/contributing/releasing)
