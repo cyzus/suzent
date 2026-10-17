@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Keep the prompt prefix stable across turns so providers reuse more of their cache: core-memory edits arrive as a reminder instead of rewriting the system prompt, and old tool results are trimmed in steps rather than every turn."
+}
