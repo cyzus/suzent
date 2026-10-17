@@ -161,51 +161,6 @@ class DatabaseMigrationMixin:
                     )
                 conn.commit()
 
-        # Migration: Ensure postprocess_jobs table exists (auto-created by SQLModel)
-        # Verify it exists after create_all() runs
-        if "postprocess_jobs" not in inspector.get_table_names():
-            # This should not happen as SQLModel.metadata.create_all() already ran
-            # but adding for safety
-            with self.engine.connect() as conn:
-                conn.execute(
-                    text(
-                        """
-                        CREATE TABLE IF NOT EXISTS postprocess_jobs (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            job_id TEXT NOT NULL UNIQUE,
-                            chat_id TEXT NOT NULL,
-                            assigned_revision INTEGER NOT NULL,
-                            current_revision INTEGER,
-                            status TEXT DEFAULT 'pending',
-                            outcome TEXT,
-                            attempt INTEGER DEFAULT 1,
-                            max_attempts INTEGER DEFAULT 3,
-                            step_status_json TEXT,
-                            started_at DATETIME,
-                            finished_at DATETIME,
-                            duration_ms INTEGER,
-                            error_class TEXT,
-                            error_message TEXT,
-                            created_at DATETIME,
-                            updated_at DATETIME,
-                            FOREIGN KEY(chat_id) REFERENCES chats(id)
-                        )
-                        """
-                    )
-                )
-                # Create indexes for query performance
-                conn.execute(
-                    text(
-                        "CREATE INDEX IF NOT EXISTS idx_postprocess_jobs_chat_id ON postprocess_jobs(chat_id)"
-                    )
-                )
-                conn.execute(
-                    text(
-                        "CREATE INDEX IF NOT EXISTS idx_postprocess_jobs_status ON postprocess_jobs(status)"
-                    )
-                )
-                conn.commit()
-
         # Migration: Add cache token columns to cost_ledger and chat_cost_summary
         if "cost_ledger" in inspector.get_table_names():
             columns = [col["name"] for col in inspector.get_columns("cost_ledger")]

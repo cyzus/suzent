@@ -409,11 +409,6 @@ def ensure_cron_presets(db, activate_existing: bool = False) -> dict:
     }
 
 
-# Shim for any callers that still reference the old name.
-def ensure_wiki_cron_presets(db, activate_existing: bool = False) -> dict:
-    return ensure_cron_presets(db, activate_existing=activate_existing)
-
-
 class SchedulerBrain(BaseBrain):
     """
     Periodically checks cron jobs and executes them via ChatProcessor.
