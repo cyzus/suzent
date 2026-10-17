@@ -172,3 +172,28 @@ built-in cards after the registry reloads. The ChatGPT Subscription provider
 (`chatgpt/...` model IDs) authenticates through LiteLLM's ChatGPT device-code
 flow; its tokens live in Suzent's local config directory and are never returned
 by the HTTP status endpoint.
+
+## Prompt caching
+
+Long agent runs resend the same prefix (tools, instructions, history) on every
+request, so cache hits decide most of the input cost. Providers differ in what
+the client has to do:
+
+| Provider | How caching is enabled | Where Suzent sets it |
+|---|---|---|
+| Gemini, DeepSeek, local servers | Automatic prefix caching on the server | Nothing to send |
+| Anthropic | Only when the request marks `cache_control` breakpoints | `anthropic_cache_settings()` in `core/model_factory.py`: tool and instruction breakpoints plus top-level automatic caching. Endpoints with a custom `base_url` get a last-message breakpoint instead, since compatible gateways may not implement automatic caching |
+| OpenAI API | Automatic, routed by `prompt_cache_key` | `PromptCacheRoutingCapability` in `core/prompt_cache.py` sets the key to the chat id on every request |
+| ChatGPT Subscription | Automatic, routed by the `session_id` header | Same capability, as a `session_id` header carrying the chat id |
+
+The routing key has to be the chat being served, not a value fixed on the
+model: agents are cached and shared across chats. Without it, consecutive
+requests of one chat land on machines that never saw its prefix, and hits swing
+between almost all and almost none on a context that only grew.
+
+`cost_ledger` records one row per model request with `cache_read_tokens` and
+`cache_write_tokens`, which is the place to check hit rates per model or chat.
+Anything that rewrites the start of the prompt between requests still
+invalidates the cache on every provider: a changed core memory section in the
+instructions, a tool discovered through local tool search (it is added to the
+tools list), or tool-result trimming and compaction of older history.
