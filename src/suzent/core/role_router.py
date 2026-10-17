@@ -32,6 +32,7 @@ class ModelRole(StrEnum):
     PRIMARY = "primary"
     CHEAP = "cheap"
     TITLE = "title"
+    SUGGESTION = "suggestion"
     MEMORY_EXTRACTION = "memory_extraction"
     DECISION = "decision"
     GOAL_JUDGE = "goal_judge"
@@ -63,6 +64,7 @@ class RoleConfig:
 _ROLE_FALLBACKS: Dict[str, List[str]] = {
     ModelRole.CHEAP: [ModelRole.PRIMARY],
     ModelRole.TITLE: [ModelRole.CHEAP],
+    ModelRole.SUGGESTION: [ModelRole.CHEAP],
     ModelRole.MEMORY_EXTRACTION: [ModelRole.CHEAP],
     ModelRole.DECISION: [ModelRole.CHEAP],
     ModelRole.GOAL_JUDGE: [ModelRole.DECISION],

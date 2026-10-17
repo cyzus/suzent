@@ -67,3 +67,45 @@ def test_list_chats_by_config_filters_without_loading_messages(temp_db):
 
     assert db.list_chats_by_config("runtime", "native")[0]["title"] == "Native one"
     assert db.list_chats_by_config("runtime", "nope") == []
+
+
+@pytest.mark.asyncio
+async def test_an_acp_subagent_is_refused_when_the_parent_denies_tools():
+    """An ACP agent's own tools can't be held to Suzent's deny list."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import suzent.core.subagent_runner as runner
+
+    task = runner.SubAgentTask(
+        task_id="t2",
+        parent_chat_id="parent",
+        chat_id="subagent-t2",
+        description="do a thing",
+        tools_allowed=[],
+        runtime="acp",
+        acp_agent_id="claude-code",
+    )
+
+    db = MagicMock()
+    db.get_chat.return_value = MagicMock(
+        config={"denied_tools": ["RunCommandTool"]}, working_directory=None
+    )
+    turn = AsyncMock(return_value="done")
+
+    with (
+        patch("suzent.acp.get_acp_manager", return_value=MagicMock(close=AsyncMock())),
+        patch("suzent.acp.runtime.run_acp_turn_text", turn),
+        patch.object(runner, "_ensure_task_chat", return_value=db),
+        patch.object(runner, "register_background_stream", MagicMock()),
+        patch.object(runner, "unregister_background_stream", MagicMock()),
+        patch.object(runner, "_broadcast_task_update", MagicMock()),
+        patch.object(runner, "_persist_task_state", MagicMock()),
+        patch.object(runner, "_evict_old_finished_tasks_locked", AsyncMock()),
+        patch.object(runner, "_notify_parent", AsyncMock()),
+        patch.object(runner, "_queue_parent_wakeup", MagicMock()),
+    ):
+        await runner._run_subagent(task, wakeup_parent=False)
+
+    assert task.status == "failed"
+    assert "denied tools" in (task.error or "")
+    turn.assert_not_called()

@@ -488,7 +488,8 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
 
     process_turn_text carries the config for this turn, but a resumed or
     follow-up turn rebuilds deps from the database — without persisting these
-    the sub-agent loses access to the folder it was spawned to work in.
+    the sub-agent loses access to the folder it was spawned to work in, and
+    regains any tool its parent had denied.
 
     A worktree cwd is the exception: _run_subagent tears the worktree down in
     its finally block, so persisting it would point a resumed turn at a deleted
@@ -496,7 +497,7 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
     """
     grants = {
         key: base_config[key]
-        for key in ("cwd", "sandbox_volumes")
+        for key in ("cwd", "sandbox_volumes", "denied_tools")
         if base_config.get(key)
     }
     if isolation == "worktree":
@@ -577,7 +578,10 @@ async def _run_subagent(
         if task.runtime != "acp" and not task.model_override:
             from suzent.core.providers import get_default_chat_model
 
-            task.model_override = get_default_chat_model()
+            if task.inherit_context:
+                task.model_override = _parent_model_id(task.parent_chat_id)
+            if not task.model_override:
+                task.model_override = get_default_chat_model()
 
         task.status = "running"
         task.started_at = datetime.now()
@@ -690,6 +694,10 @@ async def _run_subagent(
             base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
+        # A tool denied to the parent stays denied to its workers, or spawning a
+        # sub-agent would be a way around the restriction.
+        if parent_denied := parent_config.get("denied_tools"):
+            base_config["denied_tools"] = list(parent_denied)
         if task.cwd:
             granted_cwd = resolve_granted_cwd(parent_chat, task.cwd)
             if granted_cwd is None:
@@ -708,6 +716,14 @@ async def _run_subagent(
         if task.runtime == "acp":
             if not task.acp_agent_id:
                 raise ValueError("acp_agent_id is required when runtime='acp'")
+            # An ACP agent brings its own tools, which Suzent's deny list cannot
+            # reach, so it would be a way around a denial the user set.
+            if base_config.get("denied_tools"):
+                raise RuntimeError(
+                    "This chat has denied tools, and an ACP agent's own tools "
+                    "cannot be held to that denial. Use a native sub-agent, or "
+                    "ask the user to allow the denied tools first."
+                )
             base_config.update(
                 {
                     "runtime": "acp",
@@ -830,6 +846,21 @@ async def _run_subagent(
 
 
 # ─── Phase 2: Context forking ─────────────────────────────────────────────────
+
+
+def _parent_model_id(parent_chat_id: str) -> Optional[str]:
+    """The model the parent's history was last run on, else its configured model."""
+    from suzent.core.agent_serializer import deserialize_state
+    from suzent.database import get_database
+
+    parent_chat = get_database().get_chat(parent_chat_id)
+    if parent_chat is None:
+        return None
+    if parent_chat.agent_state:
+        state = deserialize_state(parent_chat.agent_state) or {}
+        if state.get("model_id"):
+            return state["model_id"]
+    return (parent_chat.config or {}).get("model")
 
 
 async def _fork_context(task: SubAgentTask, db) -> None:

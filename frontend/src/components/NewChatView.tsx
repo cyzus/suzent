@@ -6,6 +6,7 @@ import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
+import { isImeComposing } from '../lib/ime';
 
 interface NewChatViewProps {
   input: string;
@@ -43,9 +44,9 @@ const GreetingPresence: React.FC<{ engaged: boolean }> = React.memo(({ engaged }
   };
 
   return (
-    <div className="mb-8 flex flex-col items-center gap-5">
+    <div className="new-chat-greeting mb-8 flex flex-col items-center gap-5">
       <GreetingCube engaged={engaged} />
-      <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
+      <h2 className="new-chat-title text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
         {getGreeting()}
       </h2>
     </div>
@@ -124,6 +125,7 @@ const ProjectPicker: React.FC = () => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       if (event.key !== 'Escape') return;
       setOpen(false);
       setCreating(false);
@@ -198,6 +200,7 @@ const ProjectPicker: React.FC = () => {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
+                  if (isImeComposing(e)) return;
                   if (e.key === 'Escape') setCreating(false);
                 }}
                 placeholder={t('chatList.newProjectPlaceholder')}
@@ -232,7 +235,7 @@ const ProjectPicker: React.FC = () => {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] transition-all"
+        className="inline-flex max-w-full items-center gap-2 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] transition-all"
       >
         <svg
           className="w-3 h-3"
@@ -243,8 +246,10 @@ const ProjectPicker: React.FC = () => {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 7l9-4 9 4M3 7v10l9 4 9-4V7" />
         </svg>
-        <span className="opacity-60">{t('newChat.creatingIn')}</span>
-        <span>{current.name}</span>
+        <span className="shrink-0 opacity-60">{t('newChat.creatingIn')}</span>
+        <span className="min-w-0 truncate" title={current.name}>
+          {current.name}
+        </span>
         <svg
           className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"
@@ -288,7 +293,7 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const isInputEngaged = isInputHovered || isInputFocused;
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
+    <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">
       <GreetingPresence engaged={isInputEngaged} />
 
       <div className="w-full max-w-2xl">

@@ -54,10 +54,15 @@ from suzent.routes.chat_routes import (
     steer_chat_send,
     set_permission_mode,
     stop_chat,
+    extend_model_wait,
     update_chat,
     undo_chat_files,
 )
 from suzent.routes.compact_routes import compact_chat
+from suzent.routes.suggestion_routes import (
+    get_input_suggestion,
+    get_saved_input_suggestion,
+)
 from suzent.routes.chatgpt_routes import (
     get_chatgpt_status,
     logout_chatgpt,
@@ -643,6 +648,7 @@ def _rebuild_webui_if_stale() -> None:
 
 async def startup():
     """Initialize services on application startup."""
+    from suzent.memory.core_memory_pin import core_memory_reminder_hook
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
@@ -672,8 +678,10 @@ async def startup():
 
     # Registration order is priority order under the reminder budget, so the
     # goal objective goes first: a large skill catalog crowding it out leaves
-    # the agent working on a goal it can no longer see.
+    # the agent working on a goal it can no longer see. A core-memory update is
+    # delivered once, so it goes before anything that will be offered again.
     register_global_hook(plan_reminder_hook)
+    register_global_hook(core_memory_reminder_hook)
     register_global_hook(skills_reminder_hook)
     register_global_hook(repository_agents_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
@@ -1153,11 +1161,14 @@ app = Starlette(
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
+        Route("/chat/extend-wait", extend_model_wait, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
+        Route("/chat/input-suggestion", get_input_suggestion, methods=["POST"]),
+        Route("/chat/input-suggestion", get_saved_input_suggestion, methods=["GET"]),
         Route("/chat/retry", retry_chat, methods=["POST"]),
         Route(
             "/api/chats/{chat_id}/file-changes",

@@ -31,11 +31,8 @@ class QuestionItem(BaseModel):
     )
     multi_select: bool = Field(
         default=False,
-        description="Allow multiple selections. Renders one checkbox per option.",
-    )
-    allow_free_text: bool = Field(
-        default=False,
-        description="Add a text input alongside the option buttons/checkboxes.",
+        description="Allow multiple selections. Renders one checkbox per option. "
+        "A free-text 'other' choice is always added; don't list one yourself.",
     )
     field_name: str = Field(
         default="",
@@ -75,9 +72,10 @@ class AskQuestionTool(Tool):
         Always prefer this over plain-text clarification. Bundle related questions
         into one call so the user answers everything at once.
 
-        Callbacks:
-            [canvas: choose_option] "<label>"              — single question with options
-            [canvas: submit_question] {field: value, ...}  — form / multi-question
+        Every question with options also offers a free-text "other" choice.
+
+        Callback:
+            [canvas: submit_question] {field: value, ...}
               single-select → string; multi_select → list[str]; free text → string
         """
         if not questions:
@@ -138,32 +136,9 @@ class AskQuestionTool(Tool):
 # ---------------------------------------------------------------------------
 
 
-def _text(content: str, variant: str = "subheading") -> dict[str, Any]:
-    return {"type": "text", "content": content, "variant": variant}
-
-
-def _button(label: str, variant: str = "secondary") -> dict[str, Any]:
-    return {
-        "type": "button",
-        "label": label,
-        "action": "choose_option",
-        "variant": variant,
-    }
-
-
 def _build_component(questions: list[QuestionItem]) -> dict[str, Any]:
-    # Special case: single question with options, no multi_select → buttons (best UX)
-    if len(questions) == 1 and questions[0].options and not questions[0].multi_select:
-        q = questions[0]
-        children: list[dict[str, Any]] = [_text(q.question)]
-        for i, opt in enumerate(q.options):
-            children.append(_button(opt, "primary" if i == 0 else "secondary"))
-
-        # allow_free_text is handled inline in the select list on the frontend
-
-        return {"type": "stack", "children": children}
-
-    # General case: one form with all questions as fields
+    # Always a form, even for one question: it is what carries the free-text
+    # "other" choice and the number-key shortcuts.
     fields: list[dict[str, Any]] = []
     for q in questions:
         name = q.field_name or _slug(q.question)
@@ -177,7 +152,7 @@ def _build_component(questions: list[QuestionItem]) -> dict[str, Any]:
                     "type": "multiselect",
                     "options": options,
                     "default": [],
-                    "allow_free_text": q.allow_free_text,
+                    "allow_free_text": True,
                 }
             )
         elif options:
@@ -188,7 +163,7 @@ def _build_component(questions: list[QuestionItem]) -> dict[str, Any]:
                     "type": "select",
                     "options": options,
                     "required": q.required,
-                    "allow_free_text": q.allow_free_text,
+                    "allow_free_text": True,
                 }
             )
         else:

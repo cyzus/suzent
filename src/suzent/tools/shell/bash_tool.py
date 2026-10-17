@@ -632,7 +632,16 @@ class ShellCommandBackend(Tool):
         """Build the shell command list for the host platform."""
         if os.name == "nt":
             utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
-            return ["powershell", "-NoProfile", "-Command", utf8_preamble + content]
+            # -NonInteractive turns a missing mandatory parameter (e.g. `curl -s
+            # URL`, where curl aliases Invoke-WebRequest) into an error instead
+            # of a prompt that hangs until the timeout.
+            return [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                utf8_preamble + content,
+            ]
         else:
             return ["bash", "-c", content]
 
@@ -688,6 +697,7 @@ class ShellCommandBackend(Tool):
                     process = subprocess.Popen(
                         cmd,
                         cwd=str(working_dir),
+                        stdin=subprocess.DEVNULL,
                         stdout=stdout_file,
                         stderr=stderr_file,
                         env=self._get_host_env(),

@@ -11,6 +11,7 @@ from .postprocess import PostprocessOperationsMixin
 from .projects import ProjectOperationsMixin
 from .search import ChatSearchMixin
 from .settings import SettingsOperationsMixin
+from .suggestions import InputSuggestionOperationsMixin
 from .tasks import TaskOperationsMixin
 
 
@@ -24,6 +25,7 @@ class ChatDatabase(
     ChatSearchMixin,
     PostprocessOperationsMixin,
     SettingsOperationsMixin,
+    InputSuggestionOperationsMixin,
     BackgroundNotificationOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,

@@ -174,6 +174,9 @@ class HostProcessRegistry:
                 cmd,
                 cwd=cwd,
                 env=env,
+                # Commands that read stdin would otherwise block forever on the
+                # server's inherited stdin.
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=0,

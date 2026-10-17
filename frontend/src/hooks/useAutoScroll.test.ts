@@ -30,6 +30,87 @@ describe('message bottom scrolling', () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
+  it('repairs an upward layout jump during streaming without waiting for a resize', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', new EventTarget());
+    const hook = useAutoScroll([], { smooth: false });
+    const container = Object.assign(new EventTarget(), {
+      scrollHeight: 3000,
+      clientHeight: 600,
+      scrollTop: 2400,
+      scrollTo: vi.fn(),
+    });
+    hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
+    const cleanup = effects[0]();
+    effects[1]();
+    container.scrollTo.mockClear();
+
+    // A layout shift can move the viewport during our programmatic scroll.
+    container.scrollTop = 800;
+    container.dispatchEvent(new Event('scroll'));
+    expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 3000, behavior: 'auto' });
+
+    // Once settled at the bottom, scroll events must not create a feedback loop.
+    container.scrollTo.mockClear();
+    container.scrollTop = 2400;
+    container.dispatchEvent(new Event('scroll'));
+    expect(container.scrollTo).not.toHaveBeenCalled();
+
+    // A live text selection still owns the viewport.
+    container.dispatchEvent(Object.assign(new Event('pointerdown'), { button: 0 }));
+    vi.advanceTimersByTime(300);
+    container.scrollTo.mockClear();
+    container.scrollTop = 800;
+    container.dispatchEvent(new Event('scroll'));
+    expect(container.scrollTo).not.toHaveBeenCalled();
+    if (cleanup) cleanup();
+  });
+
+  it.each(['wheel', 'touch', 'keyboard'])(
+    'pauses on upward %s input before streaming can pull the viewport back',
+    (input) => {
+      vi.useFakeTimers();
+      vi.stubGlobal('window', new EventTarget());
+      const hook = useAutoScroll([], { smooth: false });
+      const container = Object.assign(new EventTarget(), {
+        scrollHeight: 1200,
+        clientHeight: 400,
+        scrollTop: 800,
+        scrollTo: vi.fn(),
+      });
+      hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
+      const cleanup = effects[0]();
+      effects[1]();
+      container.scrollTo.mockClear();
+      const dispatch = (type: string, fields: object) =>
+        container.dispatchEvent(Object.assign(new Event(type), fields));
+
+      if (input === 'wheel') dispatch('wheel', { deltaY: -10 });
+      if (input === 'touch') {
+        dispatch('touchstart', { touches: [{ clientY: 100 }] });
+        vi.advanceTimersByTime(300);
+        dispatch('touchmove', { touches: [{ clientY: 110 }] });
+      }
+      if (input === 'keyboard') {
+        Object.assign(container, { closest: () => null });
+        dispatch('keydown', { key: 'ArrowUp' });
+      }
+      container.scrollTop = 790;
+      dispatch('scroll', {});
+      vi.advanceTimersByTime(500);
+      effects[1]();
+      expect(container.scrollTo).not.toHaveBeenCalled();
+
+      // Returning to the actual bottom resumes following new content.
+      container.scrollTop = 800;
+      dispatch('scroll', {});
+      container.scrollHeight = 1300;
+      effects[1]();
+      expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 1300, behavior: 'auto' });
+      if (cleanup) cleanup();
+    }
+  );
+
   it('follows the last message growing and newly appended messages', () => {
     vi.useFakeTimers();
     let settle: FrameRequestCallback = () => {};

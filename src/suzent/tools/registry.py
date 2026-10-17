@@ -443,6 +443,15 @@ def get_tool_class_name(runtime_name: str) -> Optional[str]:
     return _name_indexes()[0].get(runtime_name)
 
 
+@functools.cache
+def get_model_excluded_metadata() -> dict[str, frozenset[str]]:
+    return {
+        cls.tool_name: cls.model_excluded_metadata
+        for cls in _all_tool_classes()
+        if cls.model_excluded_metadata
+    }
+
+
 def get_tool_runtime_name(class_name: str) -> Optional[str]:
     """Resolve a Suzent tool class name to its model-facing function name."""
     return _name_indexes()[1].get(class_name)

@@ -72,4 +72,27 @@ describe('useContextUsageStore', () => {
     store.clearCompaction();
     expect(useContextUsageStore.getState().compaction).toBeNull();
   });
+
+  it('keeps breakdowns isolated and invalidates them when only the context total changes', () => {
+    const store = useContextUsageStore.getState();
+    const context_breakdown = {
+      method: 'character_estimate' as const,
+      categories: [],
+      deferred: [],
+      estimated_tokens: 5000,
+      reserve_tokens: 2000,
+      measured_input_tokens: 4500,
+      has_unmeasured_media: false,
+    };
+    store.setUsageForChat('c1', { ...FULL, context_breakdown });
+    store.mergeUsageForChat('c1', { input_tokens: 6000 });
+    expect(store.getUsageForChat('c1')?.context_breakdown).toEqual(context_breakdown);
+    store.mergeUsageForChat('c2', { context_tokens: 80 });
+    expect(store.getUsageForChat('c2')?.context_breakdown).toBeNull();
+    store.mergeUsageForChat('c1', { context_tokens: 2000 });
+    expect(store.getUsageForChat('c1')?.context_breakdown).toBeNull();
+    store.mergeUsageForChat('c1', { context_breakdown });
+    store.mergeUsageForChat('c1', { context_breakdown: null });
+    expect(store.getUsageForChat('c1')?.context_breakdown).toBeNull();
+  });
 });

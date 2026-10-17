@@ -1008,6 +1008,7 @@ def _build_role_suggestions(
         "primary": enabled_models,
         "cheap": enabled_models,
         "title": enabled_models,
+        "suggestion": enabled_models,
         "memory_extraction": enabled_models,
         "decision": enabled_models,
         "goal_judge": enabled_models,

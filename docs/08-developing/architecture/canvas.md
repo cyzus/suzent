@@ -16,7 +16,7 @@ A surface is a named, renderable UI panel. It has:
 - **`surface_id`** — a stable slug (e.g. `"search_results"`). Calling `render_ui` with the same id replaces the surface in place (upsert semantics).
 - **`component`** — the root of a component tree (see below).
 - **`title`** — optional display name shown in the canvas tab strip.
-- **`target`** — where to render: `"canvas"` (sidebar, default) or `"inline"` (inside the chat message).
+- **`target`** — where to render: `"inline"` (inside the chat message, default) or `"canvas"` (the side panel).
 
 ### Component Tree
 
@@ -54,8 +54,12 @@ Components are plain dicts with a `"type"` field. They nest recursively via `"ch
 
 | Target | Behaviour |
 |--------|-----------|
-| `"canvas"` | Renders in the sidebar Canvas tab. Persists across the session. Auto-opens the sidebar on first render. |
-| `"inline"` | Embeds the component tree directly inside the current chat message. Useful for compact, one-shot panels. Persists in message history. |
+| `"inline"` (default) | Embeds the component tree in the current chat message, under a slim header with **Open in side panel** and **Fullscreen** buttons. Persists in message history. |
+| `"canvas"` | Renders in the side panel's Canvas tab and leaves a compact pointer card in the chat message to reopen it from. Auto-opens the side panel on the chat's first canvas surface. Use it only for a surface kept in view and updated while the conversation continues (live progress, a dashboard being iterated on). |
+
+Popping an inline surface out copies it into the Canvas tab and focuses it; the inline copy stays where it is.
+
+Layout surfaces for a narrow column (roughly 360–700px): the chat column and the side panel are both about that wide.
 
 ### Interaction Callbacks
 
@@ -270,10 +274,12 @@ ask_question(questions=[
 
 ### Rendering Behaviour
 
-| Shape | Renders as |
-|-------|------------|
-| Single question + `options`, no `multi_select` | Inline button list |
-| Multiple questions or `multi_select=True` | Paged form (one question per page) |
+Every call renders as a paged form, one question per page:
+
+| Shape | Field |
+|-------|-------|
+| `options`, no `multi_select` | Single-select list |
+| `options` + `multi_select=True` | Checkbox list |
 | No `options` | Free-text `textarea` |
 
 ### QuestionItem Fields
@@ -283,7 +289,6 @@ ask_question(questions=[
 | `question` | `str` | The question text |
 | `options` | `list[str] \| None` | Selectable choices |
 | `multi_select` | `bool` | Allow multiple selections (checkbox list) |
-| `allow_free_text` | `bool` | Add "Type something else…" as the last option |
 | `field_name` | `str` | Response key (auto-slugged from question if omitted) |
 | `required` | `bool` | Mark the field required |
 
@@ -291,11 +296,12 @@ ask_question(questions=[
 
 When rendered as a form, `ask_question` shows one question at a time with **Back**, **Skip**, and **Next/Submit** navigation. The user can skip optional questions; **Next** is only enabled once the current field has a value.
 
-For `select` and `multiselect` fields with `allow_free_text=True`, a "Type something else…" item appears inline as the last option — clicking it expands a text input on the same page.
+Every `select` and `multiselect` field ends with a "Type something else…" item, which expands a text input on the same page. Each question keeps its own free-text state, so moving to the next page starts empty.
 
-### Callbacks
+Keyboard: number keys `1`–`9` pick (or toggle) the option with that badge, including the "something else" item; `Enter` moves to the next question or submits (`Shift+Enter` adds a newline in a textarea); `Esc` leaves the free-text input so number keys work again.
 
-- Button click → `[canvas: choose_option] "<label>"`
+### Callback
+
 - Form submit → `[canvas: submit_question] {"field": "value", ...}`
   - Single-select → `string`; multi-select → `list[str]`; textarea → `string`
 
@@ -305,4 +311,8 @@ Canvas surfaces are persisted to `localStorage` keyed by chat ID. They survive p
 
 ## Upsert Semantics
 
-Calling `render_ui` with the same `surface_id` **replaces** the existing surface in place. There is no `remove_ui` — to clear a surface, replace it with an empty stack or stop sending updates.
+Calling `render_ui` with the same `surface_id` **replaces** the existing surface. There is no `remove_ui` — to clear a surface, replace it with an empty stack or stop sending updates.
+
+- In the Canvas tab, the surface is replaced in place.
+- Within one turn, the inline part is replaced in place, so live progress updates rather than stacking copies.
+- Across turns, the new version renders at the latest message. Every render carries a `rev` (milliseconds, stamped by `render_ui`), and an inline copy collapses to a one-line "updated later" row with a **Show** toggle once a copy of the same id with a larger `rev` is mounted. Copies saved before `rev` existed never collapse.

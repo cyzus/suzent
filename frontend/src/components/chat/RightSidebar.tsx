@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
-import { GoalTaskView } from '../sidebar/GoalTaskView';
+import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
@@ -34,7 +34,73 @@ import { ToolsPanel } from './ToolsPanel';
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
+export type TabId =
+  'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
+
+export interface AutoOpenFlags {
+  chatId: string | null | undefined;
+  file: boolean;
+  fileToPreview: { path: string; name: string; nonce?: number } | null | undefined;
+  canvas: boolean;
+  canvasResolved: boolean;
+  subAgent: boolean;
+  viewingSubAgentTaskId: string | null | undefined;
+  webContext: boolean;
+  forcedWebContextId: string | null | undefined;
+  /** Bumped when the user pops a chat surface out to the side panel. */
+  canvasRequestNonce?: number;
+  goal: boolean;
+  goalResolved: boolean;
+}
+
+export function evaluateSidebarAutoOpen(
+  prev: AutoOpenFlags,
+  flags: AutoOpenFlags
+): { nextTab: TabId | null; shouldOpen: boolean } {
+  if (prev.chatId !== flags.chatId) {
+    return { nextTab: null, shouldOpen: false };
+  }
+
+  const fileTriggered = flags.file && prev.fileToPreview !== flags.fileToPreview;
+  const subAgentTriggered =
+    flags.subAgent && prev.viewingSubAgentTaskId !== flags.viewingSubAgentTaskId;
+  const webContextTriggered =
+    flags.webContext && prev.forcedWebContextId !== flags.forcedWebContextId;
+  // Only treat canvas/goal as rising when it was already resolved for THIS
+  // chat in the previous render (not transitioning from unresolved → resolved
+  // after the initial fetch for the switched chat lands).
+  const canvasRose = prev.canvasResolved && flags.canvasResolved && !prev.canvas && flags.canvas;
+  const canvasRequested =
+    !!flags.canvasRequestNonce && prev.canvasRequestNonce !== flags.canvasRequestNonce;
+  const goalRose = prev.goalResolved && flags.goalResolved && !prev.goal && flags.goal;
+
+  let nextTab: TabId | null = null;
+  if (fileTriggered) {
+    nextTab = 'files';
+  } else if (subAgentTriggered) {
+    nextTab = 'agents';
+  } else if (webContextTriggered) {
+    nextTab = 'browser';
+  } else if (canvasRequested) {
+    nextTab = 'canvas';
+  } else if (canvasRose && !flags.file) {
+    nextTab = 'canvas';
+  } else if (goalRose && !flags.file) {
+    // Async task refreshes must not hide an explicitly requested output file.
+    nextTab = 'plan';
+  }
+
+  return {
+    nextTab,
+    shouldOpen:
+      fileTriggered ||
+      subAgentTriggered ||
+      webContextTriggered ||
+      canvasRequested ||
+      canvasRose ||
+      goalRose,
+  };
+}
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -52,7 +118,10 @@ interface RightSidebarProps {
   currentProjectName?: string | null;
   currentProjectId?: string | null;
   chatTitles?: Record<string, string>;
-  onProjectBoardChange?: (open: boolean) => void;
+  onOpenTask?: (task: Task) => Promise<boolean>;
+  taskNavigationError?: string | null;
+  onDismissTaskError?: () => void;
+  onTaskChat?: (chatId: string) => Promise<boolean>;
   fileToPreview?: { path: string; name: string; nonce?: number } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
@@ -66,6 +135,7 @@ interface RightSidebarProps {
   hasSubAgentHistory?: boolean;
   messages?: Message[];
   forcedWebContextId?: string | null;
+  canvasRequestNonce?: number;
   onClearForcedWebContext?: () => void;
   isNewChat?: boolean;
 }
@@ -94,9 +164,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   goalChatId,
   kanban,
   currentProjectName,
-  currentProjectId,
   chatTitles = {},
-  onProjectBoardChange,
+  onTaskChat,
+  taskNavigationError,
+  onDismissTaskError,
+  onOpenTask,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -109,6 +181,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   hasSubAgentHistory = false,
   messages = [],
   forcedWebContextId,
+  canvasRequestNonce,
   onClearForcedWebContext,
   isNewChat = false,
 }) => {
@@ -221,8 +294,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'plan',
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
-      fallbackLabel: 'Goal',
-      hasContent: true, // always accessible — shows empty state + board button
+      fallbackLabel: 'Tasks',
+      hasContent: true,
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
     },
@@ -236,64 +309,56 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     },
   ];
 
-  // ── Auto-switch tab when content arrives ───────────────────────────
-  useEffect(() => {
-    if (fileToPreview) setActiveTab('files');
-  }, [fileToPreview]);
-
-  useEffect(() => {
-    if (hasCanvasContent) setActiveTab('canvas');
-  }, [hasCanvasContent]);
-
-  useEffect(() => {
-    if (viewingSubAgentTaskId) setActiveTab('agents');
-  }, [viewingSubAgentTaskId]);
-
-  useEffect(() => {
-    if (hasGoalContent) setActiveTab('plan');
-  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Open sidebar automatically when content arrives ─────────────────
-  // Auto-open only when content transitions absent → present *within the same
-  // chat*. On a chat switch we re-baseline without opening, so loading an
-  // existing chat's content doesn't pop the sidebar.
+  // ── Auto-switch tab & open sidebar when content arrives ────────────
+  // Only auto-switch or auto-open when content transitions absent → present
+  // *within the same chat*. On a chat switch we re-baseline without changing
+  // the active tab or popping the sidebar, so switching chats preserves the
+  // user's current sidebar state.
   //
   // Canvas and goal load asynchronously, so right after a switch their flags
   // read false simply because the fetch hasn't landed — baselining on that and
-  // then seeing the data arrive would look like a rise and pop the sidebar
-  // (collapsing the left one with it). Each carries a "resolved" signal
-  // (surfacesChatId / goalChatId stamped for the chat we're viewing); a rise
-  // only counts if the flag was already resolved for this chat while false.
-  const autoOpenRef = useRef({
+  // then seeing the data arrive would look like a rise. Each carries a
+  // "resolved" signal (surfacesChatId / goalChatId stamped for the chat we're
+  // viewing); a rise only counts if the flag was already resolved for this
+  // chat while false.
+  const autoOpenRef = useRef<AutoOpenFlags>({
     chatId: currentChatId,
-    file: false,
-    canvas: false,
-    canvasResolved: false,
-    subAgent: false,
-    goal: false,
-    goalResolved: false,
+    file: !!fileToPreview,
+    fileToPreview,
+    canvas: hasCanvasContent,
+    canvasResolved: canvasMatchesChat,
+    subAgent: !!viewingSubAgentTaskId,
+    viewingSubAgentTaskId,
+    webContext: !!forcedWebContextId,
+    forcedWebContextId,
+    canvasRequestNonce,
+    goal: hasGoalContent,
+    goalResolved: goalMatchesChat,
   });
 
   useEffect(() => {
     const prev = autoOpenRef.current;
-    const flags = {
+    const flags: AutoOpenFlags = {
       chatId: currentChatId,
       file: !!fileToPreview,
+      fileToPreview,
       canvas: hasCanvasContent,
       canvasResolved: canvasMatchesChat,
       subAgent: !!viewingSubAgentTaskId,
+      viewingSubAgentTaskId,
+      webContext: !!forcedWebContextId,
+      forcedWebContextId,
+      canvasRequestNonce,
       goal: hasGoalContent,
       goalResolved: goalMatchesChat,
     };
 
-    // Same chat + a flag rose false→true + sidebar closed → open it.
-    if (prev.chatId === currentChatId && !isOpen) {
-      const rose =
-        (!prev.file && flags.file) ||
-        (prev.canvasResolved && !prev.canvas && flags.canvas) ||
-        (!prev.subAgent && flags.subAgent) ||
-        (prev.goalResolved && !prev.goal && flags.goal);
-      if (rose) onOpen();
+    const { nextTab, shouldOpen } = evaluateSidebarAutoOpen(prev, flags);
+    if (nextTab) {
+      setActiveTab(nextTab);
+    }
+    if (!isOpen && shouldOpen) {
+      onOpen();
     }
 
     autoOpenRef.current = flags;
@@ -303,6 +368,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     hasCanvasContent,
     canvasMatchesChat,
     viewingSubAgentTaskId,
+    forcedWebContextId,
+    canvasRequestNonce,
     hasGoalContent,
     goalMatchesChat,
     isOpen,
@@ -526,18 +593,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                   )}
                 </div>
-                <div
-                  className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
-                >
-                  <GoalTaskView
-                    goal={goal}
-                    tasks={tasks}
-                    onOpenBoard={
-                      onProjectBoardChange ? () => onProjectBoardChange(true) : undefined
-                    }
-                    projectTaskCount={kanban?.tasks.length}
-                  />
-                </div>
+
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
@@ -628,18 +684,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                   )}
                 </div>
-                <div
-                  className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
-                >
-                  <GoalTaskView
-                    goal={goal}
-                    tasks={tasks}
-                    onOpenBoard={
-                      onProjectBoardChange ? () => onProjectBoardChange(true) : undefined
-                    }
-                    projectTaskCount={kanban?.tasks.length}
-                  />
-                </div>
+
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
@@ -650,9 +695,44 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </>
         )}
 
+        <div
+          className={`absolute inset-y-0 z-10 overflow-hidden border-r-3 border-brutal-black bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? '' : 'hidden'}`}
+          style={
+            isOverlayMode
+              ? { right: '100%', width: Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH) }
+              : { left: 0, right: ICON_STRIP_WIDTH }
+          }
+        >
+          <TaskPanel
+            navigationError={taskNavigationError}
+            onDismissError={onDismissTaskError}
+            goal={goalMatchesChat ? goal : null}
+            tasks={goalMatchesChat ? tasks : []}
+            kanban={kanban}
+            projectName={currentProjectName}
+            chatTitles={chatTitles}
+
+            onOpenTask={async (task) => {
+              const opened = (await onOpenTask?.(task)) ?? false;
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
+              }
+              return opened;
+            }}
+            onOpenChat={async (chatId) => {
+              const opened = await onTaskChat?.(chatId);
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
+              }
+            }}
+          />
+        </div>
+
         {/* ── Icon Strip — always visible (except new chat) ─────────── */}
         <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 py-1 gap-0.5">
-          {isCoveringChat && (
+          {isCoveringChat && activeTab !== 'plan' && (
             <button
               type="button"
               onClick={() => dockSidebar()}

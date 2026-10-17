@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod notifications;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
@@ -787,11 +788,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            notifications::focus_main_window(app);
             spawn_backend_start(app.clone());
         }))
         .setup(|app| {
@@ -828,7 +825,8 @@ fn main() {
             get_service_status,
             set_service_enabled,
             restart_background_service,
-            get_service_log_path
+            get_service_log_path,
+            notifications::show_notification
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

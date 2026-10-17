@@ -51,24 +51,24 @@ describe('trailingToolRunLength', () => {
 });
 
 describe('getAguiActivityLabel', () => {
-  it('collapses a run of the same tool into a count', () => {
+  it('shows the latest repeated call', () => {
     const items = [
       ...Array.from({ length: 9 }, () => toolPart()),
       toolPart({ output: undefined, state: 'running', args: '{"content": "npm test"}' }),
     ];
     const chunks = [{ chunk: { type: 'tool', items } }];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Running 10 commands');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Running npm test');
   });
 
-  it('keeps counting a streak that the agent thought in the middle of', () => {
+  it('shows the latest tool after reasoning', () => {
     const chunks = [
       { chunk: { type: 'tool', items: [toolPart(), toolPart()] } },
       { chunk: { type: 'reasoning', items: [{ type: 'reasoning', text: 'hmm' } as AGUIPart] } },
       { chunk: { type: 'tool', items: [toolPart({ output: undefined, state: 'running' })] } },
     ];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Running 3 commands');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Run command');
   });
 
   it('keeps describing the call until the streak is long enough to matter', () => {
@@ -103,14 +103,14 @@ describe('getAguiActivityLabel', () => {
     expect(getAguiActivityLabel(chunks, false)).toBe('Read main.py');
   });
 
-  it('counts a finished streak in the past tense', () => {
+  it('describes the latest finished call', () => {
     const chunks = [
       {
         chunk: { type: 'tool', items: Array.from({ length: 4 }, () => toolPart()) },
       },
     ];
 
-    expect(getAguiActivityLabel(chunks, false)).toBe('Ran 4 commands');
+    expect(getAguiActivityLabel(chunks, false)).toBe('Run command');
   });
 
   it('describes a lone call instead of counting it', () => {

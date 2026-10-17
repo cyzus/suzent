@@ -8,8 +8,9 @@ important facts and persist them to the memory system.
 
 import asyncio
 import dataclasses
+import re
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any, Callable, Optional
 
 from pydantic_ai.messages import (
     ModelRequest,
@@ -262,6 +263,7 @@ def emit_context_usage_event(
     context_tokens: int,
     usage: Any = None,
     context_limit: Optional[int] = None,
+    context_breakdown: dict[str, Any] | None = None,
 ) -> None:
     """Broadcast the live context-window size to every connected client.
 
@@ -282,6 +284,11 @@ def emit_context_usage_event(
                 "chat_id": chat_id,
                 "usage": build_live_context_usage(
                     context_tokens, usage, context_limit=context_limit
+                )
+                | (
+                    {"context_breakdown": context_breakdown}
+                    if context_breakdown is not None
+                    else {}
                 ),
             }
         )
@@ -575,55 +582,90 @@ def estimate_tokens(messages: list, limit: int) -> TokenBudget:
 # ---------------------------------------------------------------------------
 
 
+#: Matches the marker a soft trim leaves between head and tail.
+_SOFT_TRIM_MARKER = re.compile(r"\n\.\.\. \[\d+ chars trimmed\] \.\.\.\n")
+
+
 class ToolResultTrimmer:
+    """Shrink old tool results before a request, without churning the cache.
+
+    The trimmed history is what the run returns, so it is persisted and sent
+    again next turn. Two things keep that resend byte-identical: the boundary
+    advances in steps of TRIM_STEP messages rather than with every message,
+    and trimming an already trimmed result is a no-op. Either one moving by a
+    single message each turn rewrote content the provider had already cached.
+    A hard clear ignores the step: it only runs over the hard limit, where
+    freeing space comes before the cache.
+    """
+
     SOFT_HEAD = 1000
     SOFT_TAIL = 500
     HARD_PLACEHOLDER = "[Tool output cleared to free context space]"
+    #: Messages the trim boundary advances by. A turn with a few tool calls adds
+    #: about this many, so most turns leave the boundary where it was.
+    TRIM_STEP = 16
+
+    @classmethod
+    def trim_cutoff(cls, message_count: int, *, stepped: bool = True) -> int:
+        """Index before which tool results may be trimmed.
+
+        Stepped, it is rounded down to a multiple of TRIM_STEP, so it holds
+        still while the history grows and up to TRIM_STEP - 1 extra messages
+        stay untrimmed. A hard clear is an emergency over the limit and uses the
+        exact cutoff: rounding would leave short histories untouched.
+        """
+        keep_recent = CONFIG.compaction_keep_recent_turns * 2
+        cutoff = max(0, message_count - keep_recent)
+        return cutoff - cutoff % cls.TRIM_STEP if stepped else cutoff
+
+    @classmethod
+    def _rewrite_old_results(
+        cls, messages: list, rewrite: Callable[[str], str], *, stepped: bool
+    ) -> list:
+        cutoff = cls.trim_cutoff(len(messages), stepped=stepped)
+        result = []
+        for i, msg in enumerate(messages):
+            if i >= cutoff or not isinstance(msg, ModelRequest):
+                result.append(msg)
+                continue
+            new_parts = []
+            changed = False
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    content = str(part.content or "")
+                    rewritten = rewrite(content)
+                    if rewritten != content:
+                        part = dataclasses.replace(part, content=rewritten)
+                        changed = True
+                new_parts.append(part)
+            result.append(dataclasses.replace(msg, parts=new_parts) if changed else msg)
+        return result
+
+    @classmethod
+    def _soft(cls, content: str) -> str:
+        if len(content) <= cls.SOFT_HEAD + cls.SOFT_TAIL + 20:
+            return content
+        if _SOFT_TRIM_MARKER.fullmatch(content[cls.SOFT_HEAD : -cls.SOFT_TAIL]):
+            return content
+        return (
+            content[: cls.SOFT_HEAD]
+            + f"\n... [{len(content) - cls.SOFT_HEAD - cls.SOFT_TAIL} chars trimmed] ...\n"
+            + content[-cls.SOFT_TAIL :]
+        )
+
+    @classmethod
+    def _hard(cls, content: str) -> str:
+        return cls.HARD_PLACEHOLDER if len(content) > 200 else content
 
     @classmethod
     def apply_soft_trim(cls, messages: list, budget: TokenBudget) -> list:
         """Truncate large ToolReturnPart content to head + tail for older messages."""
-        keep_recent = CONFIG.compaction_keep_recent_turns * 2
-        cutoff = max(0, len(messages) - keep_recent)
-        result = []
-        for i, msg in enumerate(messages):
-            if i >= cutoff or not isinstance(msg, ModelRequest):
-                result.append(msg)
-                continue
-            new_parts = []
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart):
-                    content = str(part.content or "")
-                    if len(content) > cls.SOFT_HEAD + cls.SOFT_TAIL + 20:
-                        trimmed = (
-                            content[: cls.SOFT_HEAD]
-                            + f"\n... [{len(content) - cls.SOFT_HEAD - cls.SOFT_TAIL} chars trimmed] ...\n"
-                            + content[-cls.SOFT_TAIL :]
-                        )
-                        part = dataclasses.replace(part, content=trimmed)
-                new_parts.append(part)
-            result.append(dataclasses.replace(msg, parts=new_parts))
-        return result
+        return cls._rewrite_old_results(messages, cls._soft, stepped=True)
 
     @classmethod
     def apply_hard_clear(cls, messages: list, budget: TokenBudget) -> list:
         """Replace ToolReturnPart content with placeholder for oldest messages."""
-        keep_recent = CONFIG.compaction_keep_recent_turns * 2
-        cutoff = max(0, len(messages) - keep_recent)
-        result = []
-        for i, msg in enumerate(messages):
-            if i >= cutoff or not isinstance(msg, ModelRequest):
-                result.append(msg)
-                continue
-            new_parts = []
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart):
-                    content = str(part.content or "")
-                    if len(content) > 200:
-                        part = dataclasses.replace(part, content=cls.HARD_PLACEHOLDER)
-                new_parts.append(part)
-            result.append(dataclasses.replace(msg, parts=new_parts))
-        return result
+        return cls._rewrite_old_results(messages, cls._hard, stepped=False)
 
 
 # ---------------------------------------------------------------------------
@@ -712,6 +754,7 @@ class ContextCompressor:
             tail_start = safe_tool_history_tail_start(
                 messages, max(1, len(messages) - keep)
             )
+            self._history_rewritten()
             return messages[:1] + _clear_stale_usage(messages[tail_start:])
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
@@ -808,6 +851,7 @@ class ContextCompressor:
 
         if not summary:
             logger.warning("Failed to generate summary for compression.")
+            self._history_rewritten()
             return messages[:1] + _clear_stale_usage(messages[end_index:])
 
         # Phase 6 — improved synthetic summary framing
@@ -854,7 +898,16 @@ class ContextCompressor:
         logger.info(
             f"Message history compressed: {len(messages)} → {len(new_messages)} messages"
         )
+        self._history_rewritten()
         return new_messages
+
+    def _history_rewritten(self) -> None:
+        """Let core memory re-pin: the cached prefix is gone either way, and the
+        update reminders the old pin relied on may have been summarized away."""
+        if self.chat_id:
+            from suzent.memory.core_memory_pin import core_memory_pins
+
+            core_memory_pins.forget(self.chat_id)
 
     async def _summarize_with_retry(
         self, messages: list, focus: Optional[str] = None
@@ -1148,6 +1201,7 @@ def make_compaction_history_processor(
             )
         except asyncio.TimeoutError:
             logger.warning("Mid-run compaction timed out, falling back to hard trim")
+            compressor._history_rewritten()
             tail_start = safe_tool_history_tail_start(
                 messages, max(1, len(messages) - keep_recent)
             )

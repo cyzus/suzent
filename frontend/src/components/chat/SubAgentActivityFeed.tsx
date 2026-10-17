@@ -50,7 +50,7 @@ export const SubAgentActivityFeed: React.FC<{ activity: SubAgentActivity }> = ({
             <div
               key={entry.toolCallId}
               className="flex items-center gap-1.5 text-[11px] min-w-0"
-              title={summary?.title ?? undefined}
+              title={summary?.title ?? [verb, summary?.detail].filter(Boolean).join(' ')}
             >
               <span
                 className={`shrink-0 w-1.5 h-1.5 rounded-full ${
@@ -60,7 +60,7 @@ export const SubAgentActivityFeed: React.FC<{ activity: SubAgentActivity }> = ({
                 }`}
               />
               <span
-                className={`shrink-0 font-mono ${
+                className={`min-w-0 truncate font-mono ${
                   entry.done
                     ? 'text-neutral-400 dark:text-neutral-500'
                     : 'text-neutral-700 dark:text-neutral-200'
@@ -69,7 +69,7 @@ export const SubAgentActivityFeed: React.FC<{ activity: SubAgentActivity }> = ({
                 {verb}
               </span>
               {summary?.detail && (
-                <span className="truncate min-w-0 font-mono text-neutral-400 dark:text-neutral-500">
+                <span className="truncate min-w-0 shrink-[3] font-mono text-neutral-400 dark:text-neutral-500">
                   {summary.detail}
                 </span>
               )}

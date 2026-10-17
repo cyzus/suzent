@@ -45,6 +45,11 @@ import {
   takeReplyOutcome,
   type ReplyOutcome,
 } from './lib/desktopNotifications';
+import {
+  readNotificationPreferences,
+  shouldNotifyForCompletion,
+} from './lib/notificationPreferences';
+import { playNotificationSound } from './lib/notificationSound';
 import { isDesktop } from './lib/runtime';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
@@ -202,7 +207,7 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 md:gap-3 cursor-pointer select-none"
+      className="app-header-title flex min-w-0 items-center gap-2 md:gap-3 cursor-pointer select-none"
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       role="button"
@@ -414,6 +419,7 @@ function AppInner(): React.ReactElement {
     refreshChatList,
     refreshChatListSilently,
     chats,
+    currentChatProjectId,
     loadChat,
   } = useChatCoreStore();
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
@@ -482,6 +488,8 @@ function AppInner(): React.ReactElement {
         const reply = takeReplyOutcome(msg.chat_id);
         if (!reply || reply.outcome === 'stopped') return;
         const { outcome, preview } = reply;
+        const preferences = readNotificationPreferences();
+        if (!shouldNotifyForCompletion(preferences.when)) return;
         const messageKeys: Record<Exclude<ReplyOutcome, 'stopped'>, string> = {
           ready: 'backgroundNotifications.replyReady',
           approval: 'backgroundNotifications.replyNeedsApproval',
@@ -494,6 +502,7 @@ function AppInner(): React.ReactElement {
           }),
           outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
         );
+        playNotificationSound(preferences.sound, outcome);
       }),
     []
   );
@@ -501,19 +510,23 @@ function AppInner(): React.ReactElement {
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
     const announceBackgroundNotifications = (notifications: CronNotification[]): void => {
+      if (notifications.length === 0) return;
       const tr = tRef.current;
+      const preferences = readNotificationPreferences();
+      if (!shouldNotifyForCompletion(preferences.when)) return;
       if (notifications.length === 1) {
         const [only] = notifications;
         void notifyDesktop(
           tr('backgroundNotifications.title', { name: only.job_name }),
           only.result
         );
-      } else if (notifications.length > 1) {
+      } else {
         const summary = tr('backgroundNotifications.manyUpdates', {
           count: String(notifications.length),
         });
         void notifyDesktop(tr('app.title'), summary);
       }
+      playNotificationSound(preferences.sound);
     };
 
     const interval = setInterval(async () => {
@@ -619,13 +632,11 @@ function AppInner(): React.ReactElement {
     setViewSwitcher?.(setMainView as (view: 'chat' | 'memory') => void);
   }, [setViewSwitcher, setMainView]);
 
+  const taskProjectId = currentChatProjectId;
+
   React.useEffect(() => {
-    // Use chatsRef (not chats) so this effect only re-runs on chat selection change,
-    // not on every chat list update (which would cause spurious re-renders mid-stream).
-    const chat = currentChatId ? chatsRef.current.find((c) => c.id === currentChatId) : null;
-    const projectId = chat?.projectId ?? null;
-    refreshGoalTasks(projectId, currentChatId ?? null);
-    refreshKanban(projectId);
+    refreshGoalTasks(taskProjectId, currentChatId ?? null);
+    refreshKanban(taskProjectId);
 
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
@@ -635,7 +646,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, refreshGoalTasks, refreshKanban]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentChatId, taskProjectId, refreshGoalTasks, refreshKanban]);
 
   // Both open and the room ran out: the left one steps aside, on loan.
   React.useEffect(() => {
@@ -710,9 +721,9 @@ function AppInner(): React.ReactElement {
             ) : null
           }
         />
-        <div className="flex-1 flex flex-col overflow-hidden w-full">
+        <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
           <header
-            className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
+            className="app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
             onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -726,7 +737,7 @@ function AppInner(): React.ReactElement {
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
               ) : (
                 <div
-                  className="mr-3 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
+                  className="app-sidebar-trigger mr-3 shrink-0 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
                   onClick={toggleLeftSidebar}
                   role="button"
                   aria-label={t('sidebar.open')}
@@ -748,7 +759,7 @@ function AppInner(): React.ReactElement {
             </div>
 
             <div
-              className={`flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
+              className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
             >
               <NavTabs
                 mainView={mainView}

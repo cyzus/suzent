@@ -70,11 +70,13 @@ def test_accepts_command_on_host(monkeypatch, tmp_path):
         assert captured["cmd"][0] == "powershell"
         assert captured["cmd"][1:] == [
             "-NoProfile",
+            "-NonInteractive",
             "-Command",
             "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; echo hi",
         ]
     else:
         assert captured["cmd"] == ["bash", "-c", "echo hi"]
+    assert captured["kwargs"]["stdin"] is subprocess.DEVNULL
 
 
 def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):

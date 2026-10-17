@@ -4,6 +4,101 @@
 @tailwind components;
 @tailwind utilities;
 
+.app-main {
+  container: app-main / inline-size;
+}
+
+.chat-column {
+  container: chat-column / inline-size;
+}
+
+.chat-composer {
+  container: chat-composer / inline-size;
+}
+
+.new-chat-view {
+  padding: clamp(0.75rem, 3cqi, 2rem);
+}
+
+@container app-main (max-width: 640px) {
+  .app-header {
+    padding-inline: 0.5rem;
+  }
+
+  .app-header-actions {
+    gap: 0.25rem;
+  }
+
+  .app-sidebar-trigger {
+    margin-right: 0;
+  }
+
+  .app-header-title h1 {
+    font-size: 1.125rem;
+  }
+
+  .app-header-title > div {
+    display: none;
+  }
+}
+
+@container app-main (max-width: 440px) {
+  .app-header-title {
+    display: none;
+  }
+}
+
+@container chat-column (max-width: 640px) {
+  .new-chat-view {
+    padding-inline: 0;
+  }
+
+  .new-chat-greeting {
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .new-chat-title {
+    font-size: clamp(1.5rem, 6cqi, 2.25rem);
+    overflow-wrap: anywhere;
+  }
+
+  .new-chat-greeting .suzent-greeting-presence {
+    zoom: 0.8;
+  }
+}
+
+@container chat-composer (max-width: 420px) {
+  .chat-composer-model {
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .chat-composer-model > div {
+    max-width: none;
+  }
+}
+
+@media (max-height: 650px) {
+  .new-chat-view {
+    padding-block: 0.75rem;
+  }
+
+  .new-chat-greeting {
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .new-chat-greeting .suzent-greeting-presence {
+    zoom: 0.6;
+  }
+
+  .new-chat-title {
+    font-size: 1.75rem;
+    margin-bottom: 0;
+  }
+}
+
 @keyframes speech-wave-breathe {
   0%,
   100% {
@@ -91,6 +186,17 @@
      limits mounted history and collapses activity DOM, so prefer stable layout
      over this browser-level virtualization there. */
   .macos-tauri-webview .chat-msg-row {
+    content-visibility: visible;
+  }
+
+  /* Following the live tail needs actual heights: revealing an estimated
+     history row can otherwise move the bottom after the scroll target is read.
+     Native scroll anchoring must not compete with the hook in this mode. */
+  [data-following-bottom='true'] {
+    overflow-anchor: none;
+  }
+
+  [data-following-bottom='true'] .chat-msg-row {
     content-visibility: visible;
   }
 
@@ -244,6 +350,17 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25rem;
+}
+
+.prose .katex {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .prose pre {
@@ -490,10 +607,195 @@ code {
 
 .tool-group-icon {
   @apply text-xs leading-none;
+  position: relative;
 }
 
 .tool-group-icon--mono {
   filter: grayscale(1) saturate(0) brightness(0.8);
+}
+
+/* ── Tool Icon Precision Micro-Animations ── */
+
+@keyframes tool-icon-pending-tick {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(12deg);
+  }
+  70% {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes tool-icon-terminal-blink {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes tool-icon-scan-sweep {
+  0% {
+    transform: translateY(-7px);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(7px);
+    opacity: 0;
+  }
+}
+
+@keyframes tool-icon-typewriter-strike {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  35% {
+    transform: translate(0.75px, -1px) rotate(-8deg);
+  }
+  70% {
+    transform: translate(-0.5px, 0.25px) rotate(3deg);
+  }
+}
+
+@keyframes tool-icon-radar-lock {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-0.75px, -0.5px) scale(1.1);
+  }
+  66% {
+    transform: translate(0.75px, 0.5px) scale(0.96);
+  }
+}
+
+@keyframes tool-icon-signal-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 0.65;
+  }
+}
+
+@keyframes tool-icon-memory-hdd {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 0.45;
+    transform: scale(0.93);
+  }
+  75% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes tool-icon-snap-lock {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-1.25px);
+  }
+  60% {
+    transform: translateY(1px);
+  }
+}
+
+@keyframes tool-icon-cursor-hop {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  40% {
+    transform: translate(1px, -1px) scale(1.04);
+  }
+  65% {
+    transform: translate(1px, -1px) scale(0.88);
+  }
+}
+
+.tool-group-icon > svg {
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.tool-icon-anim-pending > svg {
+  animation: tool-icon-pending-tick 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.tool-icon-anim-terminal > svg {
+  animation: tool-icon-terminal-blink 1s ease-in-out infinite;
+}
+
+.tool-icon-anim-scan {
+  overflow: hidden;
+}
+
+.tool-icon-anim-scan::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  right: 1px;
+  height: 1.5px;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 3px currentColor;
+  animation: tool-icon-scan-sweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+.tool-icon-anim-typewriter > svg {
+  animation: tool-icon-typewriter-strike 0.75s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
+}
+
+.tool-icon-anim-radar > svg {
+  animation: tool-icon-radar-lock 1.3s ease-in-out infinite;
+}
+
+.tool-icon-anim-signal > svg {
+  animation: tool-icon-signal-pulse 1s ease-in-out infinite;
+}
+
+.tool-icon-anim-memory > svg {
+  animation: tool-icon-memory-hdd 1.2s ease-in-out infinite;
+}
+
+.tool-icon-anim-snap > svg {
+  animation: tool-icon-snap-lock 1s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+.tool-icon-anim-cursor > svg {
+  animation: tool-icon-cursor-hop 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-group-icon > svg,
+  .tool-icon-anim-scan::after {
+    animation: none !important;
+  }
 }
 
 /* Assistant internal activity timeline */
@@ -539,15 +841,29 @@ code {
   position: relative;
   overflow: hidden;
   color: #111;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.06),
-    rgba(0, 0, 0, 0.06) 8px,
-    transparent 8px,
-    transparent 16px
-  );
-  background-size: 22.62px 22.62px;
-  animation: brutal-stripes-move 1s linear infinite;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.05) 35%,
+      rgba(0, 0, 0, 0.12) 50%,
+      rgba(0, 0, 0, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  background-size:
+    200% 100%,
+    6px 100%;
+  background-position:
+    100% 0,
+    0 0;
+  animation: brutal-stripes-move 1.35s linear infinite;
 }
 
 .activity-rail-header-pending {
@@ -582,13 +898,22 @@ code {
 
 .dark .activity-rail-header-active {
   color: #fff;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 35%,
+      rgba(255, 255, 255, 0.14) 50%,
+      rgba(255, 255, 255, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
 }
 
 .dark .activity-rail-header-pending {
@@ -774,24 +1099,24 @@ code {
 }
 
 .activity-rail-dot-active {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.18),
-    rgba(0, 0, 0, 0.18) 4px,
-    transparent 4px,
-    transparent 8px
-  );
-  animation: brutal-stripes-move 1s linear infinite;
+  background-color: rgba(0, 0, 0, 0.16);
+  animation: activity-rail-dot-pulse 1.2s ease-in-out infinite;
 }
 
 .dark .activity-rail-dot-active {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.28),
-    rgba(255, 255, 255, 0.28) 4px,
-    transparent 4px,
-    transparent 8px
-  );
+  background-color: rgba(255, 255, 255, 0.26);
+}
+
+@keyframes activity-rail-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.88);
+  }
 }
 
 .activity-rail-dot-pending {
@@ -1504,35 +1829,167 @@ code {
 .animate-neo-scan {
   animation: neo-scan 2s linear infinite;
 }
+/* 1. Compute, Shell & Process Surface: Vertical precision tick ruler + horizontal clock wave */
 .brutal-running-mono {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(0, 0, 0, 0.08),
-    rgba(0, 0, 0, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
-  background-size: 22.62px 22.62px;
-  animation: brutal-stripes-move 1s linear infinite;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.06) 35%,
+      rgba(0, 0, 0, 0.15) 50%,
+      rgba(0, 0, 0, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.06) 0px,
+      rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  background-size:
+    200% 100%,
+    6px 100%;
+  background-position:
+    100% 0,
+    0 0;
+  animation: brutal-stripes-move 1.35s linear infinite;
   box-shadow: 2px 2px 0px #000;
   position: relative;
   overflow: hidden;
 }
 
 .dark .brutal-running-mono {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.08) 8px,
-    transparent 8px,
-    transparent 16px
-  );
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 35%,
+      rgba(255, 255, 255, 0.16) 50%,
+      rgba(255, 255, 255, 0.06) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.07) 0px,
+      rgba(255, 255, 255, 0.07) 1px,
+      transparent 1px,
+      transparent 6px
+    );
   box-shadow: 2px 2px 0px #fff;
 }
 
 @keyframes brutal-stripes-move {
+  0% {
+    background-position:
+      100% 0,
+      0 0;
+  }
   100% {
-    background-position: 22.62px 0;
+    background-position:
+      -100% 0,
+      12px 0;
+  }
+}
+
+/* 2. I/O Transfer & File/Media Mutation Surface: Smooth data stream wave over subtle dot grid */
+.brutal-running-dots {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.08) 35%,
+      rgba(0, 0, 0, 0.16) 50%,
+      rgba(0, 0, 0, 0.08) 65%,
+      transparent 100%
+    ),
+    radial-gradient(rgba(0, 0, 0, 0.11) 1px, transparent 1px);
+  background-size:
+    200% 100%,
+    6px 6px;
+  background-position:
+    100% 0,
+    0 0;
+  animation: brutal-dots-flow 1.4s linear infinite;
+  box-shadow: 2px 2px 0px #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .brutal-running-dots {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.08) 35%,
+      rgba(255, 255, 255, 0.16) 50%,
+      rgba(255, 255, 255, 0.08) 65%,
+      transparent 100%
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  box-shadow: 2px 2px 0px #fff;
+}
+
+@keyframes brutal-dots-flow {
+  0% {
+    background-position:
+      100% 0,
+      0 0;
+  }
+  100% {
+    background-position:
+      -100% 0,
+      12px 0;
+  }
+}
+
+/* 3. Search, Recall & Observation Surface: Vertical laser scan sweep */
+.brutal-running-scan {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 42%,
+    rgba(0, 0, 0, 0.09) 48%,
+    rgba(0, 0, 0, 0.28) 50%,
+    rgba(0, 0, 0, 0.09) 52%,
+    transparent 58%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: brutal-scan-sweep 1.2s linear infinite;
+  box-shadow: 2px 2px 0px #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .brutal-running-scan {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 42%,
+    rgba(255, 255, 255, 0.09) 48%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.09) 52%,
+    transparent 58%,
+    transparent 100%
+  );
+  box-shadow: 2px 2px 0px #fff;
+}
+
+@keyframes brutal-scan-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brutal-running-mono,
+  .brutal-running-dots,
+  .brutal-running-scan {
+    animation: none !important;
   }
 }
 
@@ -1593,5 +2050,229 @@ code {
   }
   50% {
     opacity: 0;
+  }
+}
+/* Task layout follows the panel width, including while its resize handle is dragged. */
+@container (max-width: 480px) {
+  .task-panel .task-heading {
+    display: none;
+  }
+  .task-panel .task-header {
+    padding: 10px 12px;
+  }
+  .task-panel .task-header > * {
+    margin-top: 0;
+  }
+  .task-panel .task-empty {
+    padding: 24px 4px;
+    text-align: left;
+  }
+  .task-panel .task-empty h2 {
+    font-size: 14px;
+  }
+  .task-panel .task-goal h3 {
+    font-size: 14px;
+  }
+  .task-panel .task-goal > details {
+    display: none;
+  }
+
+  .task-panel .task-scroll {
+    padding: 12px;
+  }
+  .task-panel .task-row {
+    padding: 14px 12px;
+    gap: 8px;
+  }
+  .task-panel .task-row h3 {
+    white-space: normal;
+  }
+  .task-panel .task-row p {
+    display: none;
+  }
+  .task-panel .task-row time {
+    display: none;
+  }
+}
+
+/* Inline activity controls retain tool animation without the floating-card shadow. */
+.activity-turn-tool,
+.dark .activity-turn-tool {
+  box-shadow: none;
+  text-align: left;
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.activity-turn-tool.brutal-running-mono {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.05) 35%,
+      rgba(0, 0, 0, 0.12) 50%,
+      rgba(0, 0, 0, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+}
+
+.dark .activity-turn-tool.brutal-running-mono {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 35%,
+      rgba(255, 255, 255, 0.13) 50%,
+      rgba(255, 255, 255, 0.05) 65%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+}
+
+.activity-turn-tool.brutal-running-dots {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.06) 35%,
+      rgba(0, 0, 0, 0.13) 50%,
+      rgba(0, 0, 0, 0.06) 65%,
+      transparent 100%
+    ),
+    radial-gradient(rgba(0, 0, 0, 0.09) 1px, transparent 1px);
+}
+
+.dark .activity-turn-tool.brutal-running-dots {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 35%,
+      rgba(255, 255, 255, 0.14) 50%,
+      rgba(255, 255, 255, 0.06) 65%,
+      transparent 100%
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+}
+
+.activity-turn-tool:not(:disabled):hover,
+.activity-turn-tool[aria-expanded='true'] {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: #171717;
+}
+
+.dark .activity-turn-tool:not(:disabled):hover,
+.dark .activity-turn-tool[aria-expanded='true'] {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #f5f5f5;
+}
+
+.activity-turn-tool:focus-visible,
+button.activity-turn-duration:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.activity-turn-duration {
+  font-variant-numeric: tabular-nums;
+  border-bottom-width: 1px;
+  padding-block: 0.625rem;
+}
+
+.activity-turn-history {
+  padding-inline-end: 0.5rem;
+  scroll-padding-block: 0.5rem;
+}
+
+/* Compact the timeline rows without squeezing expanded tool content. */
+.activity-turn-history .activity-rail {
+  margin-bottom: 0.25rem;
+  padding-left: 1.5rem;
+}
+
+.activity-turn-history .activity-rail::before {
+  top: 0.5rem;
+  bottom: 0.5rem;
+}
+
+.activity-turn-history .activity-rail-item {
+  padding-block: 0.125rem;
+}
+
+.activity-turn-history .activity-rail-dot {
+  left: -1.1875rem;
+  top: 0.575rem;
+}
+
+.activity-turn-history .activity-rail-item[data-activity-state='pending'] {
+  padding-block: 0.375rem;
+}
+
+.activity-turn-history .activity-rail-item[data-activity-state='pending'] > .activity-rail-dot {
+  top: 0.825rem;
+}
+
+.activity-turn-history .activity-rail-header {
+  min-height: 2rem;
+  border-bottom: 0;
+  text-transform: none;
+}
+
+.activity-turn-history .activity-rail-header:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+/* Collapsing bodies remain mounted briefly for animation, but must not retain focus targets. */
+.activity-turn-history .grid-rows-\[0fr\] {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-turn-tool,
+  .activity-turn-history .activity-rail-dot-active,
+  .activity-turn-history .activity-rail-header-active {
+    animation: none;
+  }
+}
+
+.activity-turn-history .activity-rail-scroll {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.dark .activity-turn-history .activity-rail-scroll {
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+}
+
+.activity-turn-history .activity-rail-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dark .activity-turn-history .activity-rail-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+@media (hover: hover) {
+  .activity-rail-header .activity-rail-chevron {
+    opacity: 0;
+  }
+
+  .activity-rail-header:hover .activity-rail-chevron,
+  .activity-rail-header:focus-visible .activity-rail-chevron {
+    opacity: 1;
   }
 }

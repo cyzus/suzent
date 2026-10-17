@@ -461,9 +461,9 @@ def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
 def _preserve_partial_response(messages: list, full_response: str) -> list:
     """Append generated text as a ModelResponse when the stream didn't emit one.
 
-    On an interrupted or failed stream pydantic-ai may never produce the final
-    ``ModelResponse``. Preserve the visible partial assistant text so the next
-    turn (and the display log) can continue from it. No-op when ``messages``
+    Some streams finish without handing off the final ``ModelResponse``.
+    Preserve the visible assistant text so the next turn (and the display log)
+    can continue from it. No-op when ``messages``
     already ends in a ``ModelResponse`` or there's nothing to preserve.
     """
     if not full_response.strip():
@@ -475,7 +475,7 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
     if not messages or not isinstance(messages[-1], ModelResponse):
         logger.debug(
             "[ChatProcessor] Preserving partial assistant text for "
-            "interrupted/failed stream: {} chars",
+            "stream missing its final response: {} chars",
             len(full_response),
         )
         messages.append(ModelResponse(parts=[TextPart(content=full_response.strip())]))
@@ -674,6 +674,7 @@ class ChatProcessor:
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
+        deps.model_id = getattr(agent, "_model_id", None) or config.get("model")
         deps.incoming_citation_sources = list(incoming_citation_sources or [])
         # System/forked chats never persist agent_state — they reset before each run.
         deps.stateless = self._is_system_chat(chat_id)
@@ -1099,6 +1100,7 @@ class ChatProcessor:
         _upload_reminder = _upload_index_reminder(uploaded_paths)
         if _upload_reminder:
             _adhoc_reminders.append(_upload_reminder)
+        visible_prompt = message_content
         reminder = await build_combined_reminder(
             chat_id,
             deps,
@@ -1122,7 +1124,10 @@ class ChatProcessor:
             else:
                 content = full_prompt
             parts = [make_user_prompt_part(content, runtime_authored=True)]
-            new_request = ModelRequest(parts=parts)
+            new_request = ModelRequest(
+                parts=parts,
+                metadata={"context_sources": dict(deps.context_sources)},
+            )
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
@@ -1157,6 +1162,14 @@ class ChatProcessor:
                             _db.update_chat(chat_id, messages=_existing + [_user_entry])
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
+
+            if self._is_subagent_chat(chat_id):
+                await asyncio.to_thread(
+                    _presave_turn_rows,
+                    chat_id,
+                    visible_prompt,
+                    pending_trigger_rows,
+                )
 
         # Handle stateless resume
         deferred_tool_results = None
@@ -1325,7 +1338,8 @@ class ChatProcessor:
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
         )
 
-        # 7. Pre-send tool result trimming (in-memory only, never persisted)
+        # 7. Pre-send tool result trimming. The run returns this trimmed history and
+        # it is persisted, so the trimmer keeps it stable from turn to turn.
         from suzent.core.context_compressor import (
             ToolResultTrimmer,
             estimate_tokens,
@@ -1498,10 +1512,7 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
-                is_cancelled = (
-                    getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
-                )
-                if is_cancelled or stream_failed:
+                if not getattr(deps, "is_suspended", False):
                     snapshot_messages = _preserve_partial_response(
                         snapshot_messages, full_response
                     )
@@ -1666,13 +1677,9 @@ class ChatProcessor:
         try:
             last_messages = snapshot_messages or []
 
-            # If the stream was interrupted or failed, pydantic-ai may not emit
-            # the final ModelResponse. Preserve generated text so the next turn
-            # can continue from the visible partial assistant response.
-            is_cancelled = (
-                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
-            )
-            if is_cancelled or stream_failed:
+            # Streamed text must survive even when a successful stream never
+            # handed its final ModelResponse back to the history collector.
+            if not getattr(deps, "is_suspended", False):
                 last_messages = _preserve_partial_response(last_messages, full_response)
 
             msg_count = len(last_messages) if last_messages else 0
@@ -2208,6 +2215,13 @@ class ChatProcessor:
             chat = get_database().get_chat(chat_id)
             platform = (chat.config or {}).get("platform") if chat else None
             return platform in ("dream", "subagent", "subagent_wakeup")
+        except Exception:
+            return False
+
+    def _is_subagent_chat(self, chat_id: str) -> bool:
+        try:
+            chat = get_database().get_chat(chat_id)
+            return bool(chat) and (chat.config or {}).get("platform") == "subagent"
         except Exception:
             return False
 
@@ -3245,6 +3259,37 @@ def trigger_rows_for_snapshot(
     if stamp:
         row["timestamp"] = stamp.isoformat()
     return [row]
+
+
+def _presave_turn_rows(
+    chat_id: str, visible_prompt: str, trigger_rows: list[dict]
+) -> None:
+    """Show a sub-agent's prompt and reminders while its turn is still running.
+
+    Sub-agent chats are stateless, so nothing reaches ``messages`` until
+    post-processing rebuilds them from the finished history; anyone watching
+    the child meanwhile saw only the streamed answer. The rebuild replaces
+    these rows wholesale, and ``_preserve_display_triggers`` keeps the
+    trigger rows' stored content, so writing them early duplicates nothing.
+    """
+    rows: list[dict] = []
+    if visible_prompt and visible_prompt.strip():
+        rows.append({"role": "user", "content": visible_prompt})
+    rows.extend(trigger_rows)
+    if not rows:
+        return
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return
+        existing = list(chat.messages or [])
+        # Only the tail: a resumed child may legitimately repeat an earlier prompt.
+        added = [row for row in rows if row not in existing[-len(rows) :]]
+        if added:
+            db.update_chat(chat_id, messages=existing + added)
+    except Exception as e:
+        logger.warning(f"Could not pre-save turn rows for {chat_id}: {e}")
 
 
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:

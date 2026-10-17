@@ -54,6 +54,7 @@ export interface ChatConfig {
   model: string;
   agent: string;
   tools: string[];
+  denied_tools?: string[];
   mcp_urls?: string[] | Record<string, string>;
   mcp_enabled?: Record<string, boolean>;
   memory_enabled?: boolean;
@@ -99,6 +100,7 @@ export function normalizeThinkingEffort(value: unknown): ThinkingEffort {
 }
 
 export interface Chat {
+  projectId?: string | null;
   id: string;
   title: string;
   createdAt: string;
@@ -116,6 +118,7 @@ export interface Chat {
     cache_read_tokens?: number;
     requests?: number;
     details?: Record<string, number>;
+    context_breakdown?: import('./contextUsage').ContextBreakdown | null;
   };
 }
 
@@ -161,7 +164,7 @@ export interface Project {
 }
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';
-// 'blocked' is derived on the backend from blockedBy being non-empty — not stored as a DB status
+// 'blocked' includes explicit waits and pending tasks with dependencies.
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
 
 export interface Goal {
@@ -185,6 +188,11 @@ export interface Task {
   title: string;
   description: string;
   activeForm?: string | null;
+  waitingKind?: 'user' | 'dependency' | 'paused' | 'error' | null;
+  waitingReason?: string | null;
+  nextAction?: string | null;
+  resultSummary?: string | null;
+  resultPath?: string | null;
   status: TaskStatus;
   assignee?: string | null;
   blocks: number[];

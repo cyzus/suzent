@@ -120,6 +120,19 @@ class ChatModel(SQLModel, table=True):
     project: Optional[ProjectModel] = Relationship(back_populates="chats")
 
 
+class InputSuggestionModel(SQLModel, table=True):
+    """The guessed next message for a chat, kept so every device can show it."""
+
+    __tablename__ = "input_suggestions"
+
+    chat_id: str = Field(primary_key=True)
+    # Identifies the reply the guess was made from; the client only shows the
+    # guess while that reply is still the chat's last message.
+    reply_key: str
+    text: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentInboxMessageModel(SQLModel, table=True):
     """Durable local or cross-device message awaiting agent delivery."""
 
@@ -203,8 +216,13 @@ class TaskModel(SQLModel, table=True):
     )
     status: str = Field(
         default="pending"
-    )  # pending | in_progress | completed | cancelled
+    )  # pending | in_progress | blocked | completed | cancelled
     assignee: Optional[str] = None
+    waiting_kind: Optional[str] = None
+    waiting_reason: Optional[str] = None
+    next_action: Optional[str] = None
+    result_summary: Optional[str] = None
+    result_path: Optional[str] = None
     blocks: list = Field(default_factory=list, sa_column=Column(JSON))
     blocked_by: list = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

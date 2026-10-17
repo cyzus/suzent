@@ -43,7 +43,7 @@ export interface CanvasState {
    *  "surfaces for the chat I'm viewing" from stale surfaces during a switch. */
   surfacesChatId: string | null;
   /** Upsert a surface. Auto-activates if it's the first one. */
-  setSurface: (surface: A2UISurface) => void;
+  setSurface: (surface: A2UISurface, targetChatId?: string | null) => void;
   /** Focus a specific surface by id */
   setActiveSurface: (id: string) => void;
   /** Clear all surfaces and remove from localStorage */
@@ -83,19 +83,24 @@ export function useCanvas(chatId: string | null): CanvasState {
   }, [chatId]);
 
   const setSurface = useCallback(
-    (surface: A2UISurface) => {
+    (surface: A2UISurface, targetChatId?: string | null) => {
+      const effectiveChatId = targetChatId ?? chatId;
       setSurfaces((prev) => {
-        const idx = prev.findIndex((s) => s.id === surface.id);
-        const next = idx >= 0 ? prev.map((s, i) => (i === idx ? surface : s)) : [...prev, surface];
-        if (chatId) saveToStorage(chatId, next);
+        const base = surfacesChatId === effectiveChatId ? prev : [];
+        const idx = base.findIndex((s) => s.id === surface.id);
+        const next = idx >= 0 ? base.map((s, i) => (i === idx ? surface : s)) : [...base, surface];
+        if (effectiveChatId) saveToStorage(effectiveChatId, next);
         return next;
       });
-      setActiveSurfaceId((prev) => prev ?? surface.id);
+      setSurfacesChatId(effectiveChatId ?? null);
+      setActiveSurfaceId((prev) =>
+        surfacesChatId === effectiveChatId ? (prev ?? surface.id) : surface.id
+      );
       if (surface.deferred) {
         setDeferredIds((prev) => new Set([...prev, surface.id]));
       }
     },
-    [chatId]
+    [chatId, surfacesChatId]
   );
 
   const markDeferred = useCallback((id: string) => {

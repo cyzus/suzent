@@ -1279,9 +1279,22 @@ fn show_update_console() {
 #[cfg(not(windows))]
 fn show_update_console() {}
 
+/// Return the separately signed standalone copy shipped inside a macOS app bundle.
+///
+/// A bundle's main executable is signed against its Info.plist, so a copy taken
+/// out of `Contents/MacOS` fails signature verification.
+fn bundled_standalone_updater(current: &Path) -> Option<PathBuf> {
+    let macos_dir = current.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let helper = macos_dir.parent()?.join("Helpers").join("suzent-installer");
+    helper.is_file().then_some(helper)
+}
+
 fn stage_updater(_config: &InstallConfig) -> StageOutcome {
     let current = match env::current_exe() {
-        Ok(path) => path,
+        Ok(path) => bundled_standalone_updater(&path).unwrap_or(path),
         Err(error) => {
             return StageOutcome::fail(format!("Failed to locate installer executable: {error}"));
         }
@@ -1907,6 +1920,25 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 mod tests {
     use super::{is_release_tag, saved_install_dir, workspace_python};
     use std::fs;
+
+    #[test]
+    fn app_bundle_stages_its_standalone_helper() {
+        let temp = tempfile::tempdir().unwrap();
+        let contents = temp.path().join("Suzent Installer.app/Contents");
+        let main = contents.join("MacOS/suzent-installer");
+        fs::create_dir_all(main.parent().unwrap()).unwrap();
+        fs::write(&main, "bundle").unwrap();
+        assert_eq!(super::bundled_standalone_updater(&main), None);
+
+        let helper = contents.join("Helpers/suzent-installer");
+        fs::create_dir_all(helper.parent().unwrap()).unwrap();
+        fs::write(&helper, "standalone").unwrap();
+        assert_eq!(super::bundled_standalone_updater(&main), Some(helper));
+
+        let raw = temp.path().join("suzent-installer");
+        fs::write(&raw, "raw").unwrap();
+        assert_eq!(super::bundled_standalone_updater(&raw), None);
+    }
 
     #[test]
     fn preview_only_lists_first_install_stages_for_new_destinations() {

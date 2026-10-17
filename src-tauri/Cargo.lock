@@ -4051,6 +4051,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "suzent"
 version = "0.16.0"
 dependencies = [
+ "notify-rust",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

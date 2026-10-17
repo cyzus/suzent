@@ -44,8 +44,10 @@ export async function notifyDesktop(title: string, body: string): Promise<void> 
   if (!isDesktop()) return;
   try {
     if (!(await ensurePermission())) return;
-    const { sendNotification } = await import('@tauri-apps/plugin-notification');
-    sendNotification({ title, body: truncateNotificationBody(body) });
+    // Shown by the desktop shell rather than the plugin, which cannot tell
+    // when a notification is clicked; a click brings the main window back.
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('show_notification', { title, body: truncateNotificationBody(body) });
   } catch (err) {
     console.warn('[notifications] failed to show notification:', err);
   }

@@ -27,6 +27,9 @@ class StreamReplay:
     def __init__(self, capacity: int = 4096) -> None:
         self.run_id = uuid4().hex
         self.seq = 0
+        # Wall clock, so a client attaching mid-run times the turn from when it
+        # began rather than from when it happened to connect.
+        self.started_at_ms = int(time.time() * 1000)
         self.closed = False
         self.superseded = False
         self.closed_at: float | None = None
@@ -153,6 +156,7 @@ class StreamReplay:
                     "type": "STREAM_SNAPSHOT",
                     "run_id": self.run_id,
                     "seq": self.seq,
+                    "started_at_ms": self.started_at_ms,
                     "events": self._snapshot_events(),
                 }
             ]

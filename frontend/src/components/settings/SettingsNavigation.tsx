@@ -7,6 +7,7 @@ import {
   ChatBubbleLeftRightIcon,
   CircleStackIcon,
   ClockIcon,
+  BellIcon,
   CloudArrowUpIcon,
   ComputerDesktopIcon,
   Cog6ToothIcon,
@@ -38,6 +39,7 @@ export type SettingsCategory =
   | 'devices'
   | 'mesh'
   | 'appearance'
+  | 'notifications'
   | 'service'
   | 'browser'
   | 'security'
@@ -58,6 +60,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'devices',
   'mesh',
   'appearance',
+  'notifications',
   'service',
   'browser',
   'security',
@@ -117,6 +120,7 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
     labelKey: 'settings.groups.application',
     categories: [
       { id: 'appearance', labelKey: 'settings.categories.appearance', icon: PaintBrushIcon },
+      { id: 'notifications', labelKey: 'settings.categories.notifications', icon: BellIcon },
       {
         id: 'service',
         labelKey: 'settings.categories.service',

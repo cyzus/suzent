@@ -323,6 +323,17 @@ class DatabaseMigrationMixin:
                     )
                 if "active_form" not in task_cols:
                     conn.execute(text("ALTER TABLE tasks ADD COLUMN active_form TEXT"))
+                for column in (
+                    "waiting_kind",
+                    "waiting_reason",
+                    "next_action",
+                    "result_summary",
+                    "result_path",
+                ):
+                    if column not in task_cols:
+                        conn.execute(
+                            text(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
+                        )
                 conn.commit()
 
         # Migration: route durable agent messages through local or peer transports.

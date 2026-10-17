@@ -60,3 +60,21 @@ def test_output_capture_is_strictly_bounded(tmp_path):
     captured = output.read_bytes()
     assert len(captured) <= 1024
     assert b"output truncated" in captured
+
+
+def test_start_detaches_stdin(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop before spawning")
+
+    registry = HostProcessRegistry()
+    monkeypatch.setattr(registry_module.subprocess, "Popen", fake_popen)
+
+    try:
+        registry.start(chat_id="chat", cmd=["echo"], cwd=str(tmp_path), env={})
+    except RuntimeError:
+        pass
+
+    assert captured["stdin"] is registry_module.subprocess.DEVNULL

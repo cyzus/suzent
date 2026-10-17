@@ -17,6 +17,7 @@ import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 import { CopyButton } from './CopyButton';
 import { BrutalButton } from '../BrutalButton';
+import { isImeComposing } from '../../lib/ime';
 
 // Must match the CSS max-w-sm / max-h-64 constraints on the rendered <img>.
 const IMG_MAX_W = 384;
@@ -434,6 +435,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 240)}px`;
             }}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Escape') {
                 e.preventDefault();
                 cancelEditing();
@@ -444,8 +446,8 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             }}
             className="w-full resize-none bg-white dark:bg-zinc-800 border-3 border-brutal-blue shadow-[3px_3px_0_0_#000] px-4 py-3 text-sm font-sans text-brutal-black dark:text-white focus:outline-none"
           />
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="min-w-0 basis-40 text-xs text-neutral-500 dark:text-neutral-400 flex-1">
               {t('chatMessage.editHint')}
             </span>
             <div className="flex gap-2 shrink-0">

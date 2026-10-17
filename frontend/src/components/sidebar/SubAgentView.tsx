@@ -121,6 +121,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   const task: SubAgentTask | null = fetchedTask
     ? ({ ...fetchedTask, ...(liveTask ?? {}) } as SubAgentTask)
     : ((liveTask as SubAgentTask | undefined) ?? null);
+  // The ticking timer reads this, so it must see the stream's start and status
+  // too, not only the 2s poll's.
+  taskRef.current = task;
 
   const fetchChatLog = useCallback(async (chatId: string) => {
     try {

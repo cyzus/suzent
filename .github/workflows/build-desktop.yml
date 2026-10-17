@@ -10,6 +10,10 @@ on:
         description: 'Existing release tag to build, for example v0.7.2'
         required: true
         type: string
+      verify_signing:
+        description: 'Sign existing macOS release assets, package the installer disk image, and upload CI artifacts without publishing'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -20,6 +24,7 @@ concurrency:
 
 jobs:
   prepare-release:
+    if: ${{ !inputs.verify_signing }}
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release-tag.outputs.tag }}
@@ -133,11 +138,15 @@ jobs:
             binary: src-tauri/target/release/suzent
             installer_asset: suzent-installer-macos-aarch64
             installer_binary: apps/suzent-installer/target/release/suzent-installer
+            installer_app: apps/suzent-installer/target/release/bundle/macos/Suzent Installer.app
+            installer_dmg_asset: suzent-installer-macos-aarch64.dmg
           - os: macos-15-intel
             asset: suzent-macos-x86_64
             binary: src-tauri/target/release/suzent
             installer_asset: suzent-installer-macos-x86_64
             installer_binary: apps/suzent-installer/target/release/suzent-installer
+            installer_app: apps/suzent-installer/target/release/bundle/macos/Suzent Installer.app
+            installer_dmg_asset: suzent-installer-macos-x86_64.dmg
           - os: ubuntu-22.04
             asset: suzent-linux-x86_64
             binary: src-tauri/target/release/suzent
@@ -145,6 +154,7 @@ jobs:
             installer_binary: apps/suzent-installer/target/release/suzent-installer
 
     runs-on: ${{ matrix.os }}
+    environment: mobile-release
 
     steps:
       - name: Checkout release tag
@@ -194,18 +204,36 @@ jobs:
         working-directory: apps/suzent-installer
         run: npm run build
 
+      - name: Sign and notarize macOS binaries and installer disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash scripts/sign-macos-release.sh "$APP_BINARY" "$MACOS_INSTALLER_BINARY"
+        env:
+          APP_BINARY: ${{ matrix.binary }}
+          MACOS_INSTALLER_BINARY: ${{ matrix.installer_binary }}
+          MACOS_INSTALLER_APP: ${{ matrix.installer_app }}
+          MACOS_INSTALLER_DMG: ${{ matrix.installer_dmg_asset }}
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
       - name: Upload binaries to draft release
         shell: bash
         run: |
           cp "${{ matrix.binary }}" "${{ matrix.asset }}"
           cp "${{ matrix.installer_binary }}" "${{ matrix.installer_asset }}"
-          gh release upload "$RELEASE_TAG" \
-            "${{ matrix.asset }}" \
-            "${{ matrix.installer_asset }}" \
-            --clobber
+          assets=("${{ matrix.asset }}" "${{ matrix.installer_asset }}")
+          if [[ -n "$INSTALLER_DMG" ]]; then
+            assets+=("$INSTALLER_DMG")
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          INSTALLER_DMG: ${{ matrix.installer_dmg_asset }}
 
   reuse-assets:
     needs: prepare-release
@@ -277,3 +305,72 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
+  verify-macos-signing:
+    if: inputs.verify_signing
+    runs-on: ${{ matrix.os }}
+    environment: mobile-release
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: aarch64
+          - os: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workdir: apps/suzent-installer
+      # The installer app bundle is not a release asset yet, so build it from this ref.
+      - name: Build installer app
+        working-directory: apps/suzent-installer
+        run: |
+          npm ci
+          npx tauri build --bundles app
+      - name: Download existing release binaries
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          mkdir -p signed-assets
+          gh release download "$RELEASE_TAG" --pattern "suzent-macos-$ARCH" --dir signed-assets
+          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir signed-assets
+          (cd signed-assets && shasum -a 256 --check --ignore-missing SHA256SUMS)
+          rm signed-assets/SHA256SUMS
+          cp apps/suzent-installer/target/release/suzent-installer "signed-assets/suzent-installer-macos-$ARCH"
+          chmod +x signed-assets/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          ARCH: ${{ matrix.arch }}
+      - name: Sign, notarize and staple existing binaries and installer disk image
+        run: bash scripts/sign-macos-release.sh signed-assets/*
+        env:
+          MACOS_SIGNED_ARCHIVE: signed-macos-${{ matrix.arch }}.tar.gz
+          MACOS_INSTALLER_BINARY: signed-assets/suzent-installer-macos-${{ matrix.arch }}
+          MACOS_INSTALLER_APP: apps/suzent-installer/target/release/bundle/macos/Suzent Installer.app
+          MACOS_INSTALLER_DMG: suzent-installer-macos-${{ matrix.arch }}.dmg
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: signed-macos-${{ matrix.arch }}
+          path: |
+            signed-macos-${{ matrix.arch }}.tar.gz
+            suzent-installer-macos-${{ matrix.arch }}.dmg
+          retention-days: 7
+          if-no-files-found: error

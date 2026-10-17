@@ -19,12 +19,14 @@ Get Suzent running in a few minutes.
 
 Download the installer for your platform from the [landing page](/#download). On macOS, choose Apple Silicon for M-series Macs or Intel for Intel-based Macs. Windows and Linux downloads target x86_64.
 
-On Windows, open the downloaded `.exe`. On macOS or Linux, open Terminal in your download folder and run the following, replacing `<filename>` with the downloaded installer's exact name:
+- **macOS:** open the downloaded `.dmg`, then double-click **Suzent Installer**. You can also drag it to Applications first and open it from there.
+- **Windows:** open the downloaded `.exe`.
+- **Linux:** open Terminal in your download folder and run the following, replacing `<filename>` with the downloaded installer's exact name:
 
-```bash
-chmod +x ./<filename>
-./<filename>
-```
+  ```bash
+  chmod +x ./<filename>
+  ./<filename>
+  ```
 
 Follow the installer to choose your workspace and set up Suzent. Internet access is required. The current release requires Git on macOS and Linux; install it first if the installer asks for it.
 

@@ -35,6 +35,7 @@ import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
 import { BrutalButton } from './BrutalButton';
+import { isImeComposing } from '../lib/ime';
 
 const ALL_PROJECTS_FILTER = '__all__';
 const AUTOMATION_PREVIEW_LIMIT = 5;
@@ -746,7 +747,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
         return;
       }
       if (selection.selected.size === 0) return;
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isImeComposing(event)) {
         event.preventDefault();
         clearSelection();
       } else if (isDeleteShortcut(event, platform)) {
@@ -1165,6 +1166,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
                 if (e.key === 'Escape') handleRenameCancel(e);
               }}
               className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-neutral-50 dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
@@ -1449,6 +1451,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                       value={taskRenameValue}
                                       onChange={(event) => setTaskRenameValue(event.target.value)}
                                       onKeyDown={(event) => {
+                                        if (isImeComposing(event)) return;
                                         if (event.key === 'Escape') setRenamingTaskId(null);
                                       }}
                                       className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
@@ -1691,6 +1694,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                         value={newProjectName}
                         onChange={(event) => setNewProjectName(event.target.value)}
                         onKeyDown={(event) => {
+                          if (isImeComposing(event)) return;
                           if (event.key === 'Escape') {
                             setCreatingProjectInline(false);
                             setNewProjectName('');
@@ -1744,6 +1748,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   value={projectRenameValue}
                                   onChange={(event) => setProjectRenameValue(event.target.value)}
                                   onKeyDown={(event) => {
+                                    if (isImeComposing(event)) return;
                                     if (event.key === 'Escape') setRenamingProjectId(null);
                                   }}
                                   className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"

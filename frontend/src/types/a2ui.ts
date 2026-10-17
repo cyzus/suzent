@@ -126,8 +126,12 @@ export interface A2UISurface {
   id: string;
   title?: string;
   component: A2UIComponent;
-  /** "canvas" (default): sidebar panel. "inline": inside the chat message. */
+  /** "inline" (default): inside the chat message. "canvas": the side panel,
+   *  with a compact pointer left in the chat message. */
   target?: 'canvas' | 'inline';
+  /** When the frontend received this version. A later render of the same id
+   *  supersedes the copies with a smaller rev, wherever they sit in history. */
+  rev?: number;
   /** If true, the surface was rendered by ask_question and the agent is blocked
    *  awaiting a response. Interactions should POST to /canvas/{chatId}/answer
    *  instead of /canvas/{chatId}/action. */

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { A2UIForm, A2UIFormField } from '../../../types/a2ui';
 import { BrutalButton } from '../../BrutalButton';
 import { useI18n } from '../../../i18n';
+import { isImeComposing } from '../../../lib/ime';
 
 interface Props {
   component: A2UIForm;
@@ -11,33 +12,109 @@ interface Props {
 const inputBase =
   'w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-yellow';
 
+function isTypingTarget(target: EventTarget): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
+// Number keys 1–9 pick the option with that badge; returns its index or null.
+function shortcutIndex(e: React.KeyboardEvent, count: number): number | null {
+  if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return null;
+  const n = Number(e.key);
+  if (!Number.isInteger(n) || n < 1 || n > Math.min(count, 9)) return null;
+  return n - 1;
+}
+
+function useFocusOnMount(autoFocus: boolean | undefined): React.RefObject<HTMLDivElement> {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (autoFocus) ref.current?.focus({ preventScroll: true });
+  }, [autoFocus]);
+  return ref;
+}
+
+function OtherInput({
+  inputRef,
+  value,
+  onChange,
+  onEscape,
+}: {
+  inputRef: React.RefObject<HTMLInputElement>;
+  value: string;
+  onChange: (v: string) => void;
+  onEscape: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="px-4 pb-3">
+      <input
+        ref={inputRef}
+        autoFocus
+        type="text"
+        className="w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-black"
+        placeholder={t('a2uiForm.otherPlaceholder')}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onEscape();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Inline single-select list (no portal — safe inside canvas) ────────────
 function SelectOptionList({
   options,
   value,
   onChange,
   allowFreeText,
+  autoFocus,
 }: {
   options: string[];
   value: string;
   onChange: (v: string) => void;
   allowFreeText?: boolean;
+  autoFocus?: boolean;
 }) {
   const { t } = useI18n();
   const isOther = allowFreeText && value !== '' && !options.includes(value);
   const [otherText, setOtherText] = React.useState(isOther ? value : '');
   const [otherActive, setOtherActive] = React.useState(isOther);
+  const rootRef = useFocusOnMount(autoFocus);
+  const otherInputRef = React.useRef<HTMLInputElement>(null);
+
+  const choose = (i: number) => {
+    if (i < options.length) {
+      setOtherActive(false);
+      onChange(options[i]);
+      return;
+    }
+    setOtherActive(true);
+    onChange(otherText);
+    otherInputRef.current?.focus();
+  };
 
   return (
-    <div className="flex flex-col border-2 border-brutal-black overflow-hidden">
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        const i = shortcutIndex(e, options.length + (allowFreeText ? 1 : 0));
+        if (i === null) return;
+        e.preventDefault();
+        choose(i);
+      }}
+      className="flex flex-col border-2 border-brutal-black overflow-hidden focus:outline-none"
+    >
       {options.map((opt, i) => (
         <button
           key={opt}
           type="button"
-          onClick={() => {
-            setOtherActive(false);
-            onChange(opt);
-          }}
+          onClick={() => choose(i)}
           className={[
             'flex items-center justify-between px-4 py-3 text-sm font-bold text-left transition-colors',
             'border-t-2 border-brutal-black first:border-t-0',
@@ -63,10 +140,7 @@ function SelectOptionList({
         >
           <button
             type="button"
-            onClick={() => {
-              setOtherActive(true);
-              onChange(otherText);
-            }}
+            onClick={() => choose(options.length)}
             className="flex items-center justify-between px-4 py-3 text-sm font-bold text-left w-full"
           >
             <span
@@ -81,19 +155,15 @@ function SelectOptionList({
             </span>
           </button>
           {otherActive && (
-            <div className="px-4 pb-3">
-              <input
-                autoFocus
-                type="text"
-                className="w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-black"
-                placeholder="Type your answer…"
-                value={otherText}
-                onChange={(e) => {
-                  setOtherText(e.target.value);
-                  onChange(e.target.value);
-                }}
-              />
-            </div>
+            <OtherInput
+              inputRef={otherInputRef}
+              value={otherText}
+              onChange={(text) => {
+                setOtherText(text);
+                onChange(text);
+              }}
+              onEscape={() => rootRef.current?.focus()}
+            />
           )}
         </div>
       )}
@@ -107,38 +177,56 @@ function MultiSelectList({
   value,
   onChange,
   allowFreeText,
+  autoFocus,
 }: {
   options: string[];
   value: string[];
   onChange: (v: string[]) => void;
   allowFreeText?: boolean;
+  autoFocus?: boolean;
 }) {
   const { t } = useI18n();
-  const otherValue = value.find((v) => !options.includes(v)) ?? '';
-  const [otherText, setOtherText] = React.useState(otherValue);
-  const otherChecked = otherValue !== '';
+  const initialOther = value.find((v) => !options.includes(v)) ?? '';
+  const [otherText, setOtherText] = React.useState(initialOther);
+  const [otherActive, setOtherActive] = React.useState(initialOther !== '');
+  const rootRef = useFocusOnMount(autoFocus);
+  const otherInputRef = React.useRef<HTMLInputElement>(null);
+  const base = value.filter((v) => options.includes(v));
 
   const toggle = (opt: string) => {
     onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
   };
 
-  const handleOtherToggle = () => {
-    if (otherChecked) {
+  const toggleOther = () => {
+    if (otherActive) {
+      setOtherActive(false);
       setOtherText('');
-      onChange(value.filter((v) => options.includes(v)));
-    } else {
-      // just activate the text input; value updated as user types
+      onChange(base);
+      rootRef.current?.focus();
+      return;
     }
+    setOtherActive(true);
+    otherInputRef.current?.focus();
   };
 
   const handleOtherText = (text: string) => {
     setOtherText(text);
-    const base = value.filter((v) => options.includes(v));
     onChange(text ? [...base, text] : base);
   };
 
   return (
-    <div className="flex flex-col border-2 border-brutal-black overflow-hidden">
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        const i = shortcutIndex(e, options.length + (allowFreeText ? 1 : 0));
+        if (i === null) return;
+        e.preventDefault();
+        if (i < options.length) toggle(options[i]);
+        else toggleOther();
+      }}
+      className="flex flex-col border-2 border-brutal-black overflow-hidden focus:outline-none"
+    >
       {options.map((opt, i) => {
         const active = value.includes(opt);
         return (
@@ -180,18 +268,18 @@ function MultiSelectList({
         <div
           className={[
             'border-t-2 border-brutal-black',
-            otherChecked ? 'bg-brutal-yellow' : 'bg-white dark:bg-zinc-800',
+            otherActive ? 'bg-brutal-yellow' : 'bg-white dark:bg-zinc-800',
           ].join(' ')}
         >
           <button
             type="button"
-            onClick={handleOtherToggle}
+            onClick={toggleOther}
             className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-left w-full"
           >
             <div
-              className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${otherChecked ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
+              className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${otherActive ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
             >
-              {otherChecked && (
+              {otherActive && (
                 <svg
                   className="w-3 h-3 text-white"
                   fill="none"
@@ -204,7 +292,7 @@ function MultiSelectList({
               )}
             </div>
             <span
-              className={`flex-1 ${otherChecked ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}`}
+              className={`flex-1 ${otherActive ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}`}
             >
               {t('a2uiForm.typeSomethingElse')}
             </span>
@@ -212,17 +300,13 @@ function MultiSelectList({
               {options.length + 1}
             </span>
           </button>
-          {(otherChecked || otherText !== '') && (
-            <div className="px-4 pb-3">
-              <input
-                autoFocus
-                type="text"
-                className="w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-black"
-                placeholder="Type your answer…"
-                value={otherText}
-                onChange={(e) => handleOtherText(e.target.value)}
-              />
-            </div>
+          {otherActive && (
+            <OtherInput
+              inputRef={otherInputRef}
+              value={otherText}
+              onChange={handleOtherText}
+              onEscape={() => rootRef.current?.focus()}
+            />
           )}
         </div>
       )}
@@ -235,14 +319,16 @@ interface FieldInputProps {
   field: A2UIFormField;
   value: unknown;
   onChange: (val: unknown) => void;
+  autoFocus?: boolean;
 }
 
-function FieldInput({ field, value, onChange }: FieldInputProps) {
+function FieldInput({ field, value, onChange, autoFocus }: FieldInputProps) {
   const type = field.type ?? 'text';
 
   if (type === 'textarea') {
     return (
       <textarea
+        autoFocus={autoFocus}
         className={`${inputBase} min-h-[80px] resize-y`}
         placeholder={field.placeholder}
         value={String(value ?? '')}
@@ -258,6 +344,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         options={field.options ?? []}
         value={String(value ?? '')}
         allowFreeText={field.allow_free_text}
+        autoFocus={autoFocus}
         onChange={(v) => onChange(v)}
       />
     );
@@ -271,6 +358,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         value={selected}
         onChange={(vals) => onChange(vals)}
         allowFreeText={field.allow_free_text}
+        autoFocus={autoFocus}
       />
     );
   }
@@ -324,6 +412,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
   // default: text
   return (
     <input
+      autoFocus={autoFocus}
       type="text"
       className={inputBase}
       placeholder={field.placeholder}
@@ -361,9 +450,19 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
     else setPage((p) => p + 1);
   };
   const skip = () => advance(); // skip this question, move to next (or submit)
+  const navRef = React.useRef<HTMLDivElement>(null);
+
+  // Enter moves on from anywhere in the question (Shift+Enter keeps a newline);
+  // the nav buttons keep their own Enter so Back/Skip still work from the keyboard.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey || isImeComposing(e)) return;
+    if (navRef.current?.contains(e.target as Node)) return;
+    e.preventDefault();
+    if (hasValue()) advance();
+  };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" onKeyDown={handleKeyDown}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-bold text-brutal-black dark:text-white leading-snug flex-1">
           {field.label}
@@ -377,12 +476,14 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
       </div>
 
       <FieldInput
+        key={field.name}
         field={field}
         value={values[field.name]}
         onChange={(val) => setValues((prev) => ({ ...prev, [field.name]: val }))}
+        autoFocus
       />
 
-      <div className="flex items-center gap-2">
+      <div ref={navRef} className="flex items-center gap-2">
         {page > 0 && (
           <BrutalButton
             type="button"

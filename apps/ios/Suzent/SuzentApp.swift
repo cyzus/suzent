@@ -509,10 +509,10 @@ struct ContentView: View {
                         if chat.id.isEmpty { startPage(chat) }
                         let messages = presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
+                        let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
+                        let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
+                        let canReplay = idle && !(chat.models ?? []).isEmpty && lastUser != nil && model.device?.permissions.send == true && model.device?.permissions.manageChats == true
                         ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
-                            let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
-                            let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
-                            let canReplay = idle && !(chat.models ?? []).isEmpty && lastUser != nil && model.device?.permissions.send == true && model.device?.permissions.manageChats == true
                             MessageView(message: message, isLatest: !hasLiveMessage && index == messages.count - 1, fallbackModel: chat.model,
                                 canRetry: canReplay && (message.messageIndex == lastUser || (index == messages.count - 1 && message.role == "assistant")),
                                 canEdit: canReplay && message.role == "user" && message.messageIndex == lastUser,

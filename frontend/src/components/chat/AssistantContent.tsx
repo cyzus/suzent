@@ -3,14 +3,14 @@ import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 import type { A2UISurface } from '../../types/a2ui';
 import { generateBlockKey, type ContentBlock } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
-import { A2UIRenderer } from '../a2ui/A2UIRenderer';
+import { InlineSurface } from '../a2ui/InlineSurface';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { LogBlock } from './LogBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { parseSubAgentArgs, SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { ToolCallBlock } from './ToolCallBlock';
-import { ToolGroupIcon } from './toolGroupIcon';
+import { pickToolRunningSurfaceClass, ToolGroupIcon } from './toolGroupIcon';
 import type {
   PermissionPrompt,
   ToolPermissionDecision,
@@ -41,7 +41,11 @@ export const ToolSequenceGroup: React.FC<{
   onForceWebContext?: (contextId: string) => void;
 }> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
   const hasPending = tools.some((t) => t.approvalState === 'pending');
-  const isAnyRunning = isStreaming && tools.some((t) => !t.output);
+  const activeTool = isStreaming ? [...tools].reverse().find((t) => !t.output) : undefined;
+  const isAnyRunning = Boolean(activeTool);
+  const runningSurfaceClass = activeTool
+    ? pickToolRunningSurfaceClass(activeTool.toolName)
+    : 'brutal-running-mono';
   const [expanded, setExpanded] = useState(hasPending);
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export const ToolSequenceGroup: React.FC<{
           hasPending ? 'active-approval' : ''
         } ${
           isAnyRunning
-            ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white'
+            ? `${runningSurfaceClass} border-2 !border-brutal-black dark:!border-white`
             : 'border-2 border-transparent'
         }`}
       >
@@ -351,12 +355,11 @@ export const StaticContent: React.FC<{
         } else if (b.type === 'a2ui' && b.a2uiSurface) {
           const surface = b.a2uiSurface as A2UISurface;
           return (
-            <div key={blockKey} className="my-2">
-              <A2UIRenderer
-                component={surface.component}
-                onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
-              />
-            </div>
+            <InlineSurface
+              key={blockKey}
+              surface={surface}
+              onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+            />
           );
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending' && !b.content;

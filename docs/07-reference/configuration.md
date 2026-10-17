@@ -120,6 +120,23 @@ See [Memory](../03-features/memory/README.md). More tuning is on
 | `transcript_indexing_enabled` | `false` | Make past conversations searchable, at the cost of extra embedding calls. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |
+| `stream_idle_timeout_seconds` | `120` | How long to wait between model response updates when the provider has no default of its own. Tool execution has separate limits. |
+| `stream_wait_notice_seconds` | `15` | Show a waiting notice after this many seconds without a model response update. You can still stop the response. |
+| `stream_wait_slow_seconds` | `60` | Show a slow-response notice and offer more waiting time. |
+| `stream_wait_extension_seconds` | `1200` | Maximum silence allowed after you choose Continue waiting, counted from the last response update. Choosing it again does not add more time. |
+| `stream_idle_timeout_overrides` | `{}` | Override response waiting times, in seconds, by provider ID or full model ID. A model override takes priority. Google Gemini's provider default is 300 seconds. |
+
+For example, add this to `local.yaml` to allow a provider 10 minutes between
+response updates, with a longer wait for one model:
+
+```yaml
+stream_idle_timeout_overrides:
+  gemini: 600
+  gemini/gemini-4-argon: 900
+```
+
+All waiting times must be positive, finite numbers. These settings do not change
+the time allowed for tools or the separate first-response waiting policy.
 
 ### Devices and other agents
 

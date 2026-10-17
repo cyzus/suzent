@@ -5,6 +5,7 @@ import type { CitationSource } from '../../lib/streamEvents';
 import { InformationPopover } from '../InformationPopover';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { useI18n } from '../../i18n';
+import { isImeComposing } from '../../lib/ime';
 
 /**
  * Inline-citation rendering.
@@ -604,6 +605,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
       setExpanded(false);
     };
     const onKey = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === 'Escape') setExpanded(false);
     };
     document.addEventListener('mousedown', onDown);
@@ -674,13 +676,13 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
   if (sources.length === 0) return null;
 
   return (
-    <span ref={ref} className="relative inline-flex">
+    <span ref={ref} className="relative inline-flex shrink-0 max-w-full">
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-tight
+        className="flex max-w-full flex-wrap items-center gap-1.5 whitespace-nowrap text-[10px] font-mono font-bold uppercase tracking-tight
           text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
       >
-        <span className="flex items-center">
+        <span className="flex shrink-0 items-center">
           {sources.slice(0, 4).map((s, i) => (
             <Favicon
               key={i}

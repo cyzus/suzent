@@ -114,8 +114,11 @@ interface ChatCoreContextValue {
   setIsStreaming: (streaming: boolean, chatId?: string | null) => void;
   removeEmptyAssistantMessage: (chatId?: string | null) => void;
   currentChatId: string | null;
+  /** True once the current chat's messages have been fetched (or created locally). */
+  currentChatMessagesLoaded: boolean;
   chats: ChatSummary[];
   pinnedChats: ChatSummary[];
+  currentChatProjectId: string | null;
   loadingChats: boolean;
   refreshingChats: boolean;
   searchQuery: string;
@@ -129,6 +132,7 @@ interface ChatCoreContextValue {
       authoritative?: boolean;
       trusted?: boolean;
       throwOnError?: boolean;
+      validateBeforeSwitch?: boolean;
     }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
@@ -181,6 +185,8 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
     // into a new chat.
     'sandbox_volumes',
     'tool_approval_policy',
+    // A denial is a decision about one chat, not a default for the next.
+    'denied_tools',
     'permission_policies',
     'permission_mode',
     'heartbeat_enabled',
@@ -315,6 +321,7 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     a.model === b.model &&
     a.agent === b.agent &&
     arrayEqual(a.tools, b.tools) &&
+    arrayEqual(a.denied_tools, b.denied_tools) &&
     mcpUrlsEqual(a.mcp_urls, b.mcp_urls) &&
     // Chat-scoped fields that affect a turn must be compared too, otherwise a
     // mid-chat change (e.g. mounting a folder via the working-dir picker) is
@@ -398,6 +405,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [pinnedChats, setPinnedChats] = useState<ChatSummary[]>([]);
+  const [loadedChatProjects, setLoadedChatProjects] = useState<Record<string, string | null>>({});
+  const currentChatProjectId = currentChatId
+    ? ((
+        chats.find((chat) => chat.id === currentChatId) ??
+        pinnedChats.find((chat) => chat.id === currentChatId)
+      )?.projectId ??
+      loadedChatProjects[currentChatId] ??
+      null)
+    : null;
   const [chatTotal, setChatTotal] = useState<number>(0);
   const [chatKindTotals, setChatKindTotals] = useState<ChatKindCounts>(emptyChatKindCounts);
   const [chatOffset, setChatOffset] = useState<number>(0);
@@ -579,6 +595,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     () => getMessagesForChat(currentChatId),
     [getMessagesForChat, currentChatId]
   );
+  const currentChatMessagesLoaded = keyForChat(currentChatId) in messagesByChat;
 
   // Fetch backend config with retry logic.
   //
@@ -1397,9 +1414,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         authoritative?: boolean;
         trusted?: boolean;
         throwOnError?: boolean;
+        validateBeforeSwitch?: boolean;
       }
     ) => {
-      const force = !!options?.force || !!options?.authoritative || !!options?.trusted;
+      // Task links can outlive their chat. Validate before changing the active conversation.
+      let validatedResponse: Response | undefined;
+      if (options?.validateBeforeSwitch) {
+        validatedResponse = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}`);
+        if (!validatedResponse.ok)
+          throw new Error(`Failed to load chat: HTTP ${validatedResponse.status}`);
+      }
+      const force =
+        !!options?.force || !!options?.authoritative || !!options?.trusted || !!validatedResponse;
       // authoritative: the backend rejected whatever the client did optimistically,
       // so its snapshot replaces local state outright. The guards below all exist
       // to protect optimistic content the backend is about to catch up with —
@@ -1449,9 +1475,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       }
 
       try {
-        const res = await fetch(`${getApiBase()}/chats/${chatId}`);
+        const res = validatedResponse ?? (await fetch(`${getApiBase()}/chats/${chatId}`));
         if (res.ok) {
           const chat: Chat = await res.json();
+          setLoadedChatProjects((previous) => ({ ...previous, [chatId]: chat.projectId ?? null }));
           setCurrentChatTitle(chat.title);
 
           if (chat.contextUsage || chat.contextTokens) {
@@ -1477,6 +1504,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 serverUsage?.cache_read_tokens ?? existingUsage?.cache_read_tokens ?? 0,
               requests: serverUsage?.requests ?? existingUsage?.requests ?? 0,
               details: serverUsage?.details ?? existingUsage?.details,
+              context_breakdown: serverUsage
+                ? (serverUsage.context_breakdown ?? null)
+                : existingUsage?.context_breakdown,
             });
           }
           const loadedConfig = hydrateChatConfig(
@@ -1913,8 +1943,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       setIsStreaming: setStreamingState,
       removeEmptyAssistantMessage,
       currentChatId,
+      currentChatMessagesLoaded,
       chats,
       pinnedChats,
+      currentChatProjectId,
       chatTotal,
       chatKindTotals,
       loadingChats,
@@ -1959,8 +1991,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       setStreamingState,
       removeEmptyAssistantMessage,
       currentChatId,
+      currentChatMessagesLoaded,
       chats,
       pinnedChats,
+      currentChatProjectId,
       chatTotal,
       chatKindTotals,
       loadingChats,
