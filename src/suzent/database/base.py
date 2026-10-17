@@ -43,6 +43,13 @@ class ChatDatabaseBase:
         self._init_chat_search()
         self._repair_stale_chat_summaries()
 
+        from .chat_log import ChatEventLog, default_log_root, shadow_enabled
+
+        # Set last so startup migrations above don't each write a log entry.
+        self.chat_log = (
+            ChatEventLog(default_log_root(self.db_path)) if shadow_enabled() else None
+        )
+
     def _session(self) -> Session:
         """Create a new database session."""
         return Session(self.engine)

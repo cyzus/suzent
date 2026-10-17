@@ -234,3 +234,7 @@ to the latest development version. `suzent logs --frontend`
 reads the development window's log, and `suzent setup-build-tools` installs
 the Windows build tools needed to compile the desktop app. See the
 [development guide](../08-developing/contributing/development-guide.md).
+
+`suzent chats verify` checks that the plain-text copy of every conversation in
+`~/.suzent/chats/` matches the database, and lists any that do not. See
+[chat storage](../08-developing/architecture/chat-storage.md).

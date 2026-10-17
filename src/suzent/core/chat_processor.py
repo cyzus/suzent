@@ -1485,6 +1485,7 @@ class ChatProcessor:
                                         _chat.messages = display_messages
                                         flag_modified(_chat, "messages")
                                 _sess.commit()
+                            _db.record_chat_change(chat_id)
 
                         await asyncio.to_thread(_commit_file_snapshot)
             except Exception as _ft_fin_err:

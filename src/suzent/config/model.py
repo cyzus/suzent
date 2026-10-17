@@ -7,7 +7,7 @@ also import pydantic, the permissions schema and this loader. See
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ValidationError, field_validator
 
@@ -208,6 +208,9 @@ class ConfigModel(BaseModel):
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0
     jsonl_transcripts_enabled: bool = True
+    # "shadow" mirrors every chat write into an append-only JSONL log next to
+    # chats.db while SQLite stays authoritative; "sqlite" turns the log off.
+    chat_store: Literal["sqlite", "shadow"] = "shadow"
     transcript_indexing_enabled: bool = False
 
     # Ceiling on the context budget before compaction kicks in. 0 (the default)

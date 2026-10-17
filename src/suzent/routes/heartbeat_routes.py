@@ -61,6 +61,7 @@ def _update_chat_config(chat_id: str, updates: dict) -> bool:
         chat.updated_at = datetime.now()
         flag_modified(chat, "config")
         session.commit()
+    db.record_chat_change(chat_id)
     return True
 
 

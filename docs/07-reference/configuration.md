@@ -117,6 +117,7 @@ See [Memory](../03-features/memory/README.md). More tuning is on
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
 | `goals_max_turns` | `20` | How many turns [goal mode](../03-features/automation.md#goal-mode) runs before pausing. |
 | `jsonl_transcripts_enabled` | `true` | Keep a transcript of each conversation. |
+| `chat_store` | `shadow` | `shadow` also writes every conversation to a plain-text file in `~/.suzent/chats/`. `sqlite` keeps conversations in the database only. |
 | `transcript_indexing_enabled` | `false` | Make past conversations searchable, at the cost of extra embedding calls. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |

@@ -8,6 +8,14 @@ from sqlalchemy import func, or_, text, update
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import col, delete, select
 
+from suzent.logger import get_logger
+
+from .chat_log import (
+    ChatEventLog,
+    ChatLogError,
+    project_chat,
+    projection_differences,
+)
 from .models import (
     ChatModel,
     ChatSummaryModel,
@@ -48,6 +56,8 @@ _UNSET = object()
 # chat is hidden — sub-agent chats are intentionally kept visible (nested under their
 # parent agent in the UI), so they are NOT excluded here.
 HIDDEN_CHAT_PLATFORMS = ("dream",)
+
+logger = get_logger(__name__)
 
 
 def _reusable_chat_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -304,12 +314,72 @@ class ChatOperationsMixin:
             self._reindex_in_session(session, chat_id, messages or [])
             session.commit()
 
+        self.record_chat_change(chat_id, created=True)
         return chat_id
 
     def get_chat(self, chat_id: str) -> Optional[ChatModel]:
         """Get a specific chat by ID."""
         with self._session() as session:
             return session.get(ChatModel, chat_id)
+
+    def record_chat_change(self, chat_id: str, *, created: bool = False) -> None:
+        """Mirror a committed chat write into the chat's JSONL log.
+
+        Call after any commit that changes a ``chats`` row. The log is a shadow
+        of SQLite for now, so a failure here is logged and never fails the write.
+        """
+        chat_log = getattr(self, "chat_log", None)
+        if chat_log is None:
+            return
+        try:
+            chat_log.sync(chat_id, lambda: self._project_row(chat_id), created=created)
+        except Exception as exc:
+            logger.warning("Chat log sync failed for {}: {}", chat_id, exc)
+
+    def _project_row(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        chat = self.get_chat(chat_id)
+        return project_chat(chat) if chat else None
+
+    def all_chat_ids(self) -> list[str]:
+        with self._session() as session:
+            return list(session.exec(select(ChatModel.id)).all())
+
+    def sync_chat_logs(self) -> int:
+        """Bring every chat's JSONL log up to its row. Returns events written."""
+        chat_log = getattr(self, "chat_log", None)
+        if chat_log is None:
+            return 0
+        written = 0
+        for chat_id in self.all_chat_ids():
+            try:
+                written += chat_log.sync(
+                    chat_id, lambda chat_id=chat_id: self._project_row(chat_id)
+                )
+            except Exception as exc:
+                logger.warning("Chat log backfill failed for {}: {}", chat_id, exc)
+        logger.info("Chat log backfill wrote {} events", written)
+        return written
+
+    def chat_log_differences(self, chat_log: ChatEventLog) -> dict[str, list[str]]:
+        """Fold every log in *chat_log* and compare it with the stored row.
+
+        Returns the chats that disagree, each with the fields that differ. A row
+        with no log, or a log with no row, is reported too.
+        """
+        report: dict[str, list[str]] = {}
+        for chat_id in sorted(set(self.all_chat_ids()) | set(chat_log.chat_ids())):
+            chat = self.get_chat(chat_id)
+            try:
+                logged, _ = chat_log.fold(chat_id)
+            except ChatLogError as exc:
+                report[chat_id] = [f"<unreadable log: {exc}>"]
+                continue
+            differences = projection_differences(
+                logged, project_chat(chat) if chat else None
+            )
+            if differences:
+                report[chat_id] = differences
+        return report
 
     def ensure_channel_chat(
         self,
@@ -410,7 +480,11 @@ class ChatOperationsMixin:
             if messages is not None and reindex:
                 self._reindex_in_session(session, chat_id, messages)
             session.commit()
-            return True
+
+        # A reindex-free write is a streaming draft, which the log leaves out.
+        if messages is None or reindex:
+            self.record_chat_change(chat_id)
+        return True
 
     def append_chat_message(self, chat_id: str, message: Dict[str, Any]) -> bool:
         """Append one display message to a chat."""
@@ -427,7 +501,9 @@ class ChatOperationsMixin:
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
             session.commit()
-            return True
+
+        self.record_chat_change(chat_id)
+        return True
 
     def append_chat_message_once(
         self, chat_id: str, message: Dict[str, Any], client_message_id: str
@@ -455,7 +531,9 @@ class ChatOperationsMixin:
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
             session.commit()
-            return "created"
+
+        self.record_chat_change(chat_id)
+        return "created"
 
     def has_client_message(self, chat_id: str, client_message_id: str) -> bool:
         """Return whether a chat already contains a mobile send receipt."""
@@ -514,7 +592,9 @@ class ChatOperationsMixin:
             self._reindex_in_session(session, chat_id, messages)
             session.add(chat)
             session.commit()
-            return True
+
+        self.record_chat_change(chat_id)
+        return True
 
     def merge_chat_config(self, chat_id: str, updates: Dict[str, Any]) -> bool:
         """Atomically merge top-level keys into a chat's config.
@@ -533,7 +613,9 @@ class ChatOperationsMixin:
             chat.updated_at = datetime.now()
             session.add(chat)
             session.commit()
-            return True
+
+        self.record_chat_change(chat_id)
+        return True
 
     def commit_snapshot_state(
         self,
@@ -612,6 +694,7 @@ class ChatOperationsMixin:
                 self._reindex_in_session(session, chat_id, appended_messages)
             session.commit()
 
+        self.record_chat_change(chat_id)
         _postprocess_metrics.snapshot_committed += 1
         return next_revision
 
@@ -674,7 +757,9 @@ class ChatOperationsMixin:
 
             session.add(chat)
             session.commit()
-            return True
+
+        self.record_chat_change(chat_id)
+        return True
 
     def delete_chat(self, chat_id: str, cascade_subagents: bool = False) -> bool:
         """Delete a chat by ID. Optionally cascade-delete subagent children."""
@@ -699,7 +784,10 @@ class ChatOperationsMixin:
             )
             self._remove_from_fts_in_session(session, chat_id)
             session.commit()
-            return True
+
+        for deleted_id in deleted_ids:
+            self.record_chat_change(deleted_id)
+        return True
 
     def _reindex_in_session(self, session, chat_id: str, messages) -> None:
         """Reindex a chat's FTS rows inside an open SQLModel session/transaction.
@@ -760,9 +848,11 @@ class ChatOperationsMixin:
         """Reset unread count to zero when the user views a chat."""
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
-            if chat:
-                _set_config_keys(session, chat_id, {"unread_count": 0})
-                session.commit()
+            if not chat:
+                return
+            _set_config_keys(session, chat_id, {"unread_count": 0})
+            session.commit()
+        self.record_chat_change(chat_id)
 
     def get_chat_projects(
         self, chat_ids: list[str]

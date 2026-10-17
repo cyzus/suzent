@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Mirror every conversation into a per-chat JSONL log next to the database and add `suzent chats verify` to check the two match."
+}

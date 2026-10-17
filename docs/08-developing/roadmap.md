@@ -26,6 +26,27 @@ Planned, in order:
 4. **System integration** — share extensions/intents, opt-in APNs/FCM notification
    delivery, platform-specific background work, accessibility and device QA.
 
+## Chat storage
+
+See [Chat storage](./architecture/chat-storage.md) for what exists today: SQLite
+is authoritative and every write is mirrored to a per-chat JSONL log.
+
+Planned, in order:
+
+1. **Log first** — append the events before the SQLite commit, record the
+   indexed offset per chat, fsync turn-level events, and replay any unindexed
+   tail on startup. `chat_store` defaults to `jsonl`; `shadow` remains as the
+   way back.
+2. **Rebuildable index** — `suzent chats rebuild-index` and an automatic
+   rebuild when `chats.db` is missing; retry checkpoints become log events.
+3. **Clean-up** — retire `StateMirror` and derive the memory-extraction
+   transcripts from the log.
+
+Ideas taken from pydantic-ai-harness `StepPersistence` for these steps: store
+large media outside the log by content hash, keep a tool-effect ledger so a
+restart can tell which tool calls may already have run, and mark saved history
+as complete or interrupted.
+
 ## A2A
 
 See [A2A](./protocols/a2a.md) for what exists today.

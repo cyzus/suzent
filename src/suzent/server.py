@@ -874,6 +874,14 @@ async def startup():
             sweep_overflow_periodically(), name="overflow_sweeper"
         )
 
+    # Give every existing chat a JSONL log. Chats that already have one only
+    # get the events for whatever changed outside a logged write.
+    if get_database().chat_log is not None:
+        app.state.chat_log_backfill = asyncio.create_task(
+            asyncio.to_thread(get_database().sync_chat_logs),
+            name="chat_log_backfill",
+        )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
