@@ -352,6 +352,17 @@ body,
   height: 100%;
 }
 
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25rem;
+}
+
+.prose .katex {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 .prose pre {
   background: transparent;
 }
