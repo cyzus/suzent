@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "minor" },
+  "summary": "Download the macOS installer as a notarized disk image that opens with a double-click, without using Terminal."
+}
