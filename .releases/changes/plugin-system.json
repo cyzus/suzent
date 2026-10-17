@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Add plugins: Python packages that add tools, slash commands and skills, discovered from the plugins folder or pip, off until enabled with `suzent plugin enable`."
+}

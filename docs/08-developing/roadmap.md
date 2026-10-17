@@ -26,6 +26,27 @@ Planned, in order:
 4. **System integration** — share extensions/intents, opt-in APNs/FCM notification
    delivery, platform-specific background work, accessibility and device QA.
 
+## Plugins
+
+See [Plugins](./architecture/plugins.md) for what exists today: tools, slash
+commands and skills.
+
+Planned, in order:
+
+1. **Lifecycle hooks** — `ctx.register_hook()` for session start and end,
+   before and after each model call, and before and after each tool call (with
+   the option to block a call). The goal-turn accounting in
+   `tools/plan_hooks.py` and the skill catalog reminder in `skills/hooks.py`
+   would move onto these hooks as built-in plugins.
+2. **Chat apps as plugins** — `ctx.register_channel()` feeding
+   `ChannelManager`, whose `driver_map` is fixed today, so new chat apps can
+   ship outside this repository.
+3. **Providers as plugins** — model, image, video and speech providers.
+4. **Settings UI** — a Plugins page to list, enable and disable plugins and see
+   load errors, instead of only the CLI.
+5. **Declared capabilities** — a manifest list of what a plugin needs
+   (network, shell, sending messages) that the user grants when enabling it.
+
 ## A2A
 
 See [A2A](./protocols/a2a.md) for what exists today.

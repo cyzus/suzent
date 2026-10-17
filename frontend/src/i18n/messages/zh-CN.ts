@@ -2184,6 +2184,7 @@ export const zhCN = {
       official: '内置',
       user: '用户',
       external: '外部',
+      plugin: '插件',
       repository: '代码仓库',
       working: '工作目录',
       home: '主目录',

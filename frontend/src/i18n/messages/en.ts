@@ -2245,6 +2245,7 @@ export const en = {
       official: 'Bundled',
       user: 'User',
       external: 'External',
+      plugin: 'Plugin',
       repository: 'Repository',
       working: 'Working directory',
       home: 'Home',

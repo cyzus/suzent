@@ -121,6 +121,7 @@ OFFICIAL_SKILLS_DIR = PROJECT_DIR / "skills"
 USER_SKILLS_DIR = SKILLS_ROOT_DIR
 EXTERNAL_SKILLS_DIR = SKILLS_ROOT_DIR / "external"
 LEGACY_USER_SKILLS_DIR = SKILLS_ROOT_DIR / "user"
+PLUGINS_DIR = DATA_DIR / "plugins"
 
 for _dir in (
     RUNTIME_DIR,
@@ -156,6 +157,19 @@ def get_external_skill_sources() -> list[tuple[Path, Path]]:
         seen.add(source)
         sources.append((source, EXTERNAL_SKILLS_DIR / _external_source_id(source)))
     return sources
+
+
+def get_external_plugin_dirs() -> list[Path]:
+    """Extra plugin roots from ``SUZENT_PLUGINS_DIR``, for developing a plugin in place."""
+    env_value = os.getenv("SUZENT_PLUGINS_DIR", "").strip()
+    dirs: list[Path] = []
+    for raw_path in env_value.split(os.pathsep):
+        if not raw_path.strip():
+            continue
+        path = Path(raw_path).expanduser().resolve()
+        if path not in dirs:
+            dirs.append(path)
+    return dirs
 
 
 def migrate_legacy_user_skills_dir() -> None:

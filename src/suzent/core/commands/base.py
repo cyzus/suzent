@@ -98,10 +98,28 @@ def register_command(
     return decorator
 
 
+def register_plugin_command(
+    handler: Callable[..., Any], aliases: list[str], options: dict[str, Any]
+) -> bool:
+    """Register a plugin's command unless one of its aliases is already taken."""
+    taken = {alias.lower() for meta in _META for alias in meta.aliases}
+    if any(alias.lower() in taken for alias in aliases):
+        return False
+    register_command(aliases, **options)(handler)
+    return True
+
+
+def _load_plugin_commands() -> None:
+    from suzent.plugins import get_plugin_manager
+
+    get_plugin_manager().load()
+
+
 def list_commands(
     surface: str | None = None, include_hidden: bool = False
 ) -> list[CommandMeta]:
     """Return registered commands, optionally filtered by surface and visibility."""
+    _load_plugin_commands()
     cmds = _META if include_hidden else [m for m in _META if not m.hidden]
 
     if surface is None:
@@ -118,6 +136,7 @@ async def dispatch(ctx: CommandContext, message: str) -> str | None:
     content = message.strip()
     if not content.startswith("/"):
         return None
+    _load_plugin_commands()
 
     try:
         parts = shlex.split(content)

@@ -33,6 +33,7 @@ on a computer you own: that is what makes it a
 | [Images, video & speech](./tools/media.md) | Making and editing images and video, and reading text aloud. |
 | [MCP servers](./tools/mcp.md) | Adding tools from any MCP server. |
 | [Skills](./skills.md) | Teaching it new know-how with `SKILL.md` packages. |
+| [Plugins](./plugins.md) | Adding tools, slash commands and skills with plugins you switch on yourself. |
 | [Workspace & sandbox](./filesystem.md) | Which folders it can reach, running code in a sandbox, and undoing a turn. |
 
 ## It keeps working
