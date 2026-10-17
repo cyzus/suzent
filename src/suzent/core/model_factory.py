@@ -31,6 +31,7 @@ from typing import Any
 
 import httpx
 
+from suzent.core.prompt_cache import CacheRouting, register_cache_routing
 from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID, ProviderSpec
 from suzent.core.providers.helpers import resolve_api_key
 from suzent.logger import get_logger
@@ -334,22 +335,50 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
             provider=OpenAIProvider(openai_client=client),
         )
 
-    return OpenAIChatModel(
+    model = OpenAIChatModel(
         model_name,
         provider=OpenAIProvider(api_key=api_key or "local", base_url=base_url),
     )
+    # OpenAI-compatible third parties share this handler, and pydantic-ai sends
+    # `prompt_cache_key` to whatever endpoint it is given; only OpenAI documents it.
+    if spec.id == "openai" and (not base_url or "api.openai.com" in base_url):
+        register_cache_routing(model, CacheRouting.PROMPT_CACHE_KEY)
+    return model
+
+
+def anthropic_cache_settings(base_url: str | None) -> dict[str, Any]:
+    """Prompt-caching settings for an Anthropic-protocol endpoint.
+
+    Anthropic caches nothing unless the request marks breakpoints. Tools and
+    instructions get their own breakpoints so a rewritten history still reuses
+    them. Compatible third-party endpoints may not implement the top-level
+    automatic breakpoint, so they get an explicit one on the last message instead.
+    """
+    settings: dict[str, Any] = {
+        "anthropic_cache_tool_definitions": True,
+        "anthropic_cache_instructions": True,
+    }
+    if base_url:
+        settings["anthropic_cache_messages"] = True
+    else:
+        settings["anthropic_cache"] = True
+    return settings
 
 
 def _create_anthropic_model(
     model_name: str, api_key: str, spec: ProviderSpec
 ) -> object:
-    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     kwargs: dict[str, Any] = {"api_key": api_key}
     if spec.base_url:
         kwargs["base_url"] = spec.base_url
-    return AnthropicModel(model_name, provider=AnthropicProvider(**kwargs))
+    return AnthropicModel(
+        model_name,
+        provider=AnthropicProvider(**kwargs),
+        settings=AnthropicModelSettings(**anthropic_cache_settings(spec.base_url)),
+    )
 
 
 def _create_google_model(model_name: str, api_key: str, spec: ProviderSpec) -> object:
@@ -462,11 +491,13 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
                     pass
                 return streamed.get()
 
-    return _ChatGPTResponsesModel(
+    model = _ChatGPTResponsesModel(
         model_name,
         provider=OpenAIProvider(openai_client=client),
         profile=_chatgpt_model_profile,
     )
+    register_cache_routing(model, CacheRouting.SESSION_HEADER)
+    return model
 
 
 def _create_litellm_proxy_model(
