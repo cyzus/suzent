@@ -46,3 +46,28 @@ it.each(['suspended', 'interrupted'])('recovers %s audio before playing', async 
   expect(addEventListener).toHaveBeenCalledWith('click', expect.any(Function));
   expect(addEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
 });
+
+it.each([
+  ['en', 'approval', '/sounds/resonance/en/approval.mp3?v=1'],
+  ['zh-CN', 'failed', '/sounds/resonance/zh-CN/failed.mp3?v=1'],
+  ['en', undefined, '/sounds/resonance/en/ready.mp3?v=1'],
+] as const)('voices the %s resonance clip for the %s cue', async (locale, cue, url) => {
+  vi.resetModules();
+  const fetch = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
+  const start = vi.fn();
+  class MockAudioContext {
+    state = 'running';
+    currentTime = 0;
+    destination = {};
+    resume = vi.fn(async () => {});
+    decodeAudioData = vi.fn(async () => ({}));
+    createBufferSource = () => ({ connect: vi.fn(), start, stop: vi.fn(), disconnect: vi.fn() });
+  }
+  vi.stubGlobal('window', { AudioContext: MockAudioContext, addEventListener: vi.fn() });
+  vi.stubGlobal('fetch', fetch);
+  vi.stubGlobal('localStorage', { getItem: () => locale, setItem: vi.fn() });
+  const { playNotificationSound } = await import('./notificationSound');
+  playNotificationSound('resonance', cue);
+  await vi.waitFor(() => expect(start).toHaveBeenCalledWith(0));
+  expect(fetch).toHaveBeenCalledWith(url);
+});

@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "The Resonance notification sound now speaks the outcome — done, needs approval or failed — in the app's language."
+}

@@ -502,7 +502,7 @@ function AppInner(): React.ReactElement {
           }),
           outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
         );
-        playNotificationSound(preferences.sound);
+        playNotificationSound(preferences.sound, outcome);
       }),
     []
   );
