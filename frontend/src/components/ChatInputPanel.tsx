@@ -612,6 +612,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 return;
               }
 
+              // Ahead of mention and slash-command handling, which treat any
+              // Enter as accept-and-send and would redirect the running turn.
+              if (e.key === 'Enter' && queue && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+                e.preventDefault();
+                if (configReady && input.trim()) queue();
+                return;
+              }
+
               if (mentionActive && mentionSuggestions.length > 0) {
                 if (e.key === 'ArrowUp') {
                   e.preventDefault();
@@ -716,8 +724,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 if (configReady && input.trim()) {
-                  if (queue && (e.metaKey || e.ctrlKey)) queue();
-                  else send();
+                  send();
                 }
               }
             }}

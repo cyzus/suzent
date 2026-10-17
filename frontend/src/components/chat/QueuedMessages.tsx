@@ -14,6 +14,7 @@ export interface QueuedMessage {
   id: string;
   text: string;
   fileMentions: FileMentionSelection[];
+  files: File[];
 }
 
 interface QueuedMessagesProps {
@@ -55,8 +56,15 @@ export const QueuedMessages: React.FC<QueuedMessagesProps> = ({
           <span className="shrink-0 font-mono text-xs leading-5 text-neutral-400" aria-hidden>
             &rarr;
           </span>
-          <div className="min-w-0 flex-1 text-sm leading-5 text-neutral-700 dark:text-neutral-200 whitespace-pre-wrap break-words line-clamp-3">
-            {item.text}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm leading-5 text-neutral-700 dark:text-neutral-200 whitespace-pre-wrap break-words line-clamp-3">
+              {item.text}
+            </div>
+            {item.files.length > 0 && (
+              <div className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
+                {item.files.map((file) => file.name).join(', ')}
+              </div>
+            )}
           </div>
           <button
             type="button"
