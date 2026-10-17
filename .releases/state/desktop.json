@@ -19,6 +19,7 @@
     ".releases/changes/chatgpt-parallel-tool-args.json",
     ".releases/changes/ci-context-sources.json",
     ".releases/changes/conversation-task-checklist.json",
+    ".releases/changes/deny-tools.json",
     ".releases/changes/deps-dompurify-3-4-16.json",
     ".releases/changes/deps-fsspec-2026-6-0.json",
     ".releases/changes/deps-multidict-6-9-1.json",

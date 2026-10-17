@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
 - Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
 - Show conversation tasks as an ordered checklist and open task results through their conversations.
+- Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching.
 - Clicking a Suzent system notification now brings the app window back to the front.
 - Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated.
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
