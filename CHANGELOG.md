@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated.
 - The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
 - Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
+- Download the macOS installer as a notarized disk image that opens with a double-click, without using Terminal.
 - Show early model waiting notices, allow more time explicitly, and avoid interrupting Gemini reasoning after two minutes. Keep file snapshots out of model requests.
 - Make notification sounds play reliably after the desktop window loses focus by resuming interrupted audio before playback.
 - Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
