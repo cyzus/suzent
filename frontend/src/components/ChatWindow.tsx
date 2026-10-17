@@ -1955,13 +1955,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Depend on the message count, not the array identity: `safeMessages` is a
   // fresh array on every streaming chunk, which would fire a scroll per token.
   // Growth within a message is already covered by the hook's ResizeObserver.
-  const { scrollContainerRef, bottomRef, scrollToBottom, isSelectionDragActive } = useAutoScroll(
-    [safeMessages.length, isStreaming],
-    {
-      resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
-      smooth: !isStreaming,
-    }
-  );
+  const {
+    scrollContainerRef,
+    attachScrollContainer,
+    bottomRef,
+    scrollToBottom,
+    isSelectionDragActive,
+  } = useAutoScroll([safeMessages.length, isStreaming], {
+    resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
+    smooth: !isStreaming,
+  });
 
   // When a tool transitions into a pending approval, force-scroll to the bottom
   // so the approval buttons are visible — even if the user had scrolled up.
@@ -3196,7 +3199,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
           <div className="relative flex-1 min-h-0">
             <div
-              ref={scrollContainerRef}
+              ref={attachScrollContainer}
               className={
                 safeMessages.length === 0
                   ? 'h-full overflow-y-auto overflow-x-hidden p-3 md:p-6 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
