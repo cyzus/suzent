@@ -66,6 +66,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Slash commands](https://suzent.com/zh-Hans/docs/reference/slash-commands)
 - [Agent Communication](https://suzent.com/zh-Hans/docs/developing/architecture/agent-inbox)
 - [Canvas (A2UI)](https://suzent.com/zh-Hans/docs/developing/architecture/canvas)
+- [Chat Storage](https://suzent.com/zh-Hans/docs/developing/architecture/chat-storage)
 - [Memory Architecture](https://suzent.com/zh-Hans/docs/developing/architecture/memory-architecture)
 - [Memory Internals](https://suzent.com/zh-Hans/docs/developing/architecture/memory-internals)
 - [Native mobile clients](https://suzent.com/zh-Hans/docs/developing/architecture/mobile)
