@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.17.0] - 2026-10-18
 
+<!-- highlights -->
+### Highlights
+
+- **Tool calls come alive.** Every tool now has its own icon and running animation: a scan beam for search, a blinking terminal for commands, data dots for reading and writing files. Thinking redacts as it streams, and the robot reacts to whatever it is working on.
+- **A calmer view of what the agent is doing.** Tool calls, thinking and sub-agent work collapse into compact activity rails that summarize finished commands and file changes. Conversation tasks show as an ordered checklist, and task progress shows waiting reasons, results and links back to each conversation.
+- **Keep the conversation moving.** Press ⌘/Ctrl+Enter while the agent is working to queue your next message, or send it right away to redirect the turn. After each answer, a grey suggestion of your likely next message appears in the chat box; press Tab to accept it. It stays with the chat across restarts and devices.
+- **Longer runs that cost less and stall less.** Prompt caching is on for Anthropic models, and the prompt stays stable across turns so providers reuse more of it. Sub-agents that inherit the conversation run on your current model, slow models show a waiting notice early, and shell commands that would wait for input now fail right away instead of hanging.
+- **A better macOS experience.** The macOS installer now comes as a notarized disk image you open with a double-click, without Terminal. Clicking a notification brings Suzent to the front, notification sounds play reliably, and typing with a Chinese, Japanese or Korean input method no longer sends a message when you press Enter to pick a candidate.
+
+**Easter egg:** set Settings → Notifications → Sound to Resonance, and a low, resonant voice tells you how each task ended: done, needs approval, or failed.
+<!-- /highlights -->
+
 ### Release notes
 - Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
 - Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
