@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.17.0] - 2026-10-18
+
+<!-- highlights -->
+### Highlights
+
+- **Tool calls come alive.** Every tool now has its own icon and running animation: a scan beam for search, a blinking terminal for commands, data dots for reading and writing files. Thinking redacts as it streams, and the robot reacts to whatever it is working on.
+- **A calmer view of what the agent is doing.** Tool calls, thinking and sub-agent work collapse into compact activity rails that summarize finished commands and file changes. Conversation tasks show as an ordered checklist, and task progress shows waiting reasons, results and links back to each conversation.
+- **Keep the conversation moving.** Press ⌘/Ctrl+Enter while the agent is working to queue your next message, or send it right away to redirect the turn. After each answer, a grey suggestion of your likely next message appears in the chat box; press Tab to accept it. It stays with the chat across restarts and devices.
+- **Longer runs that cost less and stall less.** Prompt caching is on for Anthropic models, and the prompt stays stable across turns so providers reuse more of it. Sub-agents that inherit the conversation run on your current model, slow models show a waiting notice early, and shell commands that would wait for input now fail right away instead of hanging.
+- **A better macOS experience.** The macOS installer now comes as a notarized disk image you open with a double-click, without Terminal. Clicking a notification brings Suzent to the front, notification sounds play reliably, and typing with a Chinese, Japanese or Korean input method no longer sends a message when you press Enter to pick a candidate.
+
+**Easter egg:** set Settings → Notifications → Sound to Resonance, and a low, resonant voice tells you how each task ended: done, needs approval, or failed.
+<!-- /highlights -->
+
+### Release notes
+- Simplify chat activity disclosure, keep running tool icons visible, and summarize completed commands and file changes in compact, scrollable activity rails.
+- Show thinking and delegated agent activity in collapsed rails, and simplify agent details with compact task previews and clearer actions.
+- Render inline and display LaTeX formulas in chat, including dollar and backslash delimiters.
+- Press ⌘/Ctrl+Enter while the agent is working to queue a message for when the turn ends; queued messages can be cancelled or sent right away as a redirect.
+- Show conversation tasks as an ordered checklist and open task results through their conversations.
+- Deny a tool for a chat from the tools picker, so neither the agent nor its sub-agents can use it or find it by searching.
+- Clicking a Suzent system notification now brings the app window back to the front.
+- Typing with a Chinese, Japanese or Korean input method no longer sends, submits or closes things when Enter or Escape is pressed to pick or dismiss a candidate.
+- Show rendered UI inline in the chat by default, with buttons to pop a surface out to the side panel or fullscreen, and collapse older copies once a surface is updated.
+- The grey next-message suggestion is now saved with the chat, so it stays after you reopen the chat or restart the app, and shows on your other devices too, as long as the last answer hasn't changed.
+- Suggest your likely next message as grey text in the chat box after each answer; press Tab or the right arrow to accept it. Pick its model or turn it off on the Input Suggestion row in Model Roles.
+- Download the macOS installer as a notarized disk image that opens with a double-click, without using Terminal.
+- Show early model waiting notices, allow more time explicitly, and avoid interrupting Gemini reasoning after two minutes. Keep file snapshots out of model requests.
+- Make notification sounds play reliably after the desktop window loses focus by resuming interrupted audio before playback.
+- Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
+- Enable prompt caching for Anthropic models and keep ChatGPT and OpenAI requests of one chat on the same cache, cutting repeated input cost in long agent runs.
+- Keep the prompt prefix stable across turns so providers reuse more of their cache: core-memory edits arrive as a reminder instead of rewriting the system prompt, and old tool results are trimmed in steps rather than every turn.
+- The Resonance notification sound now speaks the outcome — done, needs approval or failed — in the app's language.
+- Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout.
+- Sub-agents that inherit the conversation now run on your current model, so the shared history is not processed again. A running sub-agent's timer, prompt and reminders now show correctly, and an empty sub-agent no longer sticks on "Connecting".
+- Unify task progress into a responsive list with waiting reasons, results, and reliable conversation and project navigation.
+
 ## [v0.16.0] - 2026-10-14
 
 <!-- highlights -->
