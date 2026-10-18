@@ -236,6 +236,12 @@ export const zhCN = {
     backendStartTimeout: '后端启动超时。请检查 ~/.suzent/runtime/server.log 获取详细信息。',
     startingBackend: '正在启动并检查后端服务',
     verifyingBackend: '正在验证后端兼容性',
+    recoverStartup: '重启并重试',
+    reconnectStartup: '重新连接',
+    recovering: '正在重试…',
+    recoveryHintDesktop: '加载卡住了？重启 Suzent 并重新尝试启动，保留现有数据。',
+    recoveryHintWeb: '重新加载页面，再次尝试连接。',
+    recoveryFailed: '重启失败，请重试或关闭后重新打开 Suzent。',
     startupElapsed: '已等待 {seconds} 秒',
     logoAriaLabel: 'Suzent 标志',
     backendCompatibility: {

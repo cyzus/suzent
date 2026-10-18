@@ -1,11 +1,12 @@
 import React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 import { getInitialLocale, tForLocale } from '../i18n';
 import { isDesktop } from '../lib/runtime';
 
 interface BackendLoadingScreenProps {
   error?: string | null;
-  onRetry?: () => void;
+  onRetry?: () => void | Promise<void>;
   status?: string;
   progressHint?: number;
 }
@@ -30,22 +31,43 @@ export function BackendLoadingScreen({
 }: BackendLoadingScreenProps): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const [setupStep, setSetupStep] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState(0);
   const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
-  const [isMaximized, setIsMaximized] = React.useState(false);
 
-  async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
-    const target = event.target as HTMLElement;
-    if (target.closest('button')) return;
-    await appWindow?.startDragging();
+  const [recovering, setRecovering] = React.useState(false);
+  const [recoveryError, setRecoveryError] = React.useState<string | null>(null);
+  const recoveryPending = React.useRef(false);
+
+  async function handleRecovery(): Promise<void> {
+    if (recoveryPending.current) return;
+    recoveryPending.current = true;
+    setRecovering(true);
+    setRecoveryError(null);
+    try {
+      if (onRetry) {
+        await onRetry();
+        recoveryPending.current = false;
+        setRecovering(false);
+      } else if (isDesktop()) {
+        await invoke('restart_app');
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      setRecoveryError(t('app.recoveryFailed'));
+      recoveryPending.current = false;
+      setRecovering(false);
+    }
   }
 
-  async function handleMaximize(): Promise<void> {
-    await appWindow?.toggleMaximize();
-    setIsMaximized((prev) => !prev);
-  }
+  React.useEffect(() => {
+    if (!isDesktop()) return;
+    void invoke('set_startup_window_controls', { enabled: true }).catch(console.error);
+    return () => {
+      void invoke('set_startup_window_controls', { enabled: false }).catch(console.error);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (error) return;
@@ -124,48 +146,7 @@ export function BackendLoadingScreen({
           }
         }
       `}</style>
-      <div
-        className="h-10 shrink-0 bg-white border-b border-neutral-200 flex items-center justify-between px-4 select-none"
-        onMouseDown={handleDrag}
-        data-tauri-drag-region
-      >
-        <div className="flex items-center gap-2 pointer-events-none">
-          <div className="h-2.5 w-2.5 bg-brutal-black" />
-          <span className="font-brutal text-xs uppercase text-brutal-black">SUZENT</span>
-        </div>
-        {/* The browser supplies its own window chrome; these would be dead buttons. */}
-        {isDesktop() && (
-          <div className="flex h-full items-center text-brutal-black">
-            <button
-              type="button"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => appWindow?.minimize()}
-              className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-              title={t('titlebar.minimize')}
-            >
-              <span className="h-0.5 w-3 bg-current" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={handleMaximize}
-              className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-              title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-            >
-              <span className="h-3 w-3 border-2 border-current" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => appWindow?.close()}
-              className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
-              title={t('titlebar.close')}
-            >
-              <span className="text-lg leading-none">×</span>
-            </button>
-          </div>
-        )}
-      </div>
+      {isDesktop() && <div className="h-10 shrink-0" data-tauri-drag-region />}
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.035]"
@@ -189,7 +170,6 @@ export function BackendLoadingScreen({
               className="suzent-orbit absolute h-40 w-40 rounded-full border border-neutral-300"
               style={{ animation: !error ? 'suzentOrbitTurn 12s linear infinite' : undefined }}
             >
-              <span className="absolute -top-0.5 left-1/2 h-1 w-8 -translate-x-1/2 bg-neutral-100" />
               <span className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-black" />
             </div>
             <div
@@ -247,16 +227,7 @@ export function BackendLoadingScreen({
               </p>
             )}
           </div>
-          {error ? (
-            onRetry ? (
-              <button
-                onClick={onRetry}
-                className="border border-brutal-black bg-brutal-black px-6 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-white hover:text-brutal-black"
-              >
-                {t('common.retry')}
-              </button>
-            ) : null
-          ) : hasMeasuredProgress ? (
+          {error ? null : hasMeasuredProgress ? (
             <div
               className="w-full"
               role="progressbar"
@@ -291,6 +262,32 @@ export function BackendLoadingScreen({
                   }}
                 />
               </div>
+            </div>
+          )}
+          {error && (
+            <div className="mt-8 flex flex-col items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleRecovery()}
+                disabled={recovering}
+                className="border border-neutral-400 bg-transparent px-5 py-2.5 text-xs font-bold tracking-wide text-neutral-700 transition-colors hover:border-black hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-wait disabled:opacity-50"
+              >
+                {t(
+                  recovering
+                    ? 'app.recovering'
+                    : isDesktop()
+                      ? 'app.recoverStartup'
+                      : 'app.reconnectStartup'
+                )}
+              </button>
+              <p className="max-w-xs text-xs leading-5 text-neutral-500">
+                {t(isDesktop() ? 'app.recoveryHintDesktop' : 'app.recoveryHintWeb')}
+              </p>
+              {recoveryError && (
+                <p role="alert" className="max-w-xs text-xs text-red-700">
+                  {recoveryError}
+                </p>
+              )}
             </div>
           )}
         </main>

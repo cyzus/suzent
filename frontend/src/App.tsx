@@ -1222,7 +1222,7 @@ async function waitForBackendHealth(options?: { attempts?: number }): Promise<bo
 }
 
 function StartupDecisionScreen(): React.ReactElement {
-  return <div className="h-screen w-screen bg-neutral-100" />;
+  return <BackendLoadingScreen />;
 }
 
 interface AppProps {
