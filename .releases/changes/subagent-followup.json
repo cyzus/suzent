@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result."
+}
