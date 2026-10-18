@@ -165,6 +165,31 @@ fn start_update_and_restart(
 }
 
 #[tauri::command]
+fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    window
+        .set_decorations(enabled)
+        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        window
+            .set_title_bar_style(if enabled {
+                tauri::TitleBarStyle::Overlay
+            } else {
+                tauri::TitleBarStyle::Visible
+            })
+            .map_err(|error| error.to_string())?;
+        window
+            .set_title(if enabled {
+                ""
+            } else {
+                "SUZENT - Your Personal Agent"
+            })
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn restart_app(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     {
         let mut backend_guard = state
@@ -816,6 +841,7 @@ fn main() {
             check_for_update,
             start_update_and_restart,
             restart_app,
+            set_startup_window_controls,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,
