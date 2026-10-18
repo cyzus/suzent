@@ -419,7 +419,7 @@ async def chat(request: Request) -> StreamingResponse:
                             ).isoformat()
                             _chat.config.pop("heartbeat_last_result", None)
                             flag_modified(_chat, "config")
-                            _s.commit()
+                            db.commit_chat_changes(_s, [chat_id])
 
                 # Build prompt from file — frontend no longer needs to know the template.
                 from suzent.prompts import (

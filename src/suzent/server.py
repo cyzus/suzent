@@ -877,6 +877,13 @@ async def startup():
             sweep_overflow_periodically(), name="overflow_sweeper"
         )
 
+    # Chats from before the JSONL logs get one; until then their first write
+    # starts it.
+    app.state.chat_log_import = asyncio.create_task(
+        asyncio.to_thread(get_database().import_unlogged_chats),
+        name="chat_log_import",
+    )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")

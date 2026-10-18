@@ -71,20 +71,12 @@ def temp_db(tmp_path, monkeypatch):
 
     secrets._instance = None
 
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    database = ChatDatabase(db_path)
+    # Inside tmp_path so the chat logs next to the database are cleaned up too.
+    database = ChatDatabase(str(tmp_path / "chats.db"))
     yield database
 
     # Dispose engine to release file locks (Windows)
     database.engine.dispose()
-
-    # Cleanup
-    try:
-        os.unlink(db_path)
-    except PermissionError:
-        pass
 
 
 @pytest.fixture

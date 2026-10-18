@@ -20,7 +20,8 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 | Path | What it holds |
 |---|---|
 | `config/` | Your settings files (see below). |
-| `chats.db` | Your conversations. |
+| `chats/` | Your conversations, one plain-text file each. This is the master copy. |
+| `chats.db` | An index of your conversations, plus your projects, tasks, and schedules. Suzent rebuilds the conversations in it from `chats/` if it goes missing. |
 | `sandbox/projects/<project>/` | Each [project's library](../03-features/filesystem.md#where-files-go). |
 | `sandbox/shared/` | The folder shared by all projects. Your memory's Markdown files are in `sandbox/shared/memory/`. |
 | `notebook/` | The [notebook](../03-features/memory/llm-wiki.md) vault. |

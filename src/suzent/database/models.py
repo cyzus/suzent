@@ -160,21 +160,20 @@ class AgentInboxMessageModel(SQLModel, table=True):
     last_error: Optional[str] = None
 
 
-class RetryCheckpointModel(SQLModel, table=True):
-    """Stores the last retry checkpoint for a chat session (one row per chat)."""
+class ChatLogIndexModel(SQLModel, table=True):
+    """How far each chat's JSONL log has been applied to its ``chats`` row.
 
-    __tablename__ = "retry_checkpoints"
+    Written in the same transaction as the row, so a log whose size or mtime
+    no longer matches has events SQLite never committed (a crash between the
+    append and the commit) or was edited by hand, and is replayed on start.
+    """
+
+    __tablename__ = "chat_log_index"
 
     chat_id: str = Field(primary_key=True)
-    agent_state_before: Optional[bytes] = None
-    messages_before: list = Field(default_factory=list, sa_column=Column(JSON))
-    user_message: str = Field(default="")
-    user_files: list = Field(default_factory=list, sa_column=Column(JSON))
-    config_snapshot: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    has_file_snapshot: bool = Field(default=False)
-    # Serialised FileTracker snapshot: list of {path, backup_name, version, backup_time}
-    file_snapshot: list = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    seq: int
+    size: int
+    mtime_ns: int
 
 
 class GoalModel(SQLModel, table=True):
