@@ -15,6 +15,7 @@ import typer
 import suzent.cli._early_logging  # noqa: F401
 from suzent.cli.acp import register_acp_command
 from suzent.cli.agent import agent_app
+from suzent.cli.chats import chats_app
 from suzent.cli.config import config_app
 from suzent.cli.main import (
     format_version_line,
@@ -80,6 +81,7 @@ register_acp_command(app)
 # Attach subcommand groups
 app.add_typer(node_app, name="nodes")
 app.add_typer(agent_app, name="agent")
+app.add_typer(chats_app, name="chats")
 app.add_typer(config_app, name="config")
 app.add_typer(cron_app, name="cron")
 app.add_typer(heartbeat_app, name="heartbeat")

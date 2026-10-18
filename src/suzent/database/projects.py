@@ -339,7 +339,7 @@ class ProjectOperationsMixin:
             for moved_chat in moved_chats:
                 moved_chat.project_id = project_id
                 session.add(moved_chat)
-            session.commit()
+            self.commit_chat_changes(session, [c.id for c in moved_chats])
             return True
 
     def move_all_chats(self, from_project_id: str, to_project_id: str) -> int:
@@ -359,7 +359,7 @@ class ProjectOperationsMixin:
             for chat in moved_chats:
                 chat.project_id = to_project_id
                 session.add(chat)
-            session.commit()
+            self.commit_chat_changes(session, [chat.id for chat in moved_chats])
             return len(moved_chats)
 
     def get_chat_ids_in_project(self, project_id: str) -> List[str]:

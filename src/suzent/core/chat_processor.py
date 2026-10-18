@@ -1442,52 +1442,16 @@ class ChatProcessor:
                     snap = ft.make_snapshot()
                     if snap:
                         from suzent.core.file_tracker import FileTracker as _FT
-                        from suzent.database import (
-                            ChatModel,
-                            RetryCheckpointModel,
-                            get_database as _get_db,
-                        )
-                        from sqlmodel import Session
-                        from sqlalchemy.orm.attributes import flag_modified
+                        from suzent.database import get_database as _get_db
 
                         file_snapshot_json = _changed_file_snapshot(
                             _FT.snapshot_to_json(snap)
                         )
-
-                        def _commit_file_snapshot():
-                            _db = _get_db()
-                            with Session(_db.engine) as _sess:
-                                _ckpt = _sess.get(RetryCheckpointModel, chat_id)
-                                if _ckpt:
-                                    _ckpt.file_snapshot = file_snapshot_json
-                                    _ckpt.has_file_snapshot = True
-                                    flag_modified(_ckpt, "file_snapshot")
-                                _chat = _sess.get(ChatModel, chat_id)
-                                if _chat and file_snapshot_json:
-                                    display_messages = list(_chat.messages or [])
-                                    assistant_index = next(
-                                        (
-                                            index
-                                            for index in range(
-                                                len(display_messages) - 1, -1, -1
-                                            )
-                                            if isinstance(display_messages[index], dict)
-                                            and display_messages[index].get("role")
-                                            == "assistant"
-                                        ),
-                                        None,
-                                    )
-                                    if assistant_index is not None:
-                                        assistant = dict(
-                                            display_messages[assistant_index]
-                                        )
-                                        assistant["file_changes"] = file_snapshot_json
-                                        display_messages[assistant_index] = assistant
-                                        _chat.messages = display_messages
-                                        flag_modified(_chat, "messages")
-                                _sess.commit()
-
-                        await asyncio.to_thread(_commit_file_snapshot)
+                        await asyncio.to_thread(
+                            _get_db().record_turn_file_changes,
+                            chat_id,
+                            file_snapshot_json,
+                        )
             except Exception as _ft_fin_err:
                 logger.debug(
                     f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
@@ -2374,15 +2338,6 @@ class ChatProcessor:
                         db.update_chat(
                             chat_id, agent_state=agent_state, messages=target_messages
                         )
-
-                # Mirror state to inspectable JSON file
-                if agent_state:
-                    try:
-                        from suzent.session.state_mirror import StateMirror
-
-                        StateMirror().mirror_state(chat_id, agent_state)
-                    except Exception as mirror_err:
-                        logger.debug(f"State mirror failed: {mirror_err}")
 
                 logger.info(f"Persisted state for chat {chat_id}")
                 return True
