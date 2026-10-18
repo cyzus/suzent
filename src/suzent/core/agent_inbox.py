@@ -128,6 +128,11 @@ class AgentInboxDispatcher:
             if message.get(
                 "transport", "local"
             ) == "local" and self._was_already_persisted(message):
+                # The turn ran but this row was never acknowledged, perhaps
+                # because queueing the reply failed. Routing is idempotent, so
+                # send whatever answer the turn wrote.
+                if (reply := self._persisted_reply(message)) is not None:
+                    route_subagent_reply(message, reply)
                 get_database().acknowledge_agent_message(
                     message_id, worker_id=self.worker_id
                 )
@@ -249,6 +254,33 @@ class AgentInboxDispatcher:
         ):
             return True
         return self._was_already_persisted(message)
+
+    @staticmethod
+    def _persisted_reply(message: dict[str, Any]) -> Optional[AgentReply]:
+        """The answer the target already wrote to ``message``, if any."""
+        from suzent.database.search import sanitize_messages
+
+        chat = get_database().get_chat(str(message["target_chat_id"]))
+        messages = (chat.messages or []) if chat is not None else []
+        marker = _delivery_marker(str(message["message_id"]))
+        start = next(
+            (
+                index
+                for index, stored in enumerate(messages)
+                if marker in json.dumps(stored, ensure_ascii=False)
+            ),
+            None,
+        )
+        if start is None:
+            return None
+        answer = None
+        for record in sanitize_messages(messages):
+            if record["index"] <= start:
+                continue
+            if record["role"] != "assistant":
+                break
+            answer = record["text"]
+        return AgentReply(text=answer) if answer is not None else None
 
     def _was_already_persisted(self, message: dict[str, Any]) -> bool:
         chat = get_database().get_chat(str(message["target_chat_id"]))
@@ -388,8 +420,14 @@ def _finish_detached_turn(message: dict[str, Any], turn: asyncio.Task) -> None:
             error,
         )
         return
-    if (reply := turn.result()) is not None:
+    if (reply := turn.result()) is None:
+        return
+    try:
         route_subagent_reply(message, reply)
+    except Exception as exc:
+        logger.warning(
+            "Could not route reply to agent message {}: {}", message["message_id"], exc
+        )
 
 
 async def deliver_and_wait(

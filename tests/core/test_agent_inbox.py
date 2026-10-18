@@ -486,3 +486,74 @@ async def test_cancelled_wait_lets_the_turn_finish_and_routes_the_reply(monkeypa
     assert len(queued) == 1
     assert "Finished anyway" in queued[0]["content"]
     assert queued[0]["target_chat_id"] == "agent-source"
+
+
+@pytest.mark.asyncio
+async def test_retry_after_a_lost_reply_sends_it_from_the_transcript(monkeypatch):
+    target = _subagent_chat()
+    target.messages = [
+        {"role": "user", "content": "<!-- suzent-agent-inbox:msg-1 -->\nPlease review"},
+        {"role": "assistant", "parts": [{"type": "text", "text": "Reviewed: 2 bugs"}]},
+    ]
+    acknowledged = []
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return target
+
+        def acknowledge_agent_message(self, message_id, *, worker_id):
+            acknowledged.append(message_id)
+            return True
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    queued = _capture_enqueue(monkeypatch)
+    dispatcher = AgentInboxDispatcher()
+
+    async def unexpected_turn(message):
+        pytest.fail("a persisted turn must not run again")
+
+    monkeypatch.setattr(dispatcher, "_run_target_turn", unexpected_turn)
+
+    await dispatcher._deliver_claimed({**_message(), "kind": "agent_message"})
+
+    assert acknowledged == ["msg-1"]
+    assert len(queued) == 1
+    assert queued[0]["message_id"] == "subagent-reply-msg-1"
+    assert "Reviewed: 2 bugs" in queued[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reply_enqueue_retries_the_delivery(monkeypatch):
+    from suzent.core.agent_inbox import AgentReply
+
+    target = _subagent_chat()
+    retried = []
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return target
+
+        def acknowledge_agent_message(self, message_id, *, worker_id):
+            pytest.fail("a delivery whose reply was lost must not be acknowledged")
+
+        def retry_agent_message(self, message_id, **kwargs):
+            retried.append(message_id)
+            return True
+
+    def failing_enqueue(**kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.core.agent_inbox.enqueue_agent_message", failing_enqueue
+    )
+    dispatcher = AgentInboxDispatcher()
+
+    async def run_turn(message):
+        return AgentReply(text="done")
+
+    monkeypatch.setattr(dispatcher, "_run_target_turn", run_turn)
+
+    await dispatcher._deliver_claimed({**_message(), "kind": "agent_message"})
+
+    assert retried == ["msg-1"]

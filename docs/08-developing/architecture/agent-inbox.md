@@ -54,14 +54,19 @@ backend no longer discards a completed child's parent notification.
 
 A parent continues a finished sub-agent with `agent_send`, addressing it by
 task ID or chat ID. The sub-agent's chat stores its role prompt, model, memory
-setting, and permission mode at spawn (`followup_config`), so the follow-up turn
-runs as the same sub-agent rather than falling back to the main agent's prompt
-and the default model.
+setting, permission mode, and the permission grants it inherited at spawn
+(`followup_config`), so the follow-up turn runs as the same sub-agent rather
+than falling back to the main agent's prompt, the default model, and none of
+the parent's denials. A worktree that teardown keeps becomes the stored working
+directory, so follow-ups edit the isolated changes, not the main checkout.
 
 When a delivered `agent_message` came from the target's own parent, the
 dispatcher queues the turn's final answer back to the parent as a
 `subagent_result` (`subagent-reply-<message_id>`), which wakes it the same way
 the first result did. Replies from other sessions stay in their own chat.
+If queueing the reply fails, the delivery is retried; the retry finds the turn
+already in the transcript, rebuilds the reply from its last answer, and queues
+it under the same idempotent ID.
 A message that joins a turn already in flight produces no separate reply.
 
 `wait=True` skips the queue: the dispatcher delivers one message at a time, so a

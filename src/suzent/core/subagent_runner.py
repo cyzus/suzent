@@ -493,7 +493,8 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
 
     A worktree cwd is the exception: _run_subagent tears the worktree down in
     its finally block, so persisting it would point a resumed turn at a deleted
-    directory that the shell would helpfully recreate, empty.
+    directory that the shell would helpfully recreate, empty. A worktree that
+    teardown keeps is stored afterwards instead.
     """
     grants = {
         key: base_config[key]
@@ -507,8 +508,15 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
 
 # Turn settings a follow-up turn needs to stay the same sub-agent. agent_send
 # runs that turn from the chat's stored config, which otherwise falls back to
-# the main agent's prompt and the user's default model.
-_FOLLOWUP_KEYS = ("static_instructions", "model", "memory_enabled", "permission_mode")
+# the main agent's prompt and the user's default model, and drops the grants
+# and denials it inherited from the parent.
+_FOLLOWUP_KEYS = (
+    "static_instructions",
+    "model",
+    "memory_enabled",
+    "permission_mode",
+    *_INHERITED_PERMISSION_KEYS,
+)
 
 
 def followup_config(base_config: dict) -> dict:
@@ -845,6 +853,8 @@ async def _run_subagent(
         # woken only afterwards so it learns whether the changes were kept.
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+            if task.worktree_path:
+                _keep_worktree_as_cwd(task)
         _persist_task_state(task)
         if wake_parent:
             _queue_parent_wakeup(task)
@@ -980,6 +990,20 @@ async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
         f"for sub-agent {task.task_id}"
     )
     return None
+
+
+def _keep_worktree_as_cwd(task: SubAgentTask) -> None:
+    """Point follow-up turns at a worktree that teardown kept.
+
+    The changes live there, so a follow-up asked to fix or extend them must not
+    fall back to the parent's folder and edit the main checkout instead.
+    """
+    try:
+        get_database().merge_chat_config(task.chat_id, {"cwd": task.worktree_path})
+    except Exception as exc:
+        logger.warning(
+            f"Could not store kept worktree for sub-agent {task.task_id}: {exc}"
+        )
 
 
 async def _git_output(*args: str, cwd: str) -> Optional[str]:
@@ -1148,26 +1172,23 @@ def queue_subagent_reply(
     summary, sources = summarize_agent_output(
         reply_text, citation_sources, f"{task_id}_{message_id[-8:]}"
     )
-    # A failure here must not fail the delivery: its retry would find the turn
-    # already in the transcript and acknowledge it without replying anyway.
-    try:
-        enqueue_agent_message(
-            message_id=f"subagent-reply-{message_id}",
-            sender_chat_id=subagent_chat.id,
-            target_chat_id=config["parent_chat_id"],
-            content=SUBAGENT_REPLY.format(
-                task_id=task_id, request=request[:300], reply=summary
-            )
-            + _citation_source_context(sources),
-            kind="subagent_result",
-            payload={
-                "task_id": task_id,
-                "status": "completed",
-                "citation_sources": sources,
-            },
+    # The id is derived from the parent's message, so a delivery retried after
+    # this failed queues the reply once rather than twice.
+    enqueue_agent_message(
+        message_id=f"subagent-reply-{message_id}",
+        sender_chat_id=subagent_chat.id,
+        target_chat_id=config["parent_chat_id"],
+        content=SUBAGENT_REPLY.format(
+            task_id=task_id, request=request[:300], reply=summary
         )
-    except Exception as exc:
-        logger.warning(f"Could not queue reply from sub-agent {task_id}: {exc}")
+        + _citation_source_context(sources),
+        kind="subagent_result",
+        payload={
+            "task_id": task_id,
+            "status": "completed",
+            "citation_sources": sources,
+        },
+    )
 
 
 def _queue_parent_wakeup(task: SubAgentTask) -> None:
