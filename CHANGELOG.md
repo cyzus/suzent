@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Longer runs that cost less and stall less.** Prompt caching is on for Anthropic models, and the prompt stays stable across turns so providers reuse more of it. Sub-agents that inherit the conversation run on your current model, slow models show a waiting notice early, and shell commands that would wait for input now fail right away instead of hanging.
 - **A better macOS experience.** The macOS installer now comes as a notarized disk image you open with a double-click, without Terminal. Clicking a notification brings Suzent to the front, notification sounds play reliably, and typing with a Chinese, Japanese or Korean input method no longer sends a message when you press Enter to pick a candidate.
 
-**Easter egg:** set Settings → Notifications → Sound to Resonance, and a low, resonant voice tells you how each task ended: done, needs approval, or failed.
+**New sounds for finished tasks.** Choose one under Settings → Notifications → Sound. Resonance is worth a listen.
 <!-- /highlights -->
 
 ### Release notes
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep streamed assistant replies in saved conversation history when the final model response is missing at stream completion.
 - Enable prompt caching for Anthropic models and keep ChatGPT and OpenAI requests of one chat on the same cache, cutting repeated input cost in long agent runs.
 - Keep the prompt prefix stable across turns so providers reuse more of their cache: core-memory edits arrive as a reminder instead of rewriting the system prompt, and old tool results are trimmed in steps rather than every turn.
-- The Resonance notification sound now speaks the outcome — done, needs approval or failed — in the app's language.
+- Refresh the Resonance sound for finished tasks.
 - Shell commands that would wait for input, such as `curl -s URL` in Windows PowerShell, now fail right away with a clear error instead of hanging until the 120-second timeout.
 - Sub-agents that inherit the conversation now run on your current model, so the shared history is not processed again. A running sub-agent's timer, prompt and reminders now show correctly, and an empty sub-agent no longer sticks on "Connecting".
 - Unify task progress into a responsive list with waiting reasons, results, and reliable conversation and project navigation.
