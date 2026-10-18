@@ -176,11 +176,6 @@ def sync_managed_skills_dirs() -> Path:
     return SKILLS_ROOT_DIR
 
 
-def rebuild_merged_skills_dir() -> Path:
-    """Backward-compatible alias for the unified skills sync."""
-    return sync_managed_skills_dirs()
-
-
 _skills_synced = False
 
 

@@ -36,7 +36,6 @@ from suzent.logger import get_logger, setup_logging
 from suzent.mobile.client_api import client_routes
 from suzent.routes.mobile_routes import mobile_routes
 from suzent.routes.chat_routes import (
-    approve_tool,
     chat,
     chat_send,
     create_chat,
@@ -1171,7 +1170,6 @@ app = Starlette(
         Route("/chat/extend-wait", extend_model_wait, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
-        Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
         Route("/chat/input-suggestion", get_input_suggestion, methods=["POST"]),

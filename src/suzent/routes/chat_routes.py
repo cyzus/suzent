@@ -1603,8 +1603,3 @@ async def steer_chat(request: Request) -> StreamingResponse:
     except Exception as e:
         logger.error(f"Error handling steer request: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-async def approve_tool(request: Request) -> JSONResponse:
-    """Legacy endpoint. Approvals are now passed via /chat with resume_approvals."""
-    return JSONResponse({"status": "resolved", "approved": True})

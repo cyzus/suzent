@@ -28,17 +28,6 @@ module.exports = {
           ...presentation.colors,
           yellow: 'var(--brutal-yellow)',
         },
-        // Legacy colors for gradual migration
-        accent: {
-          50: '#fafaf9',
-          100: '#f5f5f4',
-          200: '#e7e5e4',
-          300: '#d6d3d1',
-          400: '#a8a29e',
-          500: '#78716c',
-          600: '#57534e',
-          700: '#44403c',
-        },
         primary: {
           50: '#f0f9ff',
           100: '#e0f2fe',
