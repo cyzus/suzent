@@ -5,6 +5,8 @@ import json
 import os
 import traceback
 import uuid
+from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Optional
 
 from suzent.config import CONFIG
@@ -26,6 +28,37 @@ _BUSY_TARGET_WAIT_SECONDS = 120.0
 
 def _delivery_marker(message_id: str) -> str:
     return f"<!-- {_DELIVERY_MARKER_PREFIX}:{message_id} -->"
+
+
+@dataclass
+class AgentReply:
+    """The final answer of a turn an inbox message started."""
+
+    text: str
+    citation_sources: list[dict[str, Any]] = field(default_factory=list)
+
+
+def route_subagent_reply(message: dict[str, Any], reply: AgentReply) -> bool:
+    """Send a sub-agent's answer to its parent's message back to the parent.
+
+    Returns True when the reply was queued; replies from any other agent stay
+    in that agent's own chat, as before.
+    """
+    if message.get("kind", "agent_message") != "agent_message":
+        return False
+    from suzent.core.subagent_runner import is_subagent_of, queue_subagent_reply
+
+    target = get_database().get_chat(str(message["target_chat_id"]))
+    if not is_subagent_of(target, message.get("sender_chat_id")):
+        return False
+    queue_subagent_reply(
+        target,
+        message_id=str(message["message_id"]),
+        request=str(message.get("content") or ""),
+        reply_text=reply.text,
+        citation_sources=reply.citation_sources,
+    )
+    return True
 
 
 class AgentInboxDispatcher:
@@ -139,7 +172,9 @@ class AgentInboxDispatcher:
         """Dispatch a leased row through its configured transport."""
         transport = str(message.get("transport") or "local")
         if transport == "local":
-            await self._run_target_turn(message)
+            reply = await self._run_target_turn(message)
+            if reply is not None:
+                route_subagent_reply(message, reply)
             return
         if transport == "suzent_peer":
             from suzent.nodes.agent_transport import get_peer_agent_transport
@@ -224,7 +259,12 @@ class AgentInboxDispatcher:
         marker = _delivery_marker(str(message["message_id"]))
         return marker in json.dumps(chat.messages or [], ensure_ascii=False)
 
-    async def _run_target_turn(self, message: dict[str, Any]) -> None:
+    async def _run_target_turn(self, message: dict[str, Any]) -> Optional[AgentReply]:
+        """Deliver ``message`` to its target and return the turn's reply.
+
+        None means the message joined a turn already in flight, whose answer is
+        that turn's to give.
+        """
         from suzent.agent_manager import build_agent_config
         from suzent.core.chat_processor import ChatProcessor
         from suzent.core.stream_registry import (
@@ -286,7 +326,7 @@ class AgentInboxDispatcher:
                     delivered_content,
                     list(payload.get("citation_sources") or []),
                 ):
-                    return
+                    return None
                 await asyncio.wait_for(
                     control.completed_event.wait(),
                     timeout=_BUSY_TARGET_WAIT_SECONDS,
@@ -296,7 +336,7 @@ class AgentInboxDispatcher:
                 from suzent.acp.runtime import run_acp_turn_text
                 from suzent.core.system_reminder import wrap_in_system_reminder
 
-                await run_acp_turn_text(
+                text = await run_acp_turn_text(
                     target_chat_id,
                     wrap_in_system_reminder(
                         delivered_content, display_trigger=delivered_content
@@ -307,17 +347,19 @@ class AgentInboxDispatcher:
                     # provenance, since the token inside it proves nothing.
                     runtime_authored=True,
                 )
-            else:
-                await ChatProcessor().process_background_turn(
-                    chat_id=target_chat_id,
-                    user_id=CONFIG.user_id,
-                    message_content="",
-                    config_override=config_override,
-                    system_reminders=[delivered_content],
-                    incoming_citation_sources=list(
-                        payload.get("citation_sources") or []
-                    ),
-                )
+                return AgentReply(text=text or "")
+
+            reply_sources: list[dict[str, Any]] = []
+            text = await ChatProcessor().process_background_turn(
+                chat_id=target_chat_id,
+                user_id=CONFIG.user_id,
+                message_content="",
+                config_override=config_override,
+                system_reminders=[delivered_content],
+                incoming_citation_sources=list(payload.get("citation_sources") or []),
+                citation_sources_out=reply_sources,
+            )
+            return AgentReply(text=text or "", citation_sources=reply_sources)
 
 
 _dispatcher: Optional[AgentInboxDispatcher] = None
@@ -328,6 +370,56 @@ def get_agent_inbox_dispatcher() -> AgentInboxDispatcher:
     if _dispatcher is None:
         _dispatcher = AgentInboxDispatcher()
     return _dispatcher
+
+
+# Strong references to turns whose waiting sender gave up, so the event loop
+# does not collect them before they finish and route their reply.
+_detached_turns: set[asyncio.Task] = set()
+
+
+def _finish_detached_turn(message: dict[str, Any], turn: asyncio.Task) -> None:
+    _detached_turns.discard(turn)
+    if turn.cancelled():
+        return
+    if (error := turn.exception()) is not None:
+        logger.warning(
+            "Agent message {} failed after its sender stopped waiting: {}",
+            message["message_id"],
+            error,
+        )
+        return
+    if (reply := turn.result()) is not None:
+        route_subagent_reply(message, reply)
+
+
+async def deliver_and_wait(
+    *, sender_chat_id: str, target_chat_id: str, content: str
+) -> Optional[AgentReply]:
+    """Run the target's turn now and return its reply, skipping the queue.
+
+    The dispatcher delivers one message at a time, so a sender waiting on it
+    from inside a turn the dispatcher itself is running would wait on itself.
+    A cancelled wait leaves the turn running, and a sub-agent's reply then
+    reaches its parent the way a queued message's would.
+    """
+    message = {
+        "message_id": f"msg_{uuid.uuid4().hex}",
+        "sender_chat_id": sender_chat_id,
+        "target_chat_id": target_chat_id,
+        "content": content,
+        "kind": "agent_message",
+        "payload": {},
+    }
+    turn = asyncio.create_task(
+        get_agent_inbox_dispatcher()._run_target_turn(message),
+        name=f"agent_message_{message['message_id']}",
+    )
+    try:
+        return await asyncio.shield(turn)
+    except asyncio.CancelledError:
+        _detached_turns.add(turn)
+        turn.add_done_callback(partial(_finish_detached_turn, message))
+        raise
 
 
 def enqueue_agent_message(

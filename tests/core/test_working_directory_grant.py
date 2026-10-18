@@ -272,3 +272,22 @@ def test_inherited_grants_are_copied_not_shared():
 def test_a_parent_without_grants_adds_nothing():
     assert inherited_permission_grants({}) == {}
     assert inherited_permission_grants({"permission_rules": []}) == {}
+
+
+def test_a_followup_turn_keeps_the_sub_agent_role_and_model():
+    from suzent.core.subagent_runner import followup_config
+
+    config = {
+        "static_instructions": "You are a focused code-search sub-agent.",
+        "model": "openai/gpt-4.1",
+        "memory_enabled": False,
+        "permission_mode": "plan",
+        "cwd": "/repo",
+    }
+
+    assert followup_config(config) == {
+        "static_instructions": "You are a focused code-search sub-agent.",
+        "model": "openai/gpt-4.1",
+        "memory_enabled": False,
+        "permission_mode": "plan",
+    }

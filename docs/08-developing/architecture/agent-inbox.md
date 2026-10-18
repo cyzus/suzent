@@ -15,7 +15,7 @@ stable `agent_id` is its chat ID; `kind` describes how the session originated:
 | `agent` | task definition and execution options | Creates a child agent |
 | `agent_list` | `status`, `limit` | Lists accessible sessions in the current project |
 | `agent_read` | `agent_id` | Reads a bounded, visible transcript |
-| `agent_send` | `agent_id`, `message` | Queues a durable message and wakes the target |
+| `agent_send` | `agent_id`, `message`, `wait` | Queues a durable message and wakes the target; `wait=True` runs the target's turn now and returns its reply |
 | `agent_stop` | `agent_id` | Cooperatively stops an active target |
 
 The project is the authorization boundary. Hidden internal sessions (dream and
@@ -49,6 +49,27 @@ wrapper and runtime nonce.
 
 Sub-agent completion and failure wakeups use this inbox too, so restarting the
 backend no longer discards a completed child's parent notification.
+
+## Following Up With a Sub-agent
+
+A parent continues a finished sub-agent with `agent_send`, addressing it by
+task ID or chat ID. The sub-agent's chat stores its role prompt, model, memory
+setting, and permission mode at spawn (`followup_config`), so the follow-up turn
+runs as the same sub-agent rather than falling back to the main agent's prompt
+and the default model.
+
+When a delivered `agent_message` came from the target's own parent, the
+dispatcher queues the turn's final answer back to the parent as a
+`subagent_result` (`subagent-reply-<message_id>`), which wakes it the same way
+the first result did. Replies from other sessions stay in their own chat.
+A message that joins a turn already in flight produces no separate reply.
+
+`wait=True` skips the queue: the dispatcher delivers one message at a time, so a
+parent waiting from inside a turn the dispatcher is running would wait on
+itself. The tool runs the target turn directly and returns the reply, and the
+stream layer gives the call no tool timeout, as with a blocking `agent` call.
+If the wait is cancelled, the turn keeps running and a sub-agent's reply is
+routed back through the inbox. Waited messages are not durable.
 
 ## Cron and Social Boundaries
 

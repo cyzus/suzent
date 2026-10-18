@@ -505,6 +505,17 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
     return grants
 
 
+# Turn settings a follow-up turn needs to stay the same sub-agent. agent_send
+# runs that turn from the chat's stored config, which otherwise falls back to
+# the main agent's prompt and the user's default model.
+_FOLLOWUP_KEYS = ("static_instructions", "model", "memory_enabled", "permission_mode")
+
+
+def followup_config(base_config: dict) -> dict:
+    """The parts of a sub-agent's turn config to store for follow-up turns."""
+    return {key: base_config[key] for key in _FOLLOWUP_KEYS if key in base_config}
+
+
 # Roots the agent addresses virtually; everything else absolute is a host path.
 _VIRTUAL_PREFIXES = ("/mnt", "/workspace", "/shared", "/persistence", "/uploads")
 
@@ -757,9 +768,13 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
-            grants = persistable_grants(base_config, task.isolation)
-            if grants:
-                db.merge_chat_config(task.chat_id, grants)
+            db.merge_chat_config(
+                task.chat_id,
+                {
+                    **followup_config(base_config),
+                    **persistable_grants(base_config, task.isolation),
+                },
+            )
             config_override = build_agent_config(base_config, require_social_tool=False)
             result_text = await processor.process_turn_text(
                 chat_id=task.chat_id,
@@ -771,15 +786,8 @@ async def _run_subagent(
             )
 
         task.status = "completed"
-        task.citation_sources, source_id_map = namespace_sources(
-            child_citation_sources, task.task_id
-        )
-        normalised_result = rewrite_citation_ids(result_text or "", source_id_map)
-        summary_text = truncate_citation_text(normalised_result, 1000)
-        task.result_summary = (
-            render_citations_plain_text(summary_text, task.citation_sources)
-            if summary_text
-            else "(no output)"
+        task.result_summary, task.citation_sources = summarize_agent_output(
+            result_text, child_citation_sources, task.task_id
         )
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
@@ -1085,35 +1093,95 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
 # ─── Parent wakeup & notification ────────────────────────────────────────────
 
 
+def summarize_agent_output(
+    text: Optional[str], sources: list[dict], namespace: str
+) -> tuple[str, list[dict]]:
+    """Condense a sub-agent's answer for its parent, renaming its sources."""
+    namespaced, source_id_map = namespace_sources(sources, namespace)
+    summary = truncate_citation_text(
+        rewrite_citation_ids(text or "", source_id_map), 1000
+    )
+    if not summary:
+        return "(no output)", namespaced
+    return render_citations_plain_text(summary, namespaced), namespaced
+
+
+def _citation_source_context(sources: list[dict]) -> str:
+    if not sources:
+        return ""
+    lines = []
+    for source in sources:
+        source_id = source.get("id")
+        description = f"[{source_id}] {source.get('title') or source_id}"
+        if url := source.get("url"):
+            description += f" ({url})"
+        lines.append(description)
+    return "\n\nCitable sources imported from the sub-agent:\n" + "\n".join(lines)
+
+
+def is_subagent_of(chat, parent_chat_id: Optional[str]) -> bool:
+    """Whether ``chat`` is a sub-agent spawned by ``parent_chat_id``."""
+    config = (chat.config or {}) if chat is not None else {}
+    return (
+        bool(parent_chat_id)
+        and config.get("platform") == "subagent"
+        and config.get("parent_chat_id") == parent_chat_id
+    )
+
+
+def queue_subagent_reply(
+    subagent_chat,
+    *,
+    message_id: str,
+    request: str,
+    reply_text: Optional[str],
+    citation_sources: list[dict],
+) -> None:
+    """Wake the parent with a sub-agent's answer to a message it sent."""
+    from suzent.core.agent_inbox import enqueue_agent_message
+    from suzent.prompts import SUBAGENT_REPLY
+
+    config = subagent_chat.config or {}
+    task_id = config.get("subagent_task_id") or subagent_chat.id
+    # Each reply needs its own source ids: the parent keeps every earlier
+    # reply's sources, and a second "sa_<task>_src_1" would collide with them.
+    summary, sources = summarize_agent_output(
+        reply_text, citation_sources, f"{task_id}_{message_id[-8:]}"
+    )
+    # A failure here must not fail the delivery: its retry would find the turn
+    # already in the transcript and acknowledge it without replying anyway.
+    try:
+        enqueue_agent_message(
+            message_id=f"subagent-reply-{message_id}",
+            sender_chat_id=subagent_chat.id,
+            target_chat_id=config["parent_chat_id"],
+            content=SUBAGENT_REPLY.format(
+                task_id=task_id, request=request[:300], reply=summary
+            )
+            + _citation_source_context(sources),
+            kind="subagent_result",
+            payload={
+                "task_id": task_id,
+                "status": "completed",
+                "citation_sources": sources,
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"Could not queue reply from sub-agent {task_id}: {exc}")
+
+
 def _queue_parent_wakeup(task: SubAgentTask) -> None:
     """Persist a completion or failure message for the parent agent."""
     from suzent.core.agent_inbox import enqueue_agent_message
     from suzent.prompts import SUBAGENT_WAKEUP_SINGLE, SUBAGENT_WORKTREE_KEPT
 
     if task.status == "completed":
-        source_context = ""
-        if task.citation_sources:
-            lines = []
-            for source in task.citation_sources:
-                source_id = source.get("id")
-                title = source.get("title") or source_id
-                url = source.get("url")
-                description = f"[{source_id}] {title}"
-                if url:
-                    description += f" ({url})"
-                lines.append(description)
-            source_context = (
-                "\n\nCitable sources imported from the sub-agent:\n" + "\n".join(lines)
-            )
-        content = (
-            SUBAGENT_WAKEUP_SINGLE.format(
-                task_id=task.task_id,
-                model_override=task.model_override or "(default)",
-                description=task.description[:300],
-                result_summary=task.result_summary or "(no output)",
-            )
-            + source_context
-        )
+        content = SUBAGENT_WAKEUP_SINGLE.format(
+            task_id=task.task_id,
+            model_override=task.model_override or "(default)",
+            description=task.description[:300],
+            result_summary=task.result_summary or "(no output)",
+        ) + _citation_source_context(task.citation_sources)
     else:
         content = (
             f"Sub-agent {task.task_id} failed.\n"

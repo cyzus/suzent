@@ -80,6 +80,14 @@ class AgentTool(Tool):
         "agent_stop to cancel work that is no longer needed. Background sub-agent results "
         "wake this conversation automatically.\n"
         "\n"
+        "### Follow-ups — keep talking to the same sub-agent\n"
+        "A finished sub-agent keeps everything it read and did. To correct its work, ask a "
+        "question about it, or hand it the next step of the same job, send it a message with "
+        "agent_send (agent_id = its task ID) instead of spawning a new one that starts from "
+        "nothing. Its reply wakes you like its first result did; pass wait=True to get the "
+        "reply as the tool result instead. Spawn a new sub-agent only for a separate task or "
+        "a different tool profile.\n"
+        "\n"
         "### Tool selection\n"
         "1. **subagent_type** (easiest): use a preset profile (explore / plan / write / verify / web)\n"
         "2. **tools_allowed**: explicit whitelist of tool class names\n"
@@ -229,7 +237,8 @@ class AgentTool(Tool):
         - 'web': web research. Use to keep raw search results out of your context.
 
         When the agent is done, its result is returned to you — not shown directly to the user.
-        Summarize findings in your own words when reporting back.
+        Summarize findings in your own words when reporting back. To follow up with the same
+        sub-agent, message its task ID with agent_send rather than spawning another.
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.

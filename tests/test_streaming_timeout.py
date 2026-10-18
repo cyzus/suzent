@@ -839,3 +839,18 @@ def test_draft_accumulator_keeps_deferred_surfaces_out_of_the_draft():
     )
 
     assert [part["surface"]["id"] for part in acc.parts] == ["results"]
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ({"agent_id": "sub_1", "message": "Go on", "wait": True}, math.inf),
+        ({"agent_id": "sub_1", "message": "Go on"}, 60.0),
+    ],
+)
+def test_agent_send_waits_without_timeout_only_when_waiting(args, expected):
+    event = FunctionToolCallEvent(
+        ToolCallPart(tool_name="agent_send", args=args, tool_call_id="call-1")
+    )
+
+    assert streaming._tool_timeout_from_event(event) == expected
