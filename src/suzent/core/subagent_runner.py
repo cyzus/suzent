@@ -1305,7 +1305,9 @@ async def steer_subagent(task_id: str, message: str) -> Optional[str]:
     inject = getattr(control, "inject", None) if control is not None else None
     if inject is None:
         return None
-    return inject(f"[User interrupted to redirect]: {message}")
+    from suzent.core.chat_processor import build_steering_text
+
+    return inject(build_steering_text(message))
 
 
 async def stop_subagents_for_parent(parent_chat_id: str) -> list[str]:

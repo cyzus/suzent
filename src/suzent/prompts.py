@@ -262,6 +262,12 @@ The user attached {count} file(s): {paths}. When you first read one, add it to \
 the file index in context.md with its format, size, and key structure (such as \
 rows and columns), so later chats do not need to re-read it."""
 
+# Hidden (model-only) label prepended to a steer, so the transcript shows only
+# the words the user typed while the model still knows why the turn restarted.
+STEER_REMINDER = """\
+The user interrupted your previous response to redirect you. Follow the message \
+below instead of continuing what you were doing."""
+
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
 SUBAGENT_WAKEUP_BATCH_ITEM = """
