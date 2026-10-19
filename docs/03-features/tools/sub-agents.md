@@ -25,6 +25,15 @@ The agent chooses how each helper runs:
 Either way, the result goes to the agent, not to you. The agent reads it and
 tells you what matters.
 
+## Following up with a helper
+
+A finished helper remembers what it read and did. When its work needs a fix,
+a question answered, or a next step, the agent sends that helper a message
+instead of starting a new one. The helper picks up where it left off, and its
+reply comes back to the agent the same way its first result did: in the
+background, or straight away if the agent chose to wait. The follow-up appears
+in the helper's own chat.
+
 ## What a helper can and can't do
 
 The agent gives each helper a written brief and a set of tools. It often picks

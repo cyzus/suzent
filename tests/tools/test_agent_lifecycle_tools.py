@@ -293,7 +293,8 @@ async def test_agent_read_fetches_peer_owned_transcript(
     assert result.metadata["kind"] == "remote"
 
 
-def test_agent_send_queues_durable_message(monkeypatch):
+@pytest.mark.asyncio
+async def test_agent_send_queues_durable_message(monkeypatch):
     target = _chat("agent-target")
     captured = {}
     monkeypatch.setattr(
@@ -307,7 +308,7 @@ def test_agent_send_queues_durable_message(monkeypatch):
 
     monkeypatch.setattr("suzent.core.agent_inbox.enqueue_agent_message", enqueue)
 
-    result = AgentSendTool().forward(_ctx(), "agent-target", "Please verify this")
+    result = await AgentSendTool().forward(_ctx(), "agent-target", "Please verify this")
 
     assert result.success
     assert captured == {
@@ -324,23 +325,28 @@ def test_agent_send_schema_stays_minimal():
         "ctx",
         "agent_id",
         "message",
+        "wait",
     ]
 
 
-def test_agent_send_rejects_self_delivery(monkeypatch):
+@pytest.mark.asyncio
+async def test_agent_send_rejects_self_delivery(monkeypatch):
     current = _chat("agent-current")
     monkeypatch.setattr(
         "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: current,
     )
 
-    result = AgentSendTool().forward(_ctx(), "agent-current", "Continue")
+    result = await AgentSendTool().forward(_ctx(), "agent-current", "Continue")
 
     assert not result.success
     assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
 
 
-def test_agent_send_queues_peer_transport_message(monkeypatch, _empty_peer_transport):
+@pytest.mark.asyncio
+async def test_agent_send_queues_peer_transport_message(
+    monkeypatch, _empty_peer_transport
+):
     current = _chat("agent-current")
     captured = {}
     _empty_peer_transport.peer_id = lambda agent_id: "peer-1"
@@ -355,7 +361,7 @@ def test_agent_send_queues_peer_transport_message(monkeypatch, _empty_peer_trans
         lambda: SimpleNamespace(get_chat=lambda chat_id: current),
     )
 
-    result = AgentSendTool().forward(_ctx(), "peer:peer-1", "Run remote checks")
+    result = await AgentSendTool().forward(_ctx(), "peer:peer-1", "Run remote checks")
 
     assert result.success
     assert captured == {
@@ -415,3 +421,103 @@ async def test_agent_stop_requests_peer_cancellation(
 
     assert result.success
     assert stopped == ["peer:peer-1"]
+
+
+def _own_subagent() -> SimpleNamespace:
+    chat = _chat("subagent-sub_abc", platform="subagent")
+    chat.config.update(parent_chat_id="agent-current", subagent_task_id="sub_abc")
+    return chat
+
+
+@pytest.mark.asyncio
+async def test_agent_send_to_own_subagent_says_the_reply_will_wake_you(monkeypatch):
+    target = _own_subagent()
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
+    )
+    monkeypatch.setattr(
+        "suzent.core.agent_inbox.enqueue_agent_message",
+        lambda **kwargs: ({"message_id": "msg-1", "status": "pending"}, True),
+    )
+
+    result = await AgentSendTool().forward(_ctx(), "sub_abc", "Also check tests/")
+
+    assert result.success
+    assert "reply will wake you" in result.message
+
+
+@pytest.mark.asyncio
+async def test_agent_send_wait_returns_the_reply(monkeypatch):
+    from suzent.core.agent_inbox import AgentReply
+
+    target = _own_subagent()
+    calls = []
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
+    )
+
+    async def deliver_and_wait(**kwargs):
+        calls.append(kwargs)
+        return AgentReply(text="Two more call sites in tests/")
+
+    def unexpected_enqueue(**kwargs):
+        pytest.fail("a waited message must not also be queued")
+
+    monkeypatch.setattr("suzent.core.agent_inbox.deliver_and_wait", deliver_and_wait)
+    monkeypatch.setattr(
+        "suzent.core.agent_inbox.enqueue_agent_message", unexpected_enqueue
+    )
+
+    result = await AgentSendTool().forward(
+        _ctx(), "sub_abc", "Also check tests/", wait=True
+    )
+
+    assert result.success
+    assert "Two more call sites in tests/" in result.message
+    assert result.metadata["status"] == "replied"
+    assert calls == [
+        {
+            "sender_chat_id": "agent-current",
+            "target_chat_id": "subagent-sub_abc",
+            "content": "Also check tests/",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_send_wait_reports_a_busy_target(monkeypatch):
+    target = _own_subagent()
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
+    )
+
+    async def deliver_and_wait(**kwargs):
+        return None
+
+    monkeypatch.setattr("suzent.core.agent_inbox.deliver_and_wait", deliver_and_wait)
+
+    result = await AgentSendTool().forward(_ctx(), "sub_abc", "Stop early", wait=True)
+
+    assert result.success
+    assert result.metadata["status"] == "injected"
+
+
+@pytest.mark.asyncio
+async def test_agent_send_wait_is_rejected_for_remote_agents(
+    monkeypatch, _empty_peer_transport
+):
+    _empty_peer_transport.peer_id = lambda agent_id: "peer-1"
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda chat_id: _chat("agent-current")),
+    )
+
+    result = await AgentSendTool().forward(
+        _ctx(), "peer:peer-1", "Run remote checks", wait=True
+    )
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
