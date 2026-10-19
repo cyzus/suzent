@@ -53,7 +53,9 @@ async def test_steer_injects_into_the_childs_live_run(isolated_tasks, live_contr
     control.inject = lambda content: (seen.append(content), "enq-1")[1]
 
     assert await subagent_runner.steer_subagent("t1", "use ripgrep instead") == "enq-1"
-    assert seen == ["[User interrupted to redirect]: use ripgrep instead"]
+    from suzent.core.chat_processor import build_steering_text
+
+    assert seen == [build_steering_text("use ripgrep instead")]
 
 
 async def test_steer_leaves_the_child_running(isolated_tasks, live_control):
