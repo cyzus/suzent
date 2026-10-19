@@ -90,6 +90,21 @@ This starts the backend and opens the desktop interface.
 
 ## 3. Add Your Model Provider
 
+On a new installation with no configured model provider, the chat screen opens a setup
+flow. You can also open **Set up your agent** from a new chat:
+
+1. Connect a provider, enable your models, and choose a default chat model.
+   **Verify selected model** sends a small text request and may incur a usage charge.
+2. Review **Model roles**. Recommendations match enabled models to known
+   capabilities, including vision, image generation/editing, speech synthesis,
+   video, and embeddings. Unknown or missing capabilities remain unassigned;
+   existing assignments are preserved. Specialist models are not invoked during
+   matching. You can adjust the assignments before saving.
+3. Describe a first task, or skip it. Your task appears in the chat input for you
+   to review and send.
+
+Provider and role settings remain available after setup:
+
 Once the UI is open, go to **Settings → Providers** to configure your API key. The most common starting points:
 
 <Tabs groupId="provider">
