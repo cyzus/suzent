@@ -224,6 +224,17 @@ Task: {description}
 
 Result:
 {result_summary}
+
+To correct, extend, or question this work, send `{task_id}` a message with agent_send. \
+It keeps everything it read and did, so a follow-up costs less than a new sub-agent.
+"""
+
+SUBAGENT_REPLY = """
+Sub-agent `{task_id}` replied to your message.
+Your message: {request}
+
+Reply:
+{reply}
 """
 
 SUBAGENT_WORKTREE_KEPT = """
