@@ -553,9 +553,16 @@ def build_steering_text(steer_message: str) -> str:
     sanitized, which is why the wrapping lives in one testable function rather
     than inline at the call site.
     """
-    from suzent.core.system_reminder import sanitize_untrusted_text
+    from suzent.core.system_reminder import (
+        sanitize_untrusted_text,
+        wrap_in_system_reminder,
+    )
+    from suzent.prompts import STEER_REMINDER
 
-    return f"[User interrupted to redirect]: {sanitize_untrusted_text(steer_message)}"
+    return (
+        f"{wrap_in_system_reminder(STEER_REMINDER)}\n"
+        f"{sanitize_untrusted_text(steer_message).strip()}"
+    )
 
 
 class ChatProcessor:
@@ -1955,7 +1962,9 @@ class ChatProcessor:
 
         steering_text = build_steering_text(steer_message)
         message_history.append(
-            ModelRequest(parts=[make_user_prompt_part(steering_text)])
+            ModelRequest(
+                parts=[make_user_prompt_part(steering_text, runtime_authored=True)]
+            )
         )
 
         # 5. Start new agent run via process_turn with pre-built history
