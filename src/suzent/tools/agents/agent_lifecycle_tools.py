@@ -1,5 +1,6 @@
 """Tools for discovering, reading, messaging, and stopping agent sessions."""
 
+import asyncio
 from typing import Annotated, Any, Literal, Optional
 
 from pydantic import Field
@@ -283,15 +284,33 @@ class AgentSendTool(Tool):
     tool_name = "agent_send"
     group = ToolGroup.AGENT
 
-    def forward(
+    async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        agent_id: Annotated[str, Field(description="Stable agent ID from agent_list.")],
+        agent_id: Annotated[
+            str,
+            Field(description="Stable agent ID from agent_list, or a sub-agent's ID."),
+        ],
         message: Annotated[
             str,
             Field(min_length=1, max_length=20_000, description="Message to deliver."),
         ],
+        wait: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Wait for the agent's reply and get it as this tool's result. "
+                    "Otherwise the call returns at once, and a sub-agent's reply "
+                    "wakes you when it is ready. Local agents only."
+                )
+            ),
+        ] = False,
     ) -> ToolResult:
+        """Send a message to another agent, such as a sub-agent you spawned.
+
+        A sub-agent keeps its whole history between messages, so use this to
+        correct, extend, or question its work rather than spawning a new one.
+        """
         current_chat_id = _require_chat_id(ctx)
 
         # External A2A agents settle in one call — message/send blocks until the
@@ -299,7 +318,9 @@ class AgentSendTool(Tool):
         # back rather than through the durable outbox the Suzent peer path uses.
         if agent_bridge.parse_address(agent_id):
             try:
-                outcome = agent_bridge.delegate(agent_id, message.strip())
+                outcome = await asyncio.to_thread(
+                    agent_bridge.delegate, agent_id, message.strip()
+                )
             except A2ABridgeError as exc:
                 return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
             return ToolResult.success_result(
@@ -317,6 +338,11 @@ class AgentSendTool(Tool):
             if get_database().get_chat(current_chat_id) is None:
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
+                )
+            if wait:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "wait is not supported for remote agents; send without it.",
                 )
             try:
                 record, _ = peer_transport.enqueue(
@@ -348,20 +374,63 @@ class AgentSendTool(Tool):
                 "Use a normal follow-up turn instead of sending to the current agent.",
             )
 
+        if wait:
+            return await self._send_and_wait(current_chat_id, target, message.strip())
+
         from suzent.core.agent_inbox import enqueue_agent_message
+        from suzent.core.subagent_runner import is_subagent_of
 
         record, _ = enqueue_agent_message(
             sender_chat_id=current_chat_id,
             target_chat_id=target.id,
             content=message.strip(),
         )
+        reply_note = (
+            " Its reply will wake you when it is ready."
+            if is_subagent_of(target, current_chat_id)
+            else ""
+        )
         return ToolResult.success_result(
-            f"Message queued for agent '{target.id}'.",
+            f"Message queued for agent '{target.id}'.{reply_note}",
             metadata={
                 "message_id": record["message_id"],
                 "agent_id": target.id,
                 "status": record["status"],
             },
+        )
+
+    @staticmethod
+    async def _send_and_wait(
+        current_chat_id: str, target: ChatModel, message: str
+    ) -> ToolResult:
+        from suzent.core.agent_inbox import deliver_and_wait
+        from suzent.core.subagent_runner import summarize_agent_output
+
+        try:
+            reply = await deliver_and_wait(
+                sender_chat_id=current_chat_id,
+                target_chat_id=target.id,
+                content=message,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Agent '{target.id}' failed to answer: {exc}",
+            )
+        if reply is None:
+            return ToolResult.success_result(
+                f"Agent '{target.id}' was already working, so your message joined "
+                "its current turn instead of getting a reply of its own.",
+                metadata={"agent_id": target.id, "status": "injected"},
+            )
+        # The reply cites sources only the target's chat knows, so render them
+        # as plain references, as a sub-agent's result is.
+        text, _ = summarize_agent_output(reply.text, reply.citation_sources, target.id)
+        return ToolResult.success_result(
+            f"Agent '{target.id}' replied:\n{text}",
+            metadata={"agent_id": target.id, "status": "replied"},
         )
 
 

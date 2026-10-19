@@ -2089,6 +2089,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         counts_toward_goal: Optional[bool] = None,
+        citation_sources_out: Optional[list[dict]] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -2116,6 +2117,7 @@ class ChatProcessor:
                 system_reminders=system_reminders,
                 incoming_citation_sources=incoming_citation_sources,
                 counts_toward_goal=counts_toward_goal,
+                citation_sources_out=citation_sources_out,
             )
 
     async def _process_upload_file(

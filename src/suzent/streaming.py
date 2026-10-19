@@ -801,7 +801,7 @@ def _tool_timeout_from_event(event: Any) -> float:
     if tool_name == "ask_question":
         # The call is waiting on a person, who may take as long as they like.
         return math.inf
-    if tool_name != "run_command":
+    if tool_name not in ("run_command", "agent_send"):
         return timeout
 
     args = getattr(part, "args", None)
@@ -812,6 +812,10 @@ def _tool_timeout_from_event(event: Any) -> float:
             args = None
     if not isinstance(args, dict):
         args = {}
+    if tool_name == "agent_send":
+        # Waiting for a reply is waiting on another agent's whole turn, the
+        # same case as a blocking sub-agent above.
+        return math.inf if args.get("wait") is True else timeout
     from suzent.tools.shell.shell_tools import RunCommandTool
 
     return RunCommandTool.stream_wait_timeout_seconds(args.get("timeout"))
