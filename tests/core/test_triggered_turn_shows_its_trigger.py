@@ -63,7 +63,10 @@ def turn(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         chat_processor,
         "get_database",
-        lambda: SimpleNamespace(get_chat=lambda chat_id: chat),
+        lambda: SimpleNamespace(
+            get_chat=lambda chat_id: chat,
+            append_display_rows=lambda chat_id, rows: presaved.append(("", list(rows))),
+        ),
     )
     monkeypatch.setattr(
         chat_processor,
@@ -101,3 +104,33 @@ async def test_a_typed_message_is_left_to_the_client(turn) -> None:
     await run(message_content="hello")
 
     assert seen_before_reply == [[]]
+
+
+def test_a_finishing_earlier_turn_cannot_drop_the_early_row(temp_db) -> None:
+    chat_id = temp_db.create_chat("Session", {})
+    previous_turn = temp_db.commit_snapshot_state(chat_id, b"state")
+    row = {
+        "role": "system_triggered",
+        "content": "[Agent message from SUZENT (focal-suzent)]\nBuild it",
+        "trigger_origin": "runtime",
+    }
+
+    assert temp_db.append_display_rows(chat_id, [row])
+    # The earlier turn's finalizer still holds its revision and would replace
+    # the whole display log with its own view, which has no row for this turn.
+    finalized = temp_db.finalize_state_if_revision_matches(
+        chat_id, previous_turn, b"state", messages=[]
+    )
+
+    assert finalized is False
+    assert temp_db.get_chat(chat_id).messages == [row]
+
+
+def test_the_early_row_is_written_once(temp_db) -> None:
+    chat_id = temp_db.create_chat("Session", {})
+    row = {"role": "system_triggered", "content": "Build it"}
+
+    temp_db.append_display_rows(chat_id, [row])
+    temp_db.append_display_rows(chat_id, [row])
+
+    assert temp_db.get_chat(chat_id).messages == [row]
