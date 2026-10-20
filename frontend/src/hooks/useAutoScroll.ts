@@ -301,7 +301,37 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     if (!el) return;
 
     let settleFrame = 0;
+    let repaintFrame = 0;
+    let repaintTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastWidth = el.clientWidth;
+
+    // WKWebView can leave the transcript unpainted after the scroller is
+    // resized (toggling the right sidebar) until the next scroll. A one-pixel
+    // round trip over two frames is a real scroll, so it repaints the tiles.
+    const repaintByScrolling = () => {
+      if (el.scrollHeight <= el.clientHeight) return;
+      const top = el.scrollTop;
+      autoScrollInProgress.current = true;
+      el.scrollTop = top > 0 ? top - 1 : top + 1;
+      repaintFrame = requestAnimationFrame(() => {
+        el.scrollTop = top;
+        if (autoScrollEnabledRef.current) {
+          performAutoScroll('auto');
+        } else {
+          autoScrollInProgress.current = false;
+        }
+      });
+    };
+    const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null;
+
     const resizeObserver = new ResizeObserver(() => {
+      if (needsResizeRepaint && el.clientWidth !== lastWidth) {
+        lastWidth = el.clientWidth;
+        clearTimeout(repaintTimer);
+        cancelAnimationFrame(repaintFrame);
+        // Outlast the sidebar's 300ms slide so the repaint follows the final layout.
+        repaintTimer = setTimeout(repaintByScrolling, 350);
+      }
       cancelAnimationFrame(settleFrame);
       if (autoScrollEnabledRef.current) {
         performAutoScroll('auto');
@@ -326,6 +356,8 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
 
     return () => {
       cancelAnimationFrame(settleFrame);
+      cancelAnimationFrame(repaintFrame);
+      clearTimeout(repaintTimer);
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
