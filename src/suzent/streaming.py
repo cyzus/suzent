@@ -1959,6 +1959,9 @@ async def stream_agent_responses(
 
             # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
+                from suzent.core.focal_agent import record_focal_heartbeat_done
+
+                record_focal_heartbeat_done(chat_id)
                 from suzent.core.heartbeat import get_active_heartbeat
 
                 runner = get_active_heartbeat()

@@ -138,7 +138,7 @@ async def test_no_lower_layer_section_claims_override_authority(
 
     project = SimpleNamespace(id="project-1", name="Website", slug="website")
     monkeypatch.setattr(focal_agent, "is_focal_chat_id", lambda chat_id: True)
-    monkeypatch.setattr(focal_agent, "_running_chat_ids", lambda: set())
+    monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     monkeypatch.setattr(
         focal_agent,
         "get_database",

@@ -23,7 +23,7 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
     for module in (focal_agent, agent_lifecycle_tools, task_update_tool):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
-    monkeypatch.setattr(focal_agent, "_running_chat_ids", lambda: set())
+    monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
 
 
@@ -231,6 +231,30 @@ def test_kanban_spans_all_projects_with_session_metadata(
     assert by_title["Beta task"]["chatTitle"] is None
 
 
+def test_kanban_counts_a_foreground_run_as_running(
+    db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from suzent.routes import goal_task_routes
+
+    monkeypatch.setattr(goal_task_routes, "get_database", lambda: db)
+    project = db.create_project("Alpha", "alpha")
+    chat_id = db.create_chat("Alpha work", {}, project_id=project)
+    db.create_task(project, "Alpha task", "", chat_id=chat_id)
+    monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: {chat_id})
+
+    tasks = goal_task_routes._all_projects_kanban()["tasks"]
+
+    assert tasks[0]["chatRunning"] is True
+
+
+def test_a_finished_check_in_on_another_chat_leaves_focal_alone(db, sandbox) -> None:
+    get_or_create_focal_chat()
+
+    focal_agent.record_focal_heartbeat_done("some-other-chat")
+
+    assert "focal_heartbeat_signature" not in db.get_chat(FOCAL_CHAT_ID).config
+
+
 @pytest.mark.parametrize("mode", ["default", "auto", "full_access"])
 def test_focal_turn_is_pinned_to_orchestration_tools(db, mode: str) -> None:
     from suzent.core.focal_agent import FOCAL_TOOL_NAMES, apply_focal_tool_policy
@@ -363,6 +387,10 @@ def test_quiet_heartbeat_skips_the_model_until_something_changes(
 
     monkeypatch.setattr(focal_agent, "STALL_AFTER", timedelta(0))
     assert focal_agent.should_run_focal_heartbeat(default) is True
+    # Not yet raised: the check-in may never have been claimed, or it failed.
+    assert focal_agent.should_run_focal_heartbeat(default) is True
+
+    focal_agent.record_focal_heartbeat_done(FOCAL_CHAT_ID)
     assert focal_agent.should_run_focal_heartbeat(default) is False
 
     assert focal_agent.should_run_focal_heartbeat("# mine\n- check email\n") is True

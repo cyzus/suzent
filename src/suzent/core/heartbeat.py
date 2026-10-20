@@ -255,6 +255,9 @@ class HeartbeatRunner(BaseBrain):
             )
             self._last_error = None
             db.merge_chat_config(chat_id, {"heartbeat_last_error": None})
+            from suzent.core.focal_agent import record_focal_heartbeat_done
+
+            record_focal_heartbeat_done(chat_id)
 
             if not response_text:
                 logger.debug(f"Heartbeat OK ({chat_id}) -- nothing needs attention")

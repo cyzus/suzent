@@ -155,7 +155,8 @@ def get_or_create_focal_chat() -> ChatModel:
     return chat
 
 
-def _running_chat_ids() -> set[str]:
+def running_chat_ids() -> set[str]:
+    """Chats with a turn in progress, in the foreground or the background."""
     from suzent.core.run_state import is_running
     from suzent.core.stream_registry import (
         background_queues,
@@ -190,7 +191,7 @@ def _format_task(task: Any) -> str:
 def build_focal_global_context() -> str:
     """Render the projects, live primary sessions and open tasks the Focal Agent oversees."""
     db = get_database()
-    running = _running_chat_ids()
+    running = running_chat_ids()
     lines = [
         "# Focal Agent Global Context",
         "You are SUZENT, the Focal Agent: the user's single point of attention "
@@ -267,7 +268,7 @@ def _last_activity(chat: Optional[ChatModel]) -> Optional[str]:
 def focal_status() -> dict[str, Any]:
     """Telemetry for the Focal Agent presence card."""
     db = get_database()
-    running = _running_chat_ids() - {FOCAL_CHAT_ID}
+    running = running_chat_ids() - {FOCAL_CHAT_ID}
     waiting = 0
     waiting_by_project: dict[str, int] = {}
     waiting_by_chat: dict[str, int] = {}
@@ -313,7 +314,7 @@ def focal_status() -> dict[str, Any]:
         # The sidebar marks projects and sessions holding work that waits on the user.
         "waitingByProject": waiting_by_project,
         "waitingByChat": waiting_by_chat,
-        "running": FOCAL_CHAT_ID in _running_chat_ids(),
+        "running": FOCAL_CHAT_ID in running_chat_ids(),
         # New messages from background check-ins, wake-ups and events show on
         # SUZENT's card rather than as tasks in the sidebar.
         "unread": int(config.get("unread_count") or 0),
@@ -378,7 +379,7 @@ def _as_utc(moment: Optional[datetime]) -> Optional[datetime]:
 def _heartbeat_findings(now: datetime) -> list[str]:
     """What a check-in would be about: stalled sessions and long-unanswered blockers."""
     db = get_database()
-    running = _running_chat_ids()
+    running = running_chat_ids()
     findings: list[str] = []
     for project in db.list_projects(include_archived=False):
         by_chat: dict[str, list[Any]] = {}
@@ -422,16 +423,28 @@ def should_run_focal_heartbeat(instructions: str) -> bool:
     findings = _heartbeat_findings(datetime.now(timezone.utc))
     if not findings:
         return False
-    signature = hashlib.sha256("\n".join(findings).encode()).hexdigest()
-    db = get_database()
-    chat = db.get_chat(FOCAL_CHAT_ID)
-    if (
-        chat is not None
-        and (chat.config or {}).get("focal_heartbeat_signature") == signature
-    ):
-        return False
-    db.merge_chat_config(FOCAL_CHAT_ID, {"focal_heartbeat_signature": signature})
-    return True
+    chat = get_database().get_chat(FOCAL_CHAT_ID)
+    raised = (chat.config or {}).get("focal_heartbeat_signature") if chat else None
+    return raised != _findings_signature(findings)
+
+
+def _findings_signature(findings: list[str]) -> str:
+    return hashlib.sha256("\n".join(findings).encode()).hexdigest()
+
+
+def record_focal_heartbeat_done(chat_id: str) -> None:
+    """Mark the current findings as raised once a Focal check-in has finished.
+
+    Recorded only after the turn succeeds: a check-in that was never claimed,
+    hit a busy chat or failed has not told the user anything, and marking it
+    up front made every later check-in skip the same unchanged findings.
+    """
+    if not is_focal_chat_id(chat_id):
+        return
+    findings = _heartbeat_findings(datetime.now(timezone.utc))
+    get_database().merge_chat_config(
+        FOCAL_CHAT_ID, {"focal_heartbeat_signature": _findings_signature(findings)}
+    )
 
 
 def record_skipped_heartbeat() -> None:

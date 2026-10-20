@@ -154,12 +154,14 @@ async def get_project_tasks(request: Request) -> JSONResponse:
 
 def _all_projects_kanban() -> dict:
     """Goals and tasks across every non-archived project, labelled by session."""
-    from suzent.core.stream_registry import is_background_streaming
+    from suzent.core.focal_agent import running_chat_ids
 
     db = get_database()
     goals: list[dict] = []
     tasks: list[dict] = []
     chat_titles: dict[str, str | None] = {}
+    # Foreground runs count too, or a session the user is driving shows as stalled.
+    running = running_chat_ids()
     for project in db.list_projects(include_archived=False):
         project_meta = {"projectName": project.name, "projectSlug": project.slug}
         goals += [
@@ -178,7 +180,7 @@ def _all_projects_kanban() -> dict:
                     **_task_to_dict(task),
                     **project_meta,
                     "chatTitle": chat_titles.get(chat_id) if chat_id else None,
-                    "chatRunning": bool(chat_id and is_background_streaming(chat_id)),
+                    "chatRunning": bool(chat_id and chat_id in running),
                 }
             )
     return {"goals": goals, "tasks": tasks}
