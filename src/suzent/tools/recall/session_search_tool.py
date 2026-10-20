@@ -97,6 +97,21 @@ class SessionSearchTool(Tool):
                 description="Max sessions returned in Discovery/Browse modes.",
             ),
         ] = 3,
+        offset: Annotated[
+            int | None,
+            Field(
+                ge=0,
+                description="Read mode: zero-based offset in the role-filtered messages. Set 0 to start paging; omit for first/last excerpts.",
+            ),
+        ] = None,
+        page_size: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=100,
+                description="Read mode: messages per page when offset is set.",
+            ),
+        ] = 20,
         role_filter: Annotated[
             Optional[list[TranscriptRole]],
             Field(
@@ -119,7 +134,7 @@ class SessionSearchTool(Tool):
 
         try:
             if session_id:
-                return self._read(db, session_id, roles)
+                return self._read(db, session_id, roles, offset, page_size)
             if query and query.strip():
                 return self._discover(db, query, limit, roles, current_chat_id)
             return self._browse(db, limit, current_chat_id)
@@ -132,22 +147,36 @@ class SessionSearchTool(Tool):
 
     # -- modes -------------------------------------------------------------
 
-    def _read(self, db, session_id: str, roles: tuple[str, ...]) -> ToolResult:
-        session = db.read_chat_session(session_id, role_filter=roles)
+    def _read(
+        self,
+        db,
+        session_id: str,
+        roles: tuple[str, ...],
+        offset: int | None = None,
+        page_size: int = 20,
+    ) -> ToolResult:
+        session = db.read_chat_session(
+            session_id, role_filter=roles, offset=offset, page_size=page_size
+        )
         if not session:
             return ToolResult.error_result(
                 ToolErrorCode.FILE_NOT_FOUND,
                 f"No session found with id '{session_id}'.",
             )
         header = f"Session '{session['title']}' ({session['total_messages']} messages"
-        if session["truncated"]:
-            header += ", showing first 20 + last 10"
+        if offset is not None:
+            header += f", offset {offset}, returned {len(session['messages'])}"
+            header += f", next_offset={session['next_offset']}"
+        elif session["truncated"]:
+            header += ", showing first 20 + last 10; set offset=0 to page through all messages"
         header += "):"
         body = _format_messages(session["messages"])
         return ToolResult.success_result(
             f"{header}\n\n{body}" if body else f"{header}\n\n(no visible messages)",
             metadata={
                 "mode": "read",
+                "offset": offset,
+                "next_offset": session.get("next_offset"),
                 "session_id": session_id,
                 "total_messages": session["total_messages"],
                 "truncated": session["truncated"],

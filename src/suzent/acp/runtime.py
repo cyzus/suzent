@@ -10,6 +10,7 @@ from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
 from suzent.core.stream_registry import claim_pending_stop
+from suzent.core.chat_mentions import build_chat_mention_context
 from suzent.logger import get_logger
 from suzent.database import get_database
 
@@ -545,6 +546,7 @@ async def _run_acp_turn(
         message, runtime_authored
     )
     file_context = _build_acp_file_context(file_mentions, files)
+    file_context += build_chat_mention_context(message or "", external_agent=True)
     if file_context:
         from suzent.core.system_reminder import (
             sanitize_incoming_prompt,

@@ -61,6 +61,14 @@ interface MentionTextAreaProps {
 const CHIP_LABEL_MAX = 40;
 
 function defaultChipLabel(path: string): string {
+  if (path.startsWith('chat://')) {
+    try {
+      const title = decodeURIComponent(path.split('/').slice(3).join('/'));
+      return `💬 ${title.length > CHIP_LABEL_MAX ? `${title.slice(0, CHIP_LABEL_MAX)}…` : title}`;
+    } catch {
+      return path;
+    }
+  }
   const normalized = path.replace(/\\/g, '/');
   if (normalized.length <= CHIP_LABEL_MAX) return normalized;
 
@@ -103,6 +111,13 @@ function buildNodes(value: string, renderChipLabel: (path: string) => string): N
 
 /** Basename of a virtual path, used as the fallback decompose query. */
 function basename(path: string): string {
+  if (path.startsWith('chat://')) {
+    try {
+      return decodeURIComponent(path.split('/').slice(3).join('/'));
+    } catch {
+      return path;
+    }
+  }
   const trimmed = path.replace(/\/+$/, '');
   const idx = trimmed.lastIndexOf('/');
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;

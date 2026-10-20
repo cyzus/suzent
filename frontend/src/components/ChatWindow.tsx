@@ -181,7 +181,7 @@ function extractFileMentionPaths(value: string): string[] {
   const bracketPattern = /@\[([^\]]+)\]/g;
   let match: RegExpExecArray | null;
   while ((match = bracketPattern.exec(value)) !== null) {
-    paths.add(match[1]);
+    if (!match[1].startsWith('chat://')) paths.add(match[1]);
   }
   // Bare `@/absolute/path` mentions typed by hand (no spaces).
   const barePattern = /(^|\s)@((?:\/[^\s@]+)+)/g;
@@ -3277,7 +3277,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <ChatImageGallery key={currentChatId || 'new'}>
         {/* Main Chat Column */}
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-          <div className="relative flex-1 min-h-0">
+          {/* Keep sticky message animations below the composer's popovers. */}
+          <div className="relative z-0 isolate flex-1 min-h-0">
             <div
               ref={attachScrollContainer}
               className={
