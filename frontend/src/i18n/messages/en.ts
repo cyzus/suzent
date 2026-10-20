@@ -1,8 +1,14 @@
 export const en = {
   onboarding: {
+    checkConnection: 'Check connection (no generation)',
+    connection_untested: 'Model reply not tested. You can continue without testing.',
+    connection_connected: 'Model-list access confirmed. Model replies and quota have not been tested.',
+    connection_unsupported: 'No supported connection check. Configuration saved; you can continue without testing.',
+    connection_unconfirmed: 'Connection could not be confirmed. Check credentials or continue without testing.',
+
     enableFirst: 'Enable a model in a provider above to select it here.',
     saveCredentialsFirst: 'Save or cancel your credential edits before verifying the model.',
-    selectThenVerify: 'Select an enabled model, then verify it to continue. No separate provider verification is required.',
+    selectThenVerify: 'Select an enabled model to continue. Connection checks and reply tests are optional.',
 
     restart: 'Run setup again',
     setup: 'Set up your agent',
@@ -23,7 +29,7 @@ export const en = {
     connectionFailed: 'Connection failed. Check your credentials or service address and retry.',
     defaultModel: 'Default chat model',
     probeNotice: 'Verification sends one small text request, which may incur a model usage charge.',
-    verify: 'Verify selected model',
+    verify: 'Test model reply (optional)',
     verified: 'Model verified',
     continue: 'Continue →',
     recommended: 'Use recommendations',

@@ -54,3 +54,50 @@ async def test_probe_is_bounded_and_redacts_provider_errors(
     response = await routes.verify_onboarding_model(request)
     assert response.status_code == 502
     assert b"secret" not in response.body
+
+
+@pytest.mark.parametrize("fails", [False, True])
+async def test_connection_check_only_lists_models(monkeypatch, fails):
+    setup(monkeypatch)
+    import openai
+    import pydantic_ai
+    import suzent.core.model_factory
+    from types import SimpleNamespace
+
+    listing = AsyncMock(side_effect=RuntimeError("secret") if fails else None)
+
+    class Client:
+        models = SimpleNamespace(list=listing)
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Client)
+    monkeypatch.setattr(
+        suzent.core.model_factory,
+        "create_pydantic_ai_model",
+        lambda _: SimpleNamespace(client=Client()),
+    )
+
+    def no_agent(*args, **kwargs):
+        raise AssertionError("Connection checks must never create an agent")
+
+    monkeypatch.setattr(pydantic_ai, "Agent", no_agent)
+    request = AsyncMock()
+    request.json.return_value = {"model": "p/chat"}
+    response = await routes.check_onboarding_connection(request)
+    assert json.loads(response.body)["status"] == (
+        "unconfirmed" if fails else "connected"
+    )
+    assert b"secret" not in response.body
+    listing.assert_awaited_once()
+
+
+async def test_unsupported_connection_check_is_not_success(monkeypatch):
+    setup(monkeypatch)
+    import suzent.core.model_factory
+
+    monkeypatch.setattr(
+        suzent.core.model_factory, "create_pydantic_ai_model", lambda _: object()
+    )
+    request = AsyncMock()
+    request.json.return_value = {"model": "p/chat"}
+    response = await routes.check_onboarding_connection(request)
+    assert json.loads(response.body)["status"] == "unsupported"

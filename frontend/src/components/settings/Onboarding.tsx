@@ -56,6 +56,7 @@ export function Onboarding({
   const [checks, setChecks] = useState<Record<string, Check>>({});
   const [model, setModel] = useState('');
   const [verified, setVerified] = useState(false);
+  const [connection, setConnection] = useState('untested');
   const [credentialsDirty, setCredentialsDirty] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -110,6 +111,7 @@ export function Onboarding({
   }, [load]);
 
   function invalidate(): void {
+    setConnection('untested');
     setVerified(false);
   }
   async function saveProviders(): Promise<void> {
@@ -303,6 +305,31 @@ export function Onboarding({
                       : 'onboarding.selectThenVerify'
                 )}
               </p>
+              <p role="status" className="text-xs">
+                {t(`onboarding.connection_${connection}`)}
+              </p>
+              <BrutalButton
+                disabled={!selectedValid || credentialsDirty}
+                onClick={() =>
+                  void run(async () => {
+                    setConnection('untested');
+                    await saveProviders();
+                    const res = await fetch(`${getApiBase()}/config/onboarding/check-connection`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ model }),
+                    });
+                    const result = await res.json();
+                    setConnection(
+                      ['connected', 'unsupported', 'unconfirmed'].includes(result.status)
+                        ? result.status
+                        : 'unconfirmed'
+                    );
+                  })
+                }
+              >
+                {t('onboarding.checkConnection')}
+              </BrutalButton>
               <p className="text-xs text-neutral-500">{t('onboarding.probeNotice')}</p>
               <BrutalButton
                 disabled={!selectedValid || verified || credentialsDirty}
@@ -314,7 +341,7 @@ export function Onboarding({
             <div className="mt-6 flex justify-end">
               <BrutalButton
                 variant="dark"
-                disabled={!selectedValid || !verified || credentialsDirty}
+                disabled={!selectedValid || credentialsDirty}
                 onClick={() => void prepareRoles()}
               >
                 {t('onboarding.continue')}
@@ -360,17 +387,6 @@ export function Onboarding({
                 disabled={!chosenRoles.primary?.length}
                 onClick={() =>
                   void run(async () => {
-                    if (chosenRoles.primary[0] !== model) {
-                      const response = await fetch(
-                        `${getApiBase()}/config/onboarding/verify-model`,
-                        {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ model: chosenRoles.primary[0] }),
-                        }
-                      );
-                      if (!response.ok || !(await response.json()).success) throw new Error();
-                    }
                     if (
                       !(await saveRoleModels(chosenRoles)) ||
                       !(await saveUserPreferences({ model: chosenRoles.primary[0] }))

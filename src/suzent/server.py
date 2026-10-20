@@ -86,6 +86,7 @@ from suzent.routes.permission_routes import (
 from suzent.routes.onboarding_routes import (
     role_recommendations,
     verify_onboarding_model,
+    check_onboarding_connection,
 )
 from suzent.routes.config_routes import (
     get_api_keys_status,
@@ -1257,6 +1258,11 @@ app = Starlette(
         Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
         Route("/config/role-recommendations", role_recommendations, methods=["POST"]),
+        Route(
+            "/config/onboarding/check-connection",
+            check_onboarding_connection,
+            methods=["POST"],
+        ),
         Route(
             "/config/onboarding/verify-model", verify_onboarding_model, methods=["POST"]
         ),

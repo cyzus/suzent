@@ -95,7 +95,9 @@ flow. You can also open **Run setup again** from **Settings → About**. The sta
 `/setup` page hides the application sidebars while you configure your agent:
 
 1. Connect a provider, enable your models, and choose a default chat model.
-   **Verify selected model** sends a small text request and may incur a usage charge.
+   You can continue without a reply test. **Check connection (no generation)** checks
+   model-list access when supported; it does not prove model access or quota.
+   **Test model reply (optional)** sends a small text request and may incur a usage charge.
 2. Review **Model roles**. Recommendations match enabled models to known
    capabilities, including vision, image generation/editing, speech synthesis,
    video, and embeddings. Unknown or missing capabilities remain unassigned;

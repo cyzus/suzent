@@ -1,8 +1,14 @@
 export const zhCN = {
   onboarding: {
+    checkConnection: '检查连接（不生成内容）',
+    connection_untested: '尚未测试模型回复，可以直接继续。',
+    connection_connected: '模型列表接口连接成功；尚未测试模型回复或额度。',
+    connection_unsupported: '此服务不支持当前连接检查。配置已保存，可以不测试直接继续。',
+    connection_unconfirmed: '未能确认连接。请检查凭据，或不测试直接继续。',
+
     enableFirst: '先在上方提供商中启用模型，即可在这里选择。',
     saveCredentialsFirst: '请先保存或取消凭据编辑，再验证模型。',
-    selectThenVerify: '选择已启用的模型，验证成功后即可继续，无需先单独验证提供商。',
+    selectThenVerify: '选择已启用的模型即可继续。连接检查和回复测试均为可选。',
 
     restart: '重新运行初始化引导',
     setup: '设置你的 Agent',
@@ -22,7 +28,7 @@ export const zhCN = {
     connectionFailed: '连接失败，请检查凭据或服务地址后重试。',
     defaultModel: '默认对话模型',
     probeNotice: '验证会发送一次简短文本请求，可能产生模型使用费用。',
-    verify: '验证所选模型',
+    verify: '测试模型回复（可选）',
     verified: '模型已验证',
     continue: '继续 →',
     recommended: '使用推荐配置',
