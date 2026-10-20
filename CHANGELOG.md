@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
+- Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
 
