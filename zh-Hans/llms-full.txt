@@ -452,6 +452,7 @@ The agent only sees what you give it.
 |---|---|
 | A document or image you have | Attach it, or paste the image into the message. It's kept in the project's folder. |
 | A file it can already reach | Type `@` and part of the file name to point at it exactly. |
+| Another conversation | Type `@`, choose **Chats**, and select a conversation. Suzent receives its title and reference, then reads its messages only when needed. |
 | A folder on your computer | Open it with **Working Dir** for this chat. |
 | Something on the web | Just ask. It searches and reads pages on its own, and can use [a browser](https://suzent.com/zh-Hans/docs/features/tools/browser). |
 
@@ -3824,6 +3825,10 @@ to the latest development version. `suzent logs --frontend`
 reads the development window's log, and `suzent setup-build-tools` installs
 the Windows build tools needed to compile the desktop app. See the
 [development guide](https://suzent.com/zh-Hans/docs/developing/contributing/development-guide).
+
+`suzent chats read <chat_id> --offset 0 --limit 20` reads a page of visible messages
+without assistant reasoning traces. Use the returned `next_offset` to continue;
+`null` means there are no more messages.
 
 `suzent chats show <chat_id>` prints a conversation from its file in
 `~/.suzent/chats/`. `suzent chats verify` checks that the index in `chats.db` matches every
