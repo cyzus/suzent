@@ -5,6 +5,23 @@ export const FOCAL_CHAT_ID = 'focal-suzent';
 /** Board scope spanning every non-archived project. */
 export const ALL_PROJECTS_KANBAN_ID = '__all__';
 
+const FOCAL_REQUEST_HEADER = new RegExp(
+  `^\\[Agent message from [^\\n]*\\(${FOCAL_CHAT_ID}\\)\\]\\s*`
+);
+const INBOX_MARKER = /<!--\s*suzent-agent-inbox:[\s\S]*?-->\s*/gi;
+
+/**
+ * The words SUZENT sent a session, from the row that started the turn, or null
+ * for any other trigger. SUZENT relays the user's own requests, so the session
+ * shows them as the user's message rather than as a background trigger.
+ */
+export function focalRequestText(content: string | undefined): string | null {
+  const raw = (content ?? '').trim();
+  if (!FOCAL_REQUEST_HEADER.test(raw)) return null;
+  const text = raw.replace(FOCAL_REQUEST_HEADER, '').replace(INBOX_MARKER, '').trim();
+  return text || null;
+}
+
 export interface FocalAgentStatus {
   chatId: string;
   title: string;
