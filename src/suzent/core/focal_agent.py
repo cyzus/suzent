@@ -84,6 +84,8 @@ def apply_focal_tool_policy(config: dict[str, Any], chat_id: Optional[str]) -> N
         return
     from suzent.tools.registry import list_available_tools
 
+    # The fixed orchestration tool set runs without interactive approval.
+    config["permission_mode"] = "full_access"
     config["tools"] = list(FOCAL_TOOL_NAMES)
     config["denied_tools"] = [
         name for name in list_available_tools() if name not in FOCAL_TOOL_NAMES
@@ -247,18 +249,53 @@ def build_focal_global_context() -> str:
     return "\n".join(lines)
 
 
+def _last_activity(chat: Optional[ChatModel]) -> Optional[str]:
+    """When SUZENT last said something, from a user turn or a background one."""
+    if chat is None:
+        return None
+    # SQLite drops the zone: turns stamp local time, background runs stamp UTC.
+    moments = []
+    if chat.last_active_at is not None:
+        active = chat.last_active_at
+        moments.append(active if active.tzinfo else active.astimezone())
+    if chat.last_result_at is not None:
+        result = chat.last_result_at
+        moments.append(result if result.tzinfo else result.replace(tzinfo=timezone.utc))
+    return max(moments).isoformat() if moments else None
+
+
 def focal_status() -> dict[str, Any]:
     """Telemetry for the Focal Agent presence card."""
     db = get_database()
     running = _running_chat_ids() - {FOCAL_CHAT_ID}
     waiting = 0
+    waiting_by_project: dict[str, int] = {}
+    waiting_by_chat: dict[str, int] = {}
     auto_run: set[str] = set()
+    by_chat: dict[str, list[Any]] = {}
     for project in db.list_projects(include_archived=False):
         for task in db.list_tasks(project_id=project.id):
             if _needs_attention(task):
                 waiting += 1
+                waiting_by_project[project.id] = (
+                    waiting_by_project.get(project.id, 0) + 1
+                )
+                if task.chat_id:
+                    waiting_by_chat[task.chat_id] = (
+                        waiting_by_chat.get(task.chat_id, 0) + 1
+                    )
             if task.chat_id and task.chat_id in running:
                 auto_run.add(task.chat_id)
+            if task.chat_id:
+                by_chat.setdefault(task.chat_id, []).append(task)
+    # Same rule as the board: not running, work left, nothing waiting on the user.
+    stalled = sum(
+        1
+        for chat_id, tasks in by_chat.items()
+        if chat_id not in running
+        and any(task.status in ("pending", "in_progress") for task in tasks)
+        and not any(_needs_attention(task) for task in tasks)
+    )
     for chat_id in running - auto_run:
         chat = db.get_chat(chat_id)
         if chat is not None and (chat.config or {}).get("spawned_by_focal"):
@@ -272,11 +309,16 @@ def focal_status() -> dict[str, Any]:
         "title": FOCAL_TITLE,
         "waiting": waiting,
         "autoRun": len(auto_run),
+        "stalled": stalled,
+        # The sidebar marks projects and sessions holding work that waits on the user.
+        "waitingByProject": waiting_by_project,
+        "waitingByChat": waiting_by_chat,
         "running": FOCAL_CHAT_ID in _running_chat_ids(),
         # New messages from background check-ins, wake-ups and events show on
         # SUZENT's card rather than as tasks in the sidebar.
         "unread": int(config.get("unread_count") or 0),
         "lastMessage": config.get(SUMMARY_LAST_MESSAGE_KEY),
+        "lastMessageAt": _last_activity(focal),
     }
 
 
@@ -563,6 +605,7 @@ def focal_wakeups() -> list[dict[str, Any]]:
             "schedule": ScheduleTool._describe(job),
             "scheduleKind": job.schedule_kind or "cron",
             "nextRunAt": job.next_run_at.isoformat() if job.next_run_at else None,
+            "lastError": job.last_error,
         }
         for job in jobs
     ]

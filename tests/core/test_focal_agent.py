@@ -231,11 +231,13 @@ def test_kanban_spans_all_projects_with_session_metadata(
     assert by_title["Beta task"]["chatTitle"] is None
 
 
-def test_focal_turn_is_pinned_to_orchestration_tools(db) -> None:
+@pytest.mark.parametrize("mode", ["default", "auto", "full_access"])
+def test_focal_turn_is_pinned_to_orchestration_tools(db, mode: str) -> None:
     from suzent.core.focal_agent import FOCAL_TOOL_NAMES, apply_focal_tool_policy
 
     get_or_create_focal_chat()
     config = {
+        "permission_mode": mode,
         "tools": ["WriteFileTool", "RunCommandTool", "AgentTool"],
         "denied_tools": ["AgentSendTool"],
         "cwd": "/Users/someone/project",
@@ -244,6 +246,7 @@ def test_focal_turn_is_pinned_to_orchestration_tools(db) -> None:
 
     apply_focal_tool_policy(config, FOCAL_CHAT_ID)
 
+    assert config["permission_mode"] == "full_access"
     assert config["tools"] == list(FOCAL_TOOL_NAMES)
     assert "AgentSendTool" in config["tools"]
     assert "AgentSendTool" not in config["denied_tools"]
@@ -760,3 +763,36 @@ async def test_focal_does_not_block_on_external_agents(
 
     assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
     assert "project session" in result.message
+
+
+def test_focal_status_counts_stalled_sessions_like_the_board(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Ops", "ops")
+    idle = db.create_chat("Idle", {}, project_id=project_id)
+    blocked = db.create_chat("Blocked", {}, project_id=project_id)
+    done = db.create_chat("Done", {}, project_id=project_id)
+    db.create_task(project_id, "Ship", "", chat_id=idle)
+    db.create_task(project_id, "Also pending", "", chat_id=blocked)
+    waiting = db.create_task(project_id, "Pick", "", chat_id=blocked)
+    db.update_task(waiting.id, status="blocked", waiting_kind="user")
+    finished = db.create_task(project_id, "Old", "", chat_id=done)
+    db.update_task(finished.id, status="completed")
+
+    status = focal_agent.focal_status()
+
+    assert status["stalled"] == 1
+    assert status["waiting"] == 1
+    assert status["waitingByProject"] == {project_id: 1}
+    assert status["waitingByChat"] == {blocked: 1}
+
+
+def test_focal_status_reports_when_suzent_last_spoke(db, sandbox) -> None:
+    from datetime import datetime, timezone
+
+    get_or_create_focal_chat()
+    assert focal_agent.focal_status()["lastMessageAt"] is None
+
+    db.set_last_result_at(FOCAL_CHAT_ID)
+
+    last = datetime.fromisoformat(focal_agent.focal_status()["lastMessageAt"])
+    assert (datetime.now(timezone.utc) - last).total_seconds() < 60

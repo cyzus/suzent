@@ -110,7 +110,9 @@ class HeartbeatRunner(BaseBrain):
                 "heartbeat_instructions": instructions,
                 "last_run_at": cfg.get("heartbeat_last_run_at"),
                 "last_result": cfg.get("heartbeat_last_result") or self._last_result,
-                "last_error": self._last_error,
+                # Per chat and persisted: the runner-wide error named whichever
+                # chat failed last and was gone after a restart.
+                "last_error": cfg.get("heartbeat_last_error"),
                 "heartbeat_due": chat_id in self._pending_heartbeats,
             }
 
@@ -252,6 +254,7 @@ class HeartbeatRunner(BaseBrain):
                 heartbeat_approvals=True,
             )
             self._last_error = None
+            db.merge_chat_config(chat_id, {"heartbeat_last_error": None})
 
             if not response_text:
                 logger.debug(f"Heartbeat OK ({chat_id}) -- nothing needs attention")
@@ -286,6 +289,10 @@ class HeartbeatRunner(BaseBrain):
         except Exception as e:
             logger.error(f"Heartbeat execution failed for {chat_id}: {e}")
             self._last_error = str(e)
+            try:
+                db.merge_chat_config(chat_id, {"heartbeat_last_error": str(e)[:500]})
+            except Exception as record_error:
+                logger.warning(f"Could not record heartbeat failure: {record_error}")
 
     @staticmethod
     def _announce(chat_id: str, response_text: str, db) -> None:
