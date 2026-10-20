@@ -291,6 +291,7 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
 }) => {
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const { t } = useI18n();
   const isInputEngaged = isInputHovered || isInputFocused;
   return (
     <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">

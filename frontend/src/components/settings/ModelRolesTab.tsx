@@ -12,6 +12,7 @@ import { SettingsPage } from './SettingsCard';
 import { isImeComposing } from '../../lib/ime';
 
 interface ModelRolesTabProps {
+  inlineVoiceModel?: boolean;
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
   unregisteredModels: string[];
@@ -463,6 +464,7 @@ function RoleRow({
 }
 
 export function ModelRolesTab({
+  inlineVoiceModel = false,
   roleModels,
   suggestions,
   unregisteredModels,
@@ -488,7 +490,7 @@ export function ModelRolesTab({
   }
 
   function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
-    if (role.key === 'tts')
+    if (role.key === 'tts' && !inlineVoiceModel)
       return (
         <button
           key="tts"
