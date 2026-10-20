@@ -40,6 +40,7 @@ The agent only sees what you give it.
 |---|---|
 | A document or image you have | Attach it, or paste the image into the message. It's kept in the project's folder. |
 | A file it can already reach | Type `@` and part of the file name to point at it exactly. |
+| Another conversation | Type `@`, choose **Chats**, and select a conversation. Suzent receives its title and reference, then reads its messages only when needed. |
 | A folder on your computer | Open it with **Working Dir** for this chat. |
 | Something on the web | Just ask. It searches and reads pages on its own, and can use [a browser](../03-features/tools/browser.md). |
 

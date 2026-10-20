@@ -359,18 +359,34 @@ class ChatSearchMixin:
         role_filter: tuple[str, ...] = DEFAULT_ROLE_FILTER,
         head: int = 20,
         tail: int = 10,
+        offset: int | None = None,
+        page_size: int = 20,
     ) -> Optional[Dict[str, Any]]:
-        """Read mode: a whole session, sanitized. Large sessions show head+tail."""
+        """Read sanitized messages as a summary or an explicit chronological page."""
         chat = self.get_chat(chat_id)
         if not chat:
             return None
         cleaned = sanitize_messages(chat.messages or [], role_filter=role_filter)
         total = len(cleaned)
         truncated = False
-        if total > head + tail:
+        page: dict[str, Any] = {}
+        if offset is not None:
+            if offset < 0 or not 1 <= page_size <= 100:
+                raise ValueError(
+                    "offset must be nonnegative and page_size must be 1–100"
+                )
+            cleaned = cleaned[offset : offset + page_size]
+            next_offset = offset + len(cleaned)
+            page = {
+                "offset": offset,
+                "next_offset": next_offset if next_offset < total else None,
+            }
+            truncated = offset > 0 or next_offset < total
+        elif total > head + tail:
             cleaned = cleaned[:head] + cleaned[-tail:]
             truncated = True
         return {
+            **page,
             "chat_id": chat_id,
             "title": chat.title,
             "updated_at": chat.updated_at.isoformat() if chat.updated_at else None,

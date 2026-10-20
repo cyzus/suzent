@@ -334,3 +334,51 @@ def test_finalizing_write_indexes_what_the_draft_skipped(db):
     db.update_chat(cid, messages=messages, reindex=False)
     db.update_chat(cid, messages=messages)
     assert db.fts_match_chat_ids("draftword")
+
+
+def test_tool_read_pages_reach_middle_messages(tool_db):
+    cid = tool_db.create_chat(
+        "Paged", {}, [{"role": "user", "content": f"message-{i:03}"} for i in range(55)]
+    )
+    tool = SessionSearchTool()
+    middle = asyncio.run(
+        tool.forward(_ctx(tool_db), session_id=cid, offset=20, page_size=20)
+    )
+    assert middle.success
+    assert "message-020" in middle.message
+    assert "message-039" in middle.message
+    assert "message-019" not in middle.message
+    assert "message-040" not in middle.message
+    assert middle.metadata["next_offset"] == 40
+    end = asyncio.run(
+        tool.forward(_ctx(tool_db), session_id=cid, offset=40, page_size=20)
+    )
+    assert "message-054" in end.message
+    assert end.metadata["next_offset"] is None
+
+
+def test_cli_read_is_paginated_and_sanitized(tool_db):
+    import json
+    from typer.testing import CliRunner
+    from suzent.cli.chats import chats_app
+    from unittest.mock import patch
+
+    cid = tool_db.create_chat(
+        "CLI",
+        {},
+        [
+            {"role": "user", "content": "question"},
+            _assistant("answer", reasoning="private reasoning"),
+        ],
+    )
+    with patch("suzent.database.get_database", return_value=tool_db):
+        result = CliRunner().invoke(
+            chats_app, ["read", cid, "--offset", "1", "--limit", "1"]
+        )
+    assert result.exit_code == 0
+    page = json.loads(result.stdout)
+    assert page["offset"] == 1
+    assert page["next_offset"] is None
+    assert len(page["messages"]) == 1
+    assert "answer" in result.stdout
+    assert "private reasoning" not in result.stdout
