@@ -1267,6 +1267,21 @@ async def _queue_custom_event(
     await out_queue.put(("chunk", _encode_custom(event_name, data)))
 
 
+def roll_back_heartbeat(history: list, original_count: int, deps: Any) -> list:
+    """Drop a quiet heartbeat's whole exchange, its own prompt included.
+
+    The history handed to the stream already ends with the heartbeat prompt,
+    so its starting length is one past where the conversation stood. Rolling
+    back to that length kept the prompt, and the processor then re-attached
+    the HEARTBEAT_OK reply to it -- both resurfaced on the next turn.
+    """
+    turn_start = getattr(deps, "turn_start_index", None)
+    kept = list(history)[: original_count if turn_start is None else turn_start]
+    deps.last_messages = kept
+    deps.heartbeat_rolled_back = True
+    return kept
+
+
 async def stream_agent_responses(
     agent: Agent,
     message: str | list | None,
@@ -1931,13 +1946,21 @@ async def stream_agent_responses(
                 runner = get_active_heartbeat()
                 if runner and runner._is_heartbeat_ok(final_response_text):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
-                    partial_history = partial_history[:original_count]
-                    deps.last_messages = partial_history
+                    partial_history = roll_back_heartbeat(
+                        partial_history, original_count, deps
+                    )
                     # Signal the frontend to discard the streamed heartbeat content.
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
             logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
+            # A check-in that failed reported nothing either. Without this its
+            # internal prompt stayed in the saved history and later showed up
+            # in the transcript as if the user had typed it.
+            if is_heartbeat and chat_id:
+                partial_history = roll_back_heartbeat(
+                    partial_history, original_count, deps
+                )
             await sse_queue.put(("error", e))
         finally:
             await sse_queue.put(("done", None))

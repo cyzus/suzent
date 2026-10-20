@@ -79,6 +79,11 @@ class AgentDeps:
     permission_feedback: list[str] = field(default_factory=list)
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
+    # History length before this turn's own request was appended, so a quiet
+    # heartbeat can be rolled back to exactly where the conversation stood.
+    turn_start_index: Optional[int] = None
+    # Set when a heartbeat ended in HEARTBEAT_OK and its exchange was dropped.
+    heartbeat_rolled_back: bool = False
 
     # --- Tool inventory ---
     base_tool_names: frozenset = field(

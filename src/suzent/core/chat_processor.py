@@ -482,6 +482,19 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
     return messages
 
 
+def _history_to_snapshot(messages: list, full_response: str, deps: Any) -> list:
+    """The history a finished turn persists.
+
+    A rolled-back heartbeat has nothing to preserve: re-attaching its
+    HEARTBEAT_OK here is what used to leak it into the transcript.
+    """
+    if getattr(deps, "is_suspended", False) or getattr(
+        deps, "heartbeat_rolled_back", False
+    ):
+        return messages
+    return _preserve_partial_response(messages, full_response)
+
+
 def _is_denied_tool_return(content: Any) -> bool:
     if isinstance(content, ToolDenied):
         return True
@@ -1135,6 +1148,7 @@ class ChatProcessor:
                 parts=parts,
                 metadata={"context_sources": dict(deps.context_sources)},
             )
+            deps.turn_start_index = len(message_history)
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
@@ -1483,10 +1497,9 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
-                if not getattr(deps, "is_suspended", False):
-                    snapshot_messages = _preserve_partial_response(
-                        snapshot_messages, full_response
-                    )
+                snapshot_messages = _history_to_snapshot(
+                    snapshot_messages, full_response, deps
+                )
 
                 # Stateless chats never snapshot agent_state (see note above).
                 if not _stateless_chat:
