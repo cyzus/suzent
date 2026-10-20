@@ -62,7 +62,12 @@ export function isLongSystemReminder(content: string): boolean {
   );
 }
 
-export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message }) => {
+export const SystemTriggeredMessage: React.FC<{
+  message: Message;
+  /** Start folded to the title line, e.g. in SUZENT's chat, where a reminder's
+   *  internal prompt is noise next to the conversation it starts. */
+  folded?: boolean;
+}> = ({ message, folded = false }) => {
   // Delivery markers are persisted for inbox idempotency, but are transport
   // metadata rather than reminder content.
   const raw = (message.content || '').replace(/<!--\s*suzent-agent-inbox:[\s\S]*?-->/gi, '').trim();
@@ -74,7 +79,7 @@ export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message
   const title = (boldMatch ? boldMatch[1] : firstLine).trim();
   const body = lines.slice(1).join('\n').trim();
   const collapsible = isLongSystemReminder(body);
-  const [expanded, setExpanded] = React.useState(!collapsible);
+  const [expanded, setExpanded] = React.useState(!collapsible && !folded);
   if (!raw) return null;
 
   return (

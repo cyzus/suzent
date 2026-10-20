@@ -163,3 +163,38 @@ describe('evaluateSidebarAutoOpen', () => {
     expect(evaluateSidebarAutoOpen(prev, prev)).toEqual({ nextTab: null, shouldOpen: false });
   });
 });
+
+describe('Focal Agent session board', () => {
+  it('opens the board when arriving on the Focal chat with room for it', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' })
+      )
+    ).toEqual({ nextTab: 'plan', shouldOpen: true });
+  });
+
+  it('closes the board on arrival when the user closed it there last time', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'closed' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false, shouldClose: true });
+  });
+
+  it('leaves the sidebar alone on narrow screens and once already on the Focal chat', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false });
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false });
+  });
+});

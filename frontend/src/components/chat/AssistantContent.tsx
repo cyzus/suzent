@@ -322,6 +322,8 @@ export const StaticContent: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+  /** The user has written since this message, so its question forms are answered. */
+  repliedTo?: boolean;
   subAgentTasks?: Record<
     string,
     { status: SubAgentStatus; resultSummary?: string; error?: string }
@@ -338,6 +340,7 @@ export const StaticContent: React.FC<{
   toolApprovalPolicy,
   onRemoveApprovalPolicy,
   onInlineAction,
+  repliedTo = false,
   subAgentTasks,
   onOpenSubAgentSidebar,
   onStopSubAgent,
@@ -358,6 +361,7 @@ export const StaticContent: React.FC<{
             <InlineSurface
               key={blockKey}
               surface={surface}
+              answered={repliedTo}
               onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
             />
           );

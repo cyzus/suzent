@@ -34,6 +34,48 @@ export function formatMessageTime(iso: string): string {
   );
 }
 
+export function messageDayLabel(
+  iso: string | undefined,
+  locale: string,
+  labels: { today: string; yesterday: string },
+  now = new Date()
+): { key: string; label: string } | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const key = date.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const label =
+    key === now.toDateString()
+      ? labels.today
+      : key === yesterday.toDateString()
+        ? labels.yesterday
+        : date.toLocaleDateString(locale, {
+            year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+  return { key, label };
+}
+
+export function conversationTimeLabel(
+  iso: string | undefined,
+  previousIso: string | undefined,
+  locale: string,
+  labels: { today: string; yesterday: string },
+  now = new Date()
+): string | null {
+  const day = messageDayLabel(iso, locale, labels, now);
+  if (!day || !iso) return null;
+  const date = new Date(iso);
+  const previous = previousIso ? new Date(previousIso) : null;
+  const sameDay = previous?.toDateString() === day.key;
+  if (sameDay && date.getTime() - previous!.getTime() < 5 * 60_000) return null;
+  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? time : `${day.label} ${time}`;
+}
+
 export interface ContentBlock {
   type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep' | 'reasoning' | 'a2ui';
   content: string;

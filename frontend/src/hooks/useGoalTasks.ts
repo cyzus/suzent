@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useRef, useState } from 
 import type { Goal, Task } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { subscribeToBusPayloads } from './useEventBus';
+import { ALL_PROJECTS_KANBAN_ID } from '../lib/focalAgent';
 
 export interface KanbanData {
   goals: Goal[];
@@ -158,7 +159,10 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (projectId === currentProjectIdRef.current && chatId === currentChatIdRef.current) {
         refreshRef.current?.();
       }
-      if (projectId === currentKanbanProjectIdRef.current) {
+      if (
+        projectId === currentKanbanProjectIdRef.current ||
+        currentKanbanProjectIdRef.current === ALL_PROJECTS_KANBAN_ID
+      ) {
         refreshKanbanRef.current?.();
       }
     });

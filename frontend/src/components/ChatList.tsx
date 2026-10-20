@@ -1,15 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ChatBubbleLeftRightIcon,
   CheckIcon,
+  CommandLineIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+  ChevronRightIcon,
+  CircleStackIcon,
+  ClockIcon,
   EllipsisVerticalIcon,
   PencilSquareIcon,
   PlusIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
 import { useEventBus } from '../hooks/useEventBus';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
+import { FocalAgentCardView } from './FocalAgentCard';
+import { useFocalStatus } from '../hooks/useFocalStatus';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import {
   fetchCronJobs,
@@ -34,7 +45,6 @@ import {
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
-import { BrutalButton } from './BrutalButton';
 import { isImeComposing } from '../lib/ime';
 
 const ALL_PROJECTS_FILTER = '__all__';
@@ -54,32 +64,65 @@ const isCronFailureHandledInChat = (job: CronJob): boolean => {
   return new Date(job.chat_updated_at).getTime() > new Date(job.last_run_finished_at).getTime();
 };
 
+/**
+ * A row's status, Slack-style: unread is carried by bold text, so the only
+ * marks are a blue square while something runs and a yellow count for work
+ * waiting on the user.
+ */
 function SessionStatusBadges({
   running,
-  unreadCount,
+  waitingCount,
 }: {
   running?: boolean;
-  unreadCount?: number;
+  waitingCount?: number;
 }): React.ReactElement | null {
   const { t } = useI18n();
-  const unread = Math.max(0, unreadCount ?? 0);
+  const waiting = Math.max(0, waitingCount ?? 0);
 
-  if (!running && unread === 0) return null;
+  if (!running && waiting === 0) return null;
 
   return (
-    <span className="inline-flex flex-shrink-0 items-center gap-1">
+    <span className="inline-flex flex-shrink-0 items-center gap-1.5">
       {running && (
-        <span className="inline-flex h-4 items-center gap-1 border border-emerald-700 bg-emerald-50 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <span className="h-1.5 w-1.5 bg-emerald-500 animate-pulse" aria-hidden="true" />
-          {t('chatList.labels.running')}
-        </span>
+        <span
+          className="h-2 w-2 bg-brutal-blue animate-pulse"
+          role="img"
+          aria-label={t('chatList.labels.running')}
+          title={t('chatList.labels.running')}
+        />
       )}
-      {unread > 0 && (
-        <span className="inline-flex h-4 items-center bg-neutral-900 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-white dark:bg-neutral-100 dark:text-neutral-900">
-          {t('chatList.labels.unreadCount', { count: unread > 99 ? '99+' : unread })}
+      {waiting > 0 && (
+        <span
+          className="inline-flex h-4 min-w-4 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
+          title={t('chatList.focal.waitingBadge', { count: waiting })}
+        >
+          {waiting > 99 ? '99+' : waiting}
         </span>
       )}
     </span>
+  );
+}
+
+/** A project's one status mark: yellow when work waits on you, blue while something runs. */
+function ProjectStatusSquare({
+  running,
+  waiting,
+}: {
+  running: boolean;
+  waiting: boolean;
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  if (!running && !waiting) return null;
+  const label = waiting
+    ? t('chatList.focal.waitingCount', { count: 1 })
+    : t('chatList.labels.running');
+  return (
+    <span
+      className={`h-2 w-2 shrink-0 ${waiting ? 'bg-brutal-yellow ring-1 ring-brutal-black dark:ring-white' : 'bg-brutal-blue animate-pulse'}`}
+      role="img"
+      aria-label={waiting ? t('chatList.labels.waiting') : label}
+      title={waiting ? t('chatList.labels.waiting') : label}
+    />
   );
 }
 
@@ -100,11 +143,65 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
   );
 }
 
+export type SidebarView = 'chat' | 'memory' | 'skills';
+
 interface ChatListProps {
   onOpenAutomation?: () => void;
+  /** The main area's current view, so its sidebar entry reads as selected. */
+  activeView?: string;
+  onOpenView?: (view: Exclude<SidebarView, 'chat'>) => void;
+  /** Search is opened from the sidebar's logo row (see SidebarHeaderActions). */
+  searchOpen?: boolean;
+  onSearchOpenChange?: (open: boolean) => void;
 }
 
-export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
+/** Search and new chat, as icons in the sidebar's logo row. */
+export function SidebarHeaderActions({ onSearch }: { onSearch: () => void }): React.ReactElement {
+  const { t } = useI18n();
+  const { beginNewChat, switchToView } = useChatStore();
+  const iconButton =
+    'h-8 w-8 flex items-center justify-center text-brutal-black hover:bg-neutral-200 dark:text-white dark:hover:bg-zinc-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue';
+  return (
+    <div className="ml-auto flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onSearch}
+        className={iconButton}
+        title={t('chatList.searchChatsPlaceholder')}
+        aria-label={t('chatList.searchChatsPlaceholder')}
+      >
+        <MagnifyingGlassIcon className="h-[18px] w-[18px] stroke-2" />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          beginNewChat();
+          if (switchToView) switchToView('chat');
+        }}
+        className={iconButton}
+        title={t('chatList.newChat')}
+        aria-label={t('chatList.newChat')}
+      >
+        <PencilSquareIcon className="h-[18px] w-[18px] stroke-2" />
+      </button>
+    </div>
+  );
+}
+
+const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
+
+/** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
+function sidebarNavRowClass(selected: boolean): string {
+  return `w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors ${selected ? 'bg-neutral-200/70 font-semibold text-brutal-black dark:bg-zinc-700 dark:text-white' : 'text-neutral-600 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-300 dark:hover:bg-zinc-700 dark:hover:text-white'}`;
+}
+
+export const ChatList: React.FC<ChatListProps> = ({
+  onOpenAutomation,
+  activeView,
+  onOpenView,
+  searchOpen = false,
+  onSearchOpenChange,
+}) => {
   const {
     chats,
     pinnedChats,
@@ -265,6 +362,25 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus | null>(null);
   const [loadingAutomation, setLoadingAutomation] = useState(true);
+  const focalStatus = useFocalStatus();
+  const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleAutomationOpen = useCallback(() => {
+    setAutomationOpen((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(AUTOMATION_OPEN_KEY, String(next));
+      } catch {
+        // Remembering is a convenience; the list still opens and closes.
+      }
+      return next;
+    });
+  }, []);
 
   const { t } = useI18n();
 
@@ -983,7 +1099,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const rowSurface = isSelected
       ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:border-blue-900 shadow-[inset_3px_0_0_#2563eb] dark:shadow-[inset_3px_0_0_#60a5fa]'
       : currentChatId === chat.id
-        ? 'bg-neutral-100 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600 shadow-[inset_3px_0_0_#171717] dark:shadow-[inset_3px_0_0_#f5f5f5]'
+        ? 'bg-neutral-200/70 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600'
         : chat.heartbeatEnabled
           ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
           : chatKind === 'subagent'
@@ -993,20 +1109,116 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               : isUnread(chat)
                 ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                 : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600';
+    const acpAgent =
+      chat.acpAgentName ||
+      (chat as any).acp_agent_name ||
+      chat.acpAgentId ||
+      (chat as any).acp_agent_id;
+    const metaParts = [
+      showProject ? chat.projectName : null,
+      !nested && chatKind === 'subagent' && parentTitle
+        ? t('chatList.labels.subagentOf', { name: parentTitle })
+        : null,
+    ].filter(Boolean);
+    const menuOpen = openMenu?.chatId === chat.id;
+    const openRowMenu = (e: React.MouseEvent<HTMLButtonElement>): void => {
+      e.stopPropagation();
+      openChatMenu(chat.id, { rect: e.currentTarget.getBoundingClientRect() });
+    };
+    const trailing = (
+      <span className="relative flex shrink-0 items-center justify-end gap-1.5 min-w-6">
+        <span
+          className={`flex items-center gap-1.5 transition-opacity ${menuOpen ? 'opacity-0' : 'group-hover:opacity-0 group-focus-within:opacity-0'}`}
+        >
+          <span
+            className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+          >
+            {formatDate(chat.updatedAt)}
+          </span>
+          <SessionStatusBadges
+            running={isChatRunning(chat.id, chat.isRunning)}
+            waitingCount={focalStatus?.waitingByChat?.[chat.id]}
+          />
+        </span>
+        <button
+          type="button"
+          aria-label={t('chatList.menu.title')}
+          title={t('chatList.menu.title')}
+          onClick={openRowMenu}
+          onContextMenu={(e) => {
+            if (renamingChatId) return;
+            e.preventDefault();
+            openRowMenu(e);
+          }}
+          className={`absolute right-0 top-1/2 -translate-y-1/2 p-1 flex items-center justify-center transition-opacity text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-zinc-600 ${
+            menuOpen
+              ? 'opacity-100 bg-neutral-200 dark:bg-zinc-600 text-brutal-black dark:text-white'
+              : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+          }`}
+        >
+          <MoreActionsIcon />
+        </button>
+      </span>
+    );
+    const kindIcon = chat.heartbeatEnabled ? (
+      <span
+        title={t('chatWindow.heartbeatEnabled')}
+        className="shrink-0 text-neutral-400 dark:text-neutral-500"
+      >
+        <svg
+          className="h-3.5 w-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+        </svg>
+      </span>
+    ) : chat.forkedFromChatId ? (
+      <span
+        title={parentTitle ? t('chatList.labels.branchOf', { name: parentTitle }) : undefined}
+        className="shrink-0 text-neutral-400 dark:text-neutral-500"
+      >
+        <svg
+          className="h-3.5 w-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="6" cy="5" r="2" />
+          <circle cx="18" cy="5" r="2" />
+          <circle cx="12" cy="19" r="2" />
+          <path d="M6 7v1a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V7M12 12v5" />
+        </svg>
+      </span>
+    ) : acpAgent ? (
+      <span title={`ACP · ${acpAgent}`} className="shrink-0 text-neutral-400 dark:text-neutral-500">
+        <CommandLineIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    ) : chat.platform ? (
+      <span
+        title={platformLabel(chat.platform) ?? undefined}
+        className="shrink-0 text-neutral-400 dark:text-neutral-500"
+      >
+        <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    ) : null;
     const rowContent = compact ? (
-      <div className="flex min-w-0 items-center gap-2 pr-6">
+      <div className="flex min-w-0 items-center gap-2">
         <h3
           title={chat.title || t('chatList.untitled')}
-          className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-5 text-neutral-800 dark:text-neutral-100"
+          className={`min-w-0 flex-1 truncate text-[11px] leading-5 ${unread > 0 ? 'font-extrabold text-neutral-950 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
         >
           {chat.title || t('chatList.untitled')}
         </h3>
-        {(isChatRunning(chat.id, chat.isRunning) || unread > 0) && (
-          <SessionStatusBadges
-            running={isChatRunning(chat.id, chat.isRunning)}
-            unreadCount={unread}
-          />
-        )}
         {chat.projectName && (
           <span
             title={chat.projectName}
@@ -1015,112 +1227,46 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             {chat.projectName}
           </span>
         )}
-        <span className="shrink-0 text-[9px] tabular-nums text-neutral-400 dark:text-neutral-500">
-          {formatDate(chat.updatedAt)}
-        </span>
+        {trailing}
       </div>
     ) : (
-      <div className="min-w-0 space-y-1 pr-8">
-        <div className="flex items-start gap-2 overflow-hidden">
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          {kindIcon}
           <h3
-            className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+            className={`text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${isUnread(chat) ? 'font-extrabold' : 'font-medium'} ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white'}`}
           >
             {chat.title || t('chatList.untitled')}
           </h3>
+          {trailing}
         </div>
-        <div className="flex items-center gap-1.5 overflow-hidden">
-          <SessionStatusBadges
-            running={isChatRunning(chat.id, chat.isRunning)}
-            unreadCount={unread}
-          />
-          {/* Project chip — always shown so the user knows which workspace */}
-          {showProject && chat.projectName && (
-            <span
-              className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
-                currentChatId === chat.id
-                  ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
-                  : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
-              }`}
-              title={chat.projectName}
-            >
-              {chat.projectName}
-            </span>
-          )}
-          {(chat.acpAgentName ||
-            chat.acpAgentId ||
-            (chat as any).acp_agent_name ||
-            (chat as any).acp_agent_id) && (
-            <span
-              className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
-              title={
-                chat.acpAgentName ||
-                (chat as any).acp_agent_name ||
-                chat.acpAgentId ||
-                (chat as any).acp_agent_id
-              }
-            >
-              ACP
-            </span>
-          )}
-          {chat.platform && (
-            <span
-              className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
-            >
-              {platformLabel(chat.platform)}
-            </span>
-          )}
-          {chat.heartbeatEnabled && (
-            <span
-              className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
-              title={t('chatWindow.heartbeatEnabled')}
-            >
-              <svg
-                className="w-3 h-3"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="square"
-                strokeLinejoin="miter"
+        {(hasCollapsedChildren || metaParts.length > 0) && (
+          <div className="flex items-center gap-1.5 overflow-hidden text-[10px] text-neutral-500 dark:text-neutral-400">
+            {hasCollapsedChildren && (
+              <button
+                type="button"
+                aria-expanded={childrenExpanded}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSubagentParent(chat.id);
+                }}
+                className={`inline-flex shrink-0 items-center gap-0.5 transition-colors ${childrenExpanded ? 'text-brutal-black dark:text-white' : 'hover:text-brutal-black dark:hover:text-white'}`}
               >
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
-              <span>{t('chatList.labels.heartbeat')}</span>
-            </span>
-          )}
-          {hasCollapsedChildren && (
-            <button
-              type="button"
-              aria-expanded={childrenExpanded}
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleSubagentParent(chat.id);
-              }}
-              className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
-                childrenExpanded
-                  ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
-                  : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
-              }`}
-            >
-              {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
-            </button>
-          )}
-          {chatKind === 'subagent' && parentTitle && (
-            <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
-              {t('chatList.labels.subagentOf', { name: parentTitle })}
-            </span>
-          )}
-          {chat.forkedFromChatId && parentTitle && (
-            <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
-              {t('chatList.labels.branchOf', { name: parentTitle })}
-            </span>
-          )}
-          <span
-            className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-          >
-            {formatDate(chat.updatedAt)}
-          </span>
-        </div>
+                {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+                <ChevronRightIcon
+                  className={`h-3 w-3 transition-transform ${childrenExpanded ? 'rotate-90' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+            )}
+            {metaParts.length > 0 && (
+              <span className="truncate">
+                {hasCollapsedChildren && '· '}
+                {metaParts.join(' · ')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
     return (
@@ -1149,8 +1295,8 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           e.stopPropagation();
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
-        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : 'py-2 border-b last:border-b-0'}
-          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-3' : 'px-3.5'}
+        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-1.5 border-transparent' : 'py-2 border-b last:border-b-0'}
+          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-2' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface}`}
       >
@@ -1191,30 +1337,6 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
         {rowContent}
 
         {/* Three-dot menu button — appears on hover; right-click anywhere on the row also opens it */}
-        <button
-          type="button"
-          aria-label={t('chatList.menu.title')}
-          title={t('chatList.menu.title')}
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-            openChatMenu(chat.id, { rect });
-          }}
-          onContextMenu={(e) => {
-            if (renamingChatId) return;
-            e.preventDefault();
-            e.stopPropagation();
-            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-            openChatMenu(chat.id, { rect });
-          }}
-          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 transition-opacity flex items-center justify-center text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-zinc-600 ${
-            openMenu?.chatId === chat.id
-              ? 'opacity-100 bg-neutral-200 dark:bg-zinc-600 text-brutal-black dark:text-white'
-              : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-          }`}
-        >
-          <MoreActionsIcon />
-        </button>
       </div>
     );
   };
@@ -1247,7 +1369,14 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const filteredTotal = filterId === ALL_PROJECTS_FILTER ? chatTotal : projectChatKindTotals.all;
   const remaining = Math.max(0, filteredTotal - filteredChats.length);
   const isSearching = localSearchQuery.trim().length > 0;
-  const visibleCronJobs = [...cronJobs]
+  // Heartbeats are scheduled-task rows too, but they get their own list below;
+  // showing the row here as well listed every heartbeat twice. SUZENT's own
+  // check-ins and wake-ups belong to it: they surface as new messages on its
+  // card, not as tasks.
+  const scheduledJobs = cronJobs.filter(
+    (job) => job.source !== 'heartbeat' && job.chat_id !== FOCAL_CHAT_ID
+  );
+  const visibleCronJobs = [...scheduledJobs]
     .sort((left, right) => {
       const leftPriority =
         left.last_error && !isCronFailureHandledInChat(left) ? 0 : left.active ? 1 : 2;
@@ -1263,8 +1392,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       return leftNext - rightNext;
     })
     .slice(0, AUTOMATION_PREVIEW_LIMIT);
-  const heartbeatSessions = heartbeatStatus?.active_sessions ?? [];
-  const showAutomation = loadingAutomation || cronJobs.length > 0 || heartbeatSessions.length > 0;
+  const heartbeatSessions = (heartbeatStatus?.active_sessions ?? []).filter(
+    (session) => session.chat_id !== FOCAL_CHAT_ID
+  );
+  const showAutomation =
+    loadingAutomation || scheduledJobs.length > 0 || heartbeatSessions.length > 0;
+
+  const projectUnread = (project: Project): number =>
+    Object.entries(project.unreadChatCounts ?? {}).reduce(
+      (total, [chatId, count]) => total + (chatId === currentChatId ? 0 : count),
+      0
+    );
 
   const openChatById = (chatId: string): void => {
     markRead(chatId);
@@ -1285,63 +1423,54 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
         </div>
       )}
 
-      {/* Header: Search + New Chat */}
-      <div className="p-3 bg-white dark:bg-zinc-800 flex-shrink-0 space-y-2.5">
-        <div className="flex items-stretch gap-2">
-          <div className="relative flex-1">
+      {/* Header: search (opened from the logo row) and SUZENT. */}
+      <div className="px-2 pt-2 pb-1 bg-white dark:bg-zinc-800 flex-shrink-0 space-y-2">
+        {(searchOpen || localSearchQuery) && (
+          <div className="relative">
             <input
               type="text"
+              autoFocus
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
-              placeholder={t('chatList.searchChatsPlaceholder').toUpperCase()}
-              className="h-10 w-full px-3 pl-9 bg-neutral-50 dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white dark:focus:bg-zinc-600 focus:shadow-[inset_3px_0_0_var(--brutal-yellow)] transition-all"
+              onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
+                if (e.key === 'Escape') {
+                  setLocalSearchQuery('');
+                  onSearchOpenChange?.(false);
+                }
+              }}
+              onBlur={() => {
+                if (!localSearchQuery.trim()) onSearchOpenChange?.(false);
+              }}
+              placeholder={t('chatList.searchChatsPlaceholder')}
+              className="h-9 w-full px-3 pl-9 pr-8 bg-white dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border border-brutal-black dark:border-neutral-300 font-medium text-xs placeholder-neutral-400 focus:outline-none transition-colors"
             />
-            <svg
+            <MagnifyingGlassIcon
               className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2.5}
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setLocalSearchQuery('');
+                onSearchOpenChange?.(false);
+              }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
+              title={t('chatList.clearSearch')}
+              aria-label={t('chatList.clearSearch')}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            {localSearchQuery && (
-              <button
-                onClick={() => setLocalSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-neutral-200 dark:hover:bg-zinc-600 rounded transition-colors"
-                title={t('chatList.clearSearch')}
-              >
-                <svg
-                  className="w-3 h-3 text-brutal-black dark:text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth={3}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
+              <XMarkIcon className="w-3.5 h-3.5 text-brutal-black dark:text-white" />
+            </button>
           </div>
-          <BrutalButton
-            type="button"
-            variant="primary"
-            size="icon"
-            onClick={() => {
-              beginNewChat();
-              if (switchToView) switchToView('chat');
-            }}
-            className="!h-10 !w-10 !flex-shrink-0 !p-0"
-            title={t('chatList.newChat')}
-            aria-label={t('chatList.newChat')}
-          >
-            <PencilSquareIcon className="h-5 w-5 stroke-[2.4]" />
-          </BrutalButton>
-        </div>
+        )}
+        {!isSearching && (
+          <FocalAgentCardView
+            status={focalStatus}
+            active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
+            onOpen={openChatById}
+          />
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800">
@@ -1383,222 +1512,255 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           </section>
         ) : (
           <div className="flex flex-col">
-            {showAutomation && (
-              <section className="order-2 border-t border-neutral-200 dark:border-zinc-700">
-                <div className="flex items-center justify-between px-3 py-1.5">
-                  <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                    {t('chatList.sections.tasks')}
-                  </h2>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-bold tabular-nums text-neutral-400 dark:text-neutral-500">
-                      {cronJobs.length + heartbeatSessions.length}
-                    </span>
-                  </div>
-                </div>
-
-                {loadingAutomation ? (
-                  <div className="border-t border-neutral-200 dark:border-zinc-700">
-                    <SidebarRowSkeleton compact />
-                    <SidebarRowSkeleton compact />
-                  </div>
-                ) : (
-                  <div className="border-t border-neutral-200 dark:border-zinc-700">
-                    {cronJobs.length > 0 && (
-                      <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
-                        <div>
-                          {visibleCronJobs.map((job) => {
-                            const { chatId, canOpen } = getScheduledTaskChat(job);
-                            const failureHandled = isCronFailureHandledInChat(job);
-                            const unresolvedError =
-                              job.last_error && !failureHandled ? job.last_error : null;
-                            const subtitle = !job.active
-                              ? unresolvedError
-                                ? `${t('chatList.automation.paused')} · ${unresolvedError}`
-                                : t('chatList.automation.paused')
-                              : unresolvedError
-                                ? t('chatList.automation.lastRunFailed', { error: unresolvedError })
-                                : job.next_run_at
-                                  ? t('chatList.automation.nextRunAt', {
-                                      time: formatNextRun(job.next_run_at),
+            <nav
+              aria-label={t('chatList.sections.navigation')}
+              className="order-0 px-1.5 pt-1 pb-2"
+            >
+              <button
+                type="button"
+                aria-expanded={showAutomation ? automationOpen : undefined}
+                onClick={() => (showAutomation ? toggleAutomationOpen() : onOpenAutomation?.())}
+                className={sidebarNavRowClass(false)}
+              >
+                <ClockIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('chatList.sections.scheduled')}</span>
+                {scheduledJobs.length + heartbeatSessions.length > 0 && (
+                  <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
+                    {scheduledJobs.length + heartbeatSessions.length}
+                  </span>
+                )}
+                {showAutomation && (
+                  <ChevronRightIcon
+                    className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${automationOpen ? 'rotate-90' : ''}`}
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+              {showAutomation && automationOpen && (
+                <section className="mt-1 border-y border-neutral-200 dark:border-zinc-700">
+                  {loadingAutomation ? (
+                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                      <SidebarRowSkeleton compact />
+                      <SidebarRowSkeleton compact />
+                    </div>
+                  ) : (
+                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                      {scheduledJobs.length > 0 && (
+                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                          <div>
+                            {visibleCronJobs.map((job) => {
+                              const { chatId, canOpen } = getScheduledTaskChat(job);
+                              const failureHandled = isCronFailureHandledInChat(job);
+                              const unresolvedError =
+                                job.last_error && !failureHandled ? job.last_error : null;
+                              const subtitle = !job.active
+                                ? unresolvedError
+                                  ? `${t('chatList.automation.paused')} · ${unresolvedError}`
+                                  : t('chatList.automation.paused')
+                                : unresolvedError
+                                  ? t('chatList.automation.lastRunFailed', {
+                                      error: unresolvedError,
                                     })
-                                  : t('chatList.automation.active');
-                            const latestActivityAt = failureHandled
-                              ? job.chat_updated_at
-                              : job.last_run_at;
-                            return (
-                              <div
-                                key={job.id}
-                                onContextMenu={(event) => {
-                                  event.preventDefault();
-                                  setTaskMenu({
-                                    jobId: job.id,
-                                    anchor: { rect: event.currentTarget.getBoundingClientRect() },
-                                  });
-                                }}
-                                className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
-                                  currentChatId === chatId
-                                    ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
+                                  : job.next_run_at
+                                    ? t('chatList.automation.nextRunAt', {
+                                        time: formatNextRun(job.next_run_at),
+                                      })
+                                    : t('chatList.automation.active');
+                              const latestActivityAt = failureHandled
+                                ? job.chat_updated_at
+                                : job.last_run_at;
+                              return (
+                                <div
+                                  key={job.id}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setTaskMenu({
+                                      jobId: job.id,
+                                      anchor: { rect: event.currentTarget.getBoundingClientRect() },
+                                    });
+                                  }}
+                                  className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                    currentChatId === chatId
+                                      ? 'bg-neutral-200/70 dark:bg-zinc-700'
+                                      : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                  }`}
+                                >
+                                  {renamingTaskId === job.id ? (
+                                    <form
+                                      className="flex min-h-11 items-center gap-1 px-2"
+                                      onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
+                                    >
+                                      <input
+                                        autoFocus
+                                        value={taskRenameValue}
+                                        onChange={(event) => setTaskRenameValue(event.target.value)}
+                                        onKeyDown={(event) => {
+                                          if (isImeComposing(event)) return;
+                                          if (event.key === 'Escape') setRenamingTaskId(null);
+                                        }}
+                                        className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
+                                      />
+                                      <button
+                                        type="submit"
+                                        className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold"
+                                      >
+                                        ✓
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setRenamingTaskId(null)}
+                                        className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white"
+                                      >
+                                        ✕
+                                      </button>
+                                    </form>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        disabled={!canOpen && !onOpenAutomation}
+                                        onClick={() =>
+                                          canOpen ? openChatById(chatId) : onOpenAutomation?.()
+                                        }
+                                        title={unresolvedError ?? job.last_result ?? undefined}
+                                        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
+                                      >
+                                        <span className="min-w-0">
+                                          <span
+                                            className={`block truncate text-xs leading-tight text-brutal-black dark:text-white ${currentChatId !== chatId && job.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
+                                          >
+                                            {job.name}
+                                          </span>
+                                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                            <SessionStatusBadges
+                                              running={isChatRunning(chatId, job.is_running)}
+                                            />
+                                            <span
+                                              className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
+                                            >
+                                              {subtitle}
+                                            </span>
+                                          </span>
+                                        </span>
+                                        <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
+                                          {latestActivityAt
+                                            ? formatDate(latestActivityAt)
+                                            : t('chatList.automation.notYet')}
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label={t('chatList.menu.title')}
+                                        title={t('chatList.menu.title')}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setTaskMenu({
+                                            jobId: job.id,
+                                            anchor: {
+                                              rect: event.currentTarget.getBoundingClientRect(),
+                                            },
+                                          });
+                                        }}
+                                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                          taskMenu?.jobId === job.id
+                                            ? 'opacity-100'
+                                            : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
+                                        }`}
+                                      >
+                                        <MoreActionsIcon />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {scheduledJobs.length > AUTOMATION_PREVIEW_LIMIT &&
+                              onOpenAutomation && (
+                                <button
+                                  type="button"
+                                  onClick={onOpenAutomation}
+                                  className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
+                                >
+                                  {t('chatList.automation.viewAllScheduled', {
+                                    count: scheduledJobs.length,
+                                  })}
+                                </button>
+                              )}
+                          </div>
+                        </div>
+                      )}
+
+                      {heartbeatSessions.length > 0 && (
+                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                          <div>
+                            {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
+                              <button
+                                key={session.chat_id}
+                                type="button"
+                                onClick={() => openChatById(session.chat_id)}
+                                className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                  currentChatId === session.chat_id
+                                    ? 'bg-neutral-200/70 dark:bg-zinc-700'
                                     : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
                                 }`}
                               >
-                                {renamingTaskId === job.id ? (
-                                  <form
-                                    className="flex min-h-11 items-center gap-1 px-2"
-                                    onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
+                                <span className="min-w-0">
+                                  <span
+                                    className={`block text-xs leading-tight truncate text-brutal-black dark:text-white ${currentChatId !== session.chat_id && session.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
                                   >
-                                    <input
-                                      autoFocus
-                                      value={taskRenameValue}
-                                      onChange={(event) => setTaskRenameValue(event.target.value)}
-                                      onKeyDown={(event) => {
-                                        if (isImeComposing(event)) return;
-                                        if (event.key === 'Escape') setRenamingTaskId(null);
-                                      }}
-                                      className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
+                                    {session.title}
+                                  </span>
+                                  <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                    <SessionStatusBadges
+                                      running={isChatRunning(session.chat_id, session.is_running)}
                                     />
-                                    <button
-                                      type="submit"
-                                      className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold"
-                                    >
-                                      ✓
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setRenamingTaskId(null)}
-                                      className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white"
-                                    >
-                                      ✕
-                                    </button>
-                                  </form>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={!canOpen && !onOpenAutomation}
-                                      onClick={() =>
-                                        canOpen ? openChatById(chatId) : onOpenAutomation?.()
-                                      }
-                                      title={unresolvedError ?? job.last_result ?? undefined}
-                                      className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
-                                    >
-                                      <span className="min-w-0">
-                                        <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">
-                                          {job.name}
-                                        </span>
-                                        <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                          <SessionStatusBadges
-                                            running={isChatRunning(chatId, job.is_running)}
-                                            unreadCount={
-                                              currentChatId === chatId ? 0 : job.unread_count
-                                            }
-                                          />
-                                          <span
-                                            className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
-                                          >
-                                            {subtitle}
-                                          </span>
-                                        </span>
-                                      </span>
-                                      <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                                        {latestActivityAt
-                                          ? formatDate(latestActivityAt)
-                                          : t('chatList.automation.notYet')}
-                                      </span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label={t('chatList.menu.title')}
-                                      title={t('chatList.menu.title')}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setTaskMenu({
-                                          jobId: job.id,
-                                          anchor: {
-                                            rect: event.currentTarget.getBoundingClientRect(),
-                                          },
-                                        });
-                                      }}
-                                      className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
-                                        taskMenu?.jobId === job.id
-                                          ? 'opacity-100'
-                                          : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
-                                      }`}
-                                    >
-                                      <MoreActionsIcon />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {cronJobs.length > AUTOMATION_PREVIEW_LIMIT && onOpenAutomation && (
-                            <button
-                              type="button"
-                              onClick={onOpenAutomation}
-                              className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
-                            >
-                              {t('chatList.automation.viewAllScheduled', {
-                                count: cronJobs.length,
-                              })}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {heartbeatSessions.length > 0 && (
-                      <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
-                        <div>
-                          {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
-                            <button
-                              key={session.chat_id}
-                              type="button"
-                              onClick={() => openChatById(session.chat_id)}
-                              className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
-                                currentChatId === session.chat_id
-                                  ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
-                                  : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
-                              }`}
-                            >
-                              <span className="min-w-0">
-                                <span className="block text-xs leading-tight font-extrabold truncate text-brutal-black dark:text-white">
-                                  {session.title}
-                                </span>
-                                <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                  <SessionStatusBadges
-                                    running={isChatRunning(session.chat_id, session.is_running)}
-                                    unreadCount={
-                                      currentChatId === session.chat_id ? 0 : session.unread_count
-                                    }
-                                  />
-                                  <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
-                                    {t('chatList.automation.everyMinutes', {
-                                      minutes: session.interval_minutes,
-                                    })}
+                                    <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
+                                      {t('chatList.automation.everyMinutes', {
+                                        minutes: session.interval_minutes,
+                                      })}
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                              <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
-                                {session.last_run_at
-                                  ? formatDate(session.last_run_at)
-                                  : t('chatList.automation.notYet')}
-                              </span>
-                            </button>
-                          ))}
-                          {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
-                            <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                              {t('chatList.automation.moreHeartbeat', {
-                                count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
-                              })}
-                            </div>
-                          )}
+                                <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
+                                  {session.last_run_at
+                                    ? formatDate(session.last_run_at)
+                                    : t('chatList.automation.notYet')}
+                                </span>
+                              </button>
+                            ))}
+                            {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
+                              <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                                {t('chatList.automation.moreHeartbeat', {
+                                  count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-            )}
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+              <button
+                type="button"
+                aria-current={activeView === 'memory' ? 'page' : undefined}
+                onClick={() => onOpenView?.('memory')}
+                className={sidebarNavRowClass(activeView === 'memory')}
+              >
+                <CircleStackIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('nav.memory')}</span>
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'skills' ? 'page' : undefined}
+                onClick={() => onOpenView?.('skills')}
+                className={sidebarNavRowClass(activeView === 'skills')}
+              >
+                <SparklesIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('nav.skills')}</span>
+              </button>
+            </nav>
 
             {pinnedChats.length > 0 && (
               <section className="order-0 px-1.5 pb-2 pt-1">
@@ -1609,7 +1771,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               </section>
             )}
             <section
-              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t-2 border-brutal-black'}`}
+              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'}`}
             >
               <div
                 ref={organizationMenuRef}
@@ -1730,7 +1892,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                       return (
                         <div key={project.id}>
                           <div
-                            className={`group/proj relative grid min-h-9 grid-cols-[minmax(0,1fr)_24px] border-2 transition-all ${isOpen ? 'z-10 border-brutal-black bg-brutal-black text-white shadow-[2px_2px_0_0_#777] dark:border-white dark:bg-white dark:text-brutal-black dark:shadow-[2px_2px_0_0_#555]' : 'border-transparent bg-transparent hover:border-brutal-black hover:bg-white dark:hover:border-white dark:hover:bg-zinc-800'}`}
+                            className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
                           >
                             {isRenaming ? (
                               <form
@@ -1781,52 +1943,45 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
                                 >
                                   <span
-                                    className={`min-w-0 truncate text-[11px] ${isOpen ? 'font-black text-white dark:text-brutal-black' : 'font-bold text-brutal-black dark:text-white'}`}
+                                    className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : isOpen ? 'font-semibold text-brutal-black dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
                                   >
                                     {project.name}
                                   </span>
-                                  <span className="inline-flex items-center gap-2">
-                                    {!isOpen && (
-                                      <SessionStatusBadges
-                                        running={runningProjectIds.has(project.id)}
-                                        unreadCount={Object.entries(
-                                          project.unreadChatCounts ?? {}
-                                        ).reduce(
-                                          (total, [chatId, count]) =>
-                                            total + (chatId === currentChatId ? 0 : count),
-                                          0
-                                        )}
-                                      />
-                                    )}
-                                    <span
-                                      className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
-                                    >
-                                      {project.chatCount}
-                                    </span>
-                                  </span>
                                 </button>
-                                {!isSystem && (
-                                  <button
-                                    type="button"
-                                    aria-label={t('chatList.menu.title')}
-                                    title={t('chatList.menu.title')}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      const rect = event.currentTarget.getBoundingClientRect();
-                                      setProjectMenu({ projectId: project.id, anchor: { rect } });
-                                    }}
-                                    className={`w-6 flex items-center justify-center ${isOpen ? 'text-white hover:bg-white hover:text-brutal-black dark:text-brutal-black dark:hover:bg-brutal-black dark:hover:text-white' : 'hover:bg-neutral-100 dark:hover:bg-zinc-600'} ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                <span className="relative flex items-center justify-center">
+                                  <span
+                                    className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
                                   >
-                                    <MoreActionsIcon />
-                                  </button>
-                                )}
-                                {isSystem && <span aria-hidden="true" />}
+                                    <ProjectStatusSquare
+                                      running={!isOpen && runningProjectIds.has(project.id)}
+                                      waiting={
+                                        !isOpen &&
+                                        (focalStatus?.waitingByProject?.[project.id] ?? 0) > 0
+                                      }
+                                    />
+                                  </span>
+                                  {!isSystem && (
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.menu.title')}
+                                      title={t('chatList.menu.title')}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        setProjectMenu({ projectId: project.id, anchor: { rect } });
+                                      }}
+                                      className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                    >
+                                      <MoreActionsIcon />
+                                    </button>
+                                  )}
+                                </span>
                               </>
                             )}
                           </div>
 
                           {isOpen && (
-                            <div className="bg-neutral-50/50 dark:bg-zinc-900/20">
+                            <div>
                               {loadingProjectChats ? (
                                 renderListSkeleton()
                               ) : visibleChats.length === 0 ? (

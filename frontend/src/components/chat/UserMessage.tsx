@@ -1,3 +1,4 @@
+import { FOCAL_CHAT_ID } from '../../lib/focalAgent';
 import { useChatImages } from '../ChatImageGallery';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
@@ -500,7 +501,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             </div>
           )}
           <div className="text-[10px] font-bold text-neutral-400 uppercase select-none flex items-center gap-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
-            {message.timestamp && (
+            {chatId !== FOCAL_CHAT_ID && message.timestamp && (
               <span className="normal-case font-normal">
                 {formatMessageTime(message.timestamp)}
               </span>
