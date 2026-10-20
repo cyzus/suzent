@@ -2341,6 +2341,11 @@ The agent chooses how each helper runs:
 Either way, the result goes to the agent, not to you. The agent reads it and
 tells you what matters.
 
+If a helper's model goes quiet or drops the connection partway through, the
+helper isn't stopped. It picks the task up again, up to three times. A helper
+the agent was waiting on moves to the background at that point, so the agent
+can carry on and is woken with the result when the helper finishes.
+
 ## Following up with a helper
 
 A finished helper remembers what it read and did. When its work needs a fix,
