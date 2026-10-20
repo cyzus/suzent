@@ -1,5 +1,9 @@
 export const zhCN = {
   onboarding: {
+    enableFirst: '先在上方提供商中启用模型，即可在这里选择。',
+    saveCredentialsFirst: '请先保存或取消凭据编辑，再验证模型。',
+    selectThenVerify: '选择已启用的模型，验证成功后即可继续，无需先单独验证提供商。',
+
     restart: '重新运行初始化引导',
     setup: '设置你的 Agent',
     progress: '设置进度',

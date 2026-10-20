@@ -90,6 +90,15 @@ export function Onboarding({
         )
       );
       setRoles(savedRoles);
+      const enabled = data.providers.flatMap((p) => p.user_config?.enabled_models || []);
+      setModel((current) =>
+        enabled.includes(current)
+          ? current
+          : enabled.includes(savedRoles.primary?.[0])
+            ? savedRoles.primary[0]
+            : ''
+      );
+      setVerified(false);
     } catch {
       setError(t('onboarding.loadFailed'));
     } finally {
@@ -147,9 +156,7 @@ export function Onboarding({
       }
     });
   }
-  const available = providers.flatMap((p) =>
-    checks[p.id]?.success ? configs[p.id]?.enabled_models || [] : []
-  );
+  const available = [...new Set(providers.flatMap((p) => configs[p.id]?.enabled_models || []))];
   const chosenRoles = custom ? roles : recommendations;
   const selectedValid = available.includes(model);
   async function verifyModel(): Promise<void> {
@@ -287,6 +294,15 @@ export function Onboarding({
                   invalidate();
                 }}
               />
+              <p className="text-xs text-neutral-500" role="status">
+                {t(
+                  !available.length
+                    ? 'onboarding.enableFirst'
+                    : credentialsDirty
+                      ? 'onboarding.saveCredentialsFirst'
+                      : 'onboarding.selectThenVerify'
+                )}
+              </p>
               <p className="text-xs text-neutral-500">{t('onboarding.probeNotice')}</p>
               <BrutalButton
                 disabled={!selectedValid || verified || credentialsDirty}

@@ -1,5 +1,9 @@
 export const en = {
   onboarding: {
+    enableFirst: 'Enable a model in a provider above to select it here.',
+    saveCredentialsFirst: 'Save or cancel your credential edits before verifying the model.',
+    selectThenVerify: 'Select an enabled model, then verify it to continue. No separate provider verification is required.',
+
     restart: 'Run setup again',
     setup: 'Set up your agent',
     progress: 'Setup progress',
