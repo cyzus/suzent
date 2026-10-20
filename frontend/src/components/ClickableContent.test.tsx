@@ -17,6 +17,13 @@ function render(content: string, fileChipTone?: 'accent' | 'neutral'): string {
 }
 
 describe('ClickableContent', () => {
+  it('renders chat references as titles instead of clickable file paths', () => {
+    const html = render('@[chat://abc/' + encodeURIComponent('设计 [讨论]') + ']');
+    expect(html).toContain('设计 [讨论]');
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('@[');
+  });
+
   it('renders serialized file mention tokens as a single file chip', () => {
     const html = render('参考这个 @[D:/workspace/enoxian/PAPER.md] 继续');
 

@@ -235,6 +235,10 @@ reads the development window's log, and `suzent setup-build-tools` installs
 the Windows build tools needed to compile the desktop app. See the
 [development guide](../08-developing/contributing/development-guide.md).
 
+`suzent chats read <chat_id> --offset 0 --limit 20` reads a page of visible messages
+without assistant reasoning traces. Use the returned `next_offset` to continue;
+`null` means there are no more messages.
+
 `suzent chats show <chat_id>` prints a conversation from its file in
 `~/.suzent/chats/`. `suzent chats verify` checks that the index in `chats.db` matches every
 conversation file in `~/.suzent/chats/`, and lists any that do not.
