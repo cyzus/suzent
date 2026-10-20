@@ -28,6 +28,7 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 from pydantic_ai.tools import ToolDenied
 
+from suzent.core.chat_mentions import build_chat_mention_context
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
@@ -903,6 +904,8 @@ class ChatProcessor:
                 ):
                     yield chunk
                 return
+
+        attachment_context += build_chat_mention_context(message_content or "")
 
         if file_mentions:
             attachment_context += _build_file_mention_context(file_mentions)

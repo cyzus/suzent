@@ -39,6 +39,22 @@ def show(chat_id: str = typer.Argument(..., help="The chat to print")):
         typer.echo(f"\n[{role}]\n{content}")
 
 
+@chats_app.command("read")
+def read(
+    chat_id: str = typer.Argument(..., help="The chat to read"),
+    offset: int = typer.Option(0, min=0, help="Offset in visible messages"),
+    limit: int = typer.Option(20, min=1, max=100, help="Messages per page"),
+) -> None:
+    """Read a sanitized conversation page without assistant reasoning traces."""
+    from suzent.database import get_database
+
+    session = get_database().read_chat_session(chat_id, offset=offset, page_size=limit)
+    if session is None:
+        typer.echo("Referenced chat not found.", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(session, ensure_ascii=False))
+
+
 @chats_app.command("verify")
 def verify(
     verbose: bool = typer.Option(
