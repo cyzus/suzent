@@ -19,6 +19,7 @@ import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
+import { IncomingMessage } from './IncomingMessage';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
@@ -577,6 +578,16 @@ const AGUIPartsContent: React.FC<{
                   />
                 ) : null
               )}
+            </React.Fragment>
+          );
+        }
+
+        if (chunk.type === 'incoming-message') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) => (
+                <IncomingMessage key={pi} text={p.text || ''} />
+              ))}
             </React.Fragment>
           );
         }

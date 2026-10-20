@@ -1752,6 +1752,7 @@ export const en = {
     },
   },
   chatMessage: {
+    sentBySuzent: 'Sent by SUZENT',
     today: 'Today',
     yesterday: 'Yesterday',
     runtime: {

@@ -700,6 +700,13 @@ class _DraftDisplayAccumulator:
             tool["output"] = _stringify_part_content(value.get("output"))
             tool["approvalId"] = None
             self.dirty = True
+        elif name == "incoming_message" and isinstance(value, dict):
+            # Kept in order among the reply's parts, so a reload mid-turn still
+            # shows the message where the run took it in.
+            self.parts.append(
+                {"type": "incoming-message", "text": str(value.get("content") or "")}
+            )
+            self.dirty = True
         elif name == "tool_display" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
@@ -868,6 +875,27 @@ def _run_result_usage(result: Any) -> Any:
     """Read run usage whether pydantic-ai exposes it as a property or method."""
     usage = result.usage
     return usage() if callable(usage) else usage
+
+
+def _incoming_message_texts(event: Any) -> list[str]:
+    """What to show for messages a live run took in mid-turn.
+
+    Another agent's message reaches a busy chat by injection rather than a new
+    turn; without this the chat showed nothing of it until the turn ended.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
+
+    texts: list[str] = []
+    for message in getattr(event, "messages", ()) or ():
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                shown = extract_system_reminder_display_trigger(part.content)
+                if shown:
+                    texts.append(shown)
+    return texts
 
 
 def _make_run_injector(stream: Any) -> Any:
@@ -1601,6 +1629,11 @@ async def stream_agent_responses(
 
                             # ── Mid-run checkpoint tracking ──────────────────
                             _event_kind = getattr(event, "event_kind", "")
+                            if _event_kind == "enqueued_messages":
+                                for _incoming in _incoming_message_texts(event):
+                                    await sse_queue.put(
+                                        ("incoming_message", {"content": _incoming})
+                                    )
                             _new_tool_names = [
                                 name
                                 for name in _tool_search_class_names(event)
@@ -2230,6 +2263,9 @@ async def stream_agent_responses(
 
                 elif msg_type == "permission_resolution":
                     yield CustomEvent(name="tool_permission_resolution", value=payload)
+
+                elif msg_type == "incoming_message":
+                    yield CustomEvent(name="incoming_message", value=payload)
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output

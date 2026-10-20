@@ -1691,6 +1691,7 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    sentBySuzent: '由 SUZENT 转达',
     today: '今天',
     yesterday: '昨天',
     runtime: {
