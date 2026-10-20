@@ -31,4 +31,20 @@ describe('SystemTriggeredMessage', () => {
 
     expect(html).not.toContain('suzent-agent-inbox');
   });
+
+  it('starts folded to its title when asked, however short the body', () => {
+    const html = renderToStaticMarkup(
+      <SystemTriggeredMessage
+        message={{
+          role: 'system_triggered',
+          content: '**Scheduled Task: Stand-up reminder**\n\nRemind the user about stand-up',
+        }}
+        folded
+      />
+    );
+
+    expect(html).toContain('Scheduled Task: Stand-up reminder');
+    expect(html).toContain('grid-rows-[0fr]');
+    expect(html).toContain('aria-expanded="false"');
+  });
 });

@@ -200,6 +200,11 @@ export interface Task {
   createdAt?: string;
   updatedAt?: string;
   completedAt?: string | null;
+  /** Present on the all-projects board, which labels each task by project and session. */
+  projectName?: string;
+  projectSlug?: string;
+  chatTitle?: string | null;
+  chatRunning?: boolean;
 }
 
 // Added: configuration options exposed by backend (derived from suzent.config.Config)

@@ -448,6 +448,13 @@ class AgentTool(Tool):
                     ),
                     metadata={**metadata, "result_summary": task.result_summary},
                 )
+            if task.backgrounded and task.status in ("queued", "running"):
+                from suzent.prompts import SUBAGENT_MOVED_TO_BACKGROUND
+
+                return ToolResult.success_result(
+                    SUBAGENT_MOVED_TO_BACKGROUND.format(task_id=task.task_id),
+                    metadata={**metadata, "run_in_background": True},
+                )
             outcome = "was stopped" if task.status == "cancelled" else "failed"
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,

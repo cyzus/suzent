@@ -29,6 +29,10 @@ logger = get_logger(__name__)
 HEARTBEAT_OK = "HEARTBEAT_OK"
 
 
+class ChatBusyError(RuntimeError):
+    """The chat a background turn is bound to already has a run in progress."""
+
+
 def get_active_heartbeat() -> Optional["HeartbeatRunner"]:
     """Return the active HeartbeatRunner instance, or None."""
     return get_active(HeartbeatRunner)
@@ -106,7 +110,9 @@ class HeartbeatRunner(BaseBrain):
                 "heartbeat_instructions": instructions,
                 "last_run_at": cfg.get("heartbeat_last_run_at"),
                 "last_result": cfg.get("heartbeat_last_result") or self._last_result,
-                "last_error": self._last_error,
+                # Per chat and persisted: the runner-wide error named whichever
+                # chat failed last and was gone after a restart.
+                "last_error": cfg.get("heartbeat_last_error"),
                 "heartbeat_due": chat_id in self._pending_heartbeats,
             }
 
@@ -160,6 +166,15 @@ class HeartbeatRunner(BaseBrain):
             return
 
         instructions = self.read_instructions(chat_id)
+        from suzent.core.focal_agent import (
+            is_focal_chat_id,
+            record_skipped_heartbeat,
+            should_run_focal_heartbeat,
+        )
+
+        if is_focal_chat_id(chat_id) and not should_run_focal_heartbeat(instructions):
+            record_skipped_heartbeat()
+            return
         marked_ts = time.time()
         self._pending_heartbeats[chat_id] = marked_ts
         asyncio.create_task(
@@ -239,6 +254,10 @@ class HeartbeatRunner(BaseBrain):
                 heartbeat_approvals=True,
             )
             self._last_error = None
+            db.merge_chat_config(chat_id, {"heartbeat_last_error": None})
+            from suzent.core.focal_agent import record_focal_heartbeat_done
+
+            record_focal_heartbeat_done(chat_id)
 
             if not response_text:
                 logger.debug(f"Heartbeat OK ({chat_id}) -- nothing needs attention")
@@ -268,9 +287,15 @@ class HeartbeatRunner(BaseBrain):
 
             self._announce(chat_id, response_text, db)
 
+        except ChatBusyError:
+            logger.debug(f"Heartbeat skipped for {chat_id}: chat became busy")
         except Exception as e:
             logger.error(f"Heartbeat execution failed for {chat_id}: {e}")
             self._last_error = str(e)
+            try:
+                db.merge_chat_config(chat_id, {"heartbeat_last_error": str(e)[:500]})
+            except Exception as record_error:
+                logger.warning(f"Could not record heartbeat failure: {record_error}")
 
     @staticmethod
     def _announce(chat_id: str, response_text: str, db) -> None:
@@ -339,8 +364,10 @@ class HeartbeatRunner(BaseBrain):
         look like a failure so it can retry.
         """
         if chat_id in stream_controls:
-            logger.debug(f"Bound turn skipped for {chat_id}: stream already active")
-            return ""
+            # Raised, not an empty answer: "" means "ran and had nothing to say",
+            # and a scheduled task that hears that is recorded as done -- a
+            # one-shot reminder would be retired without ever firing.
+            raise ChatBusyError(f"Chat {chat_id} has a run in progress")
 
         db = get_database()
         chat = db.get_chat(chat_id)

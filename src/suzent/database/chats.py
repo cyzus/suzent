@@ -64,10 +64,11 @@ CHAT_SCOPED_CONFIG_KEYS = frozenset(
 # is distinguishable from an explicit None (restore a NULL checkpoint state).
 _UNSET = object()
 
-# Platforms hidden from the user's chat list. Only the autonomous dream consolidation
-# chat is hidden — sub-agent chats are intentionally kept visible (nested under their
-# parent agent in the UI), so they are NOT excluded here.
-HIDDEN_CHAT_PLATFORMS = ("dream",)
+# Platforms hidden from the user's chat list: the autonomous dream consolidation chat,
+# and the Focal Agent, which has its own top-level sidebar slot instead of a row in a
+# project. Sub-agent chats are intentionally kept visible (nested under their parent
+# agent in the UI), so they are NOT excluded here.
+HIDDEN_CHAT_PLATFORMS = ("dream", "focal")
 
 logger = get_logger(__name__)
 

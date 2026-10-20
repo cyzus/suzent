@@ -2276,3 +2276,14 @@ button.activity-turn-duration:focus-visible {
     opacity: 1;
   }
 }
+
+@media (hover: hover) and (pointer: fine) {
+  .conversation-message .conversation-copy {
+    opacity: 0;
+  }
+
+  .conversation-message:hover .conversation-copy,
+  .conversation-message:focus-within .conversation-copy {
+    opacity: 1;
+  }
+}

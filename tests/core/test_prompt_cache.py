@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from types import SimpleNamespace
 
@@ -210,3 +211,21 @@ async def test_anthropic_request_marks_cache_breakpoints() -> None:
     assert body["cache_control"]["type"] == "ephemeral"
     assert body["system"][-1]["cache_control"]["type"] == "ephemeral"
     assert body["tools"][-1]["cache_control"]["type"] == "ephemeral"
+
+
+def test_first_party_anthropic_streams_tool_input_as_it_is_written() -> None:
+    model = model_factory._create_anthropic_model(
+        "claude-sonnet-5-5", "test-key", PROVIDER_REGISTRY_BY_ID["anthropic"]
+    )
+
+    assert model.settings["anthropic_eager_input_streaming"] is True
+
+
+def test_compatible_anthropic_endpoint_keeps_buffered_tool_input() -> None:
+    spec = dataclasses.replace(
+        PROVIDER_REGISTRY_BY_ID["anthropic"], base_url="https://gateway.example/v1"
+    )
+
+    model = model_factory._create_anthropic_model("claude-sonnet-5-5", "k", spec)
+
+    assert "anthropic_eager_input_streaming" not in model.settings

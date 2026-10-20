@@ -171,13 +171,23 @@ fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> R
         .map_err(|error| error.to_string())?;
     #[cfg(target_os = "macos")]
     {
-        window
-            .set_title_bar_style(if enabled {
-                tauri::TitleBarStyle::Overlay
-            } else {
-                tauri::TitleBarStyle::Visible
-            })
-            .map_err(|error| error.to_string())?;
+        let style = if enabled {
+            tauri::TitleBarStyle::Overlay
+        } else {
+            tauri::TitleBarStyle::Visible
+        };
+        // On macOS the decorations change lands asynchronously and rebuilds
+        // the style mask without the full-size content flag. Set straight
+        // away, the title bar style is applied first and then wiped, and the
+        // web content sits a title bar lower than the page thinks, so every
+        // click lands off the pointer (tauri#10225). Apply it afterwards.
+        let styled = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            if let Err(error) = styled.set_title_bar_style(style) {
+                eprintln!("Could not restore the title bar style: {error}");
+            }
+        });
         window
             .set_title(if enabled {
                 ""

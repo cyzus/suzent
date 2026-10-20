@@ -91,6 +91,7 @@ function findLastActivityGroupIndex(groups: Array<{ type: string }>): number {
 }
 
 interface AssistantMessageProps {
+  conversational?: boolean;
   message: Message;
   /** Wall-clock seconds the agent worked on this message's whole turn. */
   workedDurationSeconds?: number;
@@ -120,6 +121,8 @@ interface AssistantMessageProps {
   onRemoveApprovalPolicy?: (toolName: string) => void;
   /** Handler for inline A2UI button actions */
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+  /** The user has written since this message, so its question forms are answered. */
+  repliedTo?: boolean;
   /** Sub-agent task state map: taskId -> status (driven by SSE events) */
   subAgentTasks?: Record<
     string,
@@ -187,6 +190,8 @@ const AGUIPartsContent: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+  /** The user has written since this message, so its question forms are answered. */
+  repliedTo?: boolean;
   subAgentTasks?: Record<
     string,
     { status: SubAgentStatus; resultSummary?: string; error?: string }
@@ -204,6 +209,7 @@ const AGUIPartsContent: React.FC<{
   toolApprovalPolicy,
   onRemoveApprovalPolicy,
   onInlineAction,
+  repliedTo = false,
   subAgentTasks,
   onOpenSubAgentSidebar,
   onStopSubAgent,
@@ -595,6 +601,7 @@ const AGUIPartsContent: React.FC<{
                   <InlineSurface
                     key={pi}
                     surface={surface}
+                    answered={repliedTo}
                     onAction={(action, context) =>
                       onInlineAction?.(surface.id, action, context ?? {})
                     }
@@ -743,6 +750,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 };
 
 const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
+  conversational = false,
   message,
   workedDurationSeconds,
   messageIndex,
@@ -755,6 +763,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   toolApprovalPolicy,
   onRemoveApprovalPolicy,
   onInlineAction,
+  repliedTo = false,
   subAgentTasks,
   onOpenSubAgentSidebar,
   onStopSubAgent,
@@ -915,11 +924,13 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           {isAcp ? acpAgent : 'Suzent'}
         </span>
       </div>
-      <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
-        {isAcp
-          ? t('chatMessage.runtime.external', { agent: acpAgent })
-          : t('chatMessage.runtime.suzent', { model: signature || 'model' })}
-      </div>
+      {!conversational && (
+        <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
+          {isAcp
+            ? t('chatMessage.runtime.external', { agent: acpAgent })
+            : t('chatMessage.runtime.suzent', { model: signature || 'model' })}
+        </div>
+      )}
     </div>
   ) : (
     <div
@@ -967,19 +978,38 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       </div>
     ) : null;
 
-  const messageFooter = (
+  const conversationCopy = conversational && fullMessageText && !isThinking && (
+    <CopyButton
+      text={fullMessageText}
+      className="conversation-copy absolute bottom-1 right-0 !w-8 !h-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
+    />
+  );
+
+  const messageFooter = conversational ? (
+    !isThinking && citationSourcesList.length > 0 ? (
+      <SourcesPanel sources={citationSourcesList} />
+    ) : null
+  ) : (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
         {fullMessageText && !isThinking && (
           <CopyButton text={fullMessageText} className="relative" />
         )}
-        {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
-        {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
+        {!conversational && onRetry && !isStreamingThis && !isThinking && (
+          <RetryButton onClick={onRetry} />
+        )}
+        {!conversational && onFork && !isStreamingThis && !isThinking && (
+          <ForkButton onClick={onFork} />
+        )}
       </div>
       {!isThinking && <SourcesPanel sources={citationSourcesList} />}
-      {!isThinking && <ModelSignature model={modelSignature} />}
-      {message.timestamp && !isStreamingThis && (
-        <time className="ml-auto shrink-0 whitespace-nowrap font-mono text-neutral-400 select-none">
+      {!conversational && !isThinking && <ModelSignature model={modelSignature} />}
+      {!conversational && message.timestamp && !isStreamingThis && (
+        <time
+          dateTime={message.timestamp}
+          title={message.timestamp}
+          className="ml-auto shrink-0 whitespace-nowrap font-mono text-neutral-400 select-none"
+        >
           {formatMessageTime(message.timestamp)}
         </time>
       )}
@@ -990,7 +1020,10 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   if (effectiveParts !== undefined) {
     return (
       <CitationProvider sources={citationSourcesMap}>
-        <div className="group w-full max-w-4xl break-all text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+        <div
+          className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message pr-10' : 'pr-4 md:pr-12'}`}
+        >
+          {conversationCopy}
           {/* Badge/Assembly Container */}
           {badgeContainer}
 
@@ -1016,6 +1049,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   toolApprovalPolicy={toolApprovalPolicy}
                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                   onInlineAction={onInlineAction}
+                  repliedTo={repliedTo}
                   subAgentTasks={subAgentTasks}
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
@@ -1103,7 +1137,10 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   return (
     <CitationProvider sources={citationSourcesMap}>
-      <div className="group w-full max-w-4xl break-all text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+      <div
+        className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message pr-10' : 'pr-4 md:pr-12'}`}
+      >
+        {conversationCopy}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
 
@@ -1198,6 +1235,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                                   toolApprovalPolicy={toolApprovalPolicy}
                                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                                   onInlineAction={onInlineAction}
+                                  repliedTo={repliedTo}
                                   subAgentTasks={subAgentTasks}
                                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                                   onStopSubAgent={onStopSubAgent}
@@ -1273,6 +1311,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                             toolApprovalPolicy={toolApprovalPolicy}
                             onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                             onInlineAction={onInlineAction}
+                            repliedTo={repliedTo}
                             subAgentTasks={subAgentTasks}
                             onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                             onStopSubAgent={onStopSubAgent}
@@ -1305,6 +1344,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                           <InlineSurface
                             key={bi}
                             surface={surface}
+                            answered={repliedTo}
                             onAction={(action, context) =>
                               onInlineAction?.(surface.id, action, context ?? {})
                             }
@@ -1346,6 +1386,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                           toolApprovalPolicy={toolApprovalPolicy}
                           onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                           onInlineAction={onInlineAction}
+                          repliedTo={repliedTo}
                           subAgentTasks={subAgentTasks}
                           onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                           onStopSubAgent={onStopSubAgent}

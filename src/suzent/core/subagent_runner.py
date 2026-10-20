@@ -90,6 +90,16 @@ class SubAgentTask:
     # is sitting and watching. Carrying the call id on the spawn event lets the
     # card match itself to the child from the first moment.
     tool_call_id: Optional[str] = None
+    # A blocking call hands its child over to the background once the child's
+    # model stalls; from then on the child wakes the parent like any background run.
+    backgrounded: bool = False
+    background_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+
+
+# Retries for a sub-agent whose model call went quiet or dropped mid-turn. The
+# model was usually still working, so the turn is picked up again, not failed.
+SUBAGENT_STALL_RETRIES = 3
+_STALL_RETRY_DELAY_SECONDS = 5.0
 
 
 # Global registry: task_id -> SubAgentTask
@@ -415,10 +425,44 @@ async def spawn_subagent(
             _broadcast_task_update(task)
             _persist_task_state(task)
     else:
-        # Blocking — parent awaits the child's completion
-        await _run_subagent(task, wakeup_parent=False)
+        await _await_blocking_subagent(task)
 
     return task
+
+
+async def _await_blocking_subagent(task: SubAgentTask) -> None:
+    """Wait for a blocking child until it finishes or moves to the background.
+
+    The child runs as its own task so a stall does not tie up the parent: the
+    parent gets its turn back and the child keeps going.
+    """
+    runner = asyncio.create_task(_run_subagent(task, wakeup_parent=False))
+    task.runner_task = runner
+    handed_over = asyncio.create_task(task.background_event.wait())
+    try:
+        await asyncio.wait({runner, handed_over}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        # The parent's turn was stopped while it was still waiting on the
+        # child, so the child stops with it, as a blocking call always has.
+        if not task.backgrounded:
+            runner.cancel()
+        raise
+    finally:
+        handed_over.cancel()
+    if runner.done() and not runner.cancelled():
+        runner.result()
+
+
+def _move_to_background(task: SubAgentTask) -> None:
+    """Release a parent that is blocked on this child; the child keeps running."""
+    if task.backgrounded:
+        return
+    task.backgrounded = True
+    task.background_event.set()
+
+
+def _wakes_parent(task: SubAgentTask, wakeup_parent: bool) -> bool:
+    return wakeup_parent or task.backgrounded
 
 
 # ─── Execution ───────────────────────────────────────────────────────────────
@@ -670,13 +714,17 @@ async def _run_subagent(
     bind_producer_replay(stream_queue.replay)
     wake_parent = False
     try:
-        from suzent.core.chat_processor import ChatProcessor
+        from suzent.core.chat_processor import ChatProcessor, ModelStalledError
         from suzent.agent_manager import build_agent_config
 
         processor = ChatProcessor()
 
         # Build config: only pass whitelisted tools
-        from suzent.prompts import SUBAGENT_INSTRUCTIONS, SUBAGENT_PREAMBLE
+        from suzent.prompts import (
+            SUBAGENT_INSTRUCTIONS,
+            SUBAGENT_PREAMBLE,
+            SUBAGENT_STALL_RESUME,
+        )
 
         # Sub-agents replace STATIC_INSTRUCTIONS rather than composing with it,
         # so the precedence rules have to be prepended explicitly. They read
@@ -784,14 +832,36 @@ async def _run_subagent(
                 },
             )
             config_override = build_agent_config(base_config, require_social_tool=False)
-            result_text = await processor.process_turn_text(
-                chat_id=task.chat_id,
-                user_id=CONFIG.user_id,
-                message_content=task.description,
-                config_override=config_override,
-                _stream_queue=stream_queue,
-                citation_sources_out=child_citation_sources,
-            )
+            message_content, reminders = task.description, None
+            stalls = 0
+            while True:
+                try:
+                    result_text = await processor.process_turn_text(
+                        chat_id=task.chat_id,
+                        user_id=CONFIG.user_id,
+                        message_content=message_content,
+                        config_override=config_override,
+                        _stream_queue=stream_queue,
+                        citation_sources_out=child_citation_sources,
+                        system_reminders=reminders,
+                    )
+                    break
+                except ModelStalledError as exc:
+                    stalls += 1
+                    if stalls > SUBAGENT_STALL_RETRIES:
+                        raise
+                    logger.warning(
+                        f"Sub-agent {task.task_id} model stalled "
+                        f"({stalls}/{SUBAGENT_STALL_RETRIES}), resuming: {exc}"
+                    )
+                    _move_to_background(task)
+                    await asyncio.sleep(_STALL_RETRY_DELAY_SECONDS * stalls)
+                    # The last stream ended with its sentinel; a fresh queue
+                    # lets anyone watching the child see the resumed turn.
+                    unregister_background_stream(task.chat_id, stream_queue)
+                    stream_queue = register_background_stream(task.chat_id)
+                    bind_producer_replay(stream_queue.replay)
+                    message_content, reminders = "", [SUBAGENT_STALL_RESUME]
 
         task.status = "completed"
         task.result_summary, task.citation_sources = summarize_agent_output(
@@ -810,7 +880,7 @@ async def _run_subagent(
                 "citation_sources": task.citation_sources,
             },
         )
-        wake_parent = wakeup_parent
+        wake_parent = _wakes_parent(task, wakeup_parent)
 
     except asyncio.CancelledError:
         task.status = "cancelled"
@@ -835,7 +905,7 @@ async def _run_subagent(
                 "error": str(e),
             },
         )
-        wake_parent = wakeup_parent
+        wake_parent = _wakes_parent(task, wakeup_parent)
     finally:
         bind_producer_replay(None)
         unregister_background_stream(task.chat_id, stream_queue)

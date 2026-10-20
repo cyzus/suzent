@@ -606,3 +606,53 @@ async def test_a_silent_isolated_task_stays_silent(temp_db, monkeypatch, runner)
 
 async def _done(value):
     return value
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_whose_chat_turns_busy_is_retried_not_retired(
+    temp_db, monkeypatch, runner
+):
+    """The chat can start a run between dispatch and the turn itself.
+
+    That used to come back as an empty answer, recorded as a successful run,
+    so a one-shot reminder was retired without ever reaching anyone.
+    """
+    from suzent.core.heartbeat import ChatBusyError
+
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-5")
+    job_id = temp_db.create_cron_job(
+        name="stand-up",
+        prompt="remind the user",
+        schedule_kind="once",
+        run_at=datetime.now(),
+        chat_id="chat-5",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    async def busy(*args, **kwargs):
+        raise ChatBusyError("Chat chat-5 has a run in progress")
+
+    monkeypatch.setattr(runner, "run_bound_turn", busy)
+    before = datetime.now()
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    job = temp_db.get_cron_job(job_id)
+    assert job.active is True
+    assert job.retry_count == 0
+    assert before + timedelta(seconds=50) < job.next_run_at
+    assert job.next_run_at < before + timedelta(seconds=70)
+    assert temp_db.list_cron_runs(job_id)[0].status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_a_bound_turn_on_a_busy_chat_says_so(temp_db, monkeypatch):
+    from suzent.core import heartbeat
+
+    monkeypatch.setattr(heartbeat, "get_database", lambda: temp_db)
+    stream_controls["chat-6"] = StreamControl()
+    try:
+        with pytest.raises(heartbeat.ChatBusyError):
+            await heartbeat.HeartbeatRunner().run_bound_turn("chat-6", "reminder")
+    finally:
+        stream_controls.pop("chat-6", None)
