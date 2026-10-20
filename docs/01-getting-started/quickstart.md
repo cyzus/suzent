@@ -103,8 +103,7 @@ flow. You can also open **Run setup again** from **Settings → About**. The sta
    video, and embeddings. Unknown or missing capabilities remain unassigned;
    existing assignments are preserved. Specialist models are not invoked during
    matching. You can adjust the assignments before saving.
-3. Describe a first task, or skip it. Your task appears in the chat input for you
-   to review and send.
+   Save your assignments to finish setup and open a new conversation.
 
 Provider and role settings remain available after setup:
 

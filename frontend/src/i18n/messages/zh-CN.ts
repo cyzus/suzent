@@ -10,9 +10,10 @@ export const zhCN = {
     fillMissing: '补全空缺',
     recommendAll: '重新推荐全部',
     restoreRoles: '恢复已有分工',
-    replaceRolesNotice: '要用推荐替换当前预览中的全部分工吗？无法匹配的角色可能变为空缺。点击保存后才会写入设置。',
+    replaceRolesNotice:
+      '要用推荐替换当前预览中的全部分工吗？无法匹配的角色可能变为空缺。点击保存后才会写入设置。',
     confirmRecommend: '替换预览',
-    keepContinue: '保留配置并继续 →',
+    keepContinue: '保留配置并进入聊天 →',
 
     exit: '退出引导',
     existingModels: '已从现有配置载入 {count} 个模型。',
@@ -42,7 +43,7 @@ export const zhCN = {
     heading1: '连接模型，开始使用。',
     heading2: '让模型各司其职。',
     heading3: '先帮你完成什么？',
-    intro1: '保存凭据、测试连接，再启用你想使用的模型。',
+    intro1: '使用已有配置，或连接服务商并启用你想使用的模型。',
     intro2: '查看当前分工，按需调整。之后随时可以在设置中更改。',
     intro3: '给我一件真实的任务。你的请求会放入聊天输入框，供你确认发送。',
     loadFailed: '无法加载配置，请重试。',
@@ -58,9 +59,9 @@ export const zhCN = {
     custom: '自行调整',
     noMatch: '暂无匹配的已启用模型，稍后配置',
     matchNotice:
-      '根据已配置服务商下已启用模型的已知能力匹配，。不会调用或测试专用模型；能力未知时留空。价格已知时，后台文字任务优先使用低成本模型。',
+      '根据已配置服务商下已启用模型的已知能力匹配。不会调用或测试专用模型；能力未知时留空。价格已知时，后台文字任务优先使用低成本模型。',
     back: '← 返回',
-    saveContinue: '保存分工并继续 →',
+    saveContinue: '保存并进入聊天 →',
     useRecommended: '使用推荐并继续 →',
     research: '研究一个话题',
     file: '处理一份文件',

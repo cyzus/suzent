@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useChatCoreStore } from '../../hooks/useChatStore';
 import { getApiBase } from '../../lib/api';
-import { setupDraft } from '../../lib/setupDraft';
 import { Onboarding } from './Onboarding';
 
 export function SetupGate({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -48,10 +47,9 @@ export function SetupGate({ children }: { children: React.ReactNode }): React.Re
           }
           window.location.hash = '#/';
         }}
-        onComplete={(model, task) => {
+        onComplete={(model) => {
           beginNewChat();
           setConfig((previous) => ({ ...previous, model }));
-          setupDraft.task = task;
           try {
             localStorage.removeItem(pendingKey);
           } catch {

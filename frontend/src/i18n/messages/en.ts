@@ -3,16 +3,20 @@ export const en = {
     rolesPreview: 'Assignment preview',
     nothingToFill: 'No matching recommendations for the remaining empty roles.',
     currentRoles: 'Current assignments',
-    roles_current: 'Your existing assignments are preserved. The primary model follows your choice in step 1; empty roles stay empty.',
-    roles_filled: 'Recommendations fill empty roles only. Existing assignments are unchanged. Review before saving.',
-    roles_recommended: 'Review these recommendations before saving. They have not replaced your saved settings yet.',
+    roles_current:
+      'Your existing assignments are preserved. The primary model follows your choice in step 1; empty roles stay empty.',
+    roles_filled:
+      'Recommendations fill empty roles only. Existing assignments are unchanged. Review before saving.',
+    roles_recommended:
+      'Review these recommendations before saving. They have not replaced your saved settings yet.',
     roles_edited: 'You have unsaved assignment changes. Review them before continuing.',
     fillMissing: 'Fill empty roles',
     recommendAll: 'Recommend all roles again',
     restoreRoles: 'Restore existing assignments',
-    replaceRolesNotice: 'Replace all assignments in this preview with recommendations? Unsupported roles may become empty. Settings change only when you save.',
+    replaceRolesNotice:
+      'Replace all assignments in this preview with recommendations? Unsupported roles may become empty. Settings change only when you save.',
     confirmRecommend: 'Replace preview',
-    keepContinue: 'Keep assignments and continue →',
+    keepContinue: 'Keep assignments and open chat →',
 
     exit: 'Exit setup',
     existingModels: '{count} enabled models loaded from your settings.',
@@ -25,13 +29,17 @@ export const en = {
 
     checkConnection: 'Check connection (no generation)',
     connection_untested: 'Model reply not tested. You can continue without testing.',
-    connection_connected: 'Model-list access confirmed. Model replies and quota have not been tested.',
-    connection_unsupported: 'No supported connection check. Configuration saved; you can continue without testing.',
-    connection_unconfirmed: 'Connection could not be confirmed. Check credentials or continue without testing.',
+    connection_connected:
+      'Model-list access confirmed. Model replies and quota have not been tested.',
+    connection_unsupported:
+      'No supported connection check. Configuration saved; you can continue without testing.',
+    connection_unconfirmed:
+      'Connection could not be confirmed. Check credentials or continue without testing.',
 
     enableFirst: 'Enable a model in a provider above to select it here.',
     saveCredentialsFirst: 'Save or cancel your credential edits before verifying the model.',
-    selectThenVerify: 'Select an enabled model to continue. Connection checks and reply tests are optional.',
+    selectThenVerify:
+      'Select an enabled model to continue. Connection checks and reply tests are optional.',
 
     restart: 'Run setup again',
     setup: 'Set up your agent',
@@ -42,9 +50,8 @@ export const en = {
     heading1: 'Connect a model to get started.',
     heading2: 'Choose how models share the work.',
     heading3: 'What shall we do first?',
-    intro1: 'Save your credentials, test the connection, and enable the models you want to use.',
-    intro2:
-      'Review your assignments or adjust them. You can change these later in Settings.',
+    intro1: 'Use existing settings, or connect a provider and enable the models you want to use.',
+    intro2: 'Review your assignments or adjust them. You can change these later in Settings.',
     intro3: 'Describe a real task. Your request will be placed in the chat input, ready to send.',
     loadFailed: 'Could not load your configuration. Try again.',
     actionFailed: 'Could not finish this step. Check the connection and try again.',
@@ -61,7 +68,7 @@ export const en = {
     matchNotice:
       'Matches use known capabilities of enabled models on configured providers. Existing assignments are kept unless you choose to replace them. Specialist models are not tested or invoked; unknown capabilities remain unassigned. Lower-cost text models are preferred when pricing is known.',
     back: '← Back',
-    saveContinue: 'Save roles and continue →',
+    saveContinue: 'Save and open chat →',
     useRecommended: 'Use recommendations and continue →',
     research: 'Research a topic',
     file: 'Work with a file',

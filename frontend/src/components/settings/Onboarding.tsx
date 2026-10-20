@@ -43,7 +43,7 @@ export function Onboarding({
   onComplete,
   onExit,
 }: {
-  onComplete: (model: string, task: string) => void;
+  onComplete: (model: string) => void;
   onExit?: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -72,7 +72,6 @@ export function Onboarding({
   const [suggestions, setSuggestions] = useState<Roles>({});
   const [custom, setCustom] = useState(false);
 
-  const [task, setTask] = useState('');
   const [manageProviders, setManageProviders] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -234,10 +233,10 @@ export function Onboarding({
         )}
       </header>
       <nav
-        className="mb-8 grid grid-cols-3 gap-3 text-xs font-bold"
+        className="mb-8 grid grid-cols-2 gap-3 text-xs font-bold"
         aria-label={t('onboarding.progress')}
       >
-        {[1, 2, 3].map((n) => (
+        {[1, 2].map((n) => (
           <span
             key={n}
             aria-current={step === n ? 'step' : undefined}
@@ -570,50 +569,11 @@ export function Onboarding({
                       throw new Error();
                     setModel(chosenRoles.primary[0]);
                     await refreshBackendConfig();
-                    setStep(3);
+                    onComplete(chosenRoles.primary[0]);
                   })
                 }
               >
                 {t(roleMode === 'current' ? 'onboarding.keepContinue' : 'onboarding.saveContinue')}
-              </BrutalButton>
-            </div>
-          </>
-        )}
-        {step === 3 && (
-          <>
-            <div className="mb-6 border border-neutral-200 p-4 dark:border-zinc-700">
-              <p className="text-sm font-bold">{t('onboarding.ready')}</p>
-              <p className="mt-2 break-all text-xs text-neutral-500">{model}</p>
-            </div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              {['research', 'file', 'project'].map((key) => (
-                <BrutalButton
-                  key={key}
-                  size="sm"
-                  onClick={() => setTask(t(`onboarding.${key}Prompt`))}
-                >
-                  {t(`onboarding.${key}`)}
-                </BrutalButton>
-              ))}
-            </div>
-            <textarea
-              className="min-h-32 w-full border-2 border-brutal-black bg-white p-3 dark:bg-zinc-900"
-              placeholder={t('onboarding.taskPlaceholder')}
-              aria-label={t('onboarding.task')}
-              value={task}
-              onChange={(e) => setTask(e.target.value)}
-            />
-            <div className="mt-6 flex flex-wrap justify-between gap-3">
-              <BrutalButton onClick={() => setStep(2)}>{t('onboarding.back')}</BrutalButton>
-              <BrutalButton onClick={() => onComplete(model, '')}>
-                {t('onboarding.skip')}
-              </BrutalButton>
-              <BrutalButton
-                variant="dark"
-                disabled={!task.trim()}
-                onClick={() => onComplete(model, task)}
-              >
-                {t('onboarding.start')}
               </BrutalButton>
             </div>
           </>
