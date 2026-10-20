@@ -2962,6 +2962,10 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                             continue
                         if extract_system_reminder_content(stripped_attachments):
                             continue
+                        # Empty text with no media: the "" prompt older resumes
+                        # sent after automatic tool approvals. Nobody wrote it.
+                        if isinstance(part.content, str):
+                            continue
 
                     entry = {"role": "user", "content": clean_text}
                     if files:

@@ -1879,7 +1879,9 @@ async def stream_agent_responses(
                             len(_failed_returns),
                         )
                         history = continuation
-                        prompt = ""  # no new user message on resume
+                        # None, not "": pydantic-ai sends any non-None prompt,
+                        # so "" added an empty user message to every resume.
+                        prompt = None
                         current_deferred = None
                         continue  # restart loop so the agent reacts
 
@@ -1959,7 +1961,7 @@ async def stream_agent_responses(
                                     approvals=auto_approvals
                                 )
                                 history = current_history
-                                prompt = ""  # no new user message on resume
+                                prompt = None  # no new user message on resume
                                 continue  # restart loop
 
                             # Some tools still need the user's decision.
