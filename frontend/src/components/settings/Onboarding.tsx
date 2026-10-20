@@ -64,6 +64,11 @@ export function Onboarding({
   const [error, setError] = useState('');
   const [recommendations, setRecommendations] = useState<Roles>({});
   const [roles, setRoles] = useState<Roles>({});
+  const savedRolesRef = useRef<Roles>({});
+  const [roleMode, setRoleMode] = useState<'current' | 'filled' | 'recommended' | 'edited'>(
+    'current'
+  );
+  const [confirmReset, setConfirmReset] = useState(false);
   const [suggestions, setSuggestions] = useState<Roles>({});
   const [custom, setCustom] = useState(false);
 
@@ -98,6 +103,7 @@ export function Onboarding({
           ])
         )
       );
+      savedRolesRef.current = savedRoles;
       setRoles(savedRoles);
       const enabled = data.providers.flatMap((p) => p.user_config?.enabled_models || []);
       setModel((current) =>
@@ -167,7 +173,11 @@ export function Onboarding({
     });
   }
   const available = [...new Set(providers.flatMap((p) => configs[p.id]?.enabled_models || []))];
-  const chosenRoles = custom ? roles : recommendations;
+  const chosenRoles = roles;
+  const hasSavedRoles = Object.values(savedRolesRef.current).some((value) => value.length > 0);
+  const canFill = Object.entries(recommendations).some(
+    ([key, value]) => value.length > 0 && !roles[key]?.length
+  );
   const selectedValid = available.includes(model);
   async function verifyModel(): Promise<void> {
     invalidate();
@@ -192,12 +202,11 @@ export function Onboarding({
       });
       if (!res.ok) throw new Error();
       const proposed: Roles = (await res.json()).roles;
-      // Explicit existing assignments are preserved; only empty roles receive recommendations.
-      const merged = { ...proposed };
-      for (const [key, value] of Object.entries(roles)) if (value.length) merged[key] = value;
-      merged.primary = [model];
-      setRecommendations(merged);
-      setRoles(merged);
+      setRecommendations({ ...proposed, primary: [model] });
+      setRoles({ ...(hasSavedRoles ? savedRolesRef.current : proposed), primary: [model] });
+      setRoleMode(hasSavedRoles ? 'current' : 'recommended');
+      setCustom(false);
+      setConfirmReset(false);
       const compatible = await fetchRoleSuggestions();
       const enabled = new Set(available);
       setSuggestions(
@@ -409,19 +418,83 @@ export function Onboarding({
           <>
             <div className="mb-5 flex flex-wrap gap-3">
               <BrutalButton isActive={!custom} onClick={() => setCustom(false)}>
-                {t('onboarding.recommended')}
+                {t(roleMode === 'current' ? 'onboarding.currentRoles' : 'onboarding.rolesPreview')}
               </BrutalButton>
               <BrutalButton isActive={custom} onClick={() => setCustom(true)}>
                 {t('onboarding.custom')}
               </BrutalButton>
             </div>
+            <p className="mb-4 text-sm leading-relaxed" role="status">
+              {t(`onboarding.roles_${roleMode}`)}
+            </p>
+            {hasSavedRoles && (
+              <div className="mb-5 flex flex-wrap gap-2">
+                <BrutalButton
+                  size="sm"
+                  disabled={!canFill}
+                  onClick={() => {
+                    setRoles((current) => {
+                      const next = { ...current };
+                      for (const [key, value] of Object.entries(recommendations))
+                        if (!next[key]?.length) next[key] = value;
+                      return next;
+                    });
+                    setRoleMode('filled');
+                  }}
+                >
+                  {t('onboarding.fillMissing')}
+                </BrutalButton>
+                <BrutalButton variant="ghost" size="sm" onClick={() => setConfirmReset(true)}>
+                  {t('onboarding.recommendAll')}
+                </BrutalButton>
+                {roleMode !== 'current' && (
+                  <BrutalButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRoles({ ...savedRolesRef.current, primary: [model] });
+                      setRoleMode('current');
+                      setConfirmReset(false);
+                    }}
+                  >
+                    {t('onboarding.restoreRoles')}
+                  </BrutalButton>
+                )}
+              </div>
+            )}
+            {hasSavedRoles && !canFill && (
+              <p className="mb-4 text-xs text-neutral-500">{t('onboarding.nothingToFill')}</p>
+            )}
+            {confirmReset && (
+              <div className="mb-5 space-y-3 border border-current p-4" role="alert">
+                <p className="text-sm">{t('onboarding.replaceRolesNotice')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <BrutalButton
+                    size="sm"
+                    onClick={() => {
+                      setRoles({ ...recommendations });
+                      setRoleMode('recommended');
+                      setConfirmReset(false);
+                    }}
+                  >
+                    {t('onboarding.confirmRecommend')}
+                  </BrutalButton>
+                  <BrutalButton size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>
+                    {t('common.cancel')}
+                  </BrutalButton>
+                </div>
+              </div>
+            )}
             {custom ? (
               <ModelRolesTab
                 inlineVoiceModel
                 roleModels={roles}
                 suggestions={suggestions}
                 unregisteredModels={suggestions._unregistered || []}
-                onChange={setRoles}
+                onChange={(next) => {
+                  setRoles(next);
+                  setRoleMode('edited');
+                }}
               />
             ) : (
               <div className="divide-y divide-neutral-200 border-2 border-brutal-black">
@@ -442,7 +515,7 @@ export function Onboarding({
                     <div key={key} className="grid gap-1 p-3 sm:grid-cols-2">
                       <strong className="text-sm">{t(`settings.roles.${label}`)}</strong>
                       <span className="break-all text-xs">
-                        {recommendations[key]?.join(', ') || t('onboarding.noMatch')}
+                        {roles[key]?.join(', ') || t('onboarding.noMatch')}
                       </span>
                     </div>
                   ))}
@@ -474,7 +547,7 @@ export function Onboarding({
                     >
                       <strong>{t(`settings.roles.${label}`)}</strong>
                       <span className="break-all">
-                        {recommendations[key]?.join(', ') || t('onboarding.noMatch')}
+                        {roles[key]?.join(', ') || t('onboarding.noMatch')}
                       </span>
                     </div>
                   ))}
@@ -501,7 +574,7 @@ export function Onboarding({
                   })
                 }
               >
-                {t(custom ? 'onboarding.saveContinue' : 'onboarding.useRecommended')}
+                {t(roleMode === 'current' ? 'onboarding.keepContinue' : 'onboarding.saveContinue')}
               </BrutalButton>
             </div>
           </>

@@ -1,5 +1,19 @@
 export const zhCN = {
   onboarding: {
+    rolesPreview: '分工预览',
+    nothingToFill: '剩余空缺暂无匹配的推荐模型，无需补全。',
+    currentRoles: '当前分工',
+    roles_current: '保留已有分工。主模型使用第一步的选择，空缺角色保持未配置。',
+    roles_filled: '仅为空缺角色补全推荐，已有分工未改动。请确认后保存。',
+    roles_recommended: '请查看推荐分工，点击保存前不会替换已保存的设置。',
+    roles_edited: '分工已调整，尚未保存。请确认后继续。',
+    fillMissing: '补全空缺',
+    recommendAll: '重新推荐全部',
+    restoreRoles: '恢复已有分工',
+    replaceRolesNotice: '要用推荐替换当前预览中的全部分工吗？无法匹配的角色可能变为空缺。点击保存后才会写入设置。',
+    confirmRecommend: '替换预览',
+    keepContinue: '保留配置并继续 →',
+
     exit: '退出引导',
     existingModels: '已从现有配置载入 {count} 个模型。',
     manageProviders: '管理连接',
@@ -29,7 +43,7 @@ export const zhCN = {
     heading2: '让模型各司其职。',
     heading3: '先帮你完成什么？',
     intro1: '保存凭据、测试连接，再启用你想使用的模型。',
-    intro2: '查看推荐分工，或自行调整。之后随时可以在设置中更改。',
+    intro2: '查看当前分工，按需调整。之后随时可以在设置中更改。',
     intro3: '给我一件真实的任务。你的请求会放入聊天输入框，供你确认发送。',
     loadFailed: '无法加载配置，请重试。',
     actionFailed: '未能完成这一步，请检查连接后重试。',
@@ -44,7 +58,7 @@ export const zhCN = {
     custom: '自行调整',
     noMatch: '暂无匹配的已启用模型，稍后配置',
     matchNotice:
-      '根据已配置服务商下已启用模型的已知能力匹配，并保留已有分工。不会调用或测试专用模型；能力未知时留空。价格已知时，后台文字任务优先使用低成本模型。',
+      '根据已配置服务商下已启用模型的已知能力匹配，。不会调用或测试专用模型；能力未知时留空。价格已知时，后台文字任务优先使用低成本模型。',
     back: '← 返回',
     saveContinue: '保存分工并继续 →',
     useRecommended: '使用推荐并继续 →',

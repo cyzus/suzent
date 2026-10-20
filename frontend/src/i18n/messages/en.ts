@@ -1,5 +1,19 @@
 export const en = {
   onboarding: {
+    rolesPreview: 'Assignment preview',
+    nothingToFill: 'No matching recommendations for the remaining empty roles.',
+    currentRoles: 'Current assignments',
+    roles_current: 'Your existing assignments are preserved. The primary model follows your choice in step 1; empty roles stay empty.',
+    roles_filled: 'Recommendations fill empty roles only. Existing assignments are unchanged. Review before saving.',
+    roles_recommended: 'Review these recommendations before saving. They have not replaced your saved settings yet.',
+    roles_edited: 'You have unsaved assignment changes. Review them before continuing.',
+    fillMissing: 'Fill empty roles',
+    recommendAll: 'Recommend all roles again',
+    restoreRoles: 'Restore existing assignments',
+    replaceRolesNotice: 'Replace all assignments in this preview with recommendations? Unsupported roles may become empty. Settings change only when you save.',
+    confirmRecommend: 'Replace preview',
+    keepContinue: 'Keep assignments and continue →',
+
     exit: 'Exit setup',
     existingModels: '{count} enabled models loaded from your settings.',
     manageProviders: 'Manage connections',
@@ -30,7 +44,7 @@ export const en = {
     heading3: 'What shall we do first?',
     intro1: 'Save your credentials, test the connection, and enable the models you want to use.',
     intro2:
-      'Review the recommended assignments or adjust them. You can change these later in Settings.',
+      'Review your assignments or adjust them. You can change these later in Settings.',
     intro3: 'Describe a real task. Your request will be placed in the chat input, ready to send.',
     loadFailed: 'Could not load your configuration. Try again.',
     actionFailed: 'Could not finish this step. Check the connection and try again.',
@@ -45,7 +59,7 @@ export const en = {
     custom: 'Adjust roles',
     noMatch: 'No matching enabled model — set up later',
     matchNotice:
-      'Matches use known capabilities of enabled models on configured providers. Existing assignments are preserved. Specialist models are not tested or invoked; unknown capabilities remain unassigned. Lower-cost text models are preferred when pricing is known.',
+      'Matches use known capabilities of enabled models on configured providers. Existing assignments are kept unless you choose to replace them. Specialist models are not tested or invoked; unknown capabilities remain unassigned. Lower-cost text models are preferred when pricing is known.',
     back: '← Back',
     saveContinue: 'Save roles and continue →',
     useRecommended: 'Use recommendations and continue →',
