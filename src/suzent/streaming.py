@@ -240,6 +240,24 @@ _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 
 
+# A model call that went quiet or lost its connection mid-stream. The provider
+# may have been working the whole time, so a fresh request can pick it up again.
+MODEL_STALLED_CODE = "model_stalled"
+
+
+def model_failure_code(error: object) -> Optional[str]:
+    """Name a model failure that a new request can recover from."""
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+
+    if isinstance(error, TimeoutError):
+        return MODEL_STALLED_CODE
+    # An HTTP status means the provider answered; anything else here is a
+    # dropped or unfinished response.
+    if isinstance(error, ModelAPIError) and not isinstance(error, ModelHTTPError):
+        return MODEL_STALLED_CODE
+    return None
+
+
 def _stream_idle_timeout(model_id: str | None) -> float:
     from suzent.config import CONFIG
     from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
@@ -1267,6 +1285,21 @@ async def _queue_custom_event(
     await out_queue.put(("chunk", _encode_custom(event_name, data)))
 
 
+def roll_back_heartbeat(history: list, original_count: int, deps: Any) -> list:
+    """Drop a quiet heartbeat's whole exchange, its own prompt included.
+
+    The history handed to the stream already ends with the heartbeat prompt,
+    so its starting length is one past where the conversation stood. Rolling
+    back to that length kept the prompt, and the processor then re-attached
+    the HEARTBEAT_OK reply to it -- both resurfaced on the next turn.
+    """
+    turn_start = getattr(deps, "turn_start_index", None)
+    kept = list(history)[: original_count if turn_start is None else turn_start]
+    deps.last_messages = kept
+    deps.heartbeat_rolled_back = True
+    return kept
+
+
 async def stream_agent_responses(
     agent: Agent,
     message: str | list | None,
@@ -1926,18 +1959,29 @@ async def stream_agent_responses(
 
             # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
+                from suzent.core.focal_agent import record_focal_heartbeat_done
+
+                record_focal_heartbeat_done(chat_id)
                 from suzent.core.heartbeat import get_active_heartbeat
 
                 runner = get_active_heartbeat()
                 if runner and runner._is_heartbeat_ok(final_response_text):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
-                    partial_history = partial_history[:original_count]
-                    deps.last_messages = partial_history
+                    partial_history = roll_back_heartbeat(
+                        partial_history, original_count, deps
+                    )
                     # Signal the frontend to discard the streamed heartbeat content.
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
             logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
+            # A check-in that failed reported nothing either. Without this its
+            # internal prompt stayed in the saved history and later showed up
+            # in the transcript as if the user had typed it.
+            if is_heartbeat and chat_id:
+                partial_history = roll_back_heartbeat(
+                    partial_history, original_count, deps
+                )
             await sse_queue.put(("error", e))
         finally:
             await sse_queue.put(("done", None))
@@ -2217,7 +2261,9 @@ async def stream_agent_responses(
                     break
 
                 elif msg_type == "error":
-                    err = RunErrorEvent(message=str(payload))
+                    err = RunErrorEvent(
+                        message=str(payload), code=model_failure_code(payload)
+                    )
                     await out_queue.put(("chunk", _encoder.encode(err)))
                     break
 

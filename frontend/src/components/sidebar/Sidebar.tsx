@@ -1,13 +1,14 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
-import { SuzentLogo } from '../SuzentLogo';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { LEFT_SIDEBAR_WIDTH_PX, MIN_LEFT_SIDEBAR_WIDTH_PX } from '../../lib/layout';
 import { SidebarToggleIcon } from '../SidebarToggleIcon';
 
 interface SidebarProps {
   chatsContent: React.ReactNode;
+  /** Right side of the logo row, e.g. search and new chat. */
+  headerActions?: React.ReactNode;
   width: number;
   maxWidth: number;
   isDesktop: boolean;
@@ -20,6 +21,7 @@ interface SidebarProps {
 
 export function Sidebar({
   chatsContent,
+  headerActions,
   width,
   maxWidth,
   isDesktop,
@@ -69,10 +71,11 @@ export function Sidebar({
           left: isDesktop ? undefined : 0,
           visibility: isOpen ? 'visible' : 'hidden',
         }}
+        // Desktop margin/width changes must settle at once to avoid reflowing the transcript every frame.
         className={`
         fixed lg:relative z-50 h-full shrink-0
         border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
-        transform-gpu will-change-transform transition-[width,transform,margin-left] duration-[160ms] ease-out motion-reduce:transition-none
+        transform-gpu transition-transform duration-[160ms] ease-out lg:transition-none motion-reduce:transition-none
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0'}
       `}
       >
@@ -104,11 +107,7 @@ export function Sidebar({
             <SidebarToggleIcon side="left" open />
           </button>
 
-          {/* Vertical Separator */}
-          <div className="h-6 w-[2px] bg-neutral-300 dark:bg-zinc-600 mx-2 rounded-full" />
-
-          {/* Logo (Static) */}
-          <SuzentLogo className="h-7 w-7" interactive />
+          {headerActions}
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -132,7 +131,7 @@ export function Sidebar({
               clipRule="evenodd"
             />
           </svg>
-          <span className="font-bold text-xs truncate uppercase tracking-tight text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors ml-2.5">
+          <span className="font-medium text-xs truncate text-neutral-600 dark:text-neutral-300 group-hover:text-brutal-black dark:group-hover:text-white transition-colors ml-2.5">
             {t('sidebar.settings')}
           </span>
           <svg

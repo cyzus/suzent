@@ -77,7 +77,11 @@ def build_agent_deps(
     # persisted value — the same chain resolve_repository_context() uses. Without
     # this the grant silently expired at a turn boundary and identical paths
     # started failing mid-task.
-    if not cwd and _chat_obj is not None:
+    from suzent.core.focal_agent import is_focal_chat
+
+    if is_focal_chat(_chat_obj):
+        cwd = None
+    elif not cwd and _chat_obj is not None:
         cwd = _chat_obj.working_directory or (_chat_obj.config or {}).get("cwd")
 
     # Merge layers: later layers win on conflict; command_rules are unioned by pattern
