@@ -62,6 +62,8 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
 
     Returns MCP toolsets that can be passed to a pydantic-ai Agent.
     """
+    if config.get("mcp_disabled"):
+        return []
     from suzent.core import mcp_store as _mcp_store
 
     # JSON file is the source of truth; config dict can override for special callers

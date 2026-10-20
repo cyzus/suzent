@@ -61,6 +61,15 @@ def route_subagent_reply(message: dict[str, Any], reply: AgentReply) -> bool:
     return True
 
 
+def _route_reply(message: dict[str, Any], reply: AgentReply) -> None:
+    """Send a turn's answer back to whoever asked: a parent agent, or SUZENT."""
+    if route_subagent_reply(message, reply):
+        return
+    from suzent.core.focal_agent import route_focal_reply
+
+    route_focal_reply(message, reply.text)
+
+
 class AgentInboxDispatcher:
     """Claims durable inbox rows and delivers them as background chat turns."""
 
@@ -132,7 +141,7 @@ class AgentInboxDispatcher:
                 # because queueing the reply failed. Routing is idempotent, so
                 # send whatever answer the turn wrote.
                 if (reply := self._persisted_reply(message)) is not None:
-                    route_subagent_reply(message, reply)
+                    _route_reply(message, reply)
                 get_database().acknowledge_agent_message(
                     message_id, worker_id=self.worker_id
                 )
@@ -179,7 +188,10 @@ class AgentInboxDispatcher:
         if transport == "local":
             reply = await self._run_target_turn(message)
             if reply is not None:
-                route_subagent_reply(message, reply)
+                _route_reply(message, reply)
+                from suzent.core.focal_agent import announce_focal_reply
+
+                announce_focal_reply(str(message["target_chat_id"]), reply.text)
             return
         if transport == "suzent_peer":
             from suzent.nodes.agent_transport import get_peer_agent_transport
@@ -423,7 +435,7 @@ def _finish_detached_turn(message: dict[str, Any], turn: asyncio.Task) -> None:
     if (reply := turn.result()) is None:
         return
     try:
-        route_subagent_reply(message, reply)
+        _route_reply(message, reply)
     except Exception as exc:
         logger.warning(
             "Could not route reply to agent message {}: {}", message["message_id"], exc

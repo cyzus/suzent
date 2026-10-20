@@ -12,6 +12,7 @@ import {
 import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
@@ -144,6 +145,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onFileMentionSelected,
   inputSuggestion = null,
 }) => {
+  const isFocal = currentChatId === FOCAL_CHAT_ID;
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
   const queueKey = React.useMemo(
@@ -398,7 +400,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           e.preventDefault();
           send();
         }}
-        className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
+        className="bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group transition-colors duration-200 z-20 text-left"
       >
         {/* Unified file preview section. Capped height + scroll so a large
                 batch of attachments never inflates the input box; images wrap into
@@ -753,14 +755,17 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         {/* Button row */}
         <div className="chat-composer-toolbar flex flex-wrap items-center gap-2 px-1 pb-0.5">
-          {/* Left: folder + attachment */}
-          <FolderContextPicker
-            onMount={handleMountFolder}
-            activeVolumes={config.sandbox_volumes || []}
-            onRemoveVolume={removeVolume}
-            disabled={!configReady || streamingForCurrentChat || isUploading}
-            dropUp={modelSelectDropUp}
-          />
+          {/* Left: folder + attachment. The Focal Agent works through project
+              sessions, which carry their own folders. */}
+          {!isFocal && (
+            <FolderContextPicker
+              onMount={handleMountFolder}
+              activeVolumes={config.sandbox_volumes || []}
+              onRemoveVolume={removeVolume}
+              disabled={!configReady || streamingForCurrentChat || isUploading}
+              dropUp={modelSelectDropUp}
+            />
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -838,25 +843,27 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         </div>
       </form>
 
-      {/* Permission mode stays on the left; the thinking slider is pushed right so
-          it sits directly under the model picker it applies to. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
-        <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
-          <BrutalSelect
-            value={permissionMode}
-            onChange={(value) => changePermissionMode(value as PermissionMode)}
-            options={PERMISSION_MODES.map((option) => ({
-              value: option,
-              label: t(`chatWindow.permissionModeInputLabels.${option}`),
-            }))}
-            dropUp={true}
-            hideChevron={true}
-            disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
-            className="inline-block w-auto"
-            buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
-            dropdownClassName="min-w-[220px] font-mono text-[10px]"
-          />
-        </div>
+      <div
+        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-1 ${isFocal ? 'justify-end' : 'justify-between'}`}
+      >
+        {!isFocal && (
+          <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
+            <BrutalSelect
+              value={permissionMode}
+              onChange={(value) => changePermissionMode(value as PermissionMode)}
+              options={PERMISSION_MODES.map((option) => ({
+                value: option,
+                label: t(`chatWindow.permissionModeInputLabels.${option}`),
+              }))}
+              dropUp={true}
+              hideChevron={true}
+              disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
+              className="inline-block w-auto"
+              buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
+              dropdownClassName="min-w-[220px] font-mono text-[10px]"
+            />
+          </div>
+        )}
 
         {/* Reasoning effort. Only the native runtime owns model settings — an
             ACP agent picks its own. Models that cannot think ignore the setting,

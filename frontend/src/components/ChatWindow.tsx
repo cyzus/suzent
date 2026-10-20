@@ -20,7 +20,7 @@ import { StreamRecoveryError } from '../lib/recoverableStream';
 import { completeDirectStream } from './chat/completeDirectStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
-import type { ContentBlock } from '../lib/chatUtils';
+import { conversationTimeLabel, type ContentBlock } from '../lib/chatUtils';
 import { requestStopTurn } from '../lib/stopStream';
 import { buildMessageRenderPlan, buildTurnWorkedSeconds } from '../lib/messageRenderPlan';
 import {
@@ -39,6 +39,8 @@ import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
+import { FocalBriefing } from './chat/FocalBriefing';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ChatImageGallery } from './ChatImageGallery';
 import { ImageViewer } from './ImageViewer';
@@ -57,6 +59,7 @@ import {
 } from './chat';
 import { planSendFailureRecovery, type SendAction } from './chat/sendRecovery';
 import { QueuedMessages, type QueuedMessage } from './chat/QueuedMessages';
+import { formatQuestionAnswer } from '../lib/questionAnswer';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -473,6 +476,7 @@ const MessageList: React.FC<{
   fallbackModel,
   turnWorkedSeconds,
 }) => {
+  const { t, locale } = useI18n();
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages]
@@ -518,12 +522,33 @@ const MessageList: React.FC<{
     return -1;
   }, [messages, skipIndices]);
 
+  let previousTimestamp: string | undefined;
   return (
     <div className="space-y-6">
       {messages.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 
         const globalIdx = messageIndexOffset + idx;
+        const timeLabel =
+          chatId === FOCAL_CHAT_ID
+            ? conversationTimeLabel(m.timestamp, previousTimestamp, locale, {
+                today: t('chatMessage.today'),
+                yesterday: t('chatMessage.yesterday'),
+              })
+            : null;
+        if (m.timestamp && !Number.isNaN(new Date(m.timestamp).getTime())) {
+          previousTimestamp = m.timestamp;
+        }
+        const withDate = (content: React.ReactNode): React.ReactNode => (
+          <React.Fragment key={globalIdx}>
+            {timeLabel && (
+              <div className="py-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
+                <time dateTime={m.timestamp}>{timeLabel}</time>
+              </div>
+            )}
+            {content}
+          </React.Fragment>
+        );
         const isUser = m.role === 'user';
         const isNotice = m.role === 'notice';
         const isLastMessage = idx === messages.length - 1;
@@ -540,7 +565,7 @@ const MessageList: React.FC<{
             file_changes: m.file_changes,
             file_change_message_index: m.file_change_message_index,
           };
-          return (
+          return withDate(
             <div
               key={globalIdx}
               data-message-index={globalIdx}
@@ -548,6 +573,7 @@ const MessageList: React.FC<{
             >
               <div className="flex justify-start w-full">
                 <AssistantMessage
+                  conversational={chatId === FOCAL_CHAT_ID}
                   message={groupedMessage}
                   workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                   messageIndex={globalIdx}
@@ -558,6 +584,7 @@ const MessageList: React.FC<{
                   toolApprovalPolicy={toolApprovalPolicy}
                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                   onInlineAction={onInlineAction}
+                  repliedTo={idx < lastUserIdx}
                   subAgentTasks={subAgentTasks}
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
@@ -576,7 +603,7 @@ const MessageList: React.FC<{
 
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
-          return (
+          return withDate(
             <div
               key={globalIdx}
               data-message-index={globalIdx}
@@ -592,19 +619,19 @@ const MessageList: React.FC<{
         // System-triggered turn (cron, heartbeat, wake-parent etc.) — compact card
         // showing what kicked off this agent turn.
         if (m.role === 'system_triggered') {
-          return (
+          return withDate(
             <div
               key={globalIdx}
               data-message-index={globalIdx}
               className="chat-msg-row chat-msg-row-compact w-full flex justify-start"
             >
-              <SystemTriggeredMessage message={m} />
+              <SystemTriggeredMessage message={m} folded={chatId === FOCAL_CHAT_ID} />
             </div>
           );
         }
 
         if (isNotice) {
-          return (
+          return withDate(
             <div
               key={globalIdx}
               data-message-index={globalIdx}
@@ -618,7 +645,7 @@ const MessageList: React.FC<{
         const showForkOrigin =
           forkOrigin && onOpenForkOrigin && m.raw_message_end_index === forkOrigin.messageIndex;
 
-        return (
+        return withDate(
           <React.Fragment key={globalIdx}>
             <div
               data-message-index={globalIdx}
@@ -643,6 +670,7 @@ const MessageList: React.FC<{
                   />
                 ) : (
                   <AssistantMessage
+                    conversational={chatId === FOCAL_CHAT_ID}
                     message={m}
                     workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
@@ -653,6 +681,7 @@ const MessageList: React.FC<{
                     toolApprovalPolicy={toolApprovalPolicy}
                     onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                     onInlineAction={onInlineAction}
+                    repliedTo={idx < lastUserIdx}
                     subAgentTasks={subAgentTasks}
                     onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                     onStopSubAgent={onStopSubAgent}
@@ -1839,6 +1868,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
   // agent's reply appears with full streaming (tool calls, typewriter, etc.).
+  // Set once send() exists below; SUZENT's question forms answer through it.
+  const sendQuestionAnswerRef = useRef<(text: string) => void>(() => {});
   const handleCanvasDispatch = useCallback(
     async (action: string, context: Record<string, unknown>, surfaceId: string) => {
       if (!currentChatId) return;
@@ -1861,6 +1892,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         } catch (err) {
           console.error('[A2UI] answer dispatch failed:', err);
         }
+        return;
+      }
+
+      // A question form that did not hold its turn open (SUZENT's): nothing is
+      // waiting on it, so the answer is sent as the user's next message.
+      if (action === 'submit_question') {
+        const text = formatQuestionAnswer(context);
+        if (!text) return;
+        removeInlineSurface(surfaceId);
+        sendQuestionAnswerRef.current(text);
         return;
       }
 
@@ -2421,6 +2462,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setInput('');
     clearFiles();
     setFileMentions([]);
+  };
+
+  sendQuestionAnswerRef.current = (text: string) => {
+    const item: QueuedMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      text,
+      fileMentions: [],
+      files: [],
+    };
+    // Like Cmd/Ctrl+Enter: a running turn finishes first, then the answer goes.
+    if (currentChatId && (streamingForCurrentChat || hasPendingTransientApprovals)) {
+      setMessageQueues((prev) => ({
+        ...prev,
+        [currentChatId]: [...(prev[currentChatId] ?? []), item],
+      }));
+      return;
+    }
+    void send(item);
   };
 
   const currentQueue = currentChatId ? messageQueues[currentChatId] : undefined;
@@ -3229,6 +3288,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onPaste={handlePaste}
                   onImageClick={setViewingImage}
                   currentChatId={currentChatId}
+                  briefing={
+                    currentChatId === FOCAL_CHAT_ID ? (
+                      <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+                    ) : undefined
+                  }
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),
@@ -3238,6 +3302,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 />
               ) : (
                 <InlineSurfaceProvider openInCanvas={handleOpenSurfaceInCanvas}>
+                  {/* Background rows (a reminder, a session report) arrive before
+                      the user ever writes; keep SUZENT's briefing up until they do. */}
+                  {currentChatId === FOCAL_CHAT_ID &&
+                    !safeMessages.some((message) => message.role === 'user') && (
+                      <div className="flex justify-center pt-4 pb-2">
+                        <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+                      </div>
+                    )}
                   {safeMessages.length > 0 && (
                     <MessageListMemo
                       messages={visibleMessages}
@@ -3295,6 +3367,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             />
                           ) : (
                             <AssistantMessage
+                              conversational={currentChatId === FOCAL_CHAT_ID}
                               message={{ role: 'assistant', content: '' }}
                               messageIndex={safeMessages.length}
                               isStreaming={streamingForCurrentChat}

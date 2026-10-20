@@ -35,7 +35,7 @@ def test_register_dynamic_instructions_registers_all_sections():
         base_instructions="",
     )
 
-    assert len(agent.functions) == 11
+    assert len(agent.functions) == 12
 
 
 def test_citation_rules_available_before_sources_exist():

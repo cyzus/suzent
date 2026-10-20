@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
+import { FOCAL_CHAT_ID, readFocalBoardOpen } from '../../lib/focalAgent';
 import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
@@ -30,6 +31,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { ToolsPanel } from './ToolsPanel';
+import { FocalToolsPanel } from './FocalToolsPanel';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
@@ -51,13 +53,18 @@ export interface AutoOpenFlags {
   canvasRequestNonce?: number;
   goal: boolean;
   goalResolved: boolean;
+  /** On the Focal Agent chat with room for its board: how the user last left it. */
+  focalBoard?: 'open' | 'closed';
 }
 
 export function evaluateSidebarAutoOpen(
   prev: AutoOpenFlags,
   flags: AutoOpenFlags
-): { nextTab: TabId | null; shouldOpen: boolean } {
+): { nextTab: TabId | null; shouldOpen: boolean; shouldClose?: boolean } {
   if (prev.chatId !== flags.chatId) {
+    if (flags.focalBoard === 'open') return { nextTab: 'plan', shouldOpen: true };
+    if (flags.focalBoard === 'closed')
+      return { nextTab: null, shouldOpen: false, shouldClose: true };
     return { nextTab: null, shouldOpen: false };
   }
 
@@ -351,14 +358,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       canvasRequestNonce,
       goal: hasGoalContent,
       goalResolved: goalMatchesChat,
+      focalBoard:
+        currentChatId === FOCAL_CHAT_ID &&
+        (viewportWidthPx ?? window.innerWidth) >= DESKTOP_BREAKPOINT_PX
+          ? readFocalBoardOpen()
+            ? 'open'
+            : 'closed'
+          : undefined,
     };
 
-    const { nextTab, shouldOpen } = evaluateSidebarAutoOpen(prev, flags);
+    const { nextTab, shouldOpen, shouldClose } = evaluateSidebarAutoOpen(prev, flags);
     if (nextTab) {
       setActiveTab(nextTab);
     }
     if (!isOpen && shouldOpen) {
       onOpen();
+    }
+    if (isOpen && shouldClose) {
+      onClose();
     }
 
     autoOpenRef.current = flags;
@@ -372,8 +389,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     canvasRequestNonce,
     hasGoalContent,
     goalMatchesChat,
+    viewportWidthPx,
     isOpen,
     onOpen,
+    onClose,
   ]);
 
   // In a new chat only the Tools tab is usable — the rest have no chat context
@@ -408,9 +427,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   useEffect(() => {
     const parent = sidebarRef.current?.parentElement;
     if (!parent) return;
-    const measure = (): void => setChatAreaWidth(parent.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
+    setChatAreaWidth(parent.clientWidth);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setChatAreaWidth(Math.round(entry.contentRect.width));
+    });
     observer.observe(parent);
     return () => observer.disconnect();
   }, []);
@@ -467,24 +487,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const element = sidebarRef.current;
     if (!element) return;
 
-    const reportWidth = () => {
+    const reportWidth = (measuredWidth: number): void => {
       // While dragging we drive width via direct DOM writes; don't push those
       // intermediate sizes up to App (it would re-render the layout per frame).
       // The final width is reported when setSidebarWidth commits on mouseup.
       if (dragState.current) return;
-      const width = isCoveringChat
-        ? ICON_STRIP_WIDTH
-        : Math.round(element.getBoundingClientRect().width);
+      const width = isCoveringChat ? ICON_STRIP_WIDTH : Math.round(measuredWidth);
       onWidthChange(Number.isFinite(width) && width > 0 ? width : null);
     };
 
-    reportWidth();
-    const observer = new ResizeObserver(reportWidth);
-    observer.observe(element);
-    window.addEventListener('resize', reportWidth);
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      reportWidth(entry.borderBoxSize[0]?.inlineSize ?? element.getBoundingClientRect().width);
+    });
+    observer.observe(element, { box: 'border-box' });
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', reportWidth);
     };
   }, [
     onWidthChange,
@@ -522,8 +540,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   }
                 : { width: desktopWidth, maxWidth: availableCoverWidth }
         }
+        // Animating docked width reflows the transcript and reports intermediate sizes back to App.
         className={`
-        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible transition-[width] duration-[160ms] ease-out motion-reduce:transition-none
+        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
         ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
         relative
       `}
@@ -597,7 +616,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
-                  <ToolsPanel />
+                  {currentChatId === FOCAL_CHAT_ID ? <FocalToolsPanel /> : <ToolsPanel />}
                 </div>
               </div>
             </div>
@@ -688,7 +707,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
                 >
-                  <ToolsPanel />
+                  {currentChatId === FOCAL_CHAT_ID ? <FocalToolsPanel /> : <ToolsPanel />}
                 </div>
               </div>
             </div>
@@ -711,7 +730,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             kanban={kanban}
             projectName={currentProjectName}
             chatTitles={chatTitles}
-
+            focal={currentChatId === FOCAL_CHAT_ID}
             onOpenTask={async (task) => {
               const opened = (await onOpenTask?.(task)) ?? false;
               if (opened) {
@@ -731,7 +750,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </div>
 
         {/* ── Icon Strip — always visible (except new chat) ─────────── */}
-        <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 py-1 gap-0.5">
+        <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 pt-2 pb-1 gap-1">
           {isCoveringChat && activeTab !== 'plan' && (
             <button
               type="button"
@@ -758,7 +777,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 title={t(tab.labelKey) || tab.fallbackLabel}
                 aria-disabled={isDisabled}
                 className={`
-                relative flex items-center justify-center w-9 h-9 rounded transition-colors
+                relative flex items-center justify-center w-8 h-8 rounded transition-colors
                 ${
                   isActive
                     ? 'bg-brutal-black text-white'
@@ -770,7 +789,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 }
               `}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-[18px] h-[18px]" />
                 {/* Activity dot — shown when content exists and panel not active */}
                 {tab.hasActivity && !isActive && (
                   <span

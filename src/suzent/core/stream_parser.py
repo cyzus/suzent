@@ -81,6 +81,8 @@ class ErrorEvent(StreamEvent):
     """An error that occurred during generation."""
 
     message: str
+    # Set when the run says what kind of failure it was, e.g. "model_stalled".
+    code: str | None = None
 
 
 @dataclass
@@ -270,7 +272,9 @@ class StreamParser:
         elif evt_type == StreamEventType.RUN_ERROR:
             # A failed run may leave tool calls that never closed.
             yield from self.flush()
-            yield ErrorEvent(payload.get("message", "Unknown error"))
+            yield ErrorEvent(
+                payload.get("message", "Unknown error"), payload.get("code")
+            )
         elif evt_type == StreamEventType.AGENT_FINISHED:
             yield from self.flush()
 

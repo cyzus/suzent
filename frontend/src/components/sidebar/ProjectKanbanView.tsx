@@ -3,6 +3,17 @@ import type { Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
 import { TaskProgressCard } from './TaskProgressCard';
+import {
+  SESSION_GROUP_KEYS,
+  buildSessions,
+  isActionable,
+  sessionGroupKey,
+  splitSessionTasks,
+  type SessionCard,
+  type SessionGroupKey,
+} from '../../lib/sessionGroups';
+
+export type KanbanGroupBy = 'status' | 'session';
 
 interface ProjectKanbanViewProps {
   projectName?: string | null;
@@ -12,6 +23,8 @@ interface ProjectKanbanViewProps {
   headerControls?: React.ReactNode;
   summary?: React.ReactNode;
   scope?: 'chat' | 'project';
+  /** Project scope only: group tasks by status, or by the chat session that owns them. */
+  groupBy?: KanbanGroupBy;
   selectedTaskId?: number | null;
   pendingTaskId?: number | null;
   onOpenTask: (task: Task) => void;
@@ -29,6 +42,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   headerControls,
   summary,
   scope = 'project',
+  groupBy = 'status',
   selectedTaskId,
   pendingTaskId,
   onOpenTask,
@@ -40,7 +54,10 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   const { t } = useI18n();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
     completed: true,
+    'session-completed': true,
   });
+  // Session cards start folded to their header and reason; tasks are one click away.
+  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
   const tasks = kanban?.tasks ?? [];
   const goalsWithoutTasks = (kanban?.goals ?? []).filter(
     (goal) => goal.status !== 'cancelled' && !tasks.some((task) => task.chatId === goal.chatId)
@@ -65,21 +82,206 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
     { key: 'completed', tasks: tasks.filter((task) => task.status === 'completed') },
   ];
   const visibleCount = groups.reduce((count, group) => count + group.tasks.length, 0);
-  const renderTasks = (items: Task[]): React.ReactNode =>
+  const sessionGroups =
+    scope === 'project' && groupBy === 'session'
+      ? SESSION_GROUP_KEYS.map((key) => ({
+          key,
+          sessions: buildSessions(tasks, chatTitles).filter(
+            (session) => sessionGroupKey(session) === key
+          ),
+        }))
+      : null;
+  const renderTasks = (items: Task[], checklist = scope === 'chat'): React.ReactNode =>
     items.map((task) => (
       <TaskProgressCard
         compact
-        checklist={scope === 'chat'}
+        checklist={checklist}
         key={task.id}
         selected={task.id === selectedTaskId}
         opening={task.id === pendingTaskId}
         disabled={pendingTaskId != null}
         task={task}
         tasks={tasks}
-        chatTitle={task.chatId ? chatTitles[task.chatId] : undefined}
+        chatTitle={task.chatTitle ?? (task.chatId ? chatTitles[task.chatId] : undefined)}
         onOpen={onOpenTask}
       />
     ));
+  const badgeClass = (key: string): string =>
+    key === 'attention' || key === 'waiting' || key === 'stalled'
+      ? 'bg-brutal-yellow text-brutal-black'
+      : key === 'active'
+        ? 'bg-brutal-blue text-white'
+        : key === 'completed'
+          ? 'bg-brutal-green text-brutal-black'
+          : 'bg-white text-brutal-black';
+  const renderSection = (
+    key: string,
+    label: string,
+    count: number,
+    tone: string,
+    children: React.ReactNode
+  ): React.ReactNode => (
+    <details
+      key={key}
+      open={!collapsedGroups[key]}
+      onToggle={(event) => {
+        const collapsed = !event.currentTarget.open;
+        setCollapsedGroups((previous) =>
+          previous[key] === collapsed ? previous : { ...previous, [key]: collapsed }
+        );
+      }}
+      className="group/task-section"
+    >
+      <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden border-y-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 text-xs font-black font-mono tracking-wide text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+        <span
+          aria-hidden="true"
+          className="inline-block transition-transform group-open/task-section:rotate-90"
+        >
+          ▸
+        </span>
+        {label}{' '}
+        <span
+          className={`ml-auto min-w-5 border border-brutal-black px-1 text-center font-mono ${badgeClass(tone)}`}
+        >
+          {count}
+        </span>
+      </summary>
+      <div className="py-1">{children}</div>
+    </details>
+  );
+  const sessionReason = (session: SessionCard, group: SessionGroupKey): string | null => {
+    if (group === 'attention' && session.blocker) {
+      return (
+        [
+          session.blocker.waitingReason,
+          session.blocker.nextAction
+            ? t('taskFlow.nextAction', { action: session.blocker.nextAction })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null
+      );
+    }
+    if (group === 'stalled') {
+      return t('taskFlow.stalledReason', {
+        count: session.tasks.filter(isActionable).length,
+      });
+    }
+    if (group === 'waiting') {
+      return session.tasks.find((task) => task.status === 'blocked')?.waitingReason ?? null;
+    }
+    return null;
+  };
+  const renderSession = (session: SessionCard): React.ReactNode => {
+    const group = sessionGroupKey(session);
+    const title =
+      session.title || (session.chatId ? session.chatId : t('taskFlow.unassignedSession'));
+    const reason = sessionReason(session, group);
+    const { open, done } = splitSessionTasks(session);
+    const expanded = Boolean(expandedSessions[session.key]);
+    const tasksId = `session-tasks-${session.key}`;
+    return (
+      <section
+        key={session.key}
+        aria-label={title}
+        className="m-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000]"
+      >
+        <header className="border-b-2 border-brutal-black px-3 py-2 space-y-1">
+          {session.chatId && onOpenChat ? (
+            <button
+              type="button"
+              className="block w-full text-left text-sm font-black leading-snug line-clamp-2 break-words hover:underline underline-offset-4"
+              title={`${title} · ${t('taskFlow.openChat')}`}
+              onClick={() => onOpenChat(session.chatId!)}
+            >
+              {title}
+            </button>
+          ) : (
+            <h2 className="text-sm font-black leading-snug line-clamp-2 break-words">{title}</h2>
+          )}
+          {(session.projectLabel || group !== 'completed') && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+              {session.projectLabel && (
+                <span className="min-w-0 truncate text-[11px] text-neutral-500 dark:text-zinc-400">
+                  {session.projectLabel}
+                </span>
+              )}
+              {group === 'active' ? (
+                <span className="shrink-0 flex items-center gap-1 font-mono text-[10px] font-bold uppercase">
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 bg-brutal-blue animate-brutal-blink"
+                  />
+                  {t('taskFlow.sessionRunning')}
+                </span>
+              ) : group === 'attention' && session.blocker ? (
+                <span className="shrink-0 border border-brutal-black bg-brutal-yellow px-1 font-mono text-[10px] font-bold text-brutal-black">
+                  {t(`taskFlow.wait.${session.blocker.waitingKind}`)}
+                </span>
+              ) : group === 'stalled' ? (
+                <span className="shrink-0 border border-brutal-black bg-white dark:bg-zinc-700 px-1 font-mono text-[10px] font-bold uppercase">
+                  {t('taskFlow.sessionIdle')}
+                </span>
+              ) : null}
+            </div>
+          )}
+        </header>
+        {reason && (
+          <p
+            className={`border-b border-brutal-black/20 px-3 py-2 text-xs leading-relaxed ${group === 'attention' ? 'bg-brutal-yellow/20' : 'bg-neutral-50 dark:bg-zinc-900'}`}
+          >
+            {reason}
+          </p>
+        )}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={tasksId}
+          onClick={() =>
+            setExpandedSessions((previous) => ({ ...previous, [session.key]: !expanded }))
+          }
+          className="group/toggle flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] font-bold text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+        >
+          <span
+            aria-hidden="true"
+            className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}
+          >
+            ▸
+          </span>
+          {[
+            open.length > 0 ? t('taskFlow.openCount', { count: open.length }) : null,
+            done.length > 0 ? t('taskFlow.doneCount', { count: done.length }) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </button>
+        <div
+          id={tasksId}
+          hidden={!expanded}
+          className="border-t border-brutal-black/10 dark:border-zinc-700"
+        >
+          {open.length > 0 && <div>{renderTasks(open, true)}</div>}
+          {done.length > 0 &&
+            (open.length > 0 ? (
+              <details className="group/done border-t border-brutal-black/10 dark:border-zinc-700">
+                <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden px-4 py-2 font-mono text-[11px] font-bold text-neutral-500 dark:text-zinc-400 hover:text-brutal-black dark:hover:text-white">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block transition-transform group-open/done:rotate-90"
+                  >
+                    ▸
+                  </span>
+                  ✓ {t('taskFlow.doneCount', { count: done.length })}
+                </summary>
+                {renderTasks(done, true)}
+              </details>
+            ) : (
+              <div>{renderTasks(done, true)}</div>
+            ))}
+        </div>
+      </section>
+    );
+  };
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-900 text-brutal-black dark:text-white">
       <header className="task-header shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-5 py-4 space-y-4">
@@ -168,39 +370,29 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                 )}
               </section>
             ))}
-            {groups
-              .filter((group) => group.tasks.length > 0)
-              .map((group) => (
-                <details
-                  key={group.key}
-                  open={!collapsedGroups[group.key]}
-                  onToggle={(event) => {
-                    const collapsed = !event.currentTarget.open;
-                    setCollapsedGroups((previous) =>
-                      previous[group.key] === collapsed
-                        ? previous
-                        : { ...previous, [group.key]: collapsed }
-                    );
-                  }}
-                  className="group/task-section"
-                >
-                  <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden border-y-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 text-xs font-black font-mono tracking-wide text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block transition-transform group-open/task-section:rotate-90"
-                    >
-                      ▸
-                    </span>
-                    {t(`taskFlow.groups.${group.key}`)}{' '}
-                    <span
-                      className={`ml-auto min-w-5 border border-brutal-black px-1 text-center font-mono ${group.key === 'attention' || group.key === 'waiting' ? 'bg-brutal-yellow text-brutal-black' : group.key === 'active' ? 'bg-brutal-blue text-white' : group.key === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white text-brutal-black'}`}
-                    >
-                      {group.tasks.length}
-                    </span>
-                  </summary>
-                  <div className="py-1">{renderTasks(group.tasks)}</div>
-                </details>
-              ))}
+            {sessionGroups
+              ? sessionGroups
+                  .filter((group) => group.sessions.length > 0)
+                  .map((group) =>
+                    renderSection(
+                      `session-${group.key}`,
+                      t(`taskFlow.sessionGroups.${group.key}`),
+                      group.sessions.length,
+                      group.key,
+                      group.sessions.map(renderSession)
+                    )
+                  )
+              : groups
+                  .filter((group) => group.tasks.length > 0)
+                  .map((group) =>
+                    renderSection(
+                      group.key,
+                      t(`taskFlow.groups.${group.key}`),
+                      group.tasks.length,
+                      group.key,
+                      renderTasks(group.tasks)
+                    )
+                  )}
           </div>
         )}
       </div>
