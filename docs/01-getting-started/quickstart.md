@@ -91,7 +91,8 @@ This starts the backend and opens the desktop interface.
 ## 3. Add Your Model Provider
 
 On a new installation with no configured model provider, the chat screen opens a setup
-flow. You can also open **Set up your agent** from a new chat:
+flow. You can also open **Run setup again** from **Settings → About**. The standalone
+`/setup` page hides the application sidebars while you configure your agent:
 
 1. Connect a provider, enable your models, and choose a default chat model.
    **Verify selected model** sends a small text request and may incur a usage charge.

@@ -7,9 +7,6 @@ import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
 import { isImeComposing } from '../lib/ime';
-import { Onboarding } from './settings/Onboarding';
-import { BrutalButton } from './BrutalButton';
-import { getApiBase } from '../lib/api';
 
 interface NewChatViewProps {
   input: string;
@@ -295,57 +292,12 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const { t } = useI18n();
-  const pendingKey = `suzent.onboarding.pending:${getApiBase()}`;
-  const [onboarding, setOnboarding] = useState(() => {
-    try {
-      return localStorage.getItem(pendingKey) === '1';
-    } catch {
-      return false;
-    }
-  });
-  const beginOnboarding = useCallback((): void => {
-    try {
-      localStorage.setItem(pendingKey, '1');
-    } catch {
-      /* Storage may be unavailable. */
-    }
-    setOnboarding(true);
-  }, [pendingKey]);
-  useEffect(() => {
-    if (
-      backendConfig &&
-      (backendConfig.defaultModel === null || backendConfig.models.length === 0) &&
-      config.runtime !== 'acp'
-    )
-      beginOnboarding();
-  }, [backendConfig, config.runtime, beginOnboarding]);
   const isInputEngaged = isInputHovered || isInputFocused;
-  if (onboarding)
-    return (
-      <Onboarding
-        onComplete={(model, task) => {
-          setConfig((c) => ({ ...c, model }));
-          setInput(task);
-          try {
-            localStorage.removeItem(pendingKey);
-          } catch {
-            /* Storage may be unavailable. */
-          }
-          setOnboarding(false);
-          requestAnimationFrame(() => textareaRef.current?.focus());
-        }}
-      />
-    );
   return (
     <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">
       <GreetingPresence engaged={isInputEngaged} />
 
       <div className="w-full max-w-2xl">
-        <div className="mb-3">
-          <BrutalButton variant="ghost" size="sm" onClick={beginOnboarding}>
-            {t('onboarding.setup')}
-          </BrutalButton>
-        </div>
         <ProjectPicker />
         <div
           onPointerEnter={() => setIsInputHovered(true)}

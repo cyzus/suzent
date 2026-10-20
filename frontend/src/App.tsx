@@ -1,3 +1,4 @@
+import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -1464,7 +1465,9 @@ export default function App({ children }: AppProps = {}) {
       ) : (
         <ProjectProvider>
           <ChatProvider>
-            <GoalTasksProvider>{children ?? <AppInner />}</GoalTasksProvider>
+            <GoalTasksProvider>
+              <SetupGate>{children ?? <AppInner />}</SetupGate>
+            </GoalTasksProvider>
           </ChatProvider>
         </ProjectProvider>
       )}

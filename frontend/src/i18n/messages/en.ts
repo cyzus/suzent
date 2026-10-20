@@ -1,5 +1,6 @@
 export const en = {
   onboarding: {
+    restart: 'Run setup again',
     setup: 'Set up your agent',
     progress: 'Setup progress',
     step1: 'Connect a model',

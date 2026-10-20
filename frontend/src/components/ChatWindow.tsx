@@ -1,3 +1,4 @@
+import { setupDraft } from '../lib/setupDraft';
 import { ModelWaitNotice } from './chat/ModelWaitNotice';
 import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
@@ -792,6 +793,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       return next;
     });
   }, []);
+  useEffect(() => {
+    if (setupDraft.task !== null) {
+      setInput(setupDraft.task);
+      setupDraft.task = null;
+    }
+  }, [setInput]);
   // Messages held back until the running turn ends, keyed by chat.
   const [messageQueues, setMessageQueuesState] = useState(queuedMessageStore);
   const setMessageQueues = useCallback(

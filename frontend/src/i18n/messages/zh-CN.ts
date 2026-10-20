@@ -1,5 +1,6 @@
 export const zhCN = {
   onboarding: {
+    restart: '重新运行初始化引导',
     setup: '设置你的 Agent',
     progress: '设置进度',
     step1: '连接模型',
