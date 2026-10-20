@@ -83,6 +83,11 @@ from suzent.routes.permission_routes import (
     get_chat_permission_state,
     get_permissions,
 )
+from suzent.routes.onboarding_routes import (
+    role_recommendations,
+    verify_onboarding_model,
+    check_onboarding_connection,
+)
 from suzent.routes.config_routes import (
     get_api_keys_status,
     get_config,
@@ -1252,6 +1257,15 @@ app = Starlette(
         Route("/config/role-models", save_role_models, methods=["POST"]),
         Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
+        Route("/config/role-recommendations", role_recommendations, methods=["POST"]),
+        Route(
+            "/config/onboarding/check-connection",
+            check_onboarding_connection,
+            methods=["POST"],
+        ),
+        Route(
+            "/config/onboarding/verify-model", verify_onboarding_model, methods=["POST"]
+        ),
         Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
         Route(
             "/config/providers/custom/{provider_id}",

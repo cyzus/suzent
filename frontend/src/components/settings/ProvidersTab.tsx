@@ -53,6 +53,8 @@ function getProviderTitleClass(label: string): string {
 }
 
 interface ProvidersTabProps {
+  onboarding?: boolean;
+  onCredentialDraftChange?: (dirty: boolean) => void;
   providers: ApiProvider[];
   apiKeys: Record<string, string>;
   userConfigs: Record<string, UserConfig>;
@@ -556,6 +558,8 @@ function ChatGPTProviderCard({
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
+  onboarding = false,
+  onCredentialDraftChange,
   providers,
   apiKeys,
   userConfigs,
@@ -606,6 +610,9 @@ export function ProvidersTab({
   const [syncResult, setSyncResult] = useState<string | null>(null);
   // Tracks which secret field keys are currently in edit mode (user clicked "Change")
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    onCredentialDraftChange?.(editingFields.size > 0 || Object.keys(keyDrafts).length > 0);
+  }, [editingFields, keyDrafts, onCredentialDraftChange]);
 
   const startEditing = (fieldKey: string) => {
     setEditingFields((prev) => new Set(prev).add(fieldKey));
@@ -677,37 +684,41 @@ export function ProvidersTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.providers.title')}
-        subtitle={t('settings.providers.subtitle')}
-        actions={
-          <>
-            {syncResult && (
-              <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
-                {syncResult}
-              </span>
-            )}
-            <BrutalButton
-              onClick={handleSync}
-              disabled={syncing}
-              title={t('settings.providers.syncTooltip')}
-              variant="dark"
-              size="sm"
-              className="!border-white"
-            >
-              {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-            </BrutalButton>
-            <BrutalButton
-              onClick={() => setShowAddForm((v) => !v)}
-              variant="light"
-              size="sm"
-              className="!border-white"
-            >
-              {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
-            </BrutalButton>
-          </>
-        }
-      />
+      {!onboarding && (
+        <SettingsHeader
+          title={t('settings.providers.title')}
+          subtitle={t('settings.providers.subtitle')}
+          actions={
+            !onboarding && (
+              <>
+                {syncResult && (
+                  <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
+                    {syncResult}
+                  </span>
+                )}
+                <BrutalButton
+                  onClick={handleSync}
+                  disabled={syncing}
+                  title={t('settings.providers.syncTooltip')}
+                  variant="dark"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                </BrutalButton>
+                <BrutalButton
+                  onClick={() => setShowAddForm((v) => !v)}
+                  variant="light"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
+                </BrutalButton>
+              </>
+            )
+          }
+        />
+      )}
 
       {showAddForm && (
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
@@ -842,7 +853,7 @@ export function ProvidersTab({
                     >
                       {provider.label}
                     </span>
-                    {provider.user_defined && (
+                    {provider.user_defined && !onboarding && (
                       <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
                         {t('settings.providers.customProvider')}
                       </span>
@@ -1164,7 +1175,7 @@ export function ProvidersTab({
                     </div>
                   </div>
                 )}
-                {provider.user_defined && (
+                {provider.user_defined && !onboarding && (
                   <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
                     <BrutalButton
                       size="xs"
@@ -1181,6 +1192,11 @@ export function ProvidersTab({
           );
         })}
       </div>
+      {onboarding && (
+        <BrutalButton variant="ghost" size="sm" onClick={() => setShowAddForm((v) => !v)}>
+          {t(showAddForm ? 'common.cancel' : 'onboarding.otherProvider')}
+        </BrutalButton>
+      )}
     </SettingsPage>
   );
 }
