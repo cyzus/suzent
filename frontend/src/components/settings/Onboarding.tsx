@@ -41,8 +41,10 @@ const labels: Record<string, string> = {
 
 export function Onboarding({
   onComplete,
+  onExit,
 }: {
   onComplete: (model: string, task: string) => void;
+  onExit?: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const { refreshBackendConfig } = useChatStore();
@@ -66,6 +68,12 @@ export function Onboarding({
   const [custom, setCustom] = useState(false);
 
   const [task, setTask] = useState('');
+  const [manageProviders, setManageProviders] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+    headingRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [step]);
 
   const load = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -200,22 +208,46 @@ export function Onboarding({
       setStep(2);
     });
   }
+  if (busy && !providers.length)
+    return (
+      <div className="mx-auto max-w-3xl p-8" role="status" aria-live="polite">
+        {t('common.loading')}
+      </div>
+    );
   return (
-    <div className="mx-auto w-full max-w-3xl p-4 text-left sm:p-6">
-      <nav className="mb-6 text-xs font-bold" aria-label={t('onboarding.progress')}>
+    <div className="mx-auto w-full max-w-3xl px-5 py-8 text-left sm:px-8 sm:py-12">
+      <header className="mb-10 flex items-center justify-between border-b border-neutral-200 pb-4 dark:border-zinc-700">
+        <span className="text-sm font-black tracking-[0.2em]">SUZENT</span>
+        {onExit && (
+          <BrutalButton variant="ghost" size="sm" disabled={busy} onClick={onExit}>
+            {t('onboarding.exit')}
+          </BrutalButton>
+        )}
+      </header>
+      <nav
+        className="mb-8 grid grid-cols-3 gap-3 text-xs font-bold"
+        aria-label={t('onboarding.progress')}
+      >
         {[1, 2, 3].map((n) => (
           <span
             key={n}
             aria-current={step === n ? 'step' : undefined}
-            className={step === n ? '' : 'opacity-50'}
+            className={`border-t-2 pt-3 ${step >= n ? 'border-current' : 'border-neutral-200 text-neutral-400'}`}
           >
-            {n === 1 ? '' : ' → '}
-            {n}. {t(`onboarding.step${n}`)}
+            {step > n ? '✓' : n}. {t(`onboarding.step${n}`)}
           </span>
         ))}
       </nav>
-      <h1 className="mb-2 text-2xl font-bold">{t(`onboarding.heading${step}`)}</h1>
-      <p className="mb-6 text-sm text-neutral-500">{t(`onboarding.intro${step}`)}</p>
+      <h1
+        ref={headingRef}
+        tabIndex={-1}
+        className="mb-3 scroll-mt-6 text-3xl font-bold tracking-tight outline-none sm:text-4xl"
+      >
+        {t(`onboarding.heading${step}`)}
+      </h1>
+      <p className="mb-8 text-sm leading-relaxed text-neutral-500">
+        {t(`onboarding.intro${step}`)}
+      </p>
       {error && (
         <div role="alert" className="mb-4 border-l-4 border-current p-3">
           {error}
@@ -233,59 +265,76 @@ export function Onboarding({
       >
         {step === 1 && (
           <>
-            <ProvidersTab
-              onCredentialDraftChange={setCredentialsDirty}
-              onboarding
-              providers={providers}
-              apiKeys={keys}
-              userConfigs={configs}
-              showKey={showKeys}
-              activeTabs={tabs}
-              verifying={{}}
-              verification={checks}
-              onKeyChange={(key, value) => {
-                setKeys((k) => ({ ...k, [key]: value }));
-                setChecks({});
-                invalidate();
-              }}
-              onToggleShowKey={(key) => setShowKeys((s) => ({ ...s, [key]: !s[key] }))}
-              onTabChange={(id, tab) => setTabs((s) => ({ ...s, [id]: tab }))}
-              onConfigChange={(id, config) => {
-                setConfigs((s) => ({ ...s, [id]: config }));
-                invalidate();
-              }}
-              onAddCustomModel={(id, value) => {
-                const name = value.trim();
-                if (!name) return;
-                setConfigs((s) => {
-                  const c = s[id];
-                  return {
-                    ...s,
-                    [id]: {
-                      ...c,
-                      custom_models: [...new Set([...c.custom_models, name])],
-                      enabled_models: [...new Set([...c.enabled_models, name])],
-                    },
-                  };
-                });
-                invalidate();
-              }}
-              onVerify={(provider) => void verify(provider)}
-              onAddProvider={async (payload) => {
-                await saveProviders();
-                const result = await saveCustomProvider(payload);
-                if (!result.success) throw new Error(t('onboarding.actionFailed'));
-                await load();
-                setChecks({});
-                invalidate();
-              }}
-              onDeleteProvider={async () => {}}
-              onChatGPTAuthChanged={() => {
-                setChecks({});
-                invalidate();
-              }}
-            />
-            <div className="mt-6 space-y-3 border-2 border-brutal-black p-4">
+            {available.length > 0 && (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border border-neutral-200 p-4 dark:border-zinc-700">
+                <p className="text-sm">
+                  {t('onboarding.existingModels', { count: String(available.length) })}
+                </p>
+                <BrutalButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setManageProviders(!manageProviders)}
+                  aria-expanded={manageProviders}
+                >
+                  {t(manageProviders ? 'onboarding.hideProviders' : 'onboarding.manageProviders')}
+                </BrutalButton>
+              </div>
+            )}
+            <div hidden={available.length > 0 && !manageProviders}>
+              <ProvidersTab
+                onCredentialDraftChange={setCredentialsDirty}
+                onboarding
+                providers={providers}
+                apiKeys={keys}
+                userConfigs={configs}
+                showKey={showKeys}
+                activeTabs={tabs}
+                verifying={{}}
+                verification={checks}
+                onKeyChange={(key, value) => {
+                  setKeys((k) => ({ ...k, [key]: value }));
+                  setChecks({});
+                  invalidate();
+                }}
+                onToggleShowKey={(key) => setShowKeys((s) => ({ ...s, [key]: !s[key] }))}
+                onTabChange={(id, tab) => setTabs((s) => ({ ...s, [id]: tab }))}
+                onConfigChange={(id, config) => {
+                  setConfigs((s) => ({ ...s, [id]: config }));
+                  invalidate();
+                }}
+                onAddCustomModel={(id, value) => {
+                  const name = value.trim();
+                  if (!name) return;
+                  setConfigs((s) => {
+                    const c = s[id];
+                    return {
+                      ...s,
+                      [id]: {
+                        ...c,
+                        custom_models: [...new Set([...c.custom_models, name])],
+                        enabled_models: [...new Set([...c.enabled_models, name])],
+                      },
+                    };
+                  });
+                  invalidate();
+                }}
+                onVerify={(provider) => void verify(provider)}
+                onAddProvider={async (payload) => {
+                  await saveProviders();
+                  const result = await saveCustomProvider(payload);
+                  if (!result.success) throw new Error(t('onboarding.actionFailed'));
+                  await load();
+                  setChecks({});
+                  invalidate();
+                }}
+                onDeleteProvider={async () => {}}
+                onChatGPTAuthChanged={() => {
+                  setChecks({});
+                  invalidate();
+                }}
+              />
+            </div>
+            <div className="mt-6 space-y-4 border border-neutral-300 p-5 dark:border-zinc-600">
               <BrutalSelect
                 label={t('onboarding.defaultModel')}
                 value={model}
@@ -306,7 +355,7 @@ export function Onboarding({
                 )}
               </p>
               <p role="status" className="text-xs">
-                {t(`onboarding.connection_${connection}`)}
+                {t(verified ? 'onboarding.verified' : `onboarding.connection_${connection}`)}
               </p>
               <BrutalButton
                 disabled={!selectedValid || credentialsDirty}
@@ -330,15 +379,22 @@ export function Onboarding({
               >
                 {t('onboarding.checkConnection')}
               </BrutalButton>
-              <p className="text-xs text-neutral-500">{t('onboarding.probeNotice')}</p>
-              <BrutalButton
-                disabled={!selectedValid || verified || credentialsDirty}
-                onClick={() => void verifyModel()}
-              >
-                {t(verified ? 'onboarding.verified' : 'onboarding.verify')}
-              </BrutalButton>
+              <details className="border-t border-neutral-200 pt-4 dark:border-zinc-700">
+                <summary className="cursor-pointer text-xs font-bold">
+                  {t('onboarding.optionalTest')}
+                </summary>
+                <p className="my-3 text-xs leading-relaxed text-neutral-500">
+                  {t('onboarding.probeNotice')}
+                </p>
+                <BrutalButton
+                  disabled={!selectedValid || verified || credentialsDirty}
+                  onClick={() => void verifyModel()}
+                >
+                  {t(verified ? 'onboarding.verified' : 'onboarding.verify')}
+                </BrutalButton>
+              </details>
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-8 flex justify-end border-t border-neutral-200 pt-5 dark:border-zinc-700">
               <BrutalButton
                 variant="dark"
                 disabled={!selectedValid || credentialsDirty}
@@ -351,7 +407,7 @@ export function Onboarding({
         )}
         {step === 2 && (
           <>
-            <div className="mb-5 flex gap-3">
+            <div className="mb-5 flex flex-wrap gap-3">
               <BrutalButton isActive={!custom} onClick={() => setCustom(false)}>
                 {t('onboarding.recommended')}
               </BrutalButton>
@@ -369,18 +425,65 @@ export function Onboarding({
               />
             ) : (
               <div className="divide-y divide-neutral-200 border-2 border-brutal-black">
-                {Object.entries(labels).map(([key, label]) => (
-                  <div key={key} className="grid gap-1 p-3 sm:grid-cols-2">
-                    <strong className="text-sm">{t(`settings.roles.${label}`)}</strong>
-                    <span className="break-all text-xs">
-                      {recommendations[key]?.join(', ') || t('onboarding.noMatch')}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(labels)
+                  .filter(([key]) =>
+                    [
+                      'primary',
+                      'cheap',
+                      'vision',
+                      'image_generation',
+                      'image_edit',
+                      'video_generation',
+                      'tts',
+                      'embedding',
+                    ].includes(key)
+                  )
+                  .map(([key, label]) => (
+                    <div key={key} className="grid gap-1 p-3 sm:grid-cols-2">
+                      <strong className="text-sm">{t(`settings.roles.${label}`)}</strong>
+                      <span className="break-all text-xs">
+                        {recommendations[key]?.join(', ') || t('onboarding.noMatch')}
+                      </span>
+                    </div>
+                  ))}
               </div>
             )}
-            <p className="my-4 text-xs text-neutral-500">{t('onboarding.matchNotice')}</p>
-            <div className="mt-6 flex justify-between">
+            {!custom && (
+              <details className="mt-4 border border-neutral-200 p-4 dark:border-zinc-700">
+                <summary className="cursor-pointer text-sm font-bold">
+                  {t('onboarding.backgroundRoles')}
+                </summary>
+                {Object.entries(labels)
+                  .filter(
+                    ([key]) =>
+                      ![
+                        'primary',
+                        'cheap',
+                        'vision',
+                        'image_generation',
+                        'image_edit',
+                        'video_generation',
+                        'tts',
+                        'embedding',
+                      ].includes(key)
+                  )
+                  .map(([key, label]) => (
+                    <div
+                      key={key}
+                      className="grid gap-1 border-t border-neutral-100 py-3 text-xs sm:grid-cols-2"
+                    >
+                      <strong>{t(`settings.roles.${label}`)}</strong>
+                      <span className="break-all">
+                        {recommendations[key]?.join(', ') || t('onboarding.noMatch')}
+                      </span>
+                    </div>
+                  ))}
+              </details>
+            )}
+            <p className="my-4 text-xs leading-relaxed text-neutral-500">
+              {t('onboarding.matchNotice')}
+            </p>
+            <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-neutral-200 pt-5">
               <BrutalButton onClick={() => setStep(1)}>{t('onboarding.back')}</BrutalButton>
               <BrutalButton
                 variant="dark"
@@ -405,6 +508,10 @@ export function Onboarding({
         )}
         {step === 3 && (
           <>
+            <div className="mb-6 border border-neutral-200 p-4 dark:border-zinc-700">
+              <p className="text-sm font-bold">{t('onboarding.ready')}</p>
+              <p className="mt-2 break-all text-xs text-neutral-500">{model}</p>
+            </div>
             <div className="mb-4 flex flex-wrap gap-2">
               {['research', 'file', 'project'].map((key) => (
                 <BrutalButton
@@ -418,6 +525,7 @@ export function Onboarding({
             </div>
             <textarea
               className="min-h-32 w-full border-2 border-brutal-black bg-white p-3 dark:bg-zinc-900"
+              placeholder={t('onboarding.taskPlaceholder')}
               aria-label={t('onboarding.task')}
               value={task}
               onChange={(e) => setTask(e.target.value)}

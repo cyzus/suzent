@@ -1,5 +1,14 @@
 export const en = {
   onboarding: {
+    exit: 'Exit setup',
+    existingModels: '{count} enabled models loaded from your settings.',
+    manageProviders: 'Manage connections',
+    hideProviders: 'Hide connections',
+    optionalTest: 'Optional: test a model reply',
+    backgroundRoles: 'Background tasks · view assignments',
+    ready: 'Your configuration is saved.',
+    taskPlaceholder: 'Describe what you would like help with…',
+
     checkConnection: 'Check connection (no generation)',
     connection_untested: 'Model reply not tested. You can continue without testing.',
     connection_connected: 'Model-list access confirmed. Model replies and quota have not been tested.',

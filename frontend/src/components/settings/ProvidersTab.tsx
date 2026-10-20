@@ -684,39 +684,41 @@ export function ProvidersTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.providers.title')}
-        subtitle={t('settings.providers.subtitle')}
-        actions={
-          !onboarding && (
-            <>
-              {syncResult && (
-                <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
-                  {syncResult}
-                </span>
-              )}
-              <BrutalButton
-                onClick={handleSync}
-                disabled={syncing}
-                title={t('settings.providers.syncTooltip')}
-                variant="dark"
-                size="sm"
-                className="!border-white"
-              >
-                {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-              </BrutalButton>
-              <BrutalButton
-                onClick={() => setShowAddForm((v) => !v)}
-                variant="light"
-                size="sm"
-                className="!border-white"
-              >
-                {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
-              </BrutalButton>
-            </>
-          )
-        }
-      />
+      {!onboarding && (
+        <SettingsHeader
+          title={t('settings.providers.title')}
+          subtitle={t('settings.providers.subtitle')}
+          actions={
+            !onboarding && (
+              <>
+                {syncResult && (
+                  <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
+                    {syncResult}
+                  </span>
+                )}
+                <BrutalButton
+                  onClick={handleSync}
+                  disabled={syncing}
+                  title={t('settings.providers.syncTooltip')}
+                  variant="dark"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                </BrutalButton>
+                <BrutalButton
+                  onClick={() => setShowAddForm((v) => !v)}
+                  variant="light"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
+                </BrutalButton>
+              </>
+            )
+          }
+        />
+      )}
 
       {showAddForm && (
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />

@@ -1,5 +1,14 @@
 export const zhCN = {
   onboarding: {
+    exit: '退出引导',
+    existingModels: '已从现有配置载入 {count} 个模型。',
+    manageProviders: '管理连接',
+    hideProviders: '收起连接',
+    optionalTest: '可选：测试模型回复',
+    backgroundRoles: '后台任务 · 查看分工',
+    ready: '配置已保存。',
+    taskPlaceholder: '写下你希望 Agent 帮你完成的事情…',
+
     checkConnection: '检查连接（不生成内容）',
     connection_untested: '尚未测试模型回复，可以直接继续。',
     connection_connected: '模型列表接口连接成功；尚未测试模型回复或额度。',
