@@ -164,6 +164,15 @@ class HeartbeatRunner(BaseBrain):
             return
 
         instructions = self.read_instructions(chat_id)
+        from suzent.core.focal_agent import (
+            is_focal_chat_id,
+            record_skipped_heartbeat,
+            should_run_focal_heartbeat,
+        )
+
+        if is_focal_chat_id(chat_id) and not should_run_focal_heartbeat(instructions):
+            record_skipped_heartbeat()
+            return
         marked_ts = time.time()
         self._pending_heartbeats[chat_id] = marked_ts
         asyncio.create_task(

@@ -637,6 +637,7 @@ DYNAMIC_SECTION_LAYERS: dict[str, PromptLayer] = {
     "inject_enabled_models": PromptLayer.RUNTIME,
     "inject_session_guidance": PromptLayer.RUNTIME,
     "inject_social_context": PromptLayer.RUNTIME,
+    "inject_focal_context": PromptLayer.RUNTIME,
     "inject_base_instructions": PromptLayer.USER_PREFERENCE,
     "inject_memory_context": PromptLayer.RETRIEVED_CONTEXT,
 }
@@ -790,6 +791,21 @@ def register_dynamic_instructions(
         if not ctx.deps.social_context:
             return ""
         return build_social_context(ctx.deps.social_context)
+
+    @agent.instructions
+    def inject_focal_context(ctx: Any) -> str:
+        from suzent.core.focal_agent import (
+            build_focal_global_context,
+            is_focal_chat_id,
+        )
+
+        try:
+            if not is_focal_chat_id(getattr(ctx.deps, "chat_id", None)):
+                return ""
+            return build_focal_global_context()
+        except Exception as e:
+            logger.warning(f"Focal Agent global context unavailable this run: {e}")
+            return ""
 
 
 async def render_core_memory(deps: Any) -> str:

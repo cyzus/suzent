@@ -16,7 +16,12 @@ class ProjectOperationsMixin:
     DEFAULT_PROJECT_NAME = "Home"
     SOCIAL_PROJECT_SLUG = "social"
     SOCIAL_PROJECT_NAME = "Social"
-    SYSTEM_PROJECT_SLUGS = {"default", "social"}
+    # The Focal Agent's own home: its heartbeat.md and context.md live here,
+    # apart from every user project. Never listed alongside them.
+    FOCAL_PROJECT_SLUG = "suzent-focal"
+    FOCAL_PROJECT_NAME = "SUZENT"
+    SYSTEM_PROJECT_SLUGS = {"default", "social", FOCAL_PROJECT_SLUG}
+    HIDDEN_PROJECT_SLUGS = {FOCAL_PROJECT_SLUG}
 
     # Platforms that route a chat into the ``social`` project by default.
     # Internal platforms like ``subagent`` (lives with parent) and ``cron``
@@ -31,6 +36,8 @@ class ProjectOperationsMixin:
                 select(ChatModel.id, ChatModel.project_id, ChatModel.config)
             ).all()
             for chat_id, project_id, config in rows:
+                if (config or {}).get("platform") == "focal":
+                    continue
                 unread = (config or {}).get("unread_count", 0)
                 if project_id and unread > 0:
                     counts.setdefault(project_id, {})[chat_id] = unread
@@ -189,10 +196,14 @@ class ProjectOperationsMixin:
                 select(ProjectModel).where(ProjectModel.slug == slug)
             ).first()
 
-    def list_projects(self, include_archived: bool = False) -> List[ProjectModel]:
-        """Return all projects ordered by creation time."""
+    def list_projects(
+        self, include_archived: bool = False, include_hidden: bool = False
+    ) -> List[ProjectModel]:
+        """Return all projects ordered by creation time, without system-hidden ones."""
         with self._session() as session:
             stmt = select(ProjectModel)
+            if not include_hidden:
+                stmt = stmt.where(ProjectModel.slug.not_in(self.HIDDEN_PROJECT_SLUGS))
             if not include_archived:
                 stmt = stmt.where(ProjectModel.archived == False)  # noqa: E712
             stmt = stmt.order_by(ProjectModel.created_at)

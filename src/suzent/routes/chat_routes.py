@@ -26,6 +26,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from suzent.config import CONFIG
+from suzent.core.focal_agent import (
+    FOCAL_CHAT_ID,
+    cancel_focal_wakeup,
+    focal_status,
+    focal_tools,
+    focal_wakeups,
+    get_or_create_focal_chat,
+)
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
@@ -1182,6 +1190,8 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         db = get_database()
 
         chat = db.get_chat(chat_id)
+        if not chat and chat_id == FOCAL_CHAT_ID:
+            chat = get_or_create_focal_chat()
         if not chat:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
@@ -1267,6 +1277,33 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         logger.error(f"Error in get_chat: {e}")
         traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_focal_agent(request: Request) -> JSONResponse:
+    """Ensure the Focal Agent chat exists and return its presence telemetry."""
+    try:
+        get_or_create_focal_chat()
+        return JSONResponse(focal_status())
+    except Exception as e:
+        logger.error(f"Error in get_focal_agent: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_focal_panel(request: Request) -> JSONResponse:
+    """The Focal Agent's fixed tools and the wake-ups it has scheduled."""
+    try:
+        get_or_create_focal_chat()
+        return JSONResponse({"tools": focal_tools(), "wakeups": focal_wakeups()})
+    except Exception as e:
+        logger.error(f"Error in get_focal_panel: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def delete_focal_wakeup(request: Request) -> JSONResponse:
+    """Cancel one of the Focal Agent's wake-ups."""
+    if not cancel_focal_wakeup(int(request.path_params["job_id"])):
+        return JSONResponse({"error": "Wake-up not found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 async def create_chat(request: Request) -> JSONResponse:

@@ -629,6 +629,10 @@ class ChatProcessor:
         if config_override:
             config.update(config_override)
 
+        from suzent.core.focal_agent import apply_focal_tool_policy
+
+        apply_focal_tool_policy(config, chat_id)
+
         # RepoContext is constructed with static filesystem roots, so include the
         # resolved project/working-tree identity in the stable agent config. This
         # prevents a cached agent from carrying one project's instructions into
