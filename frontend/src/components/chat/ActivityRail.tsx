@@ -16,7 +16,7 @@ import { parseSubAgentResult } from './subAgentResult';
 import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
 
 export type AguiChunkType =
-  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
+  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice' | 'incoming-message';
 
 export type AguiChunk = { type: AguiChunkType; items: AGUIPart[] };
 

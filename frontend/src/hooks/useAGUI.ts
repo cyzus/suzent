@@ -377,6 +377,9 @@ export function processEvent(
           if (existing >= 0) next[existing] = { ...next[existing], acpPermission: req };
           else next.push({ type: 'acp-permission', acpPermission: req });
         }
+      } else if (name === 'incoming_message') {
+        const incoming = value as { content?: string };
+        if (incoming?.content) next.push({ type: 'incoming-message', text: incoming.content });
       } else if (name === 'acp.session_reset') {
         const notice = value as Record<string, unknown>;
         next.push({

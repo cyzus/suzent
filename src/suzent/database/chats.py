@@ -1009,6 +1009,36 @@ class ChatOperationsMixin:
         _postprocess_metrics.snapshot_committed += 1
         return next_revision
 
+    def append_display_rows(self, chat_id: str, rows: List[Dict[str, Any]]) -> bool:
+        """Append rows the display log needs now, and advance the revision.
+
+        For a turn's opening rows written before the turn ends. Advancing the
+        revision in the same transaction stops the previous turn's finalizer,
+        still holding the older revision, from replacing ``messages`` and
+        deleting them. Rows already at the tail are skipped.
+
+        Returns:
+            True when the chat exists.
+        """
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            existing = list(chat.messages or [])
+            added = [row for row in rows if row not in existing[-len(rows) :]]
+            if not added:
+                return True
+            messages = existing + added
+            chat.messages = messages
+            flag_modified(chat, "messages")
+            _set_config_keys(session, chat_id, _message_summary(messages))
+            chat.state_revision = (chat.state_revision or 0) + 1
+            chat.updated_at = datetime.now()
+            session.add(chat)
+            self._reindex_in_session(session, chat_id, messages)
+            self.commit_chat_changes(session, [chat_id])
+        return True
+
     def finalize_state_if_revision_matches(
         self,
         chat_id: str,

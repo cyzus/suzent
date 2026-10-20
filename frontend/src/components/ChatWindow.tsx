@@ -40,7 +40,7 @@ import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
-import { FOCAL_CHAT_ID } from '../lib/focalAgent';
+import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ChatImageGallery } from './ChatImageGallery';
 import { ImageViewer } from './ImageViewer';
@@ -618,6 +618,27 @@ const MessageList: React.FC<{
 
         // System-triggered turn (cron, heartbeat, wake-parent etc.) — compact card
         // showing what kicked off this agent turn.
+        const focalRequest = m.role === 'system_triggered' ? focalRequestText(m.content) : null;
+        if (focalRequest) {
+          return withDate(
+            <div
+              key={globalIdx}
+              data-message-index={globalIdx}
+              className="chat-msg-row chat-msg-row-user w-full flex flex-col items-end group/message"
+            >
+              <span className="mb-1 pr-1 text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
+                {t('chatMessage.sentBySuzent')}
+              </span>
+              <UserMessage
+                message={{ ...m, role: 'user', content: focalRequest }}
+                chatId={chatId}
+                onImageClick={onImageClick}
+                onFileClick={onFileClick}
+              />
+            </div>
+          );
+        }
+
         if (m.role === 'system_triggered') {
           return withDate(
             <div

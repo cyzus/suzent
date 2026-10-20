@@ -5,7 +5,14 @@ export type ToolCallOutcome = 'failed' | 'interrupted';
 
 export interface AGUIPart {
   type:
-    'text' | 'reasoning' | 'tool' | 'a2ui' | 'citation-sources' | 'acp-permission' | 'acp-notice';
+    | 'text'
+    | 'reasoning'
+    | 'tool'
+    | 'a2ui'
+    | 'citation-sources'
+    | 'acp-permission'
+    | 'acp-notice'
+    | 'incoming-message';
   text?: string;
   messageId?: string;
   toolCallId?: string;

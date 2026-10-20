@@ -1196,11 +1196,23 @@ class ChatProcessor:
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
 
+            # A turn started by a hidden message (another agent's request, a
+            # wake-up) has nothing in the display log until it ends, so a session
+            # SUZENT started showed its reply with no sign of what was asked.
             if self._is_subagent_chat(chat_id):
                 await asyncio.to_thread(
                     _presave_turn_rows,
                     chat_id,
                     visible_prompt,
+                    pending_trigger_rows,
+                )
+            elif display_trigger and pending_trigger_rows:
+                # Revisioned, unlike the sub-agent path: a stateful chat's
+                # previous turn may still be finalizing, and would otherwise
+                # replace the display log and drop this row mid-stream.
+                await asyncio.to_thread(
+                    get_database().append_display_rows,
+                    chat_id,
                     pending_trigger_rows,
                 )
 
