@@ -377,10 +377,16 @@ def _create_anthropic_model(
     kwargs: dict[str, Any] = {"api_key": api_key}
     if spec.base_url:
         kwargs["base_url"] = spec.base_url
+    settings = anthropic_cache_settings(spec.base_url)
+    if not spec.base_url:
+        # Without it the API buffers each tool argument until it is complete, so
+        # writing a large file goes silent for minutes and trips the idle
+        # timeout. Compatible proxies may reject the field, so only first party.
+        settings["anthropic_eager_input_streaming"] = True
     return AnthropicModel(
         model_name,
         provider=AnthropicProvider(**kwargs),
-        settings=AnthropicModelSettings(**anthropic_cache_settings(spec.base_url)),
+        settings=AnthropicModelSettings(**settings),
     )
 
 

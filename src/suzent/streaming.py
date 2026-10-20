@@ -240,6 +240,24 @@ _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 
 
+# A model call that went quiet or lost its connection mid-stream. The provider
+# may have been working the whole time, so a fresh request can pick it up again.
+MODEL_STALLED_CODE = "model_stalled"
+
+
+def model_failure_code(error: object) -> Optional[str]:
+    """Name a model failure that a new request can recover from."""
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+
+    if isinstance(error, TimeoutError):
+        return MODEL_STALLED_CODE
+    # An HTTP status means the provider answered; anything else here is a
+    # dropped or unfinished response.
+    if isinstance(error, ModelAPIError) and not isinstance(error, ModelHTTPError):
+        return MODEL_STALLED_CODE
+    return None
+
+
 def _stream_idle_timeout(model_id: str | None) -> float:
     from suzent.config import CONFIG
     from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
@@ -2240,7 +2258,9 @@ async def stream_agent_responses(
                     break
 
                 elif msg_type == "error":
-                    err = RunErrorEvent(message=str(payload))
+                    err = RunErrorEvent(
+                        message=str(payload), code=model_failure_code(payload)
+                    )
                     await out_queue.put(("chunk", _encoder.encode(err)))
                     break
 

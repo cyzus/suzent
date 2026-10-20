@@ -237,6 +237,17 @@ Reply:
 {reply}
 """
 
+# Hidden reminder that resumes a sub-agent whose model call stalled mid-turn.
+SUBAGENT_STALL_RESUME = """\
+Your previous response was cut off because the connection to the model stalled. \
+Nothing from the unfinished step was kept. Continue the task from where it stands now; \
+if you were writing a large file, write it in smaller parts."""
+
+# Tool result for a blocking sub-agent that moved to the background after a stall.
+SUBAGENT_MOVED_TO_BACKGROUND = """\
+Sub-agent {task_id} is still working, but its model stalled, so it now runs in the \
+background. Carry on with other work; its result arrives in this chat when it finishes."""
+
 SUBAGENT_WORKTREE_KEPT = """
 
 Its changes were kept on branch `{branch}` in the worktree at `{path}`. \

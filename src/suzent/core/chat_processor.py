@@ -38,7 +38,11 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.streaming import remove_pending_approvals, stream_agent_responses
+from suzent.streaming import (
+    MODEL_STALLED_CODE,
+    remove_pending_approvals,
+    stream_agent_responses,
+)
 from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
@@ -576,6 +580,10 @@ def build_steering_text(steer_message: str) -> str:
         f"{wrap_in_system_reminder(STEER_REMINDER)}\n"
         f"{sanitize_untrusted_text(steer_message).strip()}"
     )
+
+
+class ModelStalledError(RuntimeError):
+    """The model went quiet or dropped the connection before the turn ended."""
 
 
 class ChatProcessor:
@@ -2034,6 +2042,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
@@ -2098,6 +2108,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
