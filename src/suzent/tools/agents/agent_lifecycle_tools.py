@@ -60,6 +60,25 @@ def _accessible_agent(agent_id: str, current_chat_id: str) -> Optional[ChatModel
     return None
 
 
+def _sendable_agent(agent_id: str, current_chat_id: str) -> Optional[ChatModel]:
+    """An agent this chat may message: any it can access, plus the Focal Agent.
+
+    Any session may report to the Focal Agent, but not read its conversation,
+    which spans every project, or stop its turns.
+    """
+    target = _accessible_agent(agent_id, current_chat_id)
+    if target is not None:
+        return target
+    focal = _resolve_agent_chat(agent_id)
+    if (
+        focal is not None
+        and is_focal_chat(focal)
+        and get_database().get_chat(current_chat_id)
+    ):
+        return focal
+    return None
+
+
 def _agent_kind(chat: ChatModel) -> str:
     platform = str((chat.config or {}).get("platform") or "").lower()
     if platform == "subagent":
@@ -446,7 +465,7 @@ class AgentSendTool(Tool):
                 },
             )
 
-        target = _accessible_agent(agent_id, current_chat_id or "")
+        target = _sendable_agent(agent_id, current_chat_id or "")
         if current_chat_id is None or target is None:
             return ToolResult.error_result(
                 ToolErrorCode.FILE_NOT_FOUND,
@@ -554,7 +573,6 @@ class AgentSendTool(Tool):
             title=(title or "").strip() or task_title or message[:60],
             config={
                 "permission_mode": "auto",
-                "auto_approve_tools": True,
                 "parent_chat_id": current.id,
                 "spawned_by_focal": current.id == FOCAL_CHAT_ID,
             },

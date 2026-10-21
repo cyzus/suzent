@@ -71,7 +71,6 @@ class AgentDeps:
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name -> "always_allow" | "always_deny"
-    auto_approve_tools: bool = False
     tool_permission_policies: dict = field(default_factory=dict)
     permission_mode: str = "default"
     interaction_profile: str = "interactive"
