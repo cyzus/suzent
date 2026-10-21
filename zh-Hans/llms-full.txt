@@ -1619,6 +1619,27 @@ app too.
    [background service](https://suzent.com/zh-Hans/docs/features/automation#keep-suzent-running-in-the-background)).
 2. In your editor's settings for external agents, add a custom agent with the
    command `suzent` and the argument `acp`.
+3. Choose **Pair with Suzent** when your editor asks you to sign in. In
+   **Settings → ACP Agents → Editor connections**, compare the code with the
+   login terminal, check the confirmation box, and approve the request.
+   Return to the editor and reconnect after login succeeds.
+
+Editors without terminal login can choose **Approve in Suzent settings**;
+the code appears in their agent log. Alternatively run
+`suzent acp --login --client-name "<editor name>"` yourself, using the name
+reported by the editor, then reconnect. Requests expire after five minutes.
+
+Each authorization can resume only the conversations it created. It uses your
+Suzent memory, skills and workspace tools, and the editor handles tool approval
+prompts. Only approve editors you trust. Revoke a connection from the same
+settings section to block further requests and stop active work. A new login
+creates a new authorization; it does not recover the old authorization's chats.
+Credentials are saved per backend address and editor name, so instances using
+the same name and address share an authorization. Changing either requires login
+again. Existing unpaired ACP conversations remain available in Suzent itself.
+
+For existing trusted local integrations, `suzent acp --no-require-auth` explicitly
+opts out of pairing. This also opts out of authorization-based chat isolation.
 
 The editor's open folder becomes the agent's working folder. When the agent
 needs permission, the editor asks you. To skip those prompts for unattended
@@ -3948,6 +3969,12 @@ Pair other computers and phones, and let devices use each other. See
 | Command | What it does | Key options |
 |---|---|---|
 | `suzent acp` | Let an editor that supports the Agent Client Protocol, such as Zed, use Suzent as its agent. Your editor runs this command; you don't run it yourself. | `--permission-mode` (`default`, `auto`, or `full_access`) |
+| `suzent acp --login` | Request editor access, approve the matching code under Settings → ACP Agents → Editor connections, then reconnect your editor. | `--client-name`, `--server-url` |
+
+Editor pairing is required by default. Use `--client-name` matching your editor's
+reported name when signing in manually. `--server-url` selects a local backend;
+Suzent must already be running. `--no-require-auth` disables pairing and chat
+isolation for trusted local integrations. See [editor setup](https://suzent.com/zh-Hans/docs/features/nodes#use-suzent-from-your-editor-acp).
 
 See [Use Suzent from your editor](https://suzent.com/zh-Hans/docs/features/nodes#use-suzent-from-your-editor-acp).
 
@@ -8745,6 +8772,41 @@ Implemented methods: `initialize`, `authenticate`, `session/new`,
 `loadSession: true`, text prompts with embedded context. Images and audio are
 declined at the handshake rather than silently dropped.
 
+### Inbound authentication
+
+`suzent acp` requires pairing by default. Initialization needs no running backend:
+it advertises an agent method (`suzent-pair`) and, only when
+`clientCapabilities.auth.terminal` is true, a terminal method (`suzent-terminal`).
+The terminal method appends `--login --client-name <clientInfo.name>` to the
+configured invocation. Exit zero means approval and credential persistence
+succeeded; the editor reconnects afterward. Terminal method IDs are rejected by
+`authenticate`. The agent method runs the same approval flow over `authenticate`,
+printing its comparison code to stderr and reloading credentials before success.
+This also supports clients using the Registry validator's older capability fields.
+
+The local-only `/acp/auth/*` endpoints handle pending requests, approval, collection,
+verification and revocation. Remote requests are refused even with a host token;
+Host and Origin checks protect the browser approval surface. Requests expire in
+five minutes. The CLI generates a random credential before requesting approval;
+the backend stores only its SHA-256 hash. Uncollected approvals expire too.
+Client credentials are keyed by backend URL and client name, protected with
+Windows DPAPI or an owner-only file on POSIX. Mobile/mesh tokens are not accepted.
+
+Each session stores the approving grant ID in `_acp_server.grant_id`. New/load,
+prompt and permission continuation verify the grant; load checks ownership before
+replaying history. A running turn also checks authorization once per second and
+requests backend cancellation on revocation, including while the stream is silent.
+This cannot undo already completed tool operations. Login after revocation creates
+a different grant and cannot resume the old grant's sessions. Local processes and
+`--no-require-auth` remain within Suzent's trusted-local boundary; pairing is not an
+OS sandbox or a restriction on shared memory or the agent's other tools.
+
+For Registry submission, publish a version containing this flow first, pin its
+distribution in the registry manifest, and run the Registry's startup/auth checks
+against that published artifact. Include the required license URL and monochrome
+SVG icon, and document that a local Suzent backend and configured model are needed.
+The implementation alone does not publish a package or register Suzent.
+
 ## 2. It is a translator, not a second agent
 
 `suzent acp` runs no model. Every turn is posted to the **already-running
@@ -9632,7 +9694,9 @@ an item ships, move its description into the relevant page and delete it here.
 
 ## ACP integration
 
-The settings page supports protocol-driven agent authentication. Remaining work:
+The settings page supports protocol-driven authentication for outbound agents.
+Inbound editor pairing already supports terminal and agent authentication.
+Remaining outbound work:
 
 - Interactive terminal authentication: provide a user-visible terminal using
   the configured executable, apply the advertised arguments/environment, and
