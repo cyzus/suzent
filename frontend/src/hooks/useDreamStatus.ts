@@ -62,8 +62,10 @@ export function useDreamStatus(): DreamStatusState {
         await refresh();
       } catch (err) {
         if (!mountedRef.current) return;
-        setError(err instanceof Error ? err.message : 'Failed to run dream agent');
         await refresh();
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to run dream agent');
+        }
       } finally {
         if (mountedRef.current) {
           if (phase === 'ingest') {
@@ -95,7 +97,7 @@ export function useDreamStatus(): DreamStatusState {
       if (!mountedRef.current) return;
       timerId = window.setTimeout(tick, status?.running ? ACTIVE_POLL_MS : IDLE_POLL_MS);
     };
-    timerId = window.setTimeout(tick, IDLE_POLL_MS);
+    timerId = window.setTimeout(tick, status?.running ? ACTIVE_POLL_MS : IDLE_POLL_MS);
 
     return () => {
       mountedRef.current = false;
