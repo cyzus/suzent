@@ -1,6 +1,6 @@
 {
   "products": {
-    "desktop": "patch"
+    "desktop": "minor"
   },
-  "summary": "China mirror mode now installs Python, Python packages, and Playwright Chromium through mainland mirrors instead of falling back to overseas hosts."
+  "summary": "Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys."
 }

@@ -29,6 +29,7 @@ from suzent.tools.registry import (
     get_tool_capabilities,
     migrate_shell_tool_names,
 )
+from suzent import network_region
 from suzent.database import get_database
 from suzent.core.volume_metadata import refresh_volume_metadata
 from suzent.logger import get_logger
@@ -422,6 +423,27 @@ async def save_global_sandbox_config(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+# Providers that work without a VPN from mainland China, in the order a new
+# user there should see them.
+_CHINA_FIRST = (
+    "deepseek",
+    "dashscope",
+    "moonshot",
+    "zhipuai",
+    "minimax",
+    "xiaomi_mimo",
+    "ollama",
+)
+
+
+def _display_order(specs):
+    """The registry order, with China-reachable providers first in China mode."""
+    if not network_region.china_mode():
+        return list(specs)
+    rank = {provider_id: i for i, provider_id in enumerate(_CHINA_FIRST)}
+    return sorted(specs, key=lambda spec: rank.get(spec.id, len(rank)))
+
+
 async def get_api_keys_status(request: Request) -> JSONResponse:
     """Get configured providers and their status with masked secrets."""
     try:
@@ -441,7 +463,7 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                 pass
 
         providers = []
-        for spec in PROVIDER_REGISTRY:
+        for spec in _display_order(PROVIDER_REGISTRY):
             provider_id = spec.id
             user_conf = custom_config.get(provider_id, {})
 
@@ -449,6 +471,7 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                 "id": provider_id,
                 "label": spec.label,
                 "logo_url": spec.logo_url,
+                "key_url": spec.key_url,
                 "default_models": spec.default_models,
                 "user_defined": spec.user_defined,
                 "fields": [],

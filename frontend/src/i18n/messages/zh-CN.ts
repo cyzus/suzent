@@ -804,6 +804,7 @@ export const zhCN = {
       fetchModels: '获取模型',
       modelsAvailable: '{count} 个可用',
       noCredentials: '无凭据字段，请通过环境变量配置。',
+      getKey: '去 {provider} 申请 API 密钥 →',
       changeKey: '修改',
       showKey: '显示',
       hideKey: '隐藏',

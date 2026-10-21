@@ -50,6 +50,7 @@ class ProviderSpec:
     aliases: list[str] = field(default_factory=list)
     model_settings: Optional[dict[str, Any]] = None  # pydantic-ai ModelSettings kwargs
     logo_url: Optional[str] = None
+    key_url: Optional[str] = None
     api_key_optional: bool = False
     user_defined: bool = False
     stream_idle_timeout_seconds: float | None = None
@@ -84,6 +85,7 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
         aliases=raw.get("aliases", []),
         model_settings=raw.get("model_settings"),
         logo_url=raw.get("logo_url"),
+        key_url=raw.get("key_url"),
         api_key_optional=raw.get("api_key_optional", False),
         user_defined=user_defined,
         stream_idle_timeout_seconds=(

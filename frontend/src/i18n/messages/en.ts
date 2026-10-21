@@ -744,6 +744,7 @@ export const en = {
       fetchModels: 'Fetch models',
       modelsAvailable: '{count} available',
       noCredentials: 'No credential fields — configure via environment variables.',
+      getKey: 'Get a {provider} API key →',
       changeKey: 'Change',
       showKey: 'Show',
       hideKey: 'Hide',

@@ -59,17 +59,23 @@ suzent start
 No API key? Pick [Ollama](docs/04-models/local/ollama.md) and run everything on your own machine.
 
 <details>
-<summary><b>Mainland China mirror mode</b></summary>
+<summary><b>Installing from mainland China</b></summary>
+
+Nothing to configure. Setup checks the network first: when Google is unreachable but the mainland mirrors answer, it downloads Python, Python packages, the Playwright browser and uv from mainland mirrors. The Windows desktop installer also shows a "use mainland mirrors" switch, and updates keep whatever you chose.
+
+If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash
 ```
 
 ```powershell
-$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"
 ```
 
-This uses faster mirrors for Python itself, PyPI, npm, Playwright, Node via nvm, and Rustup. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running the command.
+To force mirror mode on or off, set `SUZENT_CHINA_MIRROR=1` or `SUZENT_CHINA_MIRROR=0` before running setup. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust.
+
+On a mainland network, **Settings → Model Providers** lists DeepSeek, Qwen (DashScope), Kimi, Zhipu GLM and the other providers reachable without a VPN first, each with a link to get an API key.
 
 </details>
 
