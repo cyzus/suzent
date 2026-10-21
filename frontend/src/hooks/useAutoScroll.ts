@@ -304,10 +304,13 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     let repaintFrame = 0;
     let repaintTimer: ReturnType<typeof setTimeout> | undefined;
     let lastWidth = el.clientWidth;
+    let lastScrollHeight = el.scrollHeight;
 
-    // WKWebView can leave the transcript unpainted after the scroller is
-    // resized (toggling the right sidebar) until the next scroll. A one-pixel
-    // round trip over two frames is a real scroll, so it repaints the tiles.
+    // When the transcript gets shorter (a wider column after a sidebar toggle,
+    // a collapsed tool block), layout clamps scrollTop but WKWebView's
+    // scrolling layer keeps the old offset and shows blank space past the end
+    // until the next scroll. A one-pixel round trip over two frames is a real
+    // scroll, so it resyncs the layer.
     const repaintByScrolling = () => {
       if (el.scrollHeight <= el.clientHeight) return;
       const top = el.scrollTop;
@@ -325,12 +328,17 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null;
 
     const resizeObserver = new ResizeObserver(() => {
-      if (needsResizeRepaint && el.clientWidth !== lastWidth) {
+      if (needsResizeRepaint) {
+        const widthChanged = el.clientWidth !== lastWidth;
+        const shrank = el.scrollHeight < lastScrollHeight;
         lastWidth = el.clientWidth;
-        clearTimeout(repaintTimer);
-        cancelAnimationFrame(repaintFrame);
-        // Outlast the sidebar's 300ms slide so the repaint follows the final layout.
-        repaintTimer = setTimeout(repaintByScrolling, 350);
+        lastScrollHeight = el.scrollHeight;
+        if (widthChanged || shrank) {
+          clearTimeout(repaintTimer);
+          cancelAnimationFrame(repaintFrame);
+          // Outlast the sidebar's 300ms slide so the repaint follows the final layout.
+          repaintTimer = setTimeout(repaintByScrolling, widthChanged ? 350 : 100);
+        }
       }
       cancelAnimationFrame(settleFrame);
       if (autoScrollEnabledRef.current) {

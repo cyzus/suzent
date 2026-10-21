@@ -168,7 +168,7 @@ describe('message bottom scrolling', () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
-  it('scrolls a pixel and back after a width change so WKWebView repaints', () => {
+  it('scrolls a pixel and back after the transcript narrows or shrinks so WKWebView resyncs', () => {
     vi.useFakeTimers();
     let frame: FrameRequestCallback = () => {};
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -222,6 +222,17 @@ describe('message bottom scrolling', () => {
     frame(0);
     expect(container.scrollTop).toBe(2400);
     expect(container.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: 'auto' });
+
+    // Collapsing a tool block shortens the transcript at the same width.
+    container.scrollHeight = 2500;
+    container.scrollTop = 1900;
+    onResize();
+    vi.advanceTimersByTime(99);
+    expect(container.scrollTop).toBe(1900);
+    vi.advanceTimersByTime(1);
+    expect(container.scrollTop).toBe(1899);
+    frame(0);
+    expect(container.scrollTop).toBe(1900);
     if (cleanup) cleanup();
   });
 });
