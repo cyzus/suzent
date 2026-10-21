@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
 - Show what woke a background turn, such as a message from a paired device, while the turn is still running.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
+- Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
 - Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
