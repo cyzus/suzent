@@ -240,28 +240,30 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 安装脚本会自动安装 Suzent 及所有缺失的依赖项（Python/uv、Rust、构建工具等）。
 
-### 中国大陆镜像模式
+### 在中国大陆安装
 
-如果从中国大陆下载依赖较慢，可以在运行安装脚本前开启镜像模式：
+安装脚本会根据当前网络自动选择下载源：连不上 Google、但能连上国内镜像时，Suzent 代码（Gitee 镜像）、Python、依赖包、Playwright 浏览器和 uv 都会从国内镜像下载，不需要手动开启。
+
+如果 `raw.githubusercontent.com` 打不开，可以从 jsDelivr 获取同一个脚本：
 
 <Tabs groupId="os">
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"
 ```
 
 </TabItem>
 <TabItem value="mac-linux" label="Mac / Linux">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash
 ```
 
 </TabItem>
 </Tabs>
 
-镜像模式会为 PyPI、npm、Playwright、Node（通过 nvm）和 Rustup 配置国内镜像。如果访问 GitHub 本身也很慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设为你信任的镜像地址。
+想强制开启或关闭镜像，在运行前设置 `SUZENT_CHINA_MIRROR=1` 或 `SUZENT_CHINA_MIRROR=0`。如果访问 GitHub 本身也很慢，可把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设为你信任的镜像地址。
 
 ---
 
