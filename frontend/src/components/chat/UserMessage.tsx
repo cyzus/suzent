@@ -411,8 +411,8 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
       {/* Text content — edit mode swaps the bubble for a textarea */}
       {message.content && !isEditing && (
         <div className="flex justify-end pr-1 pb-1">
-          <div className="relative max-w-full border-2 border-brutal-black bg-brutal-yellow px-4 py-3 font-medium shadow-[2px_2px_0_0_#000] select-text dark:border-white dark:shadow-[2px_2px_0_0_#fff]">
-            <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans whitespace-pre-wrap">
+          <div className="relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-zinc-400 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_#71717a]">
+            <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-100 font-sans font-normal leading-relaxed whitespace-pre-wrap">
               <ClickableContent
                 content={content}
                 onFileClick={onFileClick}
@@ -425,7 +425,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
 
       {/* Inline edit form */}
       {isEditing && (
-        <div className="pr-1 pb-1 space-y-2">
+        <div className="space-y-2">
           <textarea
             ref={editTextareaRef}
             value={draft}
@@ -445,7 +445,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
                 resendEditing();
               }
             }}
-            className="w-full resize-none bg-white dark:bg-zinc-800 border-3 border-brutal-blue shadow-[3px_3px_0_0_#000] px-4 py-3 text-sm font-sans text-brutal-black dark:text-white focus:outline-none"
+            className="w-full resize-none bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-blue shadow-[3px_3px_0_0_#000] dark:shadow-[3px_3px_0_0_#71717a] px-4 py-2.5 text-sm leading-relaxed font-sans text-brutal-black dark:text-zinc-100 focus:outline-none"
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="min-w-0 basis-40 text-xs text-neutral-500 dark:text-neutral-400 flex-1">
@@ -471,7 +471,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
 
       {/* Action toolbar + label + timestamp */}
       {!isEditing && (
-        <div className="flex items-center justify-end gap-2 pr-1">
+        <div className="flex items-center justify-end gap-2">
           {canEdit && (
             <div className="flex items-center gap-1 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity">
               <CopyButton
