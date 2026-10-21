@@ -16,7 +16,22 @@ def register_acp_command(app: typer.Typer) -> None:
 
     @app.command("acp")
     def acp(
-        server_url: str = typer.Option(
+        login: bool = typer.Option(
+            False,
+            "--login",
+            help="Pair this editor with the local Suzent backend, then exit",
+        ),
+        client_name: str = typer.Option(
+            "ACP client",
+            "--client-name",
+            help="Editor name from the ACP initialize request",
+        ),
+        require_auth: bool = typer.Option(
+            True,
+            "--require-auth/--no-require-auth",
+            help="Require editor pairing; disable only for trusted local integrations",
+        ),
+        server_url: str | None = typer.Option(
             None,
             "--server-url",
             help="Backend URL to bridge to (default: the running local backend)",
@@ -34,7 +49,7 @@ def register_acp_command(app: typer.Typer) -> None:
             "--log-level",
             help="Log level for diagnostics on stderr (stdout carries the protocol)",
         ),
-    ):
+    ) -> None:
         """Serve this Suzent as an ACP agent on stdin/stdout."""
         modes = {"default", "auto", "full_access"}
         if permission_mode not in modes:
@@ -50,11 +65,27 @@ def register_acp_command(app: typer.Typer) -> None:
         from suzent.acp.server import redirect_logs_to_stderr, serve_stdio
 
         redirect_logs_to_stderr(log_level)
+        if login:
+            from suzent.acp.login import terminal_login
+
+            try:
+                result = asyncio.run(
+                    terminal_login(
+                        server_url,
+                        client_name,
+                        report=lambda message: typer.echo(message, err=True),
+                    )
+                )
+            except KeyboardInterrupt:
+                typer.echo("ACP login cancelled.", err=True)
+                result = 1
+            raise typer.Exit(code=result)
         raise typer.Exit(
             code=asyncio.run(
                 serve_stdio(
                     base_url=server_url,
                     permission_mode=permission_mode,
+                    require_auth=require_auth,
                 )
             )
         )
