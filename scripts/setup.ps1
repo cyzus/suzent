@@ -591,6 +591,35 @@ if ($env:SUZENT_DEV_SETUP -eq "1") {
     Write-Info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
 }
 
+# -- WebView2 runtime ----------------------------------------------------------
+# The desktop app renders through Microsoft Edge WebView2. Windows 11 ships it
+# and most Windows 10 machines get it with Edge, but Windows Server and some
+# LTSC editions do not, and the app window then never opens.
+function Test-WebView2 {
+    $client = "Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    foreach ($key in @("HKLM:\SOFTWARE\WOW6432Node\$client", "HKLM:\SOFTWARE\$client", "HKCU:\Software\$client")) {
+        $version = (Get-ItemProperty -Path $key -Name pv -ErrorAction SilentlyContinue).pv
+        if ($version -and $version -ne "0.0.0.0") { return $true }
+    }
+    return $false
+}
+
+if (Test-WebView2) {
+    Write-Ok "WebView2 runtime"
+} else {
+    Write-Info "Installing the Microsoft Edge WebView2 runtime for the desktop app..."
+    $bootstrapper = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
+    try {
+        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $bootstrapper -TimeoutSec 120 -UseBasicParsing
+        Start-Process -FilePath $bootstrapper -ArgumentList "/silent", "/install" -Wait
+    } catch {}
+    if (Test-WebView2) {
+        Write-Ok "WebView2 runtime installed"
+    } else {
+        Write-Warn "WebView2 is missing, so the desktop window cannot open. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and run 'suzent start' again."
+    }
+}
+
 # -- Playwright Chromium -------------------------------------------------------
 if (-not $SkipPW) {
     Write-Info "Installing Playwright Chromium (for web browsing tool)..."
