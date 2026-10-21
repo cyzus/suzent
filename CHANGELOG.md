@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
 - Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
 - Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
-- SUZENT, a focal agent, now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
+- SUZENT now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
 - Show what woke a background turn, such as a message from a paired device, while the turn is still running.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
