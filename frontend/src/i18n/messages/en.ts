@@ -1593,7 +1593,7 @@ export const en = {
     suggestionAcceptKey: 'Tab',
     placeholderLoading: 'System loading...',
     attachFiles: 'Attach files (images, PDFs, documents, etc.)',
-    modelPlaceholder: 'Model',
+    modelPlaceholder: 'Choose model',
     modelUpdateError: 'Could not update the model',
     thinkingTitle: 'Thinking',
     thinkingSliderLabel: 'Thinking effort',
