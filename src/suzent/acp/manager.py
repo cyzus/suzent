@@ -63,6 +63,7 @@ class ACPManager:
         self.registry = registry or ACPAgentRegistry()
         self._sessions: dict[str, ManagedSession] = {}
         self._lock = asyncio.Lock()
+        self._authenticated: dict[str, tuple[ACPClient, dict[str, Any]]] = {}
 
     def list_active(self) -> list[dict[str, Any]]:
         return [
@@ -74,6 +75,76 @@ class ACPManager:
             }
             for item in self._sessions.values()
         ]
+
+    async def probe(
+        self, agent_id: str, cwd: str, method_id: str | None = None
+    ) -> dict[str, Any]:
+        """Check session readiness, optionally performing a user-selected login."""
+        agent = self.registry.get(agent_id)
+        if not agent.available:
+            raise ValueError("Agent binary not found or unavailable")
+        cached = self._authenticated.pop(agent_id, None) if method_id is None else None
+        if cached and not cached[0].is_running:
+            await cached[0].close()
+            cached = None
+        client = (
+            cached[0]
+            if cached
+            else ACPClient(agent.command, cwd=agent.cwd or cwd, env=agent.env)
+        )
+        retained = False
+        try:
+            if cached:
+                init = cached[1]
+            else:
+                await client.start()
+                init = await client.initialize()
+            methods = [
+                method
+                for method in (init.get("authMethods") or [])
+                if isinstance(method, dict) and isinstance(method.get("id"), str)
+            ]
+            if method_id is not None:
+                selected = next((m for m in methods if m["id"] == method_id), None)
+                if selected is None:
+                    raise ValueError(
+                        "Authentication method was not advertised by this agent"
+                    )
+                if selected.get("type", "agent") != "agent":
+                    raise ValueError(
+                        "This authentication method requires external login"
+                    )
+                await client.authenticate(method_id)
+            status = "ready"
+            try:
+                await client.new_session(cwd)
+            except ACPError as exc:
+                if not exc.auth_required:
+                    raise
+                status = "auth_required"
+            if (method_id is not None or cached) and status == "ready":
+                previous = self._authenticated.pop(agent_id, None)
+                self._authenticated[agent_id] = (client, init)
+                retained = True
+                if previous is not None:
+                    await previous[0].close()
+            return {
+                "protocolVersion": init.get("protocolVersion"),
+                "agentInfo": init.get("agentInfo", {}),
+                "capabilities": init.get("agentCapabilities", {}),
+                "authMethods": [
+                    {
+                        "id": m["id"],
+                        "name": str(m.get("name") or m["id"]),
+                        "type": str(m.get("type", "agent")),
+                    }
+                    for m in methods
+                ],
+                "status": status,
+            }
+        finally:
+            if not retained:
+                await client.close()
 
     async def create(
         self, chat_id: str, agent_id: str, cwd: str, permission_mode: str = ""
@@ -97,6 +168,7 @@ class ACPManager:
             current
             and current.agent_id == agent_id
             and current.session_id == session_id
+            and current.client.is_running
         ):
             current.permission_mode = permission_mode
             current.resumed = True
@@ -147,6 +219,9 @@ class ACPManager:
         await asyncio.gather(
             *(item.client.close() for item in sessions), return_exceptions=True
         )
+        authenticated = list(self._authenticated.values())
+        self._authenticated.clear()
+        await asyncio.gather(*(client.close() for client, _ in authenticated))
 
     async def stop(self, chat_id: str) -> None:
         async with self._lock:
@@ -165,16 +240,22 @@ class ACPManager:
             raise RuntimeError(
                 f"{agent.name} is not available: {agent.display_command} was not found"
             )
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=4096)
 
         async def on_notification(method: str, params: dict[str, Any]) -> None:
             if method == "session/update":
-                await queue.put(params)
+                try:
+                    queue.put_nowait(params)
+                except asyncio.QueueFull:
+                    get_permission_broker().cancel_chat(chat_id)
+                    raise ACPError(
+                        "ACP update buffer overflow; reconnect and retry"
+                    ) from None
 
         async def on_permission(params: dict[str, Any]) -> dict[str, Any]:
             # Surface the request on the chat stream, then park until decided.
             async def relay(event: dict[str, Any]) -> None:
-                await queue.put({PERMISSION_QUEUE_KEY: event})
+                queue.put_nowait({PERMISSION_QUEUE_KEY: event})
 
             # Read the mode off the live session so a resume that changes it wins.
             live = self._sessions.get(chat_id)
@@ -185,17 +266,27 @@ class ACPManager:
                 on_relay=relay,
             )
 
-        client = ACPClient(
-            agent.command,
-            cwd=agent.cwd or cwd,
-            env=agent.env,
-            notification_handler=on_notification,
-            permission_handler=on_permission,
-        )
-        await client.start()
+        # A login may be connection-scoped; keep its process for the next session.
+        authenticated = self._authenticated.pop(agent_id, None)
+        if authenticated and not authenticated[0].is_running:
+            await authenticated[0].close()
+            authenticated = None
+        if authenticated:
+            client, init = authenticated
+            client.notification_handler = on_notification
+            client.permission_handler = on_permission
+        else:
+            client = ACPClient(
+                agent.command,
+                cwd=agent.cwd or cwd,
+                env=agent.env,
+                notification_handler=on_notification,
+                permission_handler=on_permission,
+            )
         try:
-            # ACP requires `initialize` before any session method.
-            init = await client.initialize()
+            if authenticated is None:
+                await client.start()
+                init = await client.initialize()
             capabilities = (
                 init.get("agentCapabilities")
                 if isinstance(init.get("agentCapabilities"), dict)
@@ -215,6 +306,8 @@ class ACPManager:
                     resumed = True
                     restored = True
                 except ACPError as exc:
+                    if exc.auth_required:
+                        raise
                     # The agent advertises loadSession but no longer holds this
                     # id -- codex reports "no rollout found for thread id" once
                     # its rollout file is gone. Losing the history is bad; a
@@ -240,7 +333,7 @@ class ACPManager:
                 resolved_id = str(result.get("sessionId") or "")
                 if not resolved_id:
                     raise RuntimeError("ACP agent did not return a sessionId")
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             await client.close()
             raise
         return ManagedSession(

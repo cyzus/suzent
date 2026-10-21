@@ -10,6 +10,19 @@ The architecture and protocol pages describe Suzent as it works today. Planned
 work and known gaps live here instead, so readers can tell the two apart. When
 an item ships, move its description into the relevant page and delete it here.
 
+## ACP integration
+
+The settings page supports protocol-driven agent authentication. Remaining work:
+
+- Interactive terminal authentication: provide a user-visible terminal using
+  the configured executable, apply the advertised arguments/environment, and
+  reconnect after successful exit. Do not advertise `auth.terminal` until this
+  flow is implemented; terminal method IDs must never be sent to `authenticate`.
+- Capability-gated logout and richer authentication progress/cancellation UI.
+- Byte-budgeted streaming buffers and measured frontend render batching. The
+  current event-count limit fails explicitly on overflow; it is not disk-backed
+  replay or transparent recovery of an interrupted turn.
+
 ## Mobile apps
 
 See [Native mobile clients](./architecture/mobile.md) for what exists today.

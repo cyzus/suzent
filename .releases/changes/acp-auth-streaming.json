@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add ACP sign-in from settings, preserve sessions across authentication failures, and improve streaming responsiveness and overflow handling."
+}
