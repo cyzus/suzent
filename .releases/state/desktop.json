@@ -20,6 +20,7 @@
     ".releases/changes/chat-multi-select.json",
     ".releases/changes/chat-pinning-home.json",
     ".releases/changes/chatgpt-parallel-tool-args.json",
+    ".releases/changes/china-mirror-install.json",
     ".releases/changes/ci-context-sources.json",
     ".releases/changes/composer-message-queue.json",
     ".releases/changes/conversation-task-checklist.json",
