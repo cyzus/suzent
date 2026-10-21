@@ -131,6 +131,27 @@ app too.
    [background service](./automation.md#keep-suzent-running-in-the-background)).
 2. In your editor's settings for external agents, add a custom agent with the
    command `suzent` and the argument `acp`.
+3. Choose **Pair with Suzent** when your editor asks you to sign in. In
+   **Settings → ACP Agents → Editor connections**, compare the code with the
+   login terminal, check the confirmation box, and approve the request.
+   Return to the editor and reconnect after login succeeds.
+
+Editors without terminal login can choose **Approve in Suzent settings**;
+the code appears in their agent log. Alternatively run
+`suzent acp --login --client-name "<editor name>"` yourself, using the name
+reported by the editor, then reconnect. Requests expire after five minutes.
+
+Each authorization can resume only the conversations it created. It uses your
+Suzent memory, skills and workspace tools, and the editor handles tool approval
+prompts. Only approve editors you trust. Revoke a connection from the same
+settings section to block further requests and stop active work. A new login
+creates a new authorization; it does not recover the old authorization's chats.
+Credentials are saved per backend address and editor name, so instances using
+the same name and address share an authorization. Changing either requires login
+again. Existing unpaired ACP conversations remain available in Suzent itself.
+
+For existing trusted local integrations, `suzent acp --no-require-auth` explicitly
+opts out of pairing. This also opts out of authorization-based chat isolation.
 
 The editor's open folder becomes the agent's working folder. When the agent
 needs permission, the editor asks you. To skip those prompts for unattended

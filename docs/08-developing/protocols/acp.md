@@ -96,6 +96,41 @@ Implemented methods: `initialize`, `authenticate`, `session/new`,
 `loadSession: true`, text prompts with embedded context. Images and audio are
 declined at the handshake rather than silently dropped.
 
+### Inbound authentication
+
+`suzent acp` requires pairing by default. Initialization needs no running backend:
+it advertises an agent method (`suzent-pair`) and, only when
+`clientCapabilities.auth.terminal` is true, a terminal method (`suzent-terminal`).
+The terminal method appends `--login --client-name <clientInfo.name>` to the
+configured invocation. Exit zero means approval and credential persistence
+succeeded; the editor reconnects afterward. Terminal method IDs are rejected by
+`authenticate`. The agent method runs the same approval flow over `authenticate`,
+printing its comparison code to stderr and reloading credentials before success.
+This also supports clients using the Registry validator's older capability fields.
+
+The local-only `/acp/auth/*` endpoints handle pending requests, approval, collection,
+verification and revocation. Remote requests are refused even with a host token;
+Host and Origin checks protect the browser approval surface. Requests expire in
+five minutes. The CLI generates a random credential before requesting approval;
+the backend stores only its SHA-256 hash. Uncollected approvals expire too.
+Client credentials are keyed by backend URL and client name, protected with
+Windows DPAPI or an owner-only file on POSIX. Mobile/mesh tokens are not accepted.
+
+Each session stores the approving grant ID in `_acp_server.grant_id`. New/load,
+prompt and permission continuation verify the grant; load checks ownership before
+replaying history. A running turn also checks authorization once per second and
+requests backend cancellation on revocation, including while the stream is silent.
+This cannot undo already completed tool operations. Login after revocation creates
+a different grant and cannot resume the old grant's sessions. Local processes and
+`--no-require-auth` remain within Suzent's trusted-local boundary; pairing is not an
+OS sandbox or a restriction on shared memory or the agent's other tools.
+
+For Registry submission, publish a version containing this flow first, pin its
+distribution in the registry manifest, and run the Registry's startup/auth checks
+against that published artifact. Include the required license URL and monochrome
+SVG icon, and document that a local Suzent backend and configured model are needed.
+The implementation alone does not publish a package or register Suzent.
+
 ## 2. It is a translator, not a second agent
 
 `suzent acp` runs no model. Every turn is posted to the **already-running

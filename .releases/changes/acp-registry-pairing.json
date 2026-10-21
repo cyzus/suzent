@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add terminal pairing for ACP editors with local approval, private credentials, grant-owned sessions, and revocation."
+}

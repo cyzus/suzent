@@ -18,6 +18,7 @@ import {
 } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
+import { AcpConnections } from './AcpConnections';
 
 // ---------------------------------------------------------------------------
 // Auth status badge
@@ -130,6 +131,7 @@ export function AcpAgentsTab(): React.ReactElement {
   return (
     <SettingsPage>
       <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
+      <AcpConnections />
 
       <section>
         <SectionCardHeader

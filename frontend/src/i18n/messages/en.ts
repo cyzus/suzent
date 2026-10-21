@@ -847,6 +847,19 @@ export const en = {
       authOk: 'Authenticated',
       authUnknown: 'Auth unknown',
       authMissing: 'Auth required',
+      connectionsTitle: 'Editor connections',
+      connectionsScope:
+        'Approve an editor to create ACP conversations, access conversations created by this authorization, and use their workspace tools. The editor can answer tool approval requests. Your other conversations are not shared.',
+      connectionsHint:
+        'Start login from your editor. Compare the code shown in its terminal or agent log before approving. Revoking stops active work and blocks further access; re-pairing creates a new authorization.',
+      connectionsEmpty: 'No editor connections or pending requests.',
+      pairingCode: 'Verification code',
+      confirmCode: 'I started this request and the code matches my terminal or agent log.',
+      approveConnection: 'Approve editor',
+      declineConnection: 'Decline',
+      revokeConnection: 'Revoke access',
+      approvedAt: 'Approved at',
+      grantId: 'Authorization ID',
       login: 'Sign in',
       loggingIn: 'Waiting for sign-in…',
       loginHint:
