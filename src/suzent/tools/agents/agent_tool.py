@@ -57,6 +57,23 @@ class AgentTool(Tool):
     session_guidance: str = (
         "## AgentTool — When and How to Delegate\n"
         "\n"
+        "### External ACP agents — discover, start, continue\n"
+        "Use ACP when the user requests a configured external coding agent, such as Codex "
+        "or Claude Code. Use native profiles for Suzent helpers.\n"
+        "1. Call agent_list(status='acp') to discover exact acp_agent_id values and installation "
+        "status. Installed does not guarantee authentication or a successful handshake.\n"
+        "2. Start with agent(description='Complete task instructions', runtime='acp', "
+        "acp_agent_id='<listed ID>', run_in_background=True). Supply cwd when needed. "
+        "ACP uses its own tools and model: omit subagent_type, tools_allowed, tools_denied, "
+        "and model_override. A parent chat's denied tools can prevent ACP delegation.\n"
+        "3. Continue with agent_send(agent_id='<returned task ID>', message='Next instructions'). "
+        "For existing conversations, discover session agent_id values with "
+        "agent_list(status='recent'). Use wait=True for a direct reply. Background sub-agent "
+        "results wake the parent automatically.\n"
+        "acp_agent_id selects a configured executable; acp_session_id is an optional protocol "
+        "session ID for explicit resume when starting a task; agent_send.agent_id identifies "
+        "a Suzent chat or sub-agent task. Never interchange these IDs.\n"
+        "\n"
         "### When to spawn a sub-agent (use proactively)\n"
         "- **explore**: when you need to find files by pattern, search code for keywords, or answer "
         "questions about a codebase — especially when a simple search might take more than 3 tries. "
@@ -207,12 +224,14 @@ class AgentTool(Tool):
         acp_agent_id: Annotated[
             Optional[str],
             Field(
-                description="ACP registry agent id; required when runtime='acp'.",
+                description="Exact acp_agent_id from agent_list(status='acp'); required for runtime='acp'. Not a chat or task ID.",
             ),
         ] = None,
         acp_session_id: Annotated[
             Optional[str],
-            Field(description="Optional ACP session id to resume."),
+            Field(
+                description="Optional ACP protocol session ID for explicit resume. For follow-up work on a Suzent task, use agent_send with its task/chat ID instead."
+            ),
         ] = None,
     ) -> ToolResult:
         """
