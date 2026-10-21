@@ -458,6 +458,7 @@ class FocalScheduleTool(ScheduleTool):
     """
 
     name: str = "FocalScheduleTool"
+    display_name: Optional[str] = "Schedule wake-ups"
     tool_name: str = "schedule_wakeup"
     # Not user-configurable and not discoverable through ToolSearch: Focal only.
     group = ""
@@ -526,7 +527,7 @@ class FocalScheduleTool(ScheduleTool):
         if not is_focal_chat_id(chat_id):
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED,
-                "schedule_wakeup belongs to the Focal Agent; use schedule_task.",
+                "schedule_wakeup belongs to SUZENT; use schedule_task.",
             )
         action = (action or "list").strip().lower()
         if action == "list":
