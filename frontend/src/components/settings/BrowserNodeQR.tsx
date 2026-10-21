@@ -48,7 +48,9 @@ export function BrowserNodeQR({ host, port }: { host: string; port: number }): R
           agent can write to and speak through — nothing is installed.
         </p>
         <div className="flex items-center gap-2 justify-center sm:justify-start">
-          <code className="text-[11px] font-mono text-neutral-500 break-all">{url}</code>
+          <code className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 break-all">
+            {url}
+          </code>
           <CopyButton value={url} tone="blue" />
         </div>
       </div>

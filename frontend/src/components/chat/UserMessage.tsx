@@ -411,8 +411,8 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
       {/* Text content — edit mode swaps the bubble for a textarea */}
       {message.content && !isEditing && (
         <div className="flex justify-end pr-1 pb-1">
-          <div className="relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-zinc-400 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_#71717a]">
-            <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-100 font-sans font-normal leading-relaxed whitespace-pre-wrap">
+          <div className="relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-white/10 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)]">
+            <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-200 font-sans font-normal leading-relaxed whitespace-pre-wrap">
               <ClickableContent
                 content={content}
                 onFileClick={onFileClick}
@@ -445,7 +445,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
                 resendEditing();
               }
             }}
-            className="w-full resize-none bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-blue shadow-[3px_3px_0_0_#000] dark:shadow-[3px_3px_0_0_#71717a] px-4 py-2.5 text-sm leading-relaxed font-sans text-brutal-black dark:text-zinc-100 focus:outline-none"
+            className="w-full resize-none bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-blue shadow-[3px_3px_0_0_#000] dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)] px-4 py-2.5 text-sm leading-relaxed font-sans text-brutal-black dark:text-zinc-200 focus:outline-none"
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="min-w-0 basis-40 text-xs text-neutral-500 dark:text-neutral-400 flex-1">

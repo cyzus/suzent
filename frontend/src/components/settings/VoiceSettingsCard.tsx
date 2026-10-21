@@ -167,12 +167,12 @@ export function VoiceSettingsCard({
                 </BrutalButton>
               )}
               {modelChanged && (
-                <p role="status" className="text-xs text-neutral-500">
+                <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
                   {t('speech.modelChanged')}
                 </p>
               )}
               {models.length > 1 && (
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   {t('speech.savedBackups', { count: models.length - 1 })}
                 </p>
               )}
@@ -180,7 +180,7 @@ export function VoiceSettingsCard({
           )}
           {settings.engine === 'system' ? (
             <>
-              <p className="text-xs font-normal leading-relaxed text-neutral-500 sm:col-span-2">
+              <p className="text-xs font-normal leading-relaxed text-neutral-500 dark:text-neutral-400 sm:col-span-2">
                 {t('speech.systemHelp')}
               </p>
               <label className="block">
@@ -215,7 +215,7 @@ export function VoiceSettingsCard({
             </>
           ) : (
             <>
-              <p className="text-xs font-normal leading-relaxed text-neutral-500 sm:col-span-2">
+              <p className="text-xs font-normal leading-relaxed text-neutral-500 dark:text-neutral-400 sm:col-span-2">
                 {t('speech.apiHelp')}
               </p>
               <label className="block">
