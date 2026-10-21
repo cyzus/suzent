@@ -2498,6 +2498,19 @@ default model, which may not be the one your chat uses. A helper can also be a
 coding agent such as Claude Code or Codex, set up under **Settings → ACP
 Agents** (see [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes#use-suzent-from-your-editor-acp)).
 
+To use an external helper, install and sign in to it under **Settings → ACP
+Agents**, then ask Suzent, for example: “Use Codex to investigate the failing
+tests in this project.” Suzent can check which external agents are installed
+before starting one. An installation check does not confirm that sign-in is
+complete or that the agent can connect successfully.
+
+For a follow-up, say “Ask the same helper to fix the failure.” Suzent sends the
+instructions to the existing task. Background replies return to the parent
+conversation automatically. External helpers use their own models and tools;
+Suzent's native helper profiles do not control them. If this conversation
+denies specific tools, external delegation is blocked because Suzent cannot
+enforce that deny list inside the external agent.
+
 ## Watching, redirecting, and stopping helpers
 
 Helpers appear as a block in the chat, with **View log** and **Stop**, and in
@@ -8626,9 +8639,41 @@ in **both directions**:
 | Outbound | Suzent is the **client** | `suzent.acp.client` | Suzent drives Claude Code, Codex, … as subagents |
 | Inbound | Suzent is the **agent** | `suzent acp` | Zed, enoxian, any ACP client drives *your* geist |
 
-This page covers the inbound half. See [a2a.md](https://suzent.com/zh-Hans/docs/developing/protocols/a2a) for A2A, which reaches
+The outbound tool workflow is below; the numbered sections cover the inbound
+bridge. See [a2a.md](https://suzent.com/zh-Hans/docs/developing/protocols/a2a) for A2A, which reaches
 agents over the network; ACP is local and process-scoped — the client spawns the
 agent and speaks JSON-RPC on its stdin/stdout.
+
+## Calling an external ACP agent from Suzent
+
+Use the existing agent tools in this order:
+
+1. `agent_list(status="acp")` lists registered ACP configurations, including
+   built-ins, with `acp_agent_id`, name, description, and `available`. This is a
+   local installation check; it does not start a process, test authentication,
+   or guarantee that the ACP handshake will succeed. Missing installations are
+   managed in **Settings → ACP Agents**.
+2. `agent(description="...", runtime="acp", acp_agent_id="<listed ID>")`
+   starts a task. The default is background execution; completion wakes the
+   parent. Use `run_in_background=False` to await the result. Supply `cwd` to
+   select a workspace. ACP uses the external agent's tools and model: omit
+   native profiles and tool lists; `model_override` is rejected. A parent with
+   denied tools cannot delegate to ACP because those restrictions cannot be
+   enforced on the external agent's tools.
+3. `agent_send(agent_id="<returned task ID>", message="...")` continues the
+   same task. For an existing accessible chat, obtain its `agent_id` from
+   `agent_list(status="recent")`. Use `wait=True` for a direct reply.
+
+| Identifier | Meaning | Used by |
+|---|---|---|
+| `acp_agent_id` | Registry configuration, such as `codex` | `agent` with `runtime="acp"` |
+| `acp_session_id` | External ACP protocol session | Optional explicit resume through `agent` |
+| `agent_id` / returned task ID | Suzent conversation or sub-agent task | `agent_send`, rather than either ACP identifier |
+
+The inbox dispatcher routes messages for ACP chats to the ACP runtime. The
+manager starts or resumes the subprocess and the client sends `session/prompt`
+over stdio. Ordinary follow-ups should use `agent_send` so they retain the
+Suzent task's conversation and routing.
 
 ## 1. What the client gets
 
