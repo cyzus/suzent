@@ -35,6 +35,8 @@ export interface AGUIPart {
   acpPermission?: AcpPermissionRequest;
   /** For 'acp-notice' parts: an out-of-band ACP runtime notice. */
   acpNotice?: AcpNotice;
+  /** For 'incoming-message' parts: the message is already a row of the display log. */
+  persisted?: boolean;
 }
 
 export interface AcpPermissionOption {
