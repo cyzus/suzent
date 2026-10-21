@@ -230,6 +230,7 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        FocalDispatchTool,
     )
 
     return (
@@ -268,6 +269,7 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        FocalDispatchTool,
     )
 
 

@@ -13,6 +13,9 @@ if TYPE_CHECKING:
     from suzent.tools.agents.agent_lifecycle_tools import AgentReadTool as AgentReadTool
     from suzent.tools.agents.agent_lifecycle_tools import AgentSendTool as AgentSendTool
     from suzent.tools.agents.agent_lifecycle_tools import AgentStopTool as AgentStopTool
+    from suzent.tools.agents.agent_lifecycle_tools import (
+        FocalDispatchTool as FocalDispatchTool,
+    )
     from suzent.tools.agents.agent_tool import AgentTool as AgentTool
 
 _EXPORTS = {
@@ -21,6 +24,7 @@ _EXPORTS = {
     "AgentReadTool": "suzent.tools.agents.agent_lifecycle_tools",
     "AgentSendTool": "suzent.tools.agents.agent_lifecycle_tools",
     "AgentStopTool": "suzent.tools.agents.agent_lifecycle_tools",
+    "FocalDispatchTool": "suzent.tools.agents.agent_lifecycle_tools",
 }
 
 __all__ = list(_EXPORTS)

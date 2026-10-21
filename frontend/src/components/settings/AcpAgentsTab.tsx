@@ -224,7 +224,7 @@ export function AcpAgentsTab(): React.ReactElement {
         </SettingsHelp>
 
         {loading ? (
-          <div className="p-8 text-center font-bold uppercase text-neutral-500">
+          <div className="p-8 text-center font-bold uppercase text-neutral-500 dark:text-neutral-400">
             {t('common.loading')}
           </div>
         ) : agents.length === 0 ? (
@@ -266,7 +266,7 @@ export function AcpAgentsTab(): React.ReactElement {
                     <div
                       className={`w-10 h-10 border-2 border-brutal-black flex items-center justify-center shrink-0 ${
                         ready
-                          ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                          ? 'bg-brutal-black text-white dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25'
                           : 'text-neutral-400 dark:text-neutral-500'
                       }`}
                     >
@@ -445,7 +445,7 @@ export function AcpAgentsTab(): React.ReactElement {
                       {probe && !signedIn && (
                         <div className="ml-auto shrink-0">
                           {probe.status === 'probing' ? (
-                            <span className="text-[10px] font-bold uppercase text-neutral-500">
+                            <span className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
                               {t('settings.acp.probing')}
                             </span>
                           ) : probe.status === 'ok' ? (
