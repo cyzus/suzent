@@ -30,7 +30,8 @@ describe('SUZENT contact card', () => {
     expect(html).toContain('chatList.focal.name');
     expect(html).toContain('chatList.focal.role');
     expect(html).toContain('bg-emerald-500');
-    expect(text(html)).toContain('chatList.focal.allClear');
+    expect(text(html)).not.toContain('chatList.focal.allClear');
+    expect(html).toContain('aria-label="chatList.focal.allClear"');
   });
 
   it('spells out what is waiting, stalled and auto-running', () => {
@@ -74,6 +75,7 @@ describe('SUZENT contact card', () => {
   it('keeps the entry usable before its status arrives', () => {
     const html = render(null);
     expect(html).toContain('chatList.focal.name');
-    expect(text(html)).toContain('chatList.focal.allClear');
+    expect(text(html)).not.toContain('chatList.focal.allClear');
+    expect(html).toContain('aria-label="chatList.focal.allClear"');
   });
 });
