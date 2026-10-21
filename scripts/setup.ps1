@@ -557,6 +557,33 @@ function Get-UpdaterBinary {
 }
 Get-UpdaterBinary
 
+# -- Download pre-built web UI ------------------------------------------------
+# `suzent web` serves src/suzent/webui/, which is built from frontend/ with
+# Node. A normal install has no Node, so it takes the bundle that release CI
+# built from this same tag. Developer setup builds its own below instead.
+function Get-WebUiBundle {
+    if (-not $ReleaseTag) { return }
+    $archive = Join-Path ([System.IO.Path]::GetTempPath()) "suzent-webui-$PID.zip"
+    Write-Info "Downloading pre-built web UI..."
+    if (-not (Save-ReleaseAsset "suzent-webui.zip" $archive)) {
+        Write-Warn "Web UI download failed. 'suzent web' has no page to serve until the next update."
+        return
+    }
+    $venvPython = Join-Path $SuzentDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        & $venvPython (Join-Path $SuzentDir "scripts\build_webui.py") --install-archive $archive
+    } else {
+        uv run python scripts/build_webui.py --install-archive $archive
+    }
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "Web UI ready (suzent web)"
+    } else {
+        Write-Warn "Web UI archive could not be unpacked (non-fatal)."
+    }
+    Remove-Item -Force $archive -ErrorAction SilentlyContinue
+}
+if ($env:SUZENT_DEV_SETUP -ne "1") { Get-WebUiBundle }
+
 function Install-DevDependencies {
     Ensure-Rust
 

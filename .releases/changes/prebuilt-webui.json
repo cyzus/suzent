@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files."
+}

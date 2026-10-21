@@ -387,6 +387,40 @@ def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None
         )
 
 
+WEBUI_ASSET = "suzent-webui.zip"
+
+
+def _fetch_release_webui(root: Path) -> bool:
+    """Install the web UI bundle released for this checkout's stable tag.
+
+    Covers an install whose setup ran before the asset existed, or whose
+    download failed. Source checkouts have no matching asset and build their own.
+    """
+    release_file = root / ".suzent" / "release-tag"
+    release_tag = (
+        release_file.read_text(encoding="utf-8").strip()
+        if release_file.exists()
+        else ""
+    )
+    script = root / "scripts" / "build_webui.py"
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag) or not script.is_file():
+        return False
+    typer.echo(f"  • Downloading the web UI for {release_tag}...")
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / WEBUI_ASSET
+        try:
+            _download_release_asset(WEBUI_ASSET, release_tag, archive)
+            _verify_release_asset(archive, WEBUI_ASSET, release_tag)
+        except (OSError, ValueError) as error:
+            typer.echo(f"  ❌ Web UI download failed: {error}")
+            return False
+        result = subprocess.run(
+            [sys.executable, str(script), "--install-archive", str(archive)],
+            cwd=str(root),
+        )
+    return result.returncode == 0
+
+
 def _local_ui_version(root: Path) -> str:
     f = root / _BIN_DIR / "version.txt"
     return f.read_text().strip() if f.exists() else ""
@@ -1841,10 +1875,13 @@ def register_commands(app: typer.Typer):
         """
         from suzent.webui import webui_available
 
+        fetched = False
         if not webui_available():
-            typer.echo("ERROR  No web UI is built into this install.")
-            typer.echo("   Build it with: python scripts/build_webui.py")
-            raise typer.Exit(code=1)
+            fetched = _fetch_release_webui(get_project_root())
+            if not fetched:
+                typer.echo("ERROR  No web UI is built into this install.")
+                typer.echo("   Build it with: python scripts/build_webui.py")
+                raise typer.Exit(code=1)
 
         if foreground:
             _web_foreground(port, host, debug, open_browser)
@@ -1854,6 +1891,13 @@ def register_commands(app: typer.Typer):
 
         controller = get_service_controller()
         status = controller.status()
+
+        if status.running and fetched:
+            # The web routes are registered at startup, so a backend that
+            # started without a bundle serves none until it restarts.
+            typer.echo("Restarting the Suzent service to serve the web UI...")
+            controller.restart()
+            status = controller.status()
 
         if status.running:
             if not status.ready:

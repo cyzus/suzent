@@ -511,6 +511,31 @@ download_updater() {
 }
 download_updater || true
 
+# ── Download pre-built web UI ────────────────────────────────────────────────
+# `suzent web` serves src/suzent/webui/, which is built from frontend/ with
+# Node. A normal install has no Node, so it takes the bundle that release CI
+# built from this same tag. Developer setup builds its own below instead.
+download_webui() {
+    [ -n "$RELEASE_TAG" ] || return 0
+    local archive py
+    archive="$(mktemp)"
+    info "Downloading pre-built web UI..."
+    if ! download_release_asset "suzent-webui.zip" "$archive"; then
+        rm -f "$archive"
+        warn "Web UI download failed. 'suzent web' has no page to serve until the next update."
+        return 1
+    fi
+    py=".venv/bin/python"
+    [ -x "$py" ] || py="uv run python"
+    if $py scripts/build_webui.py --install-archive "$archive"; then
+        ok "Web UI ready (suzent web)"
+    else
+        warn "Web UI archive could not be unpacked (non-fatal)."
+    fi
+    rm -f "$archive"
+}
+[ "${SUZENT_DEV_SETUP:-0}" = "1" ] || download_webui || true
+
 install_dev_deps() {
     ensure_rust
 
