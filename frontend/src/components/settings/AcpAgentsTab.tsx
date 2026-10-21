@@ -1,24 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
-import {
-  fetchAcpAgents,
-  fetchAcpSessions,
-  probeAcpAgent,
-  authenticateAcpAgent,
-} from '../../lib/api';
+import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpProbeResult } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
-import { BrutalLink } from '../BrutalButton';
-import {
-  SectionCardHeader,
-  SettingsListItem,
-  SettingsListAction,
-  Badge,
-  SettingsPage,
-} from './SettingsCard';
+import { BrutalButton, BrutalLink } from '../BrutalButton';
+import { SectionCardHeader, SettingsListItem, Badge, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpConnections } from './AcpConnections';
+import { fetchAcpLogins, startAcpLogin, cancelAcpLogin, isLoginActive } from '../../lib/acpLogin';
+import type { AcpLoginState } from '../../lib/acpLogin';
 
 // ---------------------------------------------------------------------------
 // Auth status badge
@@ -53,6 +44,38 @@ export function AcpAgentsTab(): React.ReactElement {
   >({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [authenticating, setAuthenticating] = useState<Record<string, boolean>>({});
+  const [logins, setLogins] = useState<Record<string, AcpLoginState>>({});
+  const [methods, setMethods] = useState<Record<string, string>>({});
+  const [loginError, setLoginError] = useState(false);
+  const completed = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async (): Promise<void> => {
+      try {
+        const next = await fetchAcpLogins();
+        if (cancelled) return;
+        setLogins(next);
+        setLoginError(false);
+        for (const [id, state] of Object.entries(next)) {
+          if (state.result && !isLoginActive(state) && completed.current[id] !== state.attempt) {
+            completed.current[id] = state.attempt;
+            setProbes((previous) => ({ ...previous, [id]: { status: 'ok', data: state.result! } }));
+          }
+        }
+      } catch {
+        if (!cancelled) setLoginError(true);
+      } finally {
+        if (!cancelled) timer = setTimeout(() => void poll(), 1500);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   const loadAgents = async () => {
     setLoading(true);
@@ -104,15 +127,29 @@ export function AcpAgentsTab(): React.ReactElement {
     }
   };
 
-  const handleAuthenticate = async (id: string, methodId: string): Promise<void> => {
+  const handleAuthenticate = async (id: string, methodId?: string): Promise<void> => {
     setAuthenticating((prev) => ({ ...prev, [id]: true }));
     try {
-      const data = await authenticateAcpAgent(id, methodId);
-      setProbes((prev) => ({ ...prev, [id]: { status: 'ok', data } }));
-    } catch (error) {
-      setProbes((prev) => ({ ...prev, [id]: { status: 'error', message: String(error) } }));
+      const data = await startAcpLogin(id, methodId);
+      setLogins((prev) => ({ ...prev, [id]: data }));
+      setProbes((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      setLoginError(true);
     } finally {
       setAuthenticating((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleCancelLogin = async (id: string): Promise<void> => {
+    try {
+      const data = await cancelAcpLogin(id);
+      setLogins((prev) => ({ ...prev, [id]: data }));
+    } catch {
+      setLoginError(true);
     }
   };
 
@@ -133,19 +170,27 @@ export function AcpAgentsTab(): React.ReactElement {
       <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
       <AcpConnections />
 
-      <section className="space-y-3 border-t border-neutral-200 pt-6 dark:border-zinc-700">
+      <section className="space-y-3 border-2 border-brutal-black bg-white p-4 text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100">
         <SectionCardHeader
           title={t('settings.acp.registeredTitle')}
           description={t('settings.acp.registeredDesc')}
           actions={
-            <SettingsListAction disabled={loading} onClick={() => void loadAgents()}>
+            <BrutalButton size="sm" disabled={loading} onClick={() => void loadAgents()}>
               {t('common.refresh')}
-            </SettingsListAction>
+            </BrutalButton>
           }
         />
-        <details className="rounded border border-neutral-200 p-3 text-xs dark:border-zinc-700">
+        {loginError && (
+          <p
+            role="alert"
+            className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+          >
+            {t('settings.acp.loginRequestError')}
+          </p>
+        )}
+        <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
           <summary className="cursor-pointer font-bold">{t('settings.acp.agentHelp')}</summary>
-          <div className="mt-3 space-y-2 text-neutral-600 dark:text-neutral-400">
+          <div className="mt-3 space-y-2 text-neutral-600 dark:text-neutral-300">
             <p>{t('settings.acp.probeHelp')}</p>
             <p>
               {t('settings.acp.customHelp')} <code>~/.suzent/acp_agents.json</code>
@@ -158,13 +203,21 @@ export function AcpAgentsTab(): React.ReactElement {
             {t('common.loading')}
           </div>
         ) : agents.length === 0 ? (
-          <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
+          <div className="text-center py-8 text-neutral-600 dark:text-neutral-300 font-bold uppercase">
             {t('settings.acp.noAgents')}
           </div>
         ) : (
           <div className="space-y-4">
             {agents.map((agent) => {
               const probe = probes[agent.id];
+              const login = logins[agent.id];
+              const busy = authenticating[agent.id] || isLoginActive(login);
+              const authMethods =
+                probe?.status === 'ok'
+                  ? probe.data.authMethods.filter((method) =>
+                      ['agent', 'terminal'].includes(method.type)
+                    )
+                  : [];
               const ready = isReady(agent);
               const counts = sessionCounts[agent.id];
               const activeSessions = counts?.active ?? 0;
@@ -176,7 +229,7 @@ export function AcpAgentsTab(): React.ReactElement {
               const setupCommand = adapter ? `npm install -g ${adapter}` : customInstall;
               const needsSetup = !ready && (agent.docs_url || setupCommand);
               return (
-                <SettingsListItem key={agent.id}>
+                <SettingsListItem className="!animate-none" key={agent.id}>
                   {/* Identity and status — the two things scanned first */}
                   <div className="flex items-start gap-3 p-4 border-b-2 border-brutal-black">
                     <div
@@ -209,17 +262,17 @@ export function AcpAgentsTab(): React.ReactElement {
 
                   {/* Where it lives, who defined it, what it's running */}
                   <details className="px-4 py-2 border-b border-brutal-black/10 dark:border-white/10 text-xs">
-                    <summary className="cursor-pointer text-neutral-500 dark:text-neutral-400">
+                    <summary className="cursor-pointer text-neutral-600 dark:text-neutral-300">
                       {t('settings.acp.agentDetails')}
                     </summary>
                     {agent.description && (
-                      <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+                      <p className="mt-2 text-neutral-600 dark:text-neutral-300">
                         {agent.description}
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span
-                        className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 truncate min-w-0 flex-1 basis-48"
+                        className="font-mono text-[10px] text-neutral-600 dark:text-neutral-300 truncate min-w-0 flex-1 basis-48"
                         title={agent.executable_path || agent.id}
                       >
                         {agent.executable_path || agent.id}
@@ -245,18 +298,35 @@ export function AcpAgentsTab(): React.ReactElement {
                         </Badge>
                       )}
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {ready && agent.login_command && (
+                        <BrutalButton
+                          size="sm"
+                          onClick={() =>
+                            handleCopy(`login-${agent.id}`, agent.login_command!.join(' '))
+                          }
+                        >
+                          {copiedId === `login-${agent.id}`
+                            ? t('settings.acp.copied')
+                            : t('settings.acp.copyLogin')}
+                        </BrutalButton>
+                      )}
+                      {agent.docs_url && (
+                        <ExternalAction href={agent.docs_url} label={t('settings.acp.docs')} />
+                      )}
+                    </div>
                   </details>
 
                   {/* The fix, in place of the status it explains */}
                   {needsSetup && (
                     <details className="border-b border-brutal-black/10 dark:border-white/10">
-                      <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-neutral-600 dark:text-neutral-400">
+                      <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-neutral-600 dark:text-neutral-300">
                         {t('settings.acp.setupTitle')}
                       </summary>
                       <div className="p-4 space-y-3">
                         {agent.docs_url && (
                           <div className="space-y-2">
-                            <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                            <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
                               {t('settings.acp.installHint')}
                             </p>
                             <ExternalAction
@@ -268,13 +338,13 @@ export function AcpAgentsTab(): React.ReactElement {
                         )}
                         {setupCommand && (
                           <div className="space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                            <div className="text-[10px] font-black uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
                               {adapter
                                 ? t('settings.acp.adapterTitle')
                                 : t('settings.acp.copyInstall')}
                             </div>
                             {adapter && (
-                              <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                              <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
                                 {t('settings.acp.adapterHint')}
                               </p>
                             )}
@@ -291,73 +361,82 @@ export function AcpAgentsTab(): React.ReactElement {
                   )}
 
                   {/* Actions — the probe result reads on the line it came from */}
-                  <div className="flex flex-wrap items-center gap-2 p-4">
-                    <SettingsListAction
-                      onClick={() => handleProbe(agent)}
-                      disabled={!ready || probe?.status === 'probing' || authenticating[agent.id]}
-                    >
-                      {probe?.status === 'probing'
-                        ? t('settings.acp.probing')
-                        : t('settings.acp.probe')}
-                    </SettingsListAction>
-                    {probe?.status === 'ok' && probe.data.status === 'auth_required' && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        {!probe.data.authMethods.some((method) => method.type === 'agent') && (
-                          <span className="text-xs">{t('settings.acp.loginHint')}</span>
-                        )}
-                        {probe.data.authMethods
-                          .filter((method) => method.type === 'agent')
-                          .map((method) => (
-                            <SettingsListAction
-                              key={method.id}
-                              disabled={authenticating[agent.id]}
-                              onClick={() => handleAuthenticate(agent.id, method.id)}
-                            >
-                              {authenticating[agent.id]
-                                ? t('settings.acp.loggingIn')
-                                : `${t('settings.acp.login')}: ${method.name}`}
-                            </SettingsListAction>
+                  {ready && (
+                    <div className="flex flex-wrap items-center gap-2 p-4">
+                      <BrutalButton
+                        size="sm"
+                        onClick={() => handleProbe(agent)}
+                        disabled={probe?.status === 'probing' || busy}
+                      >
+                        {probe?.status === 'probing'
+                          ? t('settings.acp.probing')
+                          : t('settings.acp.probe')}
+                      </BrutalButton>
+                      {authMethods.length > 1 && (
+                        <select
+                          aria-label={t('settings.acp.loginMethod')}
+                          disabled={busy}
+                          value={methods[agent.id] || ''}
+                          onChange={(event) =>
+                            setMethods((prev) => ({ ...prev, [agent.id]: event.target.value }))
+                          }
+                          className="max-w-full rounded border border-neutral-400 bg-white p-2 text-sm text-neutral-900 dark:bg-zinc-800 dark:text-white"
+                        >
+                          <option value="">{t('settings.acp.loginAutomatic')}</option>
+                          {authMethods.map((method) => (
+                            <option key={method.id} value={method.id}>
+                              {method.name}
+                            </option>
                           ))}
-                      </div>
-                    )}
-                    {/* Logging in before the CLI exists is a dead end; the
-                        setup panel is the only useful action until then. */}
-                    {ready && agent.login_command && (
-                      <SettingsListAction
+                        </select>
+                      )}
+                      <BrutalButton
+                        size="sm"
+                        variant="primary"
+                        disabled={busy || probe?.status === 'probing'}
                         onClick={() =>
-                          handleCopy(`login-${agent.id}`, agent.login_command!.join(' '))
+                          void handleAuthenticate(agent.id, methods[agent.id] || undefined)
                         }
                       >
-                        {copiedId === `login-${agent.id}`
-                          ? t('settings.acp.copied')
-                          : t('settings.acp.copyLogin')}
-                      </SettingsListAction>
-                    )}
-                    {ready && agent.docs_url && (
-                      <ExternalAction href={agent.docs_url} label={t('settings.acp.docs')} />
-                    )}
-                    {probe && (
-                      <div className="ml-auto shrink-0">
-                        {probe.status === 'probing' ? (
-                          <span className="text-[10px] font-bold uppercase text-neutral-500">
-                            {t('settings.acp.probing')}
-                          </span>
-                        ) : probe.status === 'ok' ? (
-                          <Badge tone={probe.data.status === 'auth_required' ? 'amber' : 'green'}>
-                            {t(
-                              probe.data.status === 'auth_required'
-                                ? 'settings.acp.authMissing'
-                                : 'settings.acp.probeOk'
-                            )}
-                          </Badge>
-                        ) : (
-                          <Badge tone="red" title={probe.message}>
-                            {t('settings.acp.probeFailed')}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                        {busy ? t('settings.acp.loggingIn') : t('settings.acp.login')}
+                      </BrutalButton>
+                      {isLoginActive(login) && (
+                        <BrutalButton size="sm" onClick={() => void handleCancelLogin(agent.id)}>
+                          {t('common.cancel')}
+                        </BrutalButton>
+                      )}
+                      {probe && (
+                        <div className="ml-auto shrink-0">
+                          {probe.status === 'probing' ? (
+                            <span className="text-[10px] font-bold uppercase text-neutral-500">
+                              {t('settings.acp.probing')}
+                            </span>
+                          ) : probe.status === 'ok' ? (
+                            <Badge tone={probe.data.status === 'auth_required' ? 'amber' : 'green'}>
+                              {t(
+                                probe.data.status === 'auth_required'
+                                  ? 'settings.acp.authMissing'
+                                  : 'settings.acp.probeOk'
+                              )}
+                            </Badge>
+                          ) : (
+                            <Badge tone="red" title={probe.message}>
+                              {t('settings.acp.probeFailed')}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {login && login.status !== 'idle' && (
+                    <p
+                      role={login.status === 'failed' ? 'alert' : 'status'}
+                      className={`mx-4 mb-4 rounded border p-3 text-sm ${login.status === 'failed' ? 'border-red-300 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200' : 'border-neutral-300 bg-white text-neutral-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-100'}`}
+                    >
+                      {t(`settings.acp.loginStates.${login.status}`)}
+                      {login.error && <> {t(`settings.acp.loginErrors.${login.error}`)}</>}
+                    </p>
+                  )}
                   {probe?.status === 'error' && (
                     <p
                       role="alert"
@@ -380,10 +459,6 @@ export function AcpAgentsTab(): React.ReactElement {
 // Setup helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Link styled to match `SettingsListAction` so an outbound link sits in the
- * same action row as the buttons without reading as a different control.
- */
 function ExternalAction({
   href,
   label,
@@ -407,30 +482,16 @@ function ExternalAction({
     </>
   );
 
-  if (primary) {
-    return (
-      <BrutalLink
-        href={href}
-        target="_blank"
-        rel="noreferrer noopener"
-        variant="primary"
-        size="sm"
-        className="uppercase"
-      >
-        {content}
-      </BrutalLink>
-    );
-  }
-
   return (
-    <a
+    <BrutalLink
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1.5 rounded-sm border border-brutal-black/20 px-3 py-1 text-[11px] font-bold uppercase text-neutral-500 transition-colors hover:border-brutal-black hover:bg-neutral-100 hover:text-brutal-black dark:border-white/10 dark:text-neutral-400 dark:hover:border-white dark:hover:bg-zinc-800 dark:hover:text-white"
+      variant={primary ? 'primary' : 'default'}
+      size="sm"
     >
       {content}
-    </a>
+    </BrutalLink>
   );
 }
 

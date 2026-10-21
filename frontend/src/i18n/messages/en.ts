@@ -821,7 +821,7 @@ export const en = {
       agentDetails: 'Details',
       agentHelp: 'Setup and sign-in help',
       probeHelp:
-        'Probe checks the connection and available sign-in methods. If sign-in is required, choose a Sign in button or use the agent’s CLI, then probe again.',
+        'Sign in opens the agent’s login flow on this computer and verifies the connection afterwards. Probe checks the connection and discovers sign-in methods.',
       customHelp: 'Add custom agents in',
       noAgents: 'No ACP agents registered.',
       ready: 'Installed',
@@ -874,6 +874,28 @@ export const en = {
       approvedAt: 'Approved at',
       grantId: 'Authorization ID',
       login: 'Sign in',
+      loginMethod: 'Sign-in method',
+      loginAutomatic: 'Automatic',
+      loginRequestError:
+        'Cannot reach sign-in controls. Check that you are using the local, updated Suzent backend.',
+      loginStates: {
+        idle: '',
+        starting: 'Preparing sign-in…',
+        authenticating: 'Complete sign-in in the browser or agent window.',
+        terminal: 'Complete sign-in in the terminal opened on this computer.',
+        verifying: 'Checking the connection…',
+        ready: 'Signed in and connection verified.',
+        failed: 'Sign-in did not complete.',
+        cancelled: 'Sign-in cancelled.',
+      },
+      loginErrors: {
+        unavailable:
+          'No supported sign-in method or interactive terminal is available. Use the command under Details.',
+        failed:
+          'Retry sign-in. If the terminal closed or the agent failed, use the command under Details.',
+        timeout: 'Sign-in timed out after five minutes. Try again.',
+        verification_failed: 'The agent still requires authentication. Try signing in again.',
+      },
       loggingIn: 'Waiting for sign-in…',
       loginHint: 'Sign in using the agent’s CLI, then probe again.',
     },

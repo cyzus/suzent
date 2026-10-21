@@ -1,4 +1,4 @@
 {
-  "products": {"desktop": "patch"},
-  "summary": "Simplify ACP settings with separate editor and external agent sections, collapsed setup help, and clearer authentication controls."
+  "products": {"desktop": "minor"},
+  "summary": "Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards."
 }

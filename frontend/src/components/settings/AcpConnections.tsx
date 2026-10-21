@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { BrutalButton } from '../BrutalButton';
 import { useI18n } from '../../i18n';
 import { decideAcpPairing, fetchAcpPairing, revokeAcpGrant } from '../../lib/acpPairing';
 import type { AcpPairingStatus } from '../../lib/acpPairing';
-import { SectionCardHeader, SettingsListAction, SettingsListItem } from './SettingsCard';
+import { SectionCardHeader, SettingsListItem } from './SettingsCard';
 
 export function AcpConnections(): React.ReactElement {
   const { t, locale } = useI18n();
@@ -47,14 +48,14 @@ export function AcpConnections(): React.ReactElement {
   };
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3 border-2 border-brutal-black bg-white p-4 text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100">
       <SectionCardHeader
         title={t('settings.acp.connectionsTitle')}
         description={t('settings.acp.connectionsDesc')}
       />
-      <details className="rounded border border-neutral-200 p-3 text-xs dark:border-zinc-700">
+      <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
         <summary className="cursor-pointer font-bold">{t('settings.acp.connectEditor')}</summary>
-        <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-400">
+        <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-300">
           <p>{t('settings.acp.editorSetup')}</p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
             <dt>{t('settings.acp.command')}</dt>
@@ -81,7 +82,7 @@ export function AcpConnections(): React.ReactElement {
         <p className="text-sm">{t('settings.acp.connectionsEmpty')}</p>
       )}
       {status.pending.map((item) => (
-        <SettingsListItem key={item.request_id}>
+        <SettingsListItem className="!animate-none" key={item.request_id}>
           <div className="p-4 space-y-3">
             <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
               {t('settings.acp.pendingApproval')}
@@ -90,7 +91,7 @@ export function AcpConnections(): React.ReactElement {
             <p>
               {t('settings.acp.pairingCode')}: <code className="font-bold">{item.code}</code>
             </p>
-            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            <p className="text-xs text-neutral-600 dark:text-neutral-300">
               {t('settings.acp.approvalScope')}
             </p>
             <label className="flex items-center gap-2 text-sm">
@@ -103,44 +104,49 @@ export function AcpConnections(): React.ReactElement {
               />
               {t('settings.acp.confirmCode')}
             </label>
-            <div className="flex gap-2">
-              <SettingsListAction
+            <div className="flex flex-wrap gap-2">
+              <BrutalButton
+                size="sm"
+                variant="primary"
                 disabled={busy || !confirmed[item.request_id]}
                 onClick={() => void act(() => decideAcpPairing(item.request_id, true))}
               >
                 {t('settings.acp.approveConnection')}
-              </SettingsListAction>
-              <SettingsListAction
+              </BrutalButton>
+              <BrutalButton
+                size="sm"
                 disabled={busy}
                 onClick={() => void act(() => decideAcpPairing(item.request_id, false))}
               >
                 {t('settings.acp.declineConnection')}
-              </SettingsListAction>
+              </BrutalButton>
             </div>
           </div>
         </SettingsListItem>
       ))}
       {status.grants.map((grant) => (
-        <SettingsListItem key={grant.grant_id}>
+        <SettingsListItem className="!animate-none" key={grant.grant_id}>
           <div className="p-4 flex items-center justify-between gap-3">
             <div className="min-w-0 space-y-1">
               <p className="font-bold break-words">{grant.client_name}</p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-neutral-600 dark:text-neutral-300">
                 {t('settings.acp.approvedAt')}{' '}
                 <time dateTime={new Date(grant.approved_at * 1000).toISOString()}>
                   {new Date(grant.approved_at * 1000).toLocaleString(locale)}
                 </time>
               </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 break-all">
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 break-all">
                 {t('settings.acp.grantId')}: <code>{grant.grant_id}</code>
               </p>
             </div>
-            <SettingsListAction
+            <BrutalButton
+              size="sm"
               disabled={busy}
+              className="shrink-0 whitespace-nowrap"
               onClick={() => void act(() => revokeAcpGrant(grant.grant_id))}
             >
               {t('settings.acp.revokeConnection')}
-            </SettingsListAction>
+            </BrutalButton>
           </div>
         </SettingsListItem>
       ))}
