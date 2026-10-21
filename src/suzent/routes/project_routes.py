@@ -4,7 +4,7 @@ Projects group multiple chat sessions and own the shared workspace
 (``projects/{slug}/``). Each chat belongs to exactly one project.
 
 Endpoints:
-- ``GET    /projects``               list all non-archived projects with chat counts
+- ``GET    /projects``               list non-archived projects, most recently active first
 - ``POST   /projects``               create a new project
 - ``PATCH  /projects/{id}``          rename / archive
 - ``DELETE /projects/{id}``          delete an empty, non-system project
@@ -98,9 +98,14 @@ async def list_projects(request: Request) -> JSONResponse:
         )
         projects = db.list_projects(include_archived=include_archived)
         unread_counts = db.get_project_unread_counts()
+        last_activity = db.get_project_last_activity()
+        projects.sort(
+            key=lambda p: last_activity.get(p.id) or p.created_at, reverse=True
+        )
         payload = [
             {
                 **_project_to_dict(p, db.count_chats_in_project(p.id)),
+                "lastActivityAt": (last_activity.get(p.id) or p.created_at).isoformat(),
                 "unreadChatCounts": unread_counts.get(p.id, {}),
             }
             for p in projects

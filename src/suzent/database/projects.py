@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +43,16 @@ class ProjectOperationsMixin:
                 if project_id and unread > 0:
                     counts.setdefault(project_id, {})[chat_id] = unread
         return counts
+
+    def get_project_last_activity(self) -> dict[str, datetime]:
+        """Return each project's most recent chat ``updated_at``."""
+        with self._session() as session:
+            rows = session.exec(
+                select(ChatModel.project_id, func.max(ChatModel.updated_at))
+                .where(ChatModel.project_id.is_not(None))
+                .group_by(ChatModel.project_id)
+            ).all()
+        return {project_id: updated_at for project_id, updated_at in rows if updated_at}
 
     @classmethod
     def _is_social_platform(cls, config: Optional[Dict[str, Any]]) -> bool:

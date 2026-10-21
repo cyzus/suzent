@@ -158,6 +158,7 @@ export interface Project {
   name: string;
   slug: string;
   createdAt: string;
+  lastActivityAt?: string;
   archived: boolean;
   chatCount: number;
   unreadChatCounts?: Record<string, number>;

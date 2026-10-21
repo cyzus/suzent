@@ -55,3 +55,41 @@ def test_project_unread_counts_include_all_chats_and_follow_moves(
     temp_db.link_chat_to_project(newer, other_project_id)
     assert counts()[project_id] == {}
     assert counts()[other_project_id] == {newer: 1}
+
+
+def test_projects_are_listed_most_recently_active_first(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime
+
+    from suzent.database.models import ChatModel
+    from suzent.routes import project_routes
+
+    monkeypatch.setattr(project_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(routes=[Route("/projects", project_routes.list_projects)])
+    )
+    old_project = temp_db.create_project("Old", "old")
+    new_project = temp_db.create_project("New", "new")
+    old_chat = temp_db.create_chat("Old chat", {})
+    new_chat = temp_db.create_chat("New chat", {})
+    temp_db.link_chat_to_project(old_chat, old_project)
+    temp_db.link_chat_to_project(new_chat, new_project)
+
+    def touch(chat_id: str, when: datetime) -> None:
+        with temp_db._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            chat.updated_at = when
+            session.add(chat)
+            session.commit()
+
+    def order() -> list[str]:
+        ids = [p["id"] for p in client.get("/projects").json()]
+        return [pid for pid in ids if pid in {old_project, new_project}]
+
+    touch(old_chat, datetime(2030, 1, 1))
+    touch(new_chat, datetime(2030, 1, 2))
+    assert order() == [new_project, old_project]
+
+    touch(old_chat, datetime(2030, 1, 3))
+    assert order() == [old_project, new_project]
