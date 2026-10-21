@@ -12,7 +12,9 @@ an item ships, move its description into the relevant page and delete it here.
 
 ## ACP integration
 
-The settings page supports protocol-driven agent authentication. Remaining work:
+The settings page supports protocol-driven authentication for outbound agents.
+Inbound editor pairing already supports terminal and agent authentication.
+Remaining outbound work:
 
 - Interactive terminal authentication: provide a user-visible terminal using
   the configured executable, apply the advertised arguments/environment, and

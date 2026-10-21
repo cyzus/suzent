@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,6 +58,9 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
+AUTH_REQUIRED = -32000
+TERMINAL_AUTH_ID = "suzent-terminal"
+AGENT_AUTH_ID = "suzent-pair"
 
 # Suzent tool name -> ACP tool-call kind. Anything unlisted is "other", which is
 # what a client renders for a tool it has no special affordance for.
@@ -119,6 +122,24 @@ class SuzentBackend:
         if isinstance(preference, bool):
             return preference
         return bool(data.get("sandboxEnabled"))
+
+    async def verify_token(self, token: str) -> str | None:
+        import httpx
+        from suzent.client.base import ClientError
+
+        try:
+            data = await self._client.post(
+                "/acp/auth/verify", headers={"Authorization": f"Bearer {token}"}
+            )
+        except (ClientError, httpx.HTTPError):
+            return None
+        if (
+            isinstance(data, dict)
+            and data.get("authenticated") is True
+            and isinstance(data.get("grant_id"), str)
+        ):
+            return data["grant_id"] or None
+        return None
 
     async def create_chat(self, title: str, config: dict[str, Any]) -> str:
         chat = await self._client.chat.create_chat(
@@ -438,10 +459,17 @@ class ACPAgentServer:
         send: Any,
         *,
         permission_mode: str = "default",
+        require_auth: bool = False,
+        token_loader: Callable[[str], str] | None = None,
     ):
         self._backend = backend
         self._send = send
         self._permission_mode = permission_mode
+        self._require_auth = require_auth
+        self._token_loader = token_loader
+        self._token = ""
+        self._grant_id = ""
+        self._client_name = "ACP client"
         self._sessions: dict[str, Session] = {}
         self._pending: dict[int, asyncio.Future] = {}
         self._tasks: set[asyncio.Task] = set()
@@ -489,7 +517,8 @@ class ACPAgentServer:
             case "initialize":
                 return await self._initialize(params)
             case "authenticate":
-                # The loopback backend is the trust boundary; nothing to do.
+                if self._require_auth:
+                    await self._authenticate(params)
                 return {}
             case "session/new":
                 return await self._new_session(params)
@@ -502,6 +531,10 @@ class ACPAgentServer:
         if method == "session/cancel":
             session = self._sessions.get(str(params.get("sessionId") or ""))
             if session and session.running:
+                try:
+                    await self._authorize(session)
+                except ACPServerError:
+                    return
                 session.cancelled = True
                 await self._backend.stop_turn(session.chat_id)
             return
@@ -511,6 +544,23 @@ class ACPAgentServer:
         capabilities = params.get("clientCapabilities")
         self._client_capabilities = (
             capabilities if isinstance(capabilities, dict) else {}
+        )
+        info = params.get("clientInfo") or {}
+        client_name = info.get("name") if isinstance(info, dict) else None
+        if (
+            not isinstance(client_name, str)
+            or not client_name.strip()
+            or len(client_name) > 100
+            or any(ord(c) < 32 or ord(c) == 127 for c in client_name)
+        ):
+            client_name = "ACP client"
+        if self._require_auth and self._token_loader:
+            self._token = self._token_loader(client_name)
+        self._client_name = client_name
+        auth_capabilities = self._client_capabilities.get("auth") or {}
+        terminal = (
+            isinstance(auth_capabilities, dict)
+            and auth_capabilities.get("terminal") is True
         )
         return {
             "protocolVersion": PROTOCOL_VERSION,
@@ -524,11 +574,81 @@ class ACPAgentServer:
                     "embeddedContext": True,
                 },
             },
-            "authMethods": [],
+            "authMethods": (
+                (
+                    [
+                        {
+                            "id": TERMINAL_AUTH_ID,
+                            "type": "terminal",
+                            "name": "Pair with Suzent",
+                            "description": "Approve this editor in the local Suzent settings",
+                            "args": ["--login", "--client-name", client_name],
+                        }
+                    ]
+                    if terminal
+                    else []
+                )
+                + [
+                    {
+                        "id": AGENT_AUTH_ID,
+                        "name": "Approve in Suzent settings",
+                        "description": "Open Settings → ACP Agents → Editor connections; compare the code in the agent log and approve the pending request.",
+                    }
+                ]
+            )
+            if self._require_auth
+            else [],
             "agentInfo": {"name": "suzent", "version": _version()},
         }
 
+    async def _authenticate(self, params: dict[str, Any]) -> None:
+        if any(session.running for session in self._sessions.values()):
+            raise ACPServerError(
+                "Finish or cancel the active turn before signing in", INVALID_REQUEST
+            )
+        if params.get("methodId") != AGENT_AUTH_ID:
+            raise ACPServerError(
+                "Unknown protocol-driven authentication method; terminal login runs separately",
+                INVALID_PARAMS,
+            )
+        from suzent.acp.login import terminal_login
+
+        if self._token_loader:
+            self._token = self._token_loader(self._client_name)
+        if self._token and await self._backend.verify_token(self._token):
+            return
+        result = await terminal_login(
+            self._backend.base_url,
+            self._client_name,
+            report=lambda message: print(message, file=sys.stderr),
+        )
+        if result or not self._token_loader:
+            raise ACPServerError("Suzent pairing was not completed", AUTH_REQUIRED)
+        self._token = self._token_loader(self._client_name)
+        await self._authorize()
+
+    async def _authorize(self, session: Session | None = None) -> None:
+        if not self._require_auth:
+            return
+        grant_id = (
+            await self._backend.verify_token(self._token) if self._token else None
+        )
+        if not grant_id:
+            raise ACPServerError(
+                "Suzent authorization required. Run terminal login, approve in Settings → ACP Agents, then reconnect.",
+                AUTH_REQUIRED,
+            )
+        if (
+            session is not None
+            and (session.config.get(SESSION_MARKER) or {}).get("grant_id") != grant_id
+        ):
+            raise ACPServerError(
+                "This authorization cannot access the requested session", AUTH_REQUIRED
+            )
+        self._grant_id = grant_id
+
     async def _new_session(self, params: dict[str, Any]) -> dict[str, Any]:
+        await self._authorize()
         cwd = self._require_cwd(params)
         config = await self._session_config(cwd)
         title = f"⇄ ACP {Path(cwd).name or cwd}"
@@ -538,6 +658,7 @@ class ACPAgentServer:
         return {"sessionId": chat_id}
 
     async def _load_session(self, params: dict[str, Any]) -> None:
+        await self._authorize()
         session_id = str(params.get("sessionId") or "")
         if not session_id:
             raise ACPServerError("session/load requires a sessionId", INVALID_PARAMS)
@@ -549,6 +670,14 @@ class ACPAgentServer:
             # chats belong to the user, not to whoever spawned this process.
             raise ACPServerError(
                 f"'{session_id}' is not an ACP session", INVALID_PARAMS
+            )
+
+        if (
+            self._require_auth
+            and (chat["config"][SESSION_MARKER]).get("grant_id") != self._grant_id
+        ):
+            raise ACPServerError(
+                "This authorization cannot access the requested session", AUTH_REQUIRED
             )
 
         cwd = self._require_cwd(params) if params.get("cwd") else ""
@@ -586,7 +715,7 @@ class ACPAgentServer:
         session.running = True
         session.cancelled = False
         try:
-            stop_reason = await self._run_turn(session, text)
+            stop_reason = await self._run_authorized_turn(session, text)
         except ACPServerError as exc:
             await self._error(message_id, exc.code, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -598,6 +727,32 @@ class ACPAgentServer:
             await self._reply(message_id, {"stopReason": stop_reason})
         finally:
             session.running = False
+
+    async def _run_authorized_turn(self, session: Session, text: str) -> str:
+        await self._authorize(session)
+        if not self._require_auth:
+            return await self._run_turn(session, text)
+
+        async def watch() -> None:
+            while True:
+                await asyncio.sleep(1)
+                await self._authorize(session)
+
+        turn = asyncio.create_task(self._run_turn(session, text))
+        watcher = asyncio.create_task(watch())
+        try:
+            await asyncio.wait([turn, watcher], return_when=asyncio.FIRST_COMPLETED)
+            if watcher.done():
+                await watcher
+            return await turn
+        finally:
+            try:
+                if not turn.done():
+                    await self._backend.stop_turn(session.chat_id)
+            finally:
+                turn.cancel()
+                watcher.cancel()
+                await asyncio.gather(turn, watcher, return_exceptions=True)
 
     async def _run_turn(self, session: Session, text: str) -> str:
         """Stream turns until the backend stops asking for approvals.
@@ -612,6 +767,7 @@ class ACPAgentServer:
         citations = CitationStreamRenderer()
 
         while True:
+            await self._authorize(session)
             payload: dict[str, Any] = {
                 "message": message,
                 "chat_id": session.chat_id,
@@ -684,6 +840,7 @@ class ACPAgentServer:
                 "options": options,
             },
         )
+        await self._authorize(session)
         outcome = (result or {}).get("outcome") or {}
         if outcome.get("outcome") != "selected":
             await self._backend.stop_turn(session.chat_id)
@@ -731,7 +888,11 @@ class ACPAgentServer:
             # Name the path the active execution mode can actually chdir into.
             "cwd": WORKSPACE_MOUNT if self._sandbox else cwd,
             "permission_mode": self._permission_mode,
-            SESSION_MARKER: {"cwd": cwd, "mount": WORKSPACE_MOUNT},
+            SESSION_MARKER: {
+                "cwd": cwd,
+                "mount": WORKSPACE_MOUNT,
+                **({"grant_id": self._grant_id} if self._require_auth else {}),
+            },
         }
 
     # ── outbound ─────────────────────────────────────────────────────────────
@@ -899,9 +1060,17 @@ async def serve_stdio(
     *,
     base_url: str | None = None,
     permission_mode: str = "default",
+    require_auth: bool = True,
 ) -> int:
     """Run the ACP agent over stdin/stdout until the client closes the pipe."""
     backend = SuzentBackend(base_url)
+    from suzent.client.base import _is_loopback_url
+    from suzent.acp.login import load_credential
+
+    if require_auth and not _is_loopback_url(backend.base_url):
+        await backend.aclose()
+        print("ACP pairing requires a local Suzent backend", file=sys.stderr)
+        return 1
     write_lock = asyncio.Lock()
 
     async def send(message: dict[str, Any]) -> None:
@@ -910,7 +1079,13 @@ async def serve_stdio(
             sys.stdout.write(line + "\n")
             sys.stdout.flush()
 
-    server = ACPAgentServer(backend, send, permission_mode=permission_mode)
+    server = ACPAgentServer(
+        backend,
+        send,
+        permission_mode=permission_mode,
+        require_auth=require_auth,
+        token_loader=lambda name: load_credential(backend.base_url, name),
+    )
     logger.info(f"[acp-server] serving ACP over stdio against {backend.base_url}")
 
     try:

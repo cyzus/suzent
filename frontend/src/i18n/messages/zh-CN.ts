@@ -904,6 +904,17 @@ export const zhCN = {
       authOk: '已认证',
       authUnknown: '认证未知',
       authMissing: '需要认证',
+      connectionsTitle: '编辑器连接',
+      connectionsScope:
+        '批准后，编辑器可创建 ACP 会话、访问此授权创建的会话，并使用其工作区工具。编辑器可以响应工具审批请求；你的其他会话不会共享。',
+      connectionsHint:
+        '从编辑器发起登录，确认终端或代理日志中的验证码一致后再批准。撤销将停止正在运行的任务并阻止后续访问；重新配对会创建新的授权。',
+      connectionsEmpty: '暂无编辑器连接或待批准请求。',
+      pairingCode: '验证码',
+      confirmCode: '此请求由我发起，且验证码与终端或代理日志一致。',
+      approveConnection: '批准编辑器',
+      declineConnection: '拒绝',
+      revokeConnection: '撤销访问',
       login: '登录',
       loggingIn: '等待登录完成…',
       loginHint:

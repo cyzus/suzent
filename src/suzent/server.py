@@ -35,6 +35,7 @@ from suzent.tools.browser.extension.routes import (
 from suzent.logger import get_logger, setup_logging
 from suzent.mobile.client_api import client_routes
 from suzent.routes.mobile_routes import mobile_routes
+from suzent.routes.acp_pairing_routes import acp_pairing_routes
 from suzent.routes.chat_routes import (
     chat,
     chat_send,
@@ -1156,6 +1157,7 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         *mobile_routes,
+        *acp_pairing_routes,
         *client_routes,
         Route("/health", health, methods=["GET"]),
         Route("/ready", readiness, methods=["GET"]),
