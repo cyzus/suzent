@@ -59,17 +59,23 @@ suzent start
 没有 API 密钥？选择 [Ollama](docs/04-models/local/ollama.md)，一切都在你自己的机器上运行。
 
 <details>
-<summary><b>中国大陆镜像模式</b></summary>
+<summary><b>在中国大陆安装</b></summary>
+
+不需要额外设置。安装程序会先测一下网络：连不上 Google、但能连上国内镜像时，就自动改用国内源下载 Suzent 代码（Gitee 镜像）、Python、依赖包、浏览器内核和 uv。Windows 桌面安装器里也有“使用国内镜像加速”开关，可以手动打开或关闭，之后的更新会沿用这个选择。
+
+如果 `raw.githubusercontent.com` 打不开，可以从 jsDelivr 获取同一个脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash
 ```
 
 ```powershell
-$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"
 ```
 
-该模式会为 PyPI、npm、Playwright、nvm 下载 Node，以及 Rustup 启用国内镜像。如果 GitHub 本身访问较慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设置为你信任的镜像地址。
+想强制开启或关闭镜像，在运行前设置 `SUZENT_CHINA_MIRROR=1` 或 `SUZENT_CHINA_MIRROR=0`。如果 GitHub 本身访问较慢，可把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设置为你信任的镜像地址。
+
+装好以后，**设置 → 模型提供商** 会把 DeepSeek、通义千问（DashScope）、Kimi、智谱 GLM 等国内可直连的服务商排在最前面，每一家都有申请 API 密钥的链接。
 
 </details>
 

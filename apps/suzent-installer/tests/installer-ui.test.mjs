@@ -32,7 +32,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new', recoveryAccepted = false, nativeTitlebar = false} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new', recoveryAccepted = false, nativeTitlebar = false, networkMode = {china_mirror:false, source:'detected'}} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -50,6 +50,8 @@ async function harness({mode = 'install', result = null, status = null, shortcut
     if (command === 'updater_status') return status && JSON.stringify(status);
     if (command === 'updater_result') return result;
     if (command === 'save_diagnostics') return true;
+    if (command === 'network_mode') return networkMode;
+    if (command === 'set_china_mirror_preference') return null;
     if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), skipped: (shortcutSkipped && args.request.stage === 'shortcuts') || args.request.stage === skippedStage, reason: args.request.stage === skippedStage ? `${skippedStage} unavailable; repair required` : 'shortcut denied', logs:[], duration_ms:1});
   };
   const appWindow = {
@@ -89,6 +91,31 @@ test('explicit custom path survives initialization and directory selection is ex
   assert.equal(h.element('launch').hidden, false);
   assert.equal(h.element('start').hidden, true);
   assert.equal(h.element('finish-close').disabled, false);
+});
+
+test('installer follows the detected network and sends it with every stage', async () => {
+  const h = await harness({networkMode:{china_mirror:true, source:'detected'}});
+  assert.equal(h.element('mirror-row').hidden, false);
+  assert.equal(h.element('china-mirror').checked, true);
+  assert.equal(h.element('china-mirror').disabled, false);
+  await h.element('start').events.click();
+  const stages = h.calls.filter(([name]) => name === 'run_installer_stage');
+  assert.ok(stages.length > 0);
+  assert.ok(stages.every(([,args]) => args.request.china_mirror === true));
+});
+
+test('a manual mirror choice is saved, and matching detection again clears it', async () => {
+  const h = await harness({networkMode:{china_mirror:false, source:'detected'}});
+  h.element('china-mirror').checked = true;
+  await h.element('china-mirror').events.change();
+  h.element('china-mirror').checked = false;
+  await h.element('china-mirror').events.change();
+  assert.deepEqual(
+    h.calls.filter(([name]) => name === 'set_china_mirror_preference').map(([,args]) => args.choice),
+    [true, null],
+  );
+  await h.element('start').events.click();
+  assert.ok(h.calls.filter(([name]) => name === 'run_installer_stage').every(([,args]) => args.request.china_mirror === false));
 });
 
 test('Mac uses native controls without reserving a second titlebar', async () => {
