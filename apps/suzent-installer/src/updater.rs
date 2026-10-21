@@ -884,12 +884,6 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         version
     } else {
         install_staged_ui(paths, target_tag)?;
-        // The web UI follows the source that was just checked out. A failed
-        // download leaves the previous bundle and is not worth a rollback.
-        let bases = network::release_bases(network::resolved_china_mode(), target_tag);
-        if let Err(error) = super::webui::install(&paths.root, &bases) {
-            push_status_warning(paths, format!("Web UI not updated: {error}"))?;
-        }
         target_tag.to_string()
     };
 
@@ -935,6 +929,15 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
             return Err(outcome
                 .reason
                 .unwrap_or_else(|| "failed to finish bootstrap".to_string()));
+        }
+    }
+    if !transaction.development {
+        // Last, so no later failure can roll the source back underneath the
+        // new bundle. A failed download keeps the previous bundle and is not
+        // worth a rollback.
+        let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+        if let Err(error) = super::webui::install(&paths.root, &bases) {
+            push_status_warning(paths, format!("Web UI not updated: {error}"))?;
         }
     }
     Ok(())

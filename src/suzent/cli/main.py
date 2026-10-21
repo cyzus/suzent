@@ -1909,6 +1909,14 @@ def register_commands(app: typer.Typer):
         # `suzent serve`, or the backend the desktop app launched. Reuse it
         # rather than starting a second backend that would lose the port race.
         if _is_suzent_server_running("127.0.0.1", port):
+            if fetched:
+                # It registered its routes before the bundle existed, and this
+                # command does not own it, so it cannot restart it either.
+                typer.echo(
+                    f"The Suzent backend at http://127.0.0.1:{port}/ started "
+                    "before the web UI was installed. Restart it to serve the UI."
+                )
+                raise typer.Exit(code=1)
             typer.echo(f"OK  Suzent is already serving at http://127.0.0.1:{port}/")
             if open_browser:
                 webbrowser.open(f"http://127.0.0.1:{port}/")

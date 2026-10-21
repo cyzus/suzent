@@ -684,6 +684,13 @@ $ChannelDir = Join-Path $SuzentDir ".suzent"
 if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
 $Channel = if ($ReleaseTag) { "stable" } else { "dev" }
 Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
+# `suzent web` and `suzent repair` read the installed release from here.
+$ReleaseFile = Join-Path $ChannelDir "release-tag"
+if ($ReleaseTag) {
+    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
+} elseif (Test-Path $ReleaseFile) {
+    Remove-Item -Force $ReleaseFile
+}
 Write-Ok "Workspace marked as bootstrapped"
 
 # -- Launcher shortcuts --------------------------------------------------------

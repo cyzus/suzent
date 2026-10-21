@@ -600,6 +600,12 @@ printf 'protocol=1\n' > "$SUZENT_DIR/.suzent-bootstrap-complete"
 mkdir -p "$SUZENT_DIR/.suzent"
 printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
     > "$SUZENT_DIR/.suzent/update-channel"
+# `suzent web` and `suzent repair` read the installed release from here.
+if [ -n "$RELEASE_TAG" ]; then
+    printf '%s' "$RELEASE_TAG" > "$SUZENT_DIR/.suzent/release-tag"
+else
+    rm -f "$SUZENT_DIR/.suzent/release-tag"
+fi
 ok "Workspace marked as bootstrapped"
 
 # ── Launcher shortcuts ────────────────────────────────────────────────────────
