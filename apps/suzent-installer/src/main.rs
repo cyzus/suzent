@@ -1131,6 +1131,10 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail("uv is not installed; run the uv stage first.");
     };
 
+    if config.china_mirror {
+        return sync_dependencies_via_mirror(&uv, config);
+    }
+
     let mut command = Command::new(&uv);
     command
         .args(["sync", "--frozen", "--extra", "social"])
@@ -1141,6 +1145,41 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
         StageOutcome::ok()
     } else {
         StageOutcome::fail("uv sync --frozen --extra social failed.")
+    }
+}
+
+/// `uv sync --frozen` downloads every wheel from the URL recorded in uv.lock
+/// (files.pythonhosted.org) and ignores `UV_DEFAULT_INDEX`, so mirror mode
+/// installs the same locked, hash-pinned set through the mirror instead.
+fn sync_dependencies_via_mirror(uv: &Path, config: &InstallConfig) -> StageOutcome {
+    let requirements =
+        env::temp_dir().join(format!("suzent-requirements-{}.txt", std::process::id()));
+    let requirements_arg = requirements.to_string_lossy().to_string();
+    let steps: [&[&str]; 3] = [
+        &[
+            "export",
+            "--frozen",
+            "--extra",
+            "social",
+            "--quiet",
+            "-o",
+            &requirements_arg,
+        ],
+        &["venv", "--allow-existing", "--quiet"],
+        &["pip", "sync", &requirements_arg],
+    ];
+    let synced = steps.iter().all(|args| {
+        let mut command = Command::new(uv);
+        command.args(*args).current_dir(&config.dir);
+        configure_mirror_env(&mut command, config);
+        run_command(&mut command)
+    });
+    let _ = fs::remove_file(&requirements);
+
+    if synced {
+        StageOutcome::ok()
+    } else {
+        StageOutcome::fail("Installing Python dependencies through the PyPI mirror failed.")
     }
 }
 
@@ -1482,6 +1521,11 @@ fn configure_mirror_env(command: &mut Command, config: &InstallConfig) {
     );
     env_if_missing(
         command,
+        "UV_PYTHON_INSTALL_MIRROR",
+        "https://registry.npmmirror.com/-/binary/python-build-standalone",
+    );
+    env_if_missing(
+        command,
         "NPM_CONFIG_REGISTRY",
         "https://registry.npmmirror.com",
     );
@@ -1489,6 +1533,12 @@ fn configure_mirror_env(command: &mut Command, config: &InstallConfig) {
         command,
         "PLAYWRIGHT_DOWNLOAD_HOST",
         "https://npmmirror.com/mirrors/playwright",
+    );
+    // Playwright's Chromium is a Chrome for Testing build with its own URL layout.
+    env_if_missing(
+        command,
+        "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST",
+        "https://cdn.npmmirror.com/binaries/chrome-for-testing",
     );
     env_if_missing(
         command,

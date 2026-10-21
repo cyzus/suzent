@@ -74,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 </TabItem>
 </Tabs>
 
-镜像模式会为 PyPI、npm、Playwright、Node（通过 nvm）和 Rustup 配置国内镜像。如果访问 GitHub 本身也很慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设为你信任的镜像地址。
+镜像模式会为 Python 本身、PyPI、npm、Playwright、Node（通过 nvm）和 Rustup 配置国内镜像。如果访问 GitHub 本身也很慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设为你信任的镜像地址。
 
 ---
 

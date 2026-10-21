@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "China mirror mode now installs Python, Python packages, and Playwright Chromium through mainland mirrors instead of falling back to overseas hosts."
+}

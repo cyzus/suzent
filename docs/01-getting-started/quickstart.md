@@ -74,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 </TabItem>
 </Tabs>
 
-Mirror mode configures PyPI, npm, Playwright, Node via nvm, and Rustup mirrors. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running setup.
+Mirror mode configures Python itself, PyPI, npm, Playwright, Node via nvm, and Rustup mirrors. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running setup.
 
 ---
 

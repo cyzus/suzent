@@ -27,19 +27,26 @@ SUZENT_BRANCH="${SUZENT_BRANCH:-main}"
 CHINA_MIRROR="${SUZENT_CHINA_MIRROR:-0}"
 MIN_NODE_MAJOR=20
 
-enable_china_mirrors() {
+china_mirror_enabled() {
     case "$CHINA_MIRROR" in
-        1|true|TRUE|yes|YES|cn|CN) ;;
-        *) return ;;
+        1|true|TRUE|yes|YES|cn|CN) return 0 ;;
+        *) return 1 ;;
     esac
+}
+
+enable_china_mirrors() {
+    china_mirror_enabled || return 0
 
     export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+    export UV_PYTHON_INSTALL_MIRROR="${UV_PYTHON_INSTALL_MIRROR:-https://registry.npmmirror.com/-/binary/python-build-standalone}"
     export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
     export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright}"
+    # Playwright's Chromium is a Chrome for Testing build with its own URL layout.
+    export PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST="${PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST:-https://cdn.npmmirror.com/binaries/chrome-for-testing}"
     export NVM_NODEJS_ORG_MIRROR="${NVM_NODEJS_ORG_MIRROR:-https://npmmirror.com/mirrors/node}"
     export RUSTUP_DIST_SERVER="${RUSTUP_DIST_SERVER:-https://mirrors.tuna.tsinghua.edu.cn/rustup}"
     export RUSTUP_UPDATE_ROOT="${RUSTUP_UPDATE_ROOT:-https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup}"
-    info "China mirror mode enabled for PyPI, npm, Playwright, Node, and Rustup."
+    info "China mirror mode enabled for Python, PyPI, npm, Playwright, Node, and Rustup."
 }
 
 # ── Banner ────────────────────────────────────────────────────────────────────
@@ -254,8 +261,27 @@ else
 fi
 
 # ── Install / sync Python dependencies ───────────────────────────────────────
-info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
-uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
+# uv sync --frozen downloads every wheel from the URL recorded in uv.lock
+# (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode the
+# same locked, hash-pinned set is installed through the mirror instead.
+sync_python_deps_via_mirror() {
+    local requirements status
+    requirements="$(mktemp)"
+    uv export --frozen --extra social --quiet -o "$requirements" \
+        && uv venv --allow-existing --quiet \
+        && uv pip sync "$requirements"
+    status=$?
+    rm -f "$requirements"
+    return $status
+}
+
+if china_mirror_enabled; then
+    info "Syncing Python dependencies with social channel support through the PyPI mirror..."
+    sync_python_deps_via_mirror || die "Python dependency install failed — check errors above."
+else
+    info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+    uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
+fi
 ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────

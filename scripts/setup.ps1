@@ -51,11 +51,14 @@ function Enable-ChinaMirrors {
     if (-not $UseChinaMirror) { return }
 
     if (-not $env:UV_DEFAULT_INDEX) { $env:UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+    if (-not $env:UV_PYTHON_INSTALL_MIRROR) { $env:UV_PYTHON_INSTALL_MIRROR = "https://registry.npmmirror.com/-/binary/python-build-standalone" }
     if (-not $env:NPM_CONFIG_REGISTRY) { $env:NPM_CONFIG_REGISTRY = "https://registry.npmmirror.com" }
     if (-not $env:PLAYWRIGHT_DOWNLOAD_HOST) { $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://npmmirror.com/mirrors/playwright" }
+    # Playwright's Chromium is a Chrome for Testing build with its own URL layout.
+    if (-not $env:PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST) { $env:PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST = "https://cdn.npmmirror.com/binaries/chrome-for-testing" }
     if (-not $env:RUSTUP_DIST_SERVER) { $env:RUSTUP_DIST_SERVER = "https://mirrors.tuna.tsinghua.edu.cn/rustup" }
     if (-not $env:RUSTUP_UPDATE_ROOT) { $env:RUSTUP_UPDATE_ROOT = "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup" }
-    Write-Info "China mirror mode enabled for PyPI, npm, Playwright, and Rustup."
+    Write-Info "China mirror mode enabled for Python, PyPI, npm, Playwright, and Rustup."
 }
 
 # ── Banner ────────────────────────────────────────────────────────────────────
@@ -284,9 +287,26 @@ if (-not (Test-Path ".env")) {
 }
 
 # ── Python dependencies ───────────────────────────────────────────────────────
-Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
-uv sync --frozen --extra social
-if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed — check errors above." }
+if ($UseChinaMirror) {
+    # uv sync --frozen downloads every wheel from the URL recorded in uv.lock
+    # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode
+    # the same locked, hash-pinned set is installed through the mirror instead.
+    Write-Info "Syncing Python dependencies with social channel support through the PyPI mirror..."
+    $requirements = [System.IO.Path]::GetTempFileName()
+    try {
+        uv export --frozen --extra social --quiet -o $requirements
+        if ($LASTEXITCODE -eq 0) { uv venv --allow-existing --quiet }
+        if ($LASTEXITCODE -eq 0) { uv pip sync $requirements }
+        $syncExit = $LASTEXITCODE
+    } finally {
+        Remove-Item -Force $requirements -ErrorAction SilentlyContinue
+    }
+    if ($syncExit -ne 0) { Write-Fail "Python dependency install failed — check errors above." }
+} else {
+    Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+    uv sync --frozen --extra social
+    if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed — check errors above." }
+}
 Write-Ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────
