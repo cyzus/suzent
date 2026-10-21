@@ -100,3 +100,12 @@ def test_all_sources_failing_raises(state, monkeypatch):
     monkeypatch.setattr(network_region, "_latest_from_redirect", fail)
     with pytest.raises(OSError, match="offline"):
         network_region.fetch_latest_release()
+
+
+def test_linux_arm64_keeps_playwrights_own_chromium_host(state, monkeypatch):
+    (state / "network-region").write_text("china\n", encoding="utf-8")
+    monkeypatch.setattr(network_region.sys, "platform", "linux")
+    monkeypatch.setattr(network_region.platform, "machine", lambda: "aarch64")
+    env = network_region.mirror_env({})
+    assert "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST" not in env
+    assert env["PLAYWRIGHT_DOWNLOAD_HOST"].endswith("/mirrors/playwright")

@@ -301,6 +301,11 @@ fn version_key(tag: &str) -> Vec<u64> {
         .collect()
 }
 
+/// Playwright downloads Chromium from Chrome for Testing everywhere except
+/// Linux arm64, where it uses its own builds that the CfT mirror does not have.
+const CHROME_FOR_TESTING_BUILDS: bool =
+    !(cfg!(target_os = "linux") && cfg!(target_arch = "aarch64"));
+
 /// Environment for child processes in China mode. Values the user already
 /// set win.
 pub fn apply_mirror_env(command: &mut Command, enabled: bool) {
@@ -318,7 +323,8 @@ pub fn apply_mirror_env(command: &mut Command, enabled: bool) {
             "PLAYWRIGHT_DOWNLOAD_HOST",
             "https://npmmirror.com/mirrors/playwright",
         ),
-        // Playwright's Chromium is a Chrome for Testing build with its own URL layout.
+        // Playwright's Chromium is a Chrome for Testing build with its own URL
+        // layout, except on Linux arm64 (see `CHROME_FOR_TESTING_BUILDS`).
         (
             "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST",
             "https://cdn.npmmirror.com/binaries/chrome-for-testing",
@@ -336,6 +342,9 @@ pub fn apply_mirror_env(command: &mut Command, enabled: bool) {
             "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup",
         ),
     ] {
+        if key == "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST" && !CHROME_FOR_TESTING_BUILDS {
+            continue;
+        }
         if env::var(key)
             .ok()
             .filter(|existing| !existing.trim().is_empty())

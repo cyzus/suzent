@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -29,7 +31,8 @@ MIRROR_ENV = {
     "UV_PYTHON_INSTALL_MIRROR": "https://registry.npmmirror.com/-/binary/python-build-standalone",
     "NPM_CONFIG_REGISTRY": "https://registry.npmmirror.com",
     "PLAYWRIGHT_DOWNLOAD_HOST": "https://npmmirror.com/mirrors/playwright",
-    # Playwright's Chromium is a Chrome for Testing build with its own URL layout.
+    # Playwright's Chromium is a Chrome for Testing build with its own URL
+    # layout, except on Linux arm64 (see ``_uses_chrome_for_testing``).
     "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST": "https://cdn.npmmirror.com/binaries/chrome-for-testing",
 }
 
@@ -64,12 +67,26 @@ def china_mode() -> bool:
     return _read(_state_dir() / "network-region") == "china"
 
 
+def _uses_chrome_for_testing() -> bool:
+    """Playwright fetches its own Chromium builds on Linux arm64, which the
+    Chrome for Testing mirror does not carry."""
+    return not (
+        sys.platform.startswith("linux")
+        and platform.machine().lower() in {"aarch64", "arm64"}
+    )
+
+
 def mirror_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """``base`` (default: this process's environment) plus the mirrors in
     China mode. Values already set win."""
     env = dict(os.environ if base is None else base)
     if china_mode():
         for key, value in MIRROR_ENV.items():
+            if (
+                key == "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST"
+                and not _uses_chrome_for_testing()
+            ):
+                continue
             if not env.get(key, "").strip():
                 env[key] = value
     return env
