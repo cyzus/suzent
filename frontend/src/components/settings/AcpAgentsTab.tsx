@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
+import {
+  fetchAcpAgents,
+  fetchAcpSessions,
+  probeAcpAgent,
+  authenticateAcpAgent,
+} from '../../lib/api';
+import type { AcpProbeResult } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
 import { BrutalLink } from '../BrutalButton';
 import {
@@ -33,7 +39,7 @@ function AuthBadge({ status, t }: { status?: string; t: (k: string) => string })
 
 type ProbeState =
   | { status: 'probing' }
-  | { status: 'ok'; data: Record<string, unknown> }
+  | { status: 'ok'; data: AcpProbeResult }
   | { status: 'error'; message: string };
 
 export function AcpAgentsTab(): React.ReactElement {
@@ -45,6 +51,7 @@ export function AcpAgentsTab(): React.ReactElement {
     Record<string, { saved: number; active: number }>
   >({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [authenticating, setAuthenticating] = useState<Record<string, boolean>>({});
 
   const loadAgents = async () => {
     setLoading(true);
@@ -81,7 +88,7 @@ export function AcpAgentsTab(): React.ReactElement {
         setProbes((prev) => ({
           ...prev,
           [agent.id]: ok
-            ? { status: 'ok', data: {} }
+            ? { status: 'ok', data: { status: 'ready', authMethods: [] } }
             : { status: 'error', message: 'probe returned false' },
         }));
         return;
@@ -93,6 +100,18 @@ export function AcpAgentsTab(): React.ReactElement {
         ...prev,
         [agent.id]: { status: 'error', message: String(e) },
       }));
+    }
+  };
+
+  const handleAuthenticate = async (id: string, methodId: string): Promise<void> => {
+    setAuthenticating((prev) => ({ ...prev, [id]: true }));
+    try {
+      const data = await authenticateAcpAgent(id, methodId);
+      setProbes((prev) => ({ ...prev, [id]: { status: 'ok', data } }));
+    } catch (error) {
+      setProbes((prev) => ({ ...prev, [id]: { status: 'error', message: String(error) } }));
+    } finally {
+      setAuthenticating((prev) => ({ ...prev, [id]: false }));
     }
   };
 
@@ -173,7 +192,7 @@ export function AcpAgentsTab(): React.ReactElement {
                           {agent.name}
                         </div>
                         <div className="flex items-center gap-2">
-                          {ready && agent.auth_status && (
+                          {ready && agent.auth_status && !probe && (
                             <AuthBadge status={agent.auth_status} t={t} />
                           )}
                           <Badge tone={ready ? 'green' : 'amber'}>
@@ -266,12 +285,30 @@ export function AcpAgentsTab(): React.ReactElement {
                   <div className="flex flex-wrap items-center gap-2 p-4">
                     <SettingsListAction
                       onClick={() => handleProbe(agent)}
-                      disabled={!ready || probe?.status === 'probing'}
+                      disabled={!ready || probe?.status === 'probing' || authenticating[agent.id]}
                     >
                       {probe?.status === 'probing'
                         ? t('settings.acp.probing')
                         : t('settings.acp.probe')}
                     </SettingsListAction>
+                    {probe?.status === 'ok' && probe.data.status === 'auth_required' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">{t('settings.acp.loginHint')}</span>
+                        {probe.data.authMethods
+                          .filter((method) => method.type === 'agent')
+                          .map((method) => (
+                            <SettingsListAction
+                              key={method.id}
+                              disabled={authenticating[agent.id]}
+                              onClick={() => handleAuthenticate(agent.id, method.id)}
+                            >
+                              {authenticating[agent.id]
+                                ? t('settings.acp.loggingIn')
+                                : `${t('settings.acp.login')}: ${method.name}`}
+                            </SettingsListAction>
+                          ))}
+                      </div>
+                    )}
                     {/* Logging in before the CLI exists is a dead end; the
                         setup panel is the only useful action until then. */}
                     {ready && agent.login_command && (
@@ -295,7 +332,13 @@ export function AcpAgentsTab(): React.ReactElement {
                             {t('settings.acp.probing')}
                           </span>
                         ) : probe.status === 'ok' ? (
-                          <Badge tone="green">{t('settings.acp.probeOk')}</Badge>
+                          <Badge tone={probe.data.status === 'auth_required' ? 'amber' : 'green'}>
+                            {t(
+                              probe.data.status === 'auth_required'
+                                ? 'settings.acp.authMissing'
+                                : 'settings.acp.probeOk'
+                            )}
+                          </Badge>
                         ) : (
                           <Badge tone="red" title={probe.message}>
                             {t('settings.acp.probeFailed')}
@@ -304,6 +347,14 @@ export function AcpAgentsTab(): React.ReactElement {
                       </div>
                     )}
                   </div>
+                  {probe?.status === 'error' && (
+                    <p
+                      role="alert"
+                      className="px-4 pb-4 text-xs text-red-600 dark:text-red-400 break-words"
+                    >
+                      {probe.message}
+                    </p>
+                  )}
                 </SettingsListItem>
               );
             })}
