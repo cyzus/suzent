@@ -188,7 +188,7 @@ class AgentListTool(Tool):
             Literal["active", "recent", "acp"],
             Field(
                 description=(
-                    "'active' or 'recent': existing sessions to message with agent_send. "
+                    "'active' or 'recent': existing sessions you can message. "
                     "'acp': configured local ACP agents to start with agent(runtime='acp', "
                     "acp_agent_id=...). Checks installation only, not authentication or handshake."
                 )
@@ -229,7 +229,7 @@ class AgentListTool(Tool):
                 "Configured ACP agents (installation check only):\n"
                 + ("\n".join(lines) or "No ACP agents configured.")
                 + "\nStart with agent(runtime='acp', acp_agent_id=<listed ID>, "
-                "description=...). These IDs are not agent_send targets. "
+                "description=...). These IDs cannot be messaged. "
                 "If not installed, configure it in Settings → ACP Agents.",
                 metadata={"acp_agents": records, "has_more": len(configured) > limit},
             )
@@ -391,8 +391,7 @@ class AgentSendTool(Tool):
                 description=(
                     "Stable session agent_id from agent_list(active/recent), or the task ID "
                     "returned by agent, including ACP tasks. Sending wakes an idle session. "
-                    "Do not pass an acp_agent_id or acp_session_id. The Focal "
-                    "Agent may pass 'new' with project_id to start a project session."
+                    "Do not pass an acp_agent_id or acp_session_id."
                 )
             ),
         ],
@@ -410,55 +409,26 @@ class AgentSendTool(Tool):
                 )
             ),
         ] = False,
-        project_id: Annotated[
-            Optional[str],
-            Field(
-                description="Focal Agent only, with agent_id='new': target project ID or slug."
-            ),
-        ] = None,
-        title: Annotated[
-            Optional[str],
-            Field(description="With agent_id='new': title of the new session."),
-        ] = None,
-        task_title: Annotated[
-            Optional[str],
-            Field(
-                description="With agent_id='new': create a task bound to the new session."
-            ),
-        ] = None,
     ) -> ToolResult:
         """Send a message to another agent, such as a sub-agent you spawned.
 
         A sub-agent keeps its whole history between messages, so use this to
         correct, extend, or question its work rather than spawning a new one.
         """
-        current_chat_id = _require_chat_id(ctx)
+        return await self._deliver(
+            _require_chat_id(ctx), agent_id, message.strip(), wait
+        )
 
-        if agent_id == NEW_AGENT_ID:
-            return self._start_primary_session(
-                current_chat_id, message.strip(), project_id, title, task_title
-            )
-
-        # SUZENT never parks a turn on another agent: a turn held open would
-        # also hold back the wake-ups and session reports queued behind it.
-        # Its messages always go out asynchronously and replies wake it later.
-        if current_chat_id == FOCAL_CHAT_ID:
-            wait = False
-            if agent_bridge.parse_address(agent_id):
-                return ToolResult.error_result(
-                    ToolErrorCode.INVALID_ARGUMENT,
-                    "External agents answer only by blocking until they finish, "
-                    "which SUZENT does not do. Ask a project session to delegate "
-                    "to this agent instead.",
-                )
-
+    async def _deliver(
+        self, current_chat_id: Optional[str], agent_id: str, message: str, wait: bool
+    ) -> ToolResult:
         # External A2A agents settle in one call — message/send blocks until the
         # remote task completes or asks a question — so the reply comes straight
         # back rather than through the durable outbox the Suzent peer path uses.
         if agent_bridge.parse_address(agent_id):
             try:
                 outcome = await asyncio.to_thread(
-                    agent_bridge.delegate, agent_id, message.strip()
+                    agent_bridge.delegate, agent_id, message
                 )
             except A2ABridgeError as exc:
                 return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
@@ -487,7 +457,7 @@ class AgentSendTool(Tool):
                 record, _ = peer_transport.enqueue(
                     agent_id=agent_id,
                     sender_chat_id=current_chat_id,
-                    content=message.strip(),
+                    content=message,
                 )
             except PeerAgentTransportError as exc:
                 return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
@@ -514,7 +484,7 @@ class AgentSendTool(Tool):
             )
 
         if wait:
-            return await self._send_and_wait(current_chat_id, target, message.strip())
+            return await self._send_and_wait(current_chat_id, target, message)
 
         from suzent.core.agent_inbox import enqueue_agent_message
         from suzent.core.subagent_runner import is_subagent_of
@@ -526,7 +496,7 @@ class AgentSendTool(Tool):
         record, _ = enqueue_agent_message(
             sender_chat_id=current_chat_id,
             target_chat_id=target.id,
-            content=message.strip(),
+            content=message,
         )
         reply_note = (
             " Its reply will wake you when it is ready."
@@ -577,22 +547,84 @@ class AgentSendTool(Tool):
             metadata={"agent_id": target.id, "status": "replied"},
         )
 
+
+class FocalDispatchTool(AgentSendTool):
+    """Send work to a project session, or start a new session in a project.
+
+    Only SUZENT is equipped with it, and it refuses any other chat. Messages
+    always go out asynchronously, and replies wake you later.
+    """
+
+    name = "FocalDispatchTool"
+    display_name = "Dispatch to sessions"
+    tool_name = "agent_dispatch"
+    # Not user-configurable and not discoverable through ToolSearch: Focal only.
+    group = ""
+    deferrable = False
+
+    async def forward(
+        self,
+        ctx: RunContext[AgentDeps],
+        agent_id: Annotated[
+            str,
+            Field(
+                description=(
+                    "Session ID from agent_list, or 'new' with project_id to start "
+                    "a session in that project."
+                )
+            ),
+        ],
+        message: Annotated[
+            str,
+            Field(min_length=1, max_length=20_000, description="Message to deliver."),
+        ],
+        project_id: Annotated[
+            Optional[str],
+            Field(description="With agent_id='new': target project ID or slug."),
+        ] = None,
+        title: Annotated[
+            Optional[str],
+            Field(description="With agent_id='new': title of the new session."),
+        ] = None,
+        task_title: Annotated[
+            Optional[str],
+            Field(
+                description="With agent_id='new': create a task bound to the new session."
+            ),
+        ] = None,
+    ) -> ToolResult:
+        current_chat_id = _require_chat_id(ctx)
+        if not is_focal_chat(get_database().get_chat(current_chat_id)):
+            return ToolResult.error_result(
+                ToolErrorCode.PERMISSION_DENIED,
+                "agent_dispatch belongs to SUZENT; use agent_send.",
+            )
+        if agent_id == NEW_AGENT_ID:
+            return self._start_primary_session(
+                current_chat_id, message.strip(), project_id, title, task_title
+            )
+        # SUZENT never parks a turn on another agent: a turn held open would
+        # also hold back the wake-ups and session reports queued behind it.
+        if agent_bridge.parse_address(agent_id):
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "External agents answer only by blocking until they finish, "
+                "which SUZENT does not do. Ask a project session to delegate "
+                "to this agent instead.",
+            )
+        return await self._deliver(current_chat_id, agent_id, message.strip(), False)
+
     @staticmethod
     def _start_primary_session(
-        current_chat_id: Optional[str],
+        current_chat_id: str,
         message: str,
         project_ref: Optional[str],
         title: Optional[str],
         task_title: Optional[str],
     ) -> ToolResult:
-        """Start an auto-approving primary session in a project and wake it."""
+        """Start a Smart-mode primary session in a project and wake it."""
         db = get_database()
-        current = db.get_chat(current_chat_id) if current_chat_id else None
-        if not is_focal_chat(current):
-            return ToolResult.error_result(
-                ToolErrorCode.PERMISSION_DENIED,
-                "Only the Focal Agent can start new project sessions.",
-            )
+        current = db.get_chat(current_chat_id)
         if not project_ref:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
