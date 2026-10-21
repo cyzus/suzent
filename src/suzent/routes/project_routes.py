@@ -12,6 +12,7 @@ Endpoints:
 """
 
 import re
+from datetime import datetime, timezone
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -51,6 +52,14 @@ def _project_to_dict(project, chat_count: int) -> dict:
         "archived": project.archived,
         "chatCount": chat_count,
     }
+
+
+def _aware(value: datetime, *, local: bool) -> datetime:
+    # SQLite drops tzinfo: chat timestamps are written as local time, project
+    # timestamps as UTC, so each needs its own zone back before comparing.
+    if value.tzinfo:
+        return value
+    return value.astimezone() if local else value.replace(tzinfo=timezone.utc)
 
 
 def _invalidate_sandbox_sessions(chat_ids: list[str]) -> None:
@@ -99,13 +108,17 @@ async def list_projects(request: Request) -> JSONResponse:
         projects = db.list_projects(include_archived=include_archived)
         unread_counts = db.get_project_unread_counts()
         last_activity = db.get_project_last_activity()
-        projects.sort(
-            key=lambda p: last_activity.get(p.id) or p.created_at, reverse=True
-        )
+
+        def activity(project) -> datetime:
+            if chat_updated := last_activity.get(project.id):
+                return _aware(chat_updated, local=True)
+            return _aware(project.created_at, local=False)
+
+        projects.sort(key=activity, reverse=True)
         payload = [
             {
                 **_project_to_dict(p, db.count_chats_in_project(p.id)),
-                "lastActivityAt": (last_activity.get(p.id) or p.created_at).isoformat(),
+                "lastActivityAt": activity(p).isoformat(),
                 "unreadChatCounts": unread_counts.get(p.id, {}),
             }
             for p in projects

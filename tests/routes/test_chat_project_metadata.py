@@ -93,3 +93,38 @@ def test_projects_are_listed_most_recently_active_first(
 
     touch(old_chat, datetime(2030, 1, 3))
     assert order() == [old_project, new_project]
+
+
+def test_project_activity_compares_utc_creation_with_local_chat_time(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from suzent.database.models import ChatModel, ProjectModel
+    from suzent.routes import project_routes
+
+    monkeypatch.setattr(project_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(routes=[Route("/projects", project_routes.list_projects)])
+    )
+    fresh_project = temp_db.create_project("Fresh", "fresh")
+    idle_project = temp_db.create_project("Idle", "idle")
+    chat_id = temp_db.create_chat("Chat", {})
+    temp_db.link_chat_to_project(chat_id, idle_project)
+
+    now_utc = datetime.now(timezone.utc)
+    with temp_db._session() as session:
+        project = session.get(ProjectModel, fresh_project)
+        project.created_at = now_utc.replace(tzinfo=None)
+        chat = session.get(ChatModel, chat_id)
+        chat.updated_at = (
+            (now_utc - timedelta(hours=1)).astimezone().replace(tzinfo=None)
+        )
+        session.add(project)
+        session.add(chat)
+        session.commit()
+
+    projects = {p["id"]: p for p in client.get("/projects").json()}
+    fresh = datetime.fromisoformat(projects[fresh_project]["lastActivityAt"])
+    idle = datetime.fromisoformat(projects[idle_project]["lastActivityAt"])
+    assert fresh - idle == timedelta(hours=1)
