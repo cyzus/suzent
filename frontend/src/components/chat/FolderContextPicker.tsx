@@ -328,8 +328,8 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         className={`
-                    flex items-center gap-1.5 px-2.5 h-9 w-full min-w-0 border-0 shadow-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue
-                    ${activeCount > 0 ? 'bg-brutal-green/70 text-brutal-black hover:bg-brutal-green' : 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-600'}
+                    flex items-center gap-1.5 px-2 h-9 w-full min-w-0 border-0 shadow-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue
+                    bg-transparent text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700
                 `}
       >
         <FolderIcon className="w-4 h-4 shrink-0" />
@@ -342,11 +342,11 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           </span>
         )}
         <svg
-          className={`w-4 h-4 ml-0.5 opacity-60 group-hover:opacity-100 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
+          className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
-          strokeWidth={3}
+          strokeWidth={2}
           aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />

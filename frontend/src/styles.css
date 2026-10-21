@@ -1993,9 +1993,16 @@ code {
   }
 }
 
-/* Placeholder for the contenteditable mention input (no native placeholder). */
+/* Keep placeholder text out of the inline flow so the empty caret stays at the start. */
+.mention-editor {
+  position: relative;
+}
+
 .mention-editor.is-empty::before {
   content: attr(data-placeholder);
+  position: absolute;
+  inset: 0;
+  padding: inherit;
   color: rgb(163 163 163); /* neutral-400 */
   font-weight: 700;
   pointer-events: none;

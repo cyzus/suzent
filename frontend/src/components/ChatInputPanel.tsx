@@ -12,6 +12,9 @@ import {
 import { FileIcon } from './FileIcon';
 import {
   PaperClipIcon,
+  ArrowUpIcon,
+  ArrowUturnRightIcon,
+  StopIcon,
   XMarkIcon,
   FolderIcon,
   ChatBubbleLeftRightIcon,
@@ -566,15 +569,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         {mentionActive && (
           <div
             ref={mentionListRef}
-            className="absolute -left-px -right-px bottom-[calc(100%+0.5rem)] rounded-md border border-neutral-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg overflow-hidden max-h-60 overflow-y-auto z-40 font-normal"
+            className="absolute -left-px -right-px bottom-[calc(100%+0.5rem)] border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 overflow-hidden max-h-60 overflow-y-auto z-40 font-normal"
           >
-            <div className="sticky top-0 z-10 flex gap-1 px-2 py-1.5 bg-white dark:bg-zinc-800 border-b border-neutral-100 dark:border-zinc-700">
+            <div className="sticky top-0 z-10 flex gap-1 px-2 py-1.5 bg-white dark:bg-zinc-800 border-b-2 border-neutral-200 dark:border-zinc-600">
               {MENTION_CATEGORIES.map((category) => (
                 <button
                   key={category}
                   type="button"
                   aria-pressed={mentionCategory === category}
-                  className={`px-2 py-0.5 text-xs font-medium rounded ${mentionCategory === category ? 'bg-neutral-100 dark:bg-zinc-700 text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+                  className={`px-2 py-0.5 text-xs font-bold border focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${mentionCategory === category ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setMentionCategory(category)}
                 >
@@ -586,20 +589,20 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               visibleMentions.map((suggestion, i) => (
                 <React.Fragment key={suggestion.path}>
                   {(i === 0 || visibleMentions[i - 1].type !== suggestion.type) && (
-                    <div className="px-3 pt-1.5 pb-0.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+                    <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-neutral-500 dark:text-neutral-400">
                       {t(`chatInput.mentionCategory_${suggestion.type || 'file'}`)}
                     </div>
                   )}
                   <div
                     data-selected={i === selectedMentionSuggestion}
                     onMouseEnter={() => setSelectedMentionSuggestion(i)}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-sm leading-5 cursor-pointer ${i === selectedMentionSuggestion ? 'bg-neutral-100 dark:bg-zinc-700 text-neutral-900 dark:text-neutral-100' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                    className={`flex items-center gap-2 border-l-[3px] pl-[9px] pr-3 py-2 text-sm leading-5 cursor-pointer ${i === selectedMentionSuggestion ? 'border-brutal-black dark:border-brutal-yellow bg-brutal-yellow/15 dark:bg-brutal-yellow/10 text-neutral-900 dark:text-neutral-100' : 'border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       insertMention(suggestion);
                     }}
                   >
-                    <div className="w-4 h-4 shrink-0 flex items-center justify-center text-neutral-400 dark:text-neutral-500">
+                    <div className="w-4 h-4 shrink-0 flex items-center justify-center text-neutral-600 dark:text-neutral-300">
                       {suggestion.type === 'chat' ? (
                         <ChatBubbleLeftRightIcon className="w-4 h-4 stroke-[1.5]" />
                       ) : suggestion.type === 'directory' ? (
@@ -615,7 +618,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                       className="min-w-0 flex-1 flex items-baseline gap-3"
                       title={suggestion.name}
                     >
-                      <div className="min-w-0 flex-1 font-normal truncate">{suggestion.name}</div>
+                      <div className="min-w-0 flex-1 font-medium truncate">{suggestion.name}</div>
                       {suggestion.type !== 'chat' && (
                         <div
                           className="max-w-[45%] truncate text-[11px] text-neutral-400 dark:text-neutral-500"
@@ -641,6 +644,42 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         )}
 
         <div className="relative">
+          {!input && !ghost && configReady && streamingForCurrentChat && (
+            <div
+              className={
+                'pointer-events-none absolute inset-0 px-2 py-1.5 text-neutral-400 dark:text-neutral-500 ' +
+                INPUT_TEXT_METRIC_CLASS
+              }
+            >
+              {t('chatInput.placeholderRedirect', { queueKey })
+                .split(/(Ctrl\+Enter|⌘\+Enter|Enter)/)
+                .map((part, index) =>
+                  part.endsWith('Enter') ? (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 align-baseline whitespace-nowrap"
+                    >
+                      {part !== 'Enter' && (
+                        <>
+                          <kbd className="inline-flex h-6 items-center rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1.5 font-sans text-sm font-medium leading-none">
+                            {part.slice(0, -6)}
+                          </kbd>
+                          <span className="text-sm">+</span>
+                        </>
+                      )}
+                      <kbd
+                        aria-label="Enter"
+                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1 font-sans text-base font-medium leading-none"
+                      >
+                        <span aria-hidden="true">↵</span>
+                      </kbd>
+                    </span>
+                  ) : (
+                    <React.Fragment key={index}>{part}</React.Fragment>
+                  )
+                )}
+            </div>
+          )}
           {ghost && (
             <div
               ref={ghostOverlayRef}
@@ -649,7 +688,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             >
               <span className="invisible">{input}</span>
               <span className="text-neutral-400 dark:text-neutral-500">{ghost}</span>
-              <kbd className="ml-2 align-middle rounded-[3px] border border-neutral-300 dark:border-neutral-600 px-1 font-mono text-[10px] leading-4 text-neutral-400 dark:text-neutral-500">
+              <kbd className="ml-2 inline-flex h-6 items-center align-baseline rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1.5 font-sans text-sm font-medium leading-none text-neutral-400 dark:text-neutral-500">
                 {t('chatInput.suggestionAcceptKey')}
               </kbd>
             </div>
@@ -672,7 +711,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 : !configReady
                   ? t('chatInput.placeholderLoading').toUpperCase()
                   : streamingForCurrentChat
-                    ? t('chatInput.placeholderRedirect', { queueKey })
+                    ? ''
                     : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
@@ -877,7 +916,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                 dropUp={modelSelectDropUp}
                 className="h-9 text-sm max-w-[220px]"
-                buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
+                buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !border-0 !bg-transparent dark:!bg-transparent !px-2 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
                 dropdownClassName="min-w-[240px] right-0"
               />
             </div>
@@ -887,11 +926,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           {stopStreaming && streamingForCurrentChat && input.trim() ? (
             <button
               type="submit"
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={!configReady}
               title={t('chatInput.redirectAgent')}
+              aria-label={t('chatInput.redirectAgent')}
             >
-              {t('chatInput.redirect').toUpperCase()}
+              <ArrowUturnRightIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
             </button>
           ) : stopStreaming && streamingForCurrentChat ? (
             <button
@@ -900,27 +940,30 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 e.preventDefault();
                 stopStreaming();
               }}
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={stopInFlight}
-              title={t('chatInput.stopGenerating')}
+              title={stopInFlight ? t('chatInput.stopping') : t('chatInput.stopGenerating')}
+              aria-label={stopInFlight ? t('chatInput.stopping') : t('chatInput.stopGenerating')}
+              aria-busy={stopInFlight}
             >
-              {(stopInFlight ? t('chatInput.stopping') : t('chatInput.stop')).toUpperCase()}
+              <StopIcon className="w-5 h-5 fill-current" aria-hidden="true" />
             </button>
           ) : (
             <button
               type="submit"
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={streamingForCurrentChat || !configReady}
               title={t('chatInput.sendMessage')}
+              aria-label={t('chatInput.sendMessage')}
             >
-              {t('chatInput.send').toUpperCase()}
+              <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
             </button>
           )}
         </div>
       </form>
 
       <div
-        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-1 ${isFocal ? 'justify-end' : 'justify-between'}`}
+        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-3 pt-0.5 ${isFocal ? 'justify-end' : 'justify-between'}`}
       >
         {!isFocal && (
           <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
