@@ -275,6 +275,7 @@ from suzent.routes.acp_routes import (
     probe_acp_agent,
     authenticate_acp_agent,
 )
+from suzent.routes.acp_auth_routes import acp_auth_routes
 from suzent.routes.background_task_routes import (
     list_background_tasks,
     get_background_task,
@@ -1158,6 +1159,7 @@ app = Starlette(
     routes=[
         *mobile_routes,
         *acp_pairing_routes,
+        *acp_auth_routes,
         *client_routes,
         Route("/health", health, methods=["GET"]),
         Route("/ready", readiness, methods=["GET"]),
