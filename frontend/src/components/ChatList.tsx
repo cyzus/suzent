@@ -1423,8 +1423,10 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
       )}
 
-      {/* Header: search (opened from the logo row) and SUZENT. */}
-      <div className="px-2 pt-2 pb-1 bg-white dark:bg-zinc-800 flex-shrink-0 space-y-2">
+      {/* Header: search (opened from the logo row). */}
+      <div
+        className={`px-2 bg-white dark:bg-zinc-800 flex-shrink-0 ${searchOpen || localSearchQuery ? 'pt-2 pb-1' : ''}`}
+      >
         {(searchOpen || localSearchQuery) && (
           <div className="relative">
             <input
@@ -1463,13 +1465,6 @@ export const ChatList: React.FC<ChatListProps> = ({
               <XMarkIcon className="w-3.5 h-3.5 text-brutal-black dark:text-white" />
             </button>
           </div>
-        )}
-        {!isSearching && (
-          <FocalAgentCardView
-            status={focalStatus}
-            active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
-            onOpen={openChatById}
-          />
         )}
       </div>
 
@@ -1514,7 +1509,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           <div className="flex flex-col">
             <nav
               aria-label={t('chatList.sections.navigation')}
-              className="order-0 px-1.5 pt-1 pb-2"
+              className="order-0 px-1.5 pt-1 pb-1"
             >
               <button
                 type="button"
@@ -1761,6 +1756,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                 <span className="flex-1 truncate">{t('nav.skills')}</span>
               </button>
             </nav>
+            <div className="order-0 px-1.5 pb-2">
+              <FocalAgentCardView
+                status={focalStatus}
+                active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
+                onOpen={openChatById}
+              />
+            </div>
 
             {pinnedChats.length > 0 && (
               <section className="order-0 px-1.5 pb-2 pt-1">
@@ -1775,7 +1777,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             >
               <div
                 ref={organizationMenuRef}
-                className="relative flex items-center justify-between px-3 py-1.5"
+                className="relative flex items-center justify-between px-3 py-2"
               >
                 <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
                   {organization === 'projects'
