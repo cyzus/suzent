@@ -235,6 +235,41 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
           INSTALLER_DMG: ${{ matrix.installer_dmg_asset }}
 
+  # `suzent web` needs the SPA, and a normal install has no Node to build it.
+  # Built in both asset modes: it must match this tag's frontend, not a
+  # previous release's.
+  build-webui:
+    needs: prepare-release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and pack web UI
+        run: python scripts/build_webui.py --archive suzent-webui.zip
+
+      - name: Upload web UI to draft release
+        run: gh release upload "$RELEASE_TAG" suzent-webui.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
   reuse-assets:
     needs: prepare-release
     if: needs.prepare-release.outputs.assets_mode == 'reuse'
@@ -264,6 +299,8 @@ jobs:
           fi
           mkdir -p reused-assets
           gh release download "$previous_tag" --pattern 'suzent-*' --dir reused-assets
+          # The web UI is rebuilt from this tag by build-webui.
+          rm -f reused-assets/suzent-webui.zip
           if [[ "$(find reused-assets -maxdepth 1 -type f | wc -l)" -lt 8 ]]; then
             echo "::error::Previous release $previous_tag does not contain all desktop and installer assets"
             exit 1
@@ -279,11 +316,13 @@ jobs:
     if: >-
       always() &&
       needs.prepare-release.result == 'success' &&
+      needs.build-webui.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse-assets.result == 'success' || needs.reuse-assets.result == 'skipped')
     needs:
       - prepare-release
       - build
+      - build-webui
       - reuse-assets
     runs-on: ubuntu-22.04
     steps:

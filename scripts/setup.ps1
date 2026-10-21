@@ -557,6 +557,33 @@ function Get-UpdaterBinary {
 }
 Get-UpdaterBinary
 
+# -- Download pre-built web UI ------------------------------------------------
+# `suzent web` serves src/suzent/webui/, which is built from frontend/ with
+# Node. A normal install has no Node, so it takes the bundle that release CI
+# built from this same tag. Developer setup builds its own below instead.
+function Get-WebUiBundle {
+    if (-not $ReleaseTag) { return }
+    $archive = Join-Path ([System.IO.Path]::GetTempPath()) "suzent-webui-$PID.zip"
+    Write-Info "Downloading pre-built web UI..."
+    if (-not (Save-ReleaseAsset "suzent-webui.zip" $archive)) {
+        Write-Warn "Web UI download failed. 'suzent web' has no page to serve until the next update."
+        return
+    }
+    $venvPython = Join-Path $SuzentDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        & $venvPython (Join-Path $SuzentDir "scripts\build_webui.py") --install-archive $archive
+    } else {
+        uv run python scripts/build_webui.py --install-archive $archive
+    }
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "Web UI ready (suzent web)"
+    } else {
+        Write-Warn "Web UI archive could not be unpacked (non-fatal)."
+    }
+    Remove-Item -Force $archive -ErrorAction SilentlyContinue
+}
+if ($env:SUZENT_DEV_SETUP -ne "1") { Get-WebUiBundle }
+
 function Install-DevDependencies {
     Ensure-Rust
 
@@ -657,6 +684,13 @@ $ChannelDir = Join-Path $SuzentDir ".suzent"
 if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
 $Channel = if ($ReleaseTag) { "stable" } else { "dev" }
 Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
+# `suzent web` and `suzent repair` read the installed release from here.
+$ReleaseFile = Join-Path $ChannelDir "release-tag"
+if ($ReleaseTag) {
+    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
+} elseif (Test-Path $ReleaseFile) {
+    Remove-Item -Force $ReleaseFile
+}
 Write-Ok "Workspace marked as bootstrapped"
 
 # -- Launcher shortcuts --------------------------------------------------------
