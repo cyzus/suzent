@@ -21,7 +21,6 @@ use tauri_plugin_dialog::DialogExt;
 const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
 const DEFAULT_BRANCH: &str = "main";
-const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
 const UV_INSTALL_SH_URL: &str = "https://astral.sh/uv/install.sh";
 const UV_INSTALL_PS1_URL: &str = "https://astral.sh/uv/install.ps1";
 const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/latest/download";
@@ -674,7 +673,7 @@ impl InstallConfig {
             .ok()
             .filter(|value| !value.trim().is_empty());
         let repo_url_override = repo_url_env.is_some();
-        let repo_url = repo_url_env.unwrap_or_else(|| REPO_URL.to_string());
+        let repo_url = repo_url_env.unwrap_or_else(|| network::GITHUB_REPO_URL.to_string());
         let uv_install_url = env::var("SUZENT_UV_INSTALL_URL")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -1089,23 +1088,17 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
             "origin"
         };
         if let Some(tag) = &release_tag {
-            if !run_command(
-                Command::new(&git)
-                    .args(["fetch", update_remote, "tag", tag])
-                    .current_dir(&config.dir),
-            ) || !run_command(
-                Command::new(&git)
-                    .args(["checkout", "--detach", tag])
-                    .current_dir(&config.dir),
-            ) {
+            if !fetch_source(config, &git, update_remote, &["tag", tag.as_str()])
+                || !run_command(
+                    Command::new(&git)
+                        .args(["checkout", "--detach", tag])
+                        .current_dir(&config.dir),
+                )
+            {
                 return StageOutcome::fail("Failed to check out stable release tag.");
             }
         } else {
-            if !run_command(
-                Command::new(&git)
-                    .args(["fetch", update_remote, target_ref])
-                    .current_dir(&config.dir),
-            ) {
+            if !fetch_source(config, &git, update_remote, &[target_ref]) {
                 return StageOutcome::fail("Failed to fetch repository updates.");
             }
             let mut checkout_command = Command::new(&git);
@@ -1137,15 +1130,23 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
                 ));
             }
         }
-        let mut clone = Command::new(&git);
-        clone.args(["clone", "--branch", target_ref]);
-        // A stable install only ever moves between release tags, which a
-        // shallow clone fetches fine; skipping the history makes the download
-        // a fraction of the size on slow links.
-        if release_tag.is_some() {
-            clone.args(["--depth", "1"]);
-        }
-        run_command(clone.args([&config.repo_url, config.dir.to_string_lossy().as_ref()]))
+        let sources = if config.repo_url_override {
+            vec![config.repo_url.as_str()]
+        } else {
+            network::repo_sources(config.china_mirror)
+        };
+        sources.into_iter().any(|source| {
+            print_human(format!("Cloning Suzent from {source}..."));
+            let mut clone = Command::new(&git);
+            clone.args(["clone", "--branch", target_ref]);
+            // A stable install only ever moves between release tags, which a
+            // shallow clone fetches fine; skipping the history makes the
+            // download a fraction of the size on slow links.
+            if release_tag.is_some() {
+                clone.args(["--depth", "1"]);
+            }
+            run_command(clone.args([source, config.dir.to_string_lossy().as_ref()]))
+        })
     };
 
     if !repository_ready {
@@ -1155,6 +1156,25 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail(format!("Failed to record install channel: {error}"));
     }
     StageOutcome::ok()
+}
+
+/// `git fetch <remote> <args>`, then in China mode the same from each source
+/// repository, so an install cloned from GitHub can still update when GitHub
+/// is unreachable.
+fn fetch_source(config: &InstallConfig, git: &Path, remote: &str, args: &[&str]) -> bool {
+    let mut remotes = vec![remote];
+    if !config.repo_url_override && config.china_mirror {
+        remotes.extend(network::repo_sources(true));
+    }
+    remotes.into_iter().any(|remote| {
+        run_command(
+            Command::new(git)
+                .arg("fetch")
+                .arg(remote)
+                .args(args)
+                .current_dir(&config.dir),
+        )
+    })
 }
 
 fn stage_env(config: &InstallConfig) -> StageOutcome {

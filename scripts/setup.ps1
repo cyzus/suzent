@@ -440,6 +440,9 @@ function Ensure-Rust {
 }
 
 # -- Clone or update repo ------------------------------------------------------
+# China mode clones from the Gitee mirror first and falls back to GitHub.
+$MirrorRepos = if (-not $env:SUZENT_REPO_URL -and $UseChinaMirror) { @("https://gitee.com/cyzus/suzent.git") } else { @() }
+
 if ($IsUpdate) {
     Write-Info "Updating SUZENT in $SuzentDir..."
     Set-Location $SuzentDir
@@ -453,7 +456,12 @@ if ($IsUpdate) {
     }
 
     if ($ReleaseTag) {
-        git fetch $UpdateRemote tag $InstallRef
+        $fetched = $false
+        foreach ($remote in @($UpdateRemote) + @($MirrorRepos) + @($RepoUrl)) {
+            git fetch $remote tag $InstallRef
+            if ($LASTEXITCODE -eq 0) { $fetched = $true; break }
+        }
+        if (-not $fetched) { Write-Fail "Could not fetch $InstallRef - check the network and re-run." }
         git checkout --detach $InstallRef
     } else {
         git fetch $UpdateRemote $InstallRef
@@ -470,8 +478,13 @@ if ($IsUpdate) {
     # Only developers need the history. Skipping it cuts the download from
     # ~130k objects to ~18 MB, and later fast-forward updates still work.
     $cloneDepth = if ($env:SUZENT_DEV_SETUP -eq "1") { @() } else { @("--depth", "1") }
-    git clone @cloneDepth --branch $InstallRef $RepoUrl $SuzentDir
-    if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed - check the network and re-run." }
+    $cloned = $false
+    foreach ($source in @($MirrorRepos) + @($RepoUrl)) {
+        Write-Info "Cloning from $source"
+        git clone @cloneDepth --branch $InstallRef $source $SuzentDir
+        if ($LASTEXITCODE -eq 0) { $cloned = $true; break }
+    }
+    if (-not $cloned) { Write-Fail "git clone failed - check the network and re-run." }
     Write-Ok "Repository cloned"
     Set-Location $SuzentDir
 }

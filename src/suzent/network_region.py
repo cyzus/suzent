@@ -21,6 +21,9 @@ from pathlib import Path
 REPO = "cyzus/suzent"
 MIRROR_RELEASE_BASE = "https://registry.npmmirror.com/-/binary/suzent"
 GITHUB_RELEASE_BASE = f"https://github.com/{REPO}/releases/download"
+GITHUB_REPO_URL = f"https://github.com/{REPO}.git"
+# Gitee pull-mirrors the GitHub repository, tags and branches included.
+GITEE_REPO_URL = "https://gitee.com/cyzus/suzent.git"
 _LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 _LATEST_RELEASE_PAGE = f"https://github.com/{REPO}/releases/latest"
 _RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
@@ -90,6 +93,11 @@ def mirror_env(base: dict[str, str] | None = None) -> dict[str, str]:
             if not env.get(key, "").strip():
                 env[key] = value
     return env
+
+
+def repo_sources() -> list[str]:
+    """Repositories to fetch the source from when ``origin`` fails."""
+    return [GITEE_REPO_URL, GITHUB_REPO_URL] if china_mode() else []
 
 
 def release_bases(version: str) -> list[str]:

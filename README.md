@@ -61,7 +61,7 @@ No API key? Pick [Ollama](docs/04-models/local/ollama.md) and run everything on 
 <details>
 <summary><b>Installing from mainland China</b></summary>
 
-Nothing to configure. Setup checks the network first: when Google is unreachable but the mainland mirrors answer, it downloads Python, Python packages, the Playwright browser and uv from mainland mirrors. The Windows desktop installer also shows a "use mainland mirrors" switch, and updates keep whatever you chose.
+Nothing to configure. Setup checks the network first: when Google is unreachable but the mainland mirrors answer, it downloads Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv from mainland mirrors. The Windows desktop installer also shows a "use mainland mirrors" switch, and updates keep whatever you chose.
 
 If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 

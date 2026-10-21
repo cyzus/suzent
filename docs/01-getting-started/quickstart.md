@@ -55,7 +55,7 @@ The script installs Suzent and any missing dependencies (Python/uv, Rust, build 
 
 ### Installing from mainland China
 
-Setup picks mirrors from the network it runs on: when Google is unreachable but the mainland mirrors answer, Python, Python packages, the Playwright browser and uv come from mainland mirrors. There is nothing to turn on.
+Setup picks mirrors from the network it runs on: when Google is unreachable but the mainland mirrors answer, Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv come from mainland mirrors. There is nothing to turn on.
 
 If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 

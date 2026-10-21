@@ -368,6 +368,12 @@ if [ "$OS" = "Darwin" ]; then
 fi
 
 # ── Clone or update repo ──────────────────────────────────────────────────────
+# China mode clones from the Gitee mirror first and falls back to GitHub.
+MIRROR_REPOS=()
+if [ -z "${SUZENT_REPO_URL:-}" ] && china_mirror_enabled; then
+    MIRROR_REPOS=("https://gitee.com/cyzus/suzent.git")
+fi
+
 if [ "$IS_UPDATE" = true ]; then
     info "Updating SUZENT in $SUZENT_DIR..."
     cd "$SUZENT_DIR"
@@ -379,7 +385,11 @@ if [ "$IS_UPDATE" = true ]; then
     fi
 
     if [ -n "$RELEASE_TAG" ]; then
-        git fetch "$UPDATE_REMOTE" tag "$INSTALL_REF"
+        fetched=false
+        for remote in "$UPDATE_REMOTE" ${MIRROR_REPOS[@]+"${MIRROR_REPOS[@]}"} "$REPO_URL"; do
+            if git fetch "$remote" tag "$INSTALL_REF"; then fetched=true; break; fi
+        done
+        [ "$fetched" = true ] || die "Could not fetch $INSTALL_REF - check the network and re-run."
         git checkout --detach "$INSTALL_REF"
     else
         git fetch "$UPDATE_REMOTE" "$INSTALL_REF"
@@ -396,7 +406,15 @@ else
     # ~130k objects to ~18 MB, and later fast-forward updates still work.
     clone_depth=(--depth 1)
     [ "${SUZENT_DEV_SETUP:-0}" = "1" ] && clone_depth=()
-    git clone ${clone_depth[@]+"${clone_depth[@]}"} --branch "$INSTALL_REF" "$REPO_URL" "$SUZENT_DIR"
+    cloned=false
+    for source in ${MIRROR_REPOS[@]+"${MIRROR_REPOS[@]}"} "$REPO_URL"; do
+        info "Cloning from $source"
+        if git clone ${clone_depth[@]+"${clone_depth[@]}"} --branch "$INSTALL_REF" "$source" "$SUZENT_DIR"; then
+            cloned=true
+            break
+        fi
+    done
+    [ "$cloned" = true ] || die "git clone failed - check the network and re-run."
     ok "Repository cloned"
     cd "$SUZENT_DIR"
 fi

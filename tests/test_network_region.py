@@ -109,3 +109,9 @@ def test_linux_arm64_keeps_playwrights_own_chromium_host(state, monkeypatch):
     env = network_region.mirror_env({})
     assert "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST" not in env
     assert env["PLAYWRIGHT_DOWNLOAD_HOST"].endswith("/mirrors/playwright")
+
+
+def test_repo_sources_add_gitee_only_in_china(state):
+    assert network_region.repo_sources() == []
+    (state / "network-region").write_text("china\n", encoding="utf-8")
+    assert network_region.repo_sources()[0].startswith("https://gitee.com/")

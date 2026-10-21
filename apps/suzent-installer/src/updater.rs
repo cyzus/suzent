@@ -741,12 +741,26 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, Strin
     set_executable(&paths.staged_ui())?;
 
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
-    run_checked(
-        background_command("git")
-            .args(["fetch", "--force", "origin", "tag", target_tag])
-            .current_dir(&paths.root),
-        "fetch release source",
-    )?;
+    // Fall back to the source repositories when `origin` is unreachable,
+    // e.g. an install cloned from GitHub that now sits behind the firewall.
+    let mut remotes = vec!["origin"];
+    if network::resolved_china_mode() {
+        remotes.extend(network::repo_sources(true));
+    }
+    let mut errors = Vec::new();
+    let fetched = remotes.into_iter().any(|remote| {
+        run_checked(
+            background_command("git")
+                .args(["fetch", "--force", remote, "tag", target_tag])
+                .current_dir(&paths.root),
+            "fetch release source",
+        )
+        .map_err(|error| errors.push(error))
+        .is_ok()
+    });
+    if !fetched {
+        return Err(errors.join("; "));
+    }
     git_text(&paths.root, &["rev-list", "-n", "1", target_tag])
 }
 

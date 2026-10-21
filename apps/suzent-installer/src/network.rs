@@ -21,6 +21,9 @@ pub const MIRROR_RELEASE_BASE: &str = "https://registry.npmmirror.com/-/binary/s
 pub const GITHUB_RELEASE_BASE: &str = "https://github.com/cyzus/suzent/releases/download";
 const GITHUB_LATEST_RELEASE: &str = "https://github.com/cyzus/suzent/releases/latest";
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
+pub const GITHUB_REPO_URL: &str = "https://github.com/cyzus/suzent.git";
+/// Gitee pull-mirrors the GitHub repository, tags and branches included.
+pub const GITEE_REPO_URL: &str = "https://gitee.com/cyzus/suzent.git";
 const PYPI_MIRROR: &str = "https://pypi.tuna.tsinghua.edu.cn/simple";
 /// Reachable from anywhere except behind the mainland firewall.
 const GLOBAL_PROBE_URL: &str = "https://www.google.com/generate_204";
@@ -301,6 +304,15 @@ fn version_key(tag: &str) -> Vec<u64> {
         .collect()
 }
 
+/// Repositories to clone or fetch the source from, in order.
+pub fn repo_sources(china: bool) -> Vec<&'static str> {
+    if china {
+        vec![GITEE_REPO_URL, GITHUB_REPO_URL]
+    } else {
+        vec![GITHUB_REPO_URL]
+    }
+}
+
 /// Playwright downloads Chromium from Chrome for Testing everywhere except
 /// Linux arm64, where it uses its own builds that the CfT mirror does not have.
 const CHROME_FOR_TESTING_BUILDS: bool =
@@ -559,6 +571,12 @@ pub fn extract_uv_binaries(wheel: &[u8], bin_dir: &Path) -> Result<PathBuf, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn china_mode_clones_from_gitee_before_github() {
+        assert_eq!(repo_sources(true), vec![GITEE_REPO_URL, GITHUB_REPO_URL]);
+        assert_eq!(repo_sources(false), vec![GITHUB_REPO_URL]);
+    }
 
     #[test]
     fn mirrors_only_when_global_is_blocked_and_china_reachable() {

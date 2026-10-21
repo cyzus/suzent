@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 ### 在中国大陆安装
 
-安装脚本会根据当前网络自动选择下载源：连不上 Google、但能连上国内镜像时，Python、依赖包、Playwright 浏览器和 uv 都会从国内镜像下载，不需要手动开启。
+安装脚本会根据当前网络自动选择下载源：连不上 Google、但能连上国内镜像时，Suzent 代码（Gitee 镜像）、Python、依赖包、Playwright 浏览器和 uv 都会从国内镜像下载，不需要手动开启。
 
 如果 `raw.githubusercontent.com` 打不开，可以从 jsDelivr 获取同一个脚本：
 

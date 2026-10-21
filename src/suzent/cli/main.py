@@ -2199,7 +2199,16 @@ def register_commands(app: typer.Typer):
             run_command(["git", "fetch"], cwd=root)
             run_command(["git", "merge", "--ff-only", "@{upstream}"], cwd=root)
             return
-        run_command(["git", "fetch", "origin", "tag", release_tag], cwd=root)
+        # An install cloned from GitHub may sit behind the firewall now, so
+        # China mode retries the tag from the source mirrors.
+        remotes = ["origin", *network_region.repo_sources()]
+        for index, remote in enumerate(remotes):
+            try:
+                run_command(["git", "fetch", remote, "tag", release_tag], cwd=root)
+                break
+            except subprocess.CalledProcessError:
+                if index == len(remotes) - 1:
+                    raise
         run_command(["git", "checkout", "--detach", release_tag], cwd=root)
 
     def _restore_stashed_changes(root: Path, stashed: bool) -> None:
