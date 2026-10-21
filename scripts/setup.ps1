@@ -507,6 +507,7 @@ if ($UseChinaMirror) {
     # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode
     # the same locked, hash-pinned set is installed through the mirror instead.
     Write-Info "Syncing Python dependencies with social channel support through the PyPI mirror..."
+    Write-Info "The first install can take 10+ minutes on Windows while antivirus scans the new files. Please keep this window open."
     $requirements = [System.IO.Path]::GetTempFileName()
     try {
         uv export --frozen --extra social --quiet -o $requirements
@@ -519,6 +520,7 @@ if ($UseChinaMirror) {
     if ($syncExit -ne 0) { Write-Fail "Python dependency install failed - check errors above." }
 } else {
     Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+    Write-Info "The first install can take 10+ minutes on Windows while antivirus scans the new files. Please keep this window open."
     uv sync --frozen --extra social
     if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed - check errors above." }
 }

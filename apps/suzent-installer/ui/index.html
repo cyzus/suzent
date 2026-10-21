@@ -190,7 +190,7 @@
       const stageTranslations = {
         'Downloading desktop UI binary': '下载桌面程序', 'Building desktop UI from source': '从源码构建桌面程序',
         'Checking system prerequisites': '检查系统环境', 'Installing uv': '安装 uv', 'Preparing workspace': '准备工作区', 'Installing standalone updater': '安装独立更新器',
-        'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment': '同步 Python 环境', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
+        'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment (the first install can take a while)': '同步 Python 环境（首次安装可能需要十几分钟，请勿关闭）', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
         'Creating launch shortcuts': '创建启动快捷方式', 'Finalizing installation': '完成安装',
       };
       const updateStages = isZh
@@ -465,7 +465,7 @@
         if (preview || !invoke) {
           manifest = { protocol_version: 1, stages: [
             {name:'system',title:'Checking system prerequisites'}, {name:'uv',title:'Installing uv'}, {name:'workspace',title:'Preparing workspace'},
-            {name:'backend',title:'Synchronizing Python environment'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
+            {name:'backend',title:'Synchronizing Python environment (the first install can take a while)'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
             {name:'playwright',title:'Installing Playwright Chromium'}, {name:'shortcuts',title:'Creating launch shortcuts'},
           ]};
           context.dir = 'C:\\Users\\suzy\\suzent';
