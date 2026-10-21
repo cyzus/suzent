@@ -88,10 +88,25 @@ SUZENT's **Tools** tab, where you can cancel them.
 When SUZENT says something while you are elsewhere, its card shows the new
 message and you get a desktop notification.
 
+## What it remembers about working with you
+
+SUZENT keeps its own short notes on how you want it to work: what to bring to
+you and what to handle itself, what counts as urgent, when not to disturb you,
+which project you mean by a nickname, and how you like your reports. Tell it a
+rule ("don't ping me about tests failing, just restart them") and it writes it
+down; it also notes rules you keep repeating.
+
+It reads these notes at the start of every turn. They never hold project or
+task status, which it looks up fresh each time. To read or change them
+yourself, open SUZENT's **Context** tab and click **Edit**.
+
+What it learns about *you* in general goes to your
+[memory](../03-features/memory/README.md), like any other chat.
+
 ## What it won't do
 
 SUZENT can read files and search the web, your memory, and past
-conversations, but it can't edit files, run commands, or use MCP servers, and
+conversations, but apart from its own notes it can't edit files, run commands, or use MCP servers, and
 the tool picker doesn't apply to it. That keeps one agent with a view of every
 project from making changes in all of them at once: the work happens in a
 project session, where you can see and steer it.

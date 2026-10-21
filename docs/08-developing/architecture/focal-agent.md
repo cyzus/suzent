@@ -27,7 +27,8 @@ and overrides whatever the request asked for:
 
 - `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
   `FocalDispatchTool`, web search and fetch, memory and session search,
-  ask-question, skills, read-only file tools, and `FocalScheduleTool`. The plain
+  ask-question, skills, read-only file tools, `FocalScheduleTool`, and
+  `FocalNotesTool`. The plain
   `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
@@ -37,9 +38,10 @@ and overrides whatever the request asked for:
   outside Suzent.
 
 Focal-only behavior lives in Focal-only tools, so other agents' schemas never
-carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`)
-and `FocalScheduleTool` (`schedule_wakeup`). Both have an empty `group` and are
-not deferrable, so no other chat can equip or discover them, and both refuse
+carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`),
+`FocalScheduleTool` (`schedule_wakeup`) and `FocalNotesTool` (`update_notes`).
+All three have an empty `group` and are
+not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than
 naming the Focal Agent, so nothing SUZENT reads calls it anything but SUZENT.
 
@@ -55,6 +57,22 @@ with its id and slug, up to 10 sessions per project, and each session's tasks.
 Sessions come from the project's tasks plus any chat in the project that is
 running now; sessions with work waiting on the user sort first, then running
 ones. A chat with no tasks that is not running is not listed.
+
+## Notes
+
+SUZENT's notes are the `context.md` of `suzent-focal`, which core memory already
+loads as the Context block for any chat in that project. Other chats keep their
+project's `context.md` with the file tools; SUZENT has none, so
+`FocalNotesTool` (`update_notes`) edits that one file and nothing else: an exact
+`old_text` replacement, or an append when `old_text` is empty, capped at
+`MAX_NOTES_CHARS` (8,000, where core memory starts truncating the block). An
+edit reaches later turns as a core-memory diff reminder, like any other
+context.md change.
+
+`format_core_memory_section()` swaps the "How to update your memory" lines for
+the Focal chat: point at `update_notes`, and keep project and task status out,
+since `build_focal_global_context()` supplies it fresh each turn. The tool's
+`session_guidance` says what belongs in the notes.
 
 ## Dispatch
 

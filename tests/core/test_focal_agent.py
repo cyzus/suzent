@@ -16,6 +16,7 @@ from suzent.tools.agents.agent_lifecycle_tools import (
     FocalDispatchTool,
     _accessible_agent,
 )
+from suzent.tools import focal_notes_tool
 from suzent.tools.base import ToolErrorCode
 from suzent.tools.tasks import task_update_tool
 from suzent.tools.tasks.task_update_tool import TaskUpdateTool
@@ -23,7 +24,12 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (focal_agent, agent_lifecycle_tools, task_update_tool):
+    for module in (
+        focal_agent,
+        agent_lifecycle_tools,
+        task_update_tool,
+        focal_notes_tool,
+    ):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
@@ -886,3 +892,70 @@ def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
     path.write_text("- My own item\n", encoding="utf-8")
     get_or_create_focal_chat()
     assert path.read_text(encoding="utf-8") == "- My own item\n"
+
+
+@pytest.mark.asyncio
+async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Ask before anything about deploys")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Reports in Chinese, one line each")
+    assert path.read_text(encoding="utf-8") == (
+        "- Ask before anything about deploys\n- Reports in Chinese, one line each\n"
+    )
+
+    result = await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "Reports in English", old_text="Reports in Chinese"
+    )
+    assert result.success
+    assert "Reports in English, one line each" in result.message
+
+    await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "", old_text="- Ask before anything about deploys\n"
+    )
+    assert path.read_text(encoding="utf-8") == "- Reports in English, one line each\n"
+
+
+@pytest.mark.asyncio
+async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
+    db, sandbox
+) -> None:
+    from suzent.tools.focal_notes_tool import MAX_NOTES_CHARS, FocalNotesTool
+
+    get_or_create_focal_chat()
+    tool = FocalNotesTool()
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- quiet after 22:00\n- quiet on Sunday")
+
+    ambiguous = await tool.forward(_ctx(FOCAL_CHAT_ID), "x", old_text="quiet")
+    other = await tool.forward(_ctx(db.create_chat("Regular", {})), "- rule")
+    overflow = await tool.forward(_ctx(FOCAL_CHAT_ID), "x" * MAX_NOTES_CHARS)
+
+    assert ambiguous.error_code == ToolErrorCode.INVALID_ARGUMENT
+    assert other.error_code == ToolErrorCode.PERMISSION_DENIED
+    assert overflow.error_code == ToolErrorCode.INVALID_ARGUMENT
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == "- quiet after 22:00\n- quiet on Sunday\n"
+
+
+def test_notes_tool_is_suzents_alone() -> None:
+    from suzent.core.focal_agent import FOCAL_TOOL_NAMES
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    assert "FocalNotesTool" in FOCAL_TOOL_NAMES
+    assert (FocalNotesTool.group, FocalNotesTool.deferrable) == ("", False)
+
+
+def test_suzents_memory_section_points_at_its_notes() -> None:
+    from suzent.memory.memory_context import format_core_memory_section
+
+    focal = format_core_memory_section({"context": "- rule"}, chat_id=FOCAL_CHAT_ID)
+    regular = format_core_memory_section({"context": "- rule"}, chat_id="chat-1")
+
+    assert "update_notes" in focal
+    assert "edit_file" not in focal
+    assert "edit_file" in regular and "update_notes" not in regular
+    assert "<!-- /memory:generated" in regular

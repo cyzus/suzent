@@ -39,6 +39,7 @@ FOCAL_TOOL_NAMES = (
     "GlobTool",
     "GrepTool",
     "FocalScheduleTool",
+    "FocalNotesTool",
 )
 
 FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
