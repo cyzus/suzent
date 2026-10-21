@@ -64,8 +64,8 @@ class AgentTool(Tool):
         "status. Installed does not guarantee authentication or a successful handshake.\n"
         "2. Start with agent(description='Complete task instructions', runtime='acp', "
         "acp_agent_id='<listed ID>', run_in_background=True). Supply cwd when needed. "
-        "ACP uses its own tools and model: omit subagent_type, tools_allowed, tools_denied, "
-        "and model_override. A parent chat's denied tools can prevent ACP delegation.\n"
+        "ACP uses its own tools and model: omit subagent_type, tools_allowed, and tools_denied. "
+        "A parent chat's denied tools can prevent ACP delegation.\n"
         "3. Continue with agent_send(agent_id='<returned task ID>', message='Next instructions'). "
         "For existing conversations, discover session agent_id values with "
         "agent_list(status='recent'). Use wait=True for a direct reply. Background sub-agent "
@@ -177,6 +177,7 @@ class AgentTool(Tool):
             Optional[str],
             Field(
                 description=(
+                    "Native execution only; omit when runtime='acp'. "
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
                     "Invalid or disabled IDs are rejected instead of silently falling back. "
