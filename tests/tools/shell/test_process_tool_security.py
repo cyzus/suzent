@@ -9,7 +9,6 @@ def _ctx(tmp_path, sandbox_enabled=True):
         sandbox_enabled=sandbox_enabled,
         workspace_root=str(tmp_path),
         custom_volumes=[],
-        auto_approve_tools=False,
         tool_approval_policy={},
     )
     return SimpleNamespace(deps=deps)

@@ -86,6 +86,21 @@ def test_focal_agent_reaches_sessions_in_every_project(db) -> None:
     assert _accessible_agent(other_chat, home_chat) is None
 
 
+@pytest.mark.asyncio
+async def test_any_session_can_message_focal_but_not_read_or_stop_it(
+    db, enqueued
+) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Ops", "ops")
+    chat_id = db.create_chat("Deploy", {}, project_id=project_id)
+
+    result = await AgentSendTool().forward(_ctx(chat_id), FOCAL_CHAT_ID, "Shipped")
+
+    assert result.success, result.message
+    assert enqueued[0]["target_chat_id"] == FOCAL_CHAT_ID
+    assert _accessible_agent(FOCAL_CHAT_ID, chat_id) is None
+
+
 def test_focal_agent_lists_recent_sessions_across_projects(db, monkeypatch) -> None:
     monkeypatch.setattr(agent_lifecycle_tools, "_agent_is_active", lambda _: False)
     monkeypatch.setattr(
@@ -126,7 +141,6 @@ async def test_focal_agent_starts_auto_primary_session_with_task(db, enqueued) -
     assert new_chat.project_id == project_id
     assert new_chat.title == "Vector DB survey"
     assert new_chat.config["permission_mode"] == "auto"
-    assert new_chat.config["auto_approve_tools"] is True
     assert new_chat.config["parent_chat_id"] == FOCAL_CHAT_ID
     task = db.get_task(result.metadata["task_id"])
     assert (task.chat_id, task.status) == (new_chat.id, "in_progress")
