@@ -4,6 +4,7 @@ import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpProbeResult } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
 import { BrutalSelect } from '../BrutalSelect';
+import { RefreshButton } from '../RefreshButton';
 import { BrutalButton, BrutalLink } from '../BrutalButton';
 import {
   SectionCardHeader,
@@ -201,13 +202,11 @@ export function AcpAgentsTab(): React.ReactElement {
           title={t('settings.acp.registeredTitle')}
           description={t('settings.acp.registeredDesc')}
           actions={
-            <BrutalButton
-              size="sm"
+            <RefreshButton
+              spinning={loading || refreshing}
               disabled={loading || refreshing}
               onClick={() => void loadAgents()}
-            >
-              {t('common.refresh')}
-            </BrutalButton>
+            />
           }
         />
         {loginError && (
