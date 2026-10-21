@@ -46,7 +46,7 @@ export function PeerTriggerPanel({
 
   if (paused) {
     return (
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
         Triggering is paused for this device. Enable it above to send prompts.
       </p>
     );

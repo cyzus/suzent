@@ -1623,6 +1623,34 @@ code {
   outline-color: #ffe66d;
 }
 
+.thinking-assembly {
+  /* Fade the scene itself so every background and color scheme shows through. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+
+.dark .thinking-assembly .assembly-robot {
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 22%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 12%));
+}
+
+.dark .thinking-assembly .robot-carrier {
+  background: #18181b;
+  border: 1px solid rgb(255 255 255 / 18%);
+}
+
+.dark .thinking-assembly .robot-carrier::after {
+  background: #a1a1aa;
+}
+
+.dark .thinking-assembly .scanner-beam {
+  width: 2px;
+  background: #d4d4d8;
+  mix-blend-mode: screen;
+  box-shadow:
+    0 0 8px 1px rgb(255 255 255 / 20%),
+    0 0 18px 3px rgb(255 255 255 / 8%);
+}
+
 /* Robot Carrier Platform (Sled) */
 .robot-carrier {
   position: absolute;

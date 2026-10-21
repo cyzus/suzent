@@ -127,10 +127,12 @@ export function HostTokenCard(): React.ReactElement {
                 />
                 <span className="font-bold text-sm truncate">{t.display_name}</span>
                 {t.token_hint && (
-                  <code className="text-[11px] text-neutral-500">{t.token_hint}</code>
+                  <code className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {t.token_hint}
+                  </code>
                 )}
                 {t.approved_at && (
-                  <span className="text-[11px] text-neutral-500">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
                     {relativeTime(t.approved_at)}
                   </span>
                 )}
@@ -146,7 +148,7 @@ export function HostTokenCard(): React.ReactElement {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
           No host tokens issued. These grant full remote access — only create one when you need to
           administer this device from another machine.
         </p>
