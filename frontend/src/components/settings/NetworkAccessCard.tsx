@@ -128,9 +128,9 @@ export function NetworkAccessCard(): React.ReactElement {
                   }`}
                 />
                 <span className="font-bold">{s.name}</span>
-                <span className="text-neutral-500 truncate">{s.path}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 truncate">{s.path}</span>
               </div>
-              <span className="text-[10px] font-bold uppercase text-neutral-500 shrink-0">
+              <span className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 shrink-0">
                 {s.note ?? (s.live ? 'live' : 'off')}
               </span>
             </div>
@@ -143,7 +143,7 @@ export function NetworkAccessCard(): React.ReactElement {
       )}
 
       {!bound && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
           Listening on 127.0.0.1 only. Other devices cannot reach this machine until you enable
           network access.
         </p>
@@ -192,7 +192,9 @@ export function NetworkAccessStrip(): React.ReactElement {
               : 'Loopback only'}
         </span>
       </div>
-      <span className="text-[10px] text-neutral-500 uppercase font-bold">Manage in Mesh tab</span>
+      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase font-bold">
+        Manage in Mesh tab
+      </span>
     </div>
   );
 }

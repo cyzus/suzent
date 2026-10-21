@@ -253,7 +253,7 @@ export function Onboarding({
       >
         {t(`onboarding.heading${step}`)}
       </h1>
-      <p className="mb-8 text-sm leading-relaxed text-neutral-500">
+      <p className="mb-8 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
         {t(`onboarding.intro${step}`)}
       </p>
       {error && (
@@ -353,7 +353,7 @@ export function Onboarding({
                   invalidate();
                 }}
               />
-              <p className="text-xs text-neutral-500" role="status">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400" role="status">
                 {t(
                   !available.length
                     ? 'onboarding.enableFirst'
@@ -391,7 +391,7 @@ export function Onboarding({
                 <summary className="cursor-pointer text-xs font-bold">
                   {t('onboarding.optionalTest')}
                 </summary>
-                <p className="my-3 text-xs leading-relaxed text-neutral-500">
+                <p className="my-3 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
                   {t('onboarding.probeNotice')}
                 </p>
                 <BrutalButton
@@ -462,7 +462,9 @@ export function Onboarding({
               </div>
             )}
             {hasSavedRoles && !canFill && (
-              <p className="mb-4 text-xs text-neutral-500">{t('onboarding.nothingToFill')}</p>
+              <p className="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
+                {t('onboarding.nothingToFill')}
+              </p>
             )}
             {confirmReset && (
               <div className="mb-5 space-y-3 border border-current p-4" role="alert">
@@ -552,7 +554,7 @@ export function Onboarding({
                   ))}
               </details>
             )}
-            <p className="my-4 text-xs leading-relaxed text-neutral-500">
+            <p className="my-4 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
               {t('onboarding.matchNotice')}
             </p>
             <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-neutral-200 pt-5">

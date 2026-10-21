@@ -595,7 +595,7 @@ export function DevicesTab(): React.ReactElement {
               for the operator who wants the details. */}
           {unauthorized.length > 0 && (
             <details className="text-[11px] font-mono text-neutral-400">
-              <summary className="cursor-pointer hover:text-neutral-500 dark:hover:text-neutral-300 select-none">
+              <summary className="cursor-pointer hover:text-neutral-500 dark:text-neutral-400 dark:hover:text-neutral-300 select-none">
                 {unauthorized.length} blocked trigger attempt{unauthorized.length > 1 ? 's' : ''}
               </summary>
               <div className="mt-1 pl-3 space-y-0.5 text-neutral-400">

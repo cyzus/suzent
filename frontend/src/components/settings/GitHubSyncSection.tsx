@@ -387,7 +387,7 @@ function SyncReviewPanel({
                             className="grid cursor-pointer grid-cols-[12px_18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] focus:bg-[#e8e8e8] focus:outline-none dark:hover:bg-[#2a2d2e] dark:focus:bg-[#2a2d2e]"
                             title={file.path}
                           >
-                            <span className="text-[10px] text-neutral-500">
+                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                               {expandedFile === fileKey(file) ? 'v' : '>'}
                             </span>
                             <span
@@ -427,7 +427,7 @@ function SyncReviewPanel({
                           </div>
                           {expandedFile === fileKey(file) &&
                             (loadingFile === fileKey(file) ? (
-                              <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500">
+                              <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
                                 {t('settings.data.githubReviewLoadingDiff')}
                               </div>
                             ) : (

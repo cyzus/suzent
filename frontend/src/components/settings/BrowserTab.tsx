@@ -133,7 +133,7 @@ export function BrowserTab(): React.ReactElement {
                           option.value === 'chromium'),
                     }))}
                   />
-                  <p className="mt-2 text-sm text-neutral-500">
+                  <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                     {t('settings.browser.channelHelp')}
                   </p>
                   {!data.available_browsers[data.settings.channel] && (
@@ -159,7 +159,7 @@ export function BrowserTab(): React.ReactElement {
                         />
                         {t('settings.browser.persistent')}
                       </label>
-                      <p className="mt-2 text-sm text-neutral-500">
+                      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                         {t('settings.browser.persistentHelp')}
                       </p>
                     </div>
@@ -178,7 +178,7 @@ export function BrowserTab(): React.ReactElement {
                         />
                         {t('settings.browser.visible')}
                       </label>
-                      <p className="mt-2 text-sm text-neutral-500">
+                      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                         {t('settings.browser.visibleHelp')}
                       </p>
                     </div>

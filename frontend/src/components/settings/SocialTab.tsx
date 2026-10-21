@@ -347,7 +347,7 @@ export function SocialTab({
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <span
-                    className={`border-2 border-brutal-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${isEnabled ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'dark:border-white'}`}
+                    className={`border-2 border-brutal-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${isEnabled ? 'bg-brutal-black text-white dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25' : 'dark:border-white/15 dark:text-zinc-400'}`}
                   >
                     {t(
                       isEnabled

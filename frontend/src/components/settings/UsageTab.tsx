@@ -562,7 +562,9 @@ function ModelBreakdown({ models }: { models: CostModel[] }) {
               >
                 {m.model}
               </span>
-              <span className="text-neutral-500">{formatCost(m.cost_usd)}</span>
+              <span className="text-neutral-500 dark:text-neutral-400">
+                {formatCost(m.cost_usd)}
+              </span>
             </div>
             <div className="h-2 bg-neutral-100 dark:bg-zinc-700 border border-brutal-black flex">
               <div
