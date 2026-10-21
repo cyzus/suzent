@@ -1739,3 +1739,48 @@ def test_start_points_at_the_log_a_failure_would_land_in(
 
     assert result.exit_code == 0
     assert expected_hint in result.output
+
+
+def test_fetch_release_webui_needs_a_stable_release_tag(tmp_path, monkeypatch) -> None:
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "build_webui.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        cli_main,
+        "_download_release_asset",
+        lambda *_args: pytest.fail("source checkouts have no release bundle"),
+    )
+
+    assert cli_main._fetch_release_webui(tmp_path) is False
+
+
+def test_fetch_release_webui_installs_the_verified_archive(
+    tmp_path, monkeypatch
+) -> None:
+    (tmp_path / ".suzent").mkdir()
+    (tmp_path / ".suzent" / "release-tag").write_text("v1.2.3\n", encoding="utf-8")
+    (tmp_path / "scripts").mkdir()
+    script = tmp_path / "scripts" / "build_webui.py"
+    script.write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        cli_main,
+        "_download_release_asset",
+        lambda name, tag, dest: dest.write_bytes(b"zip"),
+    )
+    monkeypatch.setattr(
+        cli_main,
+        "_verify_release_asset",
+        lambda path, name, tag: calls.append(("verify", name, tag)),
+    )
+
+    def fake_run(command, **_kwargs):
+        calls.append(("run", command[1:3]))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
+
+    assert cli_main._fetch_release_webui(tmp_path) is True
+    assert calls == [
+        ("verify", "suzent-webui.zip", "v1.2.3"),
+        ("run", [str(script), "--install-archive"]),
+    ]

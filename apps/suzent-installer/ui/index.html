@@ -465,7 +465,7 @@
         if (preview || !invoke) {
           manifest = { protocol_version: 1, stages: [
             {name:'system',title:'Checking system prerequisites'}, {name:'uv',title:'Installing uv'}, {name:'workspace',title:'Preparing workspace'},
-            {name:'backend',title:'Synchronizing Python environment (the first install can take a while)'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
+            {name:'backend',title:'Synchronizing Python environment (the first install can take a while)'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'webui',title:'Downloading web UI'}, {name:'updater',title:'Installing standalone updater'},
             {name:'playwright',title:'Installing Playwright Chromium'}, {name:'shortcuts',title:'Creating launch shortcuts'},
           ]};
           context.dir = 'C:\\Users\\suzy\\suzent';
@@ -514,7 +514,7 @@
           const message = isZh ? '更新已完成。你可以打开 Suzent，或关闭此窗口。' : 'Update complete. Open Suzent when ready, or close this window.';
           const warnings = status?.warnings || [];
           warnings.forEach(log);
-          setComplete(warnings.length ? (isZh ? '应用已更新，但快捷方式未完成。运行 suzent shortcuts 修复；详情可复制。' : 'App updated, but shortcuts need attention. Run suzent shortcuts to repair; copy details for the full warning.') : message);
+          setComplete(warnings.length ? (isZh ? '应用已更新，但有一项未完成；详情可复制。' : 'App updated, but one step needs attention; copy details for the full warning.') : message);
           if (warnings.length) { setText('complete-title', isZh ? '已完成，有待处理项' : 'Completed with a warning'); els.statusTitle.textContent = isZh ? '应用已更新' : 'App updated'; }
           els.launch.hidden = false;
           els.completeMessage.title = message;

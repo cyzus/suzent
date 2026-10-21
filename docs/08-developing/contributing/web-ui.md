@@ -145,6 +145,14 @@ That runs `npm run build` in `frontend/` and copies `frontend/dist` into
 Without it, `suzent web` reports that no UI is built in and the backend simply
 serves the API.
 
+A normal install has no Node, so it never builds the bundle. Instead each
+desktop release carries `suzent-webui.zip`, built in CI from the release tag and
+listed in `SHA256SUMS`. `setup.sh`, `setup.ps1`, the installer and the updater
+download it from the same release sources as the other assets (the npmmirror
+copy first on a mainland China network) and unpack it with
+`python scripts/build_webui.py --install-archive <zip>`. If that download failed,
+`suzent web` fetches the bundle for the installed release tag before giving up.
+
 ### The backend keeps it up to date
 
 Nothing in the edit-and-refresh loop regenerates that bundle, so a checkout will

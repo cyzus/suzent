@@ -3,6 +3,7 @@
 mod git_install;
 mod network;
 mod updater;
+mod webui;
 
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -771,6 +772,13 @@ fn stages(config: &InstallConfig) -> Vec<InstallStage> {
             worker: stage_ui,
         },
         InstallStage {
+            name: "webui",
+            title: "Downloading web UI",
+            category: "install",
+            needs_user_input: false,
+            worker: stage_webui,
+        },
+        InstallStage {
             name: "updater",
             title: "Installing standalone updater",
             category: "install",
@@ -1382,6 +1390,30 @@ fn bundled_standalone_updater(current: &Path) -> Option<PathBuf> {
     helper.is_file().then_some(helper)
 }
 
+/// Installs the release's prebuilt bundle for `suzent web`. A source install
+/// has no matching release asset; it builds its own with Node instead.
+fn stage_webui(config: &InstallConfig) -> StageOutcome {
+    let Some(tag) = read_install_release_tag(config) else {
+        return StageOutcome::skipped(
+            "Source install: run 'python scripts/build_webui.py' to build the web UI.",
+        );
+    };
+    let bases = if config.release_base_url_override {
+        vec![config.release_base_url.clone()]
+    } else {
+        network::release_bases(config.china_mirror, &tag)
+    };
+    match webui::install(&config.dir, &bases) {
+        Ok(count) => {
+            print_human(format!("[OK] Web UI ready ({count} files)"));
+            StageOutcome::ok()
+        }
+        Err(error) => StageOutcome::skipped(format!(
+            "Web UI download failed: {error}. The next update retries it."
+        )),
+    }
+}
+
 fn stage_updater(_config: &InstallConfig) -> StageOutcome {
     let current = match env::current_exe() {
         Ok(path) => bundled_standalone_updater(&path).unwrap_or(path),
@@ -1644,6 +1676,7 @@ fn print_preview(config: &InstallConfig) {
                 println!("  Requires Node.js/npm, Rust and platform build tools; no release UI download.");
             }
             "ui" => println!("  {}", ui_asset_name()),
+            "webui" if !config.branch_explicit => println!("  {}", webui::ASSET),
             "playwright" => {
                 if config.skip_playwright {
                     println!("  skipped by request");
