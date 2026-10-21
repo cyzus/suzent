@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show what woke a background turn, such as a message from a paired device, while the turn is still running."
+}
