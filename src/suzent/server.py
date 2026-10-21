@@ -272,6 +272,7 @@ from suzent.routes.acp_routes import (
     resolve_acp_permission,
     resume_acp_session,
     probe_acp_agent,
+    authenticate_acp_agent,
 )
 from suzent.routes.background_task_routes import (
     list_background_tasks,
@@ -1162,6 +1163,11 @@ app = Starlette(
         Route("/service/stop", stop_service, methods=["POST"]),
         Route("/acp/agents", list_acp_agents, methods=["GET"]),
         Route("/acp/agents/{agent_id}/probe", probe_acp_agent, methods=["POST"]),
+        Route(
+            "/acp/agents/{agent_id}/authenticate",
+            authenticate_acp_agent,
+            methods=["POST"],
+        ),
         Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
         Route("/acp/sessions", create_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),

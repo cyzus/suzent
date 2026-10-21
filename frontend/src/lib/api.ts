@@ -541,12 +541,29 @@ function unwrapAcpSession(payload: unknown): ACPSession {
   };
 }
 
-export async function probeAcpAgent(id: string): Promise<Record<string, unknown>> {
+export interface AcpProbeResult {
+  status: 'ready' | 'auth_required';
+  authMethods: { id: string; name: string; type: string }[];
+}
+
+export async function authenticateAcpAgent(id: string, methodId: string): Promise<AcpProbeResult> {
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/authenticate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method_id: methodId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Authentication failed: ${res.status}`);
+  return data;
+}
+
+export async function probeAcpAgent(id: string): Promise<AcpProbeResult> {
   const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/probe`, {
     method: 'POST',
   });
-  if (!res.ok) throw new Error(`Failed to probe agent: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Failed to probe agent: ${res.status}`);
+  return data;
 }
 
 export interface AcpAgentSessions {

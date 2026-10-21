@@ -15,6 +15,7 @@ from suzent.logger import get_logger
 from suzent.database import get_database
 
 from .manager import get_acp_manager
+from .client import ACPError
 from .permissions import PERMISSION_QUEUE_KEY
 
 logger = get_logger(__name__)
@@ -131,10 +132,19 @@ async def _stream_prompt(
         while True:
             if prompt_task.done() and managed.updates.empty():
                 break
+            update_task = asyncio.create_task(managed.updates.get())
             try:
-                update = await asyncio.wait_for(managed.updates.get(), timeout=0.1)
-            except asyncio.TimeoutError:
-                continue
+                await asyncio.wait(
+                    [update_task, prompt_task], return_when=asyncio.FIRST_COMPLETED
+                )
+                if not update_task.done():
+                    continue
+                update = update_task.result()
+            finally:
+                if not update_task.done():
+                    update_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await update_task
             if PERMISSION_QUEUE_KEY in update:
                 yield _sse(
                     {
@@ -845,7 +855,18 @@ async def _run_acp_turn(
         # Close the open assistant message so the UI doesn't stay stuck streaming.
         if message_open:
             yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
-        yield _sse({"type": "RUN_ERROR", "message": str(exc)})
+        if isinstance(exc, ACPError) and exc.auth_required:
+            await get_acp_manager().close(chat_id)
+            yield _sse(
+                {
+                    "type": "RUN_ERROR",
+                    "code": "acp_auth_required",
+                    "message": "Sign in under Settings → ACP Agents, then retry this task. "
+                    "Your saved session ID has been preserved.",
+                }
+            )
+        else:
+            yield _sse({"type": "RUN_ERROR", "message": str(exc)})
     finally:
         # A failed or abandoned turn shouldn't leave a title lookup in flight.
         if title_task is not None and not title_task.done():

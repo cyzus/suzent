@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchAcpAgents } from './api';
+import { fetchAcpAgents, probeAcpAgent, authenticateAcpAgent } from './api';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -42,5 +42,35 @@ describe('fetchAcpAgents', () => {
 
     expect(agent.docs_url).toBeUndefined();
     expect(agent.adapter_package).toBeUndefined();
+  });
+});
+
+describe('ACP authentication', () => {
+  it('preserves auth-required probe results and advertised methods', async () => {
+    vi.stubGlobal('window', {});
+    const result = {
+      status: 'auth_required',
+      authMethods: [{ id: 'browser', name: 'Browser', type: 'agent' }],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(result))));
+    expect(await probeAcpAgent('codex')).toEqual(result);
+  });
+
+  it('sends only the selected method ID and reports server errors', async () => {
+    vi.stubGlobal('window', {});
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Method not advertised' }), { status: 400 })
+      );
+    vi.stubGlobal('fetch', fetch);
+    await expect(authenticateAcpAgent('custom/id', 'browser')).rejects.toThrow(
+      'Method not advertised'
+    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/custom%2Fid/authenticate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method_id: 'browser' }),
+    });
   });
 });
