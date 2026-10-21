@@ -467,9 +467,9 @@ if ($IsUpdate) {
         Write-Fail "$SuzentDir already exists but is not a git repo. Remove it or set `$env:SUZENT_DIR to a different path."
     }
     Write-Info "Cloning SUZENT into $SuzentDir..."
-    # A stable install only moves between release tags, which a shallow clone
-    # fetches fine, and skipping the history shrinks the download a lot.
-    $cloneDepth = if ($ReleaseTag) { @("--depth", "1") } else { @() }
+    # Only developers need the history. Skipping it cuts the download from
+    # ~130k objects to ~18 MB, and later fast-forward updates still work.
+    $cloneDepth = if ($env:SUZENT_DEV_SETUP -eq "1") { @() } else { @("--depth", "1") }
     git clone @cloneDepth --branch $InstallRef $RepoUrl $SuzentDir
     if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed - check the network and re-run." }
     Write-Ok "Repository cloned"

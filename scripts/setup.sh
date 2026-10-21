@@ -392,10 +392,10 @@ else
         die "Directory $SUZENT_DIR already exists but is not a git repo. Remove it or set SUZENT_DIR to a different path."
     fi
     info "Cloning SUZENT into $SUZENT_DIR..."
-    # A stable install only moves between release tags, which a shallow clone
-    # fetches fine, and skipping the history shrinks the download a lot.
-    clone_depth=()
-    [ -n "$RELEASE_TAG" ] && clone_depth=(--depth 1)
+    # Only developers need the history. Skipping it cuts the download from
+    # ~130k objects to ~18 MB, and later fast-forward updates still work.
+    clone_depth=(--depth 1)
+    [ "${SUZENT_DEV_SETUP:-0}" = "1" ] && clone_depth=()
     git clone ${clone_depth[@]+"${clone_depth[@]}"} --branch "$INSTALL_REF" "$REPO_URL" "$SUZENT_DIR"
     ok "Repository cloned"
     cd "$SUZENT_DIR"
