@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Add ACP sign-in from settings, preserve sessions across authentication failures, and improve streaming responsiveness and overflow handling.
 - Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks.
+- Add terminal pairing for ACP editors with local approval, private credentials, grant-owned sessions, and revocation.
 - Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
 - Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
 - Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
