@@ -861,6 +861,20 @@ def test_only_suzent_sees_the_dispatch_parameters() -> None:
         assert not any("Focal Agent" in text for text in described)
 
 
+def test_suzents_tools_never_point_it_at_agent_send() -> None:
+    from suzent.core.focal_agent import FOCAL_TOOL_NAMES
+    from suzent.tools.registry import _all_tool_classes, _tool_description
+
+    for tool in _all_tool_classes():
+        if tool.name not in FOCAL_TOOL_NAMES:
+            continue
+        described = [_tool_description(tool)] + [
+            str(param.annotation)
+            for param in signature(tool.forward).parameters.values()
+        ]
+        assert not any("agent_send" in text for text in described), tool.name
+
+
 def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
     get_or_create_focal_chat()
     path = db.get_project_dir(FOCAL_CHAT_ID) / "heartbeat.md"

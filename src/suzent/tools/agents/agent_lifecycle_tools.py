@@ -188,7 +188,7 @@ class AgentListTool(Tool):
             Literal["active", "recent", "acp"],
             Field(
                 description=(
-                    "'active' or 'recent': existing sessions to message with agent_send. "
+                    "'active' or 'recent': existing sessions you can message. "
                     "'acp': configured local ACP agents to start with agent(runtime='acp', "
                     "acp_agent_id=...). Checks installation only, not authentication or handshake."
                 )
@@ -229,7 +229,7 @@ class AgentListTool(Tool):
                 "Configured ACP agents (installation check only):\n"
                 + ("\n".join(lines) or "No ACP agents configured.")
                 + "\nStart with agent(runtime='acp', acp_agent_id=<listed ID>, "
-                "description=...). These IDs are not agent_send targets. "
+                "description=...). These IDs cannot be messaged. "
                 "If not installed, configure it in Settings → ACP Agents.",
                 metadata={"acp_agents": records, "has_more": len(configured) > limit},
             )

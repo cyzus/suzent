@@ -83,7 +83,7 @@ def test_agent_list_acp_discovers_configs_without_exposing_secrets(
     assert records[0]["available"] is True
     if limit > 1:
         assert records[1]["available"] is False
-    assert "agent_send targets" in result.message
+    assert "cannot be messaged" in result.message
     assert "private-command" not in str(result)
     assert "secret" not in str(result)
     assert "agent_id" not in records[0]
