@@ -3,7 +3,8 @@
 #   Fresh install:  powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 #   Update:         suzent update   (or re-run this script inside the repo)
 # Flags (env vars): $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
-#                   $env:SUZENT_CHINA_MIRROR, $env:SUZENT_REPO_URL, $env:SUZENT_RELEASE_BASE_URL
+#                   $env:SUZENT_CHINA_MIRROR = 1|0 (default: detect from the network)
+#                   $env:SUZENT_REPO_URL, $env:SUZENT_RELEASE_BASE_URL
 
 param(
     [string]$Dir    = "",
@@ -20,12 +21,17 @@ $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZE
 $BranchExplicit = [bool]($Branch -or $env:SUZENT_BRANCH)
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
 $SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
-$UseChinaMirror = $ChinaMirror -or ($env:SUZENT_CHINA_MIRROR -match "^(1|true|yes|cn)$")
 $RepoUrl      = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "https://github.com/cyzus/suzent.git" }
 $UpdateRemote = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "origin" }
 $UvInstallUrl = if ($env:SUZENT_UV_INSTALL_URL) { $env:SUZENT_UV_INSTALL_URL } else { "https://astral.sh/uv/install.ps1" }
 $ReleaseBaseUrl = if ($env:SUZENT_RELEASE_BASE_URL) { $env:SUZENT_RELEASE_BASE_URL.TrimEnd("/") } else { "" }
 $MinNodeMajor = 20
+$StateDir = Join-Path $env:USERPROFILE ".suzent"
+$MirrorReleaseBase = "https://registry.npmmirror.com/-/binary/suzent"
+$GithubReleaseBase = "https://github.com/cyzus/suzent/releases/download"
+$PypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+# Windows PowerShell's download progress bar slows transfers to a crawl.
+$ProgressPreference = "SilentlyContinue"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function Write-Ok   { param($m) Write-Host ("[OK] " + $m) -ForegroundColor Green }
@@ -47,8 +53,52 @@ function Add-ToUserPath {
     Write-Warn "Added $NewDir to user PATH (restart terminal if command not found)"
 }
 
+# on/off from a flag value; anything else (including "auto") means detect.
+function ConvertTo-MirrorChoice {
+    param([string]$Value)
+    switch -Regex ("$Value".Trim().ToLowerInvariant()) {
+        '^(1|true|yes|on|cn|china)$' { return $true }
+        '^(0|false|no|off|global)$' { return $false }
+        default { return $null }
+    }
+}
+
+function Test-Url {
+    param([string]$Url)
+    try {
+        Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec 4 -UseBasicParsing | Out-Null
+        return $true
+    } catch {
+        # Any HTTP answer, even an error status, means the host is reachable.
+        return [bool]$_.Exception.Response
+    }
+}
+
+# Mirrors are needed when a global endpoint is unreachable but a domestic one
+# answers -- i.e. the network this computer is on, not its language.
+function Test-ChinaNetwork {
+    if (Test-Url "https://www.google.com/generate_204") { return $false }
+    return (Test-Url "https://registry.npmmirror.com/")
+}
+
+$MirrorDetected = $false
+$UseChinaMirror = if ($ChinaMirror) { $true } else { ConvertTo-MirrorChoice $env:SUZENT_CHINA_MIRROR }
+if ($null -eq $UseChinaMirror) {
+    $savedChoice = Join-Path $StateDir "china-mirror"
+    if (Test-Path $savedChoice) { $UseChinaMirror = ConvertTo-MirrorChoice (Get-Content -Raw $savedChoice) }
+}
+if ($null -eq $UseChinaMirror) {
+    $UseChinaMirror = Test-ChinaNetwork
+    $MirrorDetected = $true
+}
+
 function Enable-ChinaMirrors {
+    if (-not (Test-Path $StateDir)) { New-Item -ItemType Directory -Force -Path $StateDir | Out-Null }
+    # Read by the backend and `suzent update` (see suzent/network_region.py).
+    $region = if ($UseChinaMirror) { "china" } else { "global" }
+    Set-Content -Path (Join-Path $StateDir "network-region") -Value "$region`n" -NoNewline -Encoding ASCII
     if (-not $UseChinaMirror) { return }
+    if ($MirrorDetected) { Write-Info "Mainland China network detected. Set `$env:SUZENT_CHINA_MIRROR=`"0`" to use the default sources." }
 
     if (-not $env:UV_DEFAULT_INDEX) { $env:UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple" }
     if (-not $env:UV_PYTHON_INSTALL_MIRROR) { $env:UV_PYTHON_INSTALL_MIRROR = "https://registry.npmmirror.com/-/binary/python-build-standalone" }
@@ -71,6 +121,129 @@ Write-Host "  ███████║╚██████╔╝█████
 Write-Host "  ╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   " -ForegroundColor White
 Write-Host ""
 
+function Get-HighestReleaseTag {
+    param([string[]]$Tags)
+    $stable = @($Tags | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' })
+    if (-not $stable) { return "" }
+    return ($stable | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1)
+}
+
+# The mirror first in China mode, so the version is one it can serve; then the
+# API; then the release page redirect, which has no 60-an-hour rate limit.
+function Resolve-LatestRelease {
+    if ($UseChinaMirror) {
+        try {
+            $listing = Invoke-RestMethod -Uri "$MirrorReleaseBase/" -TimeoutSec 15
+            $tag = Get-HighestReleaseTag @($listing | ForEach-Object { ([string]$_.name).TrimEnd("/") })
+            if ($tag) { return $tag }
+        } catch {}
+    }
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cyzus/suzent/releases/latest" -TimeoutSec 30
+        return [string]$release.tag_name
+    } catch {}
+    try {
+        $request = [System.Net.HttpWebRequest]::Create("https://github.com/cyzus/suzent/releases/latest")
+        $request.AllowAutoRedirect = $false
+        $request.Timeout = 30000
+        $response = $request.GetResponse()
+        $location = [string]$response.Headers["Location"]
+        $response.Close()
+        return ($location.TrimEnd("/") -split "/")[-1]
+    } catch {}
+    return ""
+}
+
+# Tries each release source in turn and keeps the first download matching the
+# release's SHA256SUMS, so a mirror can make a download faster, never different.
+function Save-ReleaseAsset {
+    param([string]$Asset, [string]$Destination)
+    $tmp = "$Destination.download"
+    foreach ($base in $ReleaseBases) {
+        try {
+            # Served as application/octet-stream, so read the raw bytes as text.
+            $sumsResponse = Invoke-WebRequest -Uri "$base/SHA256SUMS" -TimeoutSec 60 -UseBasicParsing
+            $sums = [System.Text.Encoding]::UTF8.GetString($sumsResponse.RawContentStream.ToArray())
+            $expected = ""
+            foreach ($line in ($sums -split "`n")) {
+                $parts = $line.Trim() -split '\s+', 2
+                if ($parts.Count -eq 2 -and $parts[1].TrimStart("*") -eq $Asset) { $expected = $parts[0].ToLowerInvariant(); break }
+            }
+            if (-not $expected) { Write-Warn "No checksum for $Asset at $base; trying the next source."; continue }
+            Invoke-WebRequest -Uri "$base/$Asset" -OutFile $tmp -TimeoutSec 300 -UseBasicParsing
+            $actual = (Get-FileHash -Algorithm SHA256 $tmp).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { Write-Warn "Checksum mismatch for $Asset from $base; trying the next source."; continue }
+            Move-Item -Force $tmp $Destination
+            return $true
+        } catch {
+            Write-Warn ("Download from $base failed: " + $_.Exception.Message)
+        }
+    }
+    if (Test-Path $tmp) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+    return $false
+}
+
+# The official uv installer downloads the binary from GitHub. uv is also
+# published as a wheel on PyPI, which the Tsinghua mirror serves domestically.
+function Install-UvFromMirror {
+    $platform = if ([Environment]::Is64BitOperatingSystem -and $env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win_arm64" } else { "win_amd64" }
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("suzent-uv-" + [guid]::NewGuid())
+    try {
+        $pageUrl = "$PypiMirror/uv/"
+        $page = (Invoke-WebRequest -Uri $pageUrl -TimeoutSec 30 -UseBasicParsing).Content
+        $pattern = 'href="([^"]*uv-(\d+\.\d+\.\d+)-[^"]*' + $platform + '\.whl)#sha256=([0-9a-f]+)"'
+        $best = [regex]::Matches($page, $pattern) | Sort-Object { [version]$_.Groups[2].Value } | Select-Object -Last 1
+        if (-not $best) { return $false }
+        $url = ([System.Uri]::new([System.Uri]$pageUrl, $best.Groups[1].Value)).AbsoluteUri
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $wheel = Join-Path $tmp "uv.zip"
+        Invoke-WebRequest -Uri $url -OutFile $wheel -TimeoutSec 300 -UseBasicParsing
+        if ((Get-FileHash -Algorithm SHA256 $wheel).Hash.ToLowerInvariant() -ne $best.Groups[3].Value) { return $false }
+        Expand-Archive -Path $wheel -DestinationPath $tmp -Force
+        $scripts = Join-Path $tmp ("uv-" + $best.Groups[2].Value + ".data\scripts")
+        $binDir = Join-Path $env:USERPROFILE ".local\bin"
+        if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
+        Copy-Item -Force (Join-Path $scripts "uv.exe") $binDir
+        if (Test-Path (Join-Path $scripts "uvx.exe")) { Copy-Item -Force (Join-Path $scripts "uvx.exe") $binDir }
+        Add-ToUserPath $binDir
+        return $true
+    } catch {
+        Write-Warn ("uv mirror install failed: " + $_.Exception.Message)
+        return $false
+    } finally {
+        if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+    }
+}
+
+# winget's Git for Windows comes from GitHub. npmmirror mirrors its releases;
+# the installer must carry the Git for Windows Authenticode signature to run.
+function Install-GitFromMirror {
+    $base = "https://registry.npmmirror.com/-/binary/git-for-windows"
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("suzent-git-" + [guid]::NewGuid() + ".exe")
+    try {
+        $releases = Invoke-RestMethod -Uri "$base/" -TimeoutSec 30
+        $latest = @($releases | ForEach-Object { ([string]$_.name).TrimEnd("/") } | Where-Object { $_ -match '^v(\d+\.\d+\.\d+)\.windows\.(\d+)$' }) |
+            Sort-Object { [version](($_ -replace '^v', '') -replace '\.windows\.', '.') } | Select-Object -Last 1
+        if (-not $latest) { return $false }
+        $files = Invoke-RestMethod -Uri "$base/$latest/" -TimeoutSec 30
+        $installer = @($files | Where-Object { [string]$_.name -match '^Git-[\d.]+-64-bit\.exe$' }) | Select-Object -First 1
+        if (-not $installer) { return $false }
+        Invoke-WebRequest -Uri "$base/$latest/$($installer.name)" -OutFile $tmp -TimeoutSec 600 -UseBasicParsing
+        $signature = Get-AuthenticodeSignature $tmp
+        if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Johannes Schindelin") {
+            Write-Warn "The mirrored Git installer is not signed by Git for Windows; skipping it."
+            return $false
+        }
+        $process = Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-", "/SUPPRESSMSGBOXES" -Wait -PassThru
+        return ($process.ExitCode -eq 0)
+    } catch {
+        Write-Warn ("Git mirror install failed: " + $_.Exception.Message)
+        return $false
+    } finally {
+        if (Test-Path $tmp) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+    }
+}
+
 Enable-ChinaMirrors
 
 $InstallRef = $SuzentBranch
@@ -79,23 +252,25 @@ if (-not $BranchExplicit -and $env:SUZENT_DEV_SETUP -ne "1") {
     $ReleaseTag = if ($env:SUZENT_RELEASE_TAG) { $env:SUZENT_RELEASE_TAG.Trim() } else { "" }
     if (-not $ReleaseTag) {
         Write-Info "Resolving latest stable release..."
-        try {
-            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cyzus/suzent/releases/latest" -TimeoutSec 30
-            $ReleaseTag = [string]$release.tag_name
-        } catch {
-            Write-Fail ("Could not resolve the latest stable release: " + $_.Exception.Message)
-        }
+        $ReleaseTag = Resolve-LatestRelease
+        if (-not $ReleaseTag) { Write-Fail "Could not resolve the latest stable release." }
     }
     if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+$') {
         Write-Fail "Invalid stable release tag: $ReleaseTag"
     }
     $InstallRef = $ReleaseTag
-    if (-not $ReleaseBaseUrl) {
-        $ReleaseBaseUrl = "https://github.com/cyzus/suzent/releases/download/$ReleaseTag"
-    }
     Write-Info "Installing matched stable release $ReleaseTag"
-} elseif (-not $ReleaseBaseUrl) {
-    $ReleaseBaseUrl = "https://github.com/cyzus/suzent/releases/latest/download"
+}
+
+# Release download sources in the order to try them.
+$ReleaseBases = if ($ReleaseBaseUrl) {
+    @($ReleaseBaseUrl)
+} elseif (-not $ReleaseTag) {
+    @("https://github.com/cyzus/suzent/releases/latest/download")
+} elseif ($UseChinaMirror) {
+    @("$MirrorReleaseBase/$ReleaseTag", "$GithubReleaseBase/$ReleaseTag")
+} else {
+    @("$GithubReleaseBase/$ReleaseTag")
 }
 
 # ── Detect update vs fresh install ───────────────────────────────────────────
@@ -107,6 +282,16 @@ Write-Ok "Windows detected"
 function Ensure-Git {
     if (Get-Command git -ErrorAction SilentlyContinue) { return }
 
+    if ($UseChinaMirror) {
+        Write-Info "git not found — installing Git for Windows from the npmmirror mirror..."
+        if (Install-GitFromMirror) {
+            Refresh-Path
+            if (Get-Command git -ErrorAction SilentlyContinue) {
+                Write-Ok "git installed from the mirror"
+                return
+            }
+        }
+    }
     Write-Info "git not found — attempting install via winget..."
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent
@@ -168,7 +353,8 @@ function Ensure-Node {
         }
         Write-Warn "winget install completed, but Node.js is still unavailable in this shell"
         Write-Warn "Close and reopen PowerShell, then re-run this script."
-        exit 1
+        if ($env:SUZENT_DEV_SETUP -eq "1") { exit 1 }
+        return
     }
 
     # Try Chocolatey
@@ -185,8 +371,13 @@ function Ensure-Node {
         if ((Get-NodeMajor) -ge $MinNodeMajor) { Write-Ok "Node.js installed via Scoop"; return }
     }
 
-    Write-Host ""
-    Write-Fail "Could not auto-install Node.js. Please install v${MinNodeMajor}+ from https://nodejs.org/ and re-run."
+    # Normal installs only need Node.js for optional coding-agent integrations
+    # (they run through npx), so a failed install is a warning there.
+    if ($env:SUZENT_DEV_SETUP -eq "1") {
+        Write-Host ""
+        Write-Fail "Could not auto-install Node.js. Please install v${MinNodeMajor}+ from https://nodejs.org/ and re-run."
+    }
+    Write-Warn "Node.js v${MinNodeMajor}+ is not installed. Suzent works without it; install it from https://nodejs.org/ (or https://npmmirror.com/mirrors/node/) to use coding-agent integrations."
 }
 
 Ensure-Node
@@ -194,6 +385,14 @@ Ensure-Node
 # ── Check/install: uv ────────────────────────────────────────────────────────
 function Ensure-Uv {
     if (Get-Command uv -ErrorAction SilentlyContinue) { return }
+    if ($UseChinaMirror) {
+        Write-Info "Installing uv from the PyPI mirror..."
+        if (Install-UvFromMirror) {
+            Refresh-Path
+            if (Get-Command uv -ErrorAction SilentlyContinue) { Write-Ok "uv installed from the PyPI mirror"; return }
+        }
+        Write-Warn "uv mirror install failed; trying the official installer."
+    }
     Write-Info "Installing uv..."
     $escapedUvInstallUrl = $UvInstallUrl.Replace("'", "''")
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm '$escapedUvInstallUrl' | iex"
@@ -269,7 +468,11 @@ if ($IsUpdate) {
         Write-Fail "$SuzentDir already exists but is not a git repo. Remove it or set `$env:SUZENT_DIR to a different path."
     }
     Write-Info "Cloning SUZENT into $SuzentDir..."
-    git clone --branch $InstallRef $RepoUrl $SuzentDir
+    # A stable install only moves between release tags, which a shallow clone
+    # fetches fine, and skipping the history shrinks the download a lot.
+    $cloneDepth = if ($ReleaseTag) { @("--depth", "1") } else { @() }
+    git clone @cloneDepth --branch $InstallRef $RepoUrl $SuzentDir
+    if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed — check the network and re-run." }
     Write-Ok "Repository cloned"
     Set-Location $SuzentDir
 }
@@ -311,48 +514,31 @@ Write-Ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────
 function Get-UiBinary {
-    $asset = "suzent-windows-x86_64.exe"
-    $url = "$ReleaseBaseUrl/$asset"
-    $tmp = $null
-    try {
-        $binDir = Join-Path $SuzentDir "bin"
-        if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
-        $dest = Join-Path $binDir "suzent-ui.exe"
-        $tmp = "$dest.tmp"
-        Write-Info "Downloading pre-built UI binary..."
-        Invoke-WebRequest -Uri $url -OutFile $tmp -TimeoutSec 300
-        Move-Item -Force $tmp $dest
+    $binDir = Join-Path $SuzentDir "bin"
+    if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
+    $dest = Join-Path $binDir "suzent-ui.exe"
+    Write-Info "Downloading pre-built UI binary..."
+    if (Save-ReleaseAsset "suzent-windows-x86_64.exe" $dest) {
         $UiVersion = if ($ReleaseTag) { $ReleaseTag } else { "latest" }
         Set-Content -Path (Join-Path $binDir "version.txt") -Value $UiVersion -NoNewline
         Write-Ok "UI binary ready ($dest)"
-    } catch {
-        if ($tmp -and (Test-Path $tmp)) {
-            Remove-Item -Force $tmp -ErrorAction SilentlyContinue
-        }
-        Write-Warn ("UI binary download failed: " + $_.ToString())
-        Write-Warn "Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
+    } else {
+        Write-Warn "UI binary download failed. Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
     }
 }
 Get-UiBinary
 
 function Get-UpdaterBinary {
-    $asset = "suzent-installer-windows-x86_64.exe"
-    $url = "$ReleaseBaseUrl/$asset"
     $updaterDir = Join-Path $env:USERPROFILE ".suzent\updater"
+    if (-not (Test-Path $updaterDir)) { New-Item -ItemType Directory -Force -Path $updaterDir | Out-Null }
     $dest = Join-Path $updaterDir "suzent-installer.exe"
-    $tmp = "$dest.tmp"
-    try {
-        if (-not (Test-Path $updaterDir)) { New-Item -ItemType Directory -Force -Path $updaterDir | Out-Null }
-        Write-Info "Downloading standalone updater..."
-        Invoke-WebRequest -Uri $url -OutFile $tmp -TimeoutSec 300
-        Move-Item -Force $tmp $dest
+    Write-Info "Downloading standalone updater..."
+    if (Save-ReleaseAsset "suzent-installer-windows-x86_64.exe" $dest) {
         $UpdaterVersion = if ($ReleaseTag) { $ReleaseTag } else { "latest" }
         Set-Content -Path (Join-Path $updaterDir "version.txt") -Value $UpdaterVersion -NoNewline
         Write-Ok "Standalone updater ready ($dest)"
-    } catch {
-        if (Test-Path $tmp) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
-        Write-Warn ("Standalone updater download failed: " + $_.ToString())
-        Write-Warn "The next 'suzent update' will retry automatically."
+    } else {
+        Write-Warn "Standalone updater download failed. The next 'suzent update' will retry automatically."
     }
 }
 Get-UpdaterBinary
@@ -462,11 +648,9 @@ if ($IsUpdate) {
 } else {
     Write-Ok "SUZENT installed successfully!"
     Write-Host ""
-    Write-Host "  Next: edit " -NoNewline
-    Write-Host "$SuzentDir\.env" -ForegroundColor Cyan -NoNewline
-    Write-Host " with your API keys, then run:"
-    Write-Host "  " -NoNewline
-    Write-Host "suzent start" -ForegroundColor Cyan
+    Write-Host "  Next: run " -NoNewline
+    Write-Host "suzent start" -ForegroundColor Cyan -NoNewline
+    Write-Host " and add a model provider in the setup screen."
     Write-Host ""
     Write-Host "  If 'suzent' is not found, restart your terminal." -ForegroundColor Yellow
 }
