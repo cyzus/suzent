@@ -1,6 +1,7 @@
 {
   "version": "0.18.0",
   "consumed": [
+    ".releases/changes/acp-discovery-guidance.json",
     ".releases/changes/activity-rail-disclosure.json",
     ".releases/changes/agent-activity-presentation.json",
     ".releases/changes/agent-inbox-system-reminders.json",
