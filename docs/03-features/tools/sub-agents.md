@@ -73,6 +73,19 @@ default model, which may not be the one your chat uses. A helper can also be a
 coding agent such as Claude Code or Codex, set up under **Settings → ACP
 Agents** (see [Devices & other agents](../nodes.md#use-suzent-from-your-editor-acp)).
 
+To use an external helper, install and sign in to it under **Settings → ACP
+Agents**, then ask Suzent, for example: “Use Codex to investigate the failing
+tests in this project.” Suzent can check which external agents are installed
+before starting one. An installation check does not confirm that sign-in is
+complete or that the agent can connect successfully.
+
+For a follow-up, say “Ask the same helper to fix the failure.” Suzent sends the
+instructions to the existing task. Background replies return to the parent
+conversation automatically. External helpers use their own models and tools;
+Suzent's native helper profiles do not control them. If this conversation
+denies specific tools, external delegation is blocked because Suzent cannot
+enforce that deny list inside the external agent.
+
 ## Watching, redirecting, and stopping helpers
 
 Helpers appear as a block in the chat, with **View log** and **Stop**, and in

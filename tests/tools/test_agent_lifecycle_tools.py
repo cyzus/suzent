@@ -48,6 +48,47 @@ def _chat(
     )
 
 
+@pytest.mark.parametrize("limit", [1, 5])
+def test_agent_list_acp_discovers_configs_without_exposing_secrets(
+    monkeypatch: pytest.MonkeyPatch, limit: int
+) -> None:
+    from suzent.acp.registry import ACPAgent, ACPAgentRegistry
+
+    agents = [
+        ACPAgent(
+            id="installed",
+            name="Installed",
+            command=["private-command"],
+            env={"API_KEY": "secret"},
+            description="A coding agent",
+        ),
+        ACPAgent(id="missing", name="Missing", command=[]),
+    ]
+    monkeypatch.setattr(ACPAgentRegistry, "list_agents", lambda self: agents)
+    monkeypatch.setattr(
+        ACPAgent, "available", property(lambda self: self.id == "installed")
+    )
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda _: _chat("agent-current")),
+    )
+
+    result = AgentListTool().forward(_ctx(), status="acp", limit=limit)
+
+    assert result.success
+    records = result.metadata["acp_agents"]
+    assert len(records) == min(limit, 2)
+    assert result.metadata["has_more"] is (limit < 2)
+    assert records[0]["acp_agent_id"] == "installed"
+    assert records[0]["available"] is True
+    if limit > 1:
+        assert records[1]["available"] is False
+    assert "agent_send targets" in result.message
+    assert "private-command" not in str(result)
+    assert "secret" not in str(result)
+    assert "agent_id" not in records[0]
+
+
 def test_agent_list_recent_is_bounded_to_current_project(monkeypatch):
     current = _chat("agent-current")
     target = _chat("agent-target", platform="telegram")

@@ -10,6 +10,84 @@ import styles from "./index.module.css";
 
 const UNIX_CMD = `curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash`;
 const WIN_CMD = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"`;
+// raw.githubusercontent.com is often unreachable from mainland China.
+const CN_UNIX_CMD = `curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash`;
+const CN_WIN_CMD = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"`;
+const GITHUB_LATEST =
+  "https://github.com/cyzus/suzent/releases/latest/download";
+const MIRROR_RELEASES = "https://registry.npmmirror.com/-/binary/suzent";
+const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
+
+async function reachable(url: string, ms: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), ms);
+  try {
+    // An opaque response still proves the host answered.
+    await fetch(url, {
+      mode: "no-cors",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function newestMirroredTag(entries: unknown): string | null {
+  if (!Array.isArray(entries)) return null;
+  const versions = entries
+    .map((entry) =>
+      String((entry as { name?: unknown })?.name ?? "").replace(/\/$/, ""),
+    )
+    .filter((tag) => RELEASE_TAG.test(tag))
+    .map((tag) => ({ tag, parts: tag.slice(1).split(".").map(Number) }));
+  versions.sort(
+    (a, b) =>
+      b.parts[0] - a.parts[0] ||
+      b.parts[1] - a.parts[1] ||
+      b.parts[2] - a.parts[2],
+  );
+  return versions[0]?.tag ?? null;
+}
+
+/**
+ * Where to download from, decided by the visitor's network rather than their
+ * language: a browser that cannot reach Google but can reach npmmirror gets
+ * the mainland mirror. Anything uncertain falls back to GitHub.
+ */
+function useDownloadSource(): { china: boolean; mirrorTag: string | null } {
+  const [source, setSource] = useState<{
+    china: boolean;
+    mirrorTag: string | null;
+  }>({
+    china: false,
+    mirrorTag: null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (await reachable("https://www.google.com/generate_204", 4000)) return;
+      if (!(await reachable(`${MIRROR_RELEASES}/`, 4000))) return;
+      let mirrorTag: string | null = null;
+      try {
+        const response = await fetch(`${MIRROR_RELEASES}/`, {
+          cache: "no-store",
+        });
+        if (response.ok) mirrorTag = newestMirroredTag(await response.json());
+      } catch {
+        // Not mirrored yet, or the listing is not readable cross-origin.
+      }
+      if (!cancelled) setSource({ china: true, mirrorTag });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return source;
+}
 
 const getFeatureCards = (translate: ReturnType<typeof useTranslator>) => [
   {
@@ -255,6 +333,7 @@ function InstallerDownloads(): ReactNode {
   const [detecting, setDetecting] = useState(true);
   const [macArch, setMacArch] = useState("aarch64");
   const [terminalOS, setTerminalOS] = useState<"unix" | "windows" | null>(null);
+  const { china, mirrorTag } = useDownloadSource();
   useEffect(() => {
     const ua = navigator.userAgent;
     if (
@@ -288,7 +367,17 @@ function InstallerDownloads(): ReactNode {
   const extension = os === "windows" ? ".exe" : os === "macos" ? ".dmg" : "";
   const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${extension}`;
   const activeTerminal = terminalOS ?? (os === "windows" ? "windows" : "unix");
-  const cmd = activeTerminal === "windows" ? WIN_CMD : UNIX_CMD;
+  const cmd =
+    activeTerminal === "windows"
+      ? china
+        ? CN_WIN_CMD
+        : WIN_CMD
+      : china
+        ? CN_UNIX_CMD
+        : UNIX_CMD;
+  const downloadUrl = mirrorTag
+    ? `${MIRROR_RELEASES}/${mirrorTag}/${asset}`
+    : `${GITHUB_LATEST}/${asset}`;
   return (
     <section
       id="download"
@@ -308,11 +397,7 @@ function InstallerDownloads(): ReactNode {
           {os ? (
             <a
               className={styles.downloadPrimary}
-              href={
-                detecting
-                  ? undefined
-                  : `https://github.com/cyzus/suzent/releases/latest/download/${asset}`
-              }
+              href={detecting ? undefined : downloadUrl}
               aria-disabled={detecting}
               tabIndex={detecting ? -1 : undefined}
             >

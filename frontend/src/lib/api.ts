@@ -316,6 +316,7 @@ export interface ApiProvider {
   id: string;
   label: string;
   logo_url?: string;
+  key_url?: string;
   user_defined?: boolean;
   default_models: Model[];
   fields: ApiField[];

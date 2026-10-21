@@ -17,6 +17,37 @@ inbound bridge. See [a2a.md](./a2a.md) for A2A, which reaches
 agents over the network; ACP is local and process-scoped — the client spawns the
 agent and speaks JSON-RPC on its stdin/stdout.
 
+## Calling an external ACP agent from Suzent
+
+Use the existing agent tools in this order:
+
+1. `agent_list(status="acp")` lists registered ACP configurations, including
+   built-ins, with `acp_agent_id`, name, description, and `available`. This is a
+   local installation check; it does not start a process, test authentication,
+   or guarantee that the ACP handshake will succeed. Missing installations are
+   managed in **Settings → ACP Agents**.
+2. `agent(description="...", runtime="acp", acp_agent_id="<listed ID>")`
+   starts a task. The default is background execution; completion wakes the
+   parent. Use `run_in_background=False` to await the result. Supply `cwd` to
+   select a workspace. ACP uses the external agent's tools and model: omit
+   native profiles and tool lists; `model_override` is rejected. A parent with
+   denied tools cannot delegate to ACP because those restrictions cannot be
+   enforced on the external agent's tools.
+3. `agent_send(agent_id="<returned task ID>", message="...")` continues the
+   same task. For an existing accessible chat, obtain its `agent_id` from
+   `agent_list(status="recent")`. Use `wait=True` for a direct reply.
+
+| Identifier | Meaning | Used by |
+|---|---|---|
+| `acp_agent_id` | Registry configuration, such as `codex` | `agent` with `runtime="acp"` |
+| `acp_session_id` | External ACP protocol session | Optional explicit resume through `agent` |
+| `agent_id` / returned task ID | Suzent conversation or sub-agent task | `agent_send`, rather than either ACP identifier |
+
+The inbox dispatcher routes messages for ACP chats to the ACP runtime. The
+manager starts or resumes the subprocess and the client sends `session/prompt`
+over stdio. Ordinary follow-ups should use `agent_send` so they retain the
+Suzent task's conversation and routing.
+
 ## Outbound authentication and streaming
 
 The outbound client implements ACP v1. Probing an agent returns its advertised

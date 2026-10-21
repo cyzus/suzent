@@ -54,7 +54,6 @@ def build_agent_deps(
     )
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
     cwd = _get_config_value(config, "cwd", None)
-    auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
     # Layer 1 (lowest): global config from CONFIG / permissions.yaml
     # Layer 2 (middle): per-chat session rules persisted in DB
     # Layer 3 (highest): runtime config sent by client this request
@@ -254,7 +253,6 @@ def build_agent_deps(
         social_context=social_ctx,
         skill_manager=skill_manager,
         repository_agent_files=repository_agent_files,
-        auto_approve_tools=auto_approve_tools,
         tool_permission_policies=dict(tool_permission_policies or {}),
         tool_approval_policy=tool_approval_policy,
         permission_mode=permission_mode,

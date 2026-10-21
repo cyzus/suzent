@@ -896,6 +896,16 @@ export function ProvidersTab({
               <div className="flex flex-1 flex-col gap-4 p-4">
                 {activeTab === 'credentials' && (
                   <div className="space-y-4">
+                    {provider.key_url && (
+                      <a
+                        href={provider.key_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
+                      >
+                        {t('settings.providers.getKey', { provider: provider.label })}
+                      </a>
+                    )}
                     {provider.fields.map((field) => {
                       const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
                       const isConfigured =

@@ -58,6 +58,10 @@
       input { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 0 10px; font: 11px ui-monospace, monospace; color: #555; }
       input:disabled { background: #f2f2ee; }
       .path-hint { color: var(--muted); font-size: 10px; line-height: 1.4; margin: 6px 0 0; }
+      .mirror-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 10px; }
+      .mirror-toggle { display: flex; align-items: center; gap: 6px; margin: 0; color: #191919; font-size: 11px; cursor: pointer; }
+      .mirror-toggle input { width: 14px; height: 14px; margin: 0; padding: 0; }
+      .mirror-hint { color: var(--muted); font-size: 10px; }
       .footer-actions { grid-row: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
       .footer-note { color: var(--muted); font-size: 10px; line-height: 1.4; max-width: 260px; }
       .buttons { display: flex; gap: 8px; }
@@ -104,6 +108,10 @@
                   <button class="secondary" id="browse-dir" type="button">Choose</button>
                 </div>
                 <p class="path-hint" id="path-hint"></p>
+                <div class="mirror-row" id="mirror-row" hidden>
+                  <label class="mirror-toggle" for="china-mirror"><input type="checkbox" id="china-mirror" disabled /><span id="mirror-label">Use mainland China mirrors</span></label>
+                  <span class="mirror-hint" id="mirror-hint" aria-live="polite"></span>
+                </div>
               </div>
 
               <section class="status-card" aria-live="polite">
@@ -182,7 +190,7 @@
       const stageTranslations = {
         'Downloading desktop UI binary': '下载桌面程序', 'Building desktop UI from source': '从源码构建桌面程序',
         'Checking system prerequisites': '检查系统环境', 'Installing uv': '安装 uv', 'Preparing workspace': '准备工作区', 'Installing standalone updater': '安装独立更新器',
-        'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment': '同步 Python 环境', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
+        'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment (the first install can take a while)': '同步 Python 环境（首次安装可能需要十几分钟，请勿关闭）', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
         'Creating launch shortcuts': '创建启动快捷方式', 'Finalizing installation': '完成安装',
       };
       const updateStages = isZh
@@ -213,6 +221,40 @@
       let destination = {kind:'new', branch:null};
       let destinationRequest = 0;
       let destinationActionPending = false;
+      // Whether to download through domestic mirrors, decided from the network
+      // this computer is on (not its language) and editable before installing.
+      let network = {china_mirror:false, source:'detected', detected:null};
+      let networkReady = Promise.resolve();
+
+      function showNetworkHint() {
+        const on = $('china-mirror').checked;
+        setText('mirror-hint', network.source === 'explicit'
+          ? (isZh ? '按你之前的选择' : 'Your saved choice')
+          : on ? (isZh ? '检测到中国大陆网络，已自动开启' : 'Mainland China network detected')
+            : (isZh ? '已根据当前网络自动选择' : 'Chosen from your current network'));
+      }
+
+      async function loadNetwork() {
+        const box = $('china-mirror');
+        $('mirror-row').hidden = false; box.disabled = true;
+        setText('mirror-label', isZh ? '使用国内镜像加速' : 'Use mainland China mirrors');
+        setText('mirror-hint', isZh ? '正在检测网络…' : 'Checking network…');
+        let mode = null;
+        try { mode = preview || !invoke ? null : await invoke('network_mode'); } catch (error) { log(String(error)); }
+        network = {china_mirror:Boolean(mode?.china_mirror), source:mode?.source === 'explicit' ? 'explicit' : 'detected', detected:null};
+        if (network.source === 'detected') network.detected = network.china_mirror;
+        box.checked = network.china_mirror; box.disabled = running || installComplete;
+        showNetworkHint();
+      }
+
+      async function changeNetwork() {
+        const value = $('china-mirror').checked;
+        // Matching the detection again means "keep detecting" for later updates.
+        const choice = network.detected !== null && value === network.detected ? null : value;
+        network.china_mirror = value; network.source = choice === null ? 'detected' : 'explicit';
+        showNetworkHint();
+        try { if (invoke && !preview) await invoke('set_china_mirror_preference', {choice}); } catch (error) { log(String(error)); }
+      }
 
       async function refreshDestination() {
         if (context?.mode !== 'install' || running || installComplete) return;
@@ -423,7 +465,7 @@
         if (preview || !invoke) {
           manifest = { protocol_version: 1, stages: [
             {name:'system',title:'Checking system prerequisites'}, {name:'uv',title:'Installing uv'}, {name:'workspace',title:'Preparing workspace'},
-            {name:'backend',title:'Synchronizing Python environment'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
+            {name:'backend',title:'Synchronizing Python environment (the first install can take a while)'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
             {name:'playwright',title:'Installing Playwright Chromium'}, {name:'shortcuts',title:'Creating launch shortcuts'},
           ]};
           context.dir = 'C:\\Users\\suzy\\suzent';
@@ -431,6 +473,7 @@
           const [raw, defaultDir] = await Promise.all([invoke('installer_manifest'), invoke('default_install_dir_command')]);
           manifest = JSON.parse(raw); context.dir = context.dir || defaultDir;
         }
+        networkReady = loadNetwork();
         manifest.stages.forEach(stage => states.set(stage.name, 'pending'));
         els.dir.value = context.dir; setText('page-subtitle', `${context.branch || channelLabel()} · ${manifest.stages.length} ${text.steps}`); renderStages();
         await refreshDestination();
@@ -492,11 +535,13 @@
         try {
           const dir = els.dir.value.trim(); if (!dir) throw new Error(isZh ? '安装位置不能为空。' : 'Installation destination cannot be empty.');
           context.dir = dir;
+          await networkReady; $('china-mirror').disabled = true;
+          const chinaMirror = network.china_mirror;
           const warnings = [];
           for (const stage of manifest.stages) {
             currentPhase = stage.name; phaseStartedAt = Date.now(); states.set(stage.name,'running'); renderStages(stage.name); els.statusKicker.textContent = text.preparing; els.statusTitle.textContent = translateStage(stage.title); els.statusMessage.textContent = isZh ? '正在执行并记录此步骤。' : 'Running and recording this step.';
             const done = manifest.stages.filter(item => ['succeeded','skipped'].includes(states.get(item.name))).length; setProgress((done / manifest.stages.length) * 100, stage.name);
-            const result = preview || !invoke ? {ok:true,skipped:false,duration_ms:420,logs:[`${stage.title}: ok`]} : JSON.parse(await invoke('run_installer_stage',{request:{stage:stage.name,dir}}));
+            const result = preview || !invoke ? {ok:true,skipped:false,duration_ms:420,logs:[`${stage.title}: ok`]} : JSON.parse(await invoke('run_installer_stage',{request:{stage:stage.name,dir,china_mirror:chinaMirror}}));
             phaseDurations[stage.name] = Number(result.duration_ms || Date.now() - phaseStartedAt); currentPhase = '';
             log(`${stage.title} (${result.duration_ms}ms)`); (result.logs || []).forEach(log);
             if (result.skipped && result.reason) {
@@ -508,7 +553,7 @@
           setProgress(100,text.completed); setRunning(false); installComplete = true; setComplete(isZh ? '安装步骤已完成。你可以打开 Suzent，或关闭此窗口。' : 'Installation steps complete. Open Suzent when ready, or close this window.'); els.launch.hidden = false; els.start.hidden = true;
           if (warnings.length) { setText('complete-title', isZh ? '已完成，有提示' : 'Completed with notes'); els.completeMessage.textContent = (isZh ? '部分步骤已跳过或需要处理：' : 'Some steps were skipped or need attention: ') + warnings.join(' '); els.completeMessage.title = els.completeMessage.textContent; }
           if (states.get('ui') === 'skipped') els.launch.hidden = true;
-        } catch (error) { setRunning(false); setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
+        } catch (error) { setRunning(false); $('china-mirror').disabled = false; setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
       }
 
       async function retryUpdate() {
@@ -579,6 +624,7 @@
           selection?.addRange(range);
         }
       });
+      $('china-mirror').addEventListener('change', changeNetwork);
       els.toggleStages.addEventListener('click', () => { showAllStages = !showAllStages; renderStages(); });
       const titlebar = document.querySelector('.app-titlebar');
       titlebar.addEventListener('pointerdown', event => {

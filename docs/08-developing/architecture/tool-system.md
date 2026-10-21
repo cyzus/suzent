@@ -481,7 +481,7 @@ Keep execution-time validation inside the tool. Permission approval answers whet
 
 ### Headless Runs
 
-Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.
+Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. Nothing approves every tool call wholesale. A headless action that cannot be classified safely is denied.
 
 ## Browser extension development
 
