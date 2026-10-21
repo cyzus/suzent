@@ -53,28 +53,30 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 The script installs Suzent and any missing dependencies (Python/uv, Rust, build tools).
 
-### Mainland China Mirror Mode
+### Installing from mainland China
 
-If package downloads are slow from mainland China, enable mirror mode before running setup:
+Setup picks mirrors from the network it runs on: when Google is unreachable but the mainland mirrors answer, Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv come from mainland mirrors. There is nothing to turn on.
+
+If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 
 <Tabs groupId="os">
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"
 ```
 
 </TabItem>
 <TabItem value="mac-linux" label="Mac / Linux">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash
 ```
 
 </TabItem>
 </Tabs>
 
-Mirror mode configures PyPI, npm, Playwright, Node via nvm, and Rustup mirrors. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running setup.
+Set `SUZENT_CHINA_MIRROR=1` or `SUZENT_CHINA_MIRROR=0` before running setup to force mirror mode on or off. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust.
 
 ---
 
