@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod git_install;
+mod network;
 mod updater;
 
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,6 @@ const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
 const UV_INSTALL_SH_URL: &str = "https://astral.sh/uv/install.sh";
 const UV_INSTALL_PS1_URL: &str = "https://astral.sh/uv/install.ps1";
 const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/latest/download";
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -63,11 +63,16 @@ struct InstallConfig {
 struct StageRequest {
     stage: String,
     dir: String,
+    /// The "use domestic mirrors" switch as the installer window shows it.
+    #[serde(default)]
+    china_mirror: Option<bool>,
 }
 
-#[derive(Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
+#[derive(Serialize)]
+struct NetworkMode {
+    china_mirror: bool,
+    /// `explicit` (flag, environment or a saved choice) or `detected`.
+    source: &'static str,
 }
 
 #[derive(Default)]
@@ -266,7 +271,7 @@ fn main() {
         return;
     }
 
-    let config = InstallConfig::from_env_and_args(&args);
+    let mut config = InstallConfig::from_env_and_args(&args);
 
     if has_flag(&args, "--protocol-version") {
         println!("{PROTOCOL_VERSION}");
@@ -277,6 +282,8 @@ fn main() {
         print_json(&manifest(&config));
         return;
     }
+
+    config.china_mirror = network::china_mode(&args);
 
     if let Some(stage_name) = flag_value(&args, "--stage") {
         run_stage_command(&config, &stage_name);
@@ -339,6 +346,13 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
         config.dir = PathBuf::from(flag_value(&args, "--dir").expect("stage directory"));
         config.json = true;
         config.non_interactive = true;
+        config.china_mirror = match request.china_mirror {
+            Some(enabled) => {
+                let _ = network::record_region(enabled);
+                enabled
+            }
+            None => network::china_mode(&env::args().skip(1).collect::<Vec<_>>()),
+        };
         if config.dir.join(".git").exists() && matches!(request.stage.as_str(), "git" | "repository") {
             return Err("An existing checkout must use update/repair, not first-time installation. No branch was changed.".into());
         }
@@ -361,6 +375,37 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// Decides whether the installer should use domestic mirrors. Probing takes
+/// up to a few seconds, so the window asks once and shows the result.
+#[tauri::command]
+async fn network_mode() -> NetworkMode {
+    tauri::async_runtime::spawn_blocking(|| {
+        let args: Vec<String> = env::args().skip(1).collect();
+        match network::explicit_preference(&args) {
+            Some(enabled) => NetworkMode {
+                china_mirror: enabled,
+                source: "explicit",
+            },
+            None => NetworkMode {
+                china_mirror: network::detect_china_network(),
+                source: "detected",
+            },
+        }
+    })
+    .await
+    .unwrap_or(NetworkMode {
+        china_mirror: false,
+        source: "detected",
+    })
+}
+
+/// Saves the user's own choice from the installer window; `None` returns to
+/// detecting the network on every install and update.
+#[tauri::command]
+fn set_china_mirror_preference(choice: Option<bool>) -> Result<(), String> {
+    network::save_preference(choice).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -514,6 +559,8 @@ fn run_tauri_app() {
             save_diagnostics,
             inspect_destination,
             open_existing_updater,
+            network_mode,
+            set_china_mirror_preference,
         ])
         .run(installer_context_config())
         .expect("error while running Suzent installer");
@@ -620,10 +667,9 @@ impl InstallConfig {
             || env::var("SUZENT_SKIP_PLAYWRIGHT")
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
-        let china_mirror = has_flag(args, "--china-mirror")
-            || env::var("SUZENT_CHINA_MIRROR")
-                .map(|value| truthy_env(&value))
-                .unwrap_or(false);
+        // Detection probes the network, so callers that need it run
+        // `network::china_mode` once; constructing a config never waits.
+        let china_mirror = network::explicit_preference(args).unwrap_or(false);
         let repo_url_env = env::var("SUZENT_REPO_URL")
             .ok()
             .filter(|value| !value.trim().is_empty());
@@ -862,10 +908,25 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
     StageOutcome::fail("Git is required. Install it from https://git-scm.com/downloads and retry.")
 }
 
-fn stage_uv(_config: &InstallConfig) -> StageOutcome {
+fn stage_uv(config: &InstallConfig) -> StageOutcome {
     if let Some(path) = find_executable("uv") {
         print_human(format!("[OK] uv found at {}", path.display()));
         return StageOutcome::ok();
+    }
+
+    if config.china_mirror {
+        print_human("Installing uv from the PyPI mirror...");
+        let bin_dir = dirs_home().join(".local").join("bin");
+        match network::install_uv_from_mirror(&bin_dir) {
+            Ok(path) => {
+                add_to_user_path(&bin_dir);
+                print_human(format!("[OK] uv installed at {}", path.display()));
+                return StageOutcome::ok();
+            }
+            Err(error) => print_human(format!(
+                "uv mirror install failed ({error}); trying the official installer."
+            )),
+        }
     }
 
     print_human("Installing uv...");
@@ -879,12 +940,12 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
                 "-Command",
                 &format!(
                     "irm '{}' | iex",
-                    escape_powershell_single_quoted(&_config.uv_install_url)
+                    escape_powershell_single_quoted(&config.uv_install_url)
                 ),
             ])
             .stdout(child_stdio())
             .stderr(child_stdio());
-        configure_mirror_env(&mut command, _config);
+        configure_mirror_env(&mut command, config);
         hide_command_window(&mut command);
         run_command(&mut command)
     } else {
@@ -894,12 +955,12 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
                 "-c",
                 &format!(
                     "curl -LsSf '{}' | sh",
-                    shell_single_quote(&_config.uv_install_url)
+                    shell_single_quote(&config.uv_install_url)
                 ),
             ])
             .stdout(child_stdio())
             .stderr(child_stdio());
-        configure_mirror_env(&mut command, _config);
+        configure_mirror_env(&mut command, config);
         run_command(&mut command)
     };
 
@@ -965,20 +1026,9 @@ fn is_release_tag(value: &str) -> bool {
 }
 
 fn resolve_release_tag(config: &InstallConfig) -> Result<String, String> {
-    let tag = if let Some(tag) = &config.release_tag_override {
-        tag.trim().to_string()
-    } else {
-        reqwest::blocking::Client::builder()
-            .user_agent("suzent-installer")
-            .build()
-            .map_err(|error| format!("Failed to create release client: {error}"))?
-            .get(LATEST_RELEASE_API)
-            .send()
-            .and_then(|response| response.error_for_status())
-            .map_err(|error| format!("Failed to resolve latest stable release: {error}"))?
-            .json::<ReleaseResponse>()
-            .map_err(|error| format!("Invalid latest release response: {error}"))?
-            .tag_name
+    let tag = match &config.release_tag_override {
+        Some(tag) => tag.trim().to_string(),
+        None => network::latest_release_tag(config.china_mirror)?,
     };
     if !is_release_tag(&tag) {
         return Err(format!("Invalid stable release tag: {tag}"));
@@ -1087,13 +1137,15 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
                 ));
             }
         }
-        run_command(Command::new(&git).args([
-            "clone",
-            "--branch",
-            target_ref,
-            &config.repo_url,
-            config.dir.to_string_lossy().as_ref(),
-        ]))
+        let mut clone = Command::new(&git);
+        clone.args(["clone", "--branch", target_ref]);
+        // A stable install only ever moves between release tags, which a
+        // shallow clone fetches fine; skipping the history makes the download
+        // a fraction of the size on slow links.
+        if release_tag.is_some() {
+            clone.args(["--depth", "1"]);
+        }
+        run_command(clone.args([&config.repo_url, config.dir.to_string_lossy().as_ref()]))
     };
 
     if !repository_ready {
@@ -1132,9 +1184,17 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
     };
 
     if config.china_mirror {
-        return sync_dependencies_via_mirror(&uv, config);
+        return if network::sync_locked_dependencies_via_mirror(
+            &uv,
+            &config.dir,
+            &["social"],
+            run_command,
+        ) {
+            StageOutcome::ok()
+        } else {
+            StageOutcome::fail("Installing Python dependencies through the PyPI mirror failed.")
+        };
     }
-
     let mut command = Command::new(&uv);
     command
         .args(["sync", "--frozen", "--extra", "social"])
@@ -1148,57 +1208,17 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
     }
 }
 
-/// `uv sync --frozen` downloads every wheel from the URL recorded in uv.lock
-/// (files.pythonhosted.org) and ignores `UV_DEFAULT_INDEX`, so mirror mode
-/// installs the same locked, hash-pinned set through the mirror instead.
-fn sync_dependencies_via_mirror(uv: &Path, config: &InstallConfig) -> StageOutcome {
-    let requirements =
-        env::temp_dir().join(format!("suzent-requirements-{}.txt", std::process::id()));
-    let requirements_arg = requirements.to_string_lossy().to_string();
-    let steps: [&[&str]; 3] = [
-        &[
-            "export",
-            "--frozen",
-            "--extra",
-            "social",
-            "--quiet",
-            "-o",
-            &requirements_arg,
-        ],
-        &["venv", "--allow-existing", "--quiet"],
-        &["pip", "sync", &requirements_arg],
-    ];
-    let synced = steps.iter().all(|args| {
-        let mut command = Command::new(uv);
-        command.args(*args).current_dir(&config.dir);
-        configure_mirror_env(&mut command, config);
-        run_command(&mut command)
-    });
-    let _ = fs::remove_file(&requirements);
-
-    if synced {
-        StageOutcome::ok()
-    } else {
-        StageOutcome::fail("Installing Python dependencies through the PyPI mirror failed.")
-    }
-}
-
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let release_tag = read_install_release_tag(config);
     if release_tag.is_none() {
         return stage_source_ui(config);
     }
     let asset = ui_asset_name();
-    let release_base_url = if let Some(tag) = &release_tag {
-        if config.release_base_url_override {
-            config.release_base_url.clone()
-        } else {
-            format!("https://github.com/cyzus/suzent/releases/download/{tag}")
-        }
-    } else {
-        config.release_base_url.clone()
+    let bases = match &release_tag {
+        Some(_) if config.release_base_url_override => vec![config.release_base_url.clone()],
+        Some(tag) => network::release_bases(config.china_mirror, tag),
+        None => vec![config.release_base_url.clone()],
     };
-    let url = format!("{release_base_url}/{asset}");
     let bin_dir = config.dir.join("bin");
     let dest = bin_dir.join(ui_binary_name());
     let tmp = dest.with_extension("tmp");
@@ -1207,16 +1227,27 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail(format!("Failed to create bin directory: {error}"));
     }
 
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .get(&url)
-        .send()
-        .and_then(|resp| resp.error_for_status());
-    let bytes = match response.and_then(|resp| resp.bytes()) {
+    // Every source is checked against the release's SHA256SUMS, so a mirror
+    // can only make the download faster, never different.
+    let download = network::fetch_release_file(&bases, "SHA256SUMS")
+        .and_then(|sums| updater::parse_release_checksum(&String::from_utf8_lossy(&sums), asset))
+        .and_then(|expected| {
+            let mut errors = Vec::new();
+            for base in &bases {
+                match network::fetch_release_file(std::slice::from_ref(base), asset) {
+                    Ok(bytes) if network::sha256_hex(&bytes) == expected => return Ok(bytes),
+                    Ok(_) => errors.push(format!("{base}/{asset}: checksum mismatch")),
+                    Err(error) => errors.push(error),
+                }
+            }
+            Err(errors.join("; "))
+        });
+    let bytes = match download {
         Ok(bytes) => bytes,
         Err(error) => {
             return StageOutcome::skipped(format!(
-                "UI binary download failed: {error}. Download later from {url}."
+                "UI binary download failed: {error}. Download it later from {}/{asset}.",
+                bases.last().map(String::as_str).unwrap_or_default()
             ));
         }
     };
@@ -1502,69 +1533,8 @@ fn shell_single_quote(value: &str) -> String {
     value.replace('\'', "'\\''")
 }
 
-fn truthy_env(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "cn"
-    )
-}
-
 fn configure_mirror_env(command: &mut Command, config: &InstallConfig) {
-    if !config.china_mirror {
-        return;
-    }
-
-    env_if_missing(
-        command,
-        "UV_DEFAULT_INDEX",
-        "https://pypi.tuna.tsinghua.edu.cn/simple",
-    );
-    env_if_missing(
-        command,
-        "UV_PYTHON_INSTALL_MIRROR",
-        "https://registry.npmmirror.com/-/binary/python-build-standalone",
-    );
-    env_if_missing(
-        command,
-        "NPM_CONFIG_REGISTRY",
-        "https://registry.npmmirror.com",
-    );
-    env_if_missing(
-        command,
-        "PLAYWRIGHT_DOWNLOAD_HOST",
-        "https://npmmirror.com/mirrors/playwright",
-    );
-    // Playwright's Chromium is a Chrome for Testing build with its own URL layout.
-    env_if_missing(
-        command,
-        "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST",
-        "https://cdn.npmmirror.com/binaries/chrome-for-testing",
-    );
-    env_if_missing(
-        command,
-        "NVM_NODEJS_ORG_MIRROR",
-        "https://npmmirror.com/mirrors/node",
-    );
-    env_if_missing(
-        command,
-        "RUSTUP_DIST_SERVER",
-        "https://mirrors.tuna.tsinghua.edu.cn/rustup",
-    );
-    env_if_missing(
-        command,
-        "RUSTUP_UPDATE_ROOT",
-        "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup",
-    );
-}
-
-fn env_if_missing(command: &mut Command, key: &str, value: &str) {
-    if env::var(key)
-        .ok()
-        .filter(|existing| !existing.trim().is_empty())
-        .is_none()
-    {
-        command.env(key, value);
-    }
+    network::apply_mirror_env(command, config.china_mirror);
 }
 
 fn is_empty_dir(path: &Path) -> bool {
@@ -1766,6 +1736,29 @@ fn find_git_after_install() -> Option<PathBuf> {
         .into_iter()
         .find(|path| git_install::usable_git(path))
 }
+
+/// The official uv installer puts `~/.local/bin` on the user PATH; the mirror
+/// install has to do the same so `suzent` and the shim find uv.
+#[cfg(windows)]
+fn add_to_user_path(dir: &Path) {
+    let script = format!(
+        "$dir = '{}'; $current = [Environment]::GetEnvironmentVariable('Path', 'User'); \
+         if (-not (($current -split ';') -contains $dir)) {{ \
+         [Environment]::SetEnvironmentVariable('Path', ($(if ($current) {{ \"$current;$dir\" }} else {{ $dir }})), 'User') }}",
+        escape_powershell_single_quoted(&dir.display().to_string())
+    );
+    let mut command = Command::new("powershell");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_command_window(&mut command);
+    let _ = command.status();
+}
+
+/// The desktop app and the updater look for uv in `~/.local/bin` directly.
+#[cfg(not(windows))]
+fn add_to_user_path(_dir: &Path) {}
 
 fn find_uv_after_install() -> Option<PathBuf> {
     find_executable("uv").or_else(|| {

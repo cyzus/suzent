@@ -650,10 +650,31 @@ def test_replace_ui_files_restores_both_files_when_metadata_install_fails(
     assert version_file.read_text(encoding="utf-8") == "v1.0.0"
 
 
-def test_release_asset_url_pins_requested_tag():
-    assert cli_main._release_asset_url("suzent.exe", "v1.2.3") == (
-        "https://github.com/cyzus/suzent/releases/download/v1.2.3/suzent.exe"
+def test_release_asset_download_falls_back_to_the_next_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_main.network_region,
+        "release_asset_urls",
+        lambda asset, version: [
+            f"https://mirror.test/{version}/{asset}",
+            f"https://github.test/{version}/{asset}",
+        ],
     )
+    attempted = []
+
+    def fake_download(url, dest):
+        attempted.append(url)
+        if "mirror" in url:
+            raise OSError("not synced yet")
+        dest.write_bytes(b"asset")
+
+    monkeypatch.setattr(cli_main, "_download_file_atomic", fake_download)
+    destination = tmp_path / "suzent.exe"
+    cli_main._download_release_asset("suzent.exe", "v1.2.3", destination)
+    assert attempted == [
+        "https://mirror.test/v1.2.3/suzent.exe",
+        "https://github.test/v1.2.3/suzent.exe",
+    ]
+    assert destination.read_bytes() == b"asset"
 
 
 def test_backend_sync_args_keep_dev_extra_for_development_workspace(tmp_path):
