@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
 - SUZENT, a focal agent, now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
+- Show what woke a background turn, such as a message from a paired device, while the turn is still running.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
 - Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
