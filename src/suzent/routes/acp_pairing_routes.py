@@ -21,7 +21,7 @@ class DecisionRequest(BaseModel):
     approved: StrictBool
 
 
-def store(request: Request) -> ACPPairingStore:
+def require_local_operator(request: Request) -> None:
     # These routes are local-only even when a remote caller holds a host token.
     if (
         not request.client
@@ -49,6 +49,10 @@ def store(request: Request) -> ACPPairingStore:
             and not trusted
         ):
             raise HTTPException(403, "Untrusted pairing origin")
+
+
+def store(request: Request) -> ACPPairingStore:
+    require_local_operator(request)
     if not hasattr(request.app.state, "acp_pairing"):
         request.app.state.acp_pairing = ACPPairingStore(
             USER_CONFIG_DIR / "acp_grants.json"

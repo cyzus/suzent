@@ -58,6 +58,24 @@ the connection for the next session, including when credentials are scoped to
 that connection; unused login connections close on backend shutdown. Login
 has a five-minute deadline. Credentials remain owned by the external agent.
 
+When a native terminal is available, the client advertises `auth.terminal`.
+Terminal methods append their advertised arguments to the configured agent
+command and overlay the advertised environment; their IDs never go through
+`authenticate`. Agents without a supported advertised method can use their
+registry `login_command`. Windows opens a console, macOS opens Terminal, and
+Linux uses an installed graphical terminal. Completion triggers a fresh
+connection and session check; exit code zero alone is not authentication success.
+The built-in Claude bridge additionally checks `claude auth status` because its
+ACP session can start without valid provider credentials. Probes do not send a
+model prompt.
+
+Local-only login endpoints start, inspect and cancel per-agent jobs. Repeated
+starts share the active job, with at most four concurrent logins. Cancellation,
+timeout and backend shutdown clean up the login process tree. A terminal worker
+watches the backend lifetime and reports only process identity and exit status.
+Private temporary launch configuration is removed as soon as the worker reads
+it; terminal output and credentials are not returned through the settings API.
+
 Authentication-required errors retain their JSON-RPC code and data. A failed
 `session/load` with code `-32000` does not fall back to a new session. A prompt
 authentication failure closes the live connection but preserves the saved

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards."
+}

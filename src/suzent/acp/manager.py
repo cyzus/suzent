@@ -64,6 +64,9 @@ class ACPManager:
         self._sessions: dict[str, ManagedSession] = {}
         self._lock = asyncio.Lock()
         self._authenticated: dict[str, tuple[ACPClient, dict[str, Any]]] = {}
+        from .authentication import ACPLogins
+
+        self.logins = ACPLogins(self)
 
     def list_active(self) -> list[dict[str, Any]]:
         return [
@@ -94,6 +97,9 @@ class ACPManager:
         )
         retained = False
         try:
+            from .terminal_login import terminal_available
+
+            client.terminal_auth = terminal_available()
             if cached:
                 init = cached[1]
             else:
@@ -116,6 +122,18 @@ class ACPManager:
                     )
                 await client.authenticate(method_id)
             status = "ready"
+            if (
+                agent.id == "claude-code"
+                and "suzent.acp.claude_bridge" in agent.command
+            ):
+                from .authentication import claude_authenticated
+
+                if not await claude_authenticated(agent.cwd or cwd, agent.env):
+                    return {
+                        "status": "auth_required",
+                        "authMethods": [],
+                        "protocolVersion": init.get("protocolVersion"),
+                    }
             try:
                 await client.new_session(cwd)
             except ACPError as exc:
@@ -210,6 +228,7 @@ class ACPManager:
             await self._close_unlocked(chat_id)
 
     async def shutdown(self) -> None:
+        await self.logins.shutdown()
         async with self._lock:
             sessions = list(self._sessions.values())
             self._sessions.clear()
