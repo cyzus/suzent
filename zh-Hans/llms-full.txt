@@ -1649,16 +1649,24 @@ arguments.
 It also works the other way around: under **Settings → ACP Agents**, Suzent can
 use coding agents such as Claude Code or Codex as helpers.
 
-To sign in, click **Probe** beside an installed agent. If it reports **Auth
-required**, choose one of the **Sign in** buttons it offers and finish the
-agent's login flow, which may open your browser. Once it reports **Reachable**,
-retry your task. Suzent keeps the saved conversation ID when authentication
+Opening the page or clicking **Refresh** checks installed agents automatically.
+An agent that passes the check shows **Signed in**, with **Sign in again**
+available if you need to repeat authorization. Installation alone is not a
+login check.
+
+To sign in, click **Sign in** beside an installed agent. Finish the agent's
+login flow in the browser or terminal that opens on the computer running
+Suzent. The page shows progress, lets you cancel, and checks the connection
+again when login finishes. If the agent offers several methods, use **Probe**
+to discover them and choose a method before signing in. Once it reports
+**Reachable**, retry your task. Suzent keeps the saved conversation ID when authentication
 expires; it does not start a replacement conversation just because login is
 required.
 
-If no sign-in button is offered, use **Copy Login** or the agent's installation
-guide to sign in through its CLI, then probe again. Interactive terminal login
-is not yet embedded in Suzent. Installation status alone does not confirm
+Signing in from this page requires access from the same computer. On a host
+without a graphical terminal, expand **Details** to copy the login command,
+run it on that host, then probe again. Installation and login help stays
+collapsed until needed. Installation status alone does not confirm
 authentication, and a successful probe confirms session creation rather than
 availability of every model or tool.
 
@@ -8752,6 +8760,24 @@ the connection for the next session, including when credentials are scoped to
 that connection; unused login connections close on backend shutdown. Login
 has a five-minute deadline. Credentials remain owned by the external agent.
 
+When a native terminal is available, the client advertises `auth.terminal`.
+Terminal methods append their advertised arguments to the configured agent
+command and overlay the advertised environment; their IDs never go through
+`authenticate`. Agents without a supported advertised method can use their
+registry `login_command`. Windows opens a console, macOS opens Terminal, and
+Linux uses an installed graphical terminal. Completion triggers a fresh
+connection and session check; exit code zero alone is not authentication success.
+The built-in Claude bridge additionally checks `claude auth status` because its
+ACP session can start without valid provider credentials. Probes do not send a
+model prompt.
+
+Local-only login endpoints start, inspect and cancel per-agent jobs. Repeated
+starts share the active job, with at most four concurrent logins. Cancellation,
+timeout and backend shutdown clean up the login process tree. A terminal worker
+watches the backend lifetime and reports only process identity and exit status.
+Private temporary launch configuration is removed as soon as the worker reads
+it; terminal output and credentials are not returned through the settings API.
+
 Authentication-required errors retain their JSON-RPC code and data. A failed
 `session/load` with code `-32000` does not fall back to a new session. A prompt
 authentication failure closes the live connection but preserves the saved
@@ -9716,11 +9742,7 @@ The settings page supports protocol-driven authentication for outbound agents.
 Inbound editor pairing already supports terminal and agent authentication.
 Remaining outbound work:
 
-- Interactive terminal authentication: provide a user-visible terminal using
-  the configured executable, apply the advertised arguments/environment, and
-  reconnect after successful exit. Do not advertise `auth.terminal` until this
-  flow is implemented; terminal method IDs must never be sent to `authenticate`.
-- Capability-gated logout and richer authentication progress/cancellation UI.
+- Capability-gated logout.
 - Byte-budgeted streaming buffers and measured frontend render batching. The
   current event-count limit fails explicitly on overflow; it is not disk-backed
   replay or transparent recovery of an interrupted turn.
