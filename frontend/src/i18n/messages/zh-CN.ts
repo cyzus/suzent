@@ -761,6 +761,7 @@ export const zhCN = {
       lintNever: '尚未运行',
       lintEveryDays: '每 {days} 天',
       statusBarIdle: '记忆空闲',
+      openMemorySettings: '打开记忆设置',
       statusBarNeedsReview: '记忆需检查',
       statusBarPending: '记忆待处理 {count}',
       statusBarWatermark: '已整理至 {watermark}',

@@ -346,10 +346,13 @@
   }
 }
 
+/* Keep scrolling inside app panels and prevent viewport rubber-banding. */
 html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .prose .katex-display {

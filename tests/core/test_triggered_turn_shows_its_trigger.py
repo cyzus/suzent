@@ -17,6 +17,7 @@ from suzent.core.chat_processor import ChatProcessor
 def turn(monkeypatch: pytest.MonkeyPatch):
     presaved: list[tuple[str, list[dict]]] = []
     seen_before_reply: list[list] = []
+    announced: list[list[str]] = []
 
     class FakeAgent:
         _model_id = "model-test"
@@ -28,6 +29,7 @@ def turn(monkeypatch: pytest.MonkeyPatch):
 
     async def stream(*args, **kwargs):
         seen_before_reply.append(list(presaved))
+        announced.append(list(kwargs.get("presaved_triggers", ())))
         yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"}\n\n'
 
     async def no_snapshot(self, *args, **kwargs):
@@ -80,11 +82,11 @@ def turn(monkeypatch: pytest.MonkeyPatch):
         ):
             pass
 
-    return run, seen_before_reply
+    return run, seen_before_reply, announced
 
 
 async def test_a_hidden_request_is_on_screen_before_the_reply(turn) -> None:
-    run, seen_before_reply = turn
+    run, seen_before_reply, _ = turn
 
     await run(
         message_content="",
@@ -99,11 +101,26 @@ async def test_a_hidden_request_is_on_screen_before_the_reply(turn) -> None:
 
 
 async def test_a_typed_message_is_left_to_the_client(turn) -> None:
-    run, seen_before_reply = turn
+    run, seen_before_reply, announced = turn
 
     await run(message_content="hello")
 
     assert seen_before_reply == [[]]
+    assert announced == [[]]
+
+
+async def test_the_stream_announces_the_row_it_wrote_early(turn) -> None:
+    # The client reloads the display log as soon as the stream opens, which is
+    # before this row lands, so the stream has to carry it.
+    run, seen_before_reply, announced = turn
+
+    await run(
+        message_content="",
+        system_reminders=["[Agent message from SUZENT]\nBuild the landing page"],
+    )
+
+    [[(_, rows)]] = seen_before_reply
+    assert announced == [[rows[0]["content"]]]
 
 
 def test_a_finishing_earlier_turn_cannot_drop_the_early_row(temp_db) -> None:

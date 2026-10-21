@@ -15,7 +15,7 @@ import {
   updateCronJob,
 } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
-import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { hideLiveTriggerRows, hideStreamingDrafts } from '../lib/streamingDrafts';
 import { StreamRecoveryError } from '../lib/recoverableStream';
 import { completeDirectStream } from './chat/completeDirectStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
@@ -235,6 +235,8 @@ function aguiPartsToStoreMessage(
   const normalizedParts: AGUIPart[] = [];
   const toolIndexById = new Map<string, number>();
   for (const part of parts) {
+    // Stored as its own row by the backend; the reload after the turn brings it.
+    if (part.type === 'incoming-message' && part.persisted) continue;
     if (part.type === 'tool' && part.toolCallId) {
       const existingIdx = toolIndexById.get(part.toolCallId);
       if (existingIdx !== undefined) {
@@ -1709,7 +1711,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const reconciledMessages = useMemo(
     () =>
       reconcileToolCallMessages(
-        hideStreamingDrafts(messages || [], showTransientAssistant && streamingParts.length > 0),
+        hideLiveTriggerRows(
+          hideStreamingDrafts(messages || [], showTransientAssistant && streamingParts.length > 0),
+          showTransientAssistant ? streamingParts : []
+        ),
         showTransientAssistant ? streamingParts : []
       ),
     [messages, showTransientAssistant, streamingParts]
