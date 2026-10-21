@@ -67,6 +67,7 @@
     ".releases/changes/notification-audio-resume.json",
     ".releases/changes/onboarding-model-roles.json",
     ".releases/changes/persist-completed-stream-response.json",
+    ".releases/changes/prebuilt-webui.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/prevent-viewport-overscroll.json",
     ".releases/changes/product-release-plans.json",
