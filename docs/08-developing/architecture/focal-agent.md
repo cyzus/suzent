@@ -58,16 +58,31 @@ Sessions come from the project's tasks plus any chat in the project that is
 running now; sessions with work waiting on the user sort first, then running
 ones. A chat with no tasks that is not running is not listed.
 
+Each project line ends with one line from that project's `context.md`, read
+live by `_project_overview()`: the first line of its Overview section, else its
+first line of prose, cut at 160 characters. That gives SUZENT what each project
+is about without a copy that could drift.
+
 ## Notes
 
 SUZENT's notes are the `context.md` of `suzent-focal`, which core memory already
 loads as the Context block for any chat in that project. Other chats keep their
 project's `context.md` with the file tools; SUZENT has none, so
 `FocalNotesTool` (`update_notes`) edits that one file and nothing else: an exact
-`old_text` replacement, or an append when `old_text` is empty, capped at
+`old_text` replacement, an entry added at the end of a `section` (created if
+missing), or a plain append, capped at
 `MAX_NOTES_CHARS` (8,000, where core memory starts truncating the block). An
 edit reaches later turns as a core-memory diff reminder, like any other
 context.md change.
+
+`get_or_create_focal_chat()` seeds the file with `DEFAULT_FOCAL_NOTES`, a title
+and empty sections, whenever it is missing. An existing file, even an empty
+one, is left alone.
+
+SUZENT has no library: it does no project work, so it produces no deliverables,
+and `suzent-focal/` holds only its notes and `heartbeat.md`. Project knowledge
+stays in each project's own `context.md`, maintained by that project's
+sessions.
 
 `format_core_memory_section()` swaps the "How to update your memory" lines for
 the Focal chat: point at `update_notes`, and keep project and task status out,

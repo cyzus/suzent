@@ -16,7 +16,6 @@ from suzent.tools.agents.agent_lifecycle_tools import (
     FocalDispatchTool,
     _accessible_agent,
 )
-from suzent.tools import focal_notes_tool
 from suzent.tools.base import ToolErrorCode
 from suzent.tools.tasks import task_update_tool
 from suzent.tools.tasks.task_update_tool import TaskUpdateTool
@@ -24,12 +23,7 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (
-        focal_agent,
-        agent_lifecycle_tools,
-        task_update_tool,
-        focal_notes_tool,
-    ):
+    for module in (focal_agent, agent_lifecycle_tools, task_update_tool):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
@@ -900,6 +894,8 @@ async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
 
     get_or_create_focal_chat()
     path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_NOTES
+    path.write_text("", encoding="utf-8")
     tool = FocalNotesTool()
 
     await tool.forward(_ctx(FOCAL_CHAT_ID), "- Ask before anything about deploys")
@@ -927,6 +923,7 @@ async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
     from suzent.tools.focal_notes_tool import MAX_NOTES_CHARS, FocalNotesTool
 
     get_or_create_focal_chat()
+    (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").write_text("")
     tool = FocalNotesTool()
     await tool.forward(_ctx(FOCAL_CHAT_ID), "- quiet after 22:00\n- quiet on Sunday")
 
@@ -959,3 +956,53 @@ def test_suzents_memory_section_points_at_its_notes() -> None:
     assert "edit_file" not in focal
     assert "edit_file" in regular and "update_notes" not in regular
     assert "<!-- /memory:generated" in regular
+
+
+@pytest.mark.asyncio
+async def test_notes_file_rules_under_their_section(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- after 22:00", section="Don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Sundays", section="don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- ask over $50", section="Budget")
+
+    notes = path.read_text(encoding="utf-8")
+    assert "## Don't disturb\n- after 22:00\n- Sundays\n\n## Project names" in notes
+    assert notes.endswith("\n## Budget\n- ask over $50\n")
+
+
+def test_edited_notes_are_never_reseeded(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    path.write_text("- my rule\n", encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == "- my rule\n"
+
+
+def test_global_context_shows_each_projects_overview(db, sandbox) -> None:
+    db.create_project("Site", "site")
+    db.create_project("Ops", "ops")
+    db.create_project("Bare", "bare")
+    (sandbox / "projects" / "site").mkdir(parents=True)
+    (sandbox / "projects" / "site" / "context.md").write_text(
+        "# Site\n## Overview\nMarketing site rebuild in Next.js\n## Decisions\n- x\n"
+    )
+    (sandbox / "projects" / "ops").mkdir(parents=True)
+    (sandbox / "projects" / "ops" / "context.md").write_text(
+        "# Migration plan\n\nMove every service to the Mac mini. " + "y" * 300
+    )
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `site`" in context and "— Marketing site rebuild in Next.js" in context
+    ops_line = next(line for line in context.splitlines() if "slug `ops`" in line)
+    assert "— Move every service to the Mac mini." in ops_line
+    assert ops_line.endswith("…")
+    bare_line = next(line for line in context.splitlines() if "slug `bare`" in line)
+    assert "—" not in bare_line

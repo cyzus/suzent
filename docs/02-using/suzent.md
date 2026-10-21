@@ -96,8 +96,12 @@ which project you mean by a nickname, and how you like your reports. Tell it a
 rule ("don't ping me about tests failing, just restart them") and it writes it
 down; it also notes rules you keep repeating.
 
-It reads these notes at the start of every turn. They never hold project or
-task status, which it looks up fresh each time. To read or change them
+The notes start with empty sections, **Bring to the user**, **Handle without
+asking**, **Don't disturb**, **Project names**, and **Reports**, and each rule
+goes under the one it belongs to. SUZENT reads them at the start of every turn.
+They never hold project or task status, which it looks up fresh each time; for
+what a project is about, it reads a line from that project's own context
+instead of keeping a copy. To read or change them
 yourself, open SUZENT's **Context** tab and click **Edit**.
 
 What it learns about *you* in general goes to your
