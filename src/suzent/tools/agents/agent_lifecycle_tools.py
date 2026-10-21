@@ -175,7 +175,7 @@ def _format_bounded_transcript(
 
 
 class AgentListTool(Tool):
-    """List local project agents and paired remote Suzent agents."""
+    """List agent sessions, or discover configured ACP agents with status='acp'."""
 
     name = "AgentListTool"
     tool_name = "agent_list"
@@ -185,8 +185,14 @@ class AgentListTool(Tool):
         self,
         ctx: RunContext[AgentDeps],
         status: Annotated[
-            Literal["active", "recent"],
-            Field(description="List active agents or recent agents."),
+            Literal["active", "recent", "acp"],
+            Field(
+                description=(
+                    "'active' or 'recent': existing sessions to message with agent_send. "
+                    "'acp': configured local ACP agents to start with agent(runtime='acp', "
+                    "acp_agent_id=...). Checks installation only, not authentication or handshake."
+                )
+            ),
         ] = "active",
         limit: Annotated[
             int,
@@ -198,6 +204,34 @@ class AgentListTool(Tool):
         if current is None:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
+            )
+
+        if status == "acp":
+            from suzent.acp.registry import ACPAgentRegistry
+
+            configured = ACPAgentRegistry().list_agents()
+            records = [
+                {
+                    "acp_agent_id": agent.id,
+                    "name": agent.name,
+                    "description": agent.description,
+                    "available": agent.available,
+                }
+                for agent in configured[:limit]
+            ]
+            lines = [
+                f"- {record['acp_agent_id']} · {record['name']} · "
+                f"{'installed' if record['available'] else 'not installed'}"
+                + (f"\n  {record['description']}" if record["description"] else "")
+                for record in records
+            ]
+            return ToolResult.success_result(
+                "Configured ACP agents (installation check only):\n"
+                + ("\n".join(lines) or "No ACP agents configured.")
+                + "\nStart with agent(runtime='acp', acp_agent_id=<listed ID>, "
+                "description=...). These IDs are not agent_send targets. "
+                "If not installed, configure it in Settings → ACP Agents.",
+                metadata={"acp_agents": records, "has_more": len(configured) > limit},
             )
 
         focal = is_focal_chat(current)
@@ -355,7 +389,9 @@ class AgentSendTool(Tool):
             str,
             Field(
                 description=(
-                    "Stable agent ID from agent_list, or a sub-agent's ID. The Focal "
+                    "Stable session agent_id from agent_list(active/recent), or the task ID "
+                    "returned by agent, including ACP tasks. Sending wakes an idle session. "
+                    "Do not pass an acp_agent_id or acp_session_id. The Focal "
                     "Agent may pass 'new' with project_id to start a project session."
                 )
             ),
