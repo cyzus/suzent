@@ -5077,9 +5077,10 @@ calls it SUZENT and gives it no role name.
 `apply_focal_tool_policy()` runs in `chat_processor` before every Focal turn
 and overrides whatever the request asked for:
 
-- `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/send/stop, web search
-  and fetch, memory and session search, ask-question, skills, read-only file
-  tools, and `FocalScheduleTool`.
+- `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
+  `FocalDispatchTool`, web search and fetch, memory and session search,
+  ask-question, skills, read-only file tools, and `FocalScheduleTool`. The plain
+  `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
 - MCP is disabled, and `cwd` and `sandbox_volumes` are removed: project
@@ -5087,9 +5088,16 @@ and overrides whatever the request asked for:
 - `permission_mode` is `full_access`, since nothing in the set changes state
   outside Suzent.
 
-`FocalScheduleTool` (`schedule_wakeup`) has an empty `group` and is not
-deferrable, so no other chat can equip or discover it, and it refuses any chat
-that is not the Focal Agent.
+Focal-only behavior lives in Focal-only tools, so other agents' schemas never
+carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`)
+and `FocalScheduleTool` (`schedule_wakeup`). Both have an empty `group` and are
+not deferrable, so no other chat can equip or discover them, and both refuse
+any chat that is not the Focal Agent. Their descriptions say "you" rather than
+naming the Focal Agent, so nothing SUZENT reads calls it anything but SUZENT.
+
+They need runtime names of their own: `is_denied()` resolves a runtime name to
+one class through the registry, so a shared `agent_send` would be checked
+against whichever class won the mapping.
 
 ## Global context
 
@@ -5102,13 +5110,16 @@ ones. A chat with no tasks that is not running is not listed.
 
 ## Dispatch
 
-Both paths go through `AgentSendTool` and the [agent inbox](https://suzent.com/zh-Hans/docs/developing/architecture/agent-inbox):
+Both paths go through `FocalDispatchTool` and the
+[agent inbox](https://suzent.com/zh-Hans/docs/developing/architecture/agent-inbox). It has no `wait` parameter and refuses
+external A2A agents: SUZENT never holds a turn open on another agent, which
+would also hold back the wake-ups and reports queued behind it.
 
-- **Existing session:** `agent_send(agent_id=<chat id>, message=...)`.
+- **Existing session:** `agent_dispatch(agent_id=<chat id>, message=...)`.
   `watch_session()` sets `focal_watching` on the target so Focal hears when it
   finishes.
-- **New session:** `agent_send(agent_id="new", project_id=..., title=...,
-  task_title=..., message=...)`, allowed only from the Focal Agent. It creates
+- **New session:** `agent_dispatch(agent_id="new", project_id=..., title=...,
+  task_title=..., message=...)`. It creates
   a chat in the project with `permission_mode: "auto"` (Smart),
   `parent_chat_id` and `spawned_by_focal`, binds an `in_progress` task when
   `task_title` is given, and enqueues the message. The desktop renders that
@@ -5125,6 +5136,10 @@ Three events enqueue an inbox message to `focal-suzent`:
 | A task becomes blocked on `user` or `error`, or its reason changes | `notify_focal_of_blocked_task()` from `TaskUpdateTool` | `task_blocked_notification` |
 | A followed session closes its last open task | `notify_focal_of_finished_session()` from `TaskUpdateTool`, skipped while a Focal request to it is still in flight | `session_finished_notification` |
 
+Any session may also message SUZENT itself with `agent_send`
+(`_sendable_agent()`), but `agent_read` and `agent_stop` don't reach it: its
+conversation spans every project.
+
 A session counts as followed when Focal started it (`parent_chat_id`) or sent
 it work (`focal_watching`). Blocked-task notices go to Focal for any session,
 but only once the Focal chat exists; they never create it for a user who has
@@ -5138,6 +5153,9 @@ desktop notification, since the user may not have the chat open.
 The first `get_or_create_focal_chat()` enables the heartbeat at 30 minutes
 and seeds `heartbeat.md` with `DEFAULT_FOCAL_HEARTBEAT`, once
 (`focal_heartbeat_initialized`). After that the setting belongs to the user.
+A checklist still identical to an earlier built-in one
+(`_PREVIOUS_FOCAL_HEARTBEATS`) is upgraded in place; an edited one is never
+touched.
 
 To keep a quiet heartbeat free, `should_run_focal_heartbeat()` decides in code
 before any model call:
