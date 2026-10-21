@@ -27,7 +27,7 @@ _MAX_CONTEXT_SESSIONS_PER_PROJECT = 10
 FOCAL_TOOL_NAMES = (
     "AgentListTool",
     "AgentReadTool",
-    "AgentSendTool",
+    "FocalDispatchTool",
     "AgentStopTool",
     "WebSearchTool",
     "WebpageTool",
@@ -48,9 +48,13 @@ STALL_AFTER = timedelta(minutes=30)
 # A blocker the user was already told about is raised again only after this.
 REMIND_BLOCKED_AFTER = timedelta(hours=2)
 DEFAULT_FOCAL_HEARTBEAT = """# SUZENT check-in
-- Sessions idle with open tasks: nudge them with agent_send if the next step is clear, otherwise tell the user what is stuck.
+- Sessions idle with open tasks: nudge them with agent_dispatch if the next step is clear, otherwise tell the user what is stuck.
 - Tasks that have waited on the user for a long time: remind the user once, in one line.
 """
+# Earlier built-in checklists, upgraded in place since the user never edited them.
+_PREVIOUS_FOCAL_HEARTBEATS = (
+    DEFAULT_FOCAL_HEARTBEAT.replace("agent_dispatch", "agent_send"),
+)
 
 
 def is_focal_chat(chat: Optional[ChatModel]) -> bool:
@@ -104,10 +108,21 @@ def _ensure_focal_project() -> str:
     return db.create_project(db.FOCAL_PROJECT_NAME, db.FOCAL_PROJECT_SLUG)
 
 
-def _ensure_default_heartbeat_file() -> None:
-    """Seed the check-in list the user can edit; never overwrite their version."""
+def _ensure_default_heartbeat_file(seed: bool) -> None:
+    """Seed the check-in list the user can edit, or upgrade an untouched old one.
+
+    Never overwrites a list the user edited.
+    """
     path = get_database().get_project_dir(FOCAL_CHAT_ID) / "heartbeat.md"
-    if path.exists():
+    try:
+        if path.exists():
+            current = path.read_text(encoding="utf-8").strip()
+            if current not in {text.strip() for text in _PREVIOUS_FOCAL_HEARTBEATS}:
+                return
+        elif not seed:
+            return
+    except OSError as exc:
+        logger.warning("Could not read the Focal heartbeat checklist: {}", exc)
         return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,8 +156,9 @@ def get_or_create_focal_chat() -> ChatModel:
         if chat.title != FOCAL_TITLE:
             db.update_chat(FOCAL_CHAT_ID, title=FOCAL_TITLE, reindex=False)
     chat = db.get_chat(FOCAL_CHAT_ID)
-    if not (chat.config or {}).get("focal_heartbeat_initialized"):
-        _ensure_default_heartbeat_file()
+    initialized = (chat.config or {}).get("focal_heartbeat_initialized")
+    _ensure_default_heartbeat_file(seed=not initialized)
+    if not initialized:
         db.merge_chat_config(
             FOCAL_CHAT_ID,
             {
@@ -193,14 +209,13 @@ def build_focal_global_context() -> str:
     db = get_database()
     running = running_chat_ids()
     lines = [
-        "# Focal Agent Global Context",
-        "You are SUZENT (the Focal Agent in tool descriptions): the user's "
-        "single point of attention "
+        "# SUZENT Global Context",
+        "You are SUZENT: the user's single point of attention "
         "across every project. Converse naturally with the user. When they ask "
         "for project work, dispatch it to a Project Primary Session instead of "
         "doing it here: wake an existing session with "
-        "`agent_send(agent_id=<session id>, message=...)`, or start a new one with "
-        "`agent_send(agent_id='new', project_id=<id or slug>, title=..., "
+        "`agent_dispatch(agent_id=<session id>, message=...)`, or start a new one with "
+        "`agent_dispatch(agent_id='new', project_id=<id or slug>, title=..., "
         "task_title=..., message=...)`. Primary sessions run autonomously and "
         "notify you when they block on the user; relay those blockers clearly.",
         "",
@@ -419,7 +434,10 @@ def should_run_focal_heartbeat(instructions: str) -> bool:
     their items. The built-in one runs only when there is something to raise
     that differs from the last check-in, so a quiet afternoon costs nothing.
     """
-    if instructions.strip() != DEFAULT_FOCAL_HEARTBEAT.strip():
+    built_in = {
+        text.strip() for text in (DEFAULT_FOCAL_HEARTBEAT, *_PREVIOUS_FOCAL_HEARTBEATS)
+    }
+    if instructions.strip() not in built_in:
         return True
     findings = _heartbeat_findings(datetime.now(timezone.utc))
     if not findings:
