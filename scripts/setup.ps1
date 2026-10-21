@@ -16,7 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ── Resolve config ────────────────────────────────────────────────────────────
+# -- Resolve config ------------------------------------------------------------
 $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZENT_DIR }    else { Join-Path $env:USERPROFILE "suzent" }
 $BranchExplicit = [bool]($Branch -or $env:SUZENT_BRANCH)
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
@@ -33,7 +33,7 @@ $PypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
 # Windows PowerShell's download progress bar slows transfers to a crawl.
 $ProgressPreference = "SilentlyContinue"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 function Write-Ok   { param($m) Write-Host ("[OK] " + $m) -ForegroundColor Green }
 function Write-Info { param($m) Write-Host (" [*] " + $m) -ForegroundColor Cyan }
 function Write-Warn { param($m) Write-Host (" [!] " + $m) -ForegroundColor Yellow }
@@ -111,14 +111,13 @@ function Enable-ChinaMirrors {
     Write-Info "China mirror mode enabled for Python, PyPI, npm, Playwright, and Rustup."
 }
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# -- Banner --------------------------------------------------------------------
 Write-Host ""
-Write-Host "  ███████╗██╗   ██╗███████╗███████╗███╗   ██╗████████╗" -ForegroundColor White
-Write-Host "  ██╔════╝██║   ██║╚══███╔╝██╔════╝████╗  ██║╚══██╔══╝" -ForegroundColor White
-Write-Host "  ███████╗██║   ██║  ███╔╝ █████╗  ██╔██╗ ██║   ██║   " -ForegroundColor White
-Write-Host "  ╚════██║██║   ██║ ███╔╝  ██╔══╝  ██║╚██╗██║   ██║   " -ForegroundColor White
-Write-Host "  ███████║╚██████╔╝███████╗███████╗██║ ╚████║   ██║   " -ForegroundColor White
-Write-Host "  ╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   " -ForegroundColor White
+Write-Host '   ____  _   _ _____ _____ _   _ _____ ' -ForegroundColor White
+Write-Host '  / ___|| | | |__  /| ____| \ | |_   _|' -ForegroundColor White
+Write-Host '  \___ \| | | | / / |  _| |  \| | | |  ' -ForegroundColor White
+Write-Host '   ___) | |_| |/ /_ | |___| |\  | | |  ' -ForegroundColor White
+Write-Host '  |____/ \___//____||_____|_| \_| |_|  ' -ForegroundColor White
 Write-Host ""
 
 function Get-HighestReleaseTag {
@@ -273,17 +272,17 @@ $ReleaseBases = if ($ReleaseBaseUrl) {
     @("$GithubReleaseBase/$ReleaseTag")
 }
 
-# ── Detect update vs fresh install ───────────────────────────────────────────
+# -- Detect update vs fresh install -------------------------------------------
 $IsUpdate = (Test-Path (Join-Path $SuzentDir ".git"))
 
 Write-Ok "Windows detected"
 
-# ── Check/install: git ────────────────────────────────────────────────────────
+# -- Check/install: git --------------------------------------------------------
 function Ensure-Git {
     if (Get-Command git -ErrorAction SilentlyContinue) { return }
 
     if ($UseChinaMirror) {
-        Write-Info "git not found — installing Git for Windows from the npmmirror mirror..."
+        Write-Info "git not found - installing Git for Windows from the npmmirror mirror..."
         if (Install-GitFromMirror) {
             Refresh-Path
             if (Get-Command git -ErrorAction SilentlyContinue) {
@@ -292,7 +291,7 @@ function Ensure-Git {
             }
         }
     }
-    Write-Info "git not found — attempting install via winget..."
+    Write-Info "git not found - attempting install via winget..."
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent
         Refresh-Path
@@ -307,7 +306,7 @@ function Ensure-Git {
 Ensure-Git
 Write-Ok "git $(git --version)"
 
-# ── Optional accelerator: ripgrep ────────────────────────────────────────────
+# -- Optional accelerator: ripgrep --------------------------------------------
 if (Get-Command rg -ErrorAction SilentlyContinue) {
     Write-Ok "ripgrep $((rg --version | Select-Object -First 1) -replace '^ripgrep ', '')"
 } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -317,13 +316,13 @@ if (Get-Command rg -ErrorAction SilentlyContinue) {
     if (Get-Command rg -ErrorAction SilentlyContinue) {
         Write-Ok "ripgrep installed"
     } else {
-        Write-Warn "ripgrep install failed — grep_search will use its Python fallback."
+        Write-Warn "ripgrep install failed - grep_search will use its Python fallback."
     }
 } else {
-    Write-Warn "ripgrep not found — grep_search will use its Python fallback."
+    Write-Warn "ripgrep not found - grep_search will use its Python fallback."
 }
 
-# ── Check/install: Node.js ────────────────────────────────────────────────────
+# -- Check/install: Node.js ----------------------------------------------------
 function Get-NodeMajor {
     try {
         $v = (node --version 2>$null) -replace '^v', ''
@@ -340,7 +339,7 @@ function Ensure-Node {
     if ($major -gt 0) {
         Write-Warn "Node.js v$(node --version) is below required v$MinNodeMajor"
     } else {
-        Write-Info "Node.js not found — installing..."
+        Write-Info "Node.js not found - installing..."
     }
 
     # Try winget
@@ -382,7 +381,7 @@ function Ensure-Node {
 
 Ensure-Node
 
-# ── Check/install: uv ────────────────────────────────────────────────────────
+# -- Check/install: uv --------------------------------------------------------
 function Ensure-Uv {
     if (Get-Command uv -ErrorAction SilentlyContinue) { return }
     if ($UseChinaMirror) {
@@ -440,7 +439,7 @@ function Ensure-Rust {
     Write-Fail "Rust/Cargo is required for developer mode. Install Rust from https://rustup.rs/ and re-run."
 }
 
-# ── Clone or update repo ──────────────────────────────────────────────────────
+# -- Clone or update repo ------------------------------------------------------
 if ($IsUpdate) {
     Write-Info "Updating SUZENT in $SuzentDir..."
     Set-Location $SuzentDir
@@ -472,24 +471,24 @@ if ($IsUpdate) {
     # fetches fine, and skipping the history shrinks the download a lot.
     $cloneDepth = if ($ReleaseTag) { @("--depth", "1") } else { @() }
     git clone @cloneDepth --branch $InstallRef $RepoUrl $SuzentDir
-    if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed — check the network and re-run." }
+    if ($LASTEXITCODE -ne 0) { Write-Fail "git clone failed - check the network and re-run." }
     Write-Ok "Repository cloned"
     Set-Location $SuzentDir
 }
 
 Set-Location $SuzentDir
 
-# ── Setup .env ────────────────────────────────────────────────────────────────
+# -- Setup .env ----------------------------------------------------------------
 if (-not (Test-Path ".env")) {
     if (Test-Path ".env.example") {
         Copy-Item ".env.example" ".env"
-        Write-Warn "Created .env from template — edit it with your API keys before starting."
+        Write-Warn "Created .env from template - edit it with your API keys before starting."
     }
 } else {
     Write-Ok ".env already exists"
 }
 
-# ── Python dependencies ───────────────────────────────────────────────────────
+# -- Python dependencies -------------------------------------------------------
 if ($UseChinaMirror) {
     # uv sync --frozen downloads every wheel from the URL recorded in uv.lock
     # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode
@@ -504,15 +503,15 @@ if ($UseChinaMirror) {
     } finally {
         Remove-Item -Force $requirements -ErrorAction SilentlyContinue
     }
-    if ($syncExit -ne 0) { Write-Fail "Python dependency install failed — check errors above." }
+    if ($syncExit -ne 0) { Write-Fail "Python dependency install failed - check errors above." }
 } else {
     Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
     uv sync --frozen --extra social
-    if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed — check errors above." }
+    if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed - check errors above." }
 }
 Write-Ok "Python dependencies ready"
 
-# ── Download pre-built UI binary ─────────────────────────────────────────────
+# -- Download pre-built UI binary ---------------------------------------------
 function Get-UiBinary {
     $binDir = Join-Path $SuzentDir "bin"
     if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
@@ -579,7 +578,7 @@ if ($env:SUZENT_DEV_SETUP -eq "1") {
     Write-Info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
 }
 
-# ── Playwright Chromium ───────────────────────────────────────────────────────
+# -- Playwright Chromium -------------------------------------------------------
 if (-not $SkipPW) {
     Write-Info "Installing Playwright Chromium (for web browsing tool)..."
     $playwrightExe = Join-Path $SuzentDir ".venv\Scripts\playwright.exe"
@@ -589,11 +588,11 @@ if (-not $SkipPW) {
         uv run playwright install chromium
     }
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Playwright install failed — web browsing may not work (non-fatal)."
+        Write-Warn "Playwright install failed - web browsing may not work (non-fatal)."
     }
 }
 
-# ── Global CLI shim ───────────────────────────────────────────────────────────
+# -- Global CLI shim -----------------------------------------------------------
 $BinDir = Join-Path $env:USERPROFILE ".local\bin"
 if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
 
@@ -602,7 +601,7 @@ $ShimContent = "@echo off`r`ncd /d `"$SuzentDir`"`r`nuv run suzent %*`r`n"
 Set-Content -Path $ShimPath -Value $ShimContent -NoNewline -Encoding ASCII
 Write-Ok "CLI shim written to $ShimPath"
 
-# ── Bootstrap marker ──────────────────────────────────────────────────────────
+# -- Bootstrap marker ----------------------------------------------------------
 # The pre-built UI binary refuses to launch unless the workspace is marked as
 # bootstrapped (see is_workspace_bootstrapped in src-tauri). The Rust installer
 # writes this; the script path must do the same or `suzent start` shows the setup
@@ -616,9 +615,9 @@ $Channel = if ($ReleaseTag) { "stable" } else { "dev" }
 Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
 Write-Ok "Workspace marked as bootstrapped"
 
-# ── Launcher shortcuts ────────────────────────────────────────────────────────
+# -- Launcher shortcuts --------------------------------------------------------
 # suzent.cli.shortcuts is the same module the Rust installer and the standalone
-# updater call, so a CLI install or update creates — and repairs — exactly the
+# updater call, so a CLI install or update creates - and repairs - exactly the
 # same launcher entries as the graphical installer.
 Write-Info "Creating launcher shortcuts..."
 $VenvPython = Join-Path $SuzentDir ".venv\Scripts\python.exe"
@@ -628,7 +627,7 @@ if (Test-Path $VenvPython) {
     uv run suzent shortcuts
 }
 if ($LASTEXITCODE -ne 0) {
-    Write-Warn "Launcher shortcut setup failed — run 'suzent shortcuts' to retry (non-fatal)."
+    Write-Warn "Launcher shortcut setup failed - run 'suzent shortcuts' to retry (non-fatal)."
 }
 
 Add-ToUserPath $BinDir
@@ -637,7 +636,7 @@ Add-ToUserPath $BinDir
 $ScriptsDir = Join-Path $SuzentDir "scripts"
 Add-ToUserPath $ScriptsDir
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# -- Done ----------------------------------------------------------------------
 Write-Host ""
 if ($IsUpdate) {
     Write-Ok "SUZENT updated successfully!"
