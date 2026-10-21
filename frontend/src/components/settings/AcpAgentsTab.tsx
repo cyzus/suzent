@@ -120,10 +120,9 @@ export function AcpAgentsTab(): React.ReactElement {
       const pending = loaded.filter(
         (agent) => agent.status === 'ready' && !isLoginActive(currentLogins[agent.id])
       );
-      setProbes((previous) => ({
-        ...previous,
-        ...Object.fromEntries(pending.map((agent) => [agent.id, { status: 'probing' as const }])),
-      }));
+      setProbes(
+        Object.fromEntries(pending.map((agent) => [agent.id, { status: 'probing' as const }]))
+      );
       setLoading(false);
       const checkConnections = async (): Promise<void> => {
         let agent: AcpAgentDescriptor | undefined;
