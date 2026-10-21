@@ -1112,6 +1112,10 @@ class ChatProcessor:
         )
 
         pending_trigger_rows: list[dict] = []
+        # Trigger rows written to the display log before the run starts. The
+        # frontend reloads that log the moment the stream opens, which is before
+        # they land, so the stream itself has to announce them.
+        presaved_triggers: list[str] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
         stream_run_id = str(uuid.uuid4())
@@ -1209,6 +1213,7 @@ class ChatProcessor:
                     visible_prompt,
                     pending_trigger_rows,
                 )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
             elif display_trigger and pending_trigger_rows:
                 # Revisioned, unlike the sub-agent path: a stateful chat's
                 # previous turn may still be finalizing, and would otherwise
@@ -1218,6 +1223,7 @@ class ChatProcessor:
                     chat_id,
                     pending_trigger_rows,
                 )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
 
         # Handle stateless resume
         deferred_tool_results = None
@@ -1464,6 +1470,7 @@ class ChatProcessor:
                 permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
                 run_id=stream_run_id,
+                presaved_triggers=presaved_triggers,
             ):
                 try:
                     if chunk.startswith("data: "):

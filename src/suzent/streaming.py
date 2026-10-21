@@ -20,7 +20,7 @@ import os
 import time
 import traceback
 import uuid
-from typing import Optional, Dict, Any, AsyncGenerator
+from typing import Optional, Dict, Any, AsyncGenerator, Sequence
 
 from pydantic_ai import (
     Agent,
@@ -700,7 +700,11 @@ class _DraftDisplayAccumulator:
             tool["output"] = _stringify_part_content(value.get("output"))
             tool["approvalId"] = None
             self.dirty = True
-        elif name == "incoming_message" and isinstance(value, dict):
+        elif (
+            name == "incoming_message"
+            and isinstance(value, dict)
+            and not value.get("persisted")
+        ):
             # Kept in order among the reply's parts, so a reload mid-turn still
             # shows the message where the run took it in.
             self.parts.append(
@@ -1338,6 +1342,7 @@ async def stream_agent_responses(
     permission_resolutions: Optional[list[dict[str, Any]]] = None,
     is_heartbeat: bool = False,
     run_id: Optional[str] = None,
+    presaved_triggers: Sequence[str] = (),
 ) -> AsyncGenerator[str, None]:
     """
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
@@ -1532,6 +1537,12 @@ async def stream_agent_responses(
         )
 
         try:
+            for trigger in presaved_triggers:
+                # Already a row of its own in the display log, so the draft
+                # must not copy it into the reply as well.
+                await sse_queue.put(
+                    ("incoming_message", {"content": trigger, "persisted": True})
+                )
             for resolution in permission_resolutions or []:
                 await sse_queue.put(("permission_resolution", resolution))
 
