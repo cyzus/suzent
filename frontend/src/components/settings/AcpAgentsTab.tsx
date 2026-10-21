@@ -133,23 +133,25 @@ export function AcpAgentsTab(): React.ReactElement {
       <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
       <AcpConnections />
 
-      <section>
+      <section className="space-y-3 border-t border-neutral-200 pt-6 dark:border-zinc-700">
         <SectionCardHeader
-          className="border-l-4 border-brutal-black bg-white p-4 dark:border-white dark:bg-zinc-800"
-          iconTone="black"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-          }
           title={t('settings.acp.registeredTitle')}
           description={t('settings.acp.registeredDesc')}
+          actions={
+            <SettingsListAction disabled={loading} onClick={() => void loadAgents()}>
+              {t('common.refresh')}
+            </SettingsListAction>
+          }
         />
+        <details className="rounded border border-neutral-200 p-3 text-xs dark:border-zinc-700">
+          <summary className="cursor-pointer font-bold">{t('settings.acp.agentHelp')}</summary>
+          <div className="mt-3 space-y-2 text-neutral-600 dark:text-neutral-400">
+            <p>{t('settings.acp.probeHelp')}</p>
+            <p>
+              {t('settings.acp.customHelp')} <code>~/.suzent/acp_agents.json</code>
+            </p>
+          </div>
+        </details>
 
         {loading ? (
           <div className="p-8 text-center font-bold uppercase text-neutral-500">
@@ -202,50 +204,55 @@ export function AcpAgentsTab(): React.ReactElement {
                           </Badge>
                         </div>
                       </div>
-                      {agent.description && (
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                          {agent.description}
-                        </div>
-                      )}
                     </div>
                   </div>
 
                   {/* Where it lives, who defined it, what it's running */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 border-b-2 border-brutal-black/10 dark:border-white/10">
-                    <span
-                      className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 truncate min-w-0 flex-1 basis-48"
-                      title={agent.executable_path || agent.id}
-                    >
-                      {agent.executable_path || agent.id}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 shrink-0">
-                      {agent.builtin ? t('settings.acp.builtIn') : t('settings.acp.custom')}
-                    </span>
-                    {ready && (
-                      // "Active" means a live agent process; a chat bound to
-                      // this agent with nothing running is only "saved".
-                      <Badge tone={activeSessions > 0 ? 'blue' : 'neutral'} className="shrink-0">
-                        {activeSessions > 0
-                          ? t('settings.acp.activeSessions').replace(
-                              '{count}',
-                              String(activeSessions)
-                            )
-                          : savedSessions > 0
-                            ? t('settings.acp.savedSessions').replace(
-                                '{count}',
-                                String(savedSessions)
-                              )
-                            : t('settings.acp.noSessions')}
-                      </Badge>
+                  <details className="px-4 py-2 border-b border-brutal-black/10 dark:border-white/10 text-xs">
+                    <summary className="cursor-pointer text-neutral-500 dark:text-neutral-400">
+                      {t('settings.acp.agentDetails')}
+                    </summary>
+                    {agent.description && (
+                      <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+                        {agent.description}
+                      </p>
                     )}
-                  </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span
+                        className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 truncate min-w-0 flex-1 basis-48"
+                        title={agent.executable_path || agent.id}
+                      >
+                        {agent.executable_path || agent.id}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 shrink-0">
+                        {agent.builtin ? t('settings.acp.builtIn') : t('settings.acp.custom')}
+                      </span>
+                      {ready && (
+                        // "Active" means a live agent process; a chat bound to
+                        // this agent with nothing running is only "saved".
+                        <Badge tone={activeSessions > 0 ? 'blue' : 'neutral'} className="shrink-0">
+                          {activeSessions > 0
+                            ? t('settings.acp.activeSessions').replace(
+                                '{count}',
+                                String(activeSessions)
+                              )
+                            : savedSessions > 0
+                              ? t('settings.acp.savedSessions').replace(
+                                  '{count}',
+                                  String(savedSessions)
+                                )
+                              : t('settings.acp.noSessions')}
+                        </Badge>
+                      )}
+                    </div>
+                  </details>
 
                   {/* The fix, in place of the status it explains */}
                   {needsSetup && (
-                    <div className="border-b-2 border-brutal-black">
-                      <div className="border-b-2 border-brutal-black bg-amber-400 text-brutal-black px-4 py-1.5 text-[11px] font-black uppercase tracking-wide">
+                    <details className="border-b border-brutal-black/10 dark:border-white/10">
+                      <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-neutral-600 dark:text-neutral-400">
                         {t('settings.acp.setupTitle')}
-                      </div>
+                      </summary>
                       <div className="p-4 space-y-3">
                         {agent.docs_url && (
                           <div className="space-y-2">
@@ -280,7 +287,7 @@ export function AcpAgentsTab(): React.ReactElement {
                           </div>
                         )}
                       </div>
-                    </div>
+                    </details>
                   )}
 
                   {/* Actions — the probe result reads on the line it came from */}
@@ -295,7 +302,9 @@ export function AcpAgentsTab(): React.ReactElement {
                     </SettingsListAction>
                     {probe?.status === 'ok' && probe.data.status === 'auth_required' && (
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs">{t('settings.acp.loginHint')}</span>
+                        {!probe.data.authMethods.some((method) => method.type === 'agent') && (
+                          <span className="text-xs">{t('settings.acp.loginHint')}</span>
+                        )}
                         {probe.data.authMethods
                           .filter((method) => method.type === 'agent')
                           .map((method) => (

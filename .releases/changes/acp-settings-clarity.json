@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Simplify ACP settings with separate editor and external agent sections, collapsed setup help, and clearer authentication controls."
+}

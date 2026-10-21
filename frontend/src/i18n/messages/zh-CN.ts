@@ -874,12 +874,16 @@ export const zhCN = {
     },
     acp: {
       title: 'ACP 智能体',
-      subtitle: '通过 Agent Client Protocol 运行的本地智能体进程',
-      registeredTitle: '已注册智能体',
-      registeredDesc:
-        '内置和用户自定义的 ACP 智能体。在 ~/.suzent/acp_agents.json 中添加自定义智能体。',
+      subtitle: '让编辑器使用 Suzent，或在 Suzent 中使用其他代理。',
+      registeredTitle: '外部代理',
+      registeredDesc: '在 Suzent 中使用其他编程代理。',
+      agentDetails: '详细信息',
+      agentHelp: '安装与登录帮助',
+      probeHelp:
+        '探测会检查连接和可用的登录方式。需要认证时，点击登录按钮，或通过代理的 CLI 登录后重新探测。',
+      customHelp: '自定义代理配置文件：',
       noAgents: '暂无已注册的 ACP 智能体。',
-      ready: '就绪',
+      ready: '已安装',
       notInstalled: '未安装',
       probe: '探测',
       probing: '探测中...',
@@ -902,9 +906,16 @@ export const zhCN = {
       savedSessions: '{count} 个已保存',
       noSessions: '无会话',
       authOk: '已认证',
-      authUnknown: '认证未知',
+      authUnknown: '未检测',
       authMissing: '需要认证',
       connectionsTitle: '编辑器连接',
+      connectionsDesc: '在你的编辑器中使用 Suzent。',
+      connectEditor: '如何连接编辑器',
+      editorSetup: '保持 Suzent 运行，在编辑器中添加外部代理并填写：',
+      arguments: '参数',
+      stdioHint: '该命令由编辑器启动。手动运行 suzent acp 会静默等待协议消息，不会打开聊天界面。',
+      pendingApproval: '等待批准',
+      approvalScope: '此编辑器可使用 Suzent 的记忆和工具、恢复本授权的会话，并响应工具审批。',
       connectionsScope:
         '批准后，编辑器可创建 ACP 会话、访问此授权创建的会话，并使用其工作区工具。编辑器可以响应工具审批请求；你的其他会话不会共享。',
       connectionsHint:
@@ -919,8 +930,7 @@ export const zhCN = {
       grantId: '授权 ID',
       login: '登录',
       loggingIn: '等待登录完成…',
-      loginHint:
-        '选择下方登录方式。如果没有可用方式，请通过代理的 CLI 登录后重新检测。登录完成后请重试任务。',
+      loginHint: '请通过代理的 CLI 登录后重新探测。',
     },
     categories: {
       providers: '提供商',

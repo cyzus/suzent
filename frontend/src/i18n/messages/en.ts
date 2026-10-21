@@ -815,12 +815,16 @@ export const en = {
     },
     acp: {
       title: 'ACP Agents',
-      subtitle: 'Local agent processes that speak the Agent Client Protocol',
-      registeredTitle: 'Registered Agents',
-      registeredDesc:
-        'Built-in and user-defined ACP agents. Add custom agents in ~/.suzent/acp_agents.json.',
+      subtitle: 'Connect editors to Suzent, or use other agents in Suzent.',
+      registeredTitle: 'External agents',
+      registeredDesc: 'Use other coding agents from Suzent.',
+      agentDetails: 'Details',
+      agentHelp: 'Setup and sign-in help',
+      probeHelp:
+        'Probe checks the connection and available sign-in methods. If sign-in is required, choose a Sign in button or use the agent’s CLI, then probe again.',
+      customHelp: 'Add custom agents in',
       noAgents: 'No ACP agents registered.',
-      ready: 'Ready',
+      ready: 'Installed',
       notInstalled: 'Not installed',
       probe: 'Probe',
       probing: 'Probing...',
@@ -845,9 +849,18 @@ export const en = {
       savedSessions: '{count} saved',
       noSessions: 'No sessions',
       authOk: 'Authenticated',
-      authUnknown: 'Auth unknown',
+      authUnknown: 'Not checked',
       authMissing: 'Auth required',
       connectionsTitle: 'Editor connections',
+      connectionsDesc: 'Use Suzent as your editor’s agent.',
+      connectEditor: 'Connect an editor',
+      editorSetup: 'Keep Suzent running. Add an external agent in your editor with these settings:',
+      arguments: 'Arguments',
+      stdioHint:
+        'Your editor runs this command. Running suzent acp yourself waits silently for protocol messages; it does not open a chat.',
+      pendingApproval: 'Awaiting approval',
+      approvalScope:
+        'This editor can use Suzent’s memory and tools, resume this authorization’s chats, and answer tool approval requests.',
       connectionsScope:
         'Approve an editor to create ACP conversations, access conversations created by this authorization, and use their workspace tools. The editor can answer tool approval requests. Your other conversations are not shared.',
       connectionsHint:
@@ -862,8 +875,7 @@ export const en = {
       grantId: 'Authorization ID',
       login: 'Sign in',
       loggingIn: 'Waiting for sign-in…',
-      loginHint:
-        'Choose a sign-in method below. If none is offered, sign in using the agent’s CLI, then probe again. Retry your task after signing in.',
+      loginHint: 'Sign in using the agent’s CLI, then probe again.',
     },
     categories: {
       providers: 'Providers',
