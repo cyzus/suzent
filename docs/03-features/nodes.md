@@ -161,16 +161,24 @@ arguments.
 It also works the other way around: under **Settings → ACP Agents**, Suzent can
 use coding agents such as Claude Code or Codex as helpers.
 
-To sign in, click **Probe** beside an installed agent. If it reports **Auth
-required**, choose one of the **Sign in** buttons it offers and finish the
-agent's login flow, which may open your browser. Once it reports **Reachable**,
-retry your task. Suzent keeps the saved conversation ID when authentication
+Opening the page or clicking **Refresh** checks installed agents automatically.
+An agent that passes the check shows **Signed in**, with **Sign in again**
+available if you need to repeat authorization. Installation alone is not a
+login check.
+
+To sign in, click **Sign in** beside an installed agent. Finish the agent's
+login flow in the browser or terminal that opens on the computer running
+Suzent. The page shows progress, lets you cancel, and checks the connection
+again when login finishes. If the agent offers several methods, use **Probe**
+to discover them and choose a method before signing in. Once it reports
+**Reachable**, retry your task. Suzent keeps the saved conversation ID when authentication
 expires; it does not start a replacement conversation just because login is
 required.
 
-If no sign-in button is offered, use **Copy Login** or the agent's installation
-guide to sign in through its CLI, then probe again. Interactive terminal login
-is not yet embedded in Suzent. Installation status alone does not confirm
+Signing in from this page requires access from the same computer. On a host
+without a graphical terminal, expand **Details** to copy the login command,
+run it on that host, then probe again. Installation and login help stays
+collapsed until needed. Installation status alone does not confirm
 authentication, and a successful probe confirms session creation rather than
 availability of every model or tool.
 

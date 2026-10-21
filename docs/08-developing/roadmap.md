@@ -16,11 +16,7 @@ The settings page supports protocol-driven authentication for outbound agents.
 Inbound editor pairing already supports terminal and agent authentication.
 Remaining outbound work:
 
-- Interactive terminal authentication: provide a user-visible terminal using
-  the configured executable, apply the advertised arguments/environment, and
-  reconnect after successful exit. Do not advertise `auth.terminal` until this
-  flow is implemented; terminal method IDs must never be sent to `authenticate`.
-- Capability-gated logout and richer authentication progress/cancellation UI.
+- Capability-gated logout.
 - Byte-budgeted streaming buffers and measured frontend render batching. The
   current event-count limit fails explicitly on overflow; it is not disk-backed
   replay or transparent recovery of an interrupted turn.

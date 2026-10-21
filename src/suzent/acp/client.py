@@ -70,6 +70,7 @@ class ACPClient:
         self._stderr_task: asyncio.Task | None = None
         self._reverse_tasks: set[asyncio.Task] = set()
         self._read_error: ACPError | None = None
+        self.terminal_auth = False
 
     @property
     def is_running(self) -> bool:
@@ -132,7 +133,8 @@ class ACPClient:
                 "protocolVersion": PROTOCOL_VERSION,
                 "clientInfo": {"name": "suzent", "version": _client_version()},
                 "clientCapabilities": {
-                    "fs": {"readTextFile": False, "writeTextFile": False}
+                    "fs": {"readTextFile": False, "writeTextFile": False},
+                    **({"auth": {"terminal": True}} if self.terminal_auth else {}),
                 },
             },
         )

@@ -140,6 +140,21 @@ interface SettingsPageProps {
   children: React.ReactNode;
 }
 
+export function SettingsHelp({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+      <summary className="cursor-pointer font-bold">{title}</summary>
+      <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-300">{children}</div>
+    </details>
+  );
+}
+
 /** Consistent vertical rhythm and bottom breathing room for every settings tab. */
 export function SettingsPage({ className = '', children }: SettingsPageProps): React.ReactElement {
   return <div className={`space-y-4 pb-3 ${className}`}>{children}</div>;
@@ -296,7 +311,7 @@ interface SettingsListItemProps {
 
 /**
  * Common wrapper for list items in settings (MCP servers, Cron Jobs).
- * Applies the standard surface border, shadow, and subtle textured background.
+ * Applies an opaque, untextured surface with the standard border and shadow.
  */
 export function SettingsListItem({
   children,
@@ -304,9 +319,8 @@ export function SettingsListItem({
 }: SettingsListItemProps): React.ReactElement {
   return (
     <div
-      className={`group relative overflow-hidden border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900 ${className}`}
+      className={`group !animate-none relative overflow-hidden border-2 border-brutal-black bg-white text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100 ${className}`}
     >
-      <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
       <div className="relative z-10 w-full h-full flex flex-col">{children}</div>
     </div>
   );

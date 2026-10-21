@@ -815,12 +815,16 @@ export const en = {
     },
     acp: {
       title: 'ACP Agents',
-      subtitle: 'Local agent processes that speak the Agent Client Protocol',
-      registeredTitle: 'Registered Agents',
-      registeredDesc:
-        'Built-in and user-defined ACP agents. Add custom agents in ~/.suzent/acp_agents.json.',
+      subtitle: 'Connect editors to Suzent, or use other agents in Suzent.',
+      registeredTitle: 'External agents',
+      registeredDesc: 'Use other coding agents from Suzent.',
+      agentDetails: 'Details',
+      agentHelp: 'Setup and sign-in help',
+      probeHelp:
+        'Sign in opens the agent’s login flow on this computer and verifies the connection afterwards. Probe checks the connection and discovers sign-in methods.',
+      customHelp: 'Add custom agents in',
       noAgents: 'No ACP agents registered.',
-      ready: 'Ready',
+      ready: 'Installed',
       notInstalled: 'Not installed',
       probe: 'Probe',
       probing: 'Probing...',
@@ -844,10 +848,19 @@ export const en = {
       activeSessions: '{count} active',
       savedSessions: '{count} saved',
       noSessions: 'No sessions',
-      authOk: 'Authenticated',
-      authUnknown: 'Auth unknown',
+      authOk: 'Signed in',
+      authUnknown: 'Not checked',
       authMissing: 'Auth required',
       connectionsTitle: 'Editor connections',
+      connectionsDesc: 'Use Suzent as your editor’s agent.',
+      connectEditor: 'Connect an editor',
+      editorSetup: 'Keep Suzent running. Add an external agent in your editor with these settings:',
+      arguments: 'Arguments',
+      stdioHint:
+        'Your editor runs this command. Running suzent acp yourself waits silently for protocol messages; it does not open a chat.',
+      pendingApproval: 'Awaiting approval',
+      approvalScope:
+        'This editor can use Suzent’s memory and tools, resume this authorization’s chats, and answer tool approval requests.',
       connectionsScope:
         'Approve an editor to create ACP conversations, access conversations created by this authorization, and use their workspace tools. The editor can answer tool approval requests. Your other conversations are not shared.',
       connectionsHint:
@@ -860,10 +873,32 @@ export const en = {
       revokeConnection: 'Revoke access',
       approvedAt: 'Approved at',
       grantId: 'Authorization ID',
+      signInAgain: 'Sign in again',
       login: 'Sign in',
+      loginMethod: 'Sign-in method',
+      loginAutomatic: 'Automatic',
+      loginRequestError:
+        'Cannot reach sign-in controls. Check that you are using the local, updated Suzent backend.',
+      loginStates: {
+        idle: '',
+        starting: 'Preparing sign-in…',
+        authenticating: 'Complete sign-in in the browser or agent window.',
+        terminal: 'Complete sign-in in the terminal opened on this computer.',
+        verifying: 'Checking the connection…',
+        ready: 'Signed in and connection verified.',
+        failed: 'Sign-in did not complete.',
+        cancelled: 'Sign-in cancelled.',
+      },
+      loginErrors: {
+        unavailable:
+          'No supported sign-in method or interactive terminal is available. Use the command under Details.',
+        failed:
+          'Retry sign-in. If the terminal closed or the agent failed, use the command under Details.',
+        timeout: 'Sign-in timed out after five minutes. Try again.',
+        verification_failed: 'The agent still requires authentication. Try signing in again.',
+      },
       loggingIn: 'Waiting for sign-in…',
-      loginHint:
-        'Choose a sign-in method below. If none is offered, sign in using the agent’s CLI, then probe again. Retry your task after signing in.',
+      loginHint: 'Sign in using the agent’s CLI, then probe again.',
     },
     categories: {
       providers: 'Providers',
