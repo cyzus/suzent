@@ -698,6 +698,7 @@ export const en = {
       lintNever: 'Not yet run',
       lintEveryDays: 'every {days}d',
       statusBarIdle: 'Memory idle',
+      openMemorySettings: 'Open memory settings',
       statusBarNeedsReview: 'Memory needs review',
       statusBarPending: 'Memory {count} pending',
       statusBarWatermark: 'Consolidated through {watermark}',
