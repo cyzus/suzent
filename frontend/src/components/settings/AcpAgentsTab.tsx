@@ -1,10 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpProbeResult } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
+import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton, BrutalLink } from '../BrutalButton';
-import { SectionCardHeader, SettingsListItem, Badge, SettingsPage } from './SettingsCard';
+import {
+  SectionCardHeader,
+  SettingsCard,
+  SettingsHelp,
+  SettingsListItem,
+  Badge,
+  SettingsPage,
+} from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpConnections } from './AcpConnections';
@@ -38,6 +46,7 @@ export function AcpAgentsTab(): React.ReactElement {
   const { t } = useI18n();
   const [agents, setAgents] = useState<AcpAgentDescriptor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [probes, setProbes] = useState<Record<string, ProbeState>>({});
   const [sessionCounts, setSessionCounts] = useState<
     Record<string, { saved: number; active: number }>
@@ -77,34 +86,7 @@ export function AcpAgentsTab(): React.ReactElement {
     };
   }, []);
 
-  const loadAgents = async () => {
-    setLoading(true);
-    try {
-      const loaded = await fetchAcpAgents();
-      setAgents(loaded);
-      // Load per-agent session counts in the background.
-      const counts: Record<string, { saved: number; active: number }> = {};
-      await Promise.allSettled(
-        loaded
-          .filter((a) => a.status === 'ready')
-          .map(async (a) => {
-            try {
-              const { saved, active } = await fetchAcpSessions(a.id);
-              counts[a.id] = { saved: saved.length, active };
-            } catch {
-              /* skip */
-            }
-          })
-      );
-      setSessionCounts(counts);
-    } catch (e) {
-      console.error('Failed to fetch agents', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProbe = async (agent: AcpAgentDescriptor) => {
+  const handleProbe = useCallback(async (agent: AcpAgentDescriptor) => {
     setProbes((prev) => ({ ...prev, [agent.id]: { status: 'probing' } }));
     try {
       if (agent.probe) {
@@ -125,7 +107,51 @@ export function AcpAgentsTab(): React.ReactElement {
         [agent.id]: { status: 'error', message: String(e) },
       }));
     }
-  };
+  }, []);
+
+  const loadAgents = useCallback(async () => {
+    setLoading(true);
+    setRefreshing(true);
+    try {
+      const loaded = await fetchAcpAgents();
+      setAgents(loaded);
+      const currentLogins = await fetchAcpLogins();
+      const pending = loaded.filter(
+        (agent) => agent.status === 'ready' && !isLoginActive(currentLogins[agent.id])
+      );
+      setProbes((previous) => ({
+        ...previous,
+        ...Object.fromEntries(pending.map((agent) => [agent.id, { status: 'probing' as const }])),
+      }));
+      setLoading(false);
+      const checkConnections = async (): Promise<void> => {
+        let agent: AcpAgentDescriptor | undefined;
+        while ((agent = pending.shift())) await handleProbe(agent);
+      };
+      const checks = Promise.all([checkConnections(), checkConnections()]);
+      // Load per-agent session counts in the background.
+      const counts: Record<string, { saved: number; active: number }> = {};
+      await Promise.allSettled(
+        loaded
+          .filter((a) => a.status === 'ready')
+          .map(async (a) => {
+            try {
+              const { saved, active } = await fetchAcpSessions(a.id);
+              counts[a.id] = { saved: saved.length, active };
+            } catch {
+              /* skip */
+            }
+          })
+      );
+      setSessionCounts(counts);
+      await checks;
+    } catch (e) {
+      console.error('Failed to fetch agents', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [handleProbe]);
 
   const handleAuthenticate = async (id: string, methodId?: string): Promise<void> => {
     setAuthenticating((prev) => ({ ...prev, [id]: true }));
@@ -160,8 +186,8 @@ export function AcpAgentsTab(): React.ReactElement {
   };
 
   useEffect(() => {
-    loadAgents();
-  }, []);
+    void loadAgents();
+  }, [loadAgents]);
 
   const isReady = (agent: AcpAgentDescriptor) => agent.status === 'ready';
 
@@ -170,12 +196,16 @@ export function AcpAgentsTab(): React.ReactElement {
       <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
       <AcpConnections />
 
-      <section className="space-y-3 border-2 border-brutal-black bg-white p-4 text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100">
+      <SettingsCard className="space-y-3">
         <SectionCardHeader
           title={t('settings.acp.registeredTitle')}
           description={t('settings.acp.registeredDesc')}
           actions={
-            <BrutalButton size="sm" disabled={loading} onClick={() => void loadAgents()}>
+            <BrutalButton
+              size="sm"
+              disabled={loading || refreshing}
+              onClick={() => void loadAgents()}
+            >
               {t('common.refresh')}
             </BrutalButton>
           }
@@ -188,15 +218,12 @@ export function AcpAgentsTab(): React.ReactElement {
             {t('settings.acp.loginRequestError')}
           </p>
         )}
-        <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
-          <summary className="cursor-pointer font-bold">{t('settings.acp.agentHelp')}</summary>
-          <div className="mt-3 space-y-2 text-neutral-600 dark:text-neutral-300">
-            <p>{t('settings.acp.probeHelp')}</p>
-            <p>
-              {t('settings.acp.customHelp')} <code>~/.suzent/acp_agents.json</code>
-            </p>
-          </div>
-        </details>
+        <SettingsHelp title={t('settings.acp.agentHelp')}>
+          <p>{t('settings.acp.probeHelp')}</p>
+          <p>
+            {t('settings.acp.customHelp')} <code>~/.suzent/acp_agents.json</code>
+          </p>
+        </SettingsHelp>
 
         {loading ? (
           <div className="p-8 text-center font-bold uppercase text-neutral-500">
@@ -219,6 +246,12 @@ export function AcpAgentsTab(): React.ReactElement {
                     )
                   : [];
               const ready = isReady(agent);
+              const signedIn =
+                ready &&
+                !busy &&
+                (probe
+                  ? probe.status === 'ok' && probe.data.status === 'ready'
+                  : agent.auth_status === 'ok');
               const counts = sessionCounts[agent.id];
               const activeSessions = counts?.active ?? 0;
               const savedSessions = counts?.saved ?? 0;
@@ -229,7 +262,7 @@ export function AcpAgentsTab(): React.ReactElement {
               const setupCommand = adapter ? `npm install -g ${adapter}` : customInstall;
               const needsSetup = !ready && (agent.docs_url || setupCommand);
               return (
-                <SettingsListItem className="!animate-none" key={agent.id}>
+                <SettingsListItem key={agent.id}>
                   {/* Identity and status — the two things scanned first */}
                   <div className="flex items-start gap-3 p-4 border-b-2 border-brutal-black">
                     <div
@@ -249,11 +282,15 @@ export function AcpAgentsTab(): React.ReactElement {
                           {agent.name}
                         </div>
                         <div className="flex items-center gap-2">
-                          {ready && agent.auth_status && !probe && (
+                          {ready && !signedIn && agent.auth_status && !probe && (
                             <AuthBadge status={agent.auth_status} t={t} />
                           )}
                           <Badge tone={ready ? 'green' : 'amber'}>
-                            {ready ? t('settings.acp.ready') : t('settings.acp.notInstalled')}
+                            {signedIn
+                              ? t('settings.acp.authOk')
+                              : ready
+                                ? t('settings.acp.ready')
+                                : t('settings.acp.notInstalled')}
                           </Badge>
                         </div>
                       </div>
@@ -372,40 +409,42 @@ export function AcpAgentsTab(): React.ReactElement {
                           ? t('settings.acp.probing')
                           : t('settings.acp.probe')}
                       </BrutalButton>
-                      {authMethods.length > 1 && (
-                        <select
-                          aria-label={t('settings.acp.loginMethod')}
+                      {!signedIn && authMethods.length > 1 && (
+                        <BrutalSelect
                           disabled={busy}
                           value={methods[agent.id] || ''}
-                          onChange={(event) =>
-                            setMethods((prev) => ({ ...prev, [agent.id]: event.target.value }))
+                          onChange={(value) =>
+                            setMethods((prev) => ({ ...prev, [agent.id]: value }))
                           }
-                          className="max-w-full rounded border border-neutral-400 bg-white p-2 text-sm text-neutral-900 dark:bg-zinc-800 dark:text-white"
-                        >
-                          <option value="">{t('settings.acp.loginAutomatic')}</option>
-                          {authMethods.map((method) => (
-                            <option key={method.id} value={method.id}>
-                              {method.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={[
+                            { value: '', label: t('settings.acp.loginAutomatic') },
+                            ...authMethods.map((method) => ({
+                              value: method.id,
+                              label: method.name,
+                            })),
+                          ]}
+                          className="max-w-full"
+                          buttonClassName="text-xs"
+                        />
                       )}
                       <BrutalButton
                         size="sm"
-                        variant="primary"
+                        variant={signedIn ? 'default' : 'primary'}
                         disabled={busy || probe?.status === 'probing'}
                         onClick={() =>
                           void handleAuthenticate(agent.id, methods[agent.id] || undefined)
                         }
                       >
-                        {busy ? t('settings.acp.loggingIn') : t('settings.acp.login')}
+                        {busy
+                          ? t('settings.acp.loggingIn')
+                          : t(signedIn ? 'settings.acp.signInAgain' : 'settings.acp.login')}
                       </BrutalButton>
                       {isLoginActive(login) && (
                         <BrutalButton size="sm" onClick={() => void handleCancelLogin(agent.id)}>
                           {t('common.cancel')}
                         </BrutalButton>
                       )}
-                      {probe && (
+                      {probe && !signedIn && (
                         <div className="ml-auto shrink-0">
                           {probe.status === 'probing' ? (
                             <span className="text-[10px] font-bold uppercase text-neutral-500">
@@ -428,7 +467,7 @@ export function AcpAgentsTab(): React.ReactElement {
                       )}
                     </div>
                   )}
-                  {login && login.status !== 'idle' && (
+                  {login && !signedIn && login.status !== 'idle' && login.status !== 'ready' && (
                     <p
                       role={login.status === 'failed' ? 'alert' : 'status'}
                       className={`mx-4 mb-4 rounded border p-3 text-sm ${login.status === 'failed' ? 'border-red-300 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200' : 'border-neutral-300 bg-white text-neutral-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-100'}`}
@@ -450,7 +489,7 @@ export function AcpAgentsTab(): React.ReactElement {
             })}
           </div>
         )}
-      </section>
+      </SettingsCard>
     </SettingsPage>
   );
 }

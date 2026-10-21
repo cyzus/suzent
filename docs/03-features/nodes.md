@@ -161,6 +161,11 @@ arguments.
 It also works the other way around: under **Settings → ACP Agents**, Suzent can
 use coding agents such as Claude Code or Codex as helpers.
 
+Opening the page or clicking **Refresh** checks installed agents automatically.
+An agent that passes the check shows **Signed in**, with **Sign in again**
+available if you need to repeat authorization. Installation alone is not a
+login check.
+
 To sign in, click **Sign in** beside an installed agent. Finish the agent's
 login flow in the browser or terminal that opens on the computer running
 Suzent. The page shows progress, lets you cancel, and checks the connection

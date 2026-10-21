@@ -3,7 +3,7 @@ import { BrutalButton } from '../BrutalButton';
 import { useI18n } from '../../i18n';
 import { decideAcpPairing, fetchAcpPairing, revokeAcpGrant } from '../../lib/acpPairing';
 import type { AcpPairingStatus } from '../../lib/acpPairing';
-import { SectionCardHeader, SettingsListItem } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsHelp, SettingsListItem } from './SettingsCard';
 
 export function AcpConnections(): React.ReactElement {
   const { t, locale } = useI18n();
@@ -48,30 +48,27 @@ export function AcpConnections(): React.ReactElement {
   };
 
   return (
-    <section className="space-y-3 border-2 border-brutal-black bg-white p-4 text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100">
+    <SettingsCard className="space-y-3">
       <SectionCardHeader
         title={t('settings.acp.connectionsTitle')}
         description={t('settings.acp.connectionsDesc')}
       />
-      <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
-        <summary className="cursor-pointer font-bold">{t('settings.acp.connectEditor')}</summary>
-        <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-300">
-          <p>{t('settings.acp.editorSetup')}</p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-            <dt>{t('settings.acp.command')}</dt>
-            <dd>
-              <code>suzent</code>
-            </dd>
-            <dt>{t('settings.acp.arguments')}</dt>
-            <dd>
-              <code>acp</code>
-            </dd>
-          </dl>
-          <p>{t('settings.acp.connectionsHint')}</p>
-          <p>{t('settings.acp.stdioHint')}</p>
-          <p>{t('settings.acp.connectionsScope')}</p>
-        </div>
-      </details>
+      <SettingsHelp title={t('settings.acp.connectEditor')}>
+        <p>{t('settings.acp.editorSetup')}</p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+          <dt>{t('settings.acp.command')}</dt>
+          <dd>
+            <code>suzent</code>
+          </dd>
+          <dt>{t('settings.acp.arguments')}</dt>
+          <dd>
+            <code>acp</code>
+          </dd>
+        </dl>
+        <p>{t('settings.acp.connectionsHint')}</p>
+        <p>{t('settings.acp.stdioHint')}</p>
+        <p>{t('settings.acp.connectionsScope')}</p>
+      </SettingsHelp>
       {error && (
         <p role="alert" className="text-sm text-red-600">
           {error}
@@ -82,7 +79,7 @@ export function AcpConnections(): React.ReactElement {
         <p className="text-sm">{t('settings.acp.connectionsEmpty')}</p>
       )}
       {status.pending.map((item) => (
-        <SettingsListItem className="!animate-none" key={item.request_id}>
+        <SettingsListItem key={item.request_id}>
           <div className="p-4 space-y-3">
             <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
               {t('settings.acp.pendingApproval')}
@@ -125,7 +122,7 @@ export function AcpConnections(): React.ReactElement {
         </SettingsListItem>
       ))}
       {status.grants.map((grant) => (
-        <SettingsListItem className="!animate-none" key={grant.grant_id}>
+        <SettingsListItem key={grant.grant_id}>
           <div className="p-4 flex items-center justify-between gap-3">
             <div className="min-w-0 space-y-1">
               <p className="font-bold break-words">{grant.client_name}</p>
@@ -150,6 +147,6 @@ export function AcpConnections(): React.ReactElement {
           </div>
         </SettingsListItem>
       ))}
-    </section>
+    </SettingsCard>
   );
 }
