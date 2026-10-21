@@ -917,14 +917,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         target_tag,
     )?;
     if let Err(error) = refresh_shortcuts(paths) {
-        let mut status: UpdateStatus = serde_json::from_slice(
-            &fs::read(&paths.status).map_err(display_io("read shortcut status"))?,
-        )
-        .map_err(|error| error.to_string())?;
-        status
-            .warnings
-            .push(format!("{error}; run 'suzent shortcuts' to retry"));
-        write_json_atomic(&paths.status, &status, "record shortcut warning")?;
+        push_status_warning(paths, format!("{error}; run 'suzent shortcuts' to retry"))?;
     }
     if !transaction.development && !paths.root.join(".suzent-bootstrap-complete").is_file() {
         let config = super::InstallConfig::from_env_and_args(&[
@@ -938,7 +931,24 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
                 .unwrap_or_else(|| "failed to finish bootstrap".to_string()));
         }
     }
+    if !transaction.development {
+        // Last, so no later failure can roll the source back underneath the
+        // new bundle. A failed download keeps the previous bundle and is not
+        // worth a rollback.
+        let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+        if let Err(error) = super::webui::install(&paths.root, &bases) {
+            push_status_warning(paths, format!("Web UI not updated: {error}"))?;
+        }
+    }
     Ok(())
+}
+
+fn push_status_warning(paths: &UpdatePaths, warning: String) -> Result<(), String> {
+    let mut status: UpdateStatus =
+        serde_json::from_slice(&fs::read(&paths.status).map_err(display_io("read update status"))?)
+            .map_err(|error| error.to_string())?;
+    status.warnings.push(warning);
+    write_json_atomic(&paths.status, &status, "record update warning")
 }
 
 fn read_transaction(paths: &UpdatePaths) -> Result<UpdateTransaction, String> {
