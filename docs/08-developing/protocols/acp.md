@@ -12,9 +12,35 @@ in **both directions**:
 | Outbound | Suzent is the **client** | `suzent.acp.client` | Suzent drives Claude Code, Codex, … as subagents |
 | Inbound | Suzent is the **agent** | `suzent acp` | Zed, enoxian, any ACP client drives *your* geist |
 
-This page covers the inbound half. See [a2a.md](./a2a.md) for A2A, which reaches
+The outbound client is covered below; the numbered sections describe the
+inbound bridge. See [a2a.md](./a2a.md) for A2A, which reaches
 agents over the network; ACP is local and process-scoped — the client spawns the
 agent and speaks JSON-RPC on its stdin/stdout.
+
+## Outbound authentication and streaming
+
+The outbound client implements ACP v1. Probing an agent returns its advertised
+authentication methods and checks session creation. The settings login action
+rechecks the handshake and calls `authenticate` only for a selected advertised
+`agent` method (also the default when `type` is absent). Successful login keeps
+the connection for the next session, including when credentials are scoped to
+that connection; unused login connections close on backend shutdown. Login
+has a five-minute deadline. Credentials remain owned by the external agent.
+
+Authentication-required errors retain their JSON-RPC code and data. A failed
+`session/load` with code `-32000` does not fall back to a new session. A prompt
+authentication failure closes the live connection but preserves the saved
+session ID and asks the user to sign in and retry. Suzent does not automatically
+replay a task after login.
+
+Streaming waits on updates and prompt completion directly, draining queued
+updates before finishing. Frames up to 8 MiB are accepted. Each session buffers
+at most 4,096 updates; overflow ends the connection with an explicit error
+instead of blocking the shared RPC reader or silently dropping updates. A
+later attempt reconnects. Tool updates retain their original order and fields.
+
+See the official [authentication](https://agentclientprotocol.com/protocol/v1/authentication)
+and [prompt turn](https://agentclientprotocol.com/protocol/v1/prompt-turn) contracts.
 
 ## 1. What the client gets
 

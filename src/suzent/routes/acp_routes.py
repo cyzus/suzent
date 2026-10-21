@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -13,6 +13,10 @@ from suzent.acp import get_acp_manager
 from suzent.acp.manager import _resolve_project_dir
 from suzent.acp.permissions import get_permission_broker
 from suzent.database import get_database
+
+
+class AuthenticationRequest(BaseModel):
+    method_id: str = Field(min_length=1, max_length=256)
 
 
 async def list_acp_agents(_request: Request) -> JSONResponse:
@@ -119,6 +123,20 @@ async def create_acp_session(request: Request) -> JSONResponse:
 
 
 async def probe_acp_agent(request: Request) -> JSONResponse:
+    return await _check_acp_agent(request)
+
+
+async def authenticate_acp_agent(request: Request) -> JSONResponse:
+    try:
+        data = AuthenticationRequest.model_validate(await request.json())
+    except (ValidationError, ValueError):
+        return JSONResponse({"error": "A valid method_id is required"}, status_code=400)
+    return await _check_acp_agent(request, data.method_id)
+
+
+async def _check_acp_agent(
+    request: Request, method_id: str | None = None
+) -> JSONResponse:
     try:
         agent_id = request.path_params.get("agent_id")
         if not agent_id:
@@ -135,30 +153,20 @@ async def probe_acp_agent(request: Request) -> JSONResponse:
                 {"error": "Agent binary not found or unavailable"}, status_code=400
             )
 
-        # Unique key so concurrent probes don't evict each other's subprocess.
-        # Probes are ephemeral and have no real chat, so fall back to the
-        # default project directory rather than the backend's launch dir.
+        # Settings probes have no chat workspace; use the default project.
         from suzent.config import CONFIG
 
         probe_cwd = agent.cwd or str(
             Path(CONFIG.sandbox_data_path).resolve() / "projects" / "default"
         )
         Path(probe_cwd).mkdir(parents=True, exist_ok=True)
-        probe_chat_id = f"probe:{agent_id}:{uuid.uuid4().hex}"
-        managed = await manager.create(
-            chat_id=probe_chat_id, agent_id=agent_id, cwd=probe_cwd
+        return JSONResponse(await manager.probe(agent_id, probe_cwd, method_id))
+    except TimeoutError:
+        return JSONResponse(
+            {"error": "ACP operation timed out; try again"}, status_code=504
         )
-        try:
-            # The handshake already ran during create(); report what it returned.
-            return JSONResponse(
-                {
-                    "protocolVersion": managed.protocol_version,
-                    "agentInfo": managed.agent_info,
-                    "capabilities": managed.capabilities,
-                }
-            )
-        finally:
-            await manager.stop(probe_chat_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

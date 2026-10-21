@@ -903,6 +903,10 @@ export const zhCN = {
       authOk: '已认证',
       authUnknown: '认证未知',
       authMissing: '需要认证',
+      login: '登录',
+      loggingIn: '等待登录完成…',
+      loginHint:
+        '选择下方登录方式。如果没有可用方式，请通过代理的 CLI 登录后重新检测。登录完成后请重试任务。',
     },
     categories: {
       providers: '提供商',

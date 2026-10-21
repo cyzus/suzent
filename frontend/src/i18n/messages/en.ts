@@ -846,6 +846,10 @@ export const en = {
       authOk: 'Authenticated',
       authUnknown: 'Auth unknown',
       authMissing: 'Auth required',
+      login: 'Sign in',
+      loggingIn: 'Waiting for sign-in…',
+      loginHint:
+        'Choose a sign-in method below. If none is offered, sign in using the agent’s CLI, then probe again. Retry your task after signing in.',
     },
     categories: {
       providers: 'Providers',
