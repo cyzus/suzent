@@ -915,6 +915,8 @@ export const zhCN = {
       approveConnection: '批准编辑器',
       declineConnection: '拒绝',
       revokeConnection: '撤销访问',
+      approvedAt: '批准时间',
+      grantId: '授权 ID',
       login: '登录',
       loggingIn: '等待登录完成…',
       loginHint:

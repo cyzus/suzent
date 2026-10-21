@@ -5,7 +5,7 @@ import type { AcpPairingStatus } from '../../lib/acpPairing';
 import { SettingsListAction, SettingsListItem } from './SettingsCard';
 
 export function AcpConnections(): React.ReactElement {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [status, setStatus] = useState<AcpPairingStatus>({ pending: [], grants: [] });
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
@@ -99,7 +99,18 @@ export function AcpConnections(): React.ReactElement {
       {status.grants.map((grant) => (
         <SettingsListItem key={grant.grant_id}>
           <div className="p-4 flex items-center justify-between gap-3">
-            <span className="font-bold break-words">{grant.client_name}</span>
+            <div className="min-w-0 space-y-1">
+              <p className="font-bold break-words">{grant.client_name}</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.acp.approvedAt')}{' '}
+                <time dateTime={new Date(grant.approved_at * 1000).toISOString()}>
+                  {new Date(grant.approved_at * 1000).toLocaleString(locale)}
+                </time>
+              </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 break-all">
+                {t('settings.acp.grantId')}: <code>{grant.grant_id}</code>
+              </p>
+            </div>
             <SettingsListAction
               disabled={busy}
               onClick={() => void act(() => revokeAcpGrant(grant.grant_id))}

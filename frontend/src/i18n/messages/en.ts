@@ -858,6 +858,8 @@ export const en = {
       approveConnection: 'Approve editor',
       declineConnection: 'Decline',
       revokeConnection: 'Revoke access',
+      approvedAt: 'Approved at',
+      grantId: 'Authorization ID',
       login: 'Sign in',
       loggingIn: 'Waiting for sign-in…',
       loginHint:
