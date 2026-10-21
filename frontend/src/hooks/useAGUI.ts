@@ -378,8 +378,14 @@ export function processEvent(
           else next.push({ type: 'acp-permission', acpPermission: req });
         }
       } else if (name === 'incoming_message') {
-        const incoming = value as { content?: string };
-        if (incoming?.content) next.push({ type: 'incoming-message', text: incoming.content });
+        const incoming = value as { content?: string; persisted?: boolean };
+        if (incoming?.content) {
+          next.push({
+            type: 'incoming-message',
+            text: incoming.content,
+            ...(incoming.persisted ? { persisted: true } : {}),
+          });
+        }
       } else if (name === 'acp.session_reset') {
         const notice = value as Record<string, unknown>;
         next.push({
