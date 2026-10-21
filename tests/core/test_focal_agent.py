@@ -1,3 +1,4 @@
+from inspect import signature
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +13,7 @@ from suzent.tools.agents import agent_lifecycle_tools
 from suzent.tools.agents.agent_lifecycle_tools import (
     AgentListTool,
     AgentSendTool,
+    FocalDispatchTool,
     _accessible_agent,
 )
 from suzent.tools.base import ToolErrorCode
@@ -69,7 +71,7 @@ def test_global_context_lists_projects_sessions_and_blockers(db) -> None:
 
     context = focal_agent.build_focal_global_context()
 
-    assert context.startswith("# Focal Agent Global Context")
+    assert context.startswith("# SUZENT Global Context")
     assert f"slug `website` · id `{project_id}`" in context
     assert f"Session `{chat_id}` · Redesign · idle" in context
     assert f"#{task.id} [blocked] Pick a palette" in context
@@ -127,7 +129,7 @@ async def test_focal_agent_starts_auto_primary_session_with_task(db, enqueued) -
     get_or_create_focal_chat()
     project_id = db.create_project("Research", "research")
 
-    result = await AgentSendTool().forward(
+    result = await FocalDispatchTool().forward(
         _ctx(FOCAL_CHAT_ID),
         "new",
         "Survey vector databases",
@@ -154,11 +156,11 @@ async def test_focal_agent_starts_auto_primary_session_with_task(db, enqueued) -
 
 
 @pytest.mark.asyncio
-async def test_only_focal_agent_starts_new_sessions(db, enqueued) -> None:
+async def test_only_focal_agent_can_dispatch(db, enqueued) -> None:
     chat_id = db.create_chat("Regular", {})
     db.create_project("Research", "research")
 
-    result = await AgentSendTool().forward(
+    result = await FocalDispatchTool().forward(
         _ctx(chat_id), "new", "Go", project_id="research"
     )
 
@@ -277,7 +279,7 @@ def test_focal_turn_is_pinned_to_orchestration_tools(db, mode: str) -> None:
     config = {
         "permission_mode": mode,
         "tools": ["WriteFileTool", "RunCommandTool", "AgentTool"],
-        "denied_tools": ["AgentSendTool"],
+        "denied_tools": ["FocalDispatchTool"],
         "cwd": "/Users/someone/project",
         "sandbox_volumes": ["/Users/someone/data:/mnt/data"],
     }
@@ -286,8 +288,9 @@ def test_focal_turn_is_pinned_to_orchestration_tools(db, mode: str) -> None:
 
     assert config["permission_mode"] == "full_access"
     assert config["tools"] == list(FOCAL_TOOL_NAMES)
-    assert "AgentSendTool" in config["tools"]
-    assert "AgentSendTool" not in config["denied_tools"]
+    assert "FocalDispatchTool" in config["tools"]
+    assert "FocalDispatchTool" not in config["denied_tools"]
+    assert "AgentSendTool" in config["denied_tools"]
     for tool in ("WriteFileTool", "EditFileTool", "RunCommandTool", "AgentTool"):
         assert tool in config["denied_tools"]
     assert not set(config["tools"]) & set(config["denied_tools"])
@@ -695,7 +698,9 @@ async def test_sending_work_makes_focal_follow_the_session(
     chat_id = db.create_chat("Servers", {}, project_id=project_id)
     task = db.create_task(project_id, "Upgrade Caddy", "", chat_id=chat_id)
 
-    result = await AgentSendTool().forward(_ctx(FOCAL_CHAT_ID), chat_id, "Finish #1")
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID), chat_id, "Finish #1"
+    )
 
     assert result.success
     assert "reply will wake you" in result.message
@@ -774,8 +779,9 @@ async def test_focal_never_waits_on_a_session(
 
     monkeypatch.setattr(AgentSendTool, "_send_and_wait", staticmethod(must_not_wait))
 
-    result = await AgentSendTool().forward(
-        _ctx(FOCAL_CHAT_ID), chat_id, "Finish #1", wait=True
+    assert "wait" not in signature(FocalDispatchTool.forward).parameters
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID), chat_id, "Finish #1"
     )
 
     assert result.success
@@ -799,7 +805,7 @@ async def test_focal_does_not_block_on_external_agents(
         agent_lifecycle_tools.agent_bridge, "delegate", must_not_delegate
     )
 
-    result = await AgentSendTool().forward(
+    result = await FocalDispatchTool().forward(
         _ctx(FOCAL_CHAT_ID), "a2a:research-bot", "Summarise"
     )
 
@@ -838,3 +844,31 @@ def test_focal_status_reports_when_suzent_last_spoke(db, sandbox) -> None:
 
     last = datetime.fromisoformat(focal_agent.focal_status()["lastMessageAt"])
     assert (datetime.now(timezone.utc) - last).total_seconds() < 60
+
+
+def test_only_suzent_sees_the_dispatch_parameters() -> None:
+    from suzent.tools.registry import _tool_description
+
+    send_params = signature(AgentSendTool.forward).parameters
+    assert not {"project_id", "title", "task_title"} & set(send_params)
+    assert (FocalDispatchTool.group, FocalDispatchTool.deferrable) == ("", False)
+    assert FocalDispatchTool.tool_name != AgentSendTool.tool_name
+    for tool in (AgentSendTool, FocalDispatchTool):
+        described = [_tool_description(tool)] + [
+            str(param.annotation)
+            for param in signature(tool.forward).parameters.values()
+        ]
+        assert not any("Focal Agent" in text for text in described)
+
+
+def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "heartbeat.md"
+    path.write_text(focal_agent._PREVIOUS_FOCAL_HEARTBEATS[0], encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_HEARTBEAT
+    path.write_text("- My own item\n", encoding="utf-8")
+    get_or_create_focal_chat()
+    assert path.read_text(encoding="utf-8") == "- My own item\n"

@@ -15,14 +15,14 @@ vi.mock('../../i18n', () => ({
 const panel: FocalPanel = {
   tools: [
     {
-      id: 'AgentSendTool',
-      name: 'Agent Send',
-      description: 'Send a message to another agent.',
-      runtimeName: 'agent_send',
+      id: 'FocalDispatchTool',
+      name: 'Dispatch to sessions',
+      description: 'Send work to a project session, or start a new one.',
+      runtimeName: 'agent_dispatch',
     },
     {
       id: 'FocalScheduleTool',
-      name: 'Focal Schedule',
+      name: 'Schedule wake-ups',
       description: 'Schedule when SUZENT wakes next.',
       runtimeName: 'schedule_wakeup',
     },
@@ -64,7 +64,7 @@ describe('Focal tools panel', () => {
   it('lists fixed tools read-only, with no picker or MCP switches', () => {
     const html = render();
     expect(html).toContain('focalTools.fixedNote');
-    expect(html).toContain('Agent Send');
+    expect(html).toContain('Dispatch to sessions');
     expect(html).toContain('Schedule when SUZENT wakes next.');
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain('toolsPanel.mcpServers');

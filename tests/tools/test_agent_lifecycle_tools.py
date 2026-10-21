@@ -367,9 +367,6 @@ def test_agent_send_schema_stays_minimal():
         "agent_id",
         "message",
         "wait",
-        "project_id",
-        "title",
-        "task_title",
     ]
 
 

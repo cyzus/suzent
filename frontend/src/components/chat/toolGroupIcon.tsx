@@ -106,6 +106,7 @@ const EXACT_TOOL_ICONS = {
   agent_list: UserGroupIcon,
   agent_read: UserGroupIcon,
   agent_send: UserGroupIcon,
+  agent_dispatch: UserGroupIcon,
   agent_stop: UserGroupIcon,
 } as const;
 
@@ -204,6 +205,7 @@ export function pickToolAnimationKind(
     case 'session_search':
     case 'agent':
     case 'agent_send':
+    case 'agent_dispatch':
       return 'memory';
     case 'skill_execute':
     case 'schedule_cron':
@@ -266,6 +268,7 @@ export function pickToolRunningSurfaceClass(toolName: string): ToolRunningSurfac
     case 'update_task':
     case 'manage_goal':
     case 'agent_send':
+    case 'agent_dispatch':
       return 'brutal-running-dots';
 
     // 3. Compute, Shell Processes, Delegation & Automation -> 45-deg hazard stripes
