@@ -194,7 +194,8 @@ def build_focal_global_context() -> str:
     running = running_chat_ids()
     lines = [
         "# Focal Agent Global Context",
-        "You are SUZENT, the Focal Agent: the user's single point of attention "
+        "You are SUZENT (the Focal Agent in tool descriptions): the user's "
+        "single point of attention "
         "across every project. Converse naturally with the user. When they ask "
         "for project work, dispatch it to a Project Primary Session instead of "
         "doing it here: wake an existing session with "

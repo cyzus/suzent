@@ -18,7 +18,6 @@ def _ctx(tmp_path):
         sandbox_enabled=False,
         custom_volumes=[],
         workspace_root=str(tmp_path),
-        auto_approve_tools=False,
         tool_approval_policy={},
     )
     return SimpleNamespace(deps=deps)
