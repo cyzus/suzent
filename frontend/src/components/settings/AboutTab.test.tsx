@@ -39,7 +39,7 @@ describe('VersionCard', () => {
   });
 
   it('renders the version alone when there is no commit or badge', () => {
-    const html = render({ label: 'Desktop frontend', value: 'v0.10.0', tone: 'yellow' });
+    const html = render({ label: 'Desktop frontend', value: 'v0.10.0', tone: 'neutral' });
 
     expect(html).toContain('v0.10.0');
     expect(html).not.toContain('Development build');

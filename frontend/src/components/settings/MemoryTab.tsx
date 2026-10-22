@@ -71,7 +71,7 @@ export function MemoryTab({
               <button
                 type="button"
                 onClick={onOpenModelRoles}
-                className="group inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wide border-2 border-brutal-black bg-brutal-yellow text-brutal-black brutal-btn"
+                className="group inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wide border-2 border-brutal-black bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white brutal-btn"
               >
                 {t('settings.memoryConfig.editInModelRoles')}
                 <svg
@@ -135,7 +135,7 @@ export function MemoryTab({
           <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400">
             {t('settings.sandbox.mountTarget')}
           </div>
-          <div className="font-mono text-sm border-2 border-brutal-black bg-brutal-yellow/30 px-3 py-2 inline-block">
+          <div className="font-mono text-sm border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 inline-block">
             /mnt/notebook
           </div>
 

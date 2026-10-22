@@ -112,7 +112,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
             <h3 className="flex items-center gap-2 font-bold">
               <span
                 aria-hidden="true"
-                className="flex h-6 w-6 shrink-0 items-center justify-center bg-brutal-yellow text-xs font-mono text-brutal-black"
+                className="flex h-6 w-6 shrink-0 items-center justify-center bg-neutral-200 text-xs font-mono text-brutal-black dark:bg-zinc-700 dark:text-white"
               >
                 1
               </span>
@@ -138,7 +138,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
             <h3 className="flex items-center gap-2 font-bold">
               <span
                 aria-hidden="true"
-                className="flex h-6 w-6 shrink-0 items-center justify-center bg-brutal-yellow text-xs font-mono text-brutal-black"
+                className="flex h-6 w-6 shrink-0 items-center justify-center bg-neutral-200 text-xs font-mono text-brutal-black dark:bg-zinc-700 dark:text-white"
               >
                 2
               </span>
