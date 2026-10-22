@@ -1,5 +1,7 @@
 import React from 'react';
-import { RobotAvatar } from './chat/RobotAvatar';
+import { RegentCube } from './regent/RegentCube';
+import { RegentMark } from './regent/RegentMark';
+import { regentState, useRegentNod } from './regent/regentState';
 import { useI18n } from '../i18n';
 import { useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID, type FocalAgentStatus } from '../lib/focalAgent';
@@ -10,11 +12,21 @@ interface FocalAgentCardProps {
 }
 
 export function FocalAgentCard({ active, onOpen }: FocalAgentCardProps): React.ReactElement {
-  return <FocalAgentCardView status={useFocalStatus()} active={active} onOpen={onOpen} />;
+  const status = useFocalStatus();
+  return (
+    <FocalAgentCardView
+      status={status}
+      active={active}
+      onOpen={onOpen}
+      nod={useRegentNod(status)}
+    />
+  );
 }
 
 interface FocalAgentCardViewProps extends FocalAgentCardProps {
   status: FocalAgentStatus | null;
+  /** Bumped when Regent has something new to say; replays the mark's nod. */
+  nod?: number;
 }
 
 /** "14:05" today, "Yesterday" for yesterday, a short date before that. */
@@ -39,6 +51,7 @@ export function FocalAgentCardView({
   status,
   active,
   onOpen,
+  nod = 0,
 }: FocalAgentCardViewProps): React.ReactElement {
   const { t, locale } = useI18n();
   // Background check-ins, wake-ups and events land here as new messages, so the
@@ -49,7 +62,6 @@ export function FocalAgentCardView({
   const autoRun = Math.max(0, status?.autoRun ?? 0);
   const working = Boolean(status?.running);
   const hasNews = unread > 0 && !active && Boolean(status?.lastMessage);
-  const showStatus = hasNews || working || waiting > 0 || stalled > 0 || autoRun > 0;
   const time = lastMessageTime(status?.lastMessageAt, locale, t('chatMessage.yesterday'));
 
   const counts = [
@@ -65,6 +77,41 @@ export function FocalAgentCardView({
         ? counts.join(' · ')
         : t('chatList.focal.allClear');
 
+  // Opening Regent turns its row into a profile: the flat mark grows into the
+  // cube, and the rest of the sidebar steps back (see ChatList).
+  if (active) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(status?.chatId ?? FOCAL_CHAT_ID)}
+        aria-current="page"
+        aria-label={t('chatList.focal.open')}
+        className="regent-card-hero w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black shadow-brutal-sm dark:bg-zinc-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+      >
+        <span key={nod} className={`regent-hero-avatar mb-2 flex ${nod > 0 ? 'regent-nod' : ''}`}>
+          <RegentCube size={56} state={regentState(status)} />
+        </span>
+        <span className="regent-hero-text flex items-baseline gap-1.5">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {t('chatList.focal.brand')}
+          </span>
+          <span className="font-brutal text-xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor]">
+            {t('chatList.focal.name')}
+          </span>
+        </span>
+        <span className="regent-hero-text text-[11px] text-neutral-500 dark:text-neutral-400">
+          {working ? t('chatList.focal.working') : t('chatList.focal.role')}
+        </span>
+        <span
+          className={`regent-hero-text max-w-full truncate text-[11px] font-bold ${waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
+          title={statusLine ?? undefined}
+        >
+          {counts.length > 0 ? counts.join(' · ') : t('chatList.focal.allClear')}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -73,23 +120,18 @@ export function FocalAgentCardView({
       aria-label={t('chatList.focal.open')}
       className={`w-full px-2 py-2 min-h-9 flex items-center gap-2 text-left transition-colors text-brutal-black dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${active ? 'bg-neutral-200/70 dark:bg-zinc-700' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
     >
-      <span className="relative w-5 h-5 shrink-0 flex items-center justify-center">
-        <span className="w-5 h-5" aria-hidden="true">
-          <RobotAvatar variant={working ? 'observer' : 'idle'} />
-        </span>
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-2 ring-white dark:ring-zinc-800 ${working ? 'bg-brutal-blue animate-pulse' : 'bg-emerald-500'}`}
-          role="img"
-          aria-label={t(working ? 'chatList.focal.working' : 'chatList.focal.allClear')}
-        />
+      {/* The mark itself shows Regent's state: scanning, a lit gem, or a nod. */}
+      <span
+        key={nod}
+        className={`flex w-7 h-7 shrink-0 items-end justify-center ${nod > 0 ? 'regent-nod' : ''}`}
+        aria-hidden="true"
+      >
+        <RegentMark size={24} state={regentState(status)} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5 min-w-0">
           <span className="font-mono text-xs font-bold tracking-wide shrink-0">
             {t('chatList.focal.name')}
-          </span>
-          <span className="ml-auto truncate text-[10px] text-neutral-400 dark:text-neutral-500">
-            {t('chatList.focal.role')}
           </span>
           {hasNews && time && (
             <span className="ml-auto shrink-0 text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
@@ -97,30 +139,28 @@ export function FocalAgentCardView({
             </span>
           )}
         </span>
-        {showStatus && (
-          <span className="mt-0.5 flex items-center gap-2 min-w-0">
-            <span
-              className={`min-w-0 flex-1 truncate text-[11px] ${hasNews || waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
-              title={statusLine ?? undefined}
-            >
-              {statusLine}
-            </span>
-            {hasNews ? (
-              <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-neutral-900 px-1 text-[9px] font-extrabold tabular-nums text-white dark:bg-neutral-100 dark:text-neutral-900">
-                {unread > 99 ? '99+' : unread}
-              </span>
-            ) : (
-              waiting > 0 && (
-                <span
-                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
-                  title={t('chatList.focal.waitingBadge', { count: waiting })}
-                >
-                  {waiting}
-                </span>
-              )
-            )}
+        <span className="mt-0.5 flex items-center gap-2 min-w-0">
+          <span
+            className={`min-w-0 flex-1 truncate text-[11px] ${hasNews || waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
+            title={statusLine ?? undefined}
+          >
+            {statusLine}
           </span>
-        )}
+          {hasNews ? (
+            <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-neutral-900 px-1 text-[9px] font-extrabold tabular-nums text-white dark:bg-neutral-100 dark:text-neutral-900">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          ) : (
+            waiting > 0 && (
+              <span
+                className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
+                title={t('chatList.focal.waitingBadge', { count: waiting })}
+              >
+                {waiting}
+              </span>
+            )
+          )}
+        </span>
       </span>
     </button>
   );

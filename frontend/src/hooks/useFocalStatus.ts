@@ -1,38 +1,61 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { subscribeToBusPayloads } from './useEventBus';
 import { fetchFocalAgentStatus, type FocalAgentStatus } from '../lib/focalAgent';
 
 const STATUS_POLL_MS = 10_000;
 
-/**
- * Regent's status, shared by its card and the project list's "waiting on you"
- * markers. Polled, and refreshed at once whenever tasks change.
- */
-export function useFocalStatus(): FocalAgentStatus | null {
-  const [status, setStatus] = useState<FocalAgentStatus | null>(null);
-  const request = useRef(0);
+// One poll serves every component showing Regent: each /focal request scans
+// every project and task, so the sidebar card, the header title and its logo
+// slot must not each run their own.
+let current: FocalAgentStatus | null = null;
+let request = 0;
+let stop: (() => void) | null = null;
+const listeners = new Set<() => void>();
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const sequence = ++request.current;
-    try {
-      const next = await fetchFocalAgentStatus();
-      if (sequence === request.current) setStatus(next);
-    } catch {
-      // Status is decorative; everything still opens without it.
-    }
-  }, []);
+async function refresh(): Promise<void> {
+  const sequence = ++request;
+  try {
+    const next = await fetchFocalAgentStatus();
+    if (sequence !== request) return;
+    current = next;
+    listeners.forEach((listener) => listener());
+  } catch {
+    // Status is decorative; everything still opens without it.
+  }
+}
 
-  useEffect(() => {
+/** Exported for tests; components use `useFocalStatus`. */
+export function subscribeToFocalStatus(listener: () => void): () => void {
+  listeners.add(listener);
+  if (listeners.size === 1) {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), STATUS_POLL_MS);
+    const timer = setInterval(() => void refresh(), STATUS_POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
       if (payload?.event === 'goal_tasks_changed') void refresh();
     });
-    return () => {
-      window.clearInterval(timer);
+    stop = () => {
+      clearInterval(timer);
       unsubscribe();
     };
-  }, [refresh]);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      stop?.();
+      stop = null;
+    }
+  };
+}
 
-  return status;
+/**
+ * Regent's status, shared by its card, its header and the project list's
+ * "waiting on you" markers. Polled once for all of them while any is mounted,
+ * and refreshed at once whenever tasks change.
+ */
+export function useFocalStatus(): FocalAgentStatus | null {
+  return useSyncExternalStore(
+    subscribeToFocalStatus,
+    () => current,
+    () => null
+  );
 }

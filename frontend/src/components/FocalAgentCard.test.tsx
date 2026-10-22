@@ -25,13 +25,12 @@ const render = (value: FocalAgentStatus | null, active = false): string =>
 const text = (html: string): string => html.replace(/<[^>]+>/g, ' ');
 
 describe('Regent contact card', () => {
-  it('reads like a contact: name, role and an online presence dot', () => {
+  it('reads like a pinned contact: its mark, name and an all-clear line', () => {
     const html = render(status());
     expect(html).toContain('chatList.focal.name');
-    expect(html).toContain('chatList.focal.role');
-    expect(html).toContain('bg-emerald-500');
-    expect(text(html)).not.toContain('chatList.focal.allClear');
-    expect(html).toContain('aria-label="chatList.focal.allClear"');
+    expect(html).toContain('data-regent-state="idle"');
+    expect(text(html)).toContain('chatList.focal.allClear');
+    expect(text(html)).not.toContain('chatList.focal.role');
   });
 
   it('spells out what is waiting, stalled and auto-running', () => {
@@ -45,8 +44,7 @@ describe('Regent contact card', () => {
   it('shows when Regent itself is working', () => {
     const html = render(status({ running: true, autoRun: 2 }));
     expect(text(html)).toContain('chatList.focal.working · chatList.focal.autoRunCount:2');
-    expect(html).toContain('bg-brutal-blue animate-pulse');
-    expect(html).not.toContain('bg-emerald-500');
+    expect(html).toContain('data-regent-state="working"');
   });
 
   it('shows a new message with its unread count and time', () => {
@@ -72,10 +70,17 @@ describe('Regent contact card', () => {
     expect(html).not.toContain('Deploy needs your approval.');
   });
 
+  it('grows into a profile with the cube while Regent is open', () => {
+    const html = render(status({ waiting: 1 }), true);
+    expect(html).toContain('regent-card-hero');
+    expect(html).toContain('regent-cube');
+    expect(html).not.toContain('regent-mark');
+    expect(text(html)).toContain('chatList.focal.waitingCount:1');
+  });
+
   it('keeps the entry usable before its status arrives', () => {
     const html = render(null);
     expect(html).toContain('chatList.focal.name');
-    expect(text(html)).not.toContain('chatList.focal.allClear');
-    expect(html).toContain('aria-label="chatList.focal.allClear"');
+    expect(text(html)).toContain('chatList.focal.allClear');
   });
 });
