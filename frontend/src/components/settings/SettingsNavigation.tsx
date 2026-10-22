@@ -222,7 +222,7 @@ export function SettingsNavigation({
                       aria-current={active ? 'page' : undefined}
                       className={`group flex w-full items-center gap-3 border-l-4 px-3 py-1.5 text-left text-sm font-bold transition-colors ${
                         active
-                          ? 'border-brutal-yellow bg-brutal-black text-white dark:border-brutal-yellow dark:bg-white dark:text-brutal-black'
+                          ? 'border-brutal-black bg-brutal-yellow text-brutal-black dark:border-brutal-yellow dark:bg-brutal-yellow dark:text-brutal-black'
                           : 'border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-700'
                       }`}
                     >
