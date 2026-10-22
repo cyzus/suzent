@@ -1522,8 +1522,8 @@ export const en = {
     focal: {
       primary: 'Main conversation',
       chat: 'Let’s talk',
-      name: 'SUZENT',
-      open: 'Open SUZENT',
+      name: 'Regent',
+      open: 'Open Regent',
       role: 'Always on watch',
       wait: '{count} wait',
       autoRun: '{count} auto-run',
@@ -1811,7 +1811,7 @@ export const en = {
     },
   },
   chatMessage: {
-    sentBySuzent: 'Sent by SUZENT',
+    sentByRegent: 'Sent by Regent',
     today: 'Today',
     yesterday: 'Yesterday',
     runtime: {
@@ -1902,10 +1902,10 @@ export const en = {
     sourcesCount: '{count} Sources',
   },
   focalTools: {
-    tools: "SUZENT's tools",
-    fixedNote: 'Fixed by the system. The tool picker does not apply to SUZENT.',
+    tools: "Regent's tools",
+    fixedNote: 'Fixed by the system. The tool picker does not apply to Regent.',
     wakeups: 'Scheduled wake-ups',
-    noWakeups: 'Nothing scheduled. Ask SUZENT to remind you, or to check back on some work.',
+    noWakeups: 'Nothing scheduled. Ask Regent to remind you, or to check back on some work.',
     reminder: 'Reminder',
     check: 'Check',
     nextRun: 'Next {time}',
@@ -1914,7 +1914,7 @@ export const en = {
     cancel: 'Cancel',
     cancelAria: 'Cancel wake-up {name}',
     cancelError: 'Could not cancel. Please try again.',
-    loadError: "Could not load SUZENT's tools.",
+    loadError: "Could not load Regent's tools.",
     retry: 'Retry',
     loading: 'Loading…',
   },

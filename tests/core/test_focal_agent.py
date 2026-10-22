@@ -51,7 +51,7 @@ def test_focal_chat_is_a_singleton_hidden_from_project_lists(db) -> None:
     second = get_or_create_focal_chat()
 
     assert first.id == second.id == FOCAL_CHAT_ID
-    assert first.title == "SUZENT"
+    assert first.title == "Regent"
     assert first.config["is_focal_agent"] is True
     assert first.config["platform"] == "focal"
     assert FOCAL_CHAT_ID not in {chat.id for chat in db.list_chats(limit=None)}
@@ -72,7 +72,7 @@ def test_global_context_lists_projects_sessions_and_blockers(db) -> None:
 
     context = focal_agent.build_focal_global_context()
 
-    assert context.startswith("# SUZENT Global Context")
+    assert context.startswith("# Regent Global Context")
     assert f"slug `website` · id `{project_id}`" in context
     assert f"Session `{chat_id}` · Redesign · idle" in context
     assert f"#{task.id} [blocked] Pick a palette" in context
@@ -373,6 +373,7 @@ def test_existing_focal_chat_moves_out_of_home(db, sandbox) -> None:
     get_or_create_focal_chat()
 
     assert db.get_chat_project_slug(FOCAL_CHAT_ID) == db.FOCAL_PROJECT_SLUG
+    assert db.get_chat(FOCAL_CHAT_ID).title == "Regent"
 
 
 def test_heartbeat_starts_on_once_with_an_editable_checklist(db, sandbox) -> None:
@@ -622,7 +623,7 @@ def test_a_renamed_focal_chat_gets_its_name_back(db, sandbox) -> None:
     get_or_create_focal_chat()
     db.update_chat(FOCAL_CHAT_ID, title="可用工具与功能列表")
 
-    assert get_or_create_focal_chat().title == "SUZENT"
+    assert get_or_create_focal_chat().title == "Regent"
 
 
 def test_focal_status_reports_new_messages(db, sandbox) -> None:
@@ -776,7 +777,7 @@ async def test_focal_never_waits_on_a_session(
     chat_id = db.create_chat("Servers", {})
 
     async def must_not_wait(*args, **kwargs):
-        raise AssertionError("SUZENT waited on another agent")
+        raise AssertionError("Regent waited on another agent")
 
     monkeypatch.setattr(AgentSendTool, "_send_and_wait", staticmethod(must_not_wait))
 
@@ -800,7 +801,7 @@ async def test_focal_does_not_block_on_external_agents(
     )
 
     def must_not_delegate(*args):
-        raise AssertionError("SUZENT blocked on an external agent")
+        raise AssertionError("Regent blocked on an external agent")
 
     monkeypatch.setattr(
         agent_lifecycle_tools.agent_bridge, "delegate", must_not_delegate
@@ -1160,3 +1161,27 @@ async def test_suzent_messages_a_paired_suzent_without_waiting(
             "content": "Run the backup on the laptop",
         }
     ]
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_every_old_built_in_checklist_is_upgraded(db, sandbox, index) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "heartbeat.md"
+    old = focal_agent._PREVIOUS_FOCAL_HEARTBEATS[index]
+    assert old.startswith("# SUZENT check-in")
+    path.write_text(old, encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_HEARTBEAT
+    assert focal_agent.should_run_focal_heartbeat(old) is False
+
+
+def test_untouched_suzent_notes_become_regents(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    path.write_text(focal_agent._PREVIOUS_FOCAL_NOTES[0], encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8").startswith("# Regent's notes")

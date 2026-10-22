@@ -1,7 +1,7 @@
-"""SUZENT's own tools: equipped only for the Focal Agent, and refused elsewhere.
+"""Regent's own tools: equipped only for the Focal Agent, and refused elsewhere.
 
 Each has an empty ``group`` and is not deferrable, so no other chat can equip
-or discover it. Which of them SUZENT gets is ``FOCAL_TOOL_NAMES`` in
+or discover it. Which of them Regent gets is ``FOCAL_TOOL_NAMES`` in
 :mod:`suzent.core.focal_agent`. Dispatch and wake-ups subclass ``AgentSendTool``
 and ``ScheduleTool`` and call their internals (``_deliver``, ``_create`` and
 the like), so check here when those change.

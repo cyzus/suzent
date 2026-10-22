@@ -15,7 +15,7 @@ vi.mock('./UserMessage', () => ({
 }));
 
 const fromSuzent =
-  '[Agent message from SUZENT (focal-suzent)]\n<!-- suzent-agent-inbox:m1 -->\nAim it at the GitHub page instead.';
+  '[Agent message from Regent (focal-suzent)]\n<!-- suzent-agent-inbox:m1 -->\nAim it at the GitHub page instead.';
 
 describe('a message taken in mid-turn', () => {
   it('lands in the live reply in order', () => {
@@ -33,12 +33,12 @@ describe('a message taken in mid-turn', () => {
     ]);
   });
 
-  it("shows SUZENT's request as the user's message", () => {
+  it("shows Regent's request as the user's message", () => {
     const html = renderToStaticMarkup(<IncomingMessage text={fromSuzent} />);
 
     expect(html).toContain('data-user-bubble');
     expect(html).toContain('Aim it at the GitHub page instead.');
-    expect(html).toContain('chatMessage.sentBySuzent');
+    expect(html).toContain('chatMessage.sentByRegent');
     expect(html).not.toContain('suzent-agent-inbox');
   });
 

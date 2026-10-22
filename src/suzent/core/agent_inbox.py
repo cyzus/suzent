@@ -62,7 +62,7 @@ def route_subagent_reply(message: dict[str, Any], reply: AgentReply) -> bool:
 
 
 def _route_reply(message: dict[str, Any], reply: AgentReply) -> None:
-    """Send a turn's answer back to whoever asked: a parent agent, or SUZENT."""
+    """Send a turn's answer back to whoever asked: a parent agent, or Regent."""
     if route_subagent_reply(message, reply):
         return
     from suzent.core.focal_agent import route_focal_reply

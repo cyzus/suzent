@@ -20,7 +20,7 @@ class ProjectOperationsMixin:
     # The Focal Agent's own home: its heartbeat.md and context.md live here,
     # apart from every user project. Never listed alongside them.
     FOCAL_PROJECT_SLUG = "suzent-focal"
-    FOCAL_PROJECT_NAME = "SUZENT"
+    FOCAL_PROJECT_NAME = "Regent"
     SYSTEM_PROJECT_SLUGS = {"default", "social", FOCAL_PROJECT_SLUG}
     HIDDEN_PROJECT_SLUGS = {FOCAL_PROJECT_SLUG}
 

@@ -42,7 +42,7 @@ export function FocalAgentCardView({
 }: FocalAgentCardViewProps): React.ReactElement {
   const { t, locale } = useI18n();
   // Background check-ins, wake-ups and events land here as new messages, so the
-  // card shows them instead of the sidebar listing SUZENT's schedule as tasks.
+  // card shows them instead of the sidebar listing Regent's schedule as tasks.
   const unread = Math.max(0, status?.unread ?? 0);
   const waiting = Math.max(0, status?.waiting ?? 0);
   const stalled = Math.max(0, status?.stalled ?? 0);

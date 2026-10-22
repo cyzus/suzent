@@ -1,6 +1,6 @@
 import { getApiBase } from './api';
 
-/** The singleton SUZENT chat that orchestrates work across every project. */
+/** The singleton Regent chat that orchestrates work across every project. */
 export const FOCAL_CHAT_ID = 'focal-suzent';
 /** Board scope spanning every non-archived project. */
 export const ALL_PROJECTS_KANBAN_ID = '__all__';
@@ -11,8 +11,8 @@ const FOCAL_REQUEST_HEADER = new RegExp(
 const INBOX_MARKER = /<!--\s*suzent-agent-inbox:[\s\S]*?-->\s*/gi;
 
 /**
- * The words SUZENT sent a session, from the row that started the turn, or null
- * for any other trigger. SUZENT relays the user's own requests, so the session
+ * The words Regent sent a session, from the row that started the turn, or null
+ * for any other trigger. Regent relays the user's own requests, so the session
  * shows them as the user's message rather than as a background trigger.
  */
 export function focalRequestText(content: string | undefined): string | null {
@@ -28,10 +28,10 @@ export interface FocalAgentStatus {
   waiting: number;
   autoRun: number;
   running: boolean;
-  /** Messages SUZENT added since the user last opened it, e.g. from a check-in. */
+  /** Messages Regent added since the user last opened it, e.g. from a check-in. */
   unread?: number;
   lastMessage?: string | null;
-  /** When SUZENT last said something, ISO 8601. */
+  /** When Regent last said something, ISO 8601. */
   lastMessageAt?: string | null;
   /** Sessions with work left that nothing is driving. */
   stalled?: number;
