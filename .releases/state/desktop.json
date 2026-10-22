@@ -88,6 +88,7 @@
     ".releases/changes/regent-breadcrumb.json",
     ".releases/changes/regent-identity.json",
     ".releases/changes/regent-name.json",
+    ".releases/changes/regent-return-order.json",
     ".releases/changes/regent-transitions.json",
     ".releases/changes/remove-dead-compat-shims.json",
     ".releases/changes/resolve-from-regent.json",
