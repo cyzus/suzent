@@ -628,6 +628,14 @@ class ChatProcessor:
         except Exception as e:
             logger.warning(f"Error waiting for previous post-processing: {e}")
 
+        if not is_heartbeat:
+            from suzent.core.chat_status import reopen_on_turn_start
+
+            try:
+                reopen_on_turn_start(chat_id)
+            except Exception as e:
+                logger.debug(f"[chat_status] reopen skipped for {chat_id}: {e}")
+
         # 1. Configuration
         logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
         config = {
@@ -1651,6 +1659,28 @@ class ChatProcessor:
                         )
                 except Exception as e:
                     logger.debug(f"[goal] continuation scheduling skipped: {e}")
+
+            # 11. Read where the chat now stands for the user, off the hot path.
+            was_cancelled = bool(
+                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
+            )
+            if (
+                not is_heartbeat
+                and not stream_failed
+                and not was_cancelled
+                and full_response.strip()
+            ):
+                try:
+                    from suzent.core.chat_status import is_tracked_chat, judge_turn
+
+                    if is_tracked_chat(get_database().get_chat(chat_id)):
+                        await register_background_task(
+                            judge_turn(chat_id, message_content, full_response),
+                            task_id=f"chat_status_{chat_id}_{uuid.uuid4().hex}",
+                            description=f"Chat status for {chat_id}",
+                        )
+                except Exception as e:
+                    logger.debug(f"[chat_status] judging skipped for {chat_id}: {e}")
 
     async def _post_process_turn(
         self,

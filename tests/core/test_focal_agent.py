@@ -6,7 +6,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from suzent.core import focal_agent
+from suzent.core import chat_status, focal_agent
 from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
 from suzent.database import ChatDatabase
 from suzent.tools.agents import agent_lifecycle_tools
@@ -24,7 +24,13 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (focal_agent, agent_lifecycle_tools, dispatch, task_update_tool):
+    for module in (
+        chat_status,
+        focal_agent,
+        agent_lifecycle_tools,
+        dispatch,
+        task_update_tool,
+    ):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
