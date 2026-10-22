@@ -1534,7 +1534,6 @@ export const en = {
       stalledCount: '{count} stalled',
       autoRunCount: '{count} auto-running',
       waitingBadge: '{count} waiting on you',
-      openBoard: 'Board ›',
     },
     sections: {
       automation: 'Automation',
@@ -1919,6 +1918,14 @@ export const en = {
     loadError: "Could not load Regent's tools.",
     retry: 'Retry',
     loading: 'Loading…',
+  },
+  regentPanel: {
+    needsYou: 'Needs you',
+    running: 'Running',
+    stalled: 'Stalled',
+    wakeups: 'Scheduled wake-ups',
+    fullBoard: 'Full board ›',
+    overview: '‹ Overview',
   },
   focalBriefing: {
     greeting: 'Hey, I’m here.',

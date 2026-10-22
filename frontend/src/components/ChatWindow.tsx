@@ -40,7 +40,6 @@ import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
-import { RegentPinned } from './regent/RegentHeader';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ChatImageGallery } from './ChatImageGallery';
@@ -3285,13 +3284,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <ChatImageGallery key={currentChatId || 'new'}>
         {/* Main Chat Column */}
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-          {currentChatId === FOCAL_CHAT_ID && (
-            <RegentPinned
-              kanban={kanban}
-              onOpenChat={(chatId) => loadChat(chatId)}
-              onOpenBoard={isRightSidebarOpen ? undefined : () => onRightSidebarToggle(true)}
-            />
-          )}
           {/* Keep sticky message animations below the composer's popovers. */}
           <div className="relative z-0 isolate flex-1 min-h-0">
             <div

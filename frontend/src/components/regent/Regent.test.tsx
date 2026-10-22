@@ -1,11 +1,12 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { FocalAgentStatus } from '../../lib/focalAgent';
+import type { FocalAgentStatus, FocalWakeup } from '../../lib/focalAgent';
 import type { Task } from '../../types/api';
-import { RegentIdentity, RegentPinned } from './RegentHeader';
+import { RegentIdentity } from './RegentHeader';
 import { RegentCube } from './RegentCube';
 import { RegentMark } from './RegentMark';
+import { RegentPanelView } from './RegentPanel';
 import { regentState } from './regentState';
 
 vi.mock('../../i18n', () => ({
@@ -66,11 +67,11 @@ describe('Regent marks', () => {
 });
 
 describe('RegentIdentity', () => {
-  it('reads as Suzent Regent with its role, leaving counts to the pinned bar', () => {
-    const html = text(
-      renderToStaticMarkup(<RegentIdentity status={status({ waiting: 1, stalled: 1 })} />)
-    );
-    expect(html).toBe('chatList.focal.brand chatList.focal.name chatList.focal.role');
+  it('reads as Suzent Regent on one line, so the header keeps its height', () => {
+    const html = renderToStaticMarkup(<RegentIdentity status={status({ waiting: 1 })} />);
+    expect(text(html)).toBe('chatList.focal.brand chatList.focal.name');
+    expect(html).toContain('title="chatList.focal.role"');
+    expect(html).toContain('data-regent-state="waiting"');
   });
 
   it('works while Regent runs, or while it answers in this chat before the next poll', () => {
@@ -78,46 +79,78 @@ describe('RegentIdentity', () => {
       renderToStaticMarkup(<RegentIdentity status={status({ running: true })} />),
       renderToStaticMarkup(<RegentIdentity status={status()} working />),
     ]) {
-      expect(text(html)).toContain('chatList.focal.working');
+      expect(html).toContain('title="chatList.focal.working"');
       expect(html).toContain('data-regent-state="working"');
     }
   });
 });
 
-describe('RegentPinned', () => {
-  const render = (tasks: Task[] | null, onOpenBoard?: () => void): string =>
+describe('RegentPanelView', () => {
+  const render = (
+    tasks: Task[] | null,
+    wakeups: FocalWakeup[] | null = [],
+    value: FocalAgentStatus | null = status()
+  ): string =>
     renderToStaticMarkup(
-      <RegentPinned
+      <RegentPanelView
+        status={value}
         kanban={tasks && { tasks, goals: [] }}
+        wakeups={wakeups}
         onOpenChat={() => {}}
-        onOpenBoard={onOpenBoard}
+        board={<div>full-board</div>}
       />
     );
-  const tasks = [
-    task(1, { chatId: 'b', chatTitle: 'Idle work', projectName: 'Docs' }),
-    task(2, {
-      status: 'blocked',
-      chatId: 'a',
-      chatTitle: 'Design',
-      waitingKind: 'user',
-      waitingReason: 'Choose a direction',
-    }),
-  ];
 
-  it('is not there when nothing waits on the user or has stalled', () => {
-    expect(render([])).toBe('');
-    expect(render(null)).toBe('');
+  it('shows only Regent and its schedule when all is clear, with the board one click away', () => {
+    const plain = text(render([]));
+    expect(plain).toContain('chatList.focal.allClear');
+    expect(plain).toContain('regentPanel.wakeups');
+    expect(plain).toContain('focalTools.noWakeups');
+    expect(plain).toContain('regentPanel.fullBoard');
+    expect(plain).not.toContain('regentPanel.needsYou');
+    expect(plain).not.toContain('full-board');
   });
 
-  it('counts what waits and what stalled, and leads with the most pressing item', () => {
-    const plain = text(render(tasks));
-    expect(plain).toContain('chatList.focal.waitingCount:1 · chatList.focal.stalledCount:1');
+  it('stacks what needs the user, what runs and what stalled, each row opening its session', () => {
+    const html = render([
+      task(1, { chatId: 'b', chatTitle: 'Idle work', projectName: 'Docs' }),
+      task(2, {
+        status: 'blocked',
+        chatId: 'a',
+        chatTitle: 'Design',
+        waitingKind: 'user',
+        waitingReason: 'Choose a direction',
+      }),
+      task(3, { status: 'in_progress', chatId: 'c', chatTitle: 'Deploy', chatRunning: true }),
+    ]);
+    const plain = text(html);
+    const order = ['regentPanel.needsYou', 'regentPanel.running', 'regentPanel.stalled'].map(
+      (title) => plain.indexOf(title)
+    );
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(plain).toContain('Choose a direction');
-    expect(plain).not.toContain('Idle work');
+    expect(plain).toContain('chatList.focal.waitingCount:1 · chatList.focal.stalledCount:1');
+    expect(html.match(/<button type="button" class="flex w-full/g)).toHaveLength(3);
   });
 
-  it('offers the board only while it is closed', () => {
-    expect(text(render(tasks, () => {}))).toContain('chatList.focal.openBoard');
-    expect(text(render(tasks))).not.toContain('chatList.focal.openBoard');
+  it('lists Regent’s own wake-ups', () => {
+    const plain = text(
+      render(
+        [],
+        [
+          {
+            id: 1,
+            name: 'Weekly update',
+            kind: 'reminder',
+            schedule: 'once',
+            scheduleKind: 'once',
+            nextRunAt: null,
+          },
+        ]
+      )
+    );
+    expect(plain).toContain('focalTools.reminder');
+    expect(plain).toContain('Weekly update');
   });
 });

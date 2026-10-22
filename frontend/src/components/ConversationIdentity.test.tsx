@@ -30,8 +30,8 @@ describe('ConversationIdentity', () => {
     store.chats = [];
   });
 
-  it('shows Regent as a contact: Suzent Regent with its role', () => {
-    expect(text()).toBe('chatList.focal.brand chatList.focal.name chatList.focal.role');
+  it('shows Regent as a contact: its cube beside Suzent Regent', () => {
+    expect(text()).toBe('chatList.focal.brand chatList.focal.name');
   });
 
   it('keeps a regular chat to its title and project', () => {

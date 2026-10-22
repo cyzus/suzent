@@ -1483,7 +1483,6 @@ export const zhCN = {
       stalledCount: '{count} 个停滞',
       autoRunCount: '{count} 个自动运行',
       waitingBadge: '{count} 件事等你处理',
-      openBoard: '看板 ›',
     },
     sections: {
       scheduled: '定时任务',
@@ -1862,6 +1861,14 @@ export const zhCN = {
     loadError: '无法加载 Regent 的工具。',
     retry: '重试',
     loading: '加载中…',
+  },
+  regentPanel: {
+    needsYou: '等你处理',
+    running: '运行中',
+    stalled: '停滞',
+    wakeups: '定时唤醒',
+    fullBoard: '完整看板 ›',
+    overview: '‹ 概览',
   },
   focalBriefing: {
     greeting: '我在，聊聊吧。',
