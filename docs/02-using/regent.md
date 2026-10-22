@@ -66,11 +66,8 @@ that back.
 
 ## See what's going on
 
-The Regent card in the sidebar shows, at a glance:
-
-- **waiting on you**: tasks blocked on your answer or on an error,
-- **stalled**: sessions with work left that have stopped moving,
-- **auto-running**: sessions working right now.
+The Regent card in the sidebar shows, at a glance, how many chats are
+**waiting on you** and how many are **running**.
 
 Projects and chats holding something that waits on you get a badge in the
 sidebar too.
@@ -79,18 +76,31 @@ Regent sits at the very top of the sidebar, above everything else, like a
 pinned contact; **New chat** and **Search** sit just above your projects. Open Regent and its row grows into a profile with Regent's picture,
 while the rest of the sidebar fades back until you point at it. The header
 shows Regent's name and a small tag for what needs you; with the sidebar
-collapsed, Regent's picture takes the logo's place in the header. The **Tasks**
-side panel shows the full board for every project at once, grouped by session;
-pick one project from the dropdown to narrow it down.
+collapsed, Regent's picture takes the logo's place in the header.
 
-Right-click a session on the board to change it by hand, or right-click one of
-its tasks to change just that task:
+### The board
 
-- **Resume** lets the agent stop waiting on you without an answer. The session
-  shows as stalled until something picks the work up again.
-- **Mark done** finishes the open tasks; **Reopen** puts finished ones back.
-- **Cancel tasks** takes the open tasks off the board for good, so it asks
-  first.
+The **Tasks** side panel on Regent's chat lists the chats in your projects by
+where they stand for you. Pick one project from the dropdown to narrow it down.
+
+- **Waiting on you**: the chat asked you something, wants a tool approved, has
+  a task stuck on you, or its last reply leaves the next move to you.
+- **Running**: it's working right now.
+- **Idle**: nothing is happening and nothing needs you.
+- **Resolved**: you marked it done. This group starts folded.
+
+Each row shows the project, what the chat needs from you when it waits, and a
+one-line note on where the work stands. Idle and resolved chats leave the board
+after a week without activity.
+
+You decide when a chat is resolved: right-click it on the board and choose
+**Mark resolved**, or click **✓** next to the chat's title in its header.
+Resolving doesn't touch the chat's tasks. If the chat starts working again or
+needs you again, it leaves **Resolved** by itself.
+
+Suzent's **Decision** model (Settings → Model Roles) reads the end of each
+reply to tell whether the chat is waiting on you and to write the one-line
+note.
 
 Regent's picture tells you its state at a glance, here and on the sidebar card:
 

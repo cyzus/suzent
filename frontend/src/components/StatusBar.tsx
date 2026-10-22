@@ -24,6 +24,7 @@ import { isImeComposing } from '../lib/ime';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { LiveRegentIdentity } from './regent/RegentHeader';
 import { RegentMark } from './regent/RegentMark';
+import { ResolveChatButton } from './chat/ResolveChatButton';
 import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
@@ -980,6 +981,7 @@ export function ConversationIdentity(): React.ReactElement | null {
           {chat.projectName}
         </span>
       )}
+      <ResolveChatButton chatId={currentChatId} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { getApiBase } from './api';
+import type { ChatState } from './chatStates';
 
 /** The singleton Regent chat that orchestrates work across every project. */
 export const FOCAL_CHAT_ID = 'focal-suzent';
@@ -25,17 +26,17 @@ export function focalRequestText(content: string | undefined): string | null {
 export interface FocalAgentStatus {
   chatId: string;
   title: string;
+  /** Chats waiting on the user. */
   waiting: number;
-  autoRun: number;
   running: boolean;
   /** Messages Regent added since the user last opened it, e.g. from a check-in. */
   unread?: number;
   lastMessage?: string | null;
   /** When Regent last said something, ISO 8601. */
   lastMessageAt?: string | null;
-  /** Sessions with work left that nothing is driving. */
-  stalled?: number;
-  /** Tasks waiting on the user, by project id and by chat id. */
+  /** Project chats by where they stand for the user. */
+  states?: Record<ChatState, number>;
+  /** Chats waiting on the user, by project id and by chat id. */
   waitingByProject?: Record<string, number>;
   waitingByChat?: Record<string, number>;
 }

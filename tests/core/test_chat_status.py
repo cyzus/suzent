@@ -304,3 +304,19 @@ def test_acp_turns_reopen_the_chat_and_get_judged(db, project, monkeypatch) -> N
 
     assert db.get_chat_status(chat_id).resolved_at is None
     assert judged == [("Pick a palette", "Which one?", chat_status._turns[chat_id])]
+
+
+def test_one_chat_can_be_asked_for_however_quiet_it_is(db, project) -> None:
+    quiet = db.create_chat("Quiet", {}, project_id=project)
+    db.create_chat("Other", {}, project_id=project)
+    with db._session() as session:
+        chat = session.get(ChatModel, quiet)
+        chat.updated_at = datetime.now(timezone.utc) - timedelta(days=30)
+        session.add(chat)
+        session.commit()
+    set_resolved(quiet, True)
+
+    rows = list_chat_states(chat_id=quiet)
+
+    assert [(row["title"], row["state"]) for row in rows] == [("Quiet", "resolved")]
+    assert "Quiet" not in _states(project)

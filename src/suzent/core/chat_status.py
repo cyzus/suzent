@@ -248,11 +248,14 @@ def chat_state(
     return "idle", None, None
 
 
-def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
+def list_chat_states(
+    project_id: Optional[str] = None, chat_id: Optional[str] = None
+) -> list[dict[str, Any]]:
     """Every tracked chat worth a row on the board, newest activity first.
 
     Waiting and running chats always show; idle and resolved ones only while
-    they have been active within ``RECENT_WINDOW``.
+    they have been active within ``RECENT_WINDOW``. Asking for one *chat_id*
+    returns just that chat, however quiet, so its own header can show it.
     """
     from suzent.core.focal_agent import ATTENTION_WAITING_KINDS, running_chat_ids
     from suzent.database.chats import SUMMARY_LAST_MESSAGE_KEY
@@ -275,9 +278,13 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
     # A chat holding a wait stays on the board however old its last write is.
     holding = set(tasks_by_chat) | running | questions | db.waiting_chat_ids()
+    if chat_id is not None:
+        holding.add(chat_id)
     chats = db.list_board_chats(
         list(projects), active_since=now - RECENT_WINDOW, include_ids=holding
     )
+    if chat_id is not None:
+        chats = [chat for chat in chats if chat["id"] == chat_id]
     statuses = db.list_chat_statuses([chat["id"] for chat in chats])
     rows: list[dict[str, Any]] = []
     for chat in chats:
@@ -303,8 +310,10 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
             status=status,
         )
         updated = _as_utc(chat["updated_at"])
-        if state in ("idle", "resolved") and (
-            updated is None or now - updated > RECENT_WINDOW
+        if (
+            chat_id is None
+            and state in ("idle", "resolved")
+            and (updated is None or now - updated > RECENT_WINDOW)
         ):
             continue
         project = projects[chat["project_id"]]
