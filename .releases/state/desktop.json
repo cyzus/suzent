@@ -89,6 +89,7 @@
     ".releases/changes/resume-keeps-approved-card.json",
     ".releases/changes/resume-without-empty-prompt.json",
     ".releases/changes/scheduled-task-failures.json",
+    ".releases/changes/shell-command-yield.json",
     ".releases/changes/shell-noninteractive-stdin.json",
     ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",

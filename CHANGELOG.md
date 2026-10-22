@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
 - Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
+- Show shell output while commands run and let the agent continue when a command outlives the initial wait.
 - List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
