@@ -1934,6 +1934,7 @@ export const en = {
     narrow: 'Narrow',
 
     overview: '{attention} need your attention · {active} in progress',
+    sessionOverview: '{attention} need you · {active} running · {stalled} stalled',
     projectTitle: 'Project tasks',
     currentChat: 'chat',
     back: 'Back to conversation',
@@ -1976,6 +1977,19 @@ export const en = {
     unassignedSession: 'Not assigned to a session',
     sessionRunning: 'Running',
     sessionIdle: 'Idle',
+    rowMenu: {
+      openChat: 'Open chat',
+      resume: 'Resume',
+      complete: 'Mark done',
+      reopen: 'Reopen',
+      cancel: 'Cancel tasks',
+      cancelTitle: 'Cancel open tasks ({count})?',
+      cancelMessage:
+        'They leave the board and no session will pick them up again. Use Mark done instead if the work is finished.',
+      keep: 'Keep them',
+      cancelConfirm: 'Cancel tasks',
+      failed: 'Could not update those tasks. Try again.',
+    },
     stalledReason: '{count} open, but nothing is working on it',
     openCount: '{count} open',
     doneCount: '{count} done',

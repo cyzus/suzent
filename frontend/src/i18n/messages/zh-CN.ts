@@ -1877,6 +1877,7 @@ export const zhCN = {
     narrow: '收窄',
 
     overview: '{attention} 项需要你处理 · {active} 项正在进行',
+    sessionOverview: '{attention} 个等你 · {active} 个运行中 · {stalled} 个停滞',
     projectTitle: '项目任务',
     currentChat: '本次对话',
     back: '返回对话',
@@ -1917,6 +1918,19 @@ export const zhCN = {
     unassignedSession: '未分配到会话',
     sessionRunning: '运行中',
     sessionIdle: '空闲',
+    rowMenu: {
+      openChat: '打开会话',
+      resume: '恢复',
+      complete: '标记完成',
+      reopen: '重新打开',
+      cancel: '取消任务',
+      cancelTitle: '取消 {count} 项未完成的任务？',
+      cancelMessage:
+        '取消后它们会从看板上移除，也不会再有会话接手。如果工作已经做完，请改用“标记完成”。',
+      keep: '保留',
+      cancelConfirm: '取消任务',
+      failed: '没能更新这些任务，请重试。',
+    },
     stalledReason: '还有 {count} 项未完成，但没有在推进',
     openCount: '{count} 项未完成',
     doneCount: '{count} 项已完成',

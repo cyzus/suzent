@@ -4,6 +4,7 @@ import {
   ChatGPTStatusResponse,
   ConfigOptions,
   PermissionMode,
+  TaskStatus,
   ThinkingEffort,
 } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
@@ -236,6 +237,18 @@ export async function setChatPermissionMode(
     throw new Error(`Failed to set permission mode: ${response.status}`);
   }
   return response.json();
+}
+
+/** Set a project task's status by hand, as the board's row menus do. */
+export async function setTaskStatus(taskId: number, status: TaskStatus): Promise<void> {
+  const response = await fetch(`${getApiBase()}/project/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update task: ${response.status}`);
+  }
 }
 
 export async function setDefaultPermissionMode(
