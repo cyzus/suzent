@@ -199,6 +199,29 @@ def test_run_command_yields_a_running_sandbox_process(monkeypatch, tmp_path):
     get_background_commands().cancel("chat-1", "abcdef123456")
 
 
+def test_run_command_reports_quick_sandbox_failure(tmp_path):
+    tool = RunCommandTool()
+    tool._manager = SimpleNamespace(
+        start_background=lambda **kwargs: "failed-command",
+        poll_process=lambda *args: {
+            "output": "bad input\n",
+            "offset": 10,
+            "done": True,
+            "exit_code": 2,
+        },
+    )
+
+    result = tool.forward(
+        _ctx(tmp_path, sandbox_enabled=True),
+        content="exit 2",
+        description="Run a failing sandbox command",
+    )
+
+    assert not result.success
+    assert "bad input" in result.message
+    assert result.metadata["returncode"] == 2
+
+
 def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
     from suzent.config import CONFIG
 

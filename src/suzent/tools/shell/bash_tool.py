@@ -508,6 +508,22 @@ class ShellCommandBackend(Tool):
                     output = "".join(output_parts).strip() or "(no output)"
                     if returncode not in (None, 0):
                         output += f"\n[exit code: {returncode}]"
+                        if mode == "sandbox":
+                            self._audit_execution(
+                                "error",
+                                description=description,
+                                mode=mode,
+                                background=False,
+                                returncode=returncode,
+                            )
+                            return self._error_result(
+                                ToolErrorCode.EXECUTION_FAILED,
+                                f"Execution Error: {output}",
+                                mode=mode,
+                                timeout=None,
+                                background=False,
+                                returncode=returncode,
+                            )
                     if working_dir is not None:
                         output = f"[cwd: {working_dir}]\n{output}"
                     self._audit_execution(

@@ -716,6 +716,20 @@ class _DraftDisplayAccumulator:
             tool = self._ensure_tool(tool_call_id)
             tool["displayData"] = value
             self.dirty = True
+        elif name == "shell_output_delta" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            delta = value.get("delta")
+            tool = self._find_tool(tool_call_id)
+            if (
+                tool is not None
+                and tool.get("state") != "completed"
+                and isinstance(delta, str)
+            ):
+                prefix = "[stderr]\n" if value.get("stream") == "stderr" else ""
+                tool["output"] = (str(tool.get("output") or "") + prefix + delta)[
+                    -128 * 1024 :
+                ]
+                self.dirty = True
         elif name == "tool_call_outcome" and isinstance(value, dict):
             tool = self._ensure_tool(str(value.get("toolCallId") or ""))
             tool["outcome"] = value.get("outcome")
@@ -2287,7 +2301,7 @@ async def stream_agent_responses(
                     yield CustomEvent(name="tool_permission_decision", value=payload)
 
                 elif msg_type == "shell_output_delta":
-                    await _queue_custom_event(out_queue, "shell_output_delta", payload)
+                    yield CustomEvent(name="shell_output_delta", value=payload)
 
                 elif msg_type == "permission_resolution":
                     yield CustomEvent(name="tool_permission_resolution", value=payload)
