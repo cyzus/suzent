@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useFocalStatus } from '../../hooks/useFocalStatus';
 import { useChatStreamingStore } from '../../hooks/useChatStore';
@@ -77,4 +77,36 @@ export function LiveRegentLogo(): React.ReactElement {
       <RegentCube size={24} state={state} />
     </span>
   );
+}
+
+interface RegentLogoSlotProps {
+  regent: boolean;
+  /** The app's own logo, shown everywhere but Regent's chat. */
+  children: React.ReactNode;
+}
+
+/**
+ * The header's logo slot while the sidebar is collapsed: Regent's cube grows
+ * in on its chat, and the app's logo springs back once you leave it.
+ */
+export function RegentLogoSlot({ regent, children }: RegentLogoSlotProps): React.ReactElement {
+  const [wasRegent, setWasRegent] = useState(regent);
+  const [returning, setReturning] = useState(false);
+  if (wasRegent !== regent) {
+    setWasRegent(regent);
+    setReturning(!regent);
+  }
+  useEffect(() => {
+    if (!returning) return;
+    const timer = setTimeout(() => setReturning(false), 500);
+    return () => clearTimeout(timer);
+  }, [returning]);
+  if (regent) {
+    return (
+      <span className="regent-logo-enter inline-flex">
+        <LiveRegentLogo />
+      </span>
+    );
+  }
+  return <span className={`inline-flex ${returning ? 'regent-logo-return' : ''}`}>{children}</span>;
 }
