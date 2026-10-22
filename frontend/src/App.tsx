@@ -21,7 +21,7 @@ import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
-import { LiveRegentLogo } from './components/regent/RegentHeader';
+import { RegentLogoSlot } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
@@ -763,11 +763,9 @@ function AppInner(): React.ReactElement {
                 >
                   <div className="flex h-full w-full items-center justify-center group-hover:hidden">
                     {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
-                    {regentHeader ? (
-                      <LiveRegentLogo />
-                    ) : (
+                    <RegentLogoSlot regent={regentHeader}>
                       <SuzentLogo className="h-7 w-7" interactive />
-                    )}
+                    </RegentLogoSlot>
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
                     <SidebarToggleIcon

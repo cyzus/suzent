@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { RegentCube } from './regent/RegentCube';
 import { RegentMark } from './regent/RegentMark';
 import { regentState, useRegentNod } from './regent/regentState';
@@ -63,6 +63,18 @@ export function FocalAgentCardView({
   const working = Boolean(status?.running);
   const hasNews = unread > 0 && !active && Boolean(status?.lastMessage);
   const time = lastMessageTime(status?.lastMessageAt, locale, t('chatMessage.yesterday'));
+  // Leaving Regent, however it happens, folds the profile back into its row.
+  const [wasActive, setWasActive] = useState(active);
+  const [retreating, setRetreating] = useState(false);
+  if (wasActive !== active) {
+    setWasActive(active);
+    setRetreating(!active);
+  }
+  useEffect(() => {
+    if (!retreating) return;
+    const timer = setTimeout(() => setRetreating(false), 500);
+    return () => clearTimeout(timer);
+  }, [retreating]);
 
   const counts = [
     waiting > 0 ? t('chatList.focal.waitingCount', { count: waiting }) : null,
@@ -123,12 +135,12 @@ export function FocalAgentCardView({
       {/* The mark itself shows Regent's state: scanning, a lit gem, or a nod. */}
       <span
         key={nod}
-        className={`flex w-7 h-7 shrink-0 items-end justify-center ${nod > 0 ? 'regent-nod' : ''}`}
+        className={`flex w-7 h-7 shrink-0 items-end justify-center ${retreating ? 'regent-row-mark-retreat' : nod > 0 ? 'regent-nod' : ''}`}
         aria-hidden="true"
       >
         <RegentMark size={24} state={regentState(status)} />
       </span>
-      <span className="min-w-0 flex-1">
+      <span className={`min-w-0 flex-1 ${retreating ? 'regent-row-text-retreat' : ''}`}>
         <span className="flex items-baseline gap-1.5 min-w-0">
           <span className="font-mono text-xs font-bold tracking-wide shrink-0">
             {t('chatList.focal.name')}
