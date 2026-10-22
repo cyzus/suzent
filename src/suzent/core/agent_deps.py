@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 @dataclass
@@ -60,6 +60,7 @@ class AgentDeps:
     # --- Social messaging ---
     channel_manager: Any = None  # ChannelManager instance
     event_loop: Optional[asyncio.AbstractEventLoop] = None
+    shell_output_callback: Optional[Callable[[str, str, str], None]] = None
     social_context: dict = field(default_factory=dict)
 
     # --- Skills ---

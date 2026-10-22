@@ -2,6 +2,36 @@ import { describe, expect, it } from 'vitest';
 import { partsForBatch, processEvent } from './useAGUI';
 import type { AGUIPart } from '../types/agui';
 
+it('shows shell output before completion and replaces it with the final result', () => {
+  let parts = processEvent(
+    { type: 'TOOL_CALL_START', data: { toolCallId: 'shell-1', toolCallName: 'run_command' } },
+    []
+  ).parts;
+  parts = processEvent(
+    {
+      type: 'CUSTOM',
+      data: {
+        name: 'shell_output_delta',
+        value: {
+          toolCallId: 'shell-1',
+          stream: 'stdout',
+          delta: 'USB device found\n',
+        },
+      },
+    },
+    parts
+  ).parts;
+  expect(parts[0].output).toBe('USB device found\n');
+  expect(parts[0].state).toBe('running');
+
+  parts = processEvent(
+    { type: 'TOOL_CALL_RESULT', data: { toolCallId: 'shell-1', content: 'finished' } },
+    parts
+  ).parts;
+  expect(parts[0].output).toBe('finished');
+  expect(parts[0].state).toBe('completed');
+});
+
 describe('permission approval events', () => {
   it('retains the initial automatic decision and later user resolution', () => {
     const decisionResult = processEvent(

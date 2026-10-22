@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show shell output while commands run and let the agent continue when a command outlives the initial wait."
+}
