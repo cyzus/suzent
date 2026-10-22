@@ -1,4 +1,14 @@
 export const en = {
+  desktopMenu: {
+    label: 'Menu',
+    cut: 'Cut',
+    copy: 'Copy',
+    paste: 'Paste',
+    selectAll: 'Select all',
+    settings: 'Settings',
+    reload: 'Reload',
+    failed: 'Unable to complete this action. Check clipboard permissions and try again.',
+  },
   onboarding: {
     rolesPreview: 'Assignment preview',
     nothingToFill: 'No matching recommendations for the remaining empty roles.',

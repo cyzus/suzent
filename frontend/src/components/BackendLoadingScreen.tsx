@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { getInitialLocale, tForLocale } from '../i18n';
 import { isDesktop } from '../lib/runtime';
+import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import { TitleBar } from './TitleBar';
 
 interface BackendLoadingScreenProps {
   error?: string | null;
@@ -63,6 +65,7 @@ export function BackendLoadingScreen({
 
   React.useEffect(() => {
     if (!isDesktop()) return;
+    if (detectDesktopPlatform(navigator.userAgent, navigator.platform) !== 'macos') return;
     void invoke('set_startup_window_controls', { enabled: true }).catch(console.error);
     return () => {
       void invoke('set_startup_window_controls', { enabled: false }).catch(console.error);
@@ -95,7 +98,7 @@ export function BackendLoadingScreen({
   const hasMeasuredProgress = effectiveProgress > 0;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-neutral-100 font-sans text-center overflow-hidden">
+    <div className="flex h-screen w-screen flex-col bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans text-center overflow-hidden">
       <style>{`
         @keyframes suzentCoreTurn {
           0% { transform: rotateX(-20deg) rotateY(32deg); }
@@ -107,10 +110,6 @@ export function BackendLoadingScreen({
         }
         @keyframes suzentOrbitTurnReverse {
           to { transform: rotate(-360deg); }
-        }
-        @keyframes suzentCoreGlow {
-          0%, 100% { opacity: .08; transform: scale(.82); }
-          50% { opacity: .16; transform: scale(1); }
         }
         @keyframes suzentIndeterminateProgress {
           0% { left: -28%; width: 22%; }
@@ -136,7 +135,6 @@ export function BackendLoadingScreen({
           .suzent-cube,
           .suzent-orbit,
           .suzent-orbit-reverse,
-          .suzent-core-glow,
           .suzent-indeterminate-progress {
             animation: none !important;
           }
@@ -146,26 +144,23 @@ export function BackendLoadingScreen({
           }
         }
       `}</style>
-      {isDesktop() && <div className="h-10 shrink-0" data-tauri-drag-region />}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
+      {isDesktop() && <TitleBar startup />}
+      {isDesktop() && (
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage:
-              'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
-            backgroundSize: '44px 44px',
-            maskImage: 'radial-gradient(circle at center, black, transparent 68%)',
-          }}
+          className={
+            detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'windows'
+              ? 'h-12 shrink-0'
+              : 'h-8 shrink-0'
+          }
+          data-tauri-drag-region
         />
+      )}
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
         <main className="relative flex w-full max-w-sm flex-col items-center">
           <div
             className="relative mb-10 flex h-40 w-40 items-center justify-center"
             aria-hidden="true"
           >
-            <div
-              className="suzent-core-glow absolute h-32 w-32 rounded-full bg-black blur-3xl"
-              style={{ animation: !error ? 'suzentCoreGlow 3.4s ease-in-out infinite' : undefined }}
-            />
             <div
               className="suzent-orbit absolute h-40 w-40 rounded-full border border-neutral-300"
               style={{ animation: !error ? 'suzentOrbitTurn 12s linear infinite' : undefined }}
