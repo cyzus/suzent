@@ -147,7 +147,7 @@ class AskQuestionTool(Tool):
     ) -> ToolResult:
         """Show the form and end the turn instead of holding it open.
 
-        SUZENT must stay free: a turn parked on an unanswered form would also
+        Regent must stay free: a turn parked on an unanswered form would also
         hold back every wake-up and session report queued behind it. The form
         is an ordinary saved surface, so it is still there after a reload, and
         whenever the user submits it the answer arrives as their next message.

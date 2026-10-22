@@ -1,3 +1,4 @@
+import { isImeComposing } from '../../lib/ime';
 import React, { useRef, useState } from 'react';
 import { PlayIcon } from '@heroicons/react/24/outline';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
@@ -30,6 +31,7 @@ export function VideoResultPlayer({
         setMenu({ x: event.clientX, y: event.clientY });
       }}
       onKeyDown={(event) => {
+        if (isImeComposing(event)) return;
         if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
           event.preventDefault();
           const rect = event.currentTarget.getBoundingClientRect();

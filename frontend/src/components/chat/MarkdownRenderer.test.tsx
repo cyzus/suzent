@@ -57,6 +57,17 @@ describe('MarkdownRenderer', () => {
     expect(html).toContain('Cost: $5');
   });
 
+  it('keeps prices readable alongside inline math', () => {
+    const html = render('Prices: $100 and $200. Formula: $x^2$. Also $123+4$.');
+    const singlePrice = render('Price: $100.');
+
+    expect(html).toContain('$100 and $200');
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain('100and');
+    expect(singlePrice).toContain('$100');
+    expect(singlePrice).not.toContain('class="katex"');
+  });
+
   it('keeps invalid math readable without breaking the message', () => {
     const html = render('Before $\\invalidcommand{x}$ after');
 

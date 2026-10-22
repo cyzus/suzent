@@ -2,7 +2,7 @@ import React from 'react';
 import { useI18n } from '../i18n';
 import { detectDesktopPlatform, type DesktopPlatform } from '../lib/titleBarPlatform';
 
-export const TitleBar: React.FC = () => {
+export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) => {
   const [isTauri, setIsTauri] = React.useState(false);
   const [isMaximized, setIsMaximized] = React.useState(false);
   const [platform, setPlatform] = React.useState<DesktopPlatform>('unknown');
@@ -13,9 +13,11 @@ export const TitleBar: React.FC = () => {
     setPlatform(detectDesktopPlatform(navigator.userAgent, navigator.platform));
   }, []);
 
-  if (!isTauri || platform === 'windows' || platform === 'macos') return null;
+  if (!isTauri || (platform === 'windows' && !startup) || platform === 'macos') return null;
 
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
+  const windowsStartup = startup && platform === 'windows';
+  const controlWidth = windowsStartup ? 'w-9' : 'w-11';
 
   const handleMaximize = async () => {
     await appWindow?.toggleMaximize();
@@ -23,26 +25,32 @@ export const TitleBar: React.FC = () => {
     setIsMaximized(!isMaximized);
   };
 
-  const closeButtonClass =
-    'h-full w-11 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors';
+  const closeButtonClass = `h-full ${controlWidth} flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors`;
 
-  const minimizeButtonClass =
-    'h-full w-11 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors';
+  const minimizeButtonClass = `h-full ${controlWidth} flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors`;
 
-  const maximizeButtonClass =
-    'h-full w-11 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors';
+  const maximizeButtonClass = `h-full ${controlWidth} flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors`;
 
   return (
-    <div className="h-8 bg-brutal-white dark:bg-zinc-800 flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999] border-b-3 border-brutal-black">
+    <div
+      className={`${windowsStartup ? 'h-12 px-4 md:px-6' : 'h-8'} bg-brutal-white dark:bg-zinc-800 flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999] border-b-3 border-brutal-black`}
+    >
       {/* Drag Region & Title */}
-      <div className="flex-1 h-full flex items-center pl-4" data-tauri-drag-region>
-        <span className="font-brutal text-sm uppercase tracking-tight text-brutal-black dark:text-white pointer-events-none mt-0.5 leading-none">
+      <div
+        className={`flex-1 h-full flex items-center ${windowsStartup ? '' : 'pl-4'}`}
+        data-tauri-drag-region
+      >
+        <span
+          className={`font-brutal ${windowsStartup ? 'text-2xl md:text-3xl' : 'text-sm mt-0.5'} uppercase tracking-tight text-brutal-black dark:text-white pointer-events-none leading-none`}
+        >
           {t('app.title').toUpperCase()}
         </span>
       </div>
 
       {/* Window controls */}
-      <div className="flex h-full text-brutal-black dark:text-white">
+      <div
+        className={`flex h-full text-brutal-black dark:text-white ${windowsStartup ? 'absolute right-0 top-0 bottom-0' : ''}`}
+      >
         {/* Minimize */}
         <button
           onClick={() => appWindow?.minimize()}

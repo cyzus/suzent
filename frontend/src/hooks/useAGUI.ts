@@ -319,7 +319,17 @@ export function processEvent(
       const name = data.name as string;
       const value = data.value;
 
-      if (name === 'tool_permission_decision') {
+      if (name === 'shell_output_delta') {
+        const update = value as { toolCallId?: string; stream?: string; delta?: string };
+        const index = update.toolCallId ? findLastToolPartIndex(next, update.toolCallId) : -1;
+        if (index >= 0 && next[index].state !== 'completed' && typeof update.delta === 'string') {
+          const prefix = update.stream === 'stderr' ? '[stderr]\n' : '';
+          next[index] = {
+            ...next[index],
+            output: (next[index].output || '') + prefix + update.delta,
+          };
+        }
+      } else if (name === 'tool_permission_decision') {
         const decision = value as NonNullable<AGUIPart['permissionDecision']>;
         const tcId = decision.toolCallId;
         const existingIndex = findLastToolPartIndex(next, tcId);

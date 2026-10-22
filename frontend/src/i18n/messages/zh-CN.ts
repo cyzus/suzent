@@ -1,4 +1,14 @@
 export const zhCN = {
+  desktopMenu: {
+    label: '菜单',
+    cut: '剪切',
+    copy: '复制',
+    paste: '粘贴',
+    selectAll: '全选',
+    settings: '设置',
+    reload: '重新加载',
+    failed: '操作失败，请检查剪贴板权限后重试。',
+  },
   onboarding: {
     rolesPreview: '分工预览',
     nothingToFill: '剩余空缺暂无匹配的推荐模型，无需补全。',
@@ -597,7 +607,16 @@ export const zhCN = {
         },
         FocalScheduleTool: {
           name: '安排唤醒',
-          description: '安排 SUZENT 自己下次被唤醒的时间：提醒必定通知你，巡检有发现才通知。',
+          description: '安排 Regent 自己下次被唤醒的时间：提醒必定通知你，巡检有发现才通知。',
+        },
+        FocalDispatchTool: {
+          name: '派发给会话',
+          description:
+            '把工作交给项目里的会话，或在项目中新开一个会话，可以由 ACP 编程智能体来做。',
+        },
+        FocalNotesTool: {
+          name: '记笔记',
+          description: '维护 Regent 自己的笔记：你希望它怎么做事，不记项目状态。',
         },
         AgentSendTool: {
           name: '发送智能体消息',
@@ -1450,6 +1469,7 @@ export const zhCN = {
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',
+    search: '搜索',
     newProject: '新建项目',
     newProjectPlaceholder: '项目名称…',
     moveToProject: '移动到项目',
@@ -1461,10 +1481,12 @@ export const zhCN = {
       recentIn: '{name} 近期对话',
     },
     focal: {
+      back: '回到 Regent',
       primary: '主对话',
       chat: '聊聊吧',
-      name: 'SUZENT',
-      open: '打开 SUZENT',
+      brand: 'Suzent',
+      name: 'Regent',
+      open: '打开 Regent',
       role: '我一直在',
       wait: '{count} 待处理',
       autoRun: '{count} 自动运行',
@@ -1746,7 +1768,7 @@ export const zhCN = {
     },
   },
   chatMessage: {
-    sentBySuzent: '由 SUZENT 转达',
+    sentByRegent: '由 Regent 转达',
     today: '今天',
     yesterday: '昨天',
     runtime: {
@@ -1837,10 +1859,10 @@ export const zhCN = {
     sourcesCount: '{count} 个来源',
   },
   focalTools: {
-    tools: 'SUZENT 的工具',
-    fixedNote: '由系统固定，工具选择器对 SUZENT 不生效。',
+    tools: 'Regent 的工具',
+    fixedNote: '由系统固定，工具选择器对 Regent 不生效。',
     wakeups: '已安排的唤醒',
-    noWakeups: '还没有安排。可以让 SUZENT 提醒你，或者过一会儿回来看看某项工作。',
+    noWakeups: '还没有安排。可以让 Regent 提醒你，或者过一会儿回来看看某项工作。',
     reminder: '提醒',
     check: '巡检',
     nextRun: '下次 {time}',
@@ -1849,14 +1871,13 @@ export const zhCN = {
     cancel: '取消',
     cancelAria: '取消唤醒 {name}',
     cancelError: '取消失败，请重试。',
-    loadError: '无法加载 SUZENT 的工具。',
+    loadError: '无法加载 Regent 的工具。',
     retry: '重试',
     loading: '加载中…',
   },
   focalBriefing: {
     greeting: '我在，聊聊吧。',
     invitation: '有什么想法，或者想一起做的事？',
-    followUp: '有些事情等你有空时，我们可以接着聊。',
   },
   taskFlow: {
     checklist: '任务清单',
@@ -1867,6 +1888,7 @@ export const zhCN = {
     narrow: '收窄',
 
     overview: '{attention} 项需要你处理 · {active} 项正在进行',
+    sessionOverview: '{attention} 个等你 · {active} 个运行中 · {stalled} 个停滞',
     projectTitle: '项目任务',
     currentChat: '本次对话',
     back: '返回对话',
@@ -1907,6 +1929,19 @@ export const zhCN = {
     unassignedSession: '未分配到会话',
     sessionRunning: '运行中',
     sessionIdle: '空闲',
+    rowMenu: {
+      openChat: '打开会话',
+      resume: '恢复',
+      complete: '标记完成',
+      reopen: '重新打开',
+      cancel: '取消任务',
+      cancelTitle: '取消 {count} 项未完成的任务？',
+      cancelMessage:
+        '取消后它们会从看板上移除，也不会再有会话接手。如果工作已经做完，请改用“标记完成”。',
+      keep: '保留',
+      cancelConfirm: '取消任务',
+      failed: '没能更新这些任务，请重试。',
+    },
     stalledReason: '还有 {count} 项未完成，但没有在推进',
     openCount: '{count} 项未完成',
     doneCount: '{count} 项已完成',

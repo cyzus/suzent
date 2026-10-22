@@ -18,6 +18,7 @@ import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
+import { RegentMark } from '../regent/RegentMark';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import { IncomingMessage } from './IncomingMessage';
 import type { SubAgentStatus } from './SubAgentCallBlock';
@@ -93,6 +94,8 @@ function findLastActivityGroupIndex(groups: Array<{ type: string }>): number {
 
 interface AssistantMessageProps {
   conversational?: boolean;
+  /** Regent's own turns: signed with its circlet mark instead of Suzent's robot. */
+  regent?: boolean;
   message: Message;
   /** Wall-clock seconds the agent worked on this message's whole turn. */
   workedDurationSeconds?: number;
@@ -306,6 +309,7 @@ const AGUIPartsContent: React.FC<{
                       toolName: tp.toolName || 'unknown',
                       toolArgs: tp.args || undefined,
                       output: tp.output || undefined,
+                      state: tp.state,
                       approvalState,
                       permission: tp.permission,
                       permissionDecision: tp.permissionDecision,
@@ -350,7 +354,7 @@ const AGUIPartsContent: React.FC<{
                         ? ('pending' as const)
                         : t.approvalState === 'denied' || toolCallFailed(t.outcome, t.output)
                           ? ('error' as const)
-                          : isStreaming && !t.output
+                          : isStreaming && t.state === 'running'
                             ? ('active' as const)
                             : t.output
                               ? ('done' as const)
@@ -402,7 +406,7 @@ const AGUIPartsContent: React.FC<{
                           output={t.output}
                           defaultCollapsed={t.approvalState !== 'pending'}
                           approvalState={t.approvalState}
-                          isStreaming={isStreaming && !t.output}
+                          isStreaming={isStreaming && t.state === 'running'}
                           onApprove={t.onApprove}
                           onDeny={t.onDeny}
                           permission={t.permission}
@@ -762,6 +766,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 
 const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   conversational = false,
+  regent = false,
   message,
   workedDurationSeconds,
   messageIndex,
@@ -928,11 +933,13 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             that agent's mark rather than with Suzent's robot. */}
         {isAcp ? (
           <AcpAgentIcon id={acpAgent} className="w-4 h-4 shrink-0" />
+        ) : regent ? (
+          <RegentMark size={16} />
         ) : (
           <RobotIcon className="w-4 h-4" />
         )}
         <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-          {isAcp ? acpAgent : 'Suzent'}
+          {isAcp ? acpAgent : regent ? t('chatList.focal.name') : 'Suzent'}
         </span>
       </div>
       {!conversational && (
@@ -960,7 +967,13 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           currentToolName={currentToolName}
           errorCount={errorCount}
           isPendingApproval={isPendingApproval}
-          icon={isAcp ? <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" /> : undefined}
+          icon={
+            isAcp ? (
+              <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />
+            ) : regent ? (
+              <RegentMark size={20} state={isThinking || isStreamingThis ? 'working' : 'idle'} />
+            ) : undefined
+          }
         />
         {isAcp && (
           // The badge box is only 90px wide, so keep this to a marker and let

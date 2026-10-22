@@ -102,7 +102,7 @@ a curated map, not a fact store — see
 | PUT | `/heartbeat/md` | Update HEARTBEAT.md content |
 | PUT | `/heartbeat/interval` | Set interval (`{"interval_minutes": N}`) |
 
-### Focal Agent (SUZENT)
+### Focal Agent (Regent)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

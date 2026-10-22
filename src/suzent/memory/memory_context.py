@@ -122,6 +122,29 @@ def format_core_memory_section(
             )
         curated_memory_hint = "- Follow `MEMORY.md` to the page that holds what you need before answering from memory"
 
+    from suzent.core.focal_agent import FOCAL_CHAT_ID
+
+    if chat_id == FOCAL_CHAT_ID:
+        # Regent has no file-writing tools; its Context block is its own notes.
+        update_hint = (
+            "- The Context block is your own notes. Keep it with `update_notes`; "
+            "you cannot edit the other memory files, which Suzent maintains from "
+            "your conversations"
+        )
+        context_guideline = (
+            "- Keep your notes to what stays true about how the user wants you to "
+            "work. Never record project or task status there: you read it fresh "
+            "every turn"
+        )
+    else:
+        update_hint = """- To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
+- To update shared project context and task state: write to the project's `context.md`
+- `MEMORY.md` is a map, not a store: one `- [[page]] — holds …; read when …` line per
+  page or folder. Keep facts in the pages; when you edit a page, update its line"""
+        context_guideline = """- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
+  Current state, Decisions, File index (one line per library file), Related knowledge
+  (links to notebook pages). No step-by-step logs or temporary notes"""
+
     return f"""# Memory System
 
 You operate under a **file-centric memory architecture** — markdown files are the single source of truth.
@@ -137,10 +160,7 @@ Your memory lives in plain markdown files you can read and write directly:
 {memory_files}
 
 **How to update your memory:**
-- To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
-- To update shared project context and task state: write to the project's `context.md`
-- `MEMORY.md` is a map, not a store: one `- [[page]] — holds …; read when …` line per
-  page or folder. Keep facts in the pages; when you edit a page, update its line
+{update_hint}
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_hint}
@@ -148,9 +168,7 @@ Your memory lives in plain markdown files you can read and write directly:
 **Memory Guidelines:**
 - Search archival memory before asking the user for information they may have already shared
 - Write important new facts, decisions, and preferences to the appropriate memory file for durability
-- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
-  Current state, Decisions, File index (one line per library file), Related knowledge
-  (links to notebook pages). No step-by-step logs or temporary notes
+{context_guideline}
 {curated_memory_hint}
 {_open_questions_hint(open_questions)}"""
 

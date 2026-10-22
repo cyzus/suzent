@@ -1,4 +1,4 @@
-"""The Focal Agent: a singleton SUZENT chat that orchestrates every project.
+"""The Focal Agent: a singleton Regent chat that orchestrates every project.
 
 The Focal Agent is the user's one point of attention. It sees all projects,
 dispatches work to project primary sessions, and is woken when one of them
@@ -6,6 +6,7 @@ blocks on the user.
 """
 
 import hashlib
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -16,10 +17,11 @@ logger = get_logger(__name__)
 
 FOCAL_CHAT_ID = "focal-suzent"
 FOCAL_PLATFORM = "focal"
-FOCAL_TITLE = "SUZENT"
+FOCAL_TITLE = "Regent"
 ATTENTION_WAITING_KINDS = ("user", "error")
 
 _MAX_CONTEXT_SESSIONS_PER_PROJECT = 10
+_MAX_STARTED_SESSIONS = 20
 
 # The Focal Agent orchestrates; project sessions do the work. It gets no tools
 # that change files, run commands or act on a project directly, whatever the
@@ -40,6 +42,7 @@ FOCAL_TOOL_NAMES = (
     "GlobTool",
     "GrepTool",
     "FocalScheduleTool",
+    "FocalNotesTool",
 )
 
 FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
@@ -48,14 +51,31 @@ FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
 STALL_AFTER = timedelta(minutes=30)
 # A blocker the user was already told about is raised again only after this.
 REMIND_BLOCKED_AFTER = timedelta(hours=2)
-DEFAULT_FOCAL_HEARTBEAT = """# SUZENT check-in
+DEFAULT_FOCAL_HEARTBEAT = """# Regent check-in
 - Sessions idle with open tasks: nudge them with agent_dispatch if the next step is clear, otherwise tell the user what is stuck.
 - Tasks that have waited on the user for a long time: remind the user once, in one line.
 """
-# Earlier built-in checklists, upgraded in place since the user never edited them.
+DEFAULT_FOCAL_NOTES = """# Regent's notes
+How the user wants me to work. Rules only, never project or task status.
+
+## Bring to the user
+
+## Handle without asking
+
+## Don't disturb
+
+## Project names
+
+## Reports
+"""
+_OVERVIEW_CHARS = 160
+# Earlier built-in files, upgraded in place since the user never edited them.
+_SUZENT_HEARTBEAT = DEFAULT_FOCAL_HEARTBEAT.replace("# Regent", "# SUZENT")
 _PREVIOUS_FOCAL_HEARTBEATS = (
-    DEFAULT_FOCAL_HEARTBEAT.replace("agent_dispatch", "agent_send"),
+    _SUZENT_HEARTBEAT,
+    _SUZENT_HEARTBEAT.replace("agent_dispatch", "agent_send"),
 )
+_PREVIOUS_FOCAL_NOTES = (DEFAULT_FOCAL_NOTES.replace("# Regent's", "# SUZENT's"),)
 
 
 def is_focal_chat(chat: Optional[ChatModel]) -> bool:
@@ -132,6 +152,29 @@ def _ensure_default_heartbeat_file(seed: bool) -> None:
         logger.warning("Could not write the Focal heartbeat checklist: {}", exc)
 
 
+def _ensure_notes_file() -> None:
+    """Give Regent's notes their sections, or upgrade an untouched old skeleton."""
+    path = notes_path()
+    try:
+        if path.exists() and path.read_text(encoding="utf-8") not in (
+            _PREVIOUS_FOCAL_NOTES
+        ):
+            return
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read Regent's notes: {}", exc)
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(DEFAULT_FOCAL_NOTES, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not write Regent's notes: {}", exc)
+
+
+def notes_path() -> Path:
+    """Regent's notes: its system project's context.md, loaded as core memory."""
+    return get_database().get_project_dir(FOCAL_CHAT_ID) / "context.md"
+
+
 def get_or_create_focal_chat() -> ChatModel:
     """Return the singleton Focal Agent chat, creating it on first use.
 
@@ -153,12 +196,13 @@ def get_or_create_focal_chat() -> ChatModel:
     else:
         if chat.project_id != project_id:
             db.link_chat_to_project(FOCAL_CHAT_ID, project_id)
-        # Auto-title once renamed SUZENT after its first topic; put the name back.
+        # Auto-title once renamed Regent after its first topic; put the name back.
         if chat.title != FOCAL_TITLE:
             db.update_chat(FOCAL_CHAT_ID, title=FOCAL_TITLE, reindex=False)
     chat = db.get_chat(FOCAL_CHAT_ID)
     initialized = (chat.config or {}).get("focal_heartbeat_initialized")
     _ensure_default_heartbeat_file(seed=not initialized)
+    _ensure_notes_file()
     if not initialized:
         db.merge_chat_config(
             FOCAL_CHAT_ID,
@@ -205,19 +249,55 @@ def _format_task(task: Any) -> str:
     return line
 
 
+def _project_overview(slug: str) -> Optional[str]:
+    """One line from a project's context.md: its Overview, else its first prose line.
+
+    Read live, so Regent never keeps a copy of project knowledge that could
+    drift from what the project's own sessions maintain.
+    """
+    from suzent.config import CONFIG
+
+    path = Path(CONFIG.sandbox_data_path) / "projects" / slug / "context.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    in_overview = False
+    first_prose = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            in_overview = line.lstrip("#").strip().lower() == "overview"
+            continue
+        if not line or line.startswith(("<!--", "|", "```")):
+            continue
+        if in_overview:
+            first_prose = line
+            break
+        first_prose = first_prose or line
+    if first_prose is None:
+        return None
+    summary = first_prose.lstrip("-* ").strip()
+    if len(summary) > _OVERVIEW_CHARS:
+        summary = summary[: _OVERVIEW_CHARS - 1].rstrip() + "…"
+    return summary or None
+
+
 def build_focal_global_context() -> str:
     """Render the projects, live primary sessions and open tasks the Focal Agent oversees."""
     db = get_database()
     running = running_chat_ids()
     lines = [
-        "# SUZENT Global Context",
-        "You are SUZENT: the user's single point of attention "
+        "# Regent Global Context",
+        "You are Regent, the user's Suzent Regent: their single point of attention "
         "across every project. Converse naturally with the user. When they ask "
         "for project work, dispatch it to a Project Primary Session instead of "
         "doing it here: wake an existing session with "
         "`agent_dispatch(agent_id=<session id>, message=...)`, or start a new one with "
         "`agent_dispatch(agent_id='new', project_id=<id or slug>, title=..., "
-        "task_title=..., message=...)`. Primary sessions run autonomously and "
+        "task_title=..., message=...)`; pass acp_agent_id instead of task_title "
+        "to have a configured ACP agent, such as a coding agent, do the work. "
+        "Primary sessions run autonomously and "
         "notify you when they block on the user; relay those blockers clearly.",
         "",
         "## Projects",
@@ -225,8 +305,19 @@ def build_focal_global_context() -> str:
     projects = db.list_projects(include_archived=False)
     if not projects:
         lines.append("(no projects)")
+    # Sessions Regent started show even without a task: an ACP session can't
+    # make one, and would otherwise vanish from view once idle.
+    started = [
+        chat
+        for row in db.list_chats_by_config(
+            "parent_chat_id", FOCAL_CHAT_ID, limit=_MAX_STARTED_SESSIONS
+        )
+        if (chat := db.get_chat(row["id"])) is not None
+    ]
     for project in projects:
-        lines.append(f"- {project.name} · slug `{project.slug}` · id `{project.id}`")
+        line = f"- {project.name} · slug `{project.slug}` · id `{project.id}`"
+        overview = _project_overview(project.slug)
+        lines.append(f"{line} — {overview}" if overview else line)
         tasks = db.list_tasks(project_id=project.id)
         by_chat: dict[Optional[str], list[Any]] = {}
         for task in tasks:
@@ -240,6 +331,11 @@ def build_focal_global_context() -> str:
             and (chat := db.get_chat(chat_id)) is not None
             and chat.project_id == project.id
         ]
+        session_ids += [
+            chat.id
+            for chat in started
+            if chat.project_id == project.id and chat.id not in session_ids
+        ]
         session_ids.sort(
             key=lambda chat_id: (
                 not any(_needs_attention(task) for task in by_chat.get(chat_id, [])),
@@ -251,8 +347,14 @@ def build_focal_global_context() -> str:
             if chat is None or is_focal_chat(chat):
                 continue
             state = "running" if chat_id in running else "idle"
+            config = chat.config or {}
+            runtime = (
+                f" · ACP `{config.get('acp_agent_id')}`"
+                if config.get("runtime") == "acp"
+                else ""
+            )
             lines.append(
-                f"  - Session `{chat_id}` · {chat.title or 'Untitled'} · {state}"
+                f"  - Session `{chat_id}` · {chat.title or 'Untitled'} · {state}{runtime}"
             )
             lines.extend(
                 f"    - {_format_task(task)}" for task in by_chat.get(chat_id, [])
@@ -268,7 +370,7 @@ def build_focal_global_context() -> str:
 
 
 def _last_activity(chat: Optional[ChatModel]) -> Optional[str]:
-    """When SUZENT last said something, from a user turn or a background one."""
+    """When Regent last said something, from a user turn or a background one."""
     if chat is None:
         return None
     # SQLite drops the zone: turns stamp local time, background runs stamp UTC.
@@ -333,7 +435,7 @@ def focal_status() -> dict[str, Any]:
         "waitingByChat": waiting_by_chat,
         "running": FOCAL_CHAT_ID in running_chat_ids(),
         # New messages from background check-ins, wake-ups and events show on
-        # SUZENT's card rather than as tasks in the sidebar.
+        # Regent's card rather than as tasks in the sidebar.
         "unread": int(config.get("unread_count") or 0),
         "lastMessage": config.get(SUMMARY_LAST_MESSAGE_KEY),
         "lastMessageAt": _last_activity(focal),

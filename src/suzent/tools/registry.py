@@ -211,7 +211,8 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.tasks import TaskCreateTool
     from suzent.tools.tasks import TaskUpdateTool
     from suzent.tools.tasks import TaskListTool
-    from suzent.tools.schedule_tool import FocalScheduleTool, ScheduleTool
+    from suzent.tools.schedule_tool import ScheduleTool
+    from suzent.tools.focal import FocalDispatchTool, FocalNotesTool, FocalScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -230,7 +231,6 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
-        FocalDispatchTool,
     )
 
     return (
@@ -252,7 +252,6 @@ def _all_tool_classes() -> tuple:
         TaskUpdateTool,
         TaskListTool,
         ScheduleTool,
-        FocalScheduleTool,
         RenderUITool,
         VideoGenerationTool,
         VideoStatusTool,
@@ -271,6 +270,8 @@ def _all_tool_classes() -> tuple:
         AgentSendTool,
         AgentStopTool,
         FocalDispatchTool,
+        FocalScheduleTool,
+        FocalNotesTool,
     )
 
 

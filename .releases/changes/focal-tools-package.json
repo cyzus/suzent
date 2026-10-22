@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Move SUZENT's own tools into one package.",
+  "reason": "A code move with no behavior change beyond one tool description's wording; SUZENT has not shipped yet and goes out with the pending focal-agent declaration."
+}

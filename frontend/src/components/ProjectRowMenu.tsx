@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
+import { ContextMenu } from './ContextMenu';
+import { itemBase, itemDefault, itemDanger } from './contextMenuStyles';
 import { useI18n } from '../i18n';
-import { isImeComposing } from '../lib/ime';
 
 interface ProjectRowMenuProps {
   anchor: { x: number; y: number } | { rect: DOMRect };
@@ -27,86 +27,18 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
   onClose,
 }) => {
   const { t } = useI18n();
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-
-  const anchorPoint = useMemo(() => {
-    if ('rect' in anchor) return { x: anchor.rect.right, y: anchor.rect.bottom };
-    return { x: anchor.x, y: anchor.y };
-  }, [anchor]);
-
-  useEffect(() => {
-    if (!menuRef.current) return;
-    const menuW = menuRef.current.offsetWidth || 200;
-    const menuH = menuRef.current.offsetHeight || 100;
-    const margin = 8;
-    const bounds = boundary ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-    const minLeft = bounds.left + margin;
-    const maxLeft = Math.max(minLeft, bounds.right - menuW - margin);
-    const minTop = Math.max(margin, bounds.top + margin);
-    const maxTop = Math.max(
-      minTop,
-      Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin)
-    );
-    let left = anchorPoint.x;
-    let top = anchorPoint.y;
-    if (left > maxLeft) left = maxLeft;
-    if (left < minLeft) left = minLeft;
-    if (top > maxTop) top = maxTop;
-    if (top < minTop) top = minTop;
-    setPosition({ left, top });
-  }, [anchorPoint, boundary]);
-
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
-    };
-    const onContextMenu = (e: MouseEvent) => {
-      if (menuRef.current?.contains(e.target as Node)) e.preventDefault();
-      else onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (isImeComposing(e)) return;
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('contextmenu', onContextMenu);
-    };
-  }, [onClose]);
-
-  const surface =
-    'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
-  const itemBase =
-    'w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider flex items-center gap-2.5 transition-colors';
 
   const menu = (
-    <div
-      ref={menuRef}
-      role="menu"
-      style={{
-        position: 'fixed',
-        left: position?.left ?? -9999,
-        top: position?.top ?? -9999,
-        visibility: position ? 'visible' : 'hidden',
-        zIndex: 9999,
-      }}
-      className={`min-w-[200px] ${surface} py-0.5`}
-      onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      {...(rootDataAttrs || {})}
+    <ContextMenu
+      anchor={anchor}
+      onClose={onClose}
+      boundary={boundary}
+      rootDataAttrs={rootDataAttrs}
     >
       <button
         type="button"
         role="menuitem"
-        className={`${itemBase} text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black`}
+        className={`${itemBase} ${itemDefault}`}
         onClick={() => {
           onRename();
           onClose();
@@ -128,7 +60,7 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
         {t('chatList.menu.rename')}
       </button>
 
-      <div className="h-0.5 bg-brutal-black my-0.5" />
+      <div role="separator" className="h-0.5 bg-brutal-black my-0.5" />
 
       <button
         type="button"
@@ -137,7 +69,7 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
           onDelete();
           onClose();
         }}
-        className={`${itemBase} text-brutal-red hover:bg-brutal-red hover:text-white`}
+        className={`${itemBase} ${itemDanger}`}
       >
         <svg
           className="w-3.5 h-3.5"
@@ -154,8 +86,8 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
         </svg>
         {t('chatList.menu.delete')}
       </button>
-    </div>
+    </ContextMenu>
   );
 
-  return createPortal(menu, document.body);
+  return menu;
 };

@@ -3,7 +3,7 @@ import type { A2UISurface } from '../types/a2ui';
 /**
  * Turn a submitted question form into the message the user sends.
  *
- * SUZENT's question forms outlive the turn that asked them, so their answer
+ * Regent's question forms outlive the turn that asked them, so their answer
  * arrives as an ordinary message. The form's fields are named by their
  * question, which lets the message read as "question: answer".
  */

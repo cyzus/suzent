@@ -1,3 +1,4 @@
+import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -7,7 +8,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
-import { ChatList, SidebarHeaderActions } from './components/ChatList';
+import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -21,6 +22,7 @@ import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
+import { RegentLogoSlot } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
@@ -637,6 +639,7 @@ function AppInner(): React.ReactElement {
   }, [setViewSwitcher, setMainView]);
 
   const taskProjectId = currentChatProjectId;
+  const regentHeader = mainView === 'chat' && currentChatId === FOCAL_CHAT_ID;
   const kanbanProjectId = currentChatId === FOCAL_CHAT_ID ? ALL_PROJECTS_KANBAN_ID : taskProjectId;
 
   React.useEffect(() => {
@@ -709,6 +712,7 @@ function AppInner(): React.ReactElement {
         showMacWindowControls ? 'macos-tauri-webview' : ''
       }`}
     >
+      {isDesktop() && <DesktopContextMenu onSettings={() => openSettings()} />}
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
@@ -716,7 +720,6 @@ function AppInner(): React.ReactElement {
           maxWidth={leftSidebarMaxWidth}
           isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
           onWidthChange={setPreferredLeftWidth}
-          headerActions={<SidebarHeaderActions onSearch={() => setSidebarSearchOpen(true)} />}
           chatsContent={
             <ChatList
               searchOpen={sidebarSearchOpen}
@@ -740,7 +743,7 @@ function AppInner(): React.ReactElement {
         />
         <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
           <header
-            className="app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
+            className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
             onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -761,7 +764,10 @@ function AppInner(): React.ReactElement {
                   title={t('sidebar.open')}
                 >
                   <div className="flex h-full w-full items-center justify-center group-hover:hidden">
-                    <SuzentLogo className="h-7 w-7" interactive />
+                    {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
+                    <RegentLogoSlot regent={regentHeader}>
+                      <SuzentLogo className="h-7 w-7" interactive />
+                    </RegentLogoSlot>
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
                     <SidebarToggleIcon
@@ -885,7 +891,6 @@ function AppInner(): React.ReactElement {
               ) : null}
             </div>
           </header>
-
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
               <ChatWindow

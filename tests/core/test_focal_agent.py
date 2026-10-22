@@ -13,9 +13,10 @@ from suzent.tools.agents import agent_lifecycle_tools
 from suzent.tools.agents.agent_lifecycle_tools import (
     AgentListTool,
     AgentSendTool,
-    FocalDispatchTool,
     _accessible_agent,
 )
+from suzent.tools.focal import dispatch
+from suzent.tools.focal.dispatch import FocalDispatchTool
 from suzent.tools.base import ToolErrorCode
 from suzent.tools.tasks import task_update_tool
 from suzent.tools.tasks.task_update_tool import TaskUpdateTool
@@ -23,7 +24,7 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (focal_agent, agent_lifecycle_tools, task_update_tool):
+    for module in (focal_agent, agent_lifecycle_tools, dispatch, task_update_tool):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
@@ -50,7 +51,7 @@ def test_focal_chat_is_a_singleton_hidden_from_project_lists(db) -> None:
     second = get_or_create_focal_chat()
 
     assert first.id == second.id == FOCAL_CHAT_ID
-    assert first.title == "SUZENT"
+    assert first.title == "Regent"
     assert first.config["is_focal_agent"] is True
     assert first.config["platform"] == "focal"
     assert FOCAL_CHAT_ID not in {chat.id for chat in db.list_chats(limit=None)}
@@ -71,7 +72,7 @@ def test_global_context_lists_projects_sessions_and_blockers(db) -> None:
 
     context = focal_agent.build_focal_global_context()
 
-    assert context.startswith("# SUZENT Global Context")
+    assert context.startswith("# Regent Global Context")
     assert f"slug `website` · id `{project_id}`" in context
     assert f"Session `{chat_id}` · Redesign · idle" in context
     assert f"#{task.id} [blocked] Pick a palette" in context
@@ -372,6 +373,7 @@ def test_existing_focal_chat_moves_out_of_home(db, sandbox) -> None:
     get_or_create_focal_chat()
 
     assert db.get_chat_project_slug(FOCAL_CHAT_ID) == db.FOCAL_PROJECT_SLUG
+    assert db.get_chat(FOCAL_CHAT_ID).title == "Regent"
 
 
 def test_heartbeat_starts_on_once_with_an_editable_checklist(db, sandbox) -> None:
@@ -436,7 +438,7 @@ def schedule_db(db, monkeypatch):
 def test_focal_wakeups_run_in_focal_and_reminders_always_notify(
     schedule_db, sandbox, kind, quiet, delivery
 ) -> None:
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     get_or_create_focal_chat()
 
@@ -460,7 +462,7 @@ def test_focal_wakeups_refuse_other_chats_and_stay_out_of_reach(
     schedule_db, sandbox
 ) -> None:
     from suzent.tools.registry import get_tool_capabilities
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     chat_id = schedule_db.create_chat("Regular", {})
 
@@ -550,7 +552,7 @@ def test_focal_panel_lists_fixed_tools_and_own_wakeups(
     schedule_db, sandbox, monkeypatch
 ) -> None:
     from suzent.routes import chat_routes
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     monkeypatch.setattr(chat_routes, "get_database", lambda: schedule_db)
     client = TestClient(
@@ -621,7 +623,7 @@ def test_a_renamed_focal_chat_gets_its_name_back(db, sandbox) -> None:
     get_or_create_focal_chat()
     db.update_chat(FOCAL_CHAT_ID, title="可用工具与功能列表")
 
-    assert get_or_create_focal_chat().title == "SUZENT"
+    assert get_or_create_focal_chat().title == "Regent"
 
 
 def test_focal_status_reports_new_messages(db, sandbox) -> None:
@@ -775,7 +777,7 @@ async def test_focal_never_waits_on_a_session(
     chat_id = db.create_chat("Servers", {})
 
     async def must_not_wait(*args, **kwargs):
-        raise AssertionError("SUZENT waited on another agent")
+        raise AssertionError("Regent waited on another agent")
 
     monkeypatch.setattr(AgentSendTool, "_send_and_wait", staticmethod(must_not_wait))
 
@@ -799,7 +801,7 @@ async def test_focal_does_not_block_on_external_agents(
     )
 
     def must_not_delegate(*args):
-        raise AssertionError("SUZENT blocked on an external agent")
+        raise AssertionError("Regent blocked on an external agent")
 
     monkeypatch.setattr(
         agent_lifecycle_tools.agent_bridge, "delegate", must_not_delegate
@@ -861,7 +863,7 @@ def test_only_suzent_sees_the_dispatch_parameters() -> None:
         assert not any("Focal Agent" in text for text in described)
 
 
-def test_suzents_tools_never_point_it_at_agent_send() -> None:
+def test_suzents_tools_speak_to_it_as_suzent() -> None:
     from suzent.core.focal_agent import FOCAL_TOOL_NAMES
     from suzent.tools.registry import _all_tool_classes, _tool_description
 
@@ -872,7 +874,8 @@ def test_suzents_tools_never_point_it_at_agent_send() -> None:
             str(param.annotation)
             for param in signature(tool.forward).parameters.values()
         ]
-        assert not any("agent_send" in text for text in described), tool.name
+        for stale in ("agent_send", "Focal Agent"):
+            assert not any(stale in text for text in described), (tool.name, stale)
 
 
 def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
@@ -886,3 +889,299 @@ def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
     path.write_text("- My own item\n", encoding="utf-8")
     get_or_create_focal_chat()
     assert path.read_text(encoding="utf-8") == "- My own item\n"
+
+
+@pytest.mark.asyncio
+async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
+    from suzent.tools.focal.notes import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_NOTES
+    path.write_text("", encoding="utf-8")
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Ask before anything about deploys")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Reports in Chinese, one line each")
+    assert path.read_text(encoding="utf-8") == (
+        "- Ask before anything about deploys\n- Reports in Chinese, one line each\n"
+    )
+
+    result = await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "Reports in English", old_text="Reports in Chinese"
+    )
+    assert result.success
+    assert "Reports in English, one line each" in result.message
+
+    await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "", old_text="- Ask before anything about deploys\n"
+    )
+    assert path.read_text(encoding="utf-8") == "- Reports in English, one line each\n"
+
+
+@pytest.mark.asyncio
+async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
+    db, sandbox
+) -> None:
+    from suzent.tools.focal.notes import MAX_NOTES_CHARS, FocalNotesTool
+
+    get_or_create_focal_chat()
+    (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").write_text("")
+    tool = FocalNotesTool()
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- quiet after 22:00\n- quiet on Sunday")
+
+    ambiguous = await tool.forward(_ctx(FOCAL_CHAT_ID), "x", old_text="quiet")
+    other = await tool.forward(_ctx(db.create_chat("Regular", {})), "- rule")
+    overflow = await tool.forward(_ctx(FOCAL_CHAT_ID), "x" * MAX_NOTES_CHARS)
+
+    assert ambiguous.error_code == ToolErrorCode.INVALID_ARGUMENT
+    assert other.error_code == ToolErrorCode.PERMISSION_DENIED
+    assert overflow.error_code == ToolErrorCode.INVALID_ARGUMENT
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == "- quiet after 22:00\n- quiet on Sunday\n"
+
+
+def test_notes_tool_is_suzents_alone() -> None:
+    from suzent.core.focal_agent import FOCAL_TOOL_NAMES
+    from suzent.tools.focal.notes import FocalNotesTool
+
+    assert "FocalNotesTool" in FOCAL_TOOL_NAMES
+    assert (FocalNotesTool.group, FocalNotesTool.deferrable) == ("", False)
+
+
+def test_suzents_memory_section_points_at_its_notes() -> None:
+    from suzent.memory.memory_context import format_core_memory_section
+
+    focal = format_core_memory_section({"context": "- rule"}, chat_id=FOCAL_CHAT_ID)
+    regular = format_core_memory_section({"context": "- rule"}, chat_id="chat-1")
+
+    assert "update_notes" in focal
+    assert "edit_file" not in focal
+    assert "edit_file" in regular and "update_notes" not in regular
+    assert "`MEMORY.md` is a map" in regular
+
+
+@pytest.mark.asyncio
+async def test_notes_file_rules_under_their_section(db, sandbox) -> None:
+    from suzent.tools.focal.notes import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- after 22:00", section="Don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Sundays", section="don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- ask over $50", section="Budget")
+
+    notes = path.read_text(encoding="utf-8")
+    assert "## Don't disturb\n- after 22:00\n- Sundays\n\n## Project names" in notes
+    assert notes.endswith("\n## Budget\n- ask over $50\n")
+
+
+def test_edited_notes_are_never_reseeded(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    path.write_text("- my rule\n", encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == "- my rule\n"
+
+
+def test_global_context_shows_each_projects_overview(db, sandbox) -> None:
+    db.create_project("Site", "site")
+    db.create_project("Ops", "ops")
+    db.create_project("Bare", "bare")
+    (sandbox / "projects" / "site").mkdir(parents=True)
+    (sandbox / "projects" / "site" / "context.md").write_text(
+        "# Site\n## Overview\nMarketing site rebuild in Next.js\n## Decisions\n- x\n"
+    )
+    (sandbox / "projects" / "ops").mkdir(parents=True)
+    (sandbox / "projects" / "ops" / "context.md").write_text(
+        "# Migration plan\n\nMove every service to the Mac mini. " + "y" * 300
+    )
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `site`" in context and "— Marketing site rebuild in Next.js" in context
+    ops_line = next(line for line in context.splitlines() if "slug `ops`" in line)
+    assert "— Move every service to the Mac mini." in ops_line
+    assert ops_line.endswith("…")
+    bare_line = next(line for line in context.splitlines() if "slug `bare`" in line)
+    assert "—" not in bare_line
+
+
+@pytest.mark.asyncio
+async def test_only_the_suzent_singleton_keeps_notes(db, sandbox) -> None:
+    from suzent.tools.focal.notes import FocalNotesTool
+
+    get_or_create_focal_chat()
+    lookalike = db.create_chat("Old focal", {"is_focal_agent": True})
+
+    result = await FocalNotesTool().forward(_ctx(lookalike), "- rule")
+
+    assert result.error_code == ToolErrorCode.PERMISSION_DENIED
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == focal_agent.DEFAULT_FOCAL_NOTES
+
+
+def test_an_unreadable_project_context_drops_only_its_overview(db, sandbox) -> None:
+    db.create_project("Broken", "broken")
+    db.create_project("Fine", "fine")
+    for slug, content in (("broken", b"\xff\xfe bad"), ("fine", b"All good")):
+        (sandbox / "projects" / slug).mkdir(parents=True)
+        (sandbox / "projects" / slug / "context.md").write_bytes(content)
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `broken`" in context
+    assert "slug `fine` · id" in context and "— All good" in context
+
+
+@pytest.fixture
+def acp_agents(monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
+    """ACP agent ids mapped to whether they are installed."""
+    from suzent.acp.registry import ACPAgentRegistry
+
+    installed = {"codex": True, "gemini": False}
+
+    def get(self, agent_id: str):
+        if agent_id not in installed:
+            raise KeyError(agent_id)
+        return SimpleNamespace(id=agent_id, available=installed[agent_id])
+
+    monkeypatch.setattr(ACPAgentRegistry, "get", get)
+    return installed
+
+
+@pytest.mark.asyncio
+async def test_suzent_starts_an_acp_session_in_ask_mode(
+    db, sandbox, enqueued, acp_agents
+) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Website", "website")
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID),
+        "new",
+        "Fix the broken nav link",
+        project_id="website",
+        title="Nav fix",
+        acp_agent_id="codex",
+    )
+
+    assert result.success, result.message
+    assert "on ACP agent 'codex'" in result.message
+    chat = db.get_chat(result.metadata["agent_id"])
+    assert chat.project_id == project_id
+    assert {
+        key: chat.config.get(key)
+        for key in ("runtime", "acp_agent_id", "permission_mode", "parent_chat_id")
+    } == {
+        "runtime": "acp",
+        "acp_agent_id": "codex",
+        "permission_mode": "default",
+        "parent_chat_id": FOCAL_CHAT_ID,
+    }
+    assert db.list_tasks(project_id=project_id) == []
+    assert enqueued[0]["target_chat_id"] == chat.id
+    context = focal_agent.build_focal_global_context()
+    assert f"Session `{chat.id}` · Nav fix · idle · ACP `codex`" in context
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("agent", "task_title", "code"),
+    [
+        ("codex", "Fix nav", ToolErrorCode.INVALID_ARGUMENT),
+        ("missing", None, ToolErrorCode.NOT_FOUND),
+        ("gemini", None, ToolErrorCode.INVALID_ARGUMENT),
+    ],
+)
+async def test_acp_sessions_refuse_tasks_and_unusable_agents(
+    db, sandbox, enqueued, acp_agents, agent, task_title, code
+) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Website", "website")
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID),
+        "new",
+        "Fix the broken nav link",
+        project_id="website",
+        task_title=task_title,
+        acp_agent_id=agent,
+    )
+
+    assert result.error_code == code
+    assert enqueued == []
+    assert db.list_chats(project_id=project_id) == []
+
+
+def test_agent_list_tells_suzent_to_dispatch_acp_agents(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    regular = db.create_chat("Regular", {})
+
+    for_suzent = AgentListTool().forward(_ctx(FOCAL_CHAT_ID), "acp")
+    for_regular = AgentListTool().forward(_ctx(regular), "acp")
+
+    assert "agent_dispatch(agent_id='new'" in for_suzent.message
+    assert "agent(runtime='acp'" not in for_suzent.message
+    assert "agent(runtime='acp'" in for_regular.message
+
+
+@pytest.mark.asyncio
+async def test_suzent_messages_a_paired_suzent_without_waiting(
+    db, sandbox, monkeypatch
+) -> None:
+    get_or_create_focal_chat()
+    sent: list[dict] = []
+    transport = SimpleNamespace(
+        list_agents=lambda: [],
+        peer_id=lambda agent_id: "laptop" if agent_id.startswith("peer:") else None,
+        enqueue=lambda **kwargs: (
+            sent.append(kwargs) or {"message_id": "msg-peer", "status": "pending"},
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        agent_lifecycle_tools, "get_peer_agent_transport", lambda: transport
+    )
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID), "peer:laptop", "Run the backup on the laptop"
+    )
+
+    assert result.success, result.message
+    assert result.metadata["transport"] == "suzent_peer"
+    assert sent == [
+        {
+            "agent_id": "peer:laptop",
+            "sender_chat_id": FOCAL_CHAT_ID,
+            "content": "Run the backup on the laptop",
+        }
+    ]
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_every_old_built_in_checklist_is_upgraded(db, sandbox, index) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "heartbeat.md"
+    old = focal_agent._PREVIOUS_FOCAL_HEARTBEATS[index]
+    assert old.startswith("# SUZENT check-in")
+    path.write_text(old, encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_HEARTBEAT
+    assert focal_agent.should_run_focal_heartbeat(old) is False
+
+
+def test_untouched_suzent_notes_become_regents(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    path.write_text(focal_agent._PREVIOUS_FOCAL_NOTES[0], encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8").startswith("# Regent's notes")
