@@ -145,6 +145,7 @@ async def test_no_lower_layer_section_claims_override_authority(
         lambda: SimpleNamespace(
             list_projects=lambda include_archived: [project],
             list_tasks=lambda project_id: [],
+            list_chats_by_config=lambda key, value, limit=None: [],
         ),
     )
 

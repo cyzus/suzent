@@ -37,6 +37,15 @@ obvious. It either:
 - **starts a new session in the project** to take it on, with a task on the
   project's task list.
 
+It can also hand the work to a coding agent you've set up under
+**Settings → ACP Agents**, such as Codex or Claude Code: say "have Codex fix
+this in the website project" and SUZENT starts a session in that project that
+runs on Codex.
+
+It can also message Suzent on your other paired devices, for example to run
+something on your laptop. It sends the message and moves on; the reply comes
+back to it later.
+
 Your request shows up at the start of the new session, so you can open it any
 time and see what was asked. The session then works on its own. When it
 finishes, or gets stuck on something only you can answer, it reports back to
@@ -48,6 +57,11 @@ and anything else is reviewed by the security model, which may still ask you.
 Your deny rules and the built-in safety checks apply as usual. To have a
 session ask before every change, open it and switch its mode to **Ask**. See
 [Permission modes](../03-features/tools/human-in-the-loop.md#permission-modes).
+
+Sessions on a coding agent start in **Ask** mode instead, since there is no
+security model to review their actions. Open the session to approve what it
+asks; a request nobody answers is denied after a while, and the agent reports
+that back.
 :::
 
 ## See what's going on
