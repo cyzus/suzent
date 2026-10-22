@@ -17,6 +17,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import kotlin.math.sin
@@ -639,28 +640,30 @@ fun ApprovalCards(model: MobileModel) {
 
 
 @Composable
-fun GreetingCube(modifier: Modifier = Modifier) {
-    val motionEnabled = android.animation.ValueAnimator.areAnimatorsEnabled()
-    val phase = if (motionEnabled) {
-        val transition = rememberInfiniteTransition(label = "cube presence")
-        transition.animateFloat(initialValue = 0f, targetValue = (Math.PI * 2).toFloat(),
-            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "cube phase")
-    } else remember { mutableFloatStateOf(0f) }
-    Box(modifier) {
-        Canvas(Modifier.fillMaxSize()) {
-            val degrees = phase.value * 180f / Math.PI.toFloat()
-            val side = size.minDimension * 0.675f
-            val inset = Offset((size.width - side) / 2, (size.height - side) / 2)
-            rotate(degrees) { drawRect(Color.Gray.copy(alpha = 0.5f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
-            rotate(-degrees + 45f) { drawRect(Color.Gray.copy(alpha = 0.4f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
+fun GreetingCube(engaged: Boolean, modifier: Modifier = Modifier) {
+    val reduced = !android.animation.ValueAnimator.areAnimatorsEnabled()
+    val seconds = remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced) {
+        if (reduced) return@LaunchedEffect
+        var previous = 0L
+        while (true) withFrameNanos { now ->
+            if (previous != 0L) seconds.doubleValue += minOf((now - previous) / 1_000_000_000.0, .05)
+            previous = now
         }
-        Image(painterResource(R.drawable.greeting_cube), contentDescription = null,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                rotationY = sin(phase.value * 4) * 12
-                rotationX = cos(phase.value * 4) * 4
-                translationY = sin(phase.value * 4) * 4.dp.toPx()
-                cameraDistance = 12 * density
-            })
+    }
+    val ink = MaterialTheme.colorScheme.onSurface.toArgb().toLong() and 0xFFFFFFFFL
+    Canvas(modifier) {
+        val marks = GreetingCubeScene.frame(seconds.doubleValue, engaged, reduced, ink)
+        scale(size.width / 160f, size.height / 160f, pivot = Offset.Zero) {
+            marks.forEach { mark ->
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    mark.points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x.toFloat(), p.y.toFloat()) else lineTo(p.x.toFloat(), p.y.toFloat()) }
+                    if (mark.points.size > 2) close()
+                }
+                val color = Color(mark.color).copy(alpha = mark.alpha.toFloat())
+                if (mark.stroke) drawPath(path, color, style = Stroke(mark.width.toFloat())) else drawPath(path, color)
+            }
+        }
     }
 }
 
