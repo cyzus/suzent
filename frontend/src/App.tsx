@@ -1,3 +1,4 @@
+import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -711,6 +712,7 @@ function AppInner(): React.ReactElement {
         showMacWindowControls ? 'macos-tauri-webview' : ''
       }`}
     >
+      {isDesktop() && <DesktopContextMenu onSettings={() => openSettings()} />}
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar

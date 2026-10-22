@@ -1,3 +1,4 @@
+import { isImeComposing } from '../../lib/ime';
 import React, { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
@@ -117,6 +118,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
         onClick={() => (isDir ? onToggleDir(path) : onSelectFile(path, name))}
         onContextMenu={(event) => onContextMenu(event, { path, name, isDir })}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) return;
           if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
             onContextMenu(event, { path, name, isDir });
           }

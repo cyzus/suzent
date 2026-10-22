@@ -1,4 +1,14 @@
 export const zhCN = {
+  desktopMenu: {
+    label: '菜单',
+    cut: '剪切',
+    copy: '复制',
+    paste: '粘贴',
+    selectAll: '全选',
+    settings: '设置',
+    reload: '重新加载',
+    failed: '操作失败，请检查剪贴板权限后重试。',
+  },
   onboarding: {
     rolesPreview: '分工预览',
     nothingToFill: '剩余空缺暂无匹配的推荐模型，无需补全。',
