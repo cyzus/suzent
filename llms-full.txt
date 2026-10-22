@@ -3413,7 +3413,7 @@ small, cheap model while your conversations use the best one you have.
 | **Title** | Naming your conversations. | Cheap |
 | **Input Suggestion** | Guessing your next message, shown in grey in the chat box. Open the row to turn the suggestions off. | Cheap |
 | **Memory Extraction** | Picking out facts worth remembering after each turn. | Cheap |
-| **Decision** | Quick yes-or-no calls: whether a [goal](https://suzent.com/docs/features/automation#goal-mode) is done, and whether a tool call is safe to [approve automatically](https://suzent.com/docs/features/tools/human-in-the-loop). | Cheap |
+| **Decision** | Quick yes-or-no calls: whether a [goal](https://suzent.com/docs/features/automation#goal-mode) is done, whether a tool call is safe to [approve automatically](https://suzent.com/docs/features/tools/human-in-the-loop), and, after each reply in a project conversation, whether it is waiting on you. | Cheap |
 | **Goal Judge**, **Permission Review** | Override Decision for just one of those calls. Found under **Advanced decision roles**. | Decision |
 | **Dream** | Overnight [memory consolidation](https://suzent.com/docs/features/memory#how-memory-is-tidied). | Primary |
 | **Vision** | Reading images. | Primary, if it can see images |
@@ -5459,11 +5459,49 @@ the user hears only when there is something to say. Focal wake-ups always run
 inside the Focal chat under its own tool policy: there is no isolated variant,
 which would run with a full tool set.
 
+## Chat status
+
+Each ordinary project chat (not Regent, sub-agents, chat apps or dreams; see
+`is_tracked()` in `core/chat_status.py`) has one of four states. The user owns
+only `resolved`; the rest are read from what the chat is doing. Tasks stay the
+agent's own bookkeeping and never set the state directly except through the
+waits below.
+
+| State | Read from |
+|---|---|
+| `waiting` | An `ask_question` form held open (`a2ui.pending.chats_waiting()`), a pending tool approval (`config._pending_approvals`), a task `blocked` on `user` or `error`, or the Decision model's read of the last reply |
+| `running` | A turn in progress (`running_chat_ids()`) |
+| `resolved` | The user resolved it (`POST /chats/{id}/resolved`) |
+| `idle` | None of the above |
+
+`chat_state()` decides in that order, except that a held question or approval
+beats running (the run is parked on the user), and resolving beats waits read
+from tasks or replies.
+
+- **When a turn starts** (not a heartbeat), `begin_turn()` numbers it and
+  clears `resolved_at` and the last judgement.
+- **After each turn** that is not a heartbeat, failed or was cancelled,
+  `schedule_judgement()` runs `judge_turn()` in the background on the
+  `decision` role. The answer is parsed strictly (`TurnJudgement`) into
+  `waiting_on_user`, a short `reason` and a one-line `summary`, saved in the
+  `chat_status` table. A failure or unreadable answer keeps the previous record,
+  and a judgement whose turn a newer one has overtaken is dropped.
+- Both hooks run in `ChatProcessor.process_turn()` and in
+  `acp.runtime.stream_acp_turn()`, so chats on an ACP agent are tracked the
+  same way.
+- Changes emit a `chat_status_changed` bus event.
+- `list_chat_states()` lists waiting and running chats of any age, and idle or
+  resolved ones active in the last seven days. It queries the projects'
+  chats directly (`list_board_chats()`), with no cap on how many it scans. `focal_status()` counts waiting
+  chats from it.
+
 ## HTTP API
 
 | Route | Purpose |
 |---|---|
-| `GET /focal` | Create the chat if needed and return `focal_status()`: waiting, stalled and auto-running counts, per-project and per-chat waiting counts, unread count and last message |
+| `GET /focal` | Create the chat if needed and return `focal_status()`: waiting chats, stalled sessions and auto-running counts, chats per state, per-project and per-chat waiting counts, unread count and last message |
+| `GET /focal/chats` | `list_chat_states()` with per-state counts; `?project_id=` narrows it to one project |
+| `POST /chats/{id}/resolved` | Body `{"resolved": bool}`: resolve the chat for the user, or reopen it |
 | `GET /focal/panel` | The fixed tool list and scheduled wake-ups, for the Tools tab |
 | `DELETE /focal/wakeups/{job_id}` | Cancel one of Focal's own wake-ups; any other job id is refused |
 
