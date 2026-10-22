@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "A chat opened from Regent's board now shows \"Regent / chat title\" in the header, with Regent as the link back.",
+  "reason": "Regent has not shipped yet; this is released with the pending focal-agent declaration."
+}
