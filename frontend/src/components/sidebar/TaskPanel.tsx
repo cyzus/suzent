@@ -7,7 +7,13 @@ import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { BrutalSelect } from '../BrutalSelect';
 import { GoalSummary } from './GoalSummary';
 import { readFocalProjectFilter, writeFocalProjectFilter } from '../../lib/focalAgent';
-import { ALL_PROJECTS, filterKanbanByProject, projectOptions } from '../../lib/sessionGroups';
+import {
+  ALL_PROJECTS,
+  filterKanbanByProject,
+  projectOptions,
+  type StatusChange,
+} from '../../lib/sessionGroups';
+import { setTaskStatus } from '../../lib/api';
 
 interface TaskPanelProps {
   navigationError?: string | null;
@@ -69,6 +75,13 @@ export function TaskPanel({
       setPendingTaskId(null);
     }
   };
+  const setTaskStatuses = async (changes: StatusChange[]): Promise<void> => {
+    try {
+      await Promise.all(changes.map(({ task, status }) => setTaskStatus(task.id, status)));
+    } finally {
+      void refreshKanban();
+    }
+  };
   return (
     <div className="task-panel h-full min-h-0" style={{ containerType: 'inline-size' }}>
       <ProjectKanbanView
@@ -92,6 +105,7 @@ export function TaskPanel({
         onRetry={() => void (chatScope ? refresh() : refreshKanban())}
         onOpenTask={(task) => void openTask(task)}
         onOpenChat={onOpenChat}
+        onSetTaskStatus={focal ? setTaskStatuses : undefined}
         summary={
           chatScope && goal && goal.status !== 'cancelled' ? (
             <GoalSummary key={goal.id} goal={goal} tasks={tasks} />

@@ -1,5 +1,5 @@
 {
   "products": {"desktop": "none"},
-  "summary": "Regent's session board is more compact: a project dropdown, a one-line overview of what needs you, boxed session groups and denser rows with a task toggle.",
+  "summary": "Regent's session board is more compact (a project dropdown, a one-line overview, boxed session groups, denser rows) and its sessions and tasks get a right-click menu to resume, mark done, reopen or cancel them.",
   "reason": "Regent has not shipped yet; this is released with the pending focal-agent declaration."
 }

@@ -1,16 +1,21 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import type { Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
 import { TaskProgressCard } from './TaskProgressCard';
+import { BoardRowMenu, type BoardRowMenuItem } from './BoardRowMenu';
+import { BrutalDialog } from '../BrutalDialog';
 import {
+  BOARD_ACTIONS,
   SESSION_GROUP_KEYS,
+  boardActionChanges,
   buildSessions,
   isActionable,
   sessionGroupKey,
   splitSessionTasks,
   type SessionCard,
   type SessionGroupKey,
+  type StatusChange,
 } from '../../lib/sessionGroups';
 
 export type KanbanGroupBy = 'status' | 'session';
@@ -30,6 +35,8 @@ interface ProjectKanbanViewProps {
   onOpenTask: (task: Task) => void;
 
   onOpenChat?: (chatId: string) => void;
+  /** Session view only: lets the row menus change task status by hand. */
+  onSetTaskStatus?: (changes: StatusChange[]) => Promise<void>;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
@@ -47,6 +54,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   pendingTaskId,
   onOpenTask,
   onOpenChat,
+  onSetTaskStatus,
   loading = false,
   error,
   onRetry,
@@ -58,6 +66,14 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   });
   // Session cards start folded to their header and reason; tasks are one click away.
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
+  const [menu, setMenu] = useState<{
+    anchor: { x: number; y: number };
+    title: string;
+    items: BoardRowMenuItem[];
+  } | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<StatusChange[] | null>(null);
+  const [actionFailed, setActionFailed] = useState(false);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const tasks = kanban?.tasks ?? [];
   const goalsWithoutTasks = (kanban?.goals ?? []).filter(
     (goal) => goal.status !== 'cancelled' && !tasks.some((task) => task.chatId === goal.chatId)
@@ -91,21 +107,70 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
           ),
         }))
       : null;
+  const applyChanges = (changes: StatusChange[]): void => {
+    if (!onSetTaskStatus) return;
+    setActionFailed(false);
+    onSetTaskStatus(changes).catch(() => setActionFailed(true));
+  };
+  const openRowMenu = (
+    event: React.MouseEvent,
+    title: string,
+    rowTasks: Task[],
+    chatId: string | null
+  ): void => {
+    if (!onSetTaskStatus) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // A context-menu key press reports no pointer position; anchor to the row.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const anchor =
+      event.clientX || event.clientY
+        ? { x: event.clientX, y: event.clientY }
+        : { x: rect.left + 16, y: rect.top + 16 };
+    const items: BoardRowMenuItem[] = [];
+    if (chatId && onOpenChat) {
+      items.push({
+        key: 'open',
+        label: t('taskFlow.rowMenu.openChat'),
+        onSelect: () => onOpenChat(chatId),
+      });
+    }
+    for (const action of BOARD_ACTIONS) {
+      const changes = boardActionChanges(rowTasks, action);
+      if (changes.length === 0) continue;
+      items.push({
+        key: action,
+        label: t(`taskFlow.rowMenu.${action}`),
+        danger: action === 'cancel',
+        onSelect: () => (action === 'cancel' ? setPendingCancel(changes) : applyChanges(changes)),
+      });
+    }
+    if (items.length > 0) setMenu({ anchor, title, items });
+  };
   const renderTasks = (items: Task[], checklist = scope === 'chat'): React.ReactNode =>
-    items.map((task) => (
-      <TaskProgressCard
-        compact
-        checklist={checklist}
-        key={task.id}
-        selected={task.id === selectedTaskId}
-        opening={task.id === pendingTaskId}
-        disabled={pendingTaskId != null}
-        task={task}
-        tasks={tasks}
-        chatTitle={task.chatTitle ?? (task.chatId ? chatTitles[task.chatId] : undefined)}
-        onOpen={onOpenTask}
-      />
-    ));
+    items.map((task) =>
+      sessionGroups && onSetTaskStatus ? (
+        <div key={task.id} onContextMenu={(event) => openRowMenu(event, task.title, [task], null)}>
+          {renderTaskCard(task, checklist)}
+        </div>
+      ) : (
+        renderTaskCard(task, checklist)
+      )
+    );
+  const renderTaskCard = (task: Task, checklist: boolean): React.ReactNode => (
+    <TaskProgressCard
+      compact
+      checklist={checklist}
+      key={task.id}
+      selected={task.id === selectedTaskId}
+      opening={task.id === pendingTaskId}
+      disabled={pendingTaskId != null}
+      task={task}
+      tasks={tasks}
+      chatTitle={task.chatTitle ?? (task.chatId ? chatTitles[task.chatId] : undefined)}
+      onOpen={onOpenTask}
+    />
+  );
   const badgeClass = (key: string): string =>
     key === 'attention' || key === 'waiting' || key === 'stalled'
       ? 'bg-brutal-yellow text-brutal-black'
@@ -239,6 +304,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
       <section
         key={session.key}
         aria-label={title}
+        onContextMenu={(event) => openRowMenu(event, title, session.tasks, session.chatId)}
         className="border-b border-neutral-200 last:border-b-0 dark:border-zinc-700"
       >
         <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -365,6 +431,14 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
       )}
       <div className="task-scroll flex-1 overflow-auto [scrollbar-gutter:stable] p-4 md:p-6 min-h-0">
         {summary && <div className="max-w-5xl mx-auto mb-4">{summary}</div>}
+        {actionFailed && (
+          <p
+            role="alert"
+            className="max-w-5xl mx-auto mb-4 border-2 border-brutal-black bg-brutal-red px-3 py-2 text-xs font-bold text-white"
+          >
+            {t('taskFlow.rowMenu.failed')}
+          </p>
+        )}
         {error ? (
           <div role="alert" className="text-sm space-y-3">
             <p>{t('taskFlow.loadError')}</p>
@@ -456,6 +530,30 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
           </div>
         )}
       </div>
+      {menu && (
+        <BoardRowMenu
+          anchor={menu.anchor}
+          title={menu.title}
+          items={menu.items}
+          onClose={closeMenu}
+        />
+      )}
+      <BrutalDialog
+        open={pendingCancel !== null}
+        title={t('taskFlow.rowMenu.cancelTitle', { count: pendingCancel?.length ?? 0 })}
+        message={t('taskFlow.rowMenu.cancelMessage')}
+        actions={[
+          { label: t('taskFlow.rowMenu.keep') },
+          {
+            label: t('taskFlow.rowMenu.cancelConfirm'),
+            tone: 'danger',
+            onClick: () => {
+              if (pendingCancel) applyChanges(pendingCancel);
+            },
+          },
+        ]}
+        onClose={() => setPendingCancel(null)}
+      />
     </div>
   );
 };
