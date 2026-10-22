@@ -941,9 +941,11 @@ export function ConversationIdentity(): React.ReactElement | null {
   const { t } = useI18n();
   const { currentChatId, chats, loadChat } = useChatCoreStore();
   const openedFromRegent = useOpenedFromRegent();
+  // Also on a new mark: one landing after the user has moved on names a chat
+  // that isn't open, and must not resurface when that chat is opened later.
   useEffect(() => {
     forgetRegentReturnUnless(currentChatId);
-  }, [currentChatId]);
+  }, [currentChatId, openedFromRegent]);
   if (!currentChatId) return null;
   if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
   const chat = chats.find((item) => item.id === currentChatId);
@@ -981,7 +983,7 @@ export function ConversationIdentity(): React.ReactElement | null {
           {chat.projectName}
         </span>
       )}
-      <ResolveChatButton chatId={currentChatId} />
+      {openedFromRegent === currentChatId && <ResolveChatButton chatId={currentChatId} />}
     </div>
   );
 }
