@@ -778,6 +778,15 @@ obvious. It either:
 - **starts a new session in the project** to take it on, with a task on the
   project's task list.
 
+It can also hand the work to a coding agent you've set up under
+**Settings → ACP Agents**, such as Codex or Claude Code: say "have Codex fix
+this in the website project" and SUZENT starts a session in that project that
+runs on Codex.
+
+It can also message Suzent on your other paired devices, for example to run
+something on your laptop. It sends the message and moves on; the reply comes
+back to it later.
+
 Your request shows up at the start of the new session, so you can open it any
 time and see what was asked. The session then works on its own. When it
 finishes, or gets stuck on something only you can answer, it reports back to
@@ -790,6 +799,11 @@ and anything else is reviewed by the security model, which may still ask you.
 Your deny rules and the built-in safety checks apply as usual. To have a
 session ask before every change, open it and switch its mode to **Ask**. See
 [Permission modes](https://suzent.com/docs/features/tools/human-in-the-loop#permission-modes).
+
+Sessions on a coding agent start in **Ask** mode instead, since there is no
+security model to review their actions. Open the session to approve what it
+asks; a request nobody answers is denied after a while, and the agent reports
+that back.
 
 </Callout>
 
@@ -5280,8 +5294,11 @@ The `inject_focal_context` prompt layer (runtime) adds
 `build_focal_global_context()` to Focal turns only: every non-archived project
 with its id and slug, up to 10 sessions per project, and each session's tasks.
 Sessions come from the project's tasks plus any chat in the project that is
-running now; sessions with work waiting on the user sort first, then running
-ones. A chat with no tasks that is not running is not listed.
+running now, plus the 20 most recent sessions SUZENT started
+(`parent_chat_id`), which may have no task. ACP sessions never do. Sessions
+with work waiting on the user sort first, then running ones, and ACP sessions
+are marked with their agent. Any other chat with no tasks that is not running
+is not listed.
 
 Each project line ends with one line from that project's `context.md`, read
 live by `_project_overview()`: the first line of its Overview section, else its
@@ -5331,6 +5348,24 @@ would also hold back the wake-ups and reports queued behind it.
   `task_title` is given, and enqueues the message. The desktop renders that
   first `system_triggered` message as a user message (`focalRequestText`), so
   the session shows what it was asked.
+- **New ACP session:** the same call with `acp_agent_id` (from
+  `agent_list(status="acp")`, which tells SUZENT to use `agent_dispatch` rather
+  than `agent`). The chat gets `runtime: "acp"` and `acp_agent_id`, so the inbox
+  delivers through `run_acp_turn_text()` with the project folder as its
+  working directory. Its `permission_mode` is `default`, not `auto`: for ACP,
+  `auto` allows every request outright (`acp/permissions.py`), with no reviewer
+  behind it. The inbox runs each ACP turn on a background stream, as ACP
+  sub-agents do, so opening the session attaches to it and shows any pending
+  approval. A request nobody answers fails closed after the broker's timeout.
+  If the turn fails before saying anything (the agent isn't signed in, the
+  handshake fails), `run_acp_turn_text(errors_out=...)` hands the inbox the
+  `RUN_ERROR`, and the reply becomes "The ACP agent could not run this: …".
+  Otherwise the empty reply would be dropped and SUZENT would never hear.
+  `task_title` is refused, because an ACP agent can't update Suzent tasks and
+  the task would stay `in_progress`, and the heartbeat would flag it as stalled.
+  An unknown or uninstalled agent is refused before anything is created.
+- **Paired Suzent:** `agent_dispatch(agent_id="peer:...")` goes through the
+  peer outbox in `_deliver()`, asynchronously like any other message.
 
 ## Hearing back
 
