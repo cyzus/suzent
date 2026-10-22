@@ -266,6 +266,35 @@ def test_ask_question_stream_timeout_waits_for_the_user():
     assert streaming._tool_timeout_from_event(event) == math.inf
 
 
+def test_draft_accumulator_keeps_bounded_live_shell_output():
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc.apply(
+        SimpleNamespace(
+            type="TOOL_CALL_START", tool_call_id="call-1", tool_call_name="run_command"
+        )
+    )
+    acc.dirty = False
+    acc.apply(
+        CustomEvent(
+            name="shell_output_delta",
+            value={"toolCallId": "call-1", "stream": "stderr", "delta": "x" * 140000},
+        )
+    )
+
+    assert acc.dirty is True
+    assert len(acc.parts[0]["output"]) == 128 * 1024
+    acc.apply(
+        SimpleNamespace(type="TOOL_CALL_RESULT", tool_call_id="call-1", content="done")
+    )
+    acc.apply(
+        CustomEvent(
+            name="shell_output_delta",
+            value={"toolCallId": "call-1", "stream": "stdout", "delta": "late"},
+        )
+    )
+    assert acc.parts[0]["output"] == "done"
+
+
 def test_draft_accumulator_persists_citation_sources():
     acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
 

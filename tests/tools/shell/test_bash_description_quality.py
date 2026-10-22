@@ -47,6 +47,7 @@ def test_accepts_required_description(monkeypatch, tmp_path):
         _ctx(tmp_path),
         content="echo hi",
         description="Echo a test line",
+        timeout=1,
     )
 
     assert result.success

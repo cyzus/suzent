@@ -211,6 +211,12 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     }
   }, [approvalState, output]);
 
+  React.useEffect(() => {
+    if (toolName === 'run_command' && isStreaming && output && !userToggledRef.current) {
+      setExpanded(true);
+    }
+  }, [toolName, isStreaming, output]);
+
   // Format tool name for display: snake_case → readable
   const displayName = toolName.replace(/_/g, ' ');
 
@@ -352,10 +358,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
       ? 'imperative'
       : isFailed
         ? 'failed'
-        : hasOutput
-          ? 'past'
-          : isStreaming
-            ? 'active'
+        : isStreaming
+          ? 'active'
+          : hasOutput
+            ? 'past'
             : 'imperative';
 
   // Headline for the collapsed pill: an action verb plus the tool's own
@@ -622,7 +628,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             </svg>
           </span>
         )}
-        {hasOutput && !isPending && !isDenied && !isFailed && (
+        {hasOutput && !isStreaming && !isPending && !isDenied && !isFailed && (
           <span className="flex items-center gap-0.5 shrink-0">
             <svg
               className="w-2.5 h-2.5 text-green-600"

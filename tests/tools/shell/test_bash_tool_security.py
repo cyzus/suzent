@@ -1,11 +1,14 @@
 import os
 import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
 import pytest
 from pydantic_ai import ApprovalRequired
 
 from suzent.tools.shell.bash_tool import ShellCommandBackend
+from suzent.tools.shell.shell_tools import RunCommandTool
 
 
 def _ctx(tmp_path, sandbox_enabled=False):
@@ -76,6 +79,147 @@ def test_accepts_command_on_host(monkeypatch, tmp_path):
     else:
         assert captured["cmd"] == ["bash", "-c", "echo hi"]
     assert captured["kwargs"]["stdin"] is subprocess.DEVNULL
+
+
+def test_host_output_is_published_before_command_exits(monkeypatch, tmp_path):
+    tool = ShellCommandBackend()
+    tool.workspace_root = str(tmp_path)
+    monkeypatch.setattr(
+        tool,
+        "_build_cmd",
+        lambda _: [
+            sys.executable,
+            "-c",
+            "import time; print('ready', flush=True); time.sleep(0.5)",
+        ],
+    )
+    monkeypatch.setattr(tool, "_resolve_working_dir", lambda: tmp_path)
+    monkeypatch.setattr(tool, "_get_host_env", os.environ.copy)
+    received = []
+    started = time.monotonic()
+
+    result = tool._execute_on_host(
+        "ignored",
+        timeout=3,
+        output_callback=lambda stream, chunk: received.append(
+            (stream, chunk, time.monotonic() - started)
+        ),
+    )
+
+    assert result.success
+    assert "ready" in result.message
+    finished = time.monotonic() - started
+    assert any(
+        stream == "stdout" and "ready" in chunk and finished - elapsed > 0.25
+        for stream, chunk, elapsed in received
+    )
+
+
+def test_run_command_yields_a_running_host_process(monkeypatch, tmp_path):
+    from suzent.core.background_commands import get_background_commands
+    from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+    tool = RunCommandTool()
+    monkeypatch.setattr(tool, "DEFAULT_YIELD_SECONDS", 0.2)
+    monkeypatch.setattr(
+        tool,
+        "_build_cmd",
+        lambda _: [
+            sys.executable,
+            "-c",
+            "import time; print('ready', flush=True); time.sleep(2)",
+        ],
+    )
+    monkeypatch.setattr(tool, "_resolve_working_dir", lambda: tmp_path)
+    monkeypatch.setattr(tool, "_get_host_env", os.environ.copy)
+
+    result = tool.forward(
+        _ctx(tmp_path), content="echo ready", description="Run a slow command"
+    )
+
+    assert result.success
+    assert result.metadata["background"] is True
+    assert "ready" in result.message
+    process_id = result.metadata["process_id"]
+    assert process_id in result.message
+    assert HostProcessRegistry().poll("chat-1", process_id, 0)["done"] is False
+
+    HostProcessRegistry().kill("chat-1", process_id)
+    HostProcessRegistry().evict("chat-1", process_id)
+    get_background_commands().cancel("chat-1", process_id)
+
+
+def test_run_command_returns_completed_host_output(monkeypatch, tmp_path):
+    tool = RunCommandTool()
+    monkeypatch.setattr(tool, "DEFAULT_YIELD_SECONDS", 1)
+    monkeypatch.setattr(
+        tool,
+        "_build_cmd",
+        lambda _: [sys.executable, "-c", "print('finished', flush=True)"],
+    )
+    monkeypatch.setattr(tool, "_resolve_working_dir", lambda: tmp_path)
+    monkeypatch.setattr(tool, "_get_host_env", os.environ.copy)
+
+    result = tool.forward(
+        _ctx(tmp_path), content="echo finished", description="Run a quick command"
+    )
+
+    assert result.success
+    assert result.metadata["background"] is False
+    assert result.metadata["returncode"] == 0
+    assert result.message == f"[cwd: {tmp_path}]\nfinished"
+
+
+def test_run_command_yields_a_running_sandbox_process(monkeypatch, tmp_path):
+    from suzent.core.background_commands import get_background_commands
+
+    tool = RunCommandTool()
+    monkeypatch.setattr(tool, "DEFAULT_YIELD_SECONDS", 0)
+    tool._manager = SimpleNamespace(
+        start_background=lambda **kwargs: "abcdef123456",
+        poll_process=lambda *args: {
+            "output": "sandbox ready\n",
+            "offset": 14,
+            "done": False,
+            "exit_code": None,
+        },
+    )
+
+    result = tool.forward(
+        _ctx(tmp_path, sandbox_enabled=True),
+        content="echo ready",
+        description="Run a sandbox command",
+    )
+
+    assert result.success
+    assert result.metadata["background"] is True
+    assert result.metadata["process_id"] == "abcdef123456"
+    assert result.metadata["next_offset"] == 14
+    assert "sandbox ready" in result.message
+    get_background_commands().cancel("chat-1", "abcdef123456")
+
+
+def test_run_command_reports_quick_sandbox_failure(tmp_path):
+    tool = RunCommandTool()
+    tool._manager = SimpleNamespace(
+        start_background=lambda **kwargs: "failed-command",
+        poll_process=lambda *args: {
+            "output": "bad input\n",
+            "offset": 10,
+            "done": True,
+            "exit_code": 2,
+        },
+    )
+
+    result = tool.forward(
+        _ctx(tmp_path, sandbox_enabled=True),
+        content="exit 2",
+        description="Run a failing sandbox command",
+    )
+
+    assert not result.success
+    assert "bad input" in result.message
+    assert result.metadata["returncode"] == 2
 
 
 def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
