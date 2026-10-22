@@ -23,6 +23,8 @@ import { InformationPopover } from './InformationPopover';
 import { isImeComposing } from '../lib/ime';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { LiveRegentIdentity } from './regent/RegentHeader';
+import { RegentMark } from './regent/RegentMark';
+import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -935,14 +937,33 @@ function ActiveChatTitle() {
  * Returns null on a new, unsaved chat, where the header keeps the brand title.
  */
 export function ConversationIdentity(): React.ReactElement | null {
-  const { currentChatId, chats } = useChatCoreStore();
+  const { t } = useI18n();
+  const { currentChatId, chats, loadChat } = useChatCoreStore();
+  const openedFromRegent = useOpenedFromRegent();
+  useEffect(() => {
+    forgetRegentReturnUnless(currentChatId);
+  }, [currentChatId]);
   if (!currentChatId) return null;
   if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
   const chat = chats.find((item) => item.id === currentChatId);
   const title = chat?.title?.trim();
-  if (!title) return null;
+  const backToRegent = openedFromRegent === currentChatId && (
+    <button
+      type="button"
+      onClick={() => void loadChat(FOCAL_CHAT_ID)}
+      title={t('chatList.focal.back')}
+      aria-label={t('chatList.focal.back')}
+      className="regent-back inline-flex shrink-0 items-center gap-1.5 self-center border-2 border-brutal-black bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-brutal-sm hover:bg-brutal-yellow active:translate-x-px active:translate-y-px active:shadow-none dark:bg-zinc-700 dark:text-white dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+    >
+      <span aria-hidden="true">←</span>
+      <RegentMark size={12} />
+      {t('chatList.focal.name')}
+    </button>
+  );
+  if (!title) return backToRegent || null;
   return (
     <div className="flex min-w-0 items-baseline gap-2">
+      {backToRegent}
       <span
         className="truncate text-sm font-extrabold text-brutal-black dark:text-white"
         dir="auto"

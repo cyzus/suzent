@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Opening a chat from the task board or a link now opens its project in the sidebar and highlights its row; chats opened from Regent's board get a back-to-Regent tag in the header."
+}
