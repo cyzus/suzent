@@ -15,6 +15,11 @@ export function markOpenedFromRegent(chatId: string): void {
   set(chatId);
 }
 
+/** Take back a mark whose chat failed to open. */
+export function unmarkOpenedFromRegent(chatId: string): void {
+  if (openedFromRegent === chatId) set(null);
+}
+
 /** Forget the way back once the user has moved on to some other chat. */
 export function forgetRegentReturnUnless(chatId: string | null): void {
   if (openedFromRegent && openedFromRegent !== chatId) set(null);

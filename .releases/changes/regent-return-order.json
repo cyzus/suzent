@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Chats opened from Regent's board show the Regent breadcrumb and resolve check again.",
+  "reason": "Fixes a regression from the unreleased change that limited the resolve check to chats opened from Regent's board; it ships with that change."
+}
