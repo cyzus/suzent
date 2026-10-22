@@ -1,3 +1,4 @@
+import { useSidebarExpansion } from './SidebarExpansionContext';
 import React, { useMemo } from 'react';
 import { MarkdownRenderer, CodeBlock, MermaidDiagram } from '../';
 import {
@@ -20,6 +21,7 @@ interface FilePreviewProps {
 
 export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, chatId, path }) => {
   const { config } = useChatStore();
+  const expanded = useSidebarExpansion()?.expanded ?? false;
 
   // Construct raw serve URL
   // Use the wildcard route to ensure relative paths in HTML/CSS/JS work correctly
@@ -41,7 +43,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
         <img
           src={serveUrl}
           alt={filename}
-          className="max-w-full max-h-full object-contain drop-shadow-md rounded-sm"
+          className={
+            expanded
+              ? 'max-w-full max-h-full object-contain'
+              : 'max-w-full max-h-full object-contain drop-shadow-md rounded-sm'
+          }
         />
       </div>
     );
@@ -69,7 +75,13 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
   // 4. Markdown
   if (isMarkdownFile(filename)) {
     return (
-      <div className="prose prose-sm max-w-none p-2">
+      <div
+        className={
+          expanded
+            ? 'file-document mx-auto w-full max-w-[88ch] px-5 py-6 sm:px-8 sm:py-8'
+            : 'prose prose-sm max-w-none p-2'
+        }
+      >
         <MarkdownRenderer content={content || ''} />
       </div>
     );
@@ -86,7 +98,13 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
 
   // 6. Text / Code - Default fallback
   return (
-    <div className="p-0 h-full overflow-auto bg-white">
+    <div
+      className={
+        expanded
+          ? 'p-3 h-full overflow-auto bg-white dark:bg-zinc-900'
+          : 'p-0 h-full overflow-auto bg-white'
+      }
+    >
       <CodeBlock language={getLanguageForFile(filename)} code={content || ''} />
     </div>
   );

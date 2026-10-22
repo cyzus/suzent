@@ -222,7 +222,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
-      <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
+      <div className="flex items-start justify-between px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
           <AgentAvatar model={task?.model_override} status={task?.status} />
           <div className="min-w-0">

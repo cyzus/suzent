@@ -1,4 +1,5 @@
 export const en = {
+  workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
   desktopMenu: {
     label: 'Menu',
     cut: 'Cut',
@@ -1890,6 +1891,9 @@ export const en = {
     history: 'History',
   },
   a2uiSurface: {
+    showHere: 'Show here',
+    showInChat: 'Show in chat',
+    inChat: 'Shown in the chat',
     answered: 'Answered',
     openInSidePanel: 'Open in side panel',
     fullscreen: 'Fullscreen',
