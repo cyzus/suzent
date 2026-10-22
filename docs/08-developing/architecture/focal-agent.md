@@ -214,12 +214,13 @@ which would run with a full tool set.
   `LiveRegentLogo` replaces the `SuzentLogo` in the sidebar trigger slot, so the
   cube appears exactly where the logo was. Both read "working" from the chat's
   own stream as well as from status (`components/regent/RegentHeader.tsx`).
-- Regent's replies carry no agent badge, live or past (`AssistantMessage`'s
-  `regent`): the header already says who is speaking.
+- Regent's replies are signed with its mark (`AssistantMessage`'s `regent`):
+  the live badge shows `RegentMark` through `AgentBadge`'s `icon`, scanning
+  while it works, and past replies carry the small mark and "Regent".
 - `FocalBriefing` is only the greeting on an empty chat; the header carries the
   name and what waits on the user.
 - Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
-  head under a floating circlet, for the sidebar row; and `RegentCube`, the
+  head under a floating circlet, for the sidebar row and reply badges; and `RegentCube`, the
   greeting cube wearing the circlet, for the open profile and the header's logo
   slot. Both take a `RegentState` from
   `regentState()`: `working` while Regent runs (cube turns, eyes scan, circlet
