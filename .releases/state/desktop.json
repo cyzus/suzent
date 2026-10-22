@@ -85,6 +85,7 @@
     ".releases/changes/regent-board.json",
     ".releases/changes/regent-identity.json",
     ".releases/changes/regent-name.json",
+    ".releases/changes/regent-transitions.json",
     ".releases/changes/remove-dead-compat-shims.json",
     ".releases/changes/resonance-state-cues.json",
     ".releases/changes/restructure-user-docs.json",
