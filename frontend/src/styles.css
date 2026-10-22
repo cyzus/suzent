@@ -422,11 +422,6 @@ body,
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-.scrollbar-thin {
-  /* Firefox */
-  scrollbar-gutter: stable;
-}
-
 *::-webkit-scrollbar,
 .scrollbar-thin::-webkit-scrollbar {
   width: 14px;
