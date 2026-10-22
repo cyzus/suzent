@@ -94,9 +94,9 @@ one-line note on where the work stands. Idle and resolved chats leave the board
 after a week without activity.
 
 You decide when a chat is resolved: right-click it on the board and choose
-**Mark resolved**, or click **✓** next to the chat's title in its header.
-Resolving doesn't touch the chat's tasks. If the chat starts working again or
-needs you again, it leaves **Resolved** by itself.
+**Mark resolved**, or open it from the board and click **✓** next to its title
+in the header. Resolving doesn't touch the chat's tasks. If the chat starts
+working again or needs you again, it leaves **Resolved** by itself.
 
 Suzent's **Decision** model (Settings → Model Roles) reads the end of each
 reply to tell whether the chat is waiting on you and to write the one-line

@@ -981,7 +981,7 @@ export function ConversationIdentity(): React.ReactElement | null {
           {chat.projectName}
         </span>
       )}
-      <ResolveChatButton chatId={currentChatId} />
+      {openedFromRegent === currentChatId && <ResolveChatButton chatId={currentChatId} />}
     </div>
   );
 }
