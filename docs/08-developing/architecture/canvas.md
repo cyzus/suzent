@@ -193,12 +193,39 @@ render_ui(
 
 ## Free-form HTML (`html` component)
 
+### Shared presentation
+
+Chat and Canvas share one live renderer per surface ID. `target` selects its
+initial placement; moving it later changes its location without creating a
+second renderer. The transcript keeps a compact pointer with “Show here” while
+the surface is in Canvas. Fullscreen expands the existing sidebar using the
+same state as dragging it across the chat; shrinking restores its docked width.
+Opening fullscreen from chat first moves the surface to Canvas. Switching
+Canvas tabs parks inactive renderers.
+
+The shared provider is scoped to the chat. Connected DOM nodes move using
+`Element.moveBefore` where supported, preserving iframe state as well as React
+form state. Older webviews fall back to `appendChild`: React state survives,
+but those engines may reload an iframe when reparenting it.
+
 When the typed components can't express what you need — charts, SVG diagrams, custom dashboards, interactive prototypes — use the `html` component. It renders a self-contained HTML document in a **sandboxed iframe**.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `html` | `str` | Self-contained HTML. May be a full document or a bare fragment. |
 | `height` | `int \| None` | Fixed height in px. When omitted, the iframe **auto-sizes** to its content. |
+
+Document-style HTML (news, reports, articles) should omit `height`. The resize
+reporter measures the body independently of the iframe viewport, including
+content changes, image loads and fonts, so it can grow past 4000px and shrink
+when the panel widens. Canvas owns scrolling and its header stays outside the
+scrollable body. A standalone HTML surface uses the document's own spacing,
+without an extra iframe border or Canvas padding.
+
+Viewport-based applications (maps, editors, dashboards) should set `height`.
+For a standalone fixed-height HTML surface, Canvas limits the iframe to the
+available panel height and leaves scrolling inside it. Nested fixed-height
+HTML components retain their own scroll region within the surrounding document.
 
 ### Sandbox model
 

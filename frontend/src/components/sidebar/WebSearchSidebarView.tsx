@@ -58,7 +58,7 @@ export const WebSearchSidebarView: React.FC<WebSearchSidebarViewProps> = ({ outp
 
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-zinc-900 font-brutal overflow-y-auto w-full">
-      <div className="p-4 pb-3 sticky top-0 bg-neutral-50 dark:bg-zinc-900 z-10 border-b-2 border-brutal-black dark:border-zinc-700">
+      <div className="p-4 pb-3 sticky top-0 bg-neutral-50 dark:bg-zinc-900 z-10 border-b-2 border-brutal-black">
         <div className="flex items-center gap-2">
           <span className="text-xs font-black text-brutal-black dark:text-neutral-100 uppercase tracking-widest bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 px-2 py-1">
             {source}

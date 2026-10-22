@@ -110,7 +110,7 @@ export const BackgroundTaskList: React.FC<BackgroundTaskListProps> = ({ chatId, 
 
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
-      <div className="px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
+      <div className="px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
           {t('backgroundTasks.heading', { count: tasks.length })}
         </span>
