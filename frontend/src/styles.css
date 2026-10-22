@@ -346,10 +346,13 @@
   }
 }
 
+/* Keep scrolling inside app panels and prevent viewport rubber-banding. */
 html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .prose .katex-display {
@@ -1620,6 +1623,34 @@ code {
   outline-color: #ffe66d;
 }
 
+.thinking-assembly {
+  /* Fade the scene itself so every background and color scheme shows through. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+
+.dark .thinking-assembly .assembly-robot {
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 22%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 12%));
+}
+
+.dark .thinking-assembly .robot-carrier {
+  background: #18181b;
+  border: 1px solid rgb(255 255 255 / 18%);
+}
+
+.dark .thinking-assembly .robot-carrier::after {
+  background: #a1a1aa;
+}
+
+.dark .thinking-assembly .scanner-beam {
+  width: 2px;
+  background: #d4d4d8;
+  mix-blend-mode: screen;
+  box-shadow:
+    0 0 8px 1px rgb(255 255 255 / 20%),
+    0 0 18px 3px rgb(255 255 255 / 8%);
+}
+
 /* Robot Carrier Platform (Sled) */
 .robot-carrier {
   position: absolute;
@@ -1993,9 +2024,16 @@ code {
   }
 }
 
-/* Placeholder for the contenteditable mention input (no native placeholder). */
+/* Keep placeholder text out of the inline flow so the empty caret stays at the start. */
+.mention-editor {
+  position: relative;
+}
+
 .mention-editor.is-empty::before {
   content: attr(data-placeholder);
+  position: absolute;
+  inset: 0;
+  padding: inherit;
   color: rgb(163 163 163); /* neutral-400 */
   font-weight: 700;
   pointer-events: none;
@@ -2274,5 +2312,347 @@ button.activity-turn-duration:focus-visible {
   .activity-rail-header:hover .activity-rail-chevron,
   .activity-rail-header:focus-visible .activity-rail-chevron {
     opacity: 1;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .conversation-message .conversation-copy {
+    opacity: 0;
+  }
+
+  .conversation-message:hover .conversation-copy,
+  .conversation-message:focus-within .conversation-copy {
+    opacity: 1;
+  }
+}
+
+/* Regent: the 2D mark and the crowned cube share these state animations. */
+.regent-cube-scene {
+  --regent-cube-back: #050505;
+  --regent-cube-right: #181818;
+  --regent-cube-left: #070707;
+  --regent-cube-top: #303030;
+  --regent-cube-bottom: #030303;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  justify-content: center;
+  perspective: 600px;
+}
+
+.dark .regent-cube-scene {
+  --regent-cube-right: #111;
+  --regent-cube-left: #080808;
+  --regent-cube-top: #202020;
+}
+
+.regent-cube-scale {
+  display: block;
+  transform-origin: 50% 100%;
+}
+
+.regent-cube {
+  position: relative;
+  display: block;
+  width: 82px;
+  height: 82px;
+  transform-style: preserve-3d;
+  transform: rotateX(-20deg) rotateY(30deg);
+}
+
+.regent-cube-turning,
+.regent-cube-scene[data-regent-state='working'] .regent-cube {
+  animation: regentTurn 9s ease-in-out infinite;
+}
+
+.regent-cube-scene[data-regent-state='working'] .regent-cube {
+  animation-duration: 4s;
+}
+
+.regent-cube-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: #050505;
+}
+
+.regent-cube-back {
+  background: var(--regent-cube-back);
+}
+.regent-cube-right {
+  background: var(--regent-cube-right);
+}
+.regent-cube-left {
+  background: var(--regent-cube-left);
+}
+.regent-cube-top {
+  background: var(--regent-cube-top);
+}
+.regent-cube-bottom {
+  background: var(--regent-cube-bottom);
+}
+
+.regent-cube-circlet {
+  position: absolute;
+  top: 0;
+  left: 41px;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: translateY(-3px);
+}
+
+.regent-cube-band {
+  position: absolute;
+  background: var(--regent-band-light);
+}
+
+.dark .regent-cube-band {
+  background: var(--regent-band-dark);
+}
+
+.regent-cube-rim {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: rotateX(90deg);
+}
+
+.regent-cube-gem {
+  position: absolute;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 1.5px;
+  background: #fff;
+}
+
+.regent-gem {
+  fill: #fff;
+}
+
+.regent-eyes {
+  transform-box: fill-box;
+}
+
+[data-regent-state='working'] .regent-eyes {
+  animation: regentScan 2.4s steps(1, end) infinite;
+}
+
+[data-regent-state='working'] .regent-circlet {
+  animation: regentHover 1.8s ease-in-out infinite;
+}
+
+/* The one place Regent turns colour: something waits on the user. */
+[data-regent-state='waiting'] .regent-gem {
+  animation: regentGemPulse 1.6s ease-in-out infinite;
+}
+
+[data-regent-state='waiting'] .regent-cube-gem {
+  animation: regentGemPulseFill 1.6s ease-in-out infinite;
+}
+
+.regent-nod {
+  animation: regentNod 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) 1;
+}
+
+@keyframes regentTurn {
+  0%,
+  100% {
+    transform: rotateX(-22deg) rotateY(18deg);
+  }
+  50% {
+    transform: rotateX(-16deg) rotateY(52deg);
+  }
+}
+
+@keyframes regentScan {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1.6px);
+  }
+  50% {
+    transform: translateX(0);
+  }
+  75% {
+    transform: translateX(1.6px);
+  }
+}
+
+@keyframes regentHover {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.4px);
+  }
+}
+
+@keyframes regentGemPulse {
+  0%,
+  100% {
+    fill: #fff;
+  }
+  50% {
+    fill: var(--brutal-yellow);
+  }
+}
+
+@keyframes regentGemPulseFill {
+  0%,
+  100% {
+    background: #fff;
+  }
+  50% {
+    background: var(--brutal-yellow);
+  }
+}
+
+@keyframes regentNod {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regent-cube,
+  .regent-eyes,
+  .regent-circlet,
+  .regent-gem,
+  .regent-cube-gem,
+  .regent-nod {
+    animation: none !important;
+  }
+}
+
+/* Opening Regent: its sidebar row grows into a profile, the rest steps back. */
+.regent-hero-avatar {
+  animation: regentGrow 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-hero-text {
+  animation: regentFadeUp 0.35s ease-out 0.1s 1 both;
+}
+
+/* Always transitioned, so the sidebar fades back as well as away. */
+.regent-dimmable {
+  transition: opacity 0.25s ease;
+}
+
+.regent-dimmed {
+  opacity: 0.45;
+}
+
+/* Leaving Regent: the cube settles back into the flat mark in its row. */
+.regent-row-mark-retreat {
+  animation: regentRetreat 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-row-text-retreat {
+  animation: regentFadeUp 0.3s ease-out 0.08s 1 both;
+}
+
+/* The header's logo slot, when the collapsed sidebar hands it Regent's cube. */
+.regent-logo-enter {
+  animation: regentGrow 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-logo-return {
+  animation: regentLogoReturn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+@keyframes regentRetreat {
+  from {
+    transform: translateY(10px) scale(1.9);
+    opacity: 0.5;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes regentLogoReturn {
+  from {
+    transform: scale(0.55) rotate(-8deg);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.regent-dimmed:hover,
+.regent-dimmed:focus-within {
+  opacity: 1;
+}
+
+@keyframes regentGrow {
+  from {
+    transform: scale(0.45);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes regentFadeUp {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regent-hero-avatar,
+  .regent-hero-text,
+  .regent-row-mark-retreat,
+  .regent-row-text-retreat,
+  .regent-logo-enter,
+  .regent-logo-return {
+    animation: none !important;
+  }
+}
+
+/* A chat row the sidebar just scrolled to after it opened from elsewhere. */
+.chat-row-located {
+  animation: chatRowLocated 1.6s ease-out;
+}
+
+@keyframes chatRowLocated {
+  0%,
+  35% {
+    box-shadow: inset 4px 0 0 var(--brutal-yellow);
+    background-color: rgb(255 102 0 / 0.18);
+  }
+  100% {
+    box-shadow: inset 4px 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-row-located {
+    animation: none;
+    box-shadow: inset 4px 0 0 var(--brutal-yellow);
   }
 }

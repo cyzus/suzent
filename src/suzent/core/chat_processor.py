@@ -28,6 +28,7 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 from pydantic_ai.tools import ToolDenied
 
+from suzent.core.chat_mentions import build_chat_mention_context
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
@@ -38,7 +39,11 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.streaming import remove_pending_approvals, stream_agent_responses
+from suzent.streaming import (
+    MODEL_STALLED_CODE,
+    remove_pending_approvals,
+    stream_agent_responses,
+)
 from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
@@ -482,6 +487,19 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
     return messages
 
 
+def _history_to_snapshot(messages: list, full_response: str, deps: Any) -> list:
+    """The history a finished turn persists.
+
+    A rolled-back heartbeat has nothing to preserve: re-attaching its
+    HEARTBEAT_OK here is what used to leak it into the transcript.
+    """
+    if getattr(deps, "is_suspended", False) or getattr(
+        deps, "heartbeat_rolled_back", False
+    ):
+        return messages
+    return _preserve_partial_response(messages, full_response)
+
+
 def _is_denied_tool_return(content: Any) -> bool:
     if isinstance(content, ToolDenied):
         return True
@@ -553,9 +571,20 @@ def build_steering_text(steer_message: str) -> str:
     sanitized, which is why the wrapping lives in one testable function rather
     than inline at the call site.
     """
-    from suzent.core.system_reminder import sanitize_untrusted_text
+    from suzent.core.system_reminder import (
+        sanitize_untrusted_text,
+        wrap_in_system_reminder,
+    )
+    from suzent.prompts import STEER_REMINDER
 
-    return f"[User interrupted to redirect]: {sanitize_untrusted_text(steer_message)}"
+    return (
+        f"{wrap_in_system_reminder(STEER_REMINDER)}\n"
+        f"{sanitize_untrusted_text(steer_message).strip()}"
+    )
+
+
+class ModelStalledError(RuntimeError):
+    """The model went quiet or dropped the connection before the turn ended."""
 
 
 class ChatProcessor:
@@ -608,6 +637,10 @@ class ChatProcessor:
         }
         if config_override:
             config.update(config_override)
+
+        from suzent.core.focal_agent import apply_focal_tool_policy
+
+        apply_focal_tool_policy(config, chat_id)
 
         # RepoContext is constructed with static filesystem roots, so include the
         # resolved project/working-tree identity in the stable agent config. This
@@ -872,6 +905,8 @@ class ChatProcessor:
                     yield chunk
                 return
 
+        attachment_context += build_chat_mention_context(message_content or "")
+
         if file_mentions:
             attachment_context += _build_file_mention_context(file_mentions)
 
@@ -1077,6 +1112,10 @@ class ChatProcessor:
         )
 
         pending_trigger_rows: list[dict] = []
+        # Trigger rows written to the display log before the run starts. The
+        # frontend reloads that log the moment the stream opens, which is before
+        # they land, so the stream itself has to announce them.
+        presaved_triggers: list[str] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
         stream_run_id = str(uuid.uuid4())
@@ -1128,6 +1167,7 @@ class ChatProcessor:
                 parts=parts,
                 metadata={"context_sources": dict(deps.context_sources)},
             )
+            deps.turn_start_index = len(message_history)
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
@@ -1163,6 +1203,9 @@ class ChatProcessor:
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
 
+            # A turn started by a hidden message (another agent's request, a
+            # wake-up) has nothing in the display log until it ends, so a session
+            # Regent started showed its reply with no sign of what was asked.
             if self._is_subagent_chat(chat_id):
                 await asyncio.to_thread(
                     _presave_turn_rows,
@@ -1170,6 +1213,17 @@ class ChatProcessor:
                     visible_prompt,
                     pending_trigger_rows,
                 )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
+            elif display_trigger and pending_trigger_rows:
+                # Revisioned, unlike the sub-agent path: a stateful chat's
+                # previous turn may still be finalizing, and would otherwise
+                # replace the display log and drop this row mid-stream.
+                await asyncio.to_thread(
+                    get_database().append_display_rows,
+                    chat_id,
+                    pending_trigger_rows,
+                )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
 
         # Handle stateless resume
         deferred_tool_results = None
@@ -1416,6 +1470,7 @@ class ChatProcessor:
                 permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
                 run_id=stream_run_id,
+                presaved_triggers=presaved_triggers,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -1442,52 +1497,16 @@ class ChatProcessor:
                     snap = ft.make_snapshot()
                     if snap:
                         from suzent.core.file_tracker import FileTracker as _FT
-                        from suzent.database import (
-                            ChatModel,
-                            RetryCheckpointModel,
-                            get_database as _get_db,
-                        )
-                        from sqlmodel import Session
-                        from sqlalchemy.orm.attributes import flag_modified
+                        from suzent.database import get_database as _get_db
 
                         file_snapshot_json = _changed_file_snapshot(
                             _FT.snapshot_to_json(snap)
                         )
-
-                        def _commit_file_snapshot():
-                            _db = _get_db()
-                            with Session(_db.engine) as _sess:
-                                _ckpt = _sess.get(RetryCheckpointModel, chat_id)
-                                if _ckpt:
-                                    _ckpt.file_snapshot = file_snapshot_json
-                                    _ckpt.has_file_snapshot = True
-                                    flag_modified(_ckpt, "file_snapshot")
-                                _chat = _sess.get(ChatModel, chat_id)
-                                if _chat and file_snapshot_json:
-                                    display_messages = list(_chat.messages or [])
-                                    assistant_index = next(
-                                        (
-                                            index
-                                            for index in range(
-                                                len(display_messages) - 1, -1, -1
-                                            )
-                                            if isinstance(display_messages[index], dict)
-                                            and display_messages[index].get("role")
-                                            == "assistant"
-                                        ),
-                                        None,
-                                    )
-                                    if assistant_index is not None:
-                                        assistant = dict(
-                                            display_messages[assistant_index]
-                                        )
-                                        assistant["file_changes"] = file_snapshot_json
-                                        display_messages[assistant_index] = assistant
-                                        _chat.messages = display_messages
-                                        flag_modified(_chat, "messages")
-                                _sess.commit()
-
-                        await asyncio.to_thread(_commit_file_snapshot)
+                        await asyncio.to_thread(
+                            _get_db().record_turn_file_changes,
+                            chat_id,
+                            file_snapshot_json,
+                        )
             except Exception as _ft_fin_err:
                 logger.debug(
                     f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
@@ -1512,10 +1531,9 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
-                if not getattr(deps, "is_suspended", False):
-                    snapshot_messages = _preserve_partial_response(
-                        snapshot_messages, full_response
-                    )
+                snapshot_messages = _history_to_snapshot(
+                    snapshot_messages, full_response, deps
+                )
 
                 # Stateless chats never snapshot agent_state (see note above).
                 if not _stateless_chat:
@@ -1991,7 +2009,9 @@ class ChatProcessor:
 
         steering_text = build_steering_text(steer_message)
         message_history.append(
-            ModelRequest(parts=[make_user_prompt_part(steering_text)])
+            ModelRequest(
+                parts=[make_user_prompt_part(steering_text, runtime_authored=True)]
+            )
         )
 
         # 5. Start new agent run via process_turn with pre-built history
@@ -2044,6 +2064,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
@@ -2108,6 +2130,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
@@ -2125,6 +2149,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         counts_toward_goal: Optional[bool] = None,
+        citation_sources_out: Optional[list[dict]] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -2152,6 +2177,7 @@ class ChatProcessor:
                 system_reminders=system_reminders,
                 incoming_citation_sources=incoming_citation_sources,
                 counts_toward_goal=counts_toward_goal,
+                citation_sources_out=citation_sources_out,
             )
 
     async def _process_upload_file(
@@ -2374,15 +2400,6 @@ class ChatProcessor:
                         db.update_chat(
                             chat_id, agent_state=agent_state, messages=target_messages
                         )
-
-                # Mirror state to inspectable JSON file
-                if agent_state:
-                    try:
-                        from suzent.session.state_mirror import StateMirror
-
-                        StateMirror().mirror_state(chat_id, agent_state)
-                    except Exception as mirror_err:
-                        logger.debug(f"State mirror failed: {mirror_err}")
 
                 logger.info(f"Persisted state for chat {chat_id}")
                 return True
@@ -2954,6 +2971,10 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                             result.append(entry)
                             continue
                         if extract_system_reminder_content(stripped_attachments):
+                            continue
+                        # Empty text with no media: the "" prompt older resumes
+                        # sent after automatic tool approvals. Nobody wrote it.
+                        if isinstance(part.content, str):
                             continue
 
                     entry = {"role": "user", "content": clean_text}

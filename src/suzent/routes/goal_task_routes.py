@@ -5,6 +5,8 @@ from starlette.responses import JSONResponse
 
 from suzent.database import get_database
 
+ALL_PROJECTS_ID = "__all__"
+
 
 def _goal_to_dict(goal) -> dict:
     return {
@@ -150,16 +152,53 @@ async def get_project_tasks(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _all_projects_kanban() -> dict:
+    """Goals and tasks across every non-archived project, labelled by session."""
+    from suzent.core.focal_agent import running_chat_ids
+
+    db = get_database()
+    goals: list[dict] = []
+    tasks: list[dict] = []
+    chat_titles: dict[str, str | None] = {}
+    # Foreground runs count too, or a session the user is driving shows as stalled.
+    running = running_chat_ids()
+    for project in db.list_projects(include_archived=False):
+        project_meta = {"projectName": project.name, "projectSlug": project.slug}
+        goals += [
+            {**_goal_to_dict(goal), **project_meta}
+            for goal in db.list_goals_for_project(project.id)
+        ]
+        for task in db.list_tasks(
+            project_id=project.id, include_completed=True, include_cancelled=True
+        ):
+            chat_id = task.chat_id
+            if chat_id and chat_id not in chat_titles:
+                chat = db.get_chat(chat_id)
+                chat_titles[chat_id] = chat.title if chat else None
+            tasks.append(
+                {
+                    **_task_to_dict(task),
+                    **project_meta,
+                    "chatTitle": chat_titles.get(chat_id) if chat_id else None,
+                    "chatRunning": bool(chat_id and chat_id in running),
+                }
+            )
+    return {"goals": goals, "tasks": tasks}
+
+
 async def get_project_kanban(request: Request) -> JSONResponse:
     """Return all goals and tasks across the project (for kanban view).
 
     Query parameters:
-    - project_id: The project identifier (required)
+    - project_id: The project identifier (required); ``__all__`` spans every
+      non-archived project, with each task labelled by project and chat session.
     """
     try:
         project_id = request.query_params.get("project_id")
         if not project_id:
             return JSONResponse({"error": "project_id is required"}, status_code=400)
+        if project_id == ALL_PROJECTS_ID:
+            return JSONResponse(_all_projects_kanban())
         db = get_database()
         goals = db.list_goals_for_project(project_id)
         tasks = db.list_tasks(

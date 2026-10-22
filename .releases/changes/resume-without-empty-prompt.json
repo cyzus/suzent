@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history."
+}

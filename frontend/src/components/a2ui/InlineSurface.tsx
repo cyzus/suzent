@@ -17,6 +17,7 @@ import {
 import type { A2UISurface } from '../../types/a2ui';
 import { useI18n } from '../../i18n';
 import { A2UIRenderer } from './A2UIRenderer';
+import { isAnsweredQuestion } from '../../lib/questionAnswer';
 import { FullscreenOverlay } from '../FullscreenOverlay';
 import { BrutalButton } from '../BrutalButton';
 import { useInlineSurfaceContext, useIsSuperseded } from './InlineSurfaceContext';
@@ -24,7 +25,11 @@ import { useInlineSurfaceContext, useIsSuperseded } from './InlineSurfaceContext
 interface InlineSurfaceProps {
   surface: A2UISurface;
   onAction: (action: string, context?: Record<string, unknown>) => void;
+  /** The user has written since this surface; a question form on it is answered. */
+  answered?: boolean;
 }
+
+const noAction = (): void => {};
 
 const labelClass =
   'text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate';
@@ -32,7 +37,11 @@ const labelClass =
 const iconButtonClass =
   'p-1 text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white transition-colors';
 
-export const InlineSurface: React.FC<InlineSurfaceProps> = ({ surface, onAction }) => {
+export const InlineSurface: React.FC<InlineSurfaceProps> = ({
+  surface,
+  onAction,
+  answered = false,
+}) => {
   const { t } = useI18n();
   const ctx = useInlineSurfaceContext();
   // ask_question forms are answered once and removed; nothing to pop out.
@@ -55,6 +64,33 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({ surface, onAction 
   const body = <A2UIRenderer component={surface.component} onAction={onAction} />;
 
   if (!interactive) return <div className="my-2">{body}</div>;
+
+  // A saved question form that the user has since replied to: Regent's forms
+  // outlive their turn, so without this a reload would offer it again.
+  if (isAnsweredQuestion(surface, answered)) {
+    return (
+      <div className="my-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={labelClass}>{title}</span>
+          <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 shrink-0">
+            {t('a2uiSurface.answered')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowOld((v) => !v)}
+            className="text-[10px] font-bold uppercase tracking-widest font-mono underline text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white shrink-0"
+          >
+            {showOld ? t('a2uiSurface.hide') : t('a2uiSurface.show')}
+          </button>
+        </div>
+        {showOld && (
+          <div className="mt-2 opacity-70 pointer-events-none" aria-disabled="true">
+            <A2UIRenderer component={surface.component} onAction={noAction} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (superseded) {
     return (

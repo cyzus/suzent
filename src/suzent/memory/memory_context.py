@@ -49,7 +49,6 @@ def format_core_memory_section(
     sandbox_enabled: bool = True,
     chat_id: Optional[str] = None,
     shared_path: Optional[str] = None,
-    mount_skills: Optional[str] = None,
     mount_notebook: Optional[str] = None,
     project_context_path: Optional[str] = None,
     notebook_skill_available: bool = True,
@@ -62,7 +61,6 @@ def format_core_memory_section(
         sandbox_enabled: Whether sandbox mode is active
         chat_id: Retained for backwards-compatible callers.
         shared_path: Host path for /shared (non-sandbox mode only)
-        mount_skills: Deprecated; skill locations come from the active skill catalog.
         mount_notebook: Host path for /mnt/notebook (non-sandbox mode only)
         project_context_path: Visible path to the project-scoped context.md file.
 
@@ -123,6 +121,30 @@ def format_core_memory_section(
             )
         curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"
 
+    from suzent.core.focal_agent import FOCAL_CHAT_ID
+
+    if chat_id == FOCAL_CHAT_ID:
+        # Regent has no file-writing tools; its Context block is its own notes.
+        update_hint = (
+            "- The Context block is your own notes. Keep it with `update_notes`; "
+            "you cannot edit the other memory files, which Suzent maintains from "
+            "your conversations"
+        )
+        context_guideline = (
+            "- Keep your notes to what stays true about how the user wants you to "
+            "work. Never record project or task status there: you read it fresh "
+            "every turn"
+        )
+    else:
+        update_hint = f"""- To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
+- To update shared project context and task state: write to the project's `context.md`
+- `MEMORY.md` is part generated: consolidation rewrites everything above the
+  `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
+  above that line is not yours and will not survive the next pass"""
+        context_guideline = """- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
+  Current state, Decisions, File index (one line per library file), Related knowledge
+  (links to notebook pages). No step-by-step logs or temporary notes"""
+
     return f"""# Memory System
 
 You operate under a **file-centric memory architecture** — markdown files are the single source of truth.
@@ -138,11 +160,7 @@ Your memory lives in plain markdown files you can read and write directly:
 {memory_files}
 
 **How to update your memory:**
-- To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
-- To update shared project context and task state: write to the project's `context.md`
-- `MEMORY.md` is part generated: consolidation rewrites everything above the
-  `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
-  above that line is not yours and will not survive the next pass
+{update_hint}
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_hint}
@@ -150,9 +168,7 @@ Your memory lives in plain markdown files you can read and write directly:
 **Memory Guidelines:**
 - Search archival memory before asking the user for information they may have already shared
 - Write important new facts, decisions, and preferences to the appropriate memory file for durability
-- Keep `context.md` as project memory, not a scratchpad, in these sections: Overview,
-  Current state, Decisions, File index (one line per library file), Related knowledge
-  (links to notebook pages). No step-by-step logs or temporary notes
+{context_guideline}
 {curated_memory_hint}
 """
 

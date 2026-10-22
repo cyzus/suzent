@@ -97,7 +97,8 @@ incompatible API change or changed desktop assets requires `build`.
 
 The desktop GitHub Release stays a draft until every required platform build,
 asset upload, and checksum succeeds. Verify the published release, version,
-notes, all eight application/installer assets, and `SHA256SUMS`. Do not manually
+notes, all eight application/installer assets, the `suzent-webui.zip` web UI
+bundle (rebuilt from the tag in both asset modes), and `SHA256SUMS`. Do not manually
 publish a partially populated draft.
 
 The three product branches may be reviewed and merged independently. When one

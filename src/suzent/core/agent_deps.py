@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 @dataclass
@@ -60,6 +60,7 @@ class AgentDeps:
     # --- Social messaging ---
     channel_manager: Any = None  # ChannelManager instance
     event_loop: Optional[asyncio.AbstractEventLoop] = None
+    shell_output_callback: Optional[Callable[[str, str, str], None]] = None
     social_context: dict = field(default_factory=dict)
 
     # --- Skills ---
@@ -71,7 +72,6 @@ class AgentDeps:
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name -> "always_allow" | "always_deny"
-    auto_approve_tools: bool = False
     tool_permission_policies: dict = field(default_factory=dict)
     permission_mode: str = "default"
     interaction_profile: str = "interactive"
@@ -79,6 +79,11 @@ class AgentDeps:
     permission_feedback: list[str] = field(default_factory=list)
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
+    # History length before this turn's own request was appended, so a quiet
+    # heartbeat can be rolled back to exactly where the conversation stood.
+    turn_start_index: Optional[int] = None
+    # Set when a heartbeat ended in HEARTBEAT_OK and its exchange was dropped.
+    heartbeat_rolled_back: bool = False
 
     # --- Tool inventory ---
     base_tool_names: frozenset = field(

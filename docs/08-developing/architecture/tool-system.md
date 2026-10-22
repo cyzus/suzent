@@ -88,7 +88,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
-| RunCommandTool | `run_command` | Sandbox config | **Yes** | Run bounded commands and wait for their output |
+| RunCommandTool | `run_command` | Sandbox config | **Yes** | Return quick output or yield a running process ID after 10 seconds |
 | StartCommandTool | `start_command` | Sandbox config | **Yes** | Start a long-running background command |
 | CheckCommandTool | `check_command` | Process registry | **Yes** | Read incremental output and command status |
 | StopCommandTool | `stop_command` | Process registry | **Yes** | Stop a background command and clean up resources |
@@ -481,7 +481,7 @@ Keep execution-time validation inside the tool. Permission approval answers whet
 
 ### Headless Runs
 
-Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.
+Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. Nothing approves every tool call wholesale. A headless action that cannot be classified safely is denied.
 
 ## Browser extension development
 

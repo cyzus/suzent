@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later."
+}

@@ -10,10 +10,12 @@ from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
 from suzent.core.stream_registry import claim_pending_stop
+from suzent.core.chat_mentions import build_chat_mention_context
 from suzent.logger import get_logger
 from suzent.database import get_database
 
 from .manager import get_acp_manager
+from .client import ACPError
 from .permissions import PERMISSION_QUEUE_KEY
 
 logger = get_logger(__name__)
@@ -130,10 +132,19 @@ async def _stream_prompt(
         while True:
             if prompt_task.done() and managed.updates.empty():
                 break
+            update_task = asyncio.create_task(managed.updates.get())
             try:
-                update = await asyncio.wait_for(managed.updates.get(), timeout=0.1)
-            except asyncio.TimeoutError:
-                continue
+                await asyncio.wait(
+                    [update_task, prompt_task], return_when=asyncio.FIRST_COMPLETED
+                )
+                if not update_task.done():
+                    continue
+                update = update_task.result()
+            finally:
+                if not update_task.done():
+                    update_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await update_task
             if PERMISSION_QUEUE_KEY in update:
                 yield _sse(
                     {
@@ -545,6 +556,7 @@ async def _run_acp_turn(
         message, runtime_authored
     )
     file_context = _build_acp_file_context(file_mentions, files)
+    file_context += build_chat_mention_context(message or "", external_agent=True)
     if file_context:
         from suzent.core.system_reminder import (
             sanitize_incoming_prompt,
@@ -843,7 +855,18 @@ async def _run_acp_turn(
         # Close the open assistant message so the UI doesn't stay stuck streaming.
         if message_open:
             yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
-        yield _sse({"type": "RUN_ERROR", "message": str(exc)})
+        if isinstance(exc, ACPError) and exc.auth_required:
+            await get_acp_manager().close(chat_id)
+            yield _sse(
+                {
+                    "type": "RUN_ERROR",
+                    "code": "acp_auth_required",
+                    "message": "Sign in under Settings → ACP Agents, then retry this task. "
+                    "Your saved session ID has been preserved.",
+                }
+            )
+        else:
+            yield _sse({"type": "RUN_ERROR", "message": str(exc)})
     finally:
         # A failed or abandoned turn shouldn't leave a title lookup in flight.
         if title_task is not None and not title_task.done():
@@ -858,7 +881,13 @@ async def run_acp_turn_text(
     *,
     runtime_authored: bool = False,
     system_preamble: str | None = None,
+    errors_out: list[str] | None = None,
 ) -> str:
+    """Run one ACP turn and return its text.
+
+    ``errors_out`` collects each ``RUN_ERROR`` message, so a caller that only
+    reads the text can still tell a failed turn from a silent one.
+    """
     text = ""
     async for chunk in stream_acp_turn(
         chat_id,
@@ -877,4 +906,6 @@ async def run_acp_turn_text(
                 continue
             if event.get("type") == "TEXT_MESSAGE_CONTENT":
                 text += str(event.get("delta") or "")
+            elif event.get("type") == "RUN_ERROR" and errors_out is not None:
+                errors_out.append(str(event.get("message") or "unknown error"))
     return text

@@ -16,10 +16,13 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
+from codecs import getincrementaldecoder
 from fnmatch import fnmatchcase
 from math import ceil
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Callable, Optional
 
 from pydantic import Field
 from pydantic_ai import ApprovalRequired, RunContext
@@ -60,6 +63,7 @@ class ShellCommandBackend(Tool):
     guidance_priority = 10
     keep_output_tail = True
     DEFAULT_TIMEOUT_SECONDS = 120
+    DEFAULT_YIELD_SECONDS = 10
     TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
     TIMEOUT_OUTPUT_BYTES_PER_STREAM = 12_000
 
@@ -198,9 +202,9 @@ class ShellCommandBackend(Tool):
             Field(
                 ge=0,
                 description=(
-                    "Optional execution timeout in seconds. Defaults to 120s. "
-                    "If the command is expected to take longer, set timeout "
-                    "explicitly or use background=True."
+                    "Optional completion timeout in seconds. For run_command, "
+                    "omitting it yields a running command ID after 10 seconds. "
+                    "Set it to wait for completion up to that limit."
                 ),
             ),
         ] = None,
@@ -402,14 +406,191 @@ class ShellCommandBackend(Tool):
                 return self._execute_background(content, description=description)
             return self._execute_background_on_host(content, description=description)
 
+        shell_output_callback = getattr(ctx.deps, "shell_output_callback", None)
+        tool_call_id = getattr(ctx, "tool_call_id", None)
+        output_callback: Optional[Callable[[str, str], None]] = None
+        if shell_output_callback is not None and tool_call_id is not None:
+
+            def publish_output(stream: str, chunk: str) -> None:
+                shell_output_callback(tool_call_id, stream, chunk)
+
+            output_callback = publish_output
+        if timeout is None and self.name == "RunCommandTool":
+            return self._execute_with_yield(
+                content, description=description, output_callback=output_callback
+            )
+
         effective_timeout = timeout or self.default_timeout_seconds()
         if self.sandbox_enabled:
             return self._execute_in_sandbox(
                 content, effective_timeout, description=description
             )
         return self._execute_on_host(
-            content, effective_timeout, description=description
+            content,
+            effective_timeout,
+            description=description,
+            output_callback=output_callback,
         )
+
+    def _execute_with_yield(
+        self,
+        content: str,
+        description: Optional[str] = None,
+        output_callback: Optional[Callable[[str, str], None]] = None,
+    ) -> ToolResult:
+        """Return a command ID when a quick command outlives the initial wait."""
+        from suzent.core.background_commands import get_background_commands
+        from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+        mode = "sandbox" if self.sandbox_enabled else "host"
+        if mode == "host" and not self.workspace_root:
+            return self._error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "workspace_root not configured for host execution",
+                mode=mode,
+                timeout=None,
+                background=False,
+            )
+
+        registry = HostProcessRegistry() if mode == "host" else None
+        process_id: Optional[str] = None
+        working_dir: Optional[Path] = None
+        try:
+            if registry is not None:
+                working_dir = self._resolve_working_dir()
+                process_id = registry.start(
+                    chat_id=self.chat_id,
+                    cmd=self._build_cmd(content),
+                    cwd=str(working_dir),
+                    env=self._get_host_env(),
+                )
+            else:
+                process_id = self.manager.start_background(
+                    session_id=self.chat_id,
+                    content=content,
+                    language=SANDBOX_COMMAND_LANGUAGE,
+                )
+
+            offset = 0
+            output_parts: list[str] = []
+            live_remaining = 128 * 1024
+            deadline = time.monotonic() + self.DEFAULT_YIELD_SECONDS
+            while True:
+                result = (
+                    registry.poll(self.chat_id, process_id, offset)
+                    if registry is not None
+                    else self.manager.poll_process(self.chat_id, process_id, offset)
+                )
+                chunk = result.get("output", "")
+                offset = result.get("offset", offset)
+                if chunk:
+                    output_parts.append(chunk)
+                    if output_callback is not None and live_remaining > 0:
+                        try:
+                            output_callback("stdout", chunk[:live_remaining])
+                            if len(chunk) >= live_remaining:
+                                output_callback("stdout", "\n[live output truncated]\n")
+                        except Exception:
+                            logger.debug("Could not publish live shell output")
+                        live_remaining -= min(len(chunk), live_remaining)
+                if result.get("done"):
+                    if registry is not None:
+                        registry.evict(self.chat_id, process_id)
+                    if result.get("error"):
+                        return self._error_result(
+                            ToolErrorCode.EXECUTION_FAILED,
+                            str(result["error"]),
+                            mode=mode,
+                            timeout=None,
+                            background=False,
+                        )
+                    returncode = result.get("exit_code")
+                    output = "".join(output_parts).strip() or "(no output)"
+                    if returncode not in (None, 0):
+                        output += f"\n[exit code: {returncode}]"
+                        if mode == "sandbox":
+                            self._audit_execution(
+                                "error",
+                                description=description,
+                                mode=mode,
+                                background=False,
+                                returncode=returncode,
+                            )
+                            return self._error_result(
+                                ToolErrorCode.EXECUTION_FAILED,
+                                f"Execution Error: {output}",
+                                mode=mode,
+                                timeout=None,
+                                background=False,
+                                returncode=returncode,
+                            )
+                    if working_dir is not None:
+                        output = f"[cwd: {working_dir}]\n{output}"
+                    self._audit_execution(
+                        "success",
+                        description=description,
+                        mode=mode,
+                        background=False,
+                        returncode=returncode,
+                    )
+                    return self._success_result(
+                        output,
+                        mode=mode,
+                        timeout=None,
+                        background=False,
+                        returncode=returncode,
+                        **(
+                            {"cwd": str(working_dir)} if working_dir is not None else {}
+                        ),
+                    )
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.1)
+
+            get_background_commands().register(
+                self.chat_id,
+                process_id,
+                description or "Shell command",
+                mode,
+                manager=self.manager if mode == "sandbox" else None,
+            )
+            output = "".join(output_parts).strip()
+            message = (
+                (f"[cwd: {working_dir}]\n" if working_dir is not None else "")
+                + (output + "\n\n" if output else "")
+                + f"Command is still running (command_id={process_id}, next_offset={offset}). "
+                "Use check_command to read more output or stop_command to stop it. "
+                "Completion will notify you automatically."
+            )
+            self._audit_execution(
+                "background", description=description, mode=mode, process_id=process_id
+            )
+            return self._success_result(
+                message,
+                mode=mode,
+                timeout=None,
+                background=True,
+                process_id=process_id,
+                next_offset=offset,
+            )
+        except Exception as exc:
+            if process_id is not None:
+                try:
+                    if registry is not None:
+                        registry.kill(self.chat_id, process_id)
+                        registry.evict(self.chat_id, process_id)
+                    else:
+                        self.manager.kill_process(self.chat_id, process_id)
+                except Exception:
+                    logger.warning("Could not stop a failed shell command")
+            logger.error(f"{mode} command execution error: {exc}")
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                str(exc),
+                mode=mode,
+                timeout=None,
+                background=False,
+            )
 
     def _execute_background(
         self, content: str, description: Optional[str] = None
@@ -671,6 +852,7 @@ class ShellCommandBackend(Tool):
         content: str,
         timeout: Optional[int] = None,
         description: Optional[str] = None,
+        output_callback: Optional[Callable[[str, str], None]] = None,
     ) -> ToolResult:
         """Execute code directly on host machine, restricted to workspace."""
         if not self.workspace_root:
@@ -688,6 +870,8 @@ class ShellCommandBackend(Tool):
         process = None
         stdout_path = None
         stderr_path = None
+        output_stop = threading.Event()
+        output_thread: Optional[threading.Thread] = None
 
         try:
             with tempfile.NamedTemporaryFile(delete=False) as stdout_file:
@@ -702,6 +886,18 @@ class ShellCommandBackend(Tool):
                         stderr=stderr_file,
                         env=self._get_host_env(),
                     )
+                    if output_callback is not None:
+                        output_thread = threading.Thread(
+                            target=self._stream_host_output,
+                            args=(
+                                stdout_path,
+                                stderr_path,
+                                output_stop,
+                                output_callback,
+                            ),
+                            daemon=True,
+                        )
+                        output_thread.start()
                     process.wait(timeout=effective_timeout)
 
             stdout = self._read_output_file(stdout_path)
@@ -815,8 +1011,50 @@ class ShellCommandBackend(Tool):
                 background=False,
             )
         finally:
+            output_stop.set()
+            if output_thread is not None:
+                output_thread.join(timeout=1)
             self._unlink_temp_output(stdout_path)
             self._unlink_temp_output(stderr_path)
+
+    @staticmethod
+    def _stream_host_output(
+        stdout_path: Path,
+        stderr_path: Path,
+        stop: threading.Event,
+        callback: Callable[[str, str], None],
+    ) -> None:
+        """Publish bounded output while the host process is still running."""
+        paths = {"stdout": stdout_path, "stderr": stderr_path}
+        offsets = {name: 0 for name in paths}
+        decoders = {name: getincrementaldecoder("utf-8")("replace") for name in paths}
+        remaining = 128 * 1024
+        while True:
+            for name, path in paths.items():
+                try:
+                    with path.open("rb") as output_file:
+                        output_file.seek(offsets[name])
+                        chunk = output_file.read(min(16 * 1024, remaining))
+                except OSError:
+                    chunk = b""
+                if chunk:
+                    offsets[name] += len(chunk)
+                    remaining -= len(chunk)
+                    decoded = decoders[name].decode(chunk)
+                    if decoded:
+                        try:
+                            callback(name, decoded)
+                        except Exception:
+                            logger.debug("Could not publish live shell output")
+                if remaining == 0:
+                    try:
+                        callback("stdout", "\n[live output truncated]\n")
+                    except Exception:
+                        logger.debug("Could not publish shell truncation marker")
+                    return
+            if stop.is_set():
+                break
+            stop.wait(0.1)
 
     @staticmethod
     def _read_output_file(

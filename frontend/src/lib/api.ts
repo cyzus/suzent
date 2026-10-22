@@ -4,6 +4,7 @@ import {
   ChatGPTStatusResponse,
   ConfigOptions,
   PermissionMode,
+  TaskStatus,
   ThinkingEffort,
 } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
@@ -238,6 +239,18 @@ export async function setChatPermissionMode(
   return response.json();
 }
 
+/** Set a project task's status by hand, as the board's row menus do. */
+export async function setTaskStatus(taskId: number, status: TaskStatus): Promise<void> {
+  const response = await fetch(`${getApiBase()}/project/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update task: ${response.status}`);
+  }
+}
+
 export async function setDefaultPermissionMode(
   mode: PermissionMode
 ): Promise<{ mode: PermissionMode }> {
@@ -288,10 +301,6 @@ export async function getChatPermissionState(chatId: string): Promise<ChatPermis
   return response.json();
 }
 
-// Legacy constant for backward compatibility - but callers should prefer getApiBase()
-// Legacy constant removed - callers must use getApiBase() to ensure dynamic port resolution
-// export const API_BASE = getApiBase();
-
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
@@ -320,6 +329,7 @@ export interface ApiProvider {
   id: string;
   label: string;
   logo_url?: string;
+  key_url?: string;
   user_defined?: boolean;
   default_models: Model[];
   fields: ApiField[];
@@ -362,20 +372,6 @@ async function postOk(path: string, body: Record<string, unknown>): Promise<bool
   } catch {
     return false;
   }
-}
-
-export async function approveTool(
-  chatId: string,
-  requestId: string,
-  approved: boolean,
-  remember?: 'session' | 'global' | null
-): Promise<boolean> {
-  return postOk('/chat/approve-tool', {
-    chat_id: chatId,
-    request_id: requestId,
-    approved,
-    remember: remember || null,
-  });
 }
 
 export async function deactivateTool(chatId: string, toolName: string): Promise<boolean> {
@@ -558,12 +554,29 @@ function unwrapAcpSession(payload: unknown): ACPSession {
   };
 }
 
-export async function probeAcpAgent(id: string): Promise<Record<string, unknown>> {
+export interface AcpProbeResult {
+  status: 'ready' | 'auth_required';
+  authMethods: { id: string; name: string; type: string }[];
+}
+
+export async function authenticateAcpAgent(id: string, methodId: string): Promise<AcpProbeResult> {
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/authenticate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method_id: methodId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Authentication failed: ${res.status}`);
+  return data;
+}
+
+export async function probeAcpAgent(id: string): Promise<AcpProbeResult> {
   const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/probe`, {
     method: 'POST',
   });
-  if (!res.ok) throw new Error(`Failed to probe agent: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Failed to probe agent: ${res.status}`);
+  return data;
 }
 
 export interface AcpAgentSessions {

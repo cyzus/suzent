@@ -117,7 +117,9 @@ def test_memory_is_the_lowest_layer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_lower_layer_section_claims_override_authority() -> None:
+async def test_no_lower_layer_section_claims_override_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A section below SAFETY telling the model it overrides other instructions
     would contradict the precedence block.
 
@@ -131,6 +133,21 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
     class _Memory:
         async def get_core_memory_context(self, **kwargs: Any) -> str:
             return "PERSONA: helpful. FACTS: none."
+
+    from suzent.core import focal_agent
+
+    project = SimpleNamespace(id="project-1", name="Website", slug="website")
+    monkeypatch.setattr(focal_agent, "is_focal_chat_id", lambda chat_id: True)
+    monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
+    monkeypatch.setattr(
+        focal_agent,
+        "get_database",
+        lambda: SimpleNamespace(
+            list_projects=lambda include_archived: [project],
+            list_tasks=lambda project_id: [],
+            list_chats_by_config=lambda key, value, limit=None: [],
+        ),
+    )
 
     agent = _FakeAgent()
     # Non-empty inputs throughout. With defaults, most sections return "" and a

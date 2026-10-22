@@ -139,25 +139,31 @@ export function BackgroundServiceTab(): React.ReactElement {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-xs">
           <div className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900">
-            <div className="text-neutral-500 uppercase">{t('settings.service.status')}</div>
+            <div className="text-neutral-500 dark:text-neutral-400 uppercase">
+              {t('settings.service.status')}
+            </div>
             <div className="font-bold mt-1">{stateLabel}</div>
           </div>
           <div className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900">
-            <div className="text-neutral-500 uppercase">{t('settings.service.uptime')}</div>
+            <div className="text-neutral-500 dark:text-neutral-400 uppercase">
+              {t('settings.service.uptime')}
+            </div>
             <div className="font-bold mt-1">{formatUptime(status?.uptime_seconds ?? null)}</div>
           </div>
           <div className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900">
-            <div className="text-neutral-500 uppercase">{t('settings.service.memory')}</div>
+            <div className="text-neutral-500 dark:text-neutral-400 uppercase">
+              {t('settings.service.memory')}
+            </div>
             <div className="font-bold mt-1">{memory}</div>
           </div>
           <div className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900">
-            <div className="text-neutral-500 uppercase">PID</div>
+            <div className="text-neutral-500 dark:text-neutral-400 uppercase">PID</div>
             <div className="font-bold mt-1">{status?.pid ?? '—'}</div>
           </div>
         </div>
 
         {status?.port && (
-          <p className="mt-4 text-xs font-mono text-neutral-500">
+          <p className="mt-4 text-xs font-mono text-neutral-500 dark:text-neutral-400">
             127.0.0.1:{status.port} · v{status.version ?? '—'}
           </p>
         )}

@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -9,8 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
-const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/download";
+use crate::network;
 /// Keeps a captured failure reason short enough to stay readable in the UI.
 const FAILURE_DETAIL_LIMIT: usize = 600;
 
@@ -20,9 +18,9 @@ fn background_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     command
 }
 
-#[derive(Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
+fn background(command: &mut Command) -> &mut Command {
+    crate::hide_command_window(command);
+    command
 }
 
 #[derive(Deserialize, Serialize)]
@@ -255,6 +253,8 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     if let Some(pid) = flag_value(args, "--wait-pid").and_then(|value| value.parse().ok()) {
         wait_for_process_exit(pid, Duration::from_secs(120))?;
     }
+    // Detect before stopping anything, so the transaction itself never waits on it.
+    network::china_mode(args);
 
     let journal_paths = UpdatePaths::new(root.clone(), "development");
     fs::create_dir_all(&journal_paths.state_dir)
@@ -322,7 +322,7 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     });
     let target_tag = match configured_target {
         Some(tag) => tag,
-        None => resolve_latest_release()?,
+        None => network::latest_release_tag(network::resolved_china_mode())?,
     };
     if !is_release_tag(&target_tag) {
         return Err(format!("invalid release tag: {target_tag}"));
@@ -725,24 +725,42 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, Strin
     )?;
     fs::create_dir_all(&paths.staging_dir)
         .map_err(display_io("create update staging directory"))?;
-    let expected = release_checksum(target_tag, ui_asset_name())?;
+    let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+    let expected = release_checksum(&bases, ui_asset_name())?;
     prepare_ui(paths, &expected, || {
-        download_file(
-            &release_asset_url(target_tag),
-            &paths.staged_ui(),
-            paths,
-            target_tag,
-        )
+        let mut errors = Vec::new();
+        for base in &bases {
+            let url = format!("{}/{}", base.trim_end_matches('/'), ui_asset_name());
+            match download_file(&url, &paths.staged_ui(), paths, target_tag) {
+                Ok(()) => return Ok(()),
+                Err(error) => errors.push(error),
+            }
+        }
+        Err(errors.join("; "))
     })?;
     set_executable(&paths.staged_ui())?;
 
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
-    run_checked(
-        background_command("git")
-            .args(["fetch", "--force", "origin", "tag", target_tag])
-            .current_dir(&paths.root),
-        "fetch release source",
-    )?;
+    // Fall back to the source repositories when `origin` is unreachable,
+    // e.g. an install cloned from GitHub that now sits behind the firewall.
+    let mut remotes = vec!["origin"];
+    if network::resolved_china_mode() {
+        remotes.extend(network::repo_sources(true));
+    }
+    let mut errors = Vec::new();
+    let fetched = remotes.into_iter().any(|remote| {
+        run_checked(
+            background_command("git")
+                .args(["fetch", "--force", remote, "tag", target_tag])
+                .current_dir(&paths.root),
+            "fetch release source",
+        )
+        .map_err(|error| errors.push(error))
+        .is_ok()
+    });
+    if !fetched {
+        return Err(errors.join("; "));
+    }
     git_text(&paths.root, &["rev-list", "-n", "1", target_tag])
 }
 
@@ -899,14 +917,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         target_tag,
     )?;
     if let Err(error) = refresh_shortcuts(paths) {
-        let mut status: UpdateStatus = serde_json::from_slice(
-            &fs::read(&paths.status).map_err(display_io("read shortcut status"))?,
-        )
-        .map_err(|error| error.to_string())?;
-        status
-            .warnings
-            .push(format!("{error}; run 'suzent shortcuts' to retry"));
-        write_json_atomic(&paths.status, &status, "record shortcut warning")?;
+        push_status_warning(paths, format!("{error}; run 'suzent shortcuts' to retry"))?;
     }
     if !transaction.development && !paths.root.join(".suzent-bootstrap-complete").is_file() {
         let config = super::InstallConfig::from_env_and_args(&[
@@ -920,7 +931,24 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
                 .unwrap_or_else(|| "failed to finish bootstrap".to_string()));
         }
     }
+    if !transaction.development {
+        // Last, so no later failure can roll the source back underneath the
+        // new bundle. A failed download keeps the previous bundle and is not
+        // worth a rollback.
+        let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+        if let Err(error) = super::webui::install(&paths.root, &bases) {
+            push_status_warning(paths, format!("Web UI not updated: {error}"))?;
+        }
+    }
     Ok(())
+}
+
+fn push_status_warning(paths: &UpdatePaths, warning: String) -> Result<(), String> {
+    let mut status: UpdateStatus =
+        serde_json::from_slice(&fs::read(&paths.status).map_err(display_io("read update status"))?)
+            .map_err(|error| error.to_string())?;
+    status.warnings.push(warning);
+    write_json_atomic(&paths.status, &status, "record update warning")
 }
 
 fn read_transaction(paths: &UpdatePaths) -> Result<UpdateTransaction, String> {
@@ -1153,13 +1181,34 @@ fn verify_backend_version(root: &Path, target_tag: &str) -> Result<(), String> {
 
 fn run_uv_sync_mode(root: &Path, development: bool) -> Result<(), String> {
     let mut last_error = String::new();
+    let uv = super::find_uv_after_install().unwrap_or_else(|| PathBuf::from("uv"));
+    let extras: &[&str] = if development {
+        &["social", "dev"]
+    } else {
+        &["social"]
+    };
     for attempt in 1..=3 {
-        let mut command = background_command("uv");
-        command.args(["sync", "--frozen", "--extra", "social"]);
-        if development {
-            command.args(["--extra", "dev"]);
-        }
-        match run_checked(command.current_dir(root), "synchronize Python environment") {
+        let result = if network::resolved_china_mode() {
+            let mut failure = None;
+            network::sync_locked_dependencies_via_mirror(&uv, root, extras, |command| {
+                match run_checked(background(command), "synchronize Python environment") {
+                    Ok(()) => true,
+                    Err(error) => {
+                        failure = Some(error);
+                        false
+                    }
+                }
+            });
+            failure.map_or(Ok(()), Err)
+        } else {
+            let mut command = background_command(&uv);
+            command.arg("sync").arg("--frozen");
+            for extra in extras {
+                command.args(["--extra", extra]);
+            }
+            run_checked(command.current_dir(root), "synchronize Python environment")
+        };
+        match result {
             Ok(()) => return Ok(()),
             Err(error) => last_error = error,
         }
@@ -1345,31 +1394,6 @@ fn acquire_lock(state_dir: &Path) -> Result<UpdateLock, String> {
     }
 }
 
-fn resolve_latest_release() -> Result<String, String> {
-    let api =
-        env::var("SUZENT_LATEST_RELEASE_API").unwrap_or_else(|_| LATEST_RELEASE_API.to_string());
-    let response = reqwest::blocking::Client::builder()
-        .user_agent("suzent-installer")
-        .build()
-        .map_err(|error| format!("failed to create release client: {error}"))?
-        .get(api)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("failed to resolve latest release: {error}"))?
-        .json::<ReleaseResponse>()
-        .map_err(|error| format!("invalid latest release response: {error}"))?;
-    Ok(response.tag_name)
-}
-
-fn release_asset_url(tag: &str) -> String {
-    let base = release_base_url(tag);
-    format!("{}/{}", base.trim_end_matches('/'), ui_asset_name())
-}
-
-fn release_base_url(tag: &str) -> String {
-    env::var("SUZENT_RELEASE_BASE_URL").unwrap_or_else(|_| format!("{RELEASE_BASE_URL}/{tag}"))
-}
-
 fn ui_asset_name() -> &'static str {
     if cfg!(windows) {
         "suzent-windows-x86_64.exe"
@@ -1437,19 +1461,10 @@ fn download_file(
     result
 }
 
-fn release_checksum(tag: &str, asset_name: &str) -> Result<String, String> {
-    let url = format!("{}/SHA256SUMS", release_base_url(tag).trim_end_matches('/'));
-    let checksums = reqwest::blocking::Client::builder()
-        .user_agent("suzent-installer")
-        .build()
-        .map_err(|error| format!("failed to create checksum client: {error}"))?
-        .get(&url)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("failed to download release checksums: {error}"))?
-        .text()
-        .map_err(|error| format!("failed to read release checksums: {error}"))?;
-    parse_release_checksum(&checksums, asset_name)
+fn release_checksum(bases: &[String], asset_name: &str) -> Result<String, String> {
+    let checksums = network::fetch_release_file(bases, "SHA256SUMS")
+        .map_err(|error| format!("failed to download release checksums: {error}"))?;
+    parse_release_checksum(&String::from_utf8_lossy(&checksums), asset_name)
 }
 
 fn verify_asset_checksum(path: &Path, expected: &str) -> Result<(), String> {
@@ -1464,7 +1479,7 @@ fn verify_asset_checksum(path: &Path, expected: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_release_checksum(contents: &str, asset_name: &str) -> Result<String, String> {
+pub(crate) fn parse_release_checksum(contents: &str, asset_name: &str) -> Result<String, String> {
     for line in contents.lines() {
         let mut parts = line.split_whitespace();
         let Some(digest) = parts.next() else {

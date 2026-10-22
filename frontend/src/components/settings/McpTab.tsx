@@ -417,7 +417,7 @@ export function McpTab({
                     {probes[server.name] && (
                       <div className="mt-2">
                         {probes[server.name].testing ? (
-                          <div className="text-[10px] font-bold uppercase text-neutral-500">
+                          <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
                             {t('settings.mcp.testing')}...
                           </div>
                         ) : probes[server.name].ok ? (
@@ -462,7 +462,7 @@ export function McpTab({
                                 {tool.name}
                               </span>
                               {tool.description && (
-                                <span className="text-neutral-500 truncate">
+                                <span className="text-neutral-500 dark:text-neutral-400 truncate">
                                   {tool.description}
                                 </span>
                               )}

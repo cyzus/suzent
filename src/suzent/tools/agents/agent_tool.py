@@ -57,6 +57,23 @@ class AgentTool(Tool):
     session_guidance: str = (
         "## AgentTool — When and How to Delegate\n"
         "\n"
+        "### External ACP agents — discover, start, continue\n"
+        "Use ACP when the user requests a configured external coding agent, such as Codex "
+        "or Claude Code. Use native profiles for Suzent helpers.\n"
+        "1. Call agent_list(status='acp') to discover exact acp_agent_id values and installation "
+        "status. Installed does not guarantee authentication or a successful handshake.\n"
+        "2. Start with agent(description='Complete task instructions', runtime='acp', "
+        "acp_agent_id='<listed ID>', run_in_background=True). Supply cwd when needed. "
+        "ACP uses its own tools and model: omit subagent_type, tools_allowed, and tools_denied. "
+        "A parent chat's denied tools can prevent ACP delegation.\n"
+        "3. Continue with agent_send(agent_id='<returned task ID>', message='Next instructions'). "
+        "For existing conversations, discover session agent_id values with "
+        "agent_list(status='recent'). Use wait=True for a direct reply. Background sub-agent "
+        "results wake the parent automatically.\n"
+        "acp_agent_id selects a configured executable; acp_session_id is an optional protocol "
+        "session ID for explicit resume when starting a task; agent_send.agent_id identifies "
+        "a Suzent chat or sub-agent task. Never interchange these IDs.\n"
+        "\n"
         "### When to spawn a sub-agent (use proactively)\n"
         "- **explore**: when you need to find files by pattern, search code for keywords, or answer "
         "questions about a codebase — especially when a simple search might take more than 3 tries. "
@@ -79,6 +96,14 @@ class AgentTool(Tool):
         "a bounded visible transcript, agent_send for durable cross-session messaging, and "
         "agent_stop to cancel work that is no longer needed. Background sub-agent results "
         "wake this conversation automatically.\n"
+        "\n"
+        "### Follow-ups — keep talking to the same sub-agent\n"
+        "A finished sub-agent keeps everything it read and did. To correct its work, ask a "
+        "question about it, or hand it the next step of the same job, send it a message with "
+        "agent_send (agent_id = its task ID) instead of spawning a new one that starts from "
+        "nothing. Its reply wakes you like its first result did; pass wait=True to get the "
+        "reply as the tool result instead. Spawn a new sub-agent only for a separate task or "
+        "a different tool profile.\n"
         "\n"
         "### Tool selection\n"
         "1. **subagent_type** (easiest): use a preset profile (explore / plan / write / verify / web)\n"
@@ -152,6 +177,7 @@ class AgentTool(Tool):
             Optional[str],
             Field(
                 description=(
+                    "Native execution only; omit when runtime='acp'. "
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
                     "Invalid or disabled IDs are rejected instead of silently falling back. "
@@ -199,12 +225,14 @@ class AgentTool(Tool):
         acp_agent_id: Annotated[
             Optional[str],
             Field(
-                description="ACP registry agent id; required when runtime='acp'.",
+                description="Exact acp_agent_id from agent_list(status='acp'); required for runtime='acp'. Not a chat or task ID.",
             ),
         ] = None,
         acp_session_id: Annotated[
             Optional[str],
-            Field(description="Optional ACP session id to resume."),
+            Field(
+                description="Optional ACP protocol session ID for explicit resume. For follow-up work on a Suzent task, use agent_send with its task/chat ID instead."
+            ),
         ] = None,
     ) -> ToolResult:
         """
@@ -229,7 +257,8 @@ class AgentTool(Tool):
         - 'web': web research. Use to keep raw search results out of your context.
 
         When the agent is done, its result is returned to you — not shown directly to the user.
-        Summarize findings in your own words when reporting back.
+        Summarize findings in your own words when reporting back. To follow up with the same
+        sub-agent, message its task ID with agent_send rather than spawning another.
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
@@ -438,6 +467,13 @@ class AgentTool(Tool):
                         f"{worktree_note}"
                     ),
                     metadata={**metadata, "result_summary": task.result_summary},
+                )
+            if task.backgrounded and task.status in ("queued", "running"):
+                from suzent.prompts import SUBAGENT_MOVED_TO_BACKGROUND
+
+                return ToolResult.success_result(
+                    SUBAGENT_MOVED_TO_BACKGROUND.format(task_id=task.task_id),
+                    metadata={**metadata, "run_in_background": True},
                 )
             outcome = "was stopped" if task.status == "cancelled" else "failed"
             return ToolResult.error_result(

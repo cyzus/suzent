@@ -35,8 +35,8 @@ from suzent.tools.browser.extension.routes import (
 from suzent.logger import get_logger, setup_logging
 from suzent.mobile.client_api import client_routes
 from suzent.routes.mobile_routes import mobile_routes
+from suzent.routes.acp_pairing_routes import acp_pairing_routes
 from suzent.routes.chat_routes import (
-    approve_tool,
     chat,
     chat_send,
     create_chat,
@@ -45,6 +45,9 @@ from suzent.routes.chat_routes import (
     get_chat,
     get_chat_file_changes,
     get_chats,
+    delete_focal_wakeup,
+    get_focal_agent,
+    get_focal_panel,
     get_permission_mode,
     live_stream,
     mark_chat_read,
@@ -83,6 +86,11 @@ from suzent.routes.permission_routes import (
     delete_permission_rule,
     get_chat_permission_state,
     get_permissions,
+)
+from suzent.routes.onboarding_routes import (
+    role_recommendations,
+    verify_onboarding_model,
+    check_onboarding_connection,
 )
 from suzent.routes.config_routes import (
     get_api_keys_status,
@@ -265,7 +273,9 @@ from suzent.routes.acp_routes import (
     resolve_acp_permission,
     resume_acp_session,
     probe_acp_agent,
+    authenticate_acp_agent,
 )
+from suzent.routes.acp_auth_routes import acp_auth_routes
 from suzent.routes.background_task_routes import (
     list_background_tasks,
     get_background_task,
@@ -878,6 +888,13 @@ async def startup():
             sweep_overflow_periodically(), name="overflow_sweeper"
         )
 
+    # Chats from before the JSONL logs get one; until then their first write
+    # starts it.
+    app.state.chat_log_import = asyncio.create_task(
+        asyncio.to_thread(get_database().import_unlogged_chats),
+        name="chat_log_import",
+    )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
@@ -1141,6 +1158,8 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         *mobile_routes,
+        *acp_pairing_routes,
+        *acp_auth_routes,
         *client_routes,
         Route("/health", health, methods=["GET"]),
         Route("/ready", readiness, methods=["GET"]),
@@ -1148,6 +1167,11 @@ app = Starlette(
         Route("/service/stop", stop_service, methods=["POST"]),
         Route("/acp/agents", list_acp_agents, methods=["GET"]),
         Route("/acp/agents/{agent_id}/probe", probe_acp_agent, methods=["POST"]),
+        Route(
+            "/acp/agents/{agent_id}/authenticate",
+            authenticate_acp_agent,
+            methods=["POST"],
+        ),
         Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
         Route("/acp/sessions", create_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
@@ -1164,7 +1188,6 @@ app = Starlette(
         Route("/chat/extend-wait", extend_model_wait, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
-        Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
         Route("/chat/input-suggestion", get_input_suggestion, methods=["POST"]),
@@ -1180,6 +1203,9 @@ app = Starlette(
         Route("/commands", get_commands, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
+        Route("/focal", get_focal_agent, methods=["GET"]),
+        Route("/focal/panel", get_focal_panel, methods=["GET"]),
+        Route("/focal/wakeups/{job_id:int}", delete_focal_wakeup, methods=["DELETE"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
         Route(
             "/chats/{chat_id}/permission-mode",
@@ -1247,6 +1273,15 @@ app = Starlette(
         Route("/config/role-models", save_role_models, methods=["POST"]),
         Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
+        Route("/config/role-recommendations", role_recommendations, methods=["POST"]),
+        Route(
+            "/config/onboarding/check-connection",
+            check_onboarding_connection,
+            methods=["POST"],
+        ),
+        Route(
+            "/config/onboarding/verify-model", verify_onboarding_model, methods=["POST"]
+        ),
         Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
         Route(
             "/config/providers/custom/{provider_id}",

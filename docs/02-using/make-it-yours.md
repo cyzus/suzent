@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Making it yours
 description: What to set up after your first chat, in the order most people need it, from cheaper models to backups.
 ---

@@ -12,6 +12,7 @@ import { SettingsPage } from './SettingsCard';
 import { isImeComposing } from '../../lib/ime';
 
 interface ModelRolesTabProps {
+  inlineVoiceModel?: boolean;
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
   unregisteredModels: string[];
@@ -292,7 +293,9 @@ function RoleRow({
           >
             {effective[0] || t('settings.roles.notConfigured')}
             {effective.length > 1 && (
-              <span className="ml-2 font-sans text-neutral-500">+{effective.length - 1}</span>
+              <span className="ml-2 font-sans text-neutral-500 dark:text-neutral-400">
+                +{effective.length - 1}
+              </span>
             )}
           </span>
           <span className="mt-1 block text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -305,7 +308,7 @@ function RoleRow({
                   : t('settings.roles.chooseModel')}
           </span>
         </span>
-        <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 sm:col-start-3 sm:row-span-1">
+        <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 sm:col-start-3 sm:row-span-1">
           <span
             className={`h-1.5 w-1.5 rounded-full ${offStatus ? 'bg-neutral-300' : selected.length ? 'bg-brutal-green' : isInherited ? 'bg-brutal-blue' : 'bg-neutral-300'}`}
             aria-hidden="true"
@@ -374,7 +377,9 @@ function RoleRow({
                     {t('settings.roles.backupModels', { count: draft.length - 1 })}
                   </summary>
                   <div className="mt-3 space-y-3">
-                    <p className="text-[11px] text-neutral-500">{t('settings.roles.modelOrder')}</p>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {t('settings.roles.modelOrder')}
+                    </p>
                     <ol className="space-y-2">
                       {draft.slice(1).map((model, offset) => {
                         const index = offset + 1;
@@ -463,6 +468,7 @@ function RoleRow({
 }
 
 export function ModelRolesTab({
+  inlineVoiceModel = false,
   roleModels,
   suggestions,
   unregisteredModels,
@@ -488,7 +494,7 @@ export function ModelRolesTab({
   }
 
   function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
-    if (role.key === 'tts')
+    if (role.key === 'tts' && !inlineVoiceModel)
       return (
         <button
           key="tts"

@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Regent's sidebar profile now folds back into its row when you leave, the rest of the sidebar fades back in, and its cube grows into and out of the header logo slot when the sidebar is collapsed.",
+  "reason": "Regent has not shipped yet; this is released with the pending focal-agent declaration."
+}

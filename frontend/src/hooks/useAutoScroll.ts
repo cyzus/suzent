@@ -301,7 +301,45 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     if (!el) return;
 
     let settleFrame = 0;
+    let repaintFrame = 0;
+    let repaintTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastWidth = el.clientWidth;
+    let lastScrollHeight = el.scrollHeight;
+
+    // When the transcript gets shorter (a wider column after a sidebar toggle,
+    // a collapsed tool block), layout clamps scrollTop but WKWebView's
+    // scrolling layer keeps the old offset and shows blank space past the end
+    // until the next scroll. A one-pixel round trip over two frames is a real
+    // scroll, so it resyncs the layer.
+    const repaintByScrolling = () => {
+      if (el.scrollHeight <= el.clientHeight) return;
+      const top = el.scrollTop;
+      autoScrollInProgress.current = true;
+      el.scrollTop = top > 0 ? top - 1 : top + 1;
+      repaintFrame = requestAnimationFrame(() => {
+        el.scrollTop = top;
+        if (autoScrollEnabledRef.current) {
+          performAutoScroll('auto');
+        } else {
+          autoScrollInProgress.current = false;
+        }
+      });
+    };
+    const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null;
+
     const resizeObserver = new ResizeObserver(() => {
+      if (needsResizeRepaint) {
+        const widthChanged = el.clientWidth !== lastWidth;
+        const shrank = el.scrollHeight < lastScrollHeight;
+        lastWidth = el.clientWidth;
+        lastScrollHeight = el.scrollHeight;
+        if (widthChanged || shrank) {
+          clearTimeout(repaintTimer);
+          cancelAnimationFrame(repaintFrame);
+          // Outlast the sidebar's 300ms slide so the repaint follows the final layout.
+          repaintTimer = setTimeout(repaintByScrolling, widthChanged ? 350 : 100);
+        }
+      }
       cancelAnimationFrame(settleFrame);
       if (autoScrollEnabledRef.current) {
         performAutoScroll('auto');
@@ -326,6 +364,8 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
 
     return () => {
       cancelAnimationFrame(settleFrame);
+      cancelAnimationFrame(repaintFrame);
+      clearTimeout(repaintTimer);
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };

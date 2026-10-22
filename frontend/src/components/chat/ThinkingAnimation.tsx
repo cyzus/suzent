@@ -52,7 +52,7 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
   return (
     <div
       className={`
-      absolute inset-0 isolate pointer-events-none overflow-hidden
+      thinking-assembly absolute inset-0 isolate pointer-events-none overflow-hidden
       transition-opacity duration-500 rounded-lg
       ${isThinking ? 'opacity-100' : 'opacity-0'}
     `}
@@ -60,16 +60,13 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
 
-      {/* Edge Masking (Soft Fade) */}
-      <div className="absolute inset-0 bg-gradient-to-r from-white via-transparent to-white z-20"></div>
-
       {/* Robots Layer */}
       <div className="absolute inset-0 z-10">
         {variants.map((variant, i) => (
           <div key={i} className="conveyor-item" style={{ animationDelay: `${i * 0.8}s` }}>
             <div className="w-full h-full flex items-center justify-center text-brutal-black relative">
               <div className="robot-carrier"></div>
-              <div className="w-10 h-10 relative z-10">
+              <div className="assembly-robot w-10 h-10 relative z-10">
                 <RobotAvatar variant={variant} />
               </div>
             </div>

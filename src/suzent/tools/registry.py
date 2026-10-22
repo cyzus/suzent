@@ -212,6 +212,7 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.tasks import TaskUpdateTool
     from suzent.tools.tasks import TaskListTool
     from suzent.tools.schedule_tool import ScheduleTool
+    from suzent.tools.focal import FocalDispatchTool, FocalNotesTool, FocalScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -267,6 +268,9 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        FocalDispatchTool,
+        FocalScheduleTool,
+        FocalNotesTool,
     )
     return builtin + _plugin_tool_classes(builtin)
 
@@ -370,6 +374,22 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
             "tools": tools,
         }
         for label, tools in capabilities.items()
+    ]
+
+
+def get_tool_summaries(tool_names: List[str]) -> List[Dict[str, str]]:
+    """Display metadata for the named tools, in the order given."""
+    classes = {cls.name: cls for cls in _all_tool_classes()}
+    return [
+        {
+            "id": name,
+            "name": getattr(classes[name], "display_name", None)
+            or _humanize_tool_name(name),
+            "description": _tool_description(classes[name]),
+            "runtimeName": classes[name].tool_name,
+        }
+        for name in tool_names
+        if name in classes
     ]
 
 

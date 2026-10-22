@@ -1,3 +1,4 @@
+import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -19,7 +20,8 @@ import { SettingsModal } from './components/settings/SettingsModal';
 import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
-import { StatusBar } from './components/StatusBar';
+import { ConversationIdentity, StatusBar } from './components/StatusBar';
+import { RegentLogoSlot } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
@@ -68,6 +70,7 @@ import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 import { isWeb } from './lib/runtime';
+import { ALL_PROJECTS_KANBAN_ID, FOCAL_CHAT_ID, writeFocalBoardOpen } from './lib/focalAgent';
 import { consolePathForCategory } from './shells/webRoutes';
 
 interface HeaderTitleProps {
@@ -335,6 +338,7 @@ function UpdateButton(): React.ReactElement | null {
 
 function AppInner(): React.ReactElement {
   const [mainView, setMainView] = useState<MainView>('chat');
+  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
   const [memoryInitialTab, setMemoryInitialTab] = useState<
     'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined
   >(undefined);
@@ -570,6 +574,7 @@ function AppInner(): React.ReactElement {
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
+    if (currentChatId === FOCAL_CHAT_ID) writeFocalBoardOpen(isOpen);
     // Closing gives the space back -- the restore effect below re-docks the
     // left sidebar if layout pressure was the only reason it went away.
     if (!isOpen) {
@@ -633,10 +638,12 @@ function AppInner(): React.ReactElement {
   }, [setViewSwitcher, setMainView]);
 
   const taskProjectId = currentChatProjectId;
+  const regentHeader = mainView === 'chat' && currentChatId === FOCAL_CHAT_ID;
+  const kanbanProjectId = currentChatId === FOCAL_CHAT_ID ? ALL_PROJECTS_KANBAN_ID : taskProjectId;
 
   React.useEffect(() => {
     refreshGoalTasks(taskProjectId, currentChatId ?? null);
-    refreshKanban(taskProjectId);
+    refreshKanban(kanbanProjectId);
 
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
@@ -646,7 +653,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, taskProjectId, refreshGoalTasks, refreshKanban]);
+  }, [currentChatId, taskProjectId, kanbanProjectId, refreshGoalTasks, refreshKanban]);
 
   // Both open and the room ran out: the left one steps aside, on loan.
   React.useEffect(() => {
@@ -711,7 +718,18 @@ function AppInner(): React.ReactElement {
           maxWidth={leftSidebarMaxWidth}
           isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
           onWidthChange={setPreferredLeftWidth}
-          chatsContent={<ChatList onOpenAutomation={() => openSettings('automation')} />}
+          chatsContent={
+            <ChatList
+              searchOpen={sidebarSearchOpen}
+              onSearchOpenChange={setSidebarSearchOpen}
+              onOpenAutomation={() => openSettings('automation')}
+              activeView={mainView}
+              onOpenView={(view) => {
+                setMemoryInitialTab(undefined);
+                setMainView(view);
+              }}
+            />
+          }
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}
           onClose={closeLeftSidebar}
@@ -723,7 +741,7 @@ function AppInner(): React.ReactElement {
         />
         <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
           <header
-            className="app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
+            className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
             onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -744,7 +762,10 @@ function AppInner(): React.ReactElement {
                   title={t('sidebar.open')}
                 >
                   <div className="flex h-full w-full items-center justify-center group-hover:hidden">
-                    <SuzentLogo className="h-7 w-7" interactive />
+                    {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
+                    <RegentLogoSlot regent={regentHeader}>
+                      <SuzentLogo className="h-7 w-7" interactive />
+                    </RegentLogoSlot>
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
                     <SidebarToggleIcon
@@ -755,17 +776,33 @@ function AppInner(): React.ReactElement {
                   </div>
                 </div>
               )}
-              <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
+              {/* The header names the conversation; a new chat keeps the brand title. */}
+              {mainView === 'chat' && currentChatId ? (
+                <ConversationIdentity />
+              ) : (
+                <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
+              )}
             </div>
 
             <div
               className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
             >
-              <NavTabs
-                mainView={mainView}
-                setMainView={(v) => {
-                  setMemoryInitialTab(undefined);
-                  setMainView(v);
+              {/* The sidebar carries these on wider screens; a phone keeps them here
+                  because its sidebar is tucked away. */}
+              <div className="md:hidden">
+                <NavTabs
+                  mainView={mainView}
+                  setMainView={(v) => {
+                    setMemoryInitialTab(undefined);
+                    setMainView(v);
+                  }}
+                />
+              </div>
+              <StatusBar
+                inline
+                onOpenMemorySettings={() => {
+                  setMemoryInitialTab('dreaming');
+                  setMainView('memory');
                 }}
               />
               <UpdateButton />
@@ -852,15 +889,6 @@ function AppInner(): React.ReactElement {
               ) : null}
             </div>
           </header>
-
-          <StatusBar
-            showActiveChatTitle={mainView === 'chat'}
-            onOpenMemorySettings={() => {
-              setMemoryInitialTab('dreaming');
-              setMainView('memory');
-            }}
-          />
-
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
               <ChatWindow
@@ -1222,7 +1250,7 @@ async function waitForBackendHealth(options?: { attempts?: number }): Promise<bo
 }
 
 function StartupDecisionScreen(): React.ReactElement {
-  return <div className="h-screen w-screen bg-neutral-100" />;
+  return <BackendLoadingScreen />;
 }
 
 interface AppProps {
@@ -1464,7 +1492,9 @@ export default function App({ children }: AppProps = {}) {
       ) : (
         <ProjectProvider>
           <ChatProvider>
-            <GoalTasksProvider>{children ?? <AppInner />}</GoalTasksProvider>
+            <GoalTasksProvider>
+              <SetupGate>{children ?? <AppInner />}</SetupGate>
+            </GoalTasksProvider>
           </ChatProvider>
         </ProjectProvider>
       )}

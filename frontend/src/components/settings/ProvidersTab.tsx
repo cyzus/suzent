@@ -53,6 +53,8 @@ function getProviderTitleClass(label: string): string {
 }
 
 interface ProvidersTabProps {
+  onboarding?: boolean;
+  onCredentialDraftChange?: (dirty: boolean) => void;
   providers: ApiProvider[];
   apiKeys: Record<string, string>;
   userConfigs: Record<string, UserConfig>;
@@ -81,7 +83,7 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
 
   return (
     <span
-      className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'border-brutal-black text-brutal-black dark:border-white dark:text-white bg-transparent'}`}
+      className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25' : 'border-brutal-black text-brutal-black dark:border-white/15 dark:text-zinc-400 bg-transparent'}`}
     >
       {t(`settings.providers.${hasKey ? 'keySet' : 'noKey'}`)}
     </span>
@@ -178,7 +180,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.id')} *
           </label>
           <input
@@ -190,7 +192,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.label')} *
           </label>
           <input
@@ -205,7 +207,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.apiType')}
           </label>
           <select
@@ -221,7 +223,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
           </select>
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.baseUrl')}
           </label>
           <input
@@ -235,7 +237,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
       </div>
 
       <div className="border-t-2 border-neutral-200 dark:border-zinc-700 pt-4 space-y-3">
-        <p className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+        <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
           {t('settings.providers.addForm.apiKeySection')}
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -509,7 +511,7 @@ function ChatGPTProviderCard({
                 <button
                   onClick={() => setPendingLogin(null)}
                   disabled={loading}
-                  className="px-3 py-1.5 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-500 bg-white dark:bg-zinc-900 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-500 dark:text-neutral-400 bg-white dark:bg-zinc-900 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -556,6 +558,8 @@ function ChatGPTProviderCard({
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
+  onboarding = false,
+  onCredentialDraftChange,
   providers,
   apiKeys,
   userConfigs,
@@ -606,6 +610,9 @@ export function ProvidersTab({
   const [syncResult, setSyncResult] = useState<string | null>(null);
   // Tracks which secret field keys are currently in edit mode (user clicked "Change")
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    onCredentialDraftChange?.(editingFields.size > 0 || Object.keys(keyDrafts).length > 0);
+  }, [editingFields, keyDrafts, onCredentialDraftChange]);
 
   const startEditing = (fieldKey: string) => {
     setEditingFields((prev) => new Set(prev).add(fieldKey));
@@ -677,37 +684,41 @@ export function ProvidersTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.providers.title')}
-        subtitle={t('settings.providers.subtitle')}
-        actions={
-          <>
-            {syncResult && (
-              <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
-                {syncResult}
-              </span>
-            )}
-            <BrutalButton
-              onClick={handleSync}
-              disabled={syncing}
-              title={t('settings.providers.syncTooltip')}
-              variant="dark"
-              size="sm"
-              className="!border-white"
-            >
-              {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-            </BrutalButton>
-            <BrutalButton
-              onClick={() => setShowAddForm((v) => !v)}
-              variant="light"
-              size="sm"
-              className="!border-white"
-            >
-              {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
-            </BrutalButton>
-          </>
-        }
-      />
+      {!onboarding && (
+        <SettingsHeader
+          title={t('settings.providers.title')}
+          subtitle={t('settings.providers.subtitle')}
+          actions={
+            !onboarding && (
+              <>
+                {syncResult && (
+                  <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
+                    {syncResult}
+                  </span>
+                )}
+                <BrutalButton
+                  onClick={handleSync}
+                  disabled={syncing}
+                  title={t('settings.providers.syncTooltip')}
+                  variant="dark"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                </BrutalButton>
+                <BrutalButton
+                  onClick={() => setShowAddForm((v) => !v)}
+                  variant="light"
+                  size="sm"
+                  className="!border-white"
+                >
+                  {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
+                </BrutalButton>
+              </>
+            )
+          }
+        />
+      )}
 
       {showAddForm && (
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
@@ -842,7 +853,7 @@ export function ProvidersTab({
                     >
                       {provider.label}
                     </span>
-                    {provider.user_defined && (
+                    {provider.user_defined && !onboarding && (
                       <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
                         {t('settings.providers.customProvider')}
                       </span>
@@ -885,6 +896,16 @@ export function ProvidersTab({
               <div className="flex flex-1 flex-col gap-4 p-4">
                 {activeTab === 'credentials' && (
                   <div className="space-y-4">
+                    {provider.key_url && (
+                      <a
+                        href={provider.key_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
+                      >
+                        {t('settings.providers.getKey', { provider: provider.label })}
+                      </a>
+                    )}
                     {provider.fields.map((field) => {
                       const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
                       const isConfigured =
@@ -896,7 +917,7 @@ export function ProvidersTab({
                       return (
                         <div key={field.key} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+                            <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
                               {field.label}
                             </label>
                             {isConfigured && (
@@ -1025,7 +1046,7 @@ export function ProvidersTab({
                         ? t('settings.providers.fetching')
                         : t('settings.providers.testConnection')}
                     </BrutalButton>
-                    <p className="text-[11px] text-neutral-500">
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
                       {t('settings.providers.connectionHint')}
                     </p>
                   </div>
@@ -1114,7 +1135,7 @@ export function ProvidersTab({
                       aria-label={t('settings.providers.searchModels')}
                       className="mb-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs dark:bg-zinc-900 dark:text-white"
                     />
-                    <p className="mb-2 text-xs text-neutral-500">
+                    <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
                       {t('settings.providers.enabledCount', {
                         count: conf.enabled_models.length,
                       })}
@@ -1156,7 +1177,7 @@ export function ProvidersTab({
 
                     {/* Footer */}
                     <div className="flex justify-between items-center px-1 mt-2">
-                      <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">
+                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
                         {t('settings.providers.modelsAvailable', {
                           count: String(allModels.length),
                         })}
@@ -1164,7 +1185,7 @@ export function ProvidersTab({
                     </div>
                   </div>
                 )}
-                {provider.user_defined && (
+                {provider.user_defined && !onboarding && (
                   <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
                     <BrutalButton
                       size="xs"
@@ -1181,6 +1202,11 @@ export function ProvidersTab({
           );
         })}
       </div>
+      {onboarding && (
+        <BrutalButton variant="ghost" size="sm" onClick={() => setShowAddForm((v) => !v)}>
+          {t(showAddForm ? 'common.cancel' : 'onboarding.otherProvider')}
+        </BrutalButton>
+      )}
     </SettingsPage>
   );
 }

@@ -25,6 +25,20 @@ The agent chooses how each helper runs:
 Either way, the result goes to the agent, not to you. The agent reads it and
 tells you what matters.
 
+If a helper's model goes quiet or drops the connection partway through, the
+helper isn't stopped. It picks the task up again, up to three times. A helper
+the agent was waiting on moves to the background at that point, so the agent
+can carry on and is woken with the result when the helper finishes.
+
+## Following up with a helper
+
+A finished helper remembers what it read and did. When its work needs a fix,
+a question answered, or a next step, the agent sends that helper a message
+instead of starting a new one. The helper picks up where it left off, and its
+reply comes back to the agent the same way its first result did: in the
+background, or straight away if the agent chose to wait. The follow-up appears
+in the helper's own chat.
+
 ## What a helper can and can't do
 
 The agent gives each helper a written brief and a set of tools. It often picks
@@ -58,6 +72,19 @@ Unless the agent picks one of your enabled models, a helper runs on Suzent's
 default model, which may not be the one your chat uses. A helper can also be a
 coding agent such as Claude Code or Codex, set up under **Settings → ACP
 Agents** (see [Devices & other agents](../nodes.md#use-suzent-from-your-editor-acp)).
+
+To use an external helper, install and sign in to it under **Settings → ACP
+Agents**, then ask Suzent, for example: “Use Codex to investigate the failing
+tests in this project.” Suzent can check which external agents are installed
+before starting one. An installation check does not confirm that sign-in is
+complete or that the agent can connect successfully.
+
+For a follow-up, say “Ask the same helper to fix the failure.” Suzent sends the
+instructions to the existing task. Background replies return to the parent
+conversation automatically. External helpers use their own models and tools;
+Suzent's native helper profiles do not control them. If this conversation
+denies specific tools, external delegation is blocked because Suzent cannot
+enforce that deny list inside the external agent.
 
 ## Watching, redirecting, and stopping helpers
 

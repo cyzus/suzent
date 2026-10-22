@@ -10,8 +10,17 @@ import {
   type ThinkingEffort,
 } from '../types/api';
 import { FileIcon } from './FileIcon';
-import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
+import {
+  PaperClipIcon,
+  ArrowUpIcon,
+  ArrowUturnRightIcon,
+  StopIcon,
+  XMarkIcon,
+  FolderIcon,
+  ChatBubbleLeftRightIcon,
+} from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
@@ -22,6 +31,11 @@ import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import {
+  MENTION_CATEGORIES,
+  groupMentionSuggestions,
+  type MentionCategory,
+} from '../lib/mentionGroups';
 import { isImeComposing } from '../lib/ime';
 
 interface ChatInputPanelProps {
@@ -62,7 +76,8 @@ export interface FileMentionSelection {
   type?: 'file' | 'directory';
 }
 
-interface FileMentionSuggestion extends FileMentionSelection {
+interface FileMentionSuggestion extends Omit<FileMentionSelection, 'type'> {
+  type?: 'file' | 'directory' | 'chat';
   root: string;
   size: number;
   mime_type: string;
@@ -75,17 +90,6 @@ const PERMISSION_MODES: PermissionMode[] = ['default', 'auto', 'full_access'];
 /** Shared look for the muted selects under the composer. */
 const FOOTER_SELECT_BUTTON_CLASS =
   '!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white';
-
-function getFileExtensionLabel(filename: string): string {
-  const ext = filename.split('.').pop()?.trim().toUpperCase();
-  if (!ext || ext === filename.toUpperCase()) return 'FILE';
-  return ext.slice(0, 4);
-}
-
-function getMentionBadgeLabel(suggestion: FileMentionSuggestion): string {
-  if (suggestion.type === 'directory') return 'DIR';
-  return getFileExtensionLabel(suggestion.name);
-}
 
 const ImagePreviewThumbnail: React.FC<{
   file: File;
@@ -144,6 +148,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onFileMentionSelected,
   inputSuggestion = null,
 }) => {
+  const isFocal = currentChatId === FOCAL_CHAT_ID;
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
   const queueKey = React.useMemo(
@@ -155,6 +160,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   );
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
   const [mentionSuggestions, setMentionSuggestions] = React.useState<FileMentionSuggestion[]>([]);
+  const [mentionCategory, setMentionCategory] = React.useState<MentionCategory>('all');
+  const mentionGroups = React.useMemo(
+    () => groupMentionSuggestions(mentionSuggestions, mentionCategory),
+    [mentionSuggestions, mentionCategory]
+  );
+  const visibleMentions = React.useMemo(
+    () => mentionGroups.flatMap((group) => group.items),
+    [mentionGroups]
+  );
+  const mentionListRef = React.useRef<HTMLDivElement>(null);
   const [selectedMentionSuggestion, setSelectedMentionSuggestion] = React.useState(0);
   // The `@…` query the caret is currently sitting in, or null when there is
   // no active mention search. Driven by the contenteditable editor.
@@ -249,7 +264,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   }, [suggestions.length]);
   React.useEffect(() => {
     setSelectedMentionSuggestion(0);
-  }, [mentionSuggestions.length]);
+  }, [visibleMentions]);
+  React.useEffect(() => {
+    if (mentionQuery === null) setMentionCategory('all');
+  }, [mentionQuery]);
+  React.useEffect(() => {
+    mentionListRef.current
+      ?.querySelector('[data-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [selectedMentionSuggestion]);
 
   const applyPermissionMode = React.useCallback(
     async (nextMode: PermissionMode) => {
@@ -299,12 +322,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   );
 
   React.useEffect(() => {
-    if (mentionQuery === null || mentionQuery.length < 1) {
+    if (mentionQuery === null) {
       setMentionSuggestions([]);
       setIsMentionLoading(false);
       return;
     }
 
+    setMentionSuggestions([]);
+    setIsMentionLoading(true);
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
@@ -317,15 +342,35 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         if (config.sandbox_volumes?.length) {
           params.set('volumes', JSON.stringify(config.sandbox_volumes));
         }
-        const res = await fetch(`${getApiBase()}/sandbox/mentions?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          setMentionSuggestions([]);
-          return;
-        }
-        const data = await res.json();
-        setMentionSuggestions(Array.isArray(data.items) ? data.items : []);
+        const chatParams = new URLSearchParams({ limit: '30', search: mentionQuery });
+        const [files, chats] = await Promise.allSettled([
+          mentionQuery
+            ? fetch(`${getApiBase()}/sandbox/mentions?${params}`, {
+                signal: controller.signal,
+              }).then(async (res) => (res.ok ? (await res.json()).items : []))
+            : Promise.resolve([]),
+          fetch(`${getApiBase()}/chats?${chatParams}`, {
+            signal: controller.signal,
+          }).then(async (res) => (res.ok ? (await res.json()).chats : [])),
+        ]);
+        if (controller.signal.aborted) return;
+        const chatItems: FileMentionSuggestion[] =
+          chats.status === 'fulfilled' && Array.isArray(chats.value)
+            ? chats.value
+                .filter((chat: { id: string }) => chat.id !== currentChatId)
+                .map((chat: { id: string; title?: string }) => ({
+                  name: chat.title || chat.id,
+                  path: `chat://${encodeURIComponent(chat.id)}/${encodeURIComponent(chat.title || chat.id)}`,
+                  type: 'chat',
+                  root: '',
+                  size: 0,
+                  mime_type: '',
+                }))
+            : [];
+        setMentionSuggestions([
+          ...chatItems,
+          ...(files.status === 'fulfilled' && Array.isArray(files.value) ? files.value : []),
+        ]);
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setMentionSuggestions([]);
@@ -350,11 +395,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       editorRef.current?.insertMention(suggestion.path, suggestion.name);
       setMentionQuery(null);
       setMentionSuggestions([]);
-      onFileMentionSelected?.({
-        name: suggestion.name,
-        path: suggestion.path,
-        type: suggestion.type,
-      });
+      if (suggestion.type !== 'chat')
+        onFileMentionSelected?.({
+          name: suggestion.name,
+          path: suggestion.path,
+          type: suggestion.type,
+        });
     },
     [onFileMentionSelected]
   );
@@ -398,7 +444,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           e.preventDefault();
           send();
         }}
-        className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
+        className="bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group transition-colors duration-200 z-20 text-left"
       >
         {/* Unified file preview section. Capped height + scroll so a large
                 batch of attachments never inflates the input box; images wrap into
@@ -521,32 +567,69 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         )}
 
         {mentionActive && (
-          <div className="absolute left-2 right-2 bottom-[calc(100%-0.5rem)] border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm overflow-hidden max-h-56 overflow-y-auto z-40">
-            <div className="px-3 py-1 bg-neutral-200 dark:bg-zinc-900 border-b border-neutral-300 dark:border-zinc-700 text-xs font-bold text-neutral-500 uppercase tracking-wider">
-              {t('chatInput.fileMentions')}
-            </div>
-            {mentionSuggestions.length > 0 ? (
-              mentionSuggestions.map((suggestion, i) => (
-                <div
-                  key={suggestion.path}
-                  className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer ${i === selectedMentionSuggestion ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    insertMention(suggestion);
-                  }}
+          <div
+            ref={mentionListRef}
+            className="absolute -left-px -right-px bottom-[calc(100%+0.5rem)] border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 overflow-hidden max-h-60 overflow-y-auto z-40 font-normal"
+          >
+            <div className="sticky top-0 z-10 flex gap-1 px-2 py-1.5 bg-white dark:bg-zinc-800 border-b-2 border-neutral-200 dark:border-zinc-600">
+              {MENTION_CATEGORIES.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  aria-pressed={mentionCategory === category}
+                  className={`px-2 py-0.5 text-xs font-bold border focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${mentionCategory === category ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setMentionCategory(category)}
                 >
-                  <div className="w-10 h-8 shrink-0 border-2 border-brutal-black bg-brutal-yellow shadow-[2px_2px_0_0_#000] flex items-center justify-center">
-                    <span className="text-[9px] leading-none font-black text-brutal-blue">
-                      {getMentionBadgeLabel(suggestion)}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold truncate">{suggestion.name}</div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate font-mono">
-                      {suggestion.path}
+                  {t(`chatInput.mentionCategory_${category}`)}
+                </button>
+              ))}
+            </div>
+            {visibleMentions.length > 0 ? (
+              visibleMentions.map((suggestion, i) => (
+                <React.Fragment key={suggestion.path}>
+                  {(i === 0 || visibleMentions[i - 1].type !== suggestion.type) && (
+                    <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-neutral-500 dark:text-neutral-400">
+                      {t(`chatInput.mentionCategory_${suggestion.type || 'file'}`)}
+                    </div>
+                  )}
+                  <div
+                    data-selected={i === selectedMentionSuggestion}
+                    onMouseEnter={() => setSelectedMentionSuggestion(i)}
+                    className={`flex items-center gap-2 border-l-[3px] pl-[9px] pr-3 py-2 text-sm leading-5 cursor-pointer ${i === selectedMentionSuggestion ? 'border-brutal-black dark:border-brutal-yellow bg-brutal-yellow/15 dark:bg-brutal-yellow/10 text-neutral-900 dark:text-neutral-100' : 'border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(suggestion);
+                    }}
+                  >
+                    <div className="w-4 h-4 shrink-0 flex items-center justify-center text-neutral-600 dark:text-neutral-300">
+                      {suggestion.type === 'chat' ? (
+                        <ChatBubbleLeftRightIcon className="w-4 h-4 stroke-[1.5]" />
+                      ) : suggestion.type === 'directory' ? (
+                        <FolderIcon className="w-4 h-4 stroke-[1.5]" />
+                      ) : (
+                        <FileIcon
+                          mimeType={suggestion.mime_type || 'application/octet-stream'}
+                          className="w-4 h-4 stroke-[1.5]"
+                        />
+                      )}
+                    </div>
+                    <div
+                      className="min-w-0 flex-1 flex items-baseline gap-3"
+                      title={suggestion.name}
+                    >
+                      <div className="min-w-0 flex-1 font-medium truncate">{suggestion.name}</div>
+                      {suggestion.type !== 'chat' && (
+                        <div
+                          className="max-w-[45%] truncate text-[11px] text-neutral-400 dark:text-neutral-500"
+                          title={suggestion.path}
+                        >
+                          {suggestion.path}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
+                </React.Fragment>
               ))
             ) : (
               <div className="px-3 py-3 text-sm text-neutral-500 dark:text-neutral-400">
@@ -561,6 +644,42 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         )}
 
         <div className="relative">
+          {!input && !ghost && configReady && streamingForCurrentChat && (
+            <div
+              className={
+                'pointer-events-none absolute inset-0 px-2 py-1.5 text-neutral-400 dark:text-neutral-500 ' +
+                INPUT_TEXT_METRIC_CLASS
+              }
+            >
+              {t('chatInput.placeholderRedirect', { queueKey })
+                .split(/(Ctrl\+Enter|⌘\+Enter|Enter)/)
+                .map((part, index) =>
+                  part.endsWith('Enter') ? (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 align-baseline whitespace-nowrap"
+                    >
+                      {part !== 'Enter' && (
+                        <>
+                          <kbd className="inline-flex h-6 items-center rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1.5 font-sans text-sm font-medium leading-none">
+                            {part.slice(0, -6)}
+                          </kbd>
+                          <span className="text-sm">+</span>
+                        </>
+                      )}
+                      <kbd
+                        aria-label="Enter"
+                        className="inline-flex h-6 min-w-6 items-center justify-center rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1 font-sans text-base font-medium leading-none"
+                      >
+                        <span aria-hidden="true">↵</span>
+                      </kbd>
+                    </span>
+                  ) : (
+                    <React.Fragment key={index}>{part}</React.Fragment>
+                  )
+                )}
+            </div>
+          )}
           {ghost && (
             <div
               ref={ghostOverlayRef}
@@ -569,7 +688,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             >
               <span className="invisible">{input}</span>
               <span className="text-neutral-400 dark:text-neutral-500">{ghost}</span>
-              <kbd className="ml-2 align-middle rounded-[3px] border border-neutral-300 dark:border-neutral-600 px-1 font-mono text-[10px] leading-4 text-neutral-400 dark:text-neutral-500">
+              <kbd className="ml-2 inline-flex h-6 items-center align-baseline rounded-[2px] border border-neutral-300 dark:border-zinc-600 px-1.5 font-sans text-sm font-medium leading-none text-neutral-400 dark:text-neutral-500">
                 {t('chatInput.suggestionAcceptKey')}
               </kbd>
             </div>
@@ -592,7 +711,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 : !configReady
                   ? t('chatInput.placeholderLoading').toUpperCase()
                   : streamingForCurrentChat
-                    ? t('chatInput.placeholderRedirect', { queueKey })
+                    ? ''
                     : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
@@ -616,7 +735,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 return;
               }
 
-              if (mentionActive && mentionSuggestions.length > 0) {
+              if (mentionActive && visibleMentions.length > 0) {
                 if (e.key === 'ArrowUp') {
                   e.preventDefault();
                   setSelectedMentionSuggestion((i) => Math.max(0, i - 1));
@@ -624,14 +743,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 }
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();
-                  setSelectedMentionSuggestion((i) =>
-                    Math.min(mentionSuggestions.length - 1, i + 1)
-                  );
+                  setSelectedMentionSuggestion((i) => Math.min(visibleMentions.length - 1, i + 1));
                   return;
                 }
                 if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
                   e.preventDefault();
-                  insertMention(mentionSuggestions[selectedMentionSuggestion]);
+                  insertMention(visibleMentions[selectedMentionSuggestion]);
                   return;
                 }
                 if (e.key === 'Escape') {
@@ -640,7 +757,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                   return;
                 }
               }
-              if (mentionActive && mentionSuggestions.length === 0) {
+              if (mentionActive && visibleMentions.length === 0) {
                 if (e.key === 'Escape') {
                   e.preventDefault();
                   dismissMention();
@@ -753,14 +870,17 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         {/* Button row */}
         <div className="chat-composer-toolbar flex flex-wrap items-center gap-2 px-1 pb-0.5">
-          {/* Left: folder + attachment */}
-          <FolderContextPicker
-            onMount={handleMountFolder}
-            activeVolumes={config.sandbox_volumes || []}
-            onRemoveVolume={removeVolume}
-            disabled={!configReady || streamingForCurrentChat || isUploading}
-            dropUp={modelSelectDropUp}
-          />
+          {/* Left: folder + attachment. The Focal Agent works through project
+              sessions, which carry their own folders. */}
+          {!isFocal && (
+            <FolderContextPicker
+              onMount={handleMountFolder}
+              activeVolumes={config.sandbox_volumes || []}
+              onRemoveVolume={removeVolume}
+              disabled={!configReady || streamingForCurrentChat || isUploading}
+              dropUp={modelSelectDropUp}
+            />
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -796,7 +916,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                 dropUp={modelSelectDropUp}
                 className="h-9 text-sm max-w-[220px]"
-                buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
+                buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !border-0 !bg-transparent dark:!bg-transparent !px-2 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
                 dropdownClassName="min-w-[240px] right-0"
               />
             </div>
@@ -806,11 +926,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           {stopStreaming && streamingForCurrentChat && input.trim() ? (
             <button
               type="submit"
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={!configReady}
               title={t('chatInput.redirectAgent')}
+              aria-label={t('chatInput.redirectAgent')}
             >
-              {t('chatInput.redirect').toUpperCase()}
+              <ArrowUturnRightIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
             </button>
           ) : stopStreaming && streamingForCurrentChat ? (
             <button
@@ -819,44 +940,49 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 e.preventDefault();
                 stopStreaming();
               }}
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={stopInFlight}
-              title={t('chatInput.stopGenerating')}
+              title={stopInFlight ? t('chatInput.stopping') : t('chatInput.stopGenerating')}
+              aria-label={stopInFlight ? t('chatInput.stopping') : t('chatInput.stopGenerating')}
+              aria-busy={stopInFlight}
             >
-              {(stopInFlight ? t('chatInput.stopping') : t('chatInput.stop')).toUpperCase()}
+              <StopIcon className="w-5 h-5 fill-current" aria-hidden="true" />
             </button>
           ) : (
             <button
               type="submit"
-              className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={streamingForCurrentChat || !configReady}
               title={t('chatInput.sendMessage')}
+              aria-label={t('chatInput.sendMessage')}
             >
-              {t('chatInput.send').toUpperCase()}
+              <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
             </button>
           )}
         </div>
       </form>
 
-      {/* Permission mode stays on the left; the thinking slider is pushed right so
-          it sits directly under the model picker it applies to. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
-        <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
-          <BrutalSelect
-            value={permissionMode}
-            onChange={(value) => changePermissionMode(value as PermissionMode)}
-            options={PERMISSION_MODES.map((option) => ({
-              value: option,
-              label: t(`chatWindow.permissionModeInputLabels.${option}`),
-            }))}
-            dropUp={true}
-            hideChevron={true}
-            disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
-            className="inline-block w-auto"
-            buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
-            dropdownClassName="min-w-[220px] font-mono text-[10px]"
-          />
-        </div>
+      <div
+        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-3 pt-0.5 ${isFocal ? 'justify-end' : 'justify-between'}`}
+      >
+        {!isFocal && (
+          <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
+            <BrutalSelect
+              value={permissionMode}
+              onChange={(value) => changePermissionMode(value as PermissionMode)}
+              options={PERMISSION_MODES.map((option) => ({
+                value: option,
+                label: t(`chatWindow.permissionModeInputLabels.${option}`),
+              }))}
+              dropUp={true}
+              hideChevron={true}
+              disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
+              className="inline-block w-auto"
+              buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
+              dropdownClassName="min-w-[220px] font-mono text-[10px]"
+            />
+          </div>
+        )}
 
         {/* Reasoning effort. Only the native runtime owns model settings — an
             ACP agent picks its own. Models that cannot think ignore the setting,

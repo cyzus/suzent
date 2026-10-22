@@ -20,7 +20,7 @@ import os
 import time
 import traceback
 import uuid
-from typing import Optional, Dict, Any, AsyncGenerator
+from typing import Optional, Dict, Any, AsyncGenerator, Sequence
 
 from pydantic_ai import (
     Agent,
@@ -238,6 +238,24 @@ _PREFILL_RATE_RECOVERY = 0.05
 _observed_prefill_k: Dict[str, float] = {}
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
+
+
+# A model call that went quiet or lost its connection mid-stream. The provider
+# may have been working the whole time, so a fresh request can pick it up again.
+MODEL_STALLED_CODE = "model_stalled"
+
+
+def model_failure_code(error: object) -> Optional[str]:
+    """Name a model failure that a new request can recover from."""
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+
+    if isinstance(error, TimeoutError):
+        return MODEL_STALLED_CODE
+    # An HTTP status means the provider answered; anything else here is a
+    # dropped or unfinished response.
+    if isinstance(error, ModelAPIError) and not isinstance(error, ModelHTTPError):
+        return MODEL_STALLED_CODE
+    return None
 
 
 def _stream_idle_timeout(model_id: str | None) -> float:
@@ -682,11 +700,36 @@ class _DraftDisplayAccumulator:
             tool["output"] = _stringify_part_content(value.get("output"))
             tool["approvalId"] = None
             self.dirty = True
+        elif (
+            name == "incoming_message"
+            and isinstance(value, dict)
+            and not value.get("persisted")
+        ):
+            # Kept in order among the reply's parts, so a reload mid-turn still
+            # shows the message where the run took it in.
+            self.parts.append(
+                {"type": "incoming-message", "text": str(value.get("content") or "")}
+            )
+            self.dirty = True
         elif name == "tool_display" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
             tool["displayData"] = value
             self.dirty = True
+        elif name == "shell_output_delta" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            delta = value.get("delta")
+            tool = self._find_tool(tool_call_id)
+            if (
+                tool is not None
+                and tool.get("state") != "completed"
+                and isinstance(delta, str)
+            ):
+                prefix = "[stderr]\n" if value.get("stream") == "stderr" else ""
+                tool["output"] = (str(tool.get("output") or "") + prefix + delta)[
+                    -128 * 1024 :
+                ]
+                self.dirty = True
         elif name == "tool_call_outcome" and isinstance(value, dict):
             tool = self._ensure_tool(str(value.get("toolCallId") or ""))
             tool["outcome"] = value.get("outcome")
@@ -801,7 +844,7 @@ def _tool_timeout_from_event(event: Any) -> float:
     if tool_name == "ask_question":
         # The call is waiting on a person, who may take as long as they like.
         return math.inf
-    if tool_name != "run_command":
+    if tool_name not in ("run_command", "agent_send"):
         return timeout
 
     args = getattr(part, "args", None)
@@ -812,6 +855,10 @@ def _tool_timeout_from_event(event: Any) -> float:
             args = None
     if not isinstance(args, dict):
         args = {}
+    if tool_name == "agent_send":
+        # Waiting for a reply is waiting on another agent's whole turn, the
+        # same case as a blocking sub-agent above.
+        return math.inf if args.get("wait") is True else timeout
     from suzent.tools.shell.shell_tools import RunCommandTool
 
     return RunCommandTool.stream_wait_timeout_seconds(args.get("timeout"))
@@ -846,6 +893,27 @@ def _run_result_usage(result: Any) -> Any:
     """Read run usage whether pydantic-ai exposes it as a property or method."""
     usage = result.usage
     return usage() if callable(usage) else usage
+
+
+def _incoming_message_texts(event: Any) -> list[str]:
+    """What to show for messages a live run took in mid-turn.
+
+    Another agent's message reaches a busy chat by injection rather than a new
+    turn; without this the chat showed nothing of it until the turn ended.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
+
+    texts: list[str] = []
+    for message in getattr(event, "messages", ()) or ():
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                shown = extract_system_reminder_display_trigger(part.content)
+                if shown:
+                    texts.append(shown)
+    return texts
 
 
 def _make_run_injector(stream: Any) -> Any:
@@ -1263,6 +1331,21 @@ async def _queue_custom_event(
     await out_queue.put(("chunk", _encode_custom(event_name, data)))
 
 
+def roll_back_heartbeat(history: list, original_count: int, deps: Any) -> list:
+    """Drop a quiet heartbeat's whole exchange, its own prompt included.
+
+    The history handed to the stream already ends with the heartbeat prompt,
+    so its starting length is one past where the conversation stood. Rolling
+    back to that length kept the prompt, and the processor then re-attached
+    the HEARTBEAT_OK reply to it -- both resurfaced on the next turn.
+    """
+    turn_start = getattr(deps, "turn_start_index", None)
+    kept = list(history)[: original_count if turn_start is None else turn_start]
+    deps.last_messages = kept
+    deps.heartbeat_rolled_back = True
+    return kept
+
+
 async def stream_agent_responses(
     agent: Agent,
     message: str | list | None,
@@ -1273,6 +1356,7 @@ async def stream_agent_responses(
     permission_resolutions: Optional[list[dict[str, Any]]] = None,
     is_heartbeat: bool = False,
     run_id: Optional[str] = None,
+    presaved_triggers: Sequence[str] = (),
 ) -> AsyncGenerator[str, None]:
     """
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
@@ -1294,6 +1378,18 @@ async def stream_agent_responses(
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
+    shell_output_loop = asyncio.get_running_loop()
+
+    def publish_shell_output(tool_call_id: str, stream: str, chunk: str) -> None:
+        shell_output_loop.call_soon_threadsafe(
+            sse_queue.put_nowait,
+            (
+                "shell_output_delta",
+                {"toolCallId": tool_call_id, "stream": stream, "delta": chunk},
+            ),
+        )
+
+    deps.shell_output_callback = publish_shell_output
 
     # --- Inline citations ---
     # One manager per run. Tools register citable sources on the manager via
@@ -1467,6 +1563,12 @@ async def stream_agent_responses(
         )
 
         try:
+            for trigger in presaved_triggers:
+                # Already a row of its own in the display log, so the draft
+                # must not copy it into the reply as well.
+                await sse_queue.put(
+                    ("incoming_message", {"content": trigger, "persisted": True})
+                )
             for resolution in permission_resolutions or []:
                 await sse_queue.put(("permission_resolution", resolution))
 
@@ -1564,6 +1666,11 @@ async def stream_agent_responses(
 
                             # ── Mid-run checkpoint tracking ──────────────────
                             _event_kind = getattr(event, "event_kind", "")
+                            if _event_kind == "enqueued_messages":
+                                for _incoming in _incoming_message_texts(event):
+                                    await sse_queue.put(
+                                        ("incoming_message", {"content": _incoming})
+                                    )
                             _new_tool_names = [
                                 name
                                 for name in _tool_search_class_names(event)
@@ -1809,7 +1916,9 @@ async def stream_agent_responses(
                             len(_failed_returns),
                         )
                         history = continuation
-                        prompt = ""  # no new user message on resume
+                        # None, not "": pydantic-ai sends any non-None prompt,
+                        # so "" added an empty user message to every resume.
+                        prompt = None
                         current_deferred = None
                         continue  # restart loop so the agent reacts
 
@@ -1889,7 +1998,7 @@ async def stream_agent_responses(
                                     approvals=auto_approvals
                                 )
                                 history = current_history
-                                prompt = ""  # no new user message on resume
+                                prompt = None  # no new user message on resume
                                 continue  # restart loop
 
                             # Some tools still need the user's decision.
@@ -1922,18 +2031,29 @@ async def stream_agent_responses(
 
             # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
+                from suzent.core.focal_agent import record_focal_heartbeat_done
+
+                record_focal_heartbeat_done(chat_id)
                 from suzent.core.heartbeat import get_active_heartbeat
 
                 runner = get_active_heartbeat()
                 if runner and runner._is_heartbeat_ok(final_response_text):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
-                    partial_history = partial_history[:original_count]
-                    deps.last_messages = partial_history
+                    partial_history = roll_back_heartbeat(
+                        partial_history, original_count, deps
+                    )
                     # Signal the frontend to discard the streamed heartbeat content.
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
             logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
+            # A check-in that failed reported nothing either. Without this its
+            # internal prompt stayed in the saved history and later showed up
+            # in the transcript as if the user had typed it.
+            if is_heartbeat and chat_id:
+                partial_history = roll_back_heartbeat(
+                    partial_history, original_count, deps
+                )
             await sse_queue.put(("error", e))
         finally:
             await sse_queue.put(("done", None))
@@ -2180,8 +2300,14 @@ async def stream_agent_responses(
                 elif msg_type == "permission_decision":
                     yield CustomEvent(name="tool_permission_decision", value=payload)
 
+                elif msg_type == "shell_output_delta":
+                    yield CustomEvent(name="shell_output_delta", value=payload)
+
                 elif msg_type == "permission_resolution":
                     yield CustomEvent(name="tool_permission_resolution", value=payload)
+
+                elif msg_type == "incoming_message":
+                    yield CustomEvent(name="incoming_message", value=payload)
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
@@ -2213,7 +2339,9 @@ async def stream_agent_responses(
                     break
 
                 elif msg_type == "error":
-                    err = RunErrorEvent(message=str(payload))
+                    err = RunErrorEvent(
+                        message=str(payload), code=model_failure_code(payload)
+                    )
                     await out_queue.put(("chunk", _encoder.encode(err)))
                     break
 

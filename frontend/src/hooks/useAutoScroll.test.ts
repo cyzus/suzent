@@ -145,7 +145,12 @@ describe('message bottom scrolling', () => {
     );
     const hook = useAutoScroll([]);
     const last = {};
-    const container = { children: [{}, last], scrollHeight: 800, scrollTo: vi.fn() };
+    const container = {
+      children: [{}, last],
+      scrollHeight: 800,
+      scrollTo: vi.fn(),
+      closest: () => null,
+    };
     hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
     const cleanup = effects[2]();
     expect(observe).toHaveBeenCalledWith(last);
@@ -161,5 +166,73 @@ describe('message bottom scrolling', () => {
     expect(observe).toHaveBeenCalledWith(appended);
     if (cleanup) cleanup();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('scrolls a pixel and back after the transcript narrows or shrinks so WKWebView resyncs', () => {
+    vi.useFakeTimers();
+    let frame: FrameRequestCallback = () => {};
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frame = callback;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    let onResize = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          onResize = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
+    vi.stubGlobal(
+      'MutationObserver',
+      class {
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
+    const hook = useAutoScroll([]);
+    const container = {
+      children: [],
+      clientWidth: 900,
+      clientHeight: 600,
+      scrollHeight: 3000,
+      scrollTop: 2400,
+      scrollTo: vi.fn(),
+      closest: () => ({}),
+    };
+    hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
+    const cleanup = effects[2]();
+
+    // A height-only resize (streaming growth) needs no repaint.
+    onResize();
+    vi.advanceTimersByTime(400);
+    expect(container.scrollTop).toBe(2400);
+
+    container.clientWidth = 1200;
+    onResize();
+    vi.advanceTimersByTime(349);
+    expect(container.scrollTop).toBe(2400);
+    vi.advanceTimersByTime(1);
+    expect(container.scrollTop).toBe(2399);
+    container.scrollTo.mockClear();
+    frame(0);
+    expect(container.scrollTop).toBe(2400);
+    expect(container.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: 'auto' });
+
+    // Collapsing a tool block shortens the transcript at the same width.
+    container.scrollHeight = 2500;
+    container.scrollTop = 1900;
+    onResize();
+    vi.advanceTimersByTime(99);
+    expect(container.scrollTop).toBe(1900);
+    vi.advanceTimersByTime(1);
+    expect(container.scrollTop).toBe(1899);
+    frame(0);
+    expect(container.scrollTop).toBe(1900);
+    if (cleanup) cleanup();
   });
 });

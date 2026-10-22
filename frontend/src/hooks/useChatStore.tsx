@@ -222,7 +222,9 @@ const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
   backendDefaults: ConfigOptions
 ): ChatConfig => ({
-  model: prefs?.model || backendDefaults.defaultModel || backendDefaults.models[0] || '',
+  // No fallback to models[0]: with no provider configured that is just the
+  // alphabetically first catalog model (Claude Haiku), which the user cannot call.
+  model: prefs?.model || backendDefaults.defaultModel || '',
   agent: prefs?.agent || backendDefaults.agents[0] || '',
   tools: withBuiltinTools(prefs?.tools || backendDefaults.defaultTools, backendDefaults),
   memory_enabled: prefs?.memory_enabled,
@@ -523,7 +525,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     // Fallback to backend defaults
     if (backendConfig) {
       return {
-        model: backendConfig.defaultModel || backendConfig.models[0] || '',
+        model: backendConfig.defaultModel || '',
         agent: backendConfig.agents[0] || '',
         tools: withBuiltinTools(backendConfig.defaultTools, backendConfig),
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,

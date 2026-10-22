@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -29,7 +30,20 @@ def _client_version() -> str:
 
 
 class ACPError(RuntimeError):
-    pass
+    def __init__(
+        self, message: str, *, code: int | None = None, data: Any = None
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.data = data
+
+    def __str__(self) -> str:
+        return f"{self.message}: {self.data}" if self.data is not None else self.message
+
+    @property
+    def auth_required(self) -> bool:
+        return self.code == -32000
 
 
 class ACPClient:
@@ -55,12 +69,25 @@ class ACPClient:
         self.stderr_lines: list[str] = []
         self._stderr_task: asyncio.Task | None = None
         self._reverse_tasks: set[asyncio.Task] = set()
+        self._read_error: ACPError | None = None
+        self.terminal_auth = False
+
+    @property
+    def is_running(self) -> bool:
+        return (
+            self.process is not None
+            and self.process.returncode is None
+            and self._read_error is None
+            and self._reader_task is not None
+            and not self._reader_task.done()
+        )
 
     async def start(self) -> None:
         if self.process and self.process.returncode is None:
             return
         if not self.command:
             raise ACPError("ACP command is empty")
+        self._read_error = None
         process_env = os.environ.copy()
         process_env.update(self.env)
 
@@ -91,6 +118,7 @@ class ACPClient:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=8 * 1024 * 1024,
             start_new_session=start_new_session,
             **extra,
         )
@@ -105,11 +133,20 @@ class ACPClient:
                 "protocolVersion": PROTOCOL_VERSION,
                 "clientInfo": {"name": "suzent", "version": _client_version()},
                 "clientCapabilities": {
-                    "fs": {"readTextFile": False, "writeTextFile": False}
+                    "fs": {"readTextFile": False, "writeTextFile": False},
+                    **({"auth": {"terminal": True}} if self.terminal_auth else {}),
                 },
             },
         )
-        return result if isinstance(result, dict) else {}
+        if (
+            not isinstance(result, dict)
+            or result.get("protocolVersion") != PROTOCOL_VERSION
+        ):
+            raise ACPError("Unsupported ACP protocol version; this client supports v1")
+        return result
+
+    async def authenticate(self, method_id: str) -> None:
+        await self.request("authenticate", {"methodId": method_id}, timeout=300.0)
 
     async def request(
         self,
@@ -125,6 +162,8 @@ class ACPClient:
         it. A caller that has to know when its request became cancellable has no
         other way to learn it: awaiting this call only tells it the turn is over.
         """
+        if self._read_error is not None:
+            raise self._read_error
         if not self.process or self.process.returncode is not None:
             raise ACPError("ACP process is not running")
         request_id = self._next_id
@@ -132,17 +171,17 @@ class ACPClient:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending[request_id] = future
-        await self._send(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": method,
-                "params": params or {},
-            }
-        )
-        if on_sent is not None:
-            on_sent()
         try:
+            await self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": method,
+                    "params": params or {},
+                }
+            )
+            if on_sent is not None:
+                on_sent()
             return await asyncio.wait_for(future, timeout=timeout)
         finally:
             self._pending.pop(request_id, None)
@@ -265,7 +304,14 @@ class ACPClient:
                     future = self._pending.get(message["id"])
                     if future and not future.done():
                         if "error" in message:
-                            future.set_exception(ACPError(str(message["error"])))
+                            error = message["error"]
+                            future.set_exception(
+                                ACPError(
+                                    str(error.get("message", "ACP request failed")),
+                                    code=error.get("code"),
+                                    data=error.get("data"),
+                                )
+                            )
                         else:
                             future.set_result(message.get("result"))
                     continue
@@ -277,9 +323,14 @@ class ACPClient:
                     result = handler(message["method"], message.get("params") or {})
                     if asyncio.iscoroutine(result):
                         await result
+        except Exception as exc:
+            self._read_error = exc if isinstance(exc, ACPError) else ACPError(str(exc))
         finally:
+            if self._read_error is not None and self.process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    self.process.terminate()
             if any(not future.done() for future in self._pending.values()):
-                error = await self._exit_error()
+                error = self._read_error or await self._exit_error()
                 for future in self._pending.values():
                     if not future.done():
                         future.set_exception(error)

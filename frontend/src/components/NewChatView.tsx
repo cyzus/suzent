@@ -29,6 +29,8 @@ interface NewChatViewProps {
   onImageClick?: (src: string) => void;
   currentChatId?: string | null;
   onFileMentionSelected?: (mention: FileMentionSelection) => void;
+  /** Replaces the greeting and project picker, for chats that already have a home. */
+  briefing?: React.ReactNode;
 }
 
 const GreetingPresence: React.FC<{ engaged: boolean }> = React.memo(({ engaged }) => {
@@ -288,16 +290,18 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
   onImageClick,
   currentChatId,
   onFileMentionSelected,
+  briefing,
 }) => {
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const { t } = useI18n();
   const isInputEngaged = isInputHovered || isInputFocused;
   return (
     <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">
-      <GreetingPresence engaged={isInputEngaged} />
+      {briefing ?? <GreetingPresence engaged={isInputEngaged} />}
 
       <div className="w-full max-w-2xl">
-        <ProjectPicker />
+        {!briefing && <ProjectPicker />}
         <div
           onPointerEnter={() => setIsInputHovered(true)}
           onPointerLeave={() => setIsInputHovered(false)}

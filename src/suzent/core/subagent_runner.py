@@ -90,6 +90,16 @@ class SubAgentTask:
     # is sitting and watching. Carrying the call id on the spawn event lets the
     # card match itself to the child from the first moment.
     tool_call_id: Optional[str] = None
+    # A blocking call hands its child over to the background once the child's
+    # model stalls; from then on the child wakes the parent like any background run.
+    backgrounded: bool = False
+    background_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+
+
+# Retries for a sub-agent whose model call went quiet or dropped mid-turn. The
+# model was usually still working, so the turn is picked up again, not failed.
+SUBAGENT_STALL_RETRIES = 3
+_STALL_RETRY_DELAY_SECONDS = 5.0
 
 
 # Global registry: task_id -> SubAgentTask
@@ -415,10 +425,44 @@ async def spawn_subagent(
             _broadcast_task_update(task)
             _persist_task_state(task)
     else:
-        # Blocking — parent awaits the child's completion
-        await _run_subagent(task, wakeup_parent=False)
+        await _await_blocking_subagent(task)
 
     return task
+
+
+async def _await_blocking_subagent(task: SubAgentTask) -> None:
+    """Wait for a blocking child until it finishes or moves to the background.
+
+    The child runs as its own task so a stall does not tie up the parent: the
+    parent gets its turn back and the child keeps going.
+    """
+    runner = asyncio.create_task(_run_subagent(task, wakeup_parent=False))
+    task.runner_task = runner
+    handed_over = asyncio.create_task(task.background_event.wait())
+    try:
+        await asyncio.wait({runner, handed_over}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        # The parent's turn was stopped while it was still waiting on the
+        # child, so the child stops with it, as a blocking call always has.
+        if not task.backgrounded:
+            runner.cancel()
+        raise
+    finally:
+        handed_over.cancel()
+    if runner.done() and not runner.cancelled():
+        runner.result()
+
+
+def _move_to_background(task: SubAgentTask) -> None:
+    """Release a parent that is blocked on this child; the child keeps running."""
+    if task.backgrounded:
+        return
+    task.backgrounded = True
+    task.background_event.set()
+
+
+def _wakes_parent(task: SubAgentTask, wakeup_parent: bool) -> bool:
+    return wakeup_parent or task.backgrounded
 
 
 # ─── Execution ───────────────────────────────────────────────────────────────
@@ -493,7 +537,8 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
 
     A worktree cwd is the exception: _run_subagent tears the worktree down in
     its finally block, so persisting it would point a resumed turn at a deleted
-    directory that the shell would helpfully recreate, empty.
+    directory that the shell would helpfully recreate, empty. A worktree that
+    teardown keeps is stored afterwards instead.
     """
     grants = {
         key: base_config[key]
@@ -503,6 +548,24 @@ def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
     if isolation == "worktree":
         grants.pop("cwd", None)
     return grants
+
+
+# Turn settings a follow-up turn needs to stay the same sub-agent. agent_send
+# runs that turn from the chat's stored config, which otherwise falls back to
+# the main agent's prompt and the user's default model, and drops the grants
+# and denials it inherited from the parent.
+_FOLLOWUP_KEYS = (
+    "static_instructions",
+    "model",
+    "memory_enabled",
+    "permission_mode",
+    *_INHERITED_PERMISSION_KEYS,
+)
+
+
+def followup_config(base_config: dict) -> dict:
+    """The parts of a sub-agent's turn config to store for follow-up turns."""
+    return {key: base_config[key] for key in _FOLLOWUP_KEYS if key in base_config}
 
 
 # Roots the agent addresses virtually; everything else absolute is a host path.
@@ -651,13 +714,17 @@ async def _run_subagent(
     bind_producer_replay(stream_queue.replay)
     wake_parent = False
     try:
-        from suzent.core.chat_processor import ChatProcessor
+        from suzent.core.chat_processor import ChatProcessor, ModelStalledError
         from suzent.agent_manager import build_agent_config
 
         processor = ChatProcessor()
 
         # Build config: only pass whitelisted tools
-        from suzent.prompts import SUBAGENT_INSTRUCTIONS, SUBAGENT_PREAMBLE
+        from suzent.prompts import (
+            SUBAGENT_INSTRUCTIONS,
+            SUBAGENT_PREAMBLE,
+            SUBAGENT_STALL_RESUME,
+        )
 
         # Sub-agents replace STATIC_INSTRUCTIONS rather than composing with it,
         # so the precedence rules have to be prepended explicitly. They read
@@ -757,29 +824,48 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
-            grants = persistable_grants(base_config, task.isolation)
-            if grants:
-                db.merge_chat_config(task.chat_id, grants)
-            config_override = build_agent_config(base_config, require_social_tool=False)
-            result_text = await processor.process_turn_text(
-                chat_id=task.chat_id,
-                user_id=CONFIG.user_id,
-                message_content=task.description,
-                config_override=config_override,
-                _stream_queue=stream_queue,
-                citation_sources_out=child_citation_sources,
+            db.merge_chat_config(
+                task.chat_id,
+                {
+                    **followup_config(base_config),
+                    **persistable_grants(base_config, task.isolation),
+                },
             )
+            config_override = build_agent_config(base_config, require_social_tool=False)
+            message_content, reminders = task.description, None
+            stalls = 0
+            while True:
+                try:
+                    result_text = await processor.process_turn_text(
+                        chat_id=task.chat_id,
+                        user_id=CONFIG.user_id,
+                        message_content=message_content,
+                        config_override=config_override,
+                        _stream_queue=stream_queue,
+                        citation_sources_out=child_citation_sources,
+                        system_reminders=reminders,
+                    )
+                    break
+                except ModelStalledError as exc:
+                    stalls += 1
+                    if stalls > SUBAGENT_STALL_RETRIES:
+                        raise
+                    logger.warning(
+                        f"Sub-agent {task.task_id} model stalled "
+                        f"({stalls}/{SUBAGENT_STALL_RETRIES}), resuming: {exc}"
+                    )
+                    _move_to_background(task)
+                    await asyncio.sleep(_STALL_RETRY_DELAY_SECONDS * stalls)
+                    # The last stream ended with its sentinel; a fresh queue
+                    # lets anyone watching the child see the resumed turn.
+                    unregister_background_stream(task.chat_id, stream_queue)
+                    stream_queue = register_background_stream(task.chat_id)
+                    bind_producer_replay(stream_queue.replay)
+                    message_content, reminders = "", [SUBAGENT_STALL_RESUME]
 
         task.status = "completed"
-        task.citation_sources, source_id_map = namespace_sources(
-            child_citation_sources, task.task_id
-        )
-        normalised_result = rewrite_citation_ids(result_text or "", source_id_map)
-        summary_text = truncate_citation_text(normalised_result, 1000)
-        task.result_summary = (
-            render_citations_plain_text(summary_text, task.citation_sources)
-            if summary_text
-            else "(no output)"
+        task.result_summary, task.citation_sources = summarize_agent_output(
+            result_text, child_citation_sources, task.task_id
         )
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
@@ -794,7 +880,7 @@ async def _run_subagent(
                 "citation_sources": task.citation_sources,
             },
         )
-        wake_parent = wakeup_parent
+        wake_parent = _wakes_parent(task, wakeup_parent)
 
     except asyncio.CancelledError:
         task.status = "cancelled"
@@ -819,7 +905,7 @@ async def _run_subagent(
                 "error": str(e),
             },
         )
-        wake_parent = wakeup_parent
+        wake_parent = _wakes_parent(task, wakeup_parent)
     finally:
         bind_producer_replay(None)
         unregister_background_stream(task.chat_id, stream_queue)
@@ -837,6 +923,8 @@ async def _run_subagent(
         # woken only afterwards so it learns whether the changes were kept.
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+            if task.worktree_path:
+                _keep_worktree_as_cwd(task)
         _persist_task_state(task)
         if wake_parent:
             _queue_parent_wakeup(task)
@@ -974,6 +1062,20 @@ async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
     return None
 
 
+def _keep_worktree_as_cwd(task: SubAgentTask) -> None:
+    """Point follow-up turns at a worktree that teardown kept.
+
+    The changes live there, so a follow-up asked to fix or extend them must not
+    fall back to the parent's folder and edit the main checkout instead.
+    """
+    try:
+        get_database().merge_chat_config(task.chat_id, {"cwd": task.worktree_path})
+    except Exception as exc:
+        logger.warning(
+            f"Could not store kept worktree for sub-agent {task.task_id}: {exc}"
+        )
+
+
 async def _git_output(*args: str, cwd: str) -> Optional[str]:
     """Run a git command and return its stdout, or None if it failed."""
     proc = await asyncio.create_subprocess_exec(
@@ -1085,35 +1187,92 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
 # ─── Parent wakeup & notification ────────────────────────────────────────────
 
 
+def summarize_agent_output(
+    text: Optional[str], sources: list[dict], namespace: str
+) -> tuple[str, list[dict]]:
+    """Condense a sub-agent's answer for its parent, renaming its sources."""
+    namespaced, source_id_map = namespace_sources(sources, namespace)
+    summary = truncate_citation_text(
+        rewrite_citation_ids(text or "", source_id_map), 1000
+    )
+    if not summary:
+        return "(no output)", namespaced
+    return render_citations_plain_text(summary, namespaced), namespaced
+
+
+def _citation_source_context(sources: list[dict]) -> str:
+    if not sources:
+        return ""
+    lines = []
+    for source in sources:
+        source_id = source.get("id")
+        description = f"[{source_id}] {source.get('title') or source_id}"
+        if url := source.get("url"):
+            description += f" ({url})"
+        lines.append(description)
+    return "\n\nCitable sources imported from the sub-agent:\n" + "\n".join(lines)
+
+
+def is_subagent_of(chat, parent_chat_id: Optional[str]) -> bool:
+    """Whether ``chat`` is a sub-agent spawned by ``parent_chat_id``."""
+    config = (chat.config or {}) if chat is not None else {}
+    return (
+        bool(parent_chat_id)
+        and config.get("platform") == "subagent"
+        and config.get("parent_chat_id") == parent_chat_id
+    )
+
+
+def queue_subagent_reply(
+    subagent_chat,
+    *,
+    message_id: str,
+    request: str,
+    reply_text: Optional[str],
+    citation_sources: list[dict],
+) -> None:
+    """Wake the parent with a sub-agent's answer to a message it sent."""
+    from suzent.core.agent_inbox import enqueue_agent_message
+    from suzent.prompts import SUBAGENT_REPLY
+
+    config = subagent_chat.config or {}
+    task_id = config.get("subagent_task_id") or subagent_chat.id
+    # Each reply needs its own source ids: the parent keeps every earlier
+    # reply's sources, and a second "sa_<task>_src_1" would collide with them.
+    summary, sources = summarize_agent_output(
+        reply_text, citation_sources, f"{task_id}_{message_id[-8:]}"
+    )
+    # The id is derived from the parent's message, so a delivery retried after
+    # this failed queues the reply once rather than twice.
+    enqueue_agent_message(
+        message_id=f"subagent-reply-{message_id}",
+        sender_chat_id=subagent_chat.id,
+        target_chat_id=config["parent_chat_id"],
+        content=SUBAGENT_REPLY.format(
+            task_id=task_id, request=request[:300], reply=summary
+        )
+        + _citation_source_context(sources),
+        kind="subagent_result",
+        payload={
+            "task_id": task_id,
+            "status": "completed",
+            "citation_sources": sources,
+        },
+    )
+
+
 def _queue_parent_wakeup(task: SubAgentTask) -> None:
     """Persist a completion or failure message for the parent agent."""
     from suzent.core.agent_inbox import enqueue_agent_message
     from suzent.prompts import SUBAGENT_WAKEUP_SINGLE, SUBAGENT_WORKTREE_KEPT
 
     if task.status == "completed":
-        source_context = ""
-        if task.citation_sources:
-            lines = []
-            for source in task.citation_sources:
-                source_id = source.get("id")
-                title = source.get("title") or source_id
-                url = source.get("url")
-                description = f"[{source_id}] {title}"
-                if url:
-                    description += f" ({url})"
-                lines.append(description)
-            source_context = (
-                "\n\nCitable sources imported from the sub-agent:\n" + "\n".join(lines)
-            )
-        content = (
-            SUBAGENT_WAKEUP_SINGLE.format(
-                task_id=task.task_id,
-                model_override=task.model_override or "(default)",
-                description=task.description[:300],
-                result_summary=task.result_summary or "(no output)",
-            )
-            + source_context
-        )
+        content = SUBAGENT_WAKEUP_SINGLE.format(
+            task_id=task.task_id,
+            model_override=task.model_override or "(default)",
+            description=task.description[:300],
+            result_summary=task.result_summary or "(no output)",
+        ) + _citation_source_context(task.citation_sources)
     else:
         content = (
             f"Sub-agent {task.task_id} failed.\n"
@@ -1216,7 +1375,9 @@ async def steer_subagent(task_id: str, message: str) -> Optional[str]:
     inject = getattr(control, "inject", None) if control is not None else None
     if inject is None:
         return None
-    return inject(f"[User interrupted to redirect]: {message}")
+    from suzent.core.chat_processor import build_steering_text
+
+    return inject(build_steering_text(message))
 
 
 async def stop_subagents_for_parent(parent_chat_id: str) -> list[str]:

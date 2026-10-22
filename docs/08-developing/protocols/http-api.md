@@ -102,6 +102,16 @@ anything the agent worked out on its own — see
 | PUT | `/heartbeat/md` | Update HEARTBEAT.md content |
 | PUT | `/heartbeat/interval` | Set interval (`{"interval_minutes": N}`) |
 
+### Focal Agent (Regent)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/focal` | Create the Focal chat if needed; return its presence status |
+| GET | `/focal/panel` | Fixed tool list and scheduled wake-ups |
+| DELETE | `/focal/wakeups/{job_id}` | Cancel one of the Focal Agent's own wake-ups |
+
+See [Focal Agent](../architecture/focal-agent.md).
+
 
 ### Scheduler architecture
 

@@ -319,7 +319,17 @@ export function processEvent(
       const name = data.name as string;
       const value = data.value;
 
-      if (name === 'tool_permission_decision') {
+      if (name === 'shell_output_delta') {
+        const update = value as { toolCallId?: string; stream?: string; delta?: string };
+        const index = update.toolCallId ? findLastToolPartIndex(next, update.toolCallId) : -1;
+        if (index >= 0 && next[index].state !== 'completed' && typeof update.delta === 'string') {
+          const prefix = update.stream === 'stderr' ? '[stderr]\n' : '';
+          next[index] = {
+            ...next[index],
+            output: (next[index].output || '') + prefix + update.delta,
+          };
+        }
+      } else if (name === 'tool_permission_decision') {
         const decision = value as NonNullable<AGUIPart['permissionDecision']>;
         const tcId = decision.toolCallId;
         const existingIndex = findLastToolPartIndex(next, tcId);
@@ -376,6 +386,15 @@ export function processEvent(
           const existing = next.findIndex((p) => p.acpPermission?.requestId === req.requestId);
           if (existing >= 0) next[existing] = { ...next[existing], acpPermission: req };
           else next.push({ type: 'acp-permission', acpPermission: req });
+        }
+      } else if (name === 'incoming_message') {
+        const incoming = value as { content?: string; persisted?: boolean };
+        if (incoming?.content) {
+          next.push({
+            type: 'incoming-message',
+            text: incoming.content,
+            ...(incoming.persisted ? { persisted: true } : {}),
+          });
         }
       } else if (name === 'acp.session_reset') {
         const notice = value as Record<string, unknown>;

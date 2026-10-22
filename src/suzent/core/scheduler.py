@@ -23,7 +23,7 @@ from croniter import croniter
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
-from suzent.core.heartbeat import HEARTBEAT_OK
+from suzent.core.heartbeat import HEARTBEAT_OK, ChatBusyError
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
@@ -219,6 +219,8 @@ HEARTBEAT_SOURCE = "heartbeat"
 # Must exceed the runner's own 20s pickup window, so a heartbeat that *was*
 # claimed is never offered a second time.
 HEARTBEAT_PICKUP_RETRY = timedelta(seconds=60)
+# How soon a task whose chat turned out to be busy is tried again.
+BUSY_CHAT_RETRY = timedelta(seconds=60)
 
 
 def _parse_heartbeat_last_run(cfg: dict) -> Optional[datetime]:
@@ -407,11 +409,6 @@ def ensure_cron_presets(db, activate_existing: bool = False) -> dict:
         "unchanged": unchanged,
         "skipped": skipped,
     }
-
-
-# Shim for any callers that still reference the old name.
-def ensure_wiki_cron_presets(db, activate_existing: bool = False) -> dict:
-    return ensure_cron_presets(db, activate_existing=activate_existing)
 
 
 class SchedulerBrain(BaseBrain):
@@ -748,6 +745,17 @@ class SchedulerBrain(BaseBrain):
                         }
                     )
 
+        except ChatBusyError:
+            # The chat started a run between dispatch and this turn. Like the
+            # busy check at dispatch, that is not a failure: try again shortly
+            # without spending a retry, and never retire a one-shot over it.
+            db.finish_cron_run(run_id, "skipped", error="Chat was busy; retrying")
+            db.update_cron_job_run_state(
+                job_id, next_run_at=datetime.now() + BUSY_CHAT_RETRY
+            )
+            logger.debug(
+                f"Chat {chat_id} became busy; retrying scheduled task {job_id}"
+            )
         except Exception as e:
             logger.error(f"Scheduled task {job_id} execution failed: {e}")
             db.finish_cron_run(run_id, "error", error=str(e))

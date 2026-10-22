@@ -24,6 +24,7 @@ from pathlib import Path
 
 import psutil
 import typer
+from suzent import network_region
 from suzent.config import DEFAULT_PORT, RUNTIME_DIR
 from suzent.version import (
     UNKNOWN,
@@ -333,16 +334,19 @@ def _graphical_update_available() -> bool:
 
 
 def _fetch_latest_release(timeout: float = 10.0) -> dict:
-    url = f"https://api.github.com/repos/{_REPO}/releases/latest"
-    req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+    return network_region.fetch_latest_release(timeout=timeout)
 
 
-def _release_asset_url(asset_name: str, version: str) -> str:
-    if version == "latest":
-        return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
-    return f"https://github.com/{_REPO}/releases/download/{version}/{asset_name}"
+def _download_release_asset(asset_name: str, version: str, dest: Path) -> None:
+    """Download from the first release source that serves the asset."""
+    errors = []
+    for url in network_region.release_asset_urls(asset_name, version):
+        try:
+            _download_file_atomic(url, dest)
+            return
+        except OSError as error:
+            errors.append(f"{url}: {error}")
+    raise OSError("; ".join(errors))
 
 
 def _parse_release_checksum(contents: str, asset_name: str) -> str:
@@ -358,17 +362,20 @@ def _parse_release_checksum(contents: str, asset_name: str) -> str:
     raise ValueError(f"SHA256SUMS has no valid entry for {asset_name}")
 
 
+def _release_checksums(release_tag: str) -> str:
+    errors = []
+    for url in network_region.release_asset_urls("SHA256SUMS", release_tag):
+        request = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8")
+        except OSError as error:
+            errors.append(f"{url}: {error}")
+    raise OSError("; ".join(errors))
+
+
 def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None:
-    checksum_url = _release_asset_url("SHA256SUMS", release_tag)
-    request = urllib.request.Request(
-        checksum_url,
-        headers={"User-Agent": "suzent-updater"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        expected = _parse_release_checksum(
-            response.read().decode("utf-8"),
-            asset_name,
-        )
+    expected = _parse_release_checksum(_release_checksums(release_tag), asset_name)
     digest = hashlib.sha256()
     with path.open("rb") as file:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
@@ -378,6 +385,40 @@ def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None
         raise ValueError(
             f"Checksum mismatch for {asset_name}: expected {expected}, found {actual}"
         )
+
+
+WEBUI_ASSET = "suzent-webui.zip"
+
+
+def _fetch_release_webui(root: Path) -> bool:
+    """Install the web UI bundle released for this checkout's stable tag.
+
+    Covers an install whose setup ran before the asset existed, or whose
+    download failed. Source checkouts have no matching asset and build their own.
+    """
+    release_file = root / ".suzent" / "release-tag"
+    release_tag = (
+        release_file.read_text(encoding="utf-8").strip()
+        if release_file.exists()
+        else ""
+    )
+    script = root / "scripts" / "build_webui.py"
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag) or not script.is_file():
+        return False
+    typer.echo(f"  • Downloading the web UI for {release_tag}...")
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / WEBUI_ASSET
+        try:
+            _download_release_asset(WEBUI_ASSET, release_tag, archive)
+            _verify_release_asset(archive, WEBUI_ASSET, release_tag)
+        except (OSError, ValueError) as error:
+            typer.echo(f"  ❌ Web UI download failed: {error}")
+            return False
+        result = subprocess.run(
+            [sys.executable, str(script), "--install-archive", str(archive)],
+            cwd=str(root),
+        )
+    return result.returncode == 0
 
 
 def _local_ui_version(root: Path) -> str:
@@ -635,7 +676,7 @@ def _install_release_updater(release_tag: str) -> Path:
     asset = _platform_installer_asset_name()
     staged = updater.with_name(f".{updater.name}.{release_tag}.new")
     try:
-        _download_file_atomic(_release_asset_url(asset, release_tag), staged)
+        _download_release_asset(asset, release_tag, staged)
         _verify_release_asset(staged, asset, release_tag)
         if not IS_WINDOWS:
             staged.chmod(0o755)
@@ -753,7 +794,7 @@ def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
         staged_version = version_file.with_name(f".{version_file.name}.{version}.new")
 
         typer.echo("  • Downloading UI binary...")
-        _download_file_atomic(_release_asset_url(asset_name, version), staged_binary)
+        _download_release_asset(asset_name, version, staged_binary)
         if not IS_WINDOWS:
             staged_binary.chmod(0o755)
         staged_version.write_text(version, encoding="utf-8")
@@ -1834,10 +1875,13 @@ def register_commands(app: typer.Typer):
         """
         from suzent.webui import webui_available
 
+        fetched = False
         if not webui_available():
-            typer.echo("ERROR  No web UI is built into this install.")
-            typer.echo("   Build it with: python scripts/build_webui.py")
-            raise typer.Exit(code=1)
+            fetched = _fetch_release_webui(get_project_root())
+            if not fetched:
+                typer.echo("ERROR  No web UI is built into this install.")
+                typer.echo("   Build it with: python scripts/build_webui.py")
+                raise typer.Exit(code=1)
 
         if foreground:
             _web_foreground(port, host, debug, open_browser)
@@ -1847,6 +1891,13 @@ def register_commands(app: typer.Typer):
 
         controller = get_service_controller()
         status = controller.status()
+
+        if status.running and fetched:
+            # The web routes are registered at startup, so a backend that
+            # started without a bundle serves none until it restarts.
+            typer.echo("Restarting the Suzent service to serve the web UI...")
+            controller.restart()
+            status = controller.status()
 
         if status.running:
             if not status.ready:
@@ -1858,6 +1909,14 @@ def register_commands(app: typer.Typer):
         # `suzent serve`, or the backend the desktop app launched. Reuse it
         # rather than starting a second backend that would lose the port race.
         if _is_suzent_server_running("127.0.0.1", port):
+            if fetched:
+                # It registered its routes before the bundle existed, and this
+                # command does not own it, so it cannot restart it either.
+                typer.echo(
+                    f"The Suzent backend at http://127.0.0.1:{port}/ started "
+                    "before the web UI was installed. Restart it to serve the UI."
+                )
+                raise typer.Exit(code=1)
             typer.echo(f"OK  Suzent is already serving at http://127.0.0.1:{port}/")
             if open_browser:
                 webbrowser.open(f"http://127.0.0.1:{port}/")
@@ -2192,7 +2251,16 @@ def register_commands(app: typer.Typer):
             run_command(["git", "fetch"], cwd=root)
             run_command(["git", "merge", "--ff-only", "@{upstream}"], cwd=root)
             return
-        run_command(["git", "fetch", "origin", "tag", release_tag], cwd=root)
+        # An install cloned from GitHub may sit behind the firewall now, so
+        # China mode retries the tag from the source mirrors.
+        remotes = ["origin", *network_region.repo_sources()]
+        for index, remote in enumerate(remotes):
+            try:
+                run_command(["git", "fetch", remote, "tag", release_tag], cwd=root)
+                break
+            except subprocess.CalledProcessError:
+                if index == len(remotes) - 1:
+                    raise
         run_command(["git", "checkout", "--detach", release_tag], cwd=root)
 
     def _restore_stashed_changes(root: Path, stashed: bool) -> None:
@@ -2431,6 +2499,7 @@ def register_commands(app: typer.Typer):
                 ["uv", "run", "playwright", "install", "chromium"],
                 cwd=root,
                 shell_on_windows=True,
+                env=network_region.mirror_env(),
             )
         except subprocess.CalledProcessError:
             typer.echo(

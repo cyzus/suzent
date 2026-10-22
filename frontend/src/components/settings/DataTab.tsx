@@ -29,7 +29,7 @@ export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): Re
 
       {notification && (
         <div
-          className={`border-2 border-brutal-black p-3 font-mono text-sm shadow-brutal-sm ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}
+          className={`border-2 border-brutal-black p-3 font-mono text-sm shadow-brutal-sm ${notification.isError ? 'bg-red-100 text-brutal-black dark:bg-red-400/10 dark:text-red-300 dark:border-red-400/25' : 'bg-green-100 text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25'}`}
         >
           {notification.text}
         </div>

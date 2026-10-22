@@ -165,6 +165,41 @@ fn start_update_and_restart(
 }
 
 #[tauri::command]
+fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    window
+        .set_decorations(enabled)
+        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        let style = if enabled {
+            tauri::TitleBarStyle::Overlay
+        } else {
+            tauri::TitleBarStyle::Visible
+        };
+        // On macOS the decorations change lands asynchronously and rebuilds
+        // the style mask without the full-size content flag. Set straight
+        // away, the title bar style is applied first and then wiped, and the
+        // web content sits a title bar lower than the page thinks, so every
+        // click lands off the pointer (tauri#10225). Apply it afterwards.
+        let styled = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            if let Err(error) = styled.set_title_bar_style(style) {
+                eprintln!("Could not restore the title bar style: {error}");
+            }
+        });
+        window
+            .set_title(if enabled {
+                ""
+            } else {
+                "SUZENT - Your Personal Agent"
+            })
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn restart_app(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     {
         let mut backend_guard = state
@@ -816,6 +851,7 @@ fn main() {
             check_for_update,
             start_update_and_restart,
             restart_app,
+            set_startup_window_controls,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,

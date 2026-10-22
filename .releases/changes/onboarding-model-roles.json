@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add standalone two-step model setup with optional connection checks and explicit role recommendations."
+}

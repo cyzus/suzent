@@ -1,3 +1,4 @@
+import { BrutalButton } from '../BrutalButton';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
@@ -115,6 +116,17 @@ export function AboutTab(): React.ReactElement {
   return (
     <SettingsPage>
       <SettingsHeader title={t('settings.about.title')} subtitle={t('settings.about.subtitle')} />
+      <div>
+        <BrutalButton
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            window.location.hash = '#/setup';
+          }}
+        >
+          {t('onboarding.restart')}
+        </BrutalButton>
+      </div>
 
       <SettingsCard className="overflow-hidden">
         <div className="flex flex-col items-center text-center py-4">

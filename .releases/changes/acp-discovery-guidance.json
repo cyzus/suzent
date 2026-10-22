@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks."
+}

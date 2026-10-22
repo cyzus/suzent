@@ -266,6 +266,35 @@ def test_ask_question_stream_timeout_waits_for_the_user():
     assert streaming._tool_timeout_from_event(event) == math.inf
 
 
+def test_draft_accumulator_keeps_bounded_live_shell_output():
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc.apply(
+        SimpleNamespace(
+            type="TOOL_CALL_START", tool_call_id="call-1", tool_call_name="run_command"
+        )
+    )
+    acc.dirty = False
+    acc.apply(
+        CustomEvent(
+            name="shell_output_delta",
+            value={"toolCallId": "call-1", "stream": "stderr", "delta": "x" * 140000},
+        )
+    )
+
+    assert acc.dirty is True
+    assert len(acc.parts[0]["output"]) == 128 * 1024
+    acc.apply(
+        SimpleNamespace(type="TOOL_CALL_RESULT", tool_call_id="call-1", content="done")
+    )
+    acc.apply(
+        CustomEvent(
+            name="shell_output_delta",
+            value={"toolCallId": "call-1", "stream": "stdout", "delta": "late"},
+        )
+    )
+    assert acc.parts[0]["output"] == "done"
+
+
 def test_draft_accumulator_persists_citation_sources():
     acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
 
@@ -839,3 +868,18 @@ def test_draft_accumulator_keeps_deferred_surfaces_out_of_the_draft():
     )
 
     assert [part["surface"]["id"] for part in acc.parts] == ["results"]
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ({"agent_id": "sub_1", "message": "Go on", "wait": True}, math.inf),
+        ({"agent_id": "sub_1", "message": "Go on"}, 60.0),
+    ],
+)
+def test_agent_send_waits_without_timeout_only_when_waiting(args, expected):
+    event = FunctionToolCallEvent(
+        ToolCallPart(tool_name="agent_send", args=args, tool_call_id="call-1")
+    )
+
+    assert streaming._tool_timeout_from_event(event) == expected

@@ -513,6 +513,13 @@ const BUILDERS: Record<string, Builder> = {
       id && message ? `${id} · ${compact(message)}` : (id ?? (message && compact(message)));
     return { verb: verb(t, 'messageAgent'), detail: detail || null };
   },
+  agent_dispatch: (args, t) => {
+    const id = str(args.agent_id);
+    const message = str(args.message);
+    const detail =
+      id && message ? `${id} · ${compact(message)}` : (id ?? (message && compact(message)));
+    return { verb: verb(t, 'messageAgent'), detail: detail || null };
+  },
   agent_stop: (args, t) => ({ verb: verb(t, 'stopAgent'), detail: str(args.agent_id) }),
 };
 

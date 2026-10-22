@@ -224,7 +224,29 @@ Task: {description}
 
 Result:
 {result_summary}
+
+To correct, extend, or question this work, send `{task_id}` a message with agent_send. \
+It keeps everything it read and did, so a follow-up costs less than a new sub-agent.
 """
+
+SUBAGENT_REPLY = """
+Sub-agent `{task_id}` replied to your message.
+Your message: {request}
+
+Reply:
+{reply}
+"""
+
+# Hidden reminder that resumes a sub-agent whose model call stalled mid-turn.
+SUBAGENT_STALL_RESUME = """\
+Your previous response was cut off because the connection to the model stalled. \
+Nothing from the unfinished step was kept. Continue the task from where it stands now; \
+if you were writing a large file, write it in smaller parts."""
+
+# Tool result for a blocking sub-agent that moved to the background after a stall.
+SUBAGENT_MOVED_TO_BACKGROUND = """\
+Sub-agent {task_id} is still working, but its model stalled, so it now runs in the \
+background. Carry on with other work; its result arrives in this chat when it finishes."""
 
 SUBAGENT_WORKTREE_KEPT = """
 
@@ -250,6 +272,12 @@ UPLOAD_INDEX_REMINDER_TEMPLATE = """\
 The user attached {count} file(s): {paths}. When you first read one, add it to \
 the file index in context.md with its format, size, and key structure (such as \
 rows and columns), so later chats do not need to re-read it."""
+
+# Hidden (model-only) label prepended to a steer, so the transcript shows only
+# the words the user typed while the model still knows why the turn restarted.
+STEER_REMINDER = """\
+The user interrupted your previous response to redirect you. Follow the message \
+below instead of continuing what you were doing."""
 
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
@@ -620,6 +648,7 @@ DYNAMIC_SECTION_LAYERS: dict[str, PromptLayer] = {
     "inject_enabled_models": PromptLayer.RUNTIME,
     "inject_session_guidance": PromptLayer.RUNTIME,
     "inject_social_context": PromptLayer.RUNTIME,
+    "inject_focal_context": PromptLayer.RUNTIME,
     "inject_base_instructions": PromptLayer.USER_PREFERENCE,
     "inject_memory_context": PromptLayer.RETRIEVED_CONTEXT,
 }
@@ -773,6 +802,21 @@ def register_dynamic_instructions(
         if not ctx.deps.social_context:
             return ""
         return build_social_context(ctx.deps.social_context)
+
+    @agent.instructions
+    def inject_focal_context(ctx: Any) -> str:
+        from suzent.core.focal_agent import (
+            build_focal_global_context,
+            is_focal_chat_id,
+        )
+
+        try:
+            if not is_focal_chat_id(getattr(ctx.deps, "chat_id", None)):
+                return ""
+            return build_focal_global_context()
+        except Exception as e:
+            logger.warning(f"Focal Agent global context unavailable this run: {e}")
+            return ""
 
 
 async def render_core_memory(deps: Any) -> str:

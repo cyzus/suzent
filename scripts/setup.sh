@@ -4,7 +4,8 @@
 #   Fresh install:  curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
 #   Update:         suzent update   (or re-run this script inside the repo)
 #   Flags (env):    SUZENT_DIR=~/suzent  SUZENT_BRANCH=main  SUZENT_SKIP_PLAYWRIGHT=1
-#                   SUZENT_CHINA_MIRROR=1  SUZENT_REPO_URL=...  SUZENT_RELEASE_BASE_URL=...
+#                   SUZENT_CHINA_MIRROR=1|0 (default: detect from the network)
+#                   SUZENT_REPO_URL=...  SUZENT_RELEASE_BASE_URL=...
 
 set -euo pipefail
 
@@ -24,22 +25,67 @@ RELEASE_BASE_URL="${SUZENT_RELEASE_BASE_URL:-}"
 SUZENT_DIR="${SUZENT_DIR:-$HOME/suzent}"
 SUZENT_BRANCH_EXPLICIT="${SUZENT_BRANCH+x}"
 SUZENT_BRANCH="${SUZENT_BRANCH:-main}"
-CHINA_MIRROR="${SUZENT_CHINA_MIRROR:-0}"
 MIN_NODE_MAJOR=20
+STATE_DIR="$HOME/.suzent"
+MIRROR_RELEASE_BASE="https://registry.npmmirror.com/-/binary/suzent"
+GITHUB_RELEASE_BASE="https://github.com/cyzus/suzent/releases/download"
+PYPI_MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# on/off from a flag value; anything else (including "auto") means detect.
+parse_mirror_choice() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+        1|true|yes|on|cn|china) echo 1 ;;
+        0|false|no|off|global) echo 0 ;;
+        *) echo "" ;;
+    esac
+}
+
+# Mirrors are needed when a global endpoint is unreachable but a domestic one
+# answers -- i.e. the network this machine is on, not its language.
+detect_china_network() {
+    if curl -fsS -o /dev/null --connect-timeout 4 --max-time 4 https://www.google.com/generate_204 2>/dev/null; then
+        echo 0
+    elif curl -sS -o /dev/null --connect-timeout 4 --max-time 4 https://registry.npmmirror.com/ 2>/dev/null; then
+        echo 1
+    else
+        echo 0
+    fi
+}
+
+CHINA_MIRROR="$(parse_mirror_choice "${SUZENT_CHINA_MIRROR:-}")"
+[ -n "$CHINA_MIRROR" ] || CHINA_MIRROR="$(parse_mirror_choice "$(cat "$STATE_DIR/china-mirror" 2>/dev/null)")"
+CHINA_MIRROR_DETECTED=false
+if [ -z "$CHINA_MIRROR" ]; then
+    CHINA_MIRROR="$(detect_china_network)"
+    CHINA_MIRROR_DETECTED=true
+fi
+
+china_mirror_enabled() {
+    [ "$CHINA_MIRROR" = "1" ]
+}
 
 enable_china_mirrors() {
-    case "$CHINA_MIRROR" in
-        1|true|TRUE|yes|YES|cn|CN) ;;
-        *) return ;;
-    esac
+    mkdir -p "$STATE_DIR"
+    # Read by the backend and `suzent update` (see suzent/network_region.py).
+    if china_mirror_enabled; then echo china; else echo global; fi > "$STATE_DIR/network-region"
+    china_mirror_enabled || return 0
+    if [ "$CHINA_MIRROR_DETECTED" = true ]; then
+        info "Mainland China network detected. Set SUZENT_CHINA_MIRROR=0 to use the default sources."
+    fi
 
     export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+    export UV_PYTHON_INSTALL_MIRROR="${UV_PYTHON_INSTALL_MIRROR:-https://registry.npmmirror.com/-/binary/python-build-standalone}"
     export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
     export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright}"
+    # Playwright's Chromium is a Chrome for Testing build with its own URL
+    # layout, except on Linux arm64 where Playwright ships its own builds.
+    if [ "$(uname -s)-$(uname -m)" != "Linux-aarch64" ]; then
+      export PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST="${PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST:-https://cdn.npmmirror.com/binaries/chrome-for-testing}"
+    fi
     export NVM_NODEJS_ORG_MIRROR="${NVM_NODEJS_ORG_MIRROR:-https://npmmirror.com/mirrors/node}"
     export RUSTUP_DIST_SERVER="${RUSTUP_DIST_SERVER:-https://mirrors.tuna.tsinghua.edu.cn/rustup}"
     export RUSTUP_UPDATE_ROOT="${RUSTUP_UPDATE_ROOT:-https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup}"
-    info "China mirror mode enabled for PyPI, npm, Playwright, Node, and Rustup."
+    info "China mirror mode enabled for Python, PyPI, npm, Playwright, Node, and Rustup."
 }
 
 # ── Banner ────────────────────────────────────────────────────────────────────
@@ -74,20 +120,35 @@ if [ -z "$SUZENT_BRANCH_EXPLICIT" ] && [ "${SUZENT_DEV_SETUP:-0}" != "1" ]; then
     RELEASE_TAG="${SUZENT_RELEASE_TAG:-}"
     if [ -z "$RELEASE_TAG" ]; then
         info "Resolving latest stable release..."
-        release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-            https://github.com/cyzus/suzent/releases/latest)" \
-            || die "Could not resolve the latest stable release."
-        RELEASE_TAG="${release_url##*/}"
+        # The mirror first in China mode, so the version is one it can serve.
+        if china_mirror_enabled; then
+            RELEASE_TAG="$(curl -fsSL --max-time 15 "$MIRROR_RELEASE_BASE/" 2>/dev/null \
+                | grep -oE '"name": *"v[0-9]+\.[0-9]+\.[0-9]+/"' \
+                | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' \
+                | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -n 1 || true)"
+        fi
+        if [ -z "$RELEASE_TAG" ]; then
+            release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+                https://github.com/cyzus/suzent/releases/latest)" \
+                || die "Could not resolve the latest stable release."
+            RELEASE_TAG="${release_url##*/}"
+        fi
     fi
     [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
         || die "Invalid stable release tag: $RELEASE_TAG"
     INSTALL_REF="$RELEASE_TAG"
-    [ -n "$RELEASE_BASE_URL" ] \
-        || RELEASE_BASE_URL="https://github.com/cyzus/suzent/releases/download/$RELEASE_TAG"
     info "Installing matched stable release $RELEASE_TAG"
+fi
+
+# Release download sources in the order to try them.
+if [ -n "$RELEASE_BASE_URL" ]; then
+    RELEASE_BASES=("${RELEASE_BASE_URL%/}")
+elif [ -z "$RELEASE_TAG" ]; then
+    RELEASE_BASES=("https://github.com/cyzus/suzent/releases/latest/download")
+elif china_mirror_enabled; then
+    RELEASE_BASES=("$MIRROR_RELEASE_BASE/$RELEASE_TAG" "$GITHUB_RELEASE_BASE/$RELEASE_TAG")
 else
-    [ -n "$RELEASE_BASE_URL" ] \
-        || RELEASE_BASE_URL="https://github.com/cyzus/suzent/releases/latest/download"
+    RELEASE_BASES=("$GITHUB_RELEASE_BASE/$RELEASE_TAG")
 fi
 
 # ── Helper: refresh PATH after install ───────────────────────────────────────
@@ -114,6 +175,91 @@ add_to_path_config() {
     echo "" >> "$cfg"
     echo "export PATH=\"$dir:\$PATH\"" >> "$cfg"
     warn "Added $dir to PATH in $cfg — run: source $cfg"
+}
+
+# ── Helper: verified release downloads ──────────────────────────────────────
+sha256_of() {
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+# download_release_asset <asset> <destination>: tries each release source in
+# turn and keeps the first download that matches the release's SHA256SUMS, so
+# a mirror can make a download faster but never different.
+download_release_asset() {
+    local asset="$1" dest="$2" base sums expected actual tmp
+    tmp="$dest.download"
+    for base in "${RELEASE_BASES[@]}"; do
+        sums="$(curl -fsSL --connect-timeout 15 --max-time 60 "$base/SHA256SUMS" 2>/dev/null || true)"
+        expected="$(printf '%s\n' "$sums" | awk -v name="$asset" '{ file = $2; sub(/^\*/, "", file) } file == name { print tolower($1); exit }')"
+        if [ -n "$RELEASE_TAG" ] && [ -z "$expected" ]; then
+            warn "No checksum for $asset at $base; trying the next source."
+            continue
+        fi
+        if ! curl --connect-timeout 15 --max-time 300 -fL "$base/$asset" -o "$tmp"; then
+            warn "Download from $base failed; trying the next source."
+            continue
+        fi
+        actual="$(sha256_of "$tmp")"
+        if [ -n "$expected" ] && [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
+            warn "Checksum mismatch for $asset from $base; trying the next source."
+            continue
+        fi
+        mv "$tmp" "$dest"
+        return 0
+    done
+    rm -f "$tmp"
+    return 1
+}
+
+# ── Helper: uv from the PyPI mirror ──────────────────────────────────────────
+# The official uv installer downloads the binary from GitHub. uv is also
+# published as a wheel on PyPI, which the Tsinghua mirror serves domestically.
+install_uv_from_mirror() {
+    local platform page href url expected tmp wheel version
+    case "$(uname -s)-$(uname -m)" in
+        Darwin-arm64) platform="macosx_11_0_arm64" ;;
+        Darwin-x86_64) platform="macosx_10_12_x86_64" ;;
+        Linux-x86_64) platform="manylinux_2_17_x86_64" ;;
+        Linux-aarch64|Linux-arm64) platform="manylinux_2_17_aarch64" ;;
+        *) return 1 ;;
+    esac
+    page="$(curl -fsSL --max-time 30 "$PYPI_MIRROR/uv/")" || return 1
+    href="$(printf '%s' "$page" | grep -oE 'href="[^"]*uv-[0-9]+\.[0-9]+\.[0-9]+-[^"]*'"$platform"'[^"]*\.whl#sha256=[0-9a-f]+' \
+        | sed 's/^href="//' \
+        | awk -F'uv-' '{ split($NF, v, "-"); print v[1] "\t" $0 }' \
+        | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | cut -f2-)"
+    [ -n "$href" ] || return 1
+    expected="${href##*#sha256=}"
+    case "$href" in
+        http*) url="${href%%#*}" ;;
+        /*) url="$(printf '%s' "$PYPI_MIRROR" | grep -oE '^https?://[^/]+')${href%%#*}" ;;
+        *) url="$PYPI_MIRROR/uv/${href%%#*}" ;;
+    esac
+    tmp="$(mktemp -d)"
+    wheel="$tmp/uv.whl"
+    if ! curl -fsSL --max-time 300 "$url" -o "$wheel" \
+        || [ "$(sha256_of "$wheel")" != "$expected" ]; then
+        rm -rf "$tmp"
+        return 1
+    fi
+    version="$(basename "${url}" | cut -d- -f2)"
+    if command -v unzip &>/dev/null; then
+        unzip -q -o "$wheel" "uv-$version.data/scripts/*" -d "$tmp" || { rm -rf "$tmp"; return 1; }
+    elif command -v python3 &>/dev/null; then
+        python3 -m zipfile -e "$wheel" "$tmp" || { rm -rf "$tmp"; return 1; }
+    else
+        rm -rf "$tmp"
+        return 1
+    fi
+    mkdir -p "$HOME/.local/bin"
+    install -m 755 "$tmp/uv-$version.data/scripts/uv" "$HOME/.local/bin/uv" || { rm -rf "$tmp"; return 1; }
+    [ -f "$tmp/uv-$version.data/scripts/uvx" ] && install -m 755 "$tmp/uv-$version.data/scripts/uvx" "$HOME/.local/bin/uvx"
+    rm -rf "$tmp"
+    export PATH="$HOME/.local/bin:$PATH"
 }
 
 # ── Check: git ────────────────────────────────────────────────────────────────
@@ -165,15 +311,26 @@ check_node() {
     return 1
 }
 
+# Normal installs only need Node.js for optional coding-agent integrations
+# (they run through npx), so a failed install is a warning there.
 if ! check_node; then
-    install_node
-    check_node || die "Node.js installation failed. Install v${MIN_NODE_MAJOR}+ from https://nodejs.org/ and re-run."
+    install_node || true
+    if ! check_node; then
+        [ "${SUZENT_DEV_SETUP:-0}" = "1" ] \
+            && die "Node.js installation failed. Install v${MIN_NODE_MAJOR}+ from https://nodejs.org/ and re-run."
+        warn "Node.js v${MIN_NODE_MAJOR}+ is not installed. Suzent works without it; install it from https://nodejs.org/ (or https://npmmirror.com/mirrors/node/) to use coding-agent integrations."
+    fi
 fi
 
 # ── Check/install: uv ────────────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
-    info "Installing uv..."
-    curl -LsSf "$UV_INSTALL_URL" | sh
+    if china_mirror_enabled && install_uv_from_mirror; then
+        ok "uv installed from the PyPI mirror"
+    else
+        china_mirror_enabled && warn "uv mirror install failed; trying the official installer."
+        info "Installing uv..."
+        curl -LsSf "$UV_INSTALL_URL" | sh
+    fi
     refresh_path
 fi
 command -v uv &>/dev/null || die "uv installation failed. See https://docs.astral.sh/uv/"
@@ -211,6 +368,12 @@ if [ "$OS" = "Darwin" ]; then
 fi
 
 # ── Clone or update repo ──────────────────────────────────────────────────────
+# China mode clones from the Gitee mirror first and falls back to GitHub.
+MIRROR_REPOS=()
+if [ -z "${SUZENT_REPO_URL:-}" ] && china_mirror_enabled; then
+    MIRROR_REPOS=("https://gitee.com/cyzus/suzent.git")
+fi
+
 if [ "$IS_UPDATE" = true ]; then
     info "Updating SUZENT in $SUZENT_DIR..."
     cd "$SUZENT_DIR"
@@ -222,7 +385,11 @@ if [ "$IS_UPDATE" = true ]; then
     fi
 
     if [ -n "$RELEASE_TAG" ]; then
-        git fetch "$UPDATE_REMOTE" tag "$INSTALL_REF"
+        fetched=false
+        for remote in "$UPDATE_REMOTE" ${MIRROR_REPOS[@]+"${MIRROR_REPOS[@]}"} "$REPO_URL"; do
+            if git fetch "$remote" tag "$INSTALL_REF"; then fetched=true; break; fi
+        done
+        [ "$fetched" = true ] || die "Could not fetch $INSTALL_REF - check the network and re-run."
         git checkout --detach "$INSTALL_REF"
     else
         git fetch "$UPDATE_REMOTE" "$INSTALL_REF"
@@ -235,7 +402,19 @@ else
         die "Directory $SUZENT_DIR already exists but is not a git repo. Remove it or set SUZENT_DIR to a different path."
     fi
     info "Cloning SUZENT into $SUZENT_DIR..."
-    git clone --branch "$INSTALL_REF" "$REPO_URL" "$SUZENT_DIR"
+    # Only developers need the history. Skipping it cuts the download from
+    # ~130k objects to ~18 MB, and later fast-forward updates still work.
+    clone_depth=(--depth 1)
+    [ "${SUZENT_DEV_SETUP:-0}" = "1" ] && clone_depth=()
+    cloned=false
+    for source in ${MIRROR_REPOS[@]+"${MIRROR_REPOS[@]}"} "$REPO_URL"; do
+        info "Cloning from $source"
+        if git clone ${clone_depth[@]+"${clone_depth[@]}"} --branch "$INSTALL_REF" "$source" "$SUZENT_DIR"; then
+            cloned=true
+            break
+        fi
+    done
+    [ "$cloned" = true ] || die "git clone failed - check the network and re-run."
     ok "Repository cloned"
     cd "$SUZENT_DIR"
 fi
@@ -254,8 +433,27 @@ else
 fi
 
 # ── Install / sync Python dependencies ───────────────────────────────────────
-info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
-uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
+# uv sync --frozen downloads every wheel from the URL recorded in uv.lock
+# (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode the
+# same locked, hash-pinned set is installed through the mirror instead.
+sync_python_deps_via_mirror() {
+    local requirements status
+    requirements="$(mktemp)"
+    uv export --frozen --extra social --quiet -o "$requirements" \
+        && uv venv --allow-existing --quiet \
+        && uv pip sync "$requirements"
+    status=$?
+    rm -f "$requirements"
+    return $status
+}
+
+if china_mirror_enabled; then
+    info "Syncing Python dependencies with social channel support through the PyPI mirror..."
+    sync_python_deps_via_mirror || die "Python dependency install failed — check errors above."
+else
+    info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+    uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
+fi
 ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────
@@ -274,18 +472,11 @@ download_binary() {
     esac
 
     mkdir -p bin
-    local url tmp
-    url="${RELEASE_BASE_URL%/}/$asset"
-    tmp="bin/suzent-ui.tmp"
-
     info "Downloading pre-built UI binary..."
-    if ! curl --connect-timeout 15 --max-time 300 -fL "$url" -o "$tmp"; then
-        rm -f "$tmp"
+    if ! download_release_asset "$asset" "bin/suzent-ui"; then
         warn "UI binary download failed. Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
         return 1
     fi
-
-    mv "$tmp" "bin/suzent-ui"
     chmod +x "bin/suzent-ui"
     echo "${RELEASE_TAG:-latest}" > "bin/version.txt"
     ok "UI binary ready (bin/suzent-ui)"
@@ -305,24 +496,45 @@ download_updater() {
         *) return ;;
     esac
 
-    local updater_dir dest tmp url
+    local updater_dir dest
     updater_dir="$HOME/.suzent/updater"
     dest="$updater_dir/suzent-installer"
-    tmp="$dest.tmp"
-    url="${RELEASE_BASE_URL%/}/$asset"
     mkdir -p "$updater_dir"
     info "Downloading standalone updater..."
-    if ! curl --connect-timeout 15 --max-time 300 -fL "$url" -o "$tmp"; then
-        rm -f "$tmp"
+    if ! download_release_asset "$asset" "$dest"; then
         warn "Standalone updater download failed. The next 'suzent update' will retry automatically."
         return 1
     fi
-    mv "$tmp" "$dest"
     chmod +x "$dest"
     echo "${RELEASE_TAG:-latest}" > "$updater_dir/version.txt"
     ok "Standalone updater ready ($dest)"
 }
 download_updater || true
+
+# ── Download pre-built web UI ────────────────────────────────────────────────
+# `suzent web` serves src/suzent/webui/, which is built from frontend/ with
+# Node. A normal install has no Node, so it takes the bundle that release CI
+# built from this same tag. Developer setup builds its own below instead.
+download_webui() {
+    [ -n "$RELEASE_TAG" ] || return 0
+    local archive py
+    archive="$(mktemp)"
+    info "Downloading pre-built web UI..."
+    if ! download_release_asset "suzent-webui.zip" "$archive"; then
+        rm -f "$archive"
+        warn "Web UI download failed. 'suzent web' has no page to serve until the next update."
+        return 1
+    fi
+    py=".venv/bin/python"
+    [ -x "$py" ] || py="uv run python"
+    if $py scripts/build_webui.py --install-archive "$archive"; then
+        ok "Web UI ready (suzent web)"
+    else
+        warn "Web UI archive could not be unpacked (non-fatal)."
+    fi
+    rm -f "$archive"
+}
+[ "${SUZENT_DEV_SETUP:-0}" = "1" ] || download_webui || true
 
 install_dev_deps() {
     ensure_rust
@@ -388,6 +600,12 @@ printf 'protocol=1\n' > "$SUZENT_DIR/.suzent-bootstrap-complete"
 mkdir -p "$SUZENT_DIR/.suzent"
 printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
     > "$SUZENT_DIR/.suzent/update-channel"
+# `suzent web` and `suzent repair` read the installed release from here.
+if [ -n "$RELEASE_TAG" ]; then
+    printf '%s' "$RELEASE_TAG" > "$SUZENT_DIR/.suzent/release-tag"
+else
+    rm -f "$SUZENT_DIR/.suzent/release-tag"
+fi
 ok "Workspace marked as bootstrapped"
 
 # ── Launcher shortcuts ────────────────────────────────────────────────────────
@@ -415,8 +633,7 @@ if [ "$IS_UPDATE" = true ]; then
 else
     ok "SUZENT installed successfully!"
     echo ""
-    echo -e "  ${YELLOW}Next:${RESET} edit ${CYAN}$SUZENT_DIR/.env${RESET} with your API keys, then run:"
-    echo -e "  ${CYAN}suzent start${RESET}"
+    echo -e "  ${YELLOW}Next:${RESET} run ${CYAN}suzent start${RESET} and add a model provider in the setup screen."
     echo ""
     echo -e "  If 'suzent' is not found, restart your terminal or run:"
     echo -e "  ${CYAN}source ~/.bashrc${RESET}  (or ~/.zshrc)"
