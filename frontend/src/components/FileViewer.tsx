@@ -4,7 +4,7 @@ import { BrutalButton } from './BrutalButton';
 import { FilePreview } from './sidebar/FilePreview';
 import { isBinaryServedFile } from '../lib/fileUtils';
 import { useI18n } from '../i18n';
-import { FullscreenOverlay } from './FullscreenOverlay';
+import { WorkspacePanel } from './WorkspacePanel';
 import { useChatStore } from '../hooks/useChatStore';
 import { getApiBase, getSandboxParams } from '../lib/api';
 
@@ -94,12 +94,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
   if (!filePath || !chatId) return null;
 
   return (
-    <FullscreenOverlay
-      open={Boolean(filePath && chatId)}
-      onClose={onClose}
-      zIndexClassName="z-50"
-      containerClassName="relative w-full max-w-5xl h-[85vh] bg-white dark:bg-zinc-900 border-[3px] border-brutal-black shadow-[6px_6px_0_0_#000] dark:shadow-[6px_6px_0_0_#fff] flex flex-col overflow-hidden"
-    >
+    <WorkspacePanel open={Boolean(filePath && chatId)} onClose={onClose}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b-[3px] border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <h2 className="text-sm font-bold text-neutral-700 dark:text-neutral-200 truncate font-mono">
@@ -143,6 +138,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
           />
         )}
       </div>
-    </FullscreenOverlay>
+    </WorkspacePanel>
   );
 };

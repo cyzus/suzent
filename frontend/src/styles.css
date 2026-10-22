@@ -2656,3 +2656,18 @@ button.activity-turn-duration:focus-visible {
     box-shadow: inset 4px 0 0 var(--brutal-yellow);
   }
 }
+
+/* Expanded tools occupy the workspace while their original view stays mounted. */
+.workspace-panel-host:empty {
+  display: none;
+}
+.workspace-panel-host:not(:empty) {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-panel-host:not(:empty) ~ .workspace-base-view,
+.workspace-panel-host > :not(:last-child) {
+  display: none;
+}
