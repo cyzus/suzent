@@ -120,7 +120,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
             setActiveViewId('browser_active');
             setIsTimelineOpen(false);
           }}
-          className={`group flex-1 min-w-0 px-4 py-2 relative text-left transition-all border-r-2 border-brutal-black dark:border-black hover:bg-neutral-100 dark:hover:bg-zinc-800 ${activeViewId === 'browser_active' ? 'bg-brutal-yellow/20 dark:bg-brutal-yellow/10 cursor-default' : 'cursor-pointer'}`}
+          className={`group flex-1 min-w-0 px-4 py-2 relative text-left transition-all hover:bg-neutral-100 dark:hover:bg-zinc-800 ${activeViewId === 'browser_active' ? 'bg-brutal-yellow/20 dark:bg-brutal-yellow/10 cursor-default' : 'cursor-pointer'}`}
           disabled={activeViewId === 'browser_active'}
         >
           <div
