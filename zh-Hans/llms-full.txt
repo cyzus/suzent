@@ -2414,7 +2414,7 @@ tests, start a build or a dev server.
 
 | Tool | What it does |
 |---|---|
-| **Run command** | Runs a command and waits for it to finish |
+| **Run command** | Returns the result of a quick command, or an ID if it is still running after 10 seconds |
 | **Start command** | Starts a long-running command in the background |
 | **Check command** | Reads new output from a background command and whether it has finished |
 | **Stop command** | Stops a background command |
@@ -2432,11 +2432,12 @@ mode, commands can reach the project folders through variables such as
 
 ## Timeouts and output
 
-A command run with **Run command** is stopped after 120 seconds, together with
-anything it started, and the agent gets whatever output it produced so far. The
-agent can give a single command a longer limit, or start it in the background
-instead. To change the default, set `SUZENT_SHELL_TIMEOUT_MS` (in milliseconds)
-in your `.env` file.
+**Run command** shows output as the command produces it. If the command is still
+running after 10 seconds, the agent receives its output so far and a command ID.
+It can continue working, read later output with **Check command**, or end the
+process with **Stop command**. The command's completion also notifies the agent.
+For a command that must finish within a set time, the agent can specify a timeout;
+Suzent then stops the command and anything it started when that limit is reached.
 
 Very long output is cut to its last 30,000 characters, so the agent still sees
 the end of a test run or build log. It is told where the full output was saved.
@@ -2444,7 +2445,8 @@ the end of a test run or build log. It is told where the full output was saved.
 ## Background commands
 
 Long-running commands, such as a build or a dev server, can run in the
-background while you keep chatting. The 120-second limit doesn't apply to them.
+background while you keep chatting. A command that **Run command** returns with
+an ID also appears here.
 
 Open the **Background tasks** panel in the right sidebar to see them, alongside
 any sub-agents. Click a **Shell command** to see its status, exit code, and
@@ -6926,7 +6928,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
-| RunCommandTool | `run_command` | Sandbox config | **Yes** | Run bounded commands and wait for their output |
+| RunCommandTool | `run_command` | Sandbox config | **Yes** | Return quick output or yield a running process ID after 10 seconds |
 | StartCommandTool | `start_command` | Sandbox config | **Yes** | Start a long-running background command |
 | CheckCommandTool | `check_command` | Process registry | **Yes** | Read incremental output and command status |
 | StopCommandTool | `stop_command` | Process registry | **Yes** | Stop a background command and clean up resources |
