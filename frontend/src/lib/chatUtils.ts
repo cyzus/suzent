@@ -584,3 +584,22 @@ export function relativeTime(iso?: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+
+/**
+ * `relativeTime` in the interface language ("5 min. ago", "5分钟前"), for
+ * user-facing rows. Returns '' for empty, invalid or future input.
+ */
+export function formatRelativeTime(iso: string | null | undefined, locale: string): string {
+  if (!iso) return '';
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return '';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 0) return '';
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'narrow' });
+  if (sec < 60) return format.format(0, 'second');
+  const min = Math.floor(sec / 60);
+  if (min < 60) return format.format(-min, 'minute');
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return format.format(-hours, 'hour');
+  return format.format(-Math.floor(hours / 24), 'day');
+}

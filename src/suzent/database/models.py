@@ -133,6 +133,22 @@ class InputSuggestionModel(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class ChatStatusModel(SQLModel, table=True):
+    """Where a chat stands for the user: resolved by them, or waiting on them."""
+
+    __tablename__ = "chat_status"
+
+    chat_id: str = Field(primary_key=True)
+    # Set by the user; cleared when a new turn starts or the chat needs them again.
+    resolved_at: Optional[datetime] = None
+    # The Decision model's read of the chat's latest turn.
+    waiting_on_user: bool = Field(default=False)
+    waiting_reason: Optional[str] = None
+    summary: Optional[str] = None
+    judged_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentInboxMessageModel(SQLModel, table=True):
     """Durable local or cross-device message awaiting agent delivery."""
 

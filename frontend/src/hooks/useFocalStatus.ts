@@ -31,7 +31,8 @@ export function subscribeToFocalStatus(listener: () => void): () => void {
     void refresh();
     const timer = setInterval(() => void refresh(), STATUS_POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
-      if (payload?.event === 'goal_tasks_changed') void refresh();
+      if (payload?.event === 'goal_tasks_changed' || payload?.event === 'chat_status_changed')
+        void refresh();
     });
     stop = () => {
       clearInterval(timer);

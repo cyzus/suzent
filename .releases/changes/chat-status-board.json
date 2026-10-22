@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task."
+}
