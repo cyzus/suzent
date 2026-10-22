@@ -3,6 +3,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import { remarkCurrency } from '../../lib/remarkCurrency';
 import { remarkLatexMath } from '../../lib/remarkLatexMath';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
@@ -197,7 +198,7 @@ const MarkdownCodeBlock: React.FC<{ lang: string; content: string }> = (props) =
   return <CodeBlockComponent {...props} isStreaming={isStreaming} showCursor={false} />;
 };
 
-const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkLatexMath];
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkCurrency, remarkLatexMath];
 const REHYPE_PLUGINS = [rehypeKatex];
 
 /**
