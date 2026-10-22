@@ -554,7 +554,7 @@ struct ContentView: View {
     }
     private func startPage(_ chat: Chat) -> some View {
         VStack(spacing: 28) {
-            GreetingCube().frame(width: keyboardVisible ? 90 : 160, height: keyboardVisible ? 90 : 160)
+            GreetingCube(engaged: keyboardVisible).frame(width: keyboardVisible ? 90 : 160, height: keyboardVisible ? 90 : 160)
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 let hour = Calendar.current.component(.hour, from: context.date)
                 let greeting: LocalizedStringKey = hour < 5 ? "Night owl?" : hour < 12 ? "Good morning." : hour < 17 ? "Keep building." : hour < 21 ? "Good evening." : "Bed time? Or maybe late night coding?"

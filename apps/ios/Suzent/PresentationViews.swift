@@ -873,46 +873,30 @@ struct ApprovalCards: View {
 
 
 struct GreetingCube: View {
+    let engaged: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var started = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
-            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * .pi / 12
-            ZStack {
-                Canvas { context, size in
-                    context.scaleBy(x: size.width / 160, y: size.height / 160)
-                    context.translateBy(x: 80, y: 80)
-                    context.rotate(by: .radians(phase))
-                    let rect = Path(CGRect(x: -54, y: -54, width: 108, height: 108))
-                    context.stroke(rect, with: .color(.gray.opacity(0.5)), lineWidth: 1)
-                    context.rotate(by: .radians(-phase * 2 + .pi / 4))
-                    context.stroke(rect, with: .color(.gray.opacity(0.4)), lineWidth: 1)
+            Canvas { context, size in
+                context.scaleBy(x: size.width / 160, y: size.height / 160)
+                let ink: UInt32 = colorScheme == .dark ? PresentationTokens.text_dark : PresentationTokens.black
+                for mark in GreetingCubeScene.frame(seconds: timeline.date.timeIntervalSince(started), engaged: engaged, reduced: reduceMotion, inkColor: ink) {
+                    var path = Path()
+                    for (index, point) in mark.points.enumerated() {
+                        let position = CGPoint(x: point.x, y: point.y)
+                        if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
+                    }
+                    if mark.points.count > 2 { path.closeSubpath() }
+                    let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
+                    if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
+                    else { context.fill(path, with: shading) }
                 }
-                cube
-                    .rotation3DEffect(.degrees(sin(phase * 4) * 12), axis: (x: 0, y: 1, z: 0))
-                    .rotation3DEffect(.degrees(cos(phase * 4) * 4), axis: (x: 1, y: 0, z: 0))
-                    .offset(y: sin(phase * 4) * 4)
             }
         }.accessibilityHidden(true)
-    }
-
-    private var cube: some View {
-        Canvas { context, size in
-            context.scaleBy(x: size.width / 160, y: size.height / 160)
-            func polygon(_ points: [CGPoint]) -> Path {
-                Path { path in path.addLines(points); path.closeSubpath() }
-            }
-            let top = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 95, y: 27), CGPoint(x: 143, y: 45), CGPoint(x: 65, y: 57)])
-            let left = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 65, y: 57), CGPoint(x: 65, y: 141), CGPoint(x: 28, y: 109)])
-            let front = polygon([CGPoint(x: 65, y: 57), CGPoint(x: 143, y: 45), CGPoint(x: 138, y: 122), CGPoint(x: 65, y: 141)])
-            for (face, color) in [(top, Color(white: 0.18)), (left, Color(white: 0.04)), (front, Color.black)] {
-                context.fill(face, with: .color(color)); context.stroke(face, with: .color(.gray), lineWidth: 1)
-            }
-            for points in SuzentLogoGeometry.eyes {
-                context.fill(polygon(points.map { CGPoint(x: $0.0, y: $0.1) }), with: .color(.white))
-            }
-        }
     }
 }
 
