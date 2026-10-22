@@ -82,6 +82,7 @@
     ".releases/changes/prompt-prefix-stability.json",
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/quiet-heartbeat-cleanup.json",
+    ".releases/changes/regent-board.json",
     ".releases/changes/regent-identity.json",
     ".releases/changes/regent-name.json",
     ".releases/changes/remove-dead-compat-shims.json",
