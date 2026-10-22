@@ -947,7 +947,6 @@ export function ConversationIdentity(): React.ReactElement | null {
   if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
   const chat = chats.find((item) => item.id === currentChatId);
   const title = chat?.title?.trim();
-  // Opened from Regent's board, the title reads as a breadcrumb under Regent.
   const backToRegent = openedFromRegent === currentChatId && (
     <span className="flex shrink-0 items-center gap-1.5 self-center">
       <button
