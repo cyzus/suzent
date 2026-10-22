@@ -184,6 +184,16 @@ A heartbeat is a regular check-in inside one conversation. See
 Each takes `--chat <id>` (or `-c`) to choose the conversation. Without it, the
 conversation your terminal is using is picked.
 
+## Memory
+
+Check your memory files and draft fixes for them. See
+[Memory](../03-features/memory/README.md#checking-and-tidying-your-memory-files).
+
+| Command | What it does |
+|---|---|
+| `suzent memory lint` | List problems in `MEMORY.md`, `user.md`, `persona.md`, `heartbeat.md` and oversized notebook pages. |
+| `suzent memory cleanup` | Write suggested fixes to a dated folder under the notebook's `.state/cleanup/`, with a `README.md` and a diff to review. Your files are not changed. |
+
 ## Chat app pairing
 
 Handle requests from people asking to use your bot. See

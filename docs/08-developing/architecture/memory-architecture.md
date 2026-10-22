@@ -81,14 +81,67 @@ flowchart TD
     C --> D["append to today's log"]
     D --> E["reindex_file_now(archive, today)"]
     E --> F[("LanceDB")]
-    D --> G{"any fact important?"}
-    G -->|yes| H["refresh MEMORY.md"]
 ```
 
 There is deliberately **no write-time deduplication**. A 0.85 cosine threshold used to
 sit here and silently dropped *updates* to facts (#34). Repetition is suppressed one step
 earlier instead — the extractor is shown what memory already holds and told that a fact
 which *changes* a known one must still be emitted.
+
+## Typed capture
+
+`memory_capture_mode` picks the extractor. `legacy` is the untyped one above. `typed`
+uses `memory/capture.py`: the model proposes at most `MAX_CANDIDATES` (5) candidates per
+batch, each labelled with
+
+- `kind`: `user` (about the person), `experience` (a lesson from how a task went) or
+  `world` (a fact read in a file, page or tool result);
+- `source`: `user_said`, `user_did`, `outcome`, `agent_said` or `tool_output`;
+- `horizon`: `durable`, `dated` or `ephemeral`;
+- `evidence`: the exact words behind it.
+
+A deterministic gate then drops what the labels prove is not a memory. Its drop codes:
+
+| code | dropped because |
+| --- | --- |
+| `agent_said` | the agent's own words are not evidence |
+| `ephemeral` | only matters for the current task |
+| `user_kind_wrong_source` | a User fact must come from `user_said` / `user_did` |
+| `evidence_not_in_user_line` | the evidence is not in any USER line of the new turns (≥0.8 bigram overlap) |
+| `tool_output_without_citation` | tool output that is not a World fact, or has no path or URL |
+| `outcome_not_experience` | an outcome filed as something other than Experience |
+| `context_free_choice` | a pick that only makes sense inside the chat ("option 2", "the second one") |
+| `rejected` | matches `.state/rejected.jsonl` |
+| `restatement` | ≥0.9 similar to a fact already in the recall set |
+| `over_cap` | past the per-batch cap |
+
+Kept facts go to the daily log as before, with tags (`kind:` `source:`, `dated
+stale_after:<+90 days>`, `ungrounded` when a specific is not in the evidence) and a
+`> "evidence"` line under the fact, which the dream reads.
+
+`shadow`, the default, runs both: the legacy extractor still writes, and typed capture
+runs on the same batch and appends the legacy facts beside what it would have kept and dropped (with codes) to
+`.state/capture_shadow.jsonl` without writing. A shadow failure never fails the batch.
+The point is a week of side-by-side evidence before switching to `typed`.
+
+Scheduled turns are filtered per turn in `extraction_queue._is_scheduled`, so a cron or
+heartbeat run inside a normal chat is not captured. `cron` is deliberately not in
+`_is_system_chat`: that list also makes a chat stateless.
+
+### `memory_update`, the explicit path
+
+`tools/recall/memory_tools.py` gives the main agent one tool for what the user states
+directly, routed through `MemoryManager.apply_memory_update`:
+
+- `fact` writes a candidate straight to the daily log, skipping the gate. A `kind=user`
+  fact is tagged `source:user_said explicit`; only the user can vouch for one, so other
+  kinds are never `explicit`.
+- `retract` with `retract_as=wrong` (default) appends to `.state/rejected.jsonl` and
+  tombstones matching rows; `outdated` only tombstones, since the claim was true once.
+- `fact` and `retract` together are a correction, tagged `revision`.
+- `kind=experience` requires `outcome` (it becomes the evidence, `source:outcome`);
+  `kind=world` requires `source`, a path or URL (`source:tool_output`). The tool refuses
+  either without it.
 
 ## The dream
 
@@ -102,9 +155,11 @@ flowchart TD
     P -->|no| L{"lint due?"}
     L -->|yes| LINT["lint pass<br/>editorial audit of the vault"]
     L -->|no| IDLE["idle"]
-    P -->|yes| B{"far behind?"}
+    P -->|yes| C{"any fact lines?"}
+    C -->|no| SKIP["advance watermark<br/>no model call"]
+    C -->|yes| B{"far behind?"}
     B -->|yes| RUN["ingest batch"]
-    B -->|no| G{"enough new facts<br/>+ enough time passed?"}
+    B -->|no| G{"enough new facts<br/>or a day passed?"}
     G -->|no| IDLE
     G -->|yes| RUN
     RUN --> AGENT["forked agent:<br/>fold logs into vault pages"]
@@ -117,6 +172,41 @@ flowchart TD
 
 Ingest is always preferred over lint, so an editorial audit can never starve
 consolidation of new logs.
+
+### What the dream is told
+
+The dream is a judgment agent: capture proposes, the dream decides. Its brief
+(`memory_context.build_dream_instructions`) routes by tag — `kind:user` to
+`3_Personal/`, `kind:experience` to `4_Experience/` (merged per situation),
+`kind:world` to `2_Wiki/` with its source; `dated` never lands in `3_Personal/`,
+`ungrounded` is filed only as far as its evidence goes, and `explicit` wins over what it
+contradicts. Untagged lines from before typed capture must pass the exclusion rules.
+
+For each candidate it picks a case: a duplicate raises the page's frontmatter
+`confirmed` count; a correction replaces the claim; a change over time moves the old
+value to `## History` as `- until <date>: old`; an unsettled contradiction becomes a
+question in `.state/review_queue.md`. Inline `(confirmed Nx, …)` counters are moved
+into frontmatter as pages are touched.
+
+Besides the confirmations and revisit queues, the brief carries the rejected list, the
+open review questions (not to be asked again; an answered one is applied and deleted),
+and the deterministic lint findings from `memory_map.lint_store`. The lint pass gets the
+findings too.
+
+The agent records every operation in `.state/dream_ops.md` (`- update`, `- create`,
+`- retire`, `- skip <candidate>: <reason>`). After a good ingest or lint the runner
+appends it to `log.md` under the run's entry and clears it (`flush_dream_ops`); the
+agent itself never writes `log.md`.
+
+Up to `OPEN_QUESTIONS_SHOWN` (5) review questions are rendered into the core memory
+prompt under "Open memory questions", for the main agent to ask when natural and answer
+through `memory_update`. `review_queue.md` is part of `core_memory_revision`, so an
+answered question invalidates the cached prompt.
+
+The trigger: days with no fact lines advance the watermark without a model call;
+otherwise a run starts on `memory_consolidation_min_facts` (20) or once
+`memory_consolidation_min_hours` (24) have passed, whichever comes first. A batch that
+already failed waits out the hours rather than retrying on volume.
 
 ### Why the reconcile belongs to the runner
 
@@ -145,21 +235,32 @@ those days on its own.
    append-only store, adding no new specifics. Anything else — a new detail, a
    contradiction, a match found only in a transcript — is written exactly as before.
    Issue #34 was this line being crossed.
-6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
-   and an agent editing it directly; everything after the `<!-- /memory:generated -->`
-   marker is copied through untouched, and a file with no marker that we cannot prove we
-   wrote is treated as entirely manual.
+6. **Nothing regenerates `MEMORY.md`.** It is a curated map; code only drafts it when
+   the file is missing or empty, and an existing file is never overwritten.
 
-### Who owns MEMORY.md
+### MEMORY.md is a map
 
-Two writers regenerate the same file. `refresh_core_memory_facts` (per turn, from the top
-archival rows) is the legacy path; `promote_memory_md` (per productive dream, from
-consolidated `3_Personal/` pages plus recall signal) is its replacement. The hand-over
-needs no flag day: the legacy path stands down as soon as the vault has any personal page,
-so as the dream fills the vault it simply stops firing.
+`MEMORY.md` is injected into every prompt, so it holds pointers, not facts: one
+`[[page]]` line each with a short description, at most `memory_map_max_lines` (30).
+`MemoryManager.ensure_memory_map` drafts it from page titles (`memory_map.draft_map`)
+only when the file is missing or empty. After that the dream keeps its links current
+and a person may edit it; the old per-turn `refresh_core_memory_facts`,
+`promote_memory_md` and the generated/manual zones are gone.
 
-Both write through the same marked zone, so an agent's or user's own notes below the
-marker survive either of them.
+`memory_map.lint_store` checks the always-injected files without a model:
+
+- `MEMORY.md`: every line one `[[page]]` pointer, no prose facts, within the line cap;
+- `user.md`: at most `USER_MD_MAX_LINES` (40), no scheduler specs or repo state, no
+  rejected claims;
+- `persona.md`: at most `PERSONA_MD_MAX_LINES` (60);
+- `heartbeat.md`: no rejected claims;
+- notebook pages: at most `PAGE_BUDGET_BYTES` (8 KB).
+
+`suzent memory lint` prints these findings. `suzent memory cleanup`
+(`memory/cleanup.py`) writes the one-time migration as drafts only, into the vault's
+`.state/cleanup/<date>/`: a map draft, `user.md` cut to its contract, page drafts without
+what `user.md` owns, a `rewrite_brief.md` of moved lines and flagged pages, a
+rejected-list seed and a `migration.diff`. Nothing live is changed; a person applies it.
 
 ### Always resolve the vault path
 
@@ -186,10 +287,10 @@ Producer-defined keys are explicitly permitted, so partial adoption is within it
 - `generated: {by, at}` — uniform provenance across logs, vault, and core files.
 - `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
   facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
-  worst noise source into a ranking signal. It is recorded on the bullet rather than in
-  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
-  rather than getting a document each; the marker's absence means confirmed once, so no
-  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
+  worst noise source into a ranking signal. It is the page's frontmatter `confirmed`
+  count; older pages carry it inline on the bullet (`(confirmed 12x, last 2026-08-20)`)
+  and the dream moves it up as it touches them. Ranking takes the larger of the two, so
+  a page mid-migration ranks the same, and a missing count means confirmed once. A repeat that *contradicts* the bullet is explicitly not a
   confirmation — it resets the count and takes the correction path.
 
 Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
@@ -207,19 +308,14 @@ The lifecycle fields the dream writes are read back by retrieval. A vault chunk'
 `status` (`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once
 passed). Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle.
 
-A person editing the `facts` block is the one claim in the system that did not come from
-extraction: it is the claim's subject stating it directly. `write_memory_manual_zone`
-stamps the manual zone of `MEMORY.md` with a `human:` actor, and retrieval reads that
-stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
+A page whose frontmatter carries `verified_by: human:<name>` is the one claim in the
+system that did not come from extraction: it is the claim's subject stating it directly.
+Retrieval reads that stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
 base score cannot dilute it. It also skips the `stale_after` decay — an expiry means
 nobody has re-confirmed the claim lately, which is exactly the question a human
 verification answers. `deprecated` still wins, because a person retiring a claim is also a
 person, and only a `human:` actor qualifies, or an agent would launder its own output into
 the strongest evidence class there is.
-
-Because the floor applies per row, `MEMORY.md` is chunked per zone rather than per file:
-paragraph merging otherwise produced a single row spanning the generated half and the
-human half, which is neither.
 
 ## Classifying a restatement
 
@@ -233,7 +329,7 @@ Three outcomes:
 
 | outcome | test | effect |
 | --- | --- | --- |
-| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the claim's `(confirmed Nx)` marker |
+| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the page's `confirmed` count |
 | revision | similar, or a strict superset carrying a new specific | written exactly as before, tagged `revision` |
 | new | everything else | written as before |
 

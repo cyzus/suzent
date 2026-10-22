@@ -127,6 +127,7 @@ const translatedToolIds = [
   'SpeakTool',
   'SocialMessageTool',
   'MemorySearchTool',
+  'MemoryUpdateTool',
   'SessionSearchTool',
 ];
 

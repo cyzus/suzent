@@ -8,14 +8,13 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 
-from suzent.memory.markdown_store import MEMORY_GENERATED_END
-
 
 # ===== Core Memory Context Prompts =====
 
 
 # context.md is injected into every turn; past this it costs more than it helps.
 CONTEXT_CHAR_LIMIT = 8000
+OPEN_QUESTIONS_SHOWN = 5
 
 
 def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
@@ -52,6 +51,7 @@ def format_core_memory_section(
     mount_notebook: Optional[str] = None,
     project_context_path: Optional[str] = None,
     notebook_skill_available: bool = True,
+    open_questions: Optional[List[str]] = None,
 ) -> str:
     """
     Format core memory blocks for agent context injection.
@@ -63,6 +63,7 @@ def format_core_memory_section(
         shared_path: Host path for /shared (non-sandbox mode only)
         mount_notebook: Host path for /mnt/notebook (non-sandbox mode only)
         project_context_path: Visible path to the project-scoped context.md file.
+        open_questions: Review-queue questions the dream left for the user.
 
     Returns:
         Formatted string for prompt injection
@@ -91,14 +92,14 @@ def format_core_memory_section(
         memory_files = (
             "- `/shared/memory/persona.md` — your identity, role, and workflow principles\n"
             "- `/shared/memory/user.md` — user preferences, tech stack, communication habits\n"
-            "- `/shared/memory/MEMORY.md` — condensed long-term context and key decisions\n"
+            "- `/shared/memory/MEMORY.md` — map of your notebook: which page holds what, and when to read it\n"
             f"- `{_context_path}` — **this project's** memory and file index\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_hint = _notebook_hint(
             "## Notebook (/mnt/notebook/)", "/mnt/notebook", notebook_skill_available
         )
-        curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
+        curated_memory_hint = "- Follow `MEMORY.md` to the page that holds what you need before answering from memory"
     else:
         _shared = shared_path or "${SHARED_PATH}"
         _notebook = mount_notebook
@@ -107,7 +108,7 @@ def format_core_memory_section(
         memory_files = (
             f"- `{_shared}/memory/persona.md` — your identity, role, and workflow principles\n"
             f"- `{_shared}/memory/user.md` — user preferences, tech stack, communication habits\n"
-            f"- `{_shared}/memory/MEMORY.md` — condensed long-term context and key decisions\n"
+            f"- `{_shared}/memory/MEMORY.md` — map of your notebook: which page holds what, and when to read it\n"
             f"- `{_context_path}` — **this project's** memory and file index\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
@@ -119,7 +120,7 @@ def format_core_memory_section(
                 "## Notebook\n"
                 "No notebook is configured in this session; skip notebook operations."
             )
-        curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"
+        curated_memory_hint = "- Follow `MEMORY.md` to the page that holds what you need before answering from memory"
 
     return f"""# Memory System
 
@@ -138,9 +139,8 @@ Your memory lives in plain markdown files you can read and write directly:
 **How to update your memory:**
 - To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
 - To update shared project context and task state: write to the project's `context.md`
-- `MEMORY.md` is part generated: consolidation rewrites everything above the
-  `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
-  above that line is not yours and will not survive the next pass
+- `MEMORY.md` is a map, not a store: one `- [[page]] — holds …; read when …` line per
+  page or folder. Keep facts in the pages; when you edit a page, update its line
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_hint}
@@ -152,6 +152,18 @@ Your memory lives in plain markdown files you can read and write directly:
   Current state, Decisions, File index (one line per library file), Related knowledge
   (links to notebook pages). No step-by-step logs or temporary notes
 {curated_memory_hint}
+{_open_questions_hint(open_questions)}"""
+
+
+def _open_questions_hint(questions: Optional[List[str]]) -> str:
+    if not questions:
+        return ""
+    shown = "\n".join(f"- {q}" for q in questions[:OPEN_QUESTIONS_SHOWN])
+    return f"""
+## Open memory questions
+Your memory holds claims that conflict. Ask the user when it comes up naturally, never as an
+interruption, and record the answer with `memory_update`:
+{shown}
 """
 
 
@@ -338,17 +350,6 @@ def format_fact_extraction_user_prompt(
 Return valid JSON with a "facts" array. Skip if nothing worth remembering."""
 
 
-# ===== Phase 5: Core Memory Summarization =====
-
-CORE_MEMORY_SUMMARIZATION_PROMPT = """Condense these facts into a brief, scannable summary. Bullet points only. No prose.
-
-{facts_list}
-
-Group into sections (omit if empty): **Profile**, **Preferences**, **Stack**, **Constraints**.
-Max 2000 words. Respond with the summary only.
-"""
-
-
 # ===== Dream consolidation (autonomous wiki keeper) =====
 
 # Sandbox roots for the dream/lint prompts. Only used when the agent is actually
@@ -384,6 +385,16 @@ class DreamRoots:
     def superseded_path(self) -> str:
         """Where the agent appends facts it has folded into the vault."""
         return f"{self.notebook_root}/.state/{DREAM_SUPERSEDED_FILENAME}"
+
+    @property
+    def dream_ops_path(self) -> str:
+        """Where the agent records each operation; the runner moves it to log.md."""
+        return f"{self.notebook_root}/.state/dream_ops.md"
+
+    @property
+    def review_queue_path(self) -> str:
+        """Where the agent leaves questions only the user can settle."""
+        return f"{self.notebook_root}/.state/review_queue.md"
 
 
 def resolve_dream_roots(sandbox_enabled: bool, path_resolver: Any = None) -> DreamRoots:
@@ -424,21 +435,43 @@ def resolve_dream_roots(sandbox_enabled: bool, path_resolver: Any = None) -> Dre
 
 def build_dream_system_prompt(roots: DreamRoots) -> str:
     """The dream agent's standing prompt, in paths its own tools accept."""
-    return f"""You are Suzent's memory consolidation agent ("dream"). You run \
-autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
-cross-referenced knowledge vault.
+    return f"""You are Suzent's memory judgment agent ("dream"). You run autonomously: \
+capture has written candidate memories into append-only daily logs, and you decide what \
+the vault keeps. You create, update and retire page content.
 
 Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
 Filesystem:
-- Daily logs (READ-ONLY source): {roots.memory_root}/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
-- The vault (your workspace):     {roots.notebook_root}/  — schema.md, index.md, log.md, zoned pages.
+- Candidates (READ-ONLY): {roots.memory_root}/archive/YYYY-MM-DD.md — NEVER edit or delete these.
+- The map: {roots.memory_root}/MEMORY.md — one line per page or folder: what it holds, when to read it.
+- The vault (your workspace): {roots.notebook_root}/ — schema.md, index.md, log.md, zoned pages.
+- Your op log: {roots.dream_ops_path} — append only.
+- Open questions for the user: {roots.review_queue_path}
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
-- Improve existing pages; never create near-duplicates. Search before you write.
-- Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
-- Only remove a statement when it is a genuine correction or an exact duplicate.
-- Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
+- Each fact has one home. Search before you write and merge instead of adding a near-duplicate.
+  What {roots.memory_root}/user.md holds is not repeated in the vault.
+- A bullet holds the current value. When a value changes, the old one moves to the page's
+  `## History` section with its dates, or is dropped if it never mattered. Never append
+  "(previously ...)" or "Note: recently stated ..." to a bullet.
+- Retirement is allowed. Remove a bullet that is superseded, rejected, excluded below, or a
+  `dated` claim past its date. Retiring a wrong or obsolete bullet is part of the job.
+- Never file: repo or tracker state (commits, PR and issue numbers, versions, branches, test
+  counts, file lists), transient status, scheduler or protocol instructions, or content the
+  agent read or wrote. If the user took a position on such content, file the position.
+- Something the agent made, proposed or designed is not the user's: it never goes in 3_Personal/.
+- A contradiction you cannot settle becomes one question the user can answer, as a `- ` line in
+  {roots.review_queue_path}. Keep the more recent claim on the page meanwhile; no callout.
+  Put conflicts in the review queue, never in log.md.
+- Counters live in frontmatter (`confirmed: 12`), not in prose. A bullet carries its value and
+  at most one `(last confirmed YYYY-MM-DD)`.
+- Keep each page under 8 KB: condense it, or split it by topic and link the parts.
+- index.md is a map of pages, not a changelog. Run summaries go in your final answer.
+- Every page you create, retire, rename or re-scope gets its MEMORY.md line fixed in the same step.
+- Record every operation in {roots.dream_ops_path}, one `- ` line each:
+  `- update <page>: <before> -> <after>`, `- create <page>: <what>`, `- retire <page>: <removed text>`,
+  `- skip <candidate>: <reason>` for each candidate you do not file.
+- Do NOT write to log.md — the runner owns it and moves your op log there.
 - {roots.superseded_path} is append-only and write-only for you: read it if you must, never clear it.
 """
 
@@ -450,38 +483,51 @@ def build_dream_instructions(
     end: str,
     confirmations: str,
     revisits: str,
+    rejected: str = "   (none)",
+    questions: str = "   (none)",
+    findings: str = "   (none)",
 ) -> str:
-    """The per-run consolidation brief.
+    """The per-run judgment brief.
 
     Takes its values directly rather than returning a template for the caller
     to ``.format()``: the old two-pass shape meant every literal brace in the
     text had to be escaped for a pass that had not happened yet.
     """
-    return f"""Consolidate the daily memory logs dated after {start} through {end} into the vault.
+    return f"""Judge the memory candidates in the daily logs dated after {start} through {end}.
 
-1. Orient: read schema.md and index.md; glob_search {roots.notebook_root} for existing pages.
-2. Read the logs: {roots.memory_root}/archive/*.md dated after {start} through {end}.
-3. For each distinct fact/topic:
-   a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
-      Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
+1. Orient: read schema.md, index.md and {roots.memory_root}/MEMORY.md; glob_search {roots.notebook_root} for existing pages.
+2. Read the logs: {roots.memory_root}/archive/*.md dated after {start} through {end}. Each candidate is
+   `- [category] content` with backtick tags, often followed by a `> "..."` evidence line. Route by tag:
+   - `kind:user` -> 3_Personal/, in the user's own terms. Never what the agent made or proposed.
+   - `kind:experience` -> 4_Experience/: one entry per kind of situation with what was tried, the
+     outcome and the lesson. Merge with a lesson about the same situation; a later contrary outcome
+     is recorded against that lesson, not as a second one.
+   - `kind:world` -> 2_Wiki/, with its source (path or URL) and the date. No source, no page.
+   - `dated` with `stale_after:` -> true now, expires. Never in 3_Personal/: put it on the related
+     project or topic page with its date, or skip it.
+   - `ungrounded` -> the content names a detail its evidence does not show. File only what the
+     evidence supports, or skip it with reason `ungrounded`.
+   - `explicit` -> the user asked for it; it wins over what it contradicts.
+   - `revision` -> it replaces an earlier claim: apply the change case.
+   - No `kind:` tag -> written before typed capture. File it only if it describes the user in the
+     user's terms and passes the exclusion rules; skip the rest with a reason.
+3. For each candidate you keep:
+   a. Find its home (MEMORY.md, index.md, glob_search/grep_search, memory_search).
    b. Apply the matching case:
-      - Duplicate (same fact reworded)              -> confirm, do not restate. Bump the
-                                                       claim's confirmation marker
-                                                       (step 3e), replace the bullet text
-                                                       only if the new wording is MORE
-                                                       specific, then retire the log lines
-                                                       (step 3d). Never add a second
-                                                       bullet, and never let a vaguer
-                                                       restatement overwrite a detailed
-                                                       claim you already hold.
-      - New, non-conflicting                        -> add under the right section.
-      - Correction (new entry shows old was wrong)  -> replace the wrong statement.
-      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {end});
-                                                       previously Y." Apply the schema's lifecycle fields.
-      - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
-        `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout on the relevant
-        content page (or create a conflict-review page in the schema's appropriate location
-        if no topical page exists) and apply the schema's needs-review marker.
+      - Duplicate (same fact reworded)        -> confirm, do not restate. Raise the page's
+                                                 `confirmed` count in frontmatter and set the
+                                                 bullet's `(last confirmed {end})`; replace the
+                                                 text only if the new wording is MORE specific.
+                                                 Never add a second bullet, and never let a
+                                                 vaguer restatement overwrite a detailed claim.
+      - New, non-conflicting                  -> add it under the right section.
+      - Correction (the old one was wrong)    -> replace it; the old text goes in the op log only.
+      - Change over time (both true, in turn) -> the bullet says the new value; the old one moves
+                                                 to `## History` as "- until {end}: <old value>".
+      - Contradiction you cannot settle       -> keep the more recent claim and add a question to
+                                                 the review queue. The question goes in the queue,
+                                                 and nothing goes on the page or into log.md.
+      - Excluded, or on the rejected list     -> skip it with the reason.
    c. Convert relative dates ("yesterday") to absolute.
    d. Retire what you folded in: append the exact log fact text (the part after the
       `- [category] ` prefix, without the trailing backtick tags) to
@@ -491,30 +537,47 @@ def build_dream_instructions(
       out — a duplicate in the index is cheaper than a fact that vanishes.
    e. Lifecycle on {roots.notebook_root}/3_Personal/ pages, whether or not this vault's
       schema.md mentions it (older vaults were seeded before these rules existed):
-      - A repeated claim gets a marker on its bullet: `(confirmed 12x, last YYYY-MM-DD)`.
-        Absent marker means confirmed once. Increment it and set the date; a claim the user
-        keeps repeating is one claim confirmed many times, not many claims.
-      - A repeat that CONTRADICTS the bullet is a correction, not a confirmation — reset the
-        count and apply the correction case above.
+      - Move inline counters such as `(confirmed 12x, last YYYY-MM-DD)` into the page's
+        `confirmed` frontmatter (keep the highest) and leave the bullet one `(last confirmed ...)`.
+      - A repeat that CONTRADICTS the bullet is a correction, not a confirmation — apply the
+        correction case and do not raise the count.
       - Give each page a `stale_after` derived from the fact category: identity none,
         preference 1 year, technical 6 months, goal 3 months, context 3 weeks.
 4. Confirmations recorded by the write path since the last consolidation. These were
    said again word-for-word and deliberately NOT written to a daily log, so this list
-   is the only record that they recurred. For each, find the claim on its page and bump
-   its marker by the count shown (step 3e); do not add a bullet, and do not treat one
+   is the only record that they recurred. For each, find the claim on its page and raise
+   its count by the number shown (step 3e); do not add a bullet, and do not treat one
    as a correction — a contradicting restatement never reaches this list.
 {confirmations}
 5. Claims due for a revisit. Re-confirm each against the logs you just read: if it is
-   supported, refresh the date; if it is contradicted, apply the correction case; if the
-   logs say nothing either way, leave it and let lint decide. Never delete here.
-   A page listed as `stale_after unset` predates the rule and has no expiry at all: give
-   it one from step 3's category table while you are there, whatever the logs say.
+   supported, refresh the date; if it is contradicted, apply the correction case. A `dated`
+   claim past its date is retired. Any other claim the logs say nothing about stays; lint
+   decides. A page listed as `stale_after unset` predates the rule and has no expiry at all:
+   give it one from step 3e's category table while you are there, whatever the logs say.
 {revisits}
-6. Add `## Related` links using the schema's link style.
-7. Update index.md. Do NOT write the watermark to log.md — the runner records it.
+6. Rejected claims: the user said these are false. Never file a candidate that restates one,
+   and retire any bullet that does.
+{rejected}
+7. Open questions already in the review queue. Do not ask them again. If a candidate answers
+   one, apply the answer and delete the question from the queue.
+{questions}
+8. Lint findings on the core files and pages. Fix what this run touches; split or condense a
+   page over budget.
+{findings}
+9. Add `## Related` links using the schema's link style, update index.md as a map, and fix the
+   MEMORY.md line of every page you created, retired or re-scoped.
 
-Return a one-paragraph summary of what you created, updated, superseded, or flagged.
+Return a one-paragraph summary of what you created, updated, retired, skipped, or queued.
 """
+
+
+def format_lines_block(lines: Optional[List[str]], empty: str = "(none)") -> str:
+    """Indent a list of one-line items for a dream or lint brief."""
+    items = [" ".join(str(line).split()) for line in lines or []]
+    items = [item for item in items if item]
+    if not items:
+        return f"   {empty}"
+    return "\n".join(f"   - {item}" for item in items)
 
 
 def format_confirmations_block(rows: Optional[List[dict]]) -> str:
@@ -550,59 +613,55 @@ def format_revisits_block(rows: Optional[List[dict]]) -> str:
 
 def build_lint_system_prompt(roots: DreamRoots) -> str:
     """The lint pass's standing prompt."""
-    return f"""You are Suzent's memory consolidation agent ("dream"), running your \
-periodic LINT pass: an editorial health-check of the notebook vault. You do NOT ingest new daily \
-logs here — you audit and repair what already exists so the knowledge graph stays consistent and \
-does not silently decay.
+    return f"""You are Suzent's memory judgment agent ("dream"), running your \
+periodic LINT pass: an editorial health-check of the notebook vault and the memory map. You do \
+NOT ingest new daily logs here — you audit and repair what already exists so the knowledge graph \
+stays consistent and does not silently decay.
 
 Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
 Filesystem:
-- The vault (your workspace): {roots.notebook_root}/  — schema.md, index.md, log.md, zoned pages.
+- The map: {roots.memory_root}/MEMORY.md — one line per page or folder.
+- The vault (your workspace): {roots.notebook_root}/ — schema.md, index.md, log.md, zoned pages.
+- Your op log: {roots.dream_ops_path} — append only.
+- Open questions for the user: {roots.review_queue_path}
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
-- Repair conservatively. Fix links/structure freely; only delete a page if it is truly obsolete.
-- Never fabricate facts. When a contradiction needs human judgement, FLAG it, do not guess.
-- Do NOT write the lint log entry to log.md — the runner records that. Put callouts on content pages.
+- Fix links and structure freely. Retire content that is rejected, superseded or excluded
+  (repo state, transient status, scheduler specs, agent-made work in 3_Personal/).
+- Never fabricate facts. A contradiction that needs the user becomes one question in
+  {roots.review_queue_path}, not a callout.
+- Record every operation in {roots.dream_ops_path} as a `- ` line with the text before and after.
+- Do NOT write the lint log entry to log.md — the runner records that and moves your op log there.
 """
 
 
-def build_lint_instructions(roots: DreamRoots) -> str:
+def build_lint_instructions(roots: DreamRoots, findings: str = "   (none)") -> str:
     """The lint pass brief."""
     return f"""Run an editorial lint pass over the notebook vault.
 
-1. Orient: read schema.md and index.md; glob_search {roots.notebook_root} for ALL pages (many live outside index.md).
-2. Contradictions: read related pages; where claims conflict, resolve with the better-supported/more
-   recent claim. If it needs human judgement, add a `> [!warning] Contradiction: <desc>` callout on the
-   page AND prepend a `> [!alert] Contradiction found in <schema-compliant link>` line near the top of index.md.
-3. Hierarchy: ensure entity/detail pages link up to their parent category; connect micro-islands to a
+1. Orient: read schema.md, index.md and {roots.memory_root}/MEMORY.md; glob_search {roots.notebook_root} for ALL pages (many live outside index.md).
+2. Findings from the deterministic checks. Fix each one:
+{findings}
+3. Contradictions: read related pages; where claims conflict, keep the better-supported or more
+   recent claim and move the other to `## History`. If it needs the user, add one question to the
+   review queue instead.
+4. Hierarchy: ensure entity/detail pages link up to their parent category; connect micro-islands to a
    higher-level concept or index so nothing is stranded.
-4. Broken links: for each index.md entry verify the file exists (fix/remove stale ones). Repair internal
-   links according to the schema.
-5. Orphans: a page not in index.md and not linked anywhere — add to index.md if valuable, link it from a
-   related page, or delete only if truly obsolete.
-6. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
-7. Decay: apply page-level `stale_after` and the schema's fallback decay rule, using its review marker.
-   On 3_Personal/ pages a passed `stale_after` means re-confirm the claim against recent logs or mark it
-   `status: deprecated` — never delete it, and never reset a claim's confirmation marker during lint.
-8. Gaps: note recurring topics with no synthesized page and dangling internal links.
+5. Broken links: for each index.md and MEMORY.md entry verify the file exists (fix or remove stale
+   ones). Repair internal links according to the schema. A world page whose cited path or URL no
+   longer resolves is retired.
+6. Orphans: a page not in index.md and not linked anywhere — add to index.md if valuable, link it from a
+   related page, or retire it if obsolete.
+7. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
+8. Budgets: condense or split any page over 8 KB. `index.md` is a map; move changelog text out.
+9. Decay: apply page-level `stale_after` and the schema's fallback decay rule. On 3_Personal/ pages a
+   passed `stale_after` means re-confirm the claim against recent logs, or retire it when it was
+   `dated`; otherwise mark the page `status: deprecated` for the user to review. Never raise or reset
+   a `confirmed` count during lint.
+10. Gaps: note recurring topics with no synthesized page and dangling internal links.
 
 Do NOT append the lint entry to log.md — the runner records it.
-Return a one-paragraph summary: contradictions found/resolved, links/orphans fixed, pages flagged, gaps.
-"""
-
-
-# Deterministic post-step run by the runner (not the agent): regenerate the
-# always-visible MEMORY.md from the vault's personal facts + recall signal.
-MEMORY_PROMOTION_PROMPT = """You are writing MEMORY.md — the few most important, durable facts \
-about the user that should ALWAYS be visible to the assistant.
-
-Consolidated personal knowledge:
-{personal_facts}
-
-Recently-recalled topics (usage signal — favour these):
-{recall_summary}
-
-Write a concise markdown summary, grouped under `##` headers, one fact per bullet. Include only \
-durable, high-value facts. Hard limit: {max_lines} lines. Respond with the markdown only.
+Return a one-paragraph summary: findings fixed, contradictions resolved or queued, links/orphans
+fixed, content retired, gaps.
 """

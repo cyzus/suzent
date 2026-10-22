@@ -99,7 +99,7 @@ def test_an_unreadable_vault_yields_an_empty_queue():
 # --- prompt rendering ---
 
 
-def test_the_instructions_carry_both_queues_and_never_delete():
+def test_the_instructions_carry_both_queues():
     text = memory_context.build_dream_instructions(
         memory_context.resolve_dream_roots(sandbox_enabled=True),
         start="2026-01-01",
@@ -116,7 +116,9 @@ def test_the_instructions_carry_both_queues_and_never_delete():
     assert "3_Personal/a.md (stale_after 2020-01-01)" in text
     # An unset expiry has to be actionable in the prompt, not merely listed.
     assert "stale_after unset" in text
-    assert "Never delete here." in text
+    # Only a claim captured as dated may be retired on revisit; the rest wait for lint.
+    assert "claim past its date is retired" in text
+    assert "decides. A page listed" in text
     # A restatement that contradicts the page is a correction and never reaches the
     # confirmations list; the prompt has to say so or the agent may bump the marker.
     assert "a contradicting restatement never reaches this list" in text

@@ -99,7 +99,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 |------|----------|---------|-------------|
 | PlanningTool | `planning_update` | chat_id | Create and manage structured task plans |
 | MemorySearchTool | `memory_search` | MemoryManager | Semantic search over long-term memory |
-| MemoryBlockUpdateTool | `memory_block_update` | MemoryManager | Update core memory blocks (persona, user, facts, context) |
+| MemoryUpdateTool | `memory_update` | MemoryManager | Remember, correct or retract a fact the user stated |
 
 ### Canvas & UI
 
@@ -248,12 +248,12 @@ Creates and manages structured plans for multi-step tasks. Plans are stored in t
 
 **`action='advance'`** — Marks `current_phase_id` as `completed` and `next_phase_id` as `in_progress`. If `next_phase_id` skips phases, all intermediate phases are auto-completed.
 
-### `memory_search` / `memory_block_update`
+### `memory_search` / `memory_update`
 
 Long-term memory tools. See [Memory](../../03-features/memory/README.md) for the full memory architecture.
 
 - `memory_search(query, limit)`: Semantic similarity search over archived memories
-- `memory_block_update(block, operation, content)`: Update always-visible core memory blocks (`persona`, `user`, `facts`, `context`)
+- `memory_update(fact, retract, retract_as, kind, outcome, source, category, horizon)`: Record what the user states directly. `fact` writes a candidate for the dream; `retract` takes a claim back (`retract_as=wrong` also adds it to the rejected list, `outdated` only hides it); both together are a correction. `kind=experience` needs `outcome` and `kind=world` needs `source`. See [Memory Architecture](./memory-architecture.md#memory_update-the-explicit-path).
 
 ### `social_message`
 

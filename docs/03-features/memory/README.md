@@ -24,6 +24,13 @@ you. It adds those to that day's log. It saves facts, not whole conversations.
 Reading several exchanges at once means that if you change your mind partway
 through, only where you ended up is saved.
 
+A fact about you is only kept when you said it yourself; something the agent
+said or guessed is not. Each saved fact carries the words it came from, so you
+can see why it was kept. Lessons from how a task went, and facts the agent read
+in a file or on a web page, are kept too, together with what happened or where
+they were read. Scheduled tasks are left out, and so is anything that only
+matters today.
+
 **Overnight.** A background pass called the **dream** reads the new logs and
 folds them into tidy pages: one page per topic, duplicates merged,
 contradictions resolved. Saving stays fast during the day, and the tidying
@@ -42,7 +49,7 @@ The notebook is an Obsidian-compatible vault. See [Notebook](./llm-wiki.md).
 
 ```text
 /shared/memory/
-  MEMORY.md              # The summary the agent always sees
+  MEMORY.md              # The map of your memory the agent always sees
   archive/
     2026-08-24.md        # One log per day
   persona.md, user.md    # Editable profile notes
@@ -51,24 +58,23 @@ The notebook is an Obsidian-compatible vault. See [Notebook](./llm-wiki.md).
 These files are the real memory. Open them in any text editor. The search
 index is rebuilt from them, so a line you delete here is gone.
 
-### MEMORY.md is half yours
+### MEMORY.md is a map
 
-`MEMORY.md` is the short summary loaded into every conversation. A marker
-comment splits it in two:
+`MEMORY.md` is loaded into every conversation. It is a short list of links,
+one per notebook page, each with a few words on what the page holds:
 
 ```markdown
-<!-- memory:generated - rewritten on consolidation -->
-...Suzent rewrites everything in here...
-<!-- /memory:generated - notes below this line are kept -->
-
-Anything you type down here is kept, forever, untouched.
+- [[3_Personal/Preferences]] - how you like answers, tools, and formatting
+- [[4_Experience/Release checks]] - what went wrong in past releases
 ```
 
-Write below the marker to tell Suzent something directly. Your notes there
-outrank anything it worked out on its own, and the dream never overwrites them.
+The facts themselves live on those pages, so the map stays small (30 lines by
+default). If the file is missing, Suzent drafts one from your page titles;
+after that it is yours, and the dream keeps its links current.
 
-If your `MEMORY.md` has no markers (because it predates them), Suzent treats
-the whole file as yours and stops regenerating it.
+`user.md` is for what the agent needs in every conversation, such as your name,
+your language and how to address you. Schedules and the state of a project do
+not belong there, and other facts about you go on a `3_Personal/` page.
 
 ## Managing what's remembered
 
@@ -79,22 +85,30 @@ been saved.
   for good, even after a rebuild. The original daily log keeps the line as
   history.
 - **To correct something,** just say the corrected version in a conversation.
-  The dream replaces the old fact.
+  The dream replaces the old fact, and keeps the old value under a
+  **History** heading if it was true once.
+- **When something is wrong,** say so ("that's not right, I never lived in
+  Basel"). Suzent hides it from search straight away and will not save it
+  again.
+- **When the dream is unsure,** for example two facts disagree, it writes a
+  question instead of guessing. The agent may ask you a few of these when they
+  come up naturally, and your answer settles them.
 
 ## How memory is tidied
 
 Roughly once a day, the dream reads logs it hasn't processed and, for each
 fact, does one of four things:
 
-- **Confirm**: the page already says this, so it bumps a counter such as
-  `(confirmed 12x, last 2026-08-20)`.
+- **Confirm**: the page already says this, so it raises the page's
+  `confirmed` count. Facts you repeat often rank higher in search.
 - **Sharpen**: the page says something vaguer, so it improves the wording.
 - **Supersede**: the page is now wrong, so it corrects it.
 - **Add**: the fact is new, so it writes it down.
 
-Facts about you go into the notebook's `3_Personal/` folder; general knowledge
-goes under `2_Wiki/`. The dream never touches today's log, and an interrupted
-run is retried rather than skipped.
+Facts about you go into the notebook's `3_Personal/` folder, lessons from
+past work into `4_Experience/`, and general knowledge under `2_Wiki/`. The
+dream never touches today's log, and an interrupted run is retried rather than
+skipped. Everything it changed is listed in the notebook's `log.md`.
 
 **Facts expire, gently.** Each fact about you gets a review date based on its
 kind: never for identity, a year for preferences, six months for technical
@@ -114,3 +128,20 @@ uses **Memory Extraction**, and memory search uses **Embedding** (see
 
 How often the dream runs, where the notebook lives, and other tuning are in
 [Advanced memory settings](./configuration.md).
+
+## Checking and tidying your memory files
+
+Two commands help when memory has grown untidy:
+
+```bash
+suzent memory lint
+```
+
+```bash
+suzent memory cleanup
+```
+
+`lint` lists what does not follow the rules above: a `MEMORY.md` that holds
+facts instead of links, an overlong `user.md`, oversized pages. `cleanup` writes
+suggested fixed versions next to your memory for you to read; it never changes
+your files. See [Command line](../../07-reference/cli.md#memory).

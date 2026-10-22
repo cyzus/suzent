@@ -4,6 +4,7 @@ Pydantic models for memory system data structures.
 
 from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 
 class Message(BaseModel):
@@ -252,6 +253,8 @@ class ExtractedFact(BaseModel):
     context_agent_actions_summary: Optional[str] = Field(
         None, description="Summary of agent actions"
     )
+    # Set by typed capture only; kept out of the legacy extractor's schema.
+    evidence: SkipJsonSchema[Optional[str]] = None
 
     # Transcript linkage (Phase 5) — traces where this fact came from
     source_session_id: Optional[str] = Field(

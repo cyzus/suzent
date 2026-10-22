@@ -660,21 +660,11 @@ class CoreMemoryFileIndexer:
             source_type = "notebook" if label == "notebook" else "core_file"
             category, tags = self._page_taxonomy(label, filename, content)
             # Vault pages carry a lifecycle (frontmatter status/stale_after, inline
-            # confirmation counts). Core files carry none of that, with one exception:
-            # MEMORY.md's manual zone is where a person edits their own memory, and
-            # `write_memory_manual_zone` stamps it with a `human:` actor. Everything
-            # else on this path stays on the neutral default.
+            # confirmation counts). Core files carry none and stay on the neutral default.
             lifecycle = (
                 self._parse_page_lifecycle(content) if source_type == "notebook" else {}
             )
-            if source_type == "notebook":
-                segments = [(content, lifecycle)]
-            else:
-                # Chunked per zone, not per file: `_chunk_by_paragraphs` merges short
-                # paragraphs, so chunking MEMORY.md whole produces a single row
-                # spanning the generated half and the human half — one row that is
-                # both machine output and user-verified, which is neither.
-                segments = self._provenance_segments(content)
+            segments = [(content, lifecycle)]
 
             rows = []
             i = 0
@@ -1004,7 +994,7 @@ class CoreMemoryFileIndexer:
 
     @staticmethod
     def _parse_page_lifecycle(content: str) -> dict:
-        """Read `status` and `stale_after` out of a vault page's frontmatter.
+        """Read `status`, `stale_after`, `confirmed` and verification out of a page's frontmatter.
 
         Deliberately not a YAML parse: the frontmatter is hand-editable and a page with
         a malformed block must still be indexed. Unreadable keys simply go missing,
@@ -1016,48 +1006,12 @@ class CoreMemoryFileIndexer:
             return lifecycle
         for line in m.group(1).splitlines():
             kv = re.match(
-                r"^(status|stale_after|verified_by|verified_at)\s*:\s*(.+?)\s*$",
+                r"^(status|stale_after|verified_by|verified_at|confirmed)\s*:\s*(.+?)\s*$",
                 line.strip(),
             )
             if kv:
                 lifecycle[kv.group(1)] = kv.group(2).strip().strip("\"'")
         return lifecycle
-
-    @staticmethod
-    def _provenance_segments(content: str) -> List[tuple]:
-        """Split a core file into `(text, lifecycle)` regions by who wrote them.
-
-        MEMORY.md is the only file with two authors: a generated zone rewritten on
-        every consolidation, and a manual zone a person edits and `write_memory_manual_zone`
-        stamps with a `human:` actor. Only the region *after* the end marker carries
-        that verification — everything above it is machine output, and scoring it as
-        human-verified would launder the generator's own text into the strongest
-        evidence class the ranker has. Every other core file comes back as one
-        unstamped segment, which is the neutral default it had before.
-        """
-        from .markdown_store import MEMORY_GENERATED_END
-
-        if MEMORY_GENERATED_END not in content:
-            return [(content, {})]
-        head, _, tail = content.partition(MEMORY_GENERATED_END)
-        verification = CoreMemoryFileIndexer._parse_verification(tail)
-        return [(head, {}), (tail, verification)]
-
-    @staticmethod
-    def _parse_verification(content: str) -> dict:
-        """Read the `<!-- verified: <actor> at <ts> -->` stamp, if the text carries one.
-
-        Written by `write_memory_manual_zone` when a person edits MEMORY.md, which is
-        the only place in the system where a claim comes from the user directly rather
-        than from extraction. Returned in the same shape as the frontmatter lifecycle
-        so both paths feed `_claim_strength` through one argument.
-        """
-        m = re.search(
-            r"<!--\s*verified:\s*(.+?)\s+at\s+(\S+?)\s*-->", content, re.IGNORECASE
-        )
-        if not m:
-            return {}
-        return {"verified_by": m.group(1).strip(), "verified_at": m.group(2).strip()}
 
     @staticmethod
     def _claim_strength(
@@ -1079,7 +1033,10 @@ class CoreMemoryFileIndexer:
 
         # A repeated fact is one claim confirmed many times, not many facts. Log-scaled
         # so the difference between 1x and 5x matters and 40x vs 60x does not.
-        confirmations = 0
+        # The dream now keeps the count in frontmatter; older pages still carry it
+        # inline, and a page mid-migration may have both.
+        confirmed = str(lifecycle.get("confirmed", ""))
+        confirmations = int(confirmed) if confirmed.isdigit() else 0
         for m in re.finditer(r"\(confirmed\s+(\d+)x", chunk, re.IGNORECASE):
             confirmations = max(confirmations, int(m.group(1)))
         if confirmations > 1:
