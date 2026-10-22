@@ -2547,9 +2547,53 @@ button.activity-turn-duration:focus-visible {
   animation: regentFadeUp 0.35s ease-out 0.1s 1 both;
 }
 
+/* Always transitioned, so the sidebar fades back as well as away. */
+.regent-dimmable {
+  transition: opacity 0.25s ease;
+}
+
 .regent-dimmed {
   opacity: 0.45;
-  transition: opacity 0.25s ease;
+}
+
+/* Leaving Regent: the cube settles back into the flat mark in its row. */
+.regent-row-mark-retreat {
+  animation: regentRetreat 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-row-text-retreat {
+  animation: regentFadeUp 0.3s ease-out 0.08s 1 both;
+}
+
+/* The header's logo slot, when the collapsed sidebar hands it Regent's cube. */
+.regent-logo-enter {
+  animation: regentGrow 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-logo-return {
+  animation: regentLogoReturn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+@keyframes regentRetreat {
+  from {
+    transform: translateY(10px) scale(1.9);
+    opacity: 0.5;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes regentLogoReturn {
+  from {
+    transform: scale(0.55) rotate(-8deg);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 .regent-dimmed:hover,
@@ -2581,7 +2625,11 @@ button.activity-turn-duration:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .regent-hero-avatar,
-  .regent-hero-text {
+  .regent-hero-text,
+  .regent-row-mark-retreat,
+  .regent-row-text-retreat,
+  .regent-logo-enter,
+  .regent-logo-return {
     animation: none !important;
   }
 }
