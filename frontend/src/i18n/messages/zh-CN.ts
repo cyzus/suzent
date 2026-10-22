@@ -1483,6 +1483,9 @@ export const zhCN = {
       stalledCount: '{count} 个停滞',
       autoRunCount: '{count} 个自动运行',
       waitingBadge: '{count} 件事等你处理',
+      pinnedWaiting: '等你',
+      pinnedStalled: '停滞',
+      moreCount: '还有 {count} 个',
     },
     sections: {
       scheduled: '定时任务',
@@ -1865,7 +1868,6 @@ export const zhCN = {
   focalBriefing: {
     greeting: '我在，聊聊吧。',
     invitation: '有什么想法，或者想一起做的事？',
-    followUp: '有些事情等你有空时，我们可以接着聊。',
   },
   taskFlow: {
     checklist: '任务清单',

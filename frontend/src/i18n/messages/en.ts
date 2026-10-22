@@ -1534,6 +1534,9 @@ export const en = {
       stalledCount: '{count} stalled',
       autoRunCount: '{count} auto-running',
       waitingBadge: '{count} waiting on you',
+      pinnedWaiting: 'Needs you',
+      pinnedStalled: 'Stalled',
+      moreCount: '+{count} more',
     },
     sections: {
       automation: 'Automation',
@@ -1922,7 +1925,6 @@ export const en = {
   focalBriefing: {
     greeting: 'Hey, I’m here.',
     invitation: 'What’s on your mind?',
-    followUp: 'There’s something we can pick up when you’re ready.',
   },
   taskFlow: {
     checklist: 'Checklist',

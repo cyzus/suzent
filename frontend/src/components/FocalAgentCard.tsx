@@ -1,5 +1,6 @@
 import React from 'react';
-import { RobotAvatar } from './chat/RobotAvatar';
+import { RegentMark } from './regent/RegentMark';
+import { regentState, useRegentNod } from './regent/regentState';
 import { useI18n } from '../i18n';
 import { useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID, type FocalAgentStatus } from '../lib/focalAgent';
@@ -10,11 +11,21 @@ interface FocalAgentCardProps {
 }
 
 export function FocalAgentCard({ active, onOpen }: FocalAgentCardProps): React.ReactElement {
-  return <FocalAgentCardView status={useFocalStatus()} active={active} onOpen={onOpen} />;
+  const status = useFocalStatus();
+  return (
+    <FocalAgentCardView
+      status={status}
+      active={active}
+      onOpen={onOpen}
+      nod={useRegentNod(status)}
+    />
+  );
 }
 
 interface FocalAgentCardViewProps extends FocalAgentCardProps {
   status: FocalAgentStatus | null;
+  /** Bumped when Regent has something new to say; replays the mark's nod. */
+  nod?: number;
 }
 
 /** "14:05" today, "Yesterday" for yesterday, a short date before that. */
@@ -39,6 +50,7 @@ export function FocalAgentCardView({
   status,
   active,
   onOpen,
+  nod = 0,
 }: FocalAgentCardViewProps): React.ReactElement {
   const { t, locale } = useI18n();
   // Background check-ins, wake-ups and events land here as new messages, so the
@@ -74,8 +86,12 @@ export function FocalAgentCardView({
       className={`w-full px-2 py-2 min-h-9 flex items-center gap-2 text-left transition-colors text-brutal-black dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${active ? 'bg-neutral-200/70 dark:bg-zinc-700' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
     >
       <span className="relative w-5 h-5 shrink-0 flex items-center justify-center">
-        <span className="w-5 h-5" aria-hidden="true">
-          <RobotAvatar variant={working ? 'observer' : 'idle'} />
+        <span
+          key={nod}
+          className={`flex w-5 h-5 items-end justify-center ${nod > 0 ? 'regent-nod' : ''}`}
+          aria-hidden="true"
+        >
+          <RegentMark size={20} state={regentState(status)} />
         </span>
         <span
           className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-2 ring-white dark:ring-zinc-800 ${working ? 'bg-brutal-blue animate-pulse' : 'bg-emerald-500'}`}

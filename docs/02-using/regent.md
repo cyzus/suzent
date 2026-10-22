@@ -73,8 +73,21 @@ The Regent card in the sidebar shows, at a glance:
 - **auto-running**: sessions working right now.
 
 Projects and chats holding something that waits on you get a badge in the
-sidebar too. Inside Regent, the **Tasks** side panel shows the board for every
-project at once, grouped by session; pick one project to narrow it down.
+sidebar too.
+
+Inside Regent, the header works like a contact in a messaging app: Regent's
+picture, its name, and what it's doing right now. Just below it, a pinned strip
+lists what needs you and what has stalled; click one to open that session. The **Tasks** side panel shows the full board for every project at
+once, grouped by session; pick one project to narrow it down.
+
+Regent's picture tells you its state at a glance, here and on the sidebar card:
+
+- **Still:** nothing needs you.
+- **Eyes scanning:** it's checking in on sessions or answering you.
+- **Orange gem:** something is waiting on your decision.
+- **A small nod:** it just said something new.
+
+If your system is set to reduce motion, the picture stays still.
 
 ## It checks in on its own
 

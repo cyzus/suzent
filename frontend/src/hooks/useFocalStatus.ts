@@ -6,9 +6,10 @@ const STATUS_POLL_MS = 10_000;
 
 /**
  * Regent's status, shared by its card and the project list's "waiting on you"
- * markers. Polled, and refreshed at once whenever tasks change.
+ * markers. Polled, and refreshed at once whenever tasks change. Pass
+ * `enabled = false` to skip polling where the status would not be shown.
  */
-export function useFocalStatus(): FocalAgentStatus | null {
+export function useFocalStatus(enabled = true): FocalAgentStatus | null {
   const [status, setStatus] = useState<FocalAgentStatus | null>(null);
   const request = useRef(0);
 
@@ -23,6 +24,7 @@ export function useFocalStatus(): FocalAgentStatus | null {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), STATUS_POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
@@ -32,7 +34,7 @@ export function useFocalStatus(): FocalAgentStatus | null {
       window.clearInterval(timer);
       unsubscribe();
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   return status;
 }

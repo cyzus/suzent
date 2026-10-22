@@ -40,6 +40,7 @@ import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
+import { RegentPinned } from './regent/RegentHeader';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ChatImageGallery } from './ChatImageGallery';
@@ -576,6 +577,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   conversational={chatId === FOCAL_CHAT_ID}
+                  regent={chatId === FOCAL_CHAT_ID}
                   message={groupedMessage}
                   workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                   messageIndex={globalIdx}
@@ -694,6 +696,7 @@ const MessageList: React.FC<{
                 ) : (
                   <AssistantMessage
                     conversational={chatId === FOCAL_CHAT_ID}
+                    regent={chatId === FOCAL_CHAT_ID}
                     message={m}
                     workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
@@ -3282,6 +3285,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <ChatImageGallery key={currentChatId || 'new'}>
         {/* Main Chat Column */}
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+          {currentChatId === FOCAL_CHAT_ID && (
+            <RegentPinned kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+          )}
           {/* Keep sticky message animations below the composer's popovers. */}
           <div className="relative z-0 isolate flex-1 min-h-0">
             <div
@@ -3315,11 +3321,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onPaste={handlePaste}
                   onImageClick={setViewingImage}
                   currentChatId={currentChatId}
-                  briefing={
-                    currentChatId === FOCAL_CHAT_ID ? (
-                      <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
-                    ) : undefined
-                  }
+                  briefing={currentChatId === FOCAL_CHAT_ID ? <FocalBriefing /> : undefined}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),
@@ -3334,7 +3336,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   {currentChatId === FOCAL_CHAT_ID &&
                     !safeMessages.some((message) => message.role === 'user') && (
                       <div className="flex justify-center pt-4 pb-2">
-                        <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+                        <FocalBriefing />
                       </div>
                     )}
                   {safeMessages.length > 0 && (
@@ -3395,6 +3397,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           ) : (
                             <AssistantMessage
                               conversational={currentChatId === FOCAL_CHAT_ID}
+                              regent={currentChatId === FOCAL_CHAT_ID}
                               message={{ role: 'assistant', content: '' }}
                               messageIndex={safeMessages.length}
                               isStreaming={streamingForCurrentChat}

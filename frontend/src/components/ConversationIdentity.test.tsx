@@ -29,7 +29,7 @@ describe('ConversationIdentity', () => {
     store.chats = [];
   });
 
-  it('names Regent as Suzent Regent, with its role', () => {
+  it('shows Regent as a contact: Suzent Regent with its role', () => {
     expect(text()).toBe('chatList.focal.brand chatList.focal.name chatList.focal.role');
   });
 

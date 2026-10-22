@@ -203,8 +203,21 @@ which would run with a full tool set.
 ## Desktop
 
 - `FocalAgentCard` at the top of the sidebar, fed by `useFocalStatus`.
-- `FocalBriefing` replaces the empty-chat screen with a greeting and the
-  sessions that need attention.
+- On the Focal chat the app header is Regent's contact card: `ConversationIdentity`
+  renders `LiveRegentIdentity` (the crowned cube, "SUZENT Regent" and a presence
+  line), and the header grows from `h-12` to `h-16` to fit the cube. Right under
+  it, `RegentPinned` pins the board's `attention` and `stalled` sessions as
+  chips that open them. Both live in `components/regent/RegentHeader.tsx`.
+- `FocalBriefing` is only the greeting on an empty chat; the header carries the
+  name and what waits on the user.
+- Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
+  head under a floating circlet, for small sizes (sidebar card, reply labels,
+  live badge via `AgentBadge`'s `icon`); and `RegentCube`, the greeting cube
+  wearing the circlet, for large ones. Both take a `RegentState` from
+  `regentState()`: `working` while Regent runs (cube turns, eyes scan, circlet
+  lifts), `waiting` when something waits on the user (gem pulses orange), else
+  `idle`. `useRegentNod()` replays a one-off nod when a new message arrives.
+  All of it stops under `prefers-reduced-motion`.
 - The Tasks panel on the Focal chat shows the all-projects board grouped by
   session, with a remembered project filter.
 - The Tools tab shows `FocalToolsPanel` instead of the tool picker, and the
