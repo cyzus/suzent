@@ -576,6 +576,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   conversational={chatId === FOCAL_CHAT_ID}
+                  regent={chatId === FOCAL_CHAT_ID}
                   message={groupedMessage}
                   workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                   messageIndex={globalIdx}
@@ -694,6 +695,7 @@ const MessageList: React.FC<{
                 ) : (
                   <AssistantMessage
                     conversational={chatId === FOCAL_CHAT_ID}
+                    regent={chatId === FOCAL_CHAT_ID}
                     message={m}
                     workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
@@ -3315,11 +3317,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onPaste={handlePaste}
                   onImageClick={setViewingImage}
                   currentChatId={currentChatId}
-                  briefing={
-                    currentChatId === FOCAL_CHAT_ID ? (
-                      <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
-                    ) : undefined
-                  }
+                  briefing={currentChatId === FOCAL_CHAT_ID ? <FocalBriefing /> : undefined}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),
@@ -3334,7 +3332,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   {currentChatId === FOCAL_CHAT_ID &&
                     !safeMessages.some((message) => message.role === 'user') && (
                       <div className="flex justify-center pt-4 pb-2">
-                        <FocalBriefing kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+                        <FocalBriefing />
                       </div>
                     )}
                   {safeMessages.length > 0 && (
@@ -3395,6 +3393,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           ) : (
                             <AssistantMessage
                               conversational={currentChatId === FOCAL_CHAT_ID}
+                              regent={currentChatId === FOCAL_CHAT_ID}
                               message={{ role: 'assistant', content: '' }}
                               messageIndex={safeMessages.length}
                               isStreaming={streamingForCurrentChat}

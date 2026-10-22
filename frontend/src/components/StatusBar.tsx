@@ -4,7 +4,6 @@ import { selectContextLimit } from '../lib/contextLimit';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
@@ -22,6 +21,8 @@ import {
 import { BrutalOnOff } from './BrutalOnOff';
 import { InformationPopover } from './InformationPopover';
 import { isImeComposing } from '../lib/ime';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
+import { LiveRegentIdentity } from './regent/RegentHeader';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -930,25 +931,13 @@ function ActiveChatTitle() {
 }
 
 /**
- * Who the header is about: Regent with its role, or a chat with its project.
+ * Who the header is about: Regent as a contact, or a chat with its project.
  * Returns null on a new, unsaved chat, where the header keeps the brand title.
  */
 export function ConversationIdentity(): React.ReactElement | null {
   const { currentChatId, chats } = useChatCoreStore();
-  const { t } = useI18n();
   if (!currentChatId) return null;
-  if (currentChatId === FOCAL_CHAT_ID) {
-    return (
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-brutal text-2xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor] text-brutal-black dark:text-white">
-          {t('chatList.focal.name')}
-        </span>
-        <span className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-          {t('chatList.focal.role')}
-        </span>
-      </div>
-    );
-  }
+  if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
   const chat = chats.find((item) => item.id === currentChatId);
   const title = chat?.title?.trim();
   if (!title) return null;

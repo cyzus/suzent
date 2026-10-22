@@ -150,44 +150,12 @@ interface ChatListProps {
   /** The main area's current view, so its sidebar entry reads as selected. */
   activeView?: string;
   onOpenView?: (view: Exclude<SidebarView, 'chat'>) => void;
-  /** Search is opened from the sidebar's logo row (see SidebarHeaderActions). */
+  /** Search opens from the row under Regent, or its keyboard shortcut. */
   searchOpen?: boolean;
   onSearchOpenChange?: (open: boolean) => void;
 }
 
 /** Search and new chat, as icons in the sidebar's logo row. */
-export function SidebarHeaderActions({ onSearch }: { onSearch: () => void }): React.ReactElement {
-  const { t } = useI18n();
-  const { beginNewChat, switchToView } = useChatStore();
-  const iconButton =
-    'h-8 w-8 flex items-center justify-center text-brutal-black hover:bg-neutral-200 dark:text-white dark:hover:bg-zinc-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue';
-  return (
-    <div className="ml-auto flex items-center gap-0.5">
-      <button
-        type="button"
-        onClick={onSearch}
-        className={iconButton}
-        title={t('chatList.searchChatsPlaceholder')}
-        aria-label={t('chatList.searchChatsPlaceholder')}
-      >
-        <MagnifyingGlassIcon className="h-[18px] w-[18px] stroke-2" />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          beginNewChat();
-          if (switchToView) switchToView('chat');
-        }}
-        className={iconButton}
-        title={t('chatList.newChat')}
-        aria-label={t('chatList.newChat')}
-      >
-        <PencilSquareIcon className="h-[18px] w-[18px] stroke-2" />
-      </button>
-    </div>
-  );
-}
-
 const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
@@ -377,6 +345,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus | null>(null);
   const [loadingAutomation, setLoadingAutomation] = useState(true);
   const focalStatus = useFocalStatus();
+  // On Regent's chat the rest of the sidebar steps back behind its card.
+  const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
   const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
@@ -1437,93 +1407,18 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
       )}
 
-      {/* Header: search (opened from the logo row). */}
-      <div
-        className={`px-2 bg-white dark:bg-zinc-800 flex-shrink-0 ${searchOpen || localSearchQuery ? 'pt-2 pb-1' : ''}`}
-      >
-        {(searchOpen || localSearchQuery) && (
-          <div className="relative">
-            <input
-              type="text"
-              autoFocus
-              value={localSearchQuery}
-              onChange={(e) => setLocalSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (isImeComposing(e)) return;
-                if (e.key === 'Escape') {
-                  setLocalSearchQuery('');
-                  onSearchOpenChange?.(false);
-                }
-              }}
-              onBlur={() => {
-                if (!localSearchQuery.trim()) onSearchOpenChange?.(false);
-              }}
-              placeholder={t('chatList.searchChatsPlaceholder')}
-              className="h-9 w-full px-3 pl-9 pr-8 bg-white dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border border-brutal-black dark:border-neutral-300 font-medium text-xs placeholder-neutral-400 focus:outline-none transition-colors"
-            />
-            <MagnifyingGlassIcon
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
-              aria-hidden="true"
-            />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setLocalSearchQuery('');
-                onSearchOpenChange?.(false);
-              }}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
-              title={t('chatList.clearSearch')}
-              aria-label={t('chatList.clearSearch')}
-            >
-              <XMarkIcon className="w-3.5 h-3.5 text-brutal-black dark:text-white" />
-            </button>
-          </div>
-        )}
-      </div>
-
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800">
-        {isSearching ? (
-          <section>
-            <div className="flex items-center justify-between px-3 py-2 border-y-2 border-brutal-black bg-white dark:bg-zinc-800">
-              <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                {t('chatList.sections.searchResults')}
-              </h2>
-              <span className="text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
-                {chatTotal}
-              </span>
+        <div className="flex flex-col">
+          {/* Regent sits above everything else, like a pinned contact. */}
+          {!isSearching && (
+            <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
+              <FocalAgentCardView status={focalStatus} active={regentOpen} onOpen={openChatById} />
             </div>
-            {chats.length === 0 ? (
-              <div className="px-6 py-10 text-center">
-                <RobotAvatar variant="ghost" />
-                <p className="mt-3 text-xs font-extrabold uppercase text-brutal-black dark:text-white">
-                  {t('chatList.empty.noResultsTitle')}
-                </p>
-                <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-                  {t('chatList.empty.noResultsDesc')}
-                </p>
-              </div>
-            ) : (
-              <div>{chats.map((chat) => renderChatRow(chat, true))}</div>
-            )}
-            {chatTotal > chats.length && (
-              <button
-                type="button"
-                onClick={() => void loadMoreChats()}
-                disabled={loadingMoreChats}
-                className="w-full py-3 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
-              >
-                {loadingMoreChats
-                  ? t('chatList.loadingMore')
-                  : t('chatList.loadMore', { count: chatTotal - chats.length })}
-              </button>
-            )}
-          </section>
-        ) : (
-          <div className="flex flex-col">
+          )}
+          {!isSearching && (
             <nav
               aria-label={t('chatList.sections.navigation')}
-              className="order-0 px-1.5 pt-1 pb-1"
+              className={`order-0 px-1.5 pt-1 pb-1 ${regentOpen ? 'regent-dimmed' : ''}`}
             >
               <button
                 type="button"
@@ -1770,288 +1665,393 @@ export const ChatList: React.FC<ChatListProps> = ({
                 <span className="flex-1 truncate">{t('nav.skills')}</span>
               </button>
             </nav>
-            <div className="order-0 px-1.5 pb-2">
-              <FocalAgentCardView
-                status={focalStatus}
-                active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
-                onOpen={openChatById}
-              />
-            </div>
-
-            {pinnedChats.length > 0 && (
-              <section className="order-0 px-1.5 pb-2 pt-1">
-                <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
-                  {t('chatList.pinnedChats')}
-                </h2>
-                <div>{pinnedChats.map((chat) => renderChatRow(chat, true, false, true))}</div>
-              </section>
-            )}
-            <section
-              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'}`}
+          )}
+          {/* New chat and Search sit just above the projects, at full strength even
+                while Regent's chat dims the rest. Search opens right under its row,
+                and this block keeps its place while results replace the list, so
+                the input keeps focus as the first keystroke turns searching on. */}
+          <div className="order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
+            <button
+              type="button"
+              onClick={() => {
+                beginNewChat();
+                if (switchToView) switchToView('chat');
+              }}
+              className={sidebarNavRowClass(false)}
             >
-              <div
-                ref={organizationMenuRef}
-                className="relative flex items-center justify-between px-3 py-2"
-              >
-                <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                  {organization === 'projects'
-                    ? t('chatList.sections.projects')
-                    : t('chatList.sections.chats')}
-                </h2>
-                <div className="flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setOrganizationMenuOpen((value) => !value)}
-                    className="flex h-6 w-6 items-center justify-center text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
-                    title={t('chatList.organization.title')}
-                    aria-label={t('chatList.organization.title')}
-                    aria-expanded={organizationMenuOpen}
-                  >
-                    <MoreActionsIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (organization === 'list') {
-                        beginNewChat();
-                        if (switchToView) switchToView('chat');
-                        return;
+              <PencilSquareIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="flex-1 truncate">{t('chatList.newChat')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSearchOpenChange?.(true)}
+              className={sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))}
+            >
+              <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="flex-1 truncate">{t('chatList.search')}</span>
+            </button>
+            {(searchOpen || localSearchQuery) && (
+              <div className="px-0.5 pt-1 pb-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={localSearchQuery}
+                    onChange={(e) => setLocalSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
+                      if (e.key === 'Escape') {
+                        setLocalSearchQuery('');
+                        onSearchOpenChange?.(false);
                       }
-                      setCreatingProjectInline(true);
                     }}
-                    className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
-                    title={
-                      organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
-                    }
-                    aria-label={
-                      organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
-                    }
+                    onBlur={() => {
+                      if (!localSearchQuery.trim()) onSearchOpenChange?.(false);
+                    }}
+                    placeholder={t('chatList.searchChatsPlaceholder')}
+                    className="h-9 w-full px-3 pl-9 pr-8 bg-white dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border border-brutal-black dark:border-neutral-300 font-medium text-xs placeholder-neutral-400 focus:outline-none transition-colors"
+                  />
+                  <MagnifyingGlassIcon
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
+                    aria-hidden="true"
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setLocalSearchQuery('');
+                      onSearchOpenChange?.(false);
+                    }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
+                    title={t('chatList.clearSearch')}
+                    aria-label={t('chatList.clearSearch')}
                   >
-                    <PlusIcon className="w-4 h-4 stroke-[3]" />
+                    <XMarkIcon className="w-3.5 h-3.5 text-brutal-black dark:text-white" />
                   </button>
                 </div>
-                {organizationMenuOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-3 top-8 z-30 min-w-[180px] border-2 border-brutal-black bg-white py-1 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
-                  >
-                    <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
-                      {t('chatList.organization.title')}
-                    </div>
-                    {(['projects', 'list'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={organization === mode}
-                        onClick={() => selectOrganization(mode)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-brutal-black hover:bg-brutal-yellow dark:text-white dark:hover:text-brutal-black"
-                      >
-                        <span className="flex h-4 w-4 items-center justify-center">
-                          {organization === mode && <CheckIcon className="h-4 w-4 stroke-[2.5]" />}
-                        </span>
-                        {mode === 'projects'
-                          ? t('chatList.organization.byProject')
-                          : t('chatList.organization.singleList')}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
-
-              {organization === 'projects' ? (
-                <>
-                  {creatingProjectInline && (
-                    <form
-                      onSubmit={handleCreateProjectInline}
-                      className="flex items-center gap-1 px-3 pb-2"
+            )}
+          </div>
+          {isSearching ? (
+            <section>
+              <div className="flex items-center justify-between px-3 py-2 border-y-2 border-brutal-black bg-white dark:bg-zinc-800">
+                <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                  {t('chatList.sections.searchResults')}
+                </h2>
+                <span className="text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                  {chatTotal}
+                </span>
+              </div>
+              {chats.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <RobotAvatar variant="ghost" />
+                  <p className="mt-3 text-xs font-extrabold uppercase text-brutal-black dark:text-white">
+                    {t('chatList.empty.noResultsTitle')}
+                  </p>
+                  <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {t('chatList.empty.noResultsDesc')}
+                  </p>
+                </div>
+              ) : (
+                <div>{chats.map((chat) => renderChatRow(chat, true))}</div>
+              )}
+              {chatTotal > chats.length && (
+                <button
+                  type="button"
+                  onClick={() => void loadMoreChats()}
+                  disabled={loadingMoreChats}
+                  className="w-full py-3 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                >
+                  {loadingMoreChats
+                    ? t('chatList.loadingMore')
+                    : t('chatList.loadMore', { count: chatTotal - chats.length })}
+                </button>
+              )}
+            </section>
+          ) : (
+            <>
+              {pinnedChats.length > 0 && (
+                <section
+                  className={`order-0 px-1.5 pb-2 pt-1 ${regentOpen ? 'regent-dimmed' : ''}`}
+                >
+                  <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
+                    {t('chatList.pinnedChats')}
+                  </h2>
+                  <div>{pinnedChats.map((chat) => renderChatRow(chat, true, false, true))}</div>
+                </section>
+              )}
+              <section
+                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} ${regentOpen ? 'regent-dimmed' : ''}`}
+              >
+                <div
+                  ref={organizationMenuRef}
+                  className="relative flex items-center justify-between px-3 py-2"
+                >
+                  <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                    {organization === 'projects'
+                      ? t('chatList.sections.projects')
+                      : t('chatList.sections.chats')}
+                  </h2>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setOrganizationMenuOpen((value) => !value)}
+                      className="flex h-6 w-6 items-center justify-center text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
+                      title={t('chatList.organization.title')}
+                      aria-label={t('chatList.organization.title')}
+                      aria-expanded={organizationMenuOpen}
                     >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={newProjectName}
-                        onChange={(event) => setNewProjectName(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (isImeComposing(event)) return;
-                          if (event.key === 'Escape') {
+                      <MoreActionsIcon />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (organization === 'list') {
+                          beginNewChat();
+                          if (switchToView) switchToView('chat');
+                          return;
+                        }
+                        setCreatingProjectInline(true);
+                      }}
+                      className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
+                      title={
+                        organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                      }
+                      aria-label={
+                        organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                      }
+                    >
+                      <PlusIcon className="w-4 h-4 stroke-[3]" />
+                    </button>
+                  </div>
+                  {organizationMenuOpen && (
+                    <div
+                      role="menu"
+                      className="absolute right-3 top-8 z-30 min-w-[180px] border-2 border-brutal-black bg-white py-1 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
+                    >
+                      <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
+                        {t('chatList.organization.title')}
+                      </div>
+                      {(['projects', 'list'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={organization === mode}
+                          onClick={() => selectOrganization(mode)}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-brutal-black hover:bg-brutal-yellow dark:text-white dark:hover:text-brutal-black"
+                        >
+                          <span className="flex h-4 w-4 items-center justify-center">
+                            {organization === mode && (
+                              <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                            )}
+                          </span>
+                          {mode === 'projects'
+                            ? t('chatList.organization.byProject')
+                            : t('chatList.organization.singleList')}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {organization === 'projects' ? (
+                  <>
+                    {creatingProjectInline && (
+                      <form
+                        onSubmit={handleCreateProjectInline}
+                        className="flex items-center gap-1 px-3 pb-2"
+                      >
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newProjectName}
+                          onChange={(event) => setNewProjectName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (isImeComposing(event)) return;
+                            if (event.key === 'Escape') {
+                              setCreatingProjectInline(false);
+                              setNewProjectName('');
+                            }
+                          }}
+                          placeholder={t('chatList.newProjectPlaceholder')}
+                          className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             setCreatingProjectInline(false);
                             setNewProjectName('');
-                          }
-                        }}
-                        placeholder={t('chatList.newProjectPlaceholder')}
-                        className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreatingProjectInline(false);
-                          setNewProjectName('');
-                        }}
-                        className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
-                      >
-                        ✕
-                      </button>
-                    </form>
-                  )}
+                          }}
+                          className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
+                        >
+                          ✕
+                        </button>
+                      </form>
+                    )}
 
-                  <div className="space-y-0.5 px-2 pb-2">
-                    {sortedProjects.map((project) => {
-                      const isOpen = filterId === project.id;
-                      const isSystem = project.slug === 'default' || project.slug === 'social';
-                      const isRenaming = renamingProjectId === project.id;
-                      return (
-                        <div key={project.id}>
-                          <div
-                            className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
-                          >
-                            {isRenaming ? (
-                              <form
-                                className="col-span-2 flex items-center gap-1 px-2 py-1"
-                                onSubmit={async (event) => {
-                                  event.preventDefault();
-                                  const trimmed = projectRenameValue.trim();
-                                  if (trimmed && trimmed !== project.name)
-                                    await renameProject(project.id, trimmed);
-                                  setRenamingProjectId(null);
-                                }}
-                              >
-                                <input
-                                  autoFocus
-                                  value={projectRenameValue}
-                                  onChange={(event) => setProjectRenameValue(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (isImeComposing(event)) return;
-                                    if (event.key === 'Escape') setRenamingProjectId(null);
+                    <div className="space-y-0.5 px-2 pb-2">
+                      {sortedProjects.map((project) => {
+                        const isOpen = filterId === project.id;
+                        const isSystem = project.slug === 'default' || project.slug === 'social';
+                        const isRenaming = renamingProjectId === project.id;
+                        return (
+                          <div key={project.id}>
+                            <div
+                              className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
+                            >
+                              {isRenaming ? (
+                                <form
+                                  className="col-span-2 flex items-center gap-1 px-2 py-1"
+                                  onSubmit={async (event) => {
+                                    event.preventDefault();
+                                    const trimmed = projectRenameValue.trim();
+                                    if (trimmed && trimmed !== project.name)
+                                      await renameProject(project.id, trimmed);
+                                    setRenamingProjectId(null);
                                   }}
-                                  className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                                />
-                                <button
-                                  type="submit"
-                                  className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
                                 >
-                                  ✓
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setRenamingProjectId(null)}
-                                  className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
-                                >
-                                  ✕
-                                </button>
-                              </form>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  aria-expanded={isOpen}
-                                  aria-current={isOpen ? 'true' : undefined}
-                                  onClick={() =>
-                                    isOpen
-                                      ? setFilterId(ALL_PROJECTS_FILTER)
-                                      : handleSelectFilter(project.id)
-                                  }
-                                  className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
-                                >
-                                  <span
-                                    className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : isOpen ? 'font-semibold text-brutal-black dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
+                                  <input
+                                    autoFocus
+                                    value={projectRenameValue}
+                                    onChange={(event) => setProjectRenameValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (isImeComposing(event)) return;
+                                      if (event.key === 'Escape') setRenamingProjectId(null);
+                                    }}
+                                    className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
                                   >
-                                    {project.name}
-                                  </span>
-                                </button>
-                                <span className="relative flex items-center justify-center">
-                                  <span
-                                    className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
+                                    ✓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRenamingProjectId(null)}
+                                    className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
                                   >
-                                    <ProjectStatusSquare
-                                      running={!isOpen && runningProjectIds.has(project.id)}
-                                      waiting={
-                                        !isOpen &&
-                                        (focalStatus?.waitingByProject?.[project.id] ?? 0) > 0
-                                      }
-                                    />
-                                  </span>
-                                  {!isSystem && (
-                                    <button
-                                      type="button"
-                                      aria-label={t('chatList.menu.title')}
-                                      title={t('chatList.menu.title')}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        const rect = event.currentTarget.getBoundingClientRect();
-                                        setProjectMenu({ projectId: project.id, anchor: { rect } });
-                                      }}
-                                      className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
-                                    >
-                                      <MoreActionsIcon />
-                                    </button>
-                                  )}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {isOpen && (
-                            <div>
-                              {loadingProjectChats ? (
-                                renderListSkeleton()
-                              ) : visibleChats.length === 0 ? (
-                                <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
-                                  {t('chatList.empty.noChatsTitle')}
-                                </div>
+                                    ✕
+                                  </button>
+                                </form>
                               ) : (
                                 <>
-                                  {visibleChats
-                                    .filter((chat) => getChatKind(chat) !== 'scheduled')
-                                    .map((chat) => renderChatRow(chat, false, true))}
-                                  {remaining > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleLoadMore()}
-                                      disabled={loadingMoreProjectChats}
-                                      className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                                  <button
+                                    type="button"
+                                    aria-expanded={isOpen}
+                                    aria-current={isOpen ? 'true' : undefined}
+                                    onClick={() =>
+                                      isOpen
+                                        ? setFilterId(ALL_PROJECTS_FILTER)
+                                        : handleSelectFilter(project.id)
+                                    }
+                                    className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
+                                  >
+                                    <span
+                                      className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : isOpen ? 'font-semibold text-brutal-black dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
                                     >
-                                      {loadingMoreProjectChats
-                                        ? t('chatList.loadingMore')
-                                        : t('chatList.loadMore', { count: remaining })}
-                                    </button>
-                                  )}
+                                      {project.name}
+                                    </span>
+                                  </button>
+                                  <span className="relative flex items-center justify-center">
+                                    <span
+                                      className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
+                                    >
+                                      <ProjectStatusSquare
+                                        running={!isOpen && runningProjectIds.has(project.id)}
+                                        waiting={
+                                          !isOpen &&
+                                          (focalStatus?.waitingByProject?.[project.id] ?? 0) > 0
+                                        }
+                                      />
+                                    </span>
+                                    {!isSystem && (
+                                      <button
+                                        type="button"
+                                        aria-label={t('chatList.menu.title')}
+                                        title={t('chatList.menu.title')}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          const rect = event.currentTarget.getBoundingClientRect();
+                                          setProjectMenu({
+                                            projectId: project.id,
+                                            anchor: { rect },
+                                          });
+                                        }}
+                                        className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                      >
+                                        <MoreActionsIcon />
+                                      </button>
+                                    )}
+                                  </span>
                                 </>
                               )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+
+                            {isOpen && (
+                              <div>
+                                {loadingProjectChats ? (
+                                  renderListSkeleton()
+                                ) : visibleChats.length === 0 ? (
+                                  <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
+                                    {t('chatList.empty.noChatsTitle')}
+                                  </div>
+                                ) : (
+                                  <>
+                                    {visibleChats
+                                      .filter((chat) => getChatKind(chat) !== 'scheduled')
+                                      .map((chat) => renderChatRow(chat, false, true))}
+                                    {remaining > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleLoadMore()}
+                                        disabled={loadingMoreProjectChats}
+                                        className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                                      >
+                                        {loadingMoreProjectChats
+                                          ? t('chatList.loadingMore')
+                                          : t('chatList.loadMore', { count: remaining })}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    {visibleChats
+                      .filter((chat) => getChatKind(chat) !== 'scheduled')
+                      .map((chat) => renderChatRow(chat, true))}
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleLoadMore()}
+                        disabled={loadingMoreChats}
+                        className="w-full border-t border-neutral-200 py-2.5 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
+                      >
+                        {loadingMoreChats
+                          ? t('chatList.loadingMore')
+                          : t('chatList.loadMore', { count: remaining })}
+                      </button>
+                    )}
                   </div>
-                </>
-              ) : (
-                <div className="border-t border-neutral-200 dark:border-zinc-700">
-                  {visibleChats
-                    .filter((chat) => getChatKind(chat) !== 'scheduled')
-                    .map((chat) => renderChatRow(chat, true))}
-                  {remaining > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void handleLoadMore()}
-                      disabled={loadingMoreChats}
-                      className="w-full border-t border-neutral-200 py-2.5 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
-                    >
-                      {loadingMoreChats
-                        ? t('chatList.loadingMore')
-                        : t('chatList.loadMore', { count: remaining })}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-          </div>
-        )}
+                )}
+              </section>
+            </>
+          )}
+        </div>
       </div>
 
       {bulkMenu && (
