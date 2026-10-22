@@ -1521,6 +1521,7 @@ export const en = {
       recentIn: 'Recent in {name}',
     },
     focal: {
+      back: 'Back to Regent',
       primary: 'Main conversation',
       chat: 'Let’s talk',
       brand: 'Suzent',
