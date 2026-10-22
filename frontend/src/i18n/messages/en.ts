@@ -1509,6 +1509,7 @@ export const en = {
     searchChatsPlaceholder: 'Search chats…',
     clearSearch: 'Clear search',
     newChat: 'New chat',
+    search: 'Search',
     newProject: 'New project',
     newProjectPlaceholder: 'Project name...',
     moveToProject: 'Move to project',
@@ -1522,6 +1523,7 @@ export const en = {
     focal: {
       primary: 'Main conversation',
       chat: 'Let’s talk',
+      brand: 'Suzent',
       name: 'Regent',
       open: 'Open Regent',
       role: 'Always on watch',
@@ -1921,7 +1923,6 @@ export const en = {
   focalBriefing: {
     greeting: 'Hey, I’m here.',
     invitation: 'What’s on your mind?',
-    followUp: 'There’s something we can pick up when you’re ready.',
   },
   taskFlow: {
     checklist: 'Checklist',

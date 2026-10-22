@@ -203,8 +203,30 @@ which would run with a full tool set.
 ## Desktop
 
 - `FocalAgentCard` at the top of the sidebar, fed by `useFocalStatus`.
-- `FocalBriefing` replaces the empty-chat screen with a greeting and the
-  sessions that need attention.
+- `FocalAgentCard` sits above the sidebar's navigation, like a pinned contact.
+- On the Focal chat the sidebar card becomes a profile (`regent-card-hero`):
+  the flat mark gives way to a 56px `RegentCube` that grows in, and `ChatList`
+  marks the navigation and project sections `regent-dimmed` (they return to
+  full strength on hover or focus).
+- The header keeps its single `h-12` row and every icon in place.
+  `ConversationIdentity` renders `LiveRegentIdentity`: "SUZENT Regent" and a
+  pill for working, waiting or stalled. While the left sidebar is collapsed,
+  `LiveRegentLogo` replaces the `SuzentLogo` in the sidebar trigger slot, so the
+  cube appears exactly where the logo was. Both read "working" from the chat's
+  own stream as well as from status (`components/regent/RegentHeader.tsx`).
+- Regent's replies are signed with its mark (`AssistantMessage`'s `regent`):
+  the live badge shows `RegentMark` through `AgentBadge`'s `icon`, scanning
+  while it works, and past replies carry the small mark and "Regent".
+- `FocalBriefing` is only the greeting on an empty chat; the header carries the
+  name and what waits on the user.
+- Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
+  head under a floating circlet, for the sidebar row and reply badges; and `RegentCube`, the
+  greeting cube wearing the circlet, for the open profile and the header's logo
+  slot. Both take a `RegentState` from
+  `regentState()`: `working` while Regent runs (cube turns, eyes scan, circlet
+  lifts), `waiting` when something waits on the user (gem pulses orange), else
+  `idle`. `useRegentNod()` replays a one-off nod when a new message arrives.
+  All of it stops under `prefers-reduced-motion`.
 - The Tasks panel on the Focal chat shows the all-projects board grouped by
   session, with a remembered project filter.
 - The Tools tab shows `FocalToolsPanel` instead of the tool picker, and the

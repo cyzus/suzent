@@ -1458,6 +1458,7 @@ export const zhCN = {
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',
+    search: '搜索',
     newProject: '新建项目',
     newProjectPlaceholder: '项目名称…',
     moveToProject: '移动到项目',
@@ -1471,6 +1472,7 @@ export const zhCN = {
     focal: {
       primary: '主对话',
       chat: '聊聊吧',
+      brand: 'Suzent',
       name: 'Regent',
       open: '打开 Regent',
       role: '我一直在',
@@ -1864,7 +1866,6 @@ export const zhCN = {
   focalBriefing: {
     greeting: '我在，聊聊吧。',
     invitation: '有什么想法，或者想一起做的事？',
-    followUp: '有些事情等你有空时，我们可以接着聊。',
   },
   taskFlow: {
     checklist: '任务清单',
