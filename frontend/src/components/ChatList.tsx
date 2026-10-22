@@ -327,6 +327,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [locatedChatId, setLocatedChatId] = useState<string | null>(null);
   const [locatingChatId, setLocatingChatId] = useState<string | null>(null);
   const followedChatRef = useRef<string | null>(null);
+  const pickedInSidebarRef = useRef<string | null>(null);
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -339,16 +340,19 @@ export const ChatList: React.FC<ChatListProps> = ({
   );
 
   useEffect(() => {
-    if (!currentChatId || currentChatId === FOCAL_CHAT_ID) return;
+    if (!currentChatId || currentChatId === FOCAL_CHAT_ID) {
+      // Leaving for Regent ends the visit, so reopening the same chat follows it again.
+      followedChatRef.current = null;
+      return;
+    }
     if (followedChatRef.current === currentChatId) return;
     followedChatRef.current = currentChatId;
-    // A row already on screen is where the user just clicked; leave the list alone.
-    const row = findChatRow(currentChatId);
-    const area = scrollAreaRef.current?.getBoundingClientRect();
-    const rect = row?.getBoundingClientRect();
-    if (row && area && rect && rect.top >= area.top && rect.bottom <= area.bottom) return;
+    // A chat picked in the sidebar is already where the user is looking.
+    const picked = pickedInSidebarRef.current === currentChatId;
+    pickedInSidebarRef.current = null;
+    if (picked) return;
     setLocatingChatId(currentChatId);
-    if (row || organization !== 'projects' || searchQuery) return;
+    if (findChatRow(currentChatId) || organization !== 'projects' || searchQuery) return;
     const chatId = currentChatId;
     const openProject = (projectId: string | null | undefined): void => {
       if (followedChatRef.current !== chatId) return;
@@ -1320,7 +1324,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     return (
       <div
         key={chat.id}
-        data-chat-row={chat.id}
+        data-chat-row={compact ? undefined : chat.id}
         onClick={(e) => {
           if (renamingChatId) return;
           const intent = selectionIntent(e, platform);
@@ -1331,6 +1335,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           }
           clearSelection();
           markRead(chat.id);
+          pickedInSidebarRef.current = chat.id;
           loadChat(chat.id);
           if (switchToView) switchToView('chat');
         }}
@@ -1454,6 +1459,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     );
 
   const openChatById = (chatId: string): void => {
+    pickedInSidebarRef.current = chatId;
     markRead(chatId);
     loadChat(chatId);
     if (switchToView) switchToView('chat');
