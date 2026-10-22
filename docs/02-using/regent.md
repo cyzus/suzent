@@ -76,7 +76,7 @@ Projects and chats holding something that waits on you get a badge in the
 sidebar too.
 
 Regent sits at the very top of the sidebar, above everything else, like a
-pinned contact, with **New chat** and **Search** right under it. Open it and its row grows into a profile with Regent's picture,
+pinned contact; **New chat** and **Search** sit just above your projects. Open Regent and its row grows into a profile with Regent's picture,
 while the rest of the sidebar fades back until you point at it. The header
 shows Regent's name and a small tag for what needs you; with the sidebar
 collapsed, Regent's picture takes the logo's place in the header. The **Tasks**
