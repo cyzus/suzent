@@ -42,6 +42,7 @@
     ".releases/changes/focal-agent.json",
     ".releases/changes/focal-notes.json",
     ".releases/changes/focal-session-request-visible.json",
+    ".releases/changes/focal-tools-package.json",
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/ime-safe-keyboard.json",
