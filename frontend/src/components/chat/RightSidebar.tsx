@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { FOCAL_CHAT_ID, readFocalBoardOpen } from '../../lib/focalAgent';
+import { markOpenedFromRegent } from '../../lib/regentReturn';
 import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
@@ -732,16 +733,20 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             chatTitles={chatTitles}
             focal={currentChatId === FOCAL_CHAT_ID}
             onOpenTask={async (task) => {
+              const fromRegent = currentChatId === FOCAL_CHAT_ID;
               const opened = (await onOpenTask?.(task)) ?? false;
               if (opened) {
+                if (fromRegent && task.chatId) markOpenedFromRegent(task.chatId);
                 if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
                 if (isOverlayMode) onClose();
               }
               return opened;
             }}
             onOpenChat={async (chatId) => {
+              const fromRegent = currentChatId === FOCAL_CHAT_ID;
               const opened = await onTaskChat?.(chatId);
               if (opened) {
+                if (fromRegent) markOpenedFromRegent(chatId);
                 if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
                 if (isOverlayMode) onClose();
               }

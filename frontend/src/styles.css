@@ -2585,3 +2585,26 @@ button.activity-turn-duration:focus-visible {
     animation: none !important;
   }
 }
+
+/* A chat row the sidebar just scrolled to after it opened from elsewhere. */
+.chat-row-located {
+  animation: chatRowLocated 1.6s ease-out;
+}
+
+@keyframes chatRowLocated {
+  0%,
+  35% {
+    box-shadow: inset 4px 0 0 var(--brutal-yellow);
+    background-color: rgb(255 102 0 / 0.18);
+  }
+  100% {
+    box-shadow: inset 4px 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-row-located {
+    animation: none;
+    box-shadow: inset 4px 0 0 var(--brutal-yellow);
+  }
+}
