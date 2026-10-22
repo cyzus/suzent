@@ -764,8 +764,17 @@ pinned contact; **New chat** and **Search** sit just above your projects. Open R
 while the rest of the sidebar fades back until you point at it. The header
 shows Regent's name and a small tag for what needs you; with the sidebar
 collapsed, Regent's picture takes the logo's place in the header. The **Tasks**
-side panel holds the board for every project. The **Tasks** side panel shows the full board for every project at
-once, grouped by session; pick one project to narrow it down.
+side panel shows the full board for every project at once, grouped by session;
+pick one project from the dropdown to narrow it down.
+
+Right-click a session on the board to change it by hand, or right-click one of
+its tasks to change just that task:
+
+- **Resume** lets the agent stop waiting on you without an answer. The session
+  shows as stalled until something picks the work up again.
+- **Mark done** finishes the open tasks; **Reopen** puts finished ones back.
+- **Cancel tasks** takes the open tasks off the board for good, so it asks
+  first.
 
 Regent's picture tells you its state at a glance, here and on the sidebar card:
 
