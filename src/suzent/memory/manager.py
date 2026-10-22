@@ -47,6 +47,7 @@ KNOWN_FACTS_QUERY_CHARS = 2000
 # the user saying something, and MEMORY.md is generated from other rows -- neither is a
 # record the write path can defer to.
 DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
+PAGE_SOURCE_TYPES = frozenset({"notebook", "core_file"})
 
 # How close a stored row must be to a retraction to be hidden with it. Looser than
 # capture's restatement check: the user describes the claim, rarely quotes it.
@@ -640,7 +641,9 @@ class MemoryManager:
         One entry point for all of them: a correction is a retraction plus the fact that
         replaces it. *kind* sets the provenance tags the dream routes by; only a User
         fact is marked `explicit`, since only the user can vouch for one. A retraction
-        tombstones the matching rows so search stops returning them; one marked *wrong* also goes on the rejected list, so capture,
+        tombstones the matching log rows so search stops returning them; a claim on a
+        notebook page is left for the dream to remove, since its chunk holds other
+        claims too. One marked *wrong* also goes on the rejected list, so capture,
         the dream and lint keep it from coming back. *outdated* only hides it: the claim
         was true once and the dream may still keep it as history.
 
@@ -665,13 +668,17 @@ class MemoryManager:
             for row in matches:
                 content = str(row.get("content", ""))
                 body = capture.normalize(content)
+                meta = row.get("metadata") or {}
+                # A page chunk coalesces many claims; tombstoning it would hide them
+                # all. The dream removes the claim from the page instead.
+                if meta.get("source_type") in PAGE_SOURCE_TYPES:
+                    continue
                 if not body or not (
                     key in body or capture.similarity(key, body) >= RETRACT_MATCH
                 ):
                     continue
                 await store.append_tombstone(content)
                 retracted.append(content)
-                meta = row.get("metadata") or {}
                 source_file = meta.get("source_file")
                 if meta.get("source_type") == "archive_log" and source_file:
                     archive_days.add(Path(source_file).stem)

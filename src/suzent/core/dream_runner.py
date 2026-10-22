@@ -169,6 +169,15 @@ class DreamRunner(BaseBrain):
             pass
         return state
 
+    @staticmethod
+    def _dream_ops_state(mgr) -> Optional[tuple[float, int]]:
+        """mtime and size of a non-empty dream op log, else None."""
+        try:
+            st = mgr.markdown_store.dream_ops_path.stat()
+        except Exception:
+            return None
+        return (st.st_mtime, st.st_size) if st.st_size else None
+
     def status(self) -> dict[str, Any]:
         """Return a frontend-safe snapshot of dream consolidation state."""
         running = self._lock.locked() or self._phase == "queued"
@@ -451,6 +460,7 @@ class DreamRunner(BaseBrain):
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
+            ops_before = self._dream_ops_state(mgr)
             # What the agent is about to be shown, in both senses that matter when the
             # sidecar is cleared: how long the file was (conversations keep appending
             # while it runs, and none of that may be dropped) and which claims made it
@@ -488,7 +498,10 @@ class DreamRunner(BaseBrain):
             # watermark put, so the batch is re-attempted from the same start (and
             # eventually retry-skipped if it stays un-consolidatable).
             changed = self._content_pages_state(mgr) != before
-            if not (agent_ok and changed):
+            # A batch the dream judged and skipped in full changes no page but is
+            # still worked: its skips are in the op log.
+            recorded = self._dream_ops_state(mgr) not in (ops_before, None)
+            if not (agent_ok and (changed or recorded)):
                 if not queues_only:
                     self._failures[w_new] = self._failures.get(w_new, 0) + 1
                     self._save_failures(mgr)

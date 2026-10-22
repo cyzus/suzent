@@ -132,3 +132,15 @@ def test_an_existing_map_keeps_the_users_lines(store):
     assert "[[3_Personal/Health]]" in draft
     assert "likes tea" not in draft
     assert moved == ["- likes tea"]
+
+
+def test_cli_uses_the_mapped_vault(tmp_path, monkeypatch):
+    from suzent.cli import memory as memory_cli
+    from suzent.config import CONFIG
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path / "data"))
+    monkeypatch.setattr(CONFIG, "sandbox_volumes", [f"{vault}:/mnt/notebook"])
+
+    assert memory_cli._store().notebook_dir == vault.resolve()

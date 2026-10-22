@@ -23,10 +23,12 @@ memory_app = typer.Typer(help="Check memory files and draft their cleanup.")
 
 def _store() -> "MarkdownMemoryStore":
     from suzent.config import CONFIG
+    from suzent.memory.lifecycle import resolve_notebook_dir
     from suzent.memory.markdown_store import MarkdownMemoryStore
 
     return MarkdownMemoryStore(
-        str(Path(CONFIG.sandbox_data_path) / "shared" / "memory")
+        str(Path(CONFIG.sandbox_data_path) / "shared" / "memory"),
+        notebook_dir=resolve_notebook_dir(),
     )
 
 

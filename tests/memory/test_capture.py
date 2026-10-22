@@ -346,6 +346,24 @@ async def test_retracting_a_wrong_memory_rejects_and_hides_it(store, monkeypatch
     assert mgr._core_indexer.files == ["2026-10-01.md"]
 
 
+async def test_retracting_leaves_page_chunks_to_the_dream(store, monkeypatch):
+    chunk = "User wrote The Perfect Drone. User keeps bees. User likes tea."
+    rows = [
+        {"id": "p1", "content": chunk, "metadata": {"source_type": "notebook"}},
+        {"id": "c1", "content": chunk, "metadata": {"source_type": "core_file"}},
+    ]
+    mgr = _manager(store, monkeypatch, rows=rows)
+
+    result = await mgr.apply_memory_update(
+        user_id="u1", chat_id="c1", retract="User wrote The Perfect Drone"
+    )
+
+    assert result["retracted"] == []
+    assert not store.is_tombstoned(chunk)
+    assert mgr.store.deleted == []
+    assert store.read_rejected() == ["User wrote The Perfect Drone"]
+
+
 async def test_a_correction_hides_the_old_claim_and_writes_the_new(store, monkeypatch):
     rows = [{"id": "r1", "content": "User lives in Paris", "metadata": {}}]
     mgr = _manager(store, monkeypatch, rows=rows)
