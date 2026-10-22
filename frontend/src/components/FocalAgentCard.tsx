@@ -1,4 +1,5 @@
 import React from 'react';
+import { RegentCube } from './regent/RegentCube';
 import { RegentMark } from './regent/RegentMark';
 import { regentState, useRegentNod } from './regent/regentState';
 import { useI18n } from '../i18n';
@@ -75,6 +76,41 @@ export function FocalAgentCardView({
       : counts.length > 0
         ? counts.join(' · ')
         : t('chatList.focal.allClear');
+
+  // Opening Regent turns its row into a profile: the flat mark grows into the
+  // cube, and the rest of the sidebar steps back (see ChatList).
+  if (active) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(status?.chatId ?? FOCAL_CHAT_ID)}
+        aria-current="page"
+        aria-label={t('chatList.focal.open')}
+        className="regent-card-hero w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black shadow-brutal-sm dark:bg-zinc-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+      >
+        <span key={nod} className={`regent-hero-avatar mb-2 flex ${nod > 0 ? 'regent-nod' : ''}`}>
+          <RegentCube size={56} state={regentState(status)} />
+        </span>
+        <span className="regent-hero-text flex items-baseline gap-1.5">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {t('chatList.focal.brand')}
+          </span>
+          <span className="font-brutal text-xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor]">
+            {t('chatList.focal.name')}
+          </span>
+        </span>
+        <span className="regent-hero-text text-[11px] text-neutral-500 dark:text-neutral-400">
+          {working ? t('chatList.focal.working') : t('chatList.focal.role')}
+        </span>
+        <span
+          className={`regent-hero-text max-w-full truncate text-[11px] font-bold ${waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
+          title={statusLine ?? undefined}
+        >
+          {counts.length > 0 ? counts.join(' · ') : t('chatList.focal.allClear')}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button

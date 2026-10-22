@@ -76,10 +76,11 @@ Projects and chats holding something that waits on you get a badge in the
 sidebar too.
 
 Regent sits at the very top of the sidebar, above everything else, like a
-pinned contact. Inside its chat, the header grows a second line under Regent's
-name and picture: what it's doing, what **needs you** and what has **stalled**,
-and how many wake-ups it has set. Click a session there to open it, or
-**Board** to see every task in the side panel. The **Tasks** side panel shows the full board for every project at
+pinned contact. Open it and its row grows into a profile with Regent's picture,
+while the rest of the sidebar fades back until you point at it. The header
+shows Regent's name and a small tag for what needs you; with the sidebar
+collapsed, Regent's picture takes the logo's place in the header. The **Tasks**
+side panel holds the board for every project. The **Tasks** side panel shows the full board for every project at
 once, grouped by session; pick one project to narrow it down.
 
 Regent's picture tells you its state at a glance, here and on the sidebar card:

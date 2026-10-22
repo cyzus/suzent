@@ -204,26 +204,24 @@ which would run with a full tool set.
 
 - `FocalAgentCard` at the top of the sidebar, fed by `useFocalStatus`.
 - `FocalAgentCard` sits above the sidebar's navigation, like a pinned contact.
-- On the Focal chat the header grows downward without moving the icon row:
-  the `<header>` keeps `h-12` and its border width (the border turns
-  transparent), and `RegentHeaderDetails` renders right below it as a second
-  row that carries the bottom border. In the first row `ConversationIdentity`
-  renders `LiveRegentIdentity`: "SUZENT Regent" beside a crowned cube that is
-  absolutely positioned and hangs into the second row (the header gets `z-20`
-  so it paints over it). The second row measures where the name starts and
-  lines up under it: presence, the board's `attention` and `stalled` sessions
-  (each opens its session), Regent's wake-up count from `/focal/panel`, and a
-  link to the board while the panel is closed. Both read "working" from the
-  chat's own stream as well as from status. All of it is in
-  `components/regent/RegentHeader.tsx`.
+- On the Focal chat the sidebar card becomes a profile (`regent-card-hero`):
+  the flat mark gives way to a 56px `RegentCube` that grows in, and `ChatList`
+  marks the navigation and project sections `regent-dimmed` (they return to
+  full strength on hover or focus).
+- The header keeps its single `h-12` row and every icon in place.
+  `ConversationIdentity` renders `LiveRegentIdentity`: "SUZENT Regent" and a
+  pill for working, waiting or stalled. While the left sidebar is collapsed,
+  `LiveRegentLogo` replaces the `SuzentLogo` in the sidebar trigger slot, so the
+  cube appears exactly where the logo was. Both read "working" from the chat's
+  own stream as well as from status (`components/regent/RegentHeader.tsx`).
 - Regent's replies carry no agent badge, live or past (`AssistantMessage`'s
   `regent`): the header already says who is speaking.
 - `FocalBriefing` is only the greeting on an empty chat; the header carries the
   name and what waits on the user.
 - Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
-  head under a floating circlet, for small sizes (the sidebar card); and
-  `RegentCube`, the greeting cube wearing the circlet, for large ones (the
-  header). Both take a `RegentState` from
+  head under a floating circlet, for the sidebar row; and `RegentCube`, the
+  greeting cube wearing the circlet, for the open profile and the header's logo
+  slot. Both take a `RegentState` from
   `regentState()`: `working` while Regent runs (cube turns, eyes scan, circlet
   lifts), `waiting` when something waits on the user (gem pulses orange), else
   `idle`. `useRegentNod()` replays a one-off nod when a new message arrives.

@@ -2537,3 +2537,51 @@ button.activity-turn-duration:focus-visible {
     animation: none !important;
   }
 }
+
+/* Opening Regent: its sidebar row grows into a profile, the rest steps back. */
+.regent-hero-avatar {
+  animation: regentGrow 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1;
+}
+
+.regent-hero-text {
+  animation: regentFadeUp 0.35s ease-out 0.1s 1 both;
+}
+
+.regent-dimmed {
+  opacity: 0.45;
+  transition: opacity 0.25s ease;
+}
+
+.regent-dimmed:hover,
+.regent-dimmed:focus-within {
+  opacity: 1;
+}
+
+@keyframes regentGrow {
+  from {
+    transform: scale(0.45);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes regentFadeUp {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regent-hero-avatar,
+  .regent-hero-text {
+    animation: none !important;
+  }
+}

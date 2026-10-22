@@ -2,8 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { FocalAgentStatus } from '../../lib/focalAgent';
-import type { Task } from '../../types/api';
-import { RegentHeaderDetailsView, RegentIdentity } from './RegentHeader';
+import { RegentIdentity } from './RegentHeader';
 import { RegentCube } from './RegentCube';
 import { RegentMark } from './RegentMark';
 import { regentState } from './regentState';
@@ -21,16 +20,6 @@ const status = (extra: Partial<FocalAgentStatus> = {}): FocalAgentStatus => ({
   waiting: 0,
   autoRun: 0,
   running: false,
-  ...extra,
-});
-const task = (id: number, extra: Partial<Task>): Task => ({
-  id,
-  projectId: 'p',
-  title: `Task ${id}`,
-  description: '',
-  status: 'pending',
-  blockedBy: [],
-  blocks: [],
   ...extra,
 });
 const text = (html: string): string =>
@@ -66,77 +55,19 @@ describe('Regent marks', () => {
 });
 
 describe('RegentIdentity', () => {
-  it('reads as Suzent Regent, with the cube set beside the name instead of in the row', () => {
-    const html = renderToStaticMarkup(<RegentIdentity state="waiting" />);
+  it('reads as Suzent Regent in one row, with no pill when all is clear', () => {
+    const html = renderToStaticMarkup(<RegentIdentity status={status()} state="idle" />);
     expect(text(html)).toBe('chatList.focal.brand chatList.focal.name');
-    expect(html).toContain('class="absolute left-0 "');
-    expect(html).toContain('data-regent-state="waiting"');
+    expect(html).not.toContain('regent-cube');
   });
-});
 
-describe('RegentHeaderDetailsView', () => {
-  const render = (
-    tasks: Task[] | null,
-    extra: Partial<React.ComponentProps<typeof RegentHeaderDetailsView>> = {}
-  ): string =>
-    renderToStaticMarkup(
-      <RegentHeaderDetailsView
-        state="idle"
-        kanban={tasks && { tasks, goals: [] }}
-        wakeups={[]}
-        onOpenChat={() => {}}
-        {...extra}
-      />
+  it('pills working first, then what waits on the user, then what stalled', () => {
+    const pill = (value: FocalAgentStatus, state: 'idle' | 'working' | 'waiting'): string =>
+      text(renderToStaticMarkup(<RegentIdentity status={value} state={state} />));
+    expect(pill(status({ waiting: 1, stalled: 2 }), 'working')).toContain('chatList.focal.working');
+    expect(pill(status({ waiting: 1, stalled: 2 }), 'waiting')).toContain(
+      'chatList.focal.waitingCount:1'
     );
-  const tasks = [
-    task(1, { chatId: 'b', chatTitle: 'Idle work', projectName: 'Docs' }),
-    task(2, {
-      status: 'blocked',
-      chatId: 'a',
-      chatTitle: 'Design',
-      waitingKind: 'user',
-      waitingReason: 'Choose a direction',
-    }),
-  ];
-
-  it('says all clear, with its role, when nothing waits or stalls', () => {
-    const plain = text(render([]));
-    expect(plain).toBe('chatList.focal.role chatList.focal.allClear');
-  });
-
-  it('lists what needs the user before what stalled, each opening its session', () => {
-    const html = render(tasks);
-    const plain = text(html);
-    expect(plain.indexOf('Choose a direction')).toBeLessThan(plain.indexOf('Idle work'));
-    expect(plain).toContain('regentHeader.needsYou');
-    expect(plain).toContain('regentHeader.stalled');
-    expect(html.match(/<button/g)).toHaveLength(2);
-  });
-
-  it('shows working, the wake-up count, and the board link only while the board is closed', () => {
-    const plain = text(
-      render([], {
-        state: 'working',
-        wakeups: [
-          {
-            id: 1,
-            name: 'Weekly update',
-            kind: 'reminder',
-            schedule: 'once',
-            scheduleKind: 'once',
-            nextRunAt: null,
-          },
-        ],
-        onOpenBoard: () => {},
-      })
-    );
-    expect(plain).toContain('chatList.focal.working');
-    expect(plain).toContain('regentHeader.wakeups:1');
-    expect(plain).toContain('regentHeader.board');
-    expect(text(render([]))).not.toContain('regentHeader.board');
-  });
-
-  it('lines its content up under the name it was measured against', () => {
-    expect(render([], { inset: 120 })).toContain('padding-left:120px');
+    expect(pill(status({ stalled: 2 }), 'idle')).toContain('chatList.focal.stalledCount:2');
   });
 });

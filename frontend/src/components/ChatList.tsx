@@ -377,6 +377,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus | null>(null);
   const [loadingAutomation, setLoadingAutomation] = useState(true);
   const focalStatus = useFocalStatus();
+  // On Regent's chat the rest of the sidebar steps back behind its card.
+  const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
   const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
@@ -1523,15 +1525,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           <div className="flex flex-col">
             {/* Regent sits above everything else, like a pinned contact. */}
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
-              <FocalAgentCardView
-                status={focalStatus}
-                active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
-                onOpen={openChatById}
-              />
+              <FocalAgentCardView status={focalStatus} active={regentOpen} onOpen={openChatById} />
             </div>
             <nav
               aria-label={t('chatList.sections.navigation')}
-              className="order-0 px-1.5 pt-1 pb-1"
+              className={`order-0 px-1.5 pt-1 pb-1 ${regentOpen ? 'regent-dimmed' : ''}`}
             >
               <button
                 type="button"
@@ -1780,7 +1778,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             </nav>
 
             {pinnedChats.length > 0 && (
-              <section className="order-0 px-1.5 pb-2 pt-1">
+              <section className={`order-0 px-1.5 pb-2 pt-1 ${regentOpen ? 'regent-dimmed' : ''}`}>
                 <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
                   {t('chatList.pinnedChats')}
                 </h2>
@@ -1788,7 +1786,7 @@ export const ChatList: React.FC<ChatListProps> = ({
               </section>
             )}
             <section
-              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'}`}
+              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} ${regentOpen ? 'regent-dimmed' : ''}`}
             >
               <div
                 ref={organizationMenuRef}

@@ -70,6 +70,14 @@ describe('Regent contact card', () => {
     expect(html).not.toContain('Deploy needs your approval.');
   });
 
+  it('grows into a profile with the cube while Regent is open', () => {
+    const html = render(status({ waiting: 1 }), true);
+    expect(html).toContain('regent-card-hero');
+    expect(html).toContain('regent-cube');
+    expect(html).not.toContain('regent-mark');
+    expect(text(html)).toContain('chatList.focal.waitingCount:1');
+  });
+
   it('keeps the entry usable before its status arrives', () => {
     const html = render(null);
     expect(html).toContain('chatList.focal.name');

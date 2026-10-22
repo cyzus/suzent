@@ -21,7 +21,7 @@ import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
-import { RegentHeaderDetails } from './components/regent/RegentHeader';
+import { LiveRegentLogo } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
@@ -416,7 +416,7 @@ function AppInner(): React.ReactElement {
     leftSidebarReservedWidthPx
   );
 
-  const { refresh: refreshGoalTasks, refreshKanban, kanban } = useGoalTasks();
+  const { refresh: refreshGoalTasks, refreshKanban } = useGoalTasks();
   const {
     currentChatId,
     setViewSwitcher,
@@ -742,7 +742,7 @@ function AppInner(): React.ReactElement {
         />
         <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
           <header
-            className={`app-header relative border-b-3 ${regentHeader ? 'z-20 border-transparent' : 'border-brutal-black'} px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
+            className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
             onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -763,7 +763,12 @@ function AppInner(): React.ReactElement {
                   title={t('sidebar.open')}
                 >
                   <div className="flex h-full w-full items-center justify-center group-hover:hidden">
-                    <SuzentLogo className="h-7 w-7" interactive />
+                    {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
+                    {regentHeader ? (
+                      <LiveRegentLogo />
+                    ) : (
+                      <SuzentLogo className="h-7 w-7" interactive />
+                    )}
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
                     <SidebarToggleIcon
@@ -887,15 +892,6 @@ function AppInner(): React.ReactElement {
               ) : null}
             </div>
           </header>
-          {/* Regent's header grows downward, below the untouched icon row. */}
-          {regentHeader && (
-            <RegentHeaderDetails
-              kanban={kanban}
-              onOpenChat={(chatId) => void loadChat(chatId)}
-              onOpenBoard={isRightSidebarOpen ? undefined : () => handleRightSidebarToggle(true)}
-            />
-          )}
-
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
               <ChatWindow

@@ -1862,12 +1862,6 @@ export const zhCN = {
     retry: '重试',
     loading: '加载中…',
   },
-  regentHeader: {
-    needsYou: '等你',
-    stalled: '停滞',
-    wakeups: '{count} 个唤醒',
-    board: '看板 ›',
-  },
   focalBriefing: {
     greeting: '我在，聊聊吧。',
     invitation: '有什么想法，或者想一起做的事？',

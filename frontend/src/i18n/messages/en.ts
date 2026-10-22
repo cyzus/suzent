@@ -1919,12 +1919,6 @@ export const en = {
     retry: 'Retry',
     loading: 'Loading…',
   },
-  regentHeader: {
-    needsYou: 'Needs you',
-    stalled: 'Stalled',
-    wakeups: '{count} wake-ups',
-    board: 'Board ›',
-  },
   focalBriefing: {
     greeting: 'Hey, I’m here.',
     invitation: 'What’s on your mind?',
