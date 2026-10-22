@@ -61,6 +61,17 @@ class FocalDispatchTool(AgentSendTool):
                 description="With agent_id='new': create a task bound to the new session."
             ),
         ] = None,
+        acp_agent_id: Annotated[
+            Optional[str],
+            Field(
+                description=(
+                    "With agent_id='new': run the session on a configured ACP "
+                    "agent from agent_list(status='acp'), such as a coding agent, "
+                    "instead of Suzent's own. No task_title: ACP agents can't "
+                    "update tasks."
+                )
+            ),
+        ] = None,
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
         if not is_focal_chat(get_database().get_chat(current_chat_id)):
@@ -70,7 +81,12 @@ class FocalDispatchTool(AgentSendTool):
             )
         if agent_id == NEW_AGENT_ID:
             return self._start_primary_session(
-                current_chat_id, message.strip(), project_id, title, task_title
+                current_chat_id,
+                message.strip(),
+                project_id,
+                title,
+                task_title,
+                acp_agent_id,
             )
         # SUZENT never parks a turn on another agent: a turn held open would
         # also hold back the wake-ups and session reports queued behind it.
@@ -90,8 +106,14 @@ class FocalDispatchTool(AgentSendTool):
         project_ref: Optional[str],
         title: Optional[str],
         task_title: Optional[str],
+        acp_agent_id: Optional[str] = None,
     ) -> ToolResult:
-        """Start a Smart-mode primary session in a project and wake it."""
+        """Start a primary session in a project and wake it.
+
+        A native session runs in Smart mode. An ACP session runs in Ask mode:
+        ACP has no Smart reviewer, so its auto mode would allow every request.
+        Unanswered approvals there fail closed after a timeout.
+        """
         db = get_database()
         current = db.get_chat(current_chat_id)
         if not project_ref:
@@ -106,13 +128,44 @@ class FocalDispatchTool(AgentSendTool):
             )
 
         task_title = (task_title or "").strip()
+        config: dict[str, object] = {
+            "permission_mode": "auto",
+            "parent_chat_id": current.id,
+            "spawned_by_focal": current.id == FOCAL_CHAT_ID,
+        }
+        acp_agent_id = (acp_agent_id or "").strip()
+        if acp_agent_id:
+            if task_title:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "Leave task_title out for an ACP session: ACP agents can't "
+                    "update tasks, so it would stay in progress for good.",
+                )
+            from suzent.acp.registry import ACPAgentRegistry
+
+            try:
+                agent = ACPAgentRegistry().get(acp_agent_id)
+            except KeyError:
+                return ToolResult.error_result(
+                    ToolErrorCode.NOT_FOUND,
+                    f"No ACP agent '{acp_agent_id}'; see agent_list(status='acp').",
+                )
+            if not agent.available:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    f"ACP agent '{agent.id}' is not installed. Ask the user to set "
+                    "it up in Settings → ACP Agents.",
+                )
+            config.update(
+                {
+                    "runtime": "acp",
+                    "acp_agent_id": agent.id,
+                    "permission_mode": "default",
+                }
+            )
         new_chat_id = db.create_chat(
             title=(title or "").strip() or task_title or message[:60],
-            config={
-                "permission_mode": "auto",
-                "parent_chat_id": current.id,
-                "spawned_by_focal": current.id == FOCAL_CHAT_ID,
-            },
+            config=config,
             project_id=project.id,
         )
         task = (
@@ -135,7 +188,8 @@ class FocalDispatchTool(AgentSendTool):
             target_chat_id=new_chat_id,
             content=message,
         )
-        summary = f"Started session '{new_chat_id}' in project '{project.slug}'."
+        summary = f"Started session '{new_chat_id}' in project '{project.slug}'"
+        summary += f" on ACP agent '{acp_agent_id}'." if acp_agent_id else "."
         if task is not None:
             summary += f" Bound task [#{task.id}]."
         return ToolResult.success_result(
@@ -146,6 +200,7 @@ class FocalDispatchTool(AgentSendTool):
                 "project_id": project.id,
                 "project_slug": project.slug,
                 "task_id": task.id if task is not None else None,
+                "acp_agent_id": config.get("acp_agent_id"),
                 "status": record["status"],
             },
         )

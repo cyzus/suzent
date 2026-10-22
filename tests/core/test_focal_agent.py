@@ -1035,3 +1035,128 @@ def test_an_unreadable_project_context_drops_only_its_overview(db, sandbox) -> N
 
     assert "slug `broken`" in context
     assert "slug `fine` · id" in context and "— All good" in context
+
+
+@pytest.fixture
+def acp_agents(monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
+    """ACP agent ids mapped to whether they are installed."""
+    from suzent.acp.registry import ACPAgentRegistry
+
+    installed = {"codex": True, "gemini": False}
+
+    def get(self, agent_id: str):
+        if agent_id not in installed:
+            raise KeyError(agent_id)
+        return SimpleNamespace(id=agent_id, available=installed[agent_id])
+
+    monkeypatch.setattr(ACPAgentRegistry, "get", get)
+    return installed
+
+
+@pytest.mark.asyncio
+async def test_suzent_starts_an_acp_session_in_ask_mode(
+    db, sandbox, enqueued, acp_agents
+) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Website", "website")
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID),
+        "new",
+        "Fix the broken nav link",
+        project_id="website",
+        title="Nav fix",
+        acp_agent_id="codex",
+    )
+
+    assert result.success, result.message
+    assert "on ACP agent 'codex'" in result.message
+    chat = db.get_chat(result.metadata["agent_id"])
+    assert chat.project_id == project_id
+    assert {
+        key: chat.config.get(key)
+        for key in ("runtime", "acp_agent_id", "permission_mode", "parent_chat_id")
+    } == {
+        "runtime": "acp",
+        "acp_agent_id": "codex",
+        "permission_mode": "default",
+        "parent_chat_id": FOCAL_CHAT_ID,
+    }
+    assert db.list_tasks(project_id=project_id) == []
+    assert enqueued[0]["target_chat_id"] == chat.id
+    context = focal_agent.build_focal_global_context()
+    assert f"Session `{chat.id}` · Nav fix · idle · ACP `codex`" in context
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("agent", "task_title", "code"),
+    [
+        ("codex", "Fix nav", ToolErrorCode.INVALID_ARGUMENT),
+        ("missing", None, ToolErrorCode.NOT_FOUND),
+        ("gemini", None, ToolErrorCode.INVALID_ARGUMENT),
+    ],
+)
+async def test_acp_sessions_refuse_tasks_and_unusable_agents(
+    db, sandbox, enqueued, acp_agents, agent, task_title, code
+) -> None:
+    get_or_create_focal_chat()
+    project_id = db.create_project("Website", "website")
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID),
+        "new",
+        "Fix the broken nav link",
+        project_id="website",
+        task_title=task_title,
+        acp_agent_id=agent,
+    )
+
+    assert result.error_code == code
+    assert enqueued == []
+    assert db.list_chats(project_id=project_id) == []
+
+
+def test_agent_list_tells_suzent_to_dispatch_acp_agents(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    regular = db.create_chat("Regular", {})
+
+    for_suzent = AgentListTool().forward(_ctx(FOCAL_CHAT_ID), "acp")
+    for_regular = AgentListTool().forward(_ctx(regular), "acp")
+
+    assert "agent_dispatch(agent_id='new'" in for_suzent.message
+    assert "agent(runtime='acp'" not in for_suzent.message
+    assert "agent(runtime='acp'" in for_regular.message
+
+
+@pytest.mark.asyncio
+async def test_suzent_messages_a_paired_suzent_without_waiting(
+    db, sandbox, monkeypatch
+) -> None:
+    get_or_create_focal_chat()
+    sent: list[dict] = []
+    transport = SimpleNamespace(
+        list_agents=lambda: [],
+        peer_id=lambda agent_id: "laptop" if agent_id.startswith("peer:") else None,
+        enqueue=lambda **kwargs: (
+            sent.append(kwargs) or {"message_id": "msg-peer", "status": "pending"},
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        agent_lifecycle_tools, "get_peer_agent_transport", lambda: transport
+    )
+
+    result = await FocalDispatchTool().forward(
+        _ctx(FOCAL_CHAT_ID), "peer:laptop", "Run the backup on the laptop"
+    )
+
+    assert result.success, result.message
+    assert result.metadata["transport"] == "suzent_peer"
+    assert sent == [
+        {
+            "agent_id": "peer:laptop",
+            "sender_chat_id": FOCAL_CHAT_ID,
+            "content": "Run the backup on the laptop",
+        }
+    ]

@@ -281,6 +281,56 @@ async def test_acp_inbox_messages_use_local_reminder_wrapper(monkeypatch, kind):
     assert "<!-- suzent-agent-inbox:msg-1 -->" in trigger
 
 
+def _acp_inbox(monkeypatch, run_turn) -> None:
+    target = SimpleNamespace(title="Target", config={"runtime": "acp"})
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return target
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.agent_manager.build_agent_config",
+        lambda base_config, require_social_tool=False: base_config,
+    )
+    monkeypatch.setattr("suzent.acp.runtime.run_acp_turn_text", run_turn)
+    monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
+
+
+@pytest.mark.asyncio
+async def test_acp_inbox_turn_streams_so_its_approvals_can_be_answered(monkeypatch):
+    from suzent.core import stream_registry
+
+    seen = {}
+
+    async def run_turn(chat_id, content, config, stream_queue, **kwargs):
+        seen["queue"] = stream_queue
+        seen["registered"] = stream_registry.get_background_queue(chat_id)
+        return "Done"
+
+    _acp_inbox(monkeypatch, run_turn)
+    reply = await AgentInboxDispatcher()._run_target_turn(_message())
+
+    assert reply.text == "Done"
+    assert seen["queue"] is not None
+    assert seen["registered"] is seen["queue"]
+    assert not seen["queue"].producer_active
+
+
+@pytest.mark.asyncio
+async def test_acp_inbox_turn_that_fails_says_so(monkeypatch):
+    async def run_turn(chat_id, content, config, stream_queue, **kwargs):
+        kwargs["errors_out"].append("Not authenticated with Codex")
+        return ""
+
+    _acp_inbox(monkeypatch, run_turn)
+    reply = await AgentInboxDispatcher()._run_target_turn(_message())
+
+    assert reply.text == (
+        "[The ACP agent could not run this: Not authenticated with Codex]"
+    )
+
+
 def _subagent_chat(parent_chat_id: str = "agent-source") -> SimpleNamespace:
     return SimpleNamespace(
         id="agent-target",
