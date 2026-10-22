@@ -36,10 +36,7 @@ export function ContextMenu({
     previousFocus.current = returnFocus ?? (document.activeElement as HTMLElement | null);
     return () => {
       // Do not steal focus from a dialog opened by a menu action or an outside click.
-      if (
-        document.activeElement === document.body ||
-        menu?.contains(document.activeElement)
-      ) {
+      if (document.activeElement === document.body || menu?.contains(document.activeElement)) {
         previousFocus.current?.focus({ preventScroll: true });
       }
     };

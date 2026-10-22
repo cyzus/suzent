@@ -12,7 +12,7 @@ import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
-import { FullscreenOverlay } from '../FullscreenOverlay';
+import { WorkspacePanel } from '../WorkspacePanel';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { ContextUsageSummary } from './ContextUsageSummary';
 
@@ -152,7 +152,7 @@ function ContextFileCard({
         )}
       </article>
 
-      <FullscreenOverlay open={enlarged} onClose={closeEnlarged} closeOnEscape={!editing}>
+      <WorkspacePanel open={enlarged} onClose={closeEnlarged} closeOnEscape={!editing}>
         <header className="flex items-center gap-3 border-b-3 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
           <div className="min-w-0 flex-1">
             <h2 className="truncate font-brutal text-base uppercase leading-none text-brutal-black dark:text-white">
@@ -229,7 +229,7 @@ function ContextFileCard({
             <div className="p-1">{body}</div>
           )}
         </div>
-      </FullscreenOverlay>
+      </WorkspacePanel>
     </>
   );
 }
