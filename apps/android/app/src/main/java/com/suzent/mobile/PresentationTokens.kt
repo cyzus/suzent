@@ -7,7 +7,6 @@ object PresentationTokens {
     const val blue: Long = 0xFF0066FF
     const val green: Long = 0xFFA8E6A3
     const val yellow: Long = 0xFFFFE666
-    const val yellow_dark: Long = 0xFFFF6600
     const val red: Long = 0xFFFF0000
     const val gray: Long = 0xFF333333
     const val code_bg: Long = 0xFFf5f5f5

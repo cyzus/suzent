@@ -5,7 +5,6 @@ public enum PresentationTokens {
     public static let blue: UInt32 = 0x0066FF
     public static let green: UInt32 = 0xA8E6A3
     public static let yellow: UInt32 = 0xFFE666
-    public static let yellow_dark: UInt32 = 0xFF6600
     public static let red: UInt32 = 0xFF0000
     public static let gray: UInt32 = 0x333333
     public static let code_bg: UInt32 = 0xf5f5f5
