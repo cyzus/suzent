@@ -1492,7 +1492,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           {!isSearching && (
             <nav
               aria-label={t('chatList.sections.navigation')}
-              className={`order-0 px-1.5 pt-1 pb-1 ${regentOpen ? 'regent-dimmed' : ''}`}
+              className={`order-0 px-1.5 pt-1 pb-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
             >
               <button
                 type="button"
@@ -1846,7 +1846,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             <>
               {pinnedChats.length > 0 && (
                 <section
-                  className={`order-0 px-1.5 pb-2 pt-1 ${regentOpen ? 'regent-dimmed' : ''}`}
+                  className={`order-0 px-1.5 pb-2 pt-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
                 >
                   <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
                     {t('chatList.pinnedChats')}
@@ -1855,7 +1855,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                 </section>
               )}
               <section
-                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} ${regentOpen ? 'regent-dimmed' : ''}`}
+                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
               >
                 <div
                   ref={organizationMenuRef}
