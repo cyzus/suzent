@@ -881,7 +881,13 @@ async def run_acp_turn_text(
     *,
     runtime_authored: bool = False,
     system_preamble: str | None = None,
+    errors_out: list[str] | None = None,
 ) -> str:
+    """Run one ACP turn and return its text.
+
+    ``errors_out`` collects each ``RUN_ERROR`` message, so a caller that only
+    reads the text can still tell a failed turn from a silent one.
+    """
     text = ""
     async for chunk in stream_acp_turn(
         chat_id,
@@ -900,4 +906,6 @@ async def run_acp_turn_text(
                 continue
             if event.get("type") == "TEXT_MESSAGE_CONTENT":
                 text += str(event.get("delta") or "")
+            elif event.get("type") == "RUN_ERROR" and errors_out is not None:
+                errors_out.append(str(event.get("message") or "unknown error"))
     return text

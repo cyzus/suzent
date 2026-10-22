@@ -313,7 +313,10 @@ class AgentInboxDispatcher:
         from suzent.core.chat_processor import ChatProcessor
         from suzent.core.stream_registry import (
             get_background_turn_lock,
+            producing_run,
+            register_background_stream,
             stream_controls,
+            unregister_background_stream,
         )
 
         target_chat_id = str(message["target_chat_id"])
@@ -380,18 +383,33 @@ class AgentInboxDispatcher:
                 from suzent.acp.runtime import run_acp_turn_text
                 from suzent.core.system_reminder import wrap_in_system_reminder
 
-                text = await run_acp_turn_text(
-                    target_chat_id,
-                    wrap_in_system_reminder(
-                        delivered_content, display_trigger=delivered_content
-                    ),
-                    config_override,
-                    None,
-                    # This text was wrapped by us a line ago; the flag is the
-                    # provenance, since the token inside it proves nothing.
-                    runtime_authored=True,
-                )
-                return AgentReply(text=text or "")
+                # A background stream lets the desktop attach to this turn, the
+                # only place an Ask-mode permission request can be answered.
+                stream_queue = register_background_stream(target_chat_id)
+                errors: list[str] = []
+                try:
+                    with producing_run(stream_queue.replay):
+                        text = await run_acp_turn_text(
+                            target_chat_id,
+                            wrap_in_system_reminder(
+                                delivered_content, display_trigger=delivered_content
+                            ),
+                            config_override,
+                            stream_queue,
+                            # This text was wrapped by us a line ago; the flag is
+                            # the provenance, since the token inside it proves
+                            # nothing.
+                            runtime_authored=True,
+                            errors_out=errors,
+                        )
+                finally:
+                    unregister_background_stream(target_chat_id, stream_queue)
+                text = text or ""
+                # An empty reply is acknowledged and dropped, so a turn that
+                # never ran would leave the sender waiting with no word back.
+                if not text.strip() and errors:
+                    text = f"[The ACP agent could not run this: {errors[-1]}]"
+                return AgentReply(text=text)
 
             reply_sources: list[dict[str, Any]] = []
             text = await ChatProcessor().process_background_turn(

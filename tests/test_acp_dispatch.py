@@ -93,7 +93,9 @@ async def test_inbox_dispatcher_acp_vs_native():
 
         with (
             patch(
-                "suzent.acp.runtime.run_acp_turn_text", new_callable=AsyncMock
+                "suzent.acp.runtime.run_acp_turn_text",
+                new_callable=AsyncMock,
+                return_value="Done",
             ) as mock_acp_turn,
             patch(
                 "suzent.core.chat_processor.ChatProcessor.process_background_turn",
