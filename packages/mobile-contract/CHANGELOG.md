@@ -4,6 +4,7 @@
 
 ### Release notes
 - Reduce iOS chat scrolling work by keeping scroll measurements out of SwiftUI rendering updates and avoiding repeated message-history scans.
+- Align the empty-chat greeting cube on Android and iOS with the desktop: a true 3-D cube with a rotating sigil, soft shadow, and reactive logo eyes.
 
 ## [mobile-v0.3.0] - 2026-10-14
 
