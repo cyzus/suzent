@@ -6,6 +6,7 @@ blocks on the user.
 """
 
 import hashlib
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -39,6 +40,7 @@ FOCAL_TOOL_NAMES = (
     "GlobTool",
     "GrepTool",
     "FocalScheduleTool",
+    "FocalNotesTool",
 )
 
 FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
@@ -52,6 +54,20 @@ DEFAULT_FOCAL_HEARTBEAT = """# SUZENT check-in
 - Tasks that have waited on the user for a long time: remind the user once, in one line.
 """
 # Earlier built-in checklists, upgraded in place since the user never edited them.
+DEFAULT_FOCAL_NOTES = """# SUZENT's notes
+How the user wants me to work. Rules only, never project or task status.
+
+## Bring to the user
+
+## Handle without asking
+
+## Don't disturb
+
+## Project names
+
+## Reports
+"""
+_OVERVIEW_CHARS = 160
 _PREVIOUS_FOCAL_HEARTBEATS = (
     DEFAULT_FOCAL_HEARTBEAT.replace("agent_dispatch", "agent_send"),
 )
@@ -131,6 +147,23 @@ def _ensure_default_heartbeat_file(seed: bool) -> None:
         logger.warning("Could not write the Focal heartbeat checklist: {}", exc)
 
 
+def _ensure_notes_file() -> None:
+    """Give SUZENT's notes their sections when there are none yet."""
+    path = notes_path()
+    if path.exists():
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(DEFAULT_FOCAL_NOTES, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not write SUZENT's notes: {}", exc)
+
+
+def notes_path() -> Path:
+    """SUZENT's notes: its system project's context.md, loaded as core memory."""
+    return get_database().get_project_dir(FOCAL_CHAT_ID) / "context.md"
+
+
 def get_or_create_focal_chat() -> ChatModel:
     """Return the singleton Focal Agent chat, creating it on first use.
 
@@ -158,6 +191,7 @@ def get_or_create_focal_chat() -> ChatModel:
     chat = db.get_chat(FOCAL_CHAT_ID)
     initialized = (chat.config or {}).get("focal_heartbeat_initialized")
     _ensure_default_heartbeat_file(seed=not initialized)
+    _ensure_notes_file()
     if not initialized:
         db.merge_chat_config(
             FOCAL_CHAT_ID,
@@ -204,6 +238,40 @@ def _format_task(task: Any) -> str:
     return line
 
 
+def _project_overview(slug: str) -> Optional[str]:
+    """One line from a project's context.md: its Overview, else its first prose line.
+
+    Read live, so SUZENT never keeps a copy of project knowledge that could
+    drift from what the project's own sessions maintain.
+    """
+    from suzent.config import CONFIG
+
+    path = Path(CONFIG.sandbox_data_path) / "projects" / slug / "context.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    in_overview = False
+    first_prose = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            in_overview = line.lstrip("#").strip().lower() == "overview"
+            continue
+        if not line or line.startswith(("<!--", "|", "```")):
+            continue
+        if in_overview:
+            first_prose = line
+            break
+        first_prose = first_prose or line
+    if first_prose is None:
+        return None
+    summary = first_prose.lstrip("-* ").strip()
+    if len(summary) > _OVERVIEW_CHARS:
+        summary = summary[: _OVERVIEW_CHARS - 1].rstrip() + "…"
+    return summary or None
+
+
 def build_focal_global_context() -> str:
     """Render the projects, live primary sessions and open tasks the Focal Agent oversees."""
     db = get_database()
@@ -225,7 +293,9 @@ def build_focal_global_context() -> str:
     if not projects:
         lines.append("(no projects)")
     for project in projects:
-        lines.append(f"- {project.name} · slug `{project.slug}` · id `{project.id}`")
+        line = f"- {project.name} · slug `{project.slug}` · id `{project.id}`"
+        overview = _project_overview(project.slug)
+        lines.append(f"{line} — {overview}" if overview else line)
         tasks = db.list_tasks(project_id=project.id)
         by_chat: dict[Optional[str], list[Any]] = {}
         for task in tasks:
