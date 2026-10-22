@@ -1,6 +1,7 @@
 """Public database facade assembled from focused persistence mixins."""
 
 from .base import ChatDatabaseBase
+from .chat_status import ChatStatusOperationsMixin
 from .chats import ChatOperationsMixin
 from .cron import CronOperationsMixin
 from .goals import GoalOperationsMixin
@@ -26,6 +27,7 @@ class ChatDatabase(
     PostprocessOperationsMixin,
     SettingsOperationsMixin,
     InputSuggestionOperationsMixin,
+    ChatStatusOperationsMixin,
     BackgroundNotificationOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,

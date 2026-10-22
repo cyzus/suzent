@@ -25,6 +25,17 @@ def _sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
+def _parse_sse(chunk: str) -> dict[str, Any]:
+    """The event an SSE chunk carries, or an empty dict for anything else."""
+    if not chunk.startswith("data: "):
+        return {}
+    try:
+        event = json.loads(chunk[6:].strip())
+    except Exception:
+        return {}
+    return event if isinstance(event, dict) else {}
+
+
 def _attach_persistence(replay: Any | None) -> asyncio.Future[bool] | None:
     """Attach a pending persistence future to the replay this turn produces into.
 
@@ -294,6 +305,11 @@ async def stream_acp_turn(
         )
         return
 
+    from suzent.core.chat_status import begin_turn, schedule_judgement
+
+    status_turn = begin_turn(chat_id)
+    reply = ""
+    failed = False
     try:
         async for chunk in _run_acp_turn(
             chat_id,
@@ -307,7 +323,14 @@ async def stream_acp_turn(
             system_preamble=system_preamble,
             prewritten=prewritten,
         ):
+            event = _parse_sse(chunk)
+            if event.get("type") == "TEXT_MESSAGE_CONTENT":
+                reply += str(event.get("delta") or "")
+            elif event.get("type") == "RUN_ERROR":
+                failed = True
             yield chunk
+        if not failed:
+            await schedule_judgement(chat_id, message, reply, status_turn)
     finally:
         # Anything that did not reach the assistant append — an early return, an
         # exception, a cancelled subscription — persisted nothing, and says so.
@@ -899,13 +922,9 @@ async def run_acp_turn_text(
     ):
         if stream_queue is not None:
             await stream_queue.put(chunk)
-        if chunk.startswith("data: "):
-            try:
-                event = json.loads(chunk[6:].strip())
-            except Exception:
-                continue
-            if event.get("type") == "TEXT_MESSAGE_CONTENT":
-                text += str(event.get("delta") or "")
-            elif event.get("type") == "RUN_ERROR" and errors_out is not None:
-                errors_out.append(str(event.get("message") or "unknown error"))
+        event = _parse_sse(chunk)
+        if event.get("type") == "TEXT_MESSAGE_CONTENT":
+            text += str(event.get("delta") or "")
+        elif event.get("type") == "RUN_ERROR" and errors_out is not None:
+            errors_out.append(str(event.get("message") or "unknown error"))
     return text
