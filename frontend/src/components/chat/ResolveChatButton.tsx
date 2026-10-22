@@ -10,9 +10,9 @@ import {
 } from '../../lib/chatStates';
 
 /**
- * Resolve the open chat, or reopen it, from its header. Shown only for chats
- * the board tracks, so Regent, sub-agents and chat apps never carry it. A chat
- * too quiet for the board is looked up on its own.
+ * Resolve the open chat, or reopen it, from its header. The header shows it on
+ * chats opened from Regent's board, and it renders only for chats the board
+ * tracks. A chat too quiet for the board is looked up on its own.
  */
 export function ResolveChatButton({ chatId }: { chatId: string }): React.ReactElement | null {
   const { t } = useI18n();
