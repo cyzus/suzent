@@ -2,7 +2,7 @@ import { SidebarExpansionContext } from '../sidebar/SidebarExpansionContext';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { FOCAL_CHAT_ID, readFocalBoardOpen } from '../../lib/focalAgent';
-import { markOpenedFromRegent } from '../../lib/regentReturn';
+import { markOpenedFromRegent, unmarkOpenedFromRegent } from '../../lib/regentReturn';
 import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
@@ -792,10 +792,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             chatTitles={chatTitles}
             focal={currentChatId === FOCAL_CHAT_ID}
             onOpenTask={async (task) => {
-              const fromRegent = currentChatId === FOCAL_CHAT_ID;
+              // Marked before the switch, so the header sees the mark the moment
+              // the chat becomes current, and taken back if it never does.
+              const marked = currentChatId === FOCAL_CHAT_ID ? task.chatId : null;
+              if (marked) markOpenedFromRegent(marked);
               const opened = (await onOpenTask?.(task)) ?? false;
+              if (!opened && marked) unmarkOpenedFromRegent(marked);
               if (opened) {
-                if (fromRegent && task.chatId) markOpenedFromRegent(task.chatId);
                 if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
                 if (isOverlayMode) onClose();
               }
@@ -803,9 +806,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             }}
             onOpenChat={async (chatId) => {
               const fromRegent = currentChatId === FOCAL_CHAT_ID;
+              if (fromRegent) markOpenedFromRegent(chatId);
               const opened = await onTaskChat?.(chatId);
+              if (!opened && fromRegent) unmarkOpenedFromRegent(chatId);
               if (opened) {
-                if (fromRegent) markOpenedFromRegent(chatId);
                 if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
                 if (isOverlayMode) onClose();
               }
