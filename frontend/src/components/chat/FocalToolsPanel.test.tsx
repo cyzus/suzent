@@ -23,7 +23,7 @@ const panel: FocalPanel = {
     {
       id: 'FocalScheduleTool',
       name: 'Schedule wake-ups',
-      description: 'Schedule when SUZENT wakes next.',
+      description: 'Schedule when Regent wakes next.',
       runtimeName: 'schedule_wakeup',
     },
   ],
@@ -65,7 +65,7 @@ describe('Focal tools panel', () => {
     const html = render();
     expect(html).toContain('focalTools.fixedNote');
     expect(html).toContain('Dispatch to sessions');
-    expect(html).toContain('Schedule when SUZENT wakes next.');
+    expect(html).toContain('Schedule when Regent wakes next.');
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain('toolsPanel.mcpServers');
   });

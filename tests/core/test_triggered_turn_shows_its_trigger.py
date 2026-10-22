@@ -1,6 +1,6 @@
 """A turn started by a hidden message shows that message while it runs.
 
-A session SUZENT starts, or one another agent writes to, gets its request as
+A session Regent starts, or one another agent writes to, gets its request as
 a hidden reminder. Nothing reached the display log until the turn ended, so
 anyone watching saw the reply arrive with no sign of what was asked.
 """
@@ -90,7 +90,7 @@ async def test_a_hidden_request_is_on_screen_before_the_reply(turn) -> None:
 
     await run(
         message_content="",
-        system_reminders=["[Agent message from SUZENT]\nBuild the landing page"],
+        system_reminders=["[Agent message from Regent]\nBuild the landing page"],
     )
 
     [presaved] = seen_before_reply
@@ -116,7 +116,7 @@ async def test_the_stream_announces_the_row_it_wrote_early(turn) -> None:
 
     await run(
         message_content="",
-        system_reminders=["[Agent message from SUZENT]\nBuild the landing page"],
+        system_reminders=["[Agent message from Regent]\nBuild the landing page"],
     )
 
     [[(_, rows)]] = seen_before_reply
@@ -128,7 +128,7 @@ def test_a_finishing_earlier_turn_cannot_drop_the_early_row(temp_db) -> None:
     previous_turn = temp_db.commit_snapshot_state(chat_id, b"state")
     row = {
         "role": "system_triggered",
-        "content": "[Agent message from SUZENT (focal-suzent)]\nBuild it",
+        "content": "[Agent message from Regent (focal-suzent)]\nBuild it",
         "trigger_origin": "runtime",
     }
 

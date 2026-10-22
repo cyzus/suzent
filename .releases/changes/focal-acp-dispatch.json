@@ -1,5 +1,5 @@
 {
   "products": {"desktop": "none"},
-  "summary": "SUZENT can start a project session that runs on a configured ACP coding agent, such as Codex or Claude Code.",
-  "reason": "SUZENT has not shipped yet; this refines it and is released with the pending focal-agent declaration."
+  "summary": "Regent can start a project session that runs on a configured ACP coding agent, such as Codex or Claude Code.",
+  "reason": "Regent has not shipped yet; this refines it and is released with the pending focal-agent declaration."
 }

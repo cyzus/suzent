@@ -1,4 +1,4 @@
-"""SUZENT's wake-ups: reminders for the user and quiet checks on work."""
+"""Regent's wake-ups: reminders for the user and quiet checks on work."""
 
 from typing import Annotated, Literal, Optional
 
@@ -18,7 +18,7 @@ class FocalScheduleTool(ScheduleTool):
     """Schedule when you wake next: a reminder for the user, or a quiet check.
 
     Always runs in the Focal conversation, under its own tools; there is no
-    isolated variant, which would run with a full tool set. Only SUZENT is
+    isolated variant, which would run with a full tool set. Only Regent is
     equipped with it, and it refuses any other chat.
     """
 
@@ -92,7 +92,7 @@ class FocalScheduleTool(ScheduleTool):
         if not is_focal_chat_id(chat_id):
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED,
-                "schedule_wakeup belongs to SUZENT; use schedule_task.",
+                "schedule_wakeup belongs to Regent; use schedule_task.",
             )
         action = (action or "list").strip().lower()
         if action == "list":

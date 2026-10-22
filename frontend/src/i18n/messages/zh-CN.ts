@@ -597,7 +597,15 @@ export const zhCN = {
         },
         FocalScheduleTool: {
           name: '安排唤醒',
-          description: '安排 SUZENT 自己下次被唤醒的时间：提醒必定通知你，巡检有发现才通知。',
+          description: '安排 Regent 自己下次被唤醒的时间：提醒必定通知你，巡检有发现才通知。',
+        },
+        FocalDispatchTool: {
+          name: '派发给会话',
+          description: '把工作交给项目里的会话，或在项目中新开一个会话，可以由 ACP 编程智能体来做。',
+        },
+        FocalNotesTool: {
+          name: '记笔记',
+          description: '维护 Regent 自己的笔记：你希望它怎么做事，不记项目状态。',
         },
         AgentSendTool: {
           name: '发送智能体消息',
@@ -1462,8 +1470,8 @@ export const zhCN = {
     focal: {
       primary: '主对话',
       chat: '聊聊吧',
-      name: 'SUZENT',
-      open: '打开 SUZENT',
+      name: 'Regent',
+      open: '打开 Regent',
       role: '我一直在',
       wait: '{count} 待处理',
       autoRun: '{count} 自动运行',
@@ -1745,7 +1753,7 @@ export const zhCN = {
     },
   },
   chatMessage: {
-    sentBySuzent: '由 SUZENT 转达',
+    sentByRegent: '由 Regent 转达',
     today: '今天',
     yesterday: '昨天',
     runtime: {
@@ -1836,10 +1844,10 @@ export const zhCN = {
     sourcesCount: '{count} 个来源',
   },
   focalTools: {
-    tools: 'SUZENT 的工具',
-    fixedNote: '由系统固定，工具选择器对 SUZENT 不生效。',
+    tools: 'Regent 的工具',
+    fixedNote: '由系统固定，工具选择器对 Regent 不生效。',
     wakeups: '已安排的唤醒',
-    noWakeups: '还没有安排。可以让 SUZENT 提醒你，或者过一会儿回来看看某项工作。',
+    noWakeups: '还没有安排。可以让 Regent 提醒你，或者过一会儿回来看看某项工作。',
     reminder: '提醒',
     check: '巡检',
     nextRun: '下次 {time}',
@@ -1848,7 +1856,7 @@ export const zhCN = {
     cancel: '取消',
     cancelAria: '取消唤醒 {name}',
     cancelError: '取消失败，请重试。',
-    loadError: '无法加载 SUZENT 的工具。',
+    loadError: '无法加载 Regent 的工具。',
     retry: '重试',
     loading: '加载中…',
   },

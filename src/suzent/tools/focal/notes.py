@@ -1,8 +1,8 @@
-"""SUZENT's own notes: the context.md of its hidden system project.
+"""Regent's own notes: the context.md of its hidden system project.
 
-The notes load into SUZENT's core memory as the Context block on every turn.
-They hold what stays true about how the user wants SUZENT to work, never
-project or task status, which SUZENT reads fresh each turn.
+The notes load into Regent's core memory as the Context block on every turn.
+They hold what stays true about how the user wants Regent to work, never
+project or task status, which Regent reads fresh each turn.
 """
 
 from typing import Annotated
@@ -23,7 +23,7 @@ MAX_NOTES_CHARS = 8000
 class FocalNotesTool(Tool):
     """Edit your notes, the Context block of your core memory.
 
-    Only SUZENT is equipped with it, and it refuses any other chat.
+    Only Regent is equipped with it, and it refuses any other chat.
     """
 
     name = "FocalNotesTool"
@@ -81,7 +81,7 @@ class FocalNotesTool(Tool):
         if ctx.deps.chat_id != FOCAL_CHAT_ID:
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED,
-                "update_notes belongs to SUZENT; project notes live in context.md.",
+                "update_notes belongs to Regent; project notes live in context.md.",
             )
         if not old_text and not new_text.strip():
             return ToolResult.error_result(
@@ -111,7 +111,7 @@ class FocalNotesTool(Tool):
             )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(updated, encoding="utf-8")
-        logger.info("SUZENT updated its notes ({} chars)", len(updated))
+        logger.info("Regent updated its notes ({} chars)", len(updated))
         return ToolResult.success_result(f"Notes updated. They now read:\n\n{updated}")
 
 

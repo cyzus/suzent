@@ -1,5 +1,5 @@
 {
   "products": {"desktop": "none"},
-  "summary": "Give SUZENT its own agent_dispatch tool so other agents' agent_send stays minimal.",
-  "reason": "SUZENT has not shipped yet; this refines it and is released with the pending focal-agent declaration."
+  "summary": "Give Regent its own agent_dispatch tool so other agents' agent_send stays minimal.",
+  "reason": "Regent has not shipped yet; this refines it and is released with the pending focal-agent declaration."
 }

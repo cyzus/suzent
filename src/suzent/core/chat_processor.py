@@ -1205,7 +1205,7 @@ class ChatProcessor:
 
             # A turn started by a hidden message (another agent's request, a
             # wake-up) has nothing in the display log until it ends, so a session
-            # SUZENT started showed its reply with no sign of what was asked.
+            # Regent started showed its reply with no sign of what was asked.
             if self._is_subagent_chat(chat_id):
                 await asyncio.to_thread(
                     _presave_turn_rows,
