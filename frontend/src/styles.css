@@ -422,6 +422,11 @@ body,
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
+/* Fixed navigation panes reserve space; dropdowns keep the default auto gutter. */
+.scrollbar-stable {
+  scrollbar-gutter: stable;
+}
+
 *::-webkit-scrollbar,
 .scrollbar-thin::-webkit-scrollbar {
   width: 14px;
