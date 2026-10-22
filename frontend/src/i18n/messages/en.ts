@@ -1998,6 +1998,7 @@ export const en = {
     },
   },
   chatBoard: {
+    answerFirst: 'Answer or approve in the chat first',
     waitingSummary: '{count} waiting on you',
     allClear: 'Nothing is waiting on you',
     empty: 'No recent chats in your projects.',

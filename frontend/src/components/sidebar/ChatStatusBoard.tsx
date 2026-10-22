@@ -3,12 +3,13 @@ import { useI18n } from '../../i18n';
 import { useChatStates, refreshChatStates } from '../../hooks/useChatStates';
 import {
   CHAT_STATES,
+  canResolve,
   chatProjects,
   setChatResolved,
   type ChatState,
   type ChatStateRow,
 } from '../../lib/chatStates';
-import { relativeTime } from '../../lib/chatUtils';
+import { formatRelativeTime } from '../../lib/chatUtils';
 import { BrutalSelect } from '../BrutalSelect';
 import { BoardRowMenu, type BoardRowMenuItem } from './BoardRowMenu';
 
@@ -43,7 +44,7 @@ export function ChatStatusBoard({
   onProjectFilter,
   onOpenChat,
 }: ChatStatusBoardProps): React.ReactElement {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { states, failed } = useChatStates();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ resolved: true });
   const [menu, setMenu] = useState<{
@@ -87,17 +88,26 @@ export function ChatStatusBoard({
         onSelect: () => onOpenChat(row.chatId),
       });
     }
-    items.push(
-      row.state === 'resolved'
-        ? { key: 'reopen', label: t('chatBoard.reopen'), onSelect: () => resolve(row, false) }
-        : { key: 'resolve', label: t('chatBoard.resolve'), onSelect: () => resolve(row, true) }
-    );
+    if (row.state === 'resolved') {
+      items.push({
+        key: 'reopen',
+        label: t('chatBoard.reopen'),
+        onSelect: () => resolve(row, false),
+      });
+    } else if (canResolve(row)) {
+      items.push({
+        key: 'resolve',
+        label: t('chatBoard.resolve'),
+        onSelect: () => resolve(row, true),
+      });
+    }
+    if (items.length === 0) return;
     setMenu({ anchor, title: row.title, items });
   };
 
   const renderRow = (row: ChatStateRow): React.ReactNode => {
     const reason = row.state === 'waiting' ? (row.waitingReason ?? row.summary) : row.summary;
-    const time = relativeTime(row.lastActiveAt);
+    const time = formatRelativeTime(row.lastActiveAt, locale);
     return (
       <section
         key={row.chatId}

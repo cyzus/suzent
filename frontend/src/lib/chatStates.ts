@@ -35,6 +35,25 @@ export async function fetchChatStates(): Promise<ChatStates> {
   return response.json();
 }
 
+/** One chat's row, however long it has been quiet, or null when the board doesn't track it. */
+export async function fetchChatState(chatId: string): Promise<ChatStateRow | null> {
+  const response = await fetch(
+    `${getApiBase()}/focal/chats?chat_id=${encodeURIComponent(chatId)}`,
+    { signal: AbortSignal.timeout(15000) }
+  );
+  if (!response.ok) throw new Error('Chat state fetch failed');
+  const body: ChatStates = await response.json();
+  return body.chats[0] ?? null;
+}
+
+/**
+ * Whether resolving would change the row. A question or approval held open
+ * outranks resolving until it is answered in the chat.
+ */
+export function canResolve(row: ChatStateRow): boolean {
+  return !(row.waitingKind === 'question' || row.waitingKind === 'approval');
+}
+
 export async function setChatResolved(chatId: string, resolved: boolean): Promise<void> {
   const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}/resolved`, {
     method: 'POST',

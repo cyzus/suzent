@@ -1939,6 +1939,7 @@ export const zhCN = {
     },
   },
   chatBoard: {
+    answerFirst: '先在会话里回答或批准',
     waitingSummary: '有 {count} 个会话等你处理',
     allClear: '没有需要你处理的会话',
     empty: '最近没有项目会话。',
