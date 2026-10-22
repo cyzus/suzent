@@ -65,7 +65,7 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({
 
   if (!interactive) return <div className="my-2">{body}</div>;
 
-  // A saved question form that the user has since replied to: SUZENT's forms
+  // A saved question form that the user has since replied to: Regent's forms
   // outlive their turn, so without this a reload would offer it again.
   if (isAnsweredQuestion(surface, answered)) {
     return (

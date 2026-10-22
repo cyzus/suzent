@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "The focal agent at the top of the sidebar, introduced as SUZENT in the entries above, is now named Suzent Regent, shown as Regent in the app.",
+  "reason": "The focal agent has not shipped yet, so it goes out under its new name with the pending focal-agent declaration; merged declarations stay as written."
+}

@@ -1384,7 +1384,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const remaining = Math.max(0, filteredTotal - filteredChats.length);
   const isSearching = localSearchQuery.trim().length > 0;
   // Heartbeats are scheduled-task rows too, but they get their own list below;
-  // showing the row here as well listed every heartbeat twice. SUZENT's own
+  // showing the row here as well listed every heartbeat twice. Regent's own
   // check-ins and wake-ups belong to it: they surface as new messages on its
   // card, not as tasks.
   const scheduledJobs = cronJobs.filter(

@@ -64,7 +64,7 @@ export function isLongSystemReminder(content: string): boolean {
 
 export const SystemTriggeredMessage: React.FC<{
   message: Message;
-  /** Start folded to the title line, e.g. in SUZENT's chat, where a reminder's
+  /** Start folded to the title line, e.g. in Regent's chat, where a reminder's
    *  internal prompt is noise next to the conversation it starts. */
   folded?: boolean;
 }> = ({ message, folded = false }) => {

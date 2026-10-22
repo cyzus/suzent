@@ -1,4 +1,4 @@
-"""SUZENT's dispatch: send work to project sessions, or start new ones."""
+"""Regent's dispatch: send work to project sessions, or start new ones."""
 
 from typing import Annotated, Optional
 
@@ -20,7 +20,7 @@ from suzent.tools.base import ToolErrorCode, ToolResult
 class FocalDispatchTool(AgentSendTool):
     """Send work to a project session, or start a new session in a project.
 
-    Only SUZENT is equipped with it, and it refuses any other chat. Messages
+    Only Regent is equipped with it, and it refuses any other chat. Messages
     always go out asynchronously, and replies wake you later.
     """
 
@@ -77,7 +77,7 @@ class FocalDispatchTool(AgentSendTool):
         if not is_focal_chat(get_database().get_chat(current_chat_id)):
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED,
-                "agent_dispatch belongs to SUZENT; use agent_send.",
+                "agent_dispatch belongs to Regent; use agent_send.",
             )
         if agent_id == NEW_AGENT_ID:
             return self._start_primary_session(
@@ -88,13 +88,13 @@ class FocalDispatchTool(AgentSendTool):
                 task_title,
                 acp_agent_id,
             )
-        # SUZENT never parks a turn on another agent: a turn held open would
+        # Regent never parks a turn on another agent: a turn held open would
         # also hold back the wake-ups and session reports queued behind it.
         if agent_bridge.parse_address(agent_id):
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
                 "External agents answer only by blocking until they finish, "
-                "which SUZENT does not do. Ask a project session to delegate "
+                "which Regent does not do. Ask a project session to delegate "
                 "to this agent instead.",
             )
         return await self._deliver(current_chat_id, agent_id, message.strip(), False)

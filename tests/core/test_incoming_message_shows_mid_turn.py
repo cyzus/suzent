@@ -21,7 +21,7 @@ from suzent.streaming import (
     stream_agent_responses,
 )
 
-REQUEST = "[Agent message from SUZENT (focal-suzent)]\nAim it at the GitHub page."
+REQUEST = "[Agent message from Regent (focal-suzent)]\nAim it at the GitHub page."
 
 
 def _absorbed(*contents: str) -> SimpleNamespace:

@@ -10,7 +10,7 @@ import {
 
 const PANEL_POLL_MS = 30_000;
 
-/** The Tools tab on the Focal chat: SUZENT's fixed tools and its own wake-ups. */
+/** The Tools tab on the Focal chat: Regent's fixed tools and its own wake-ups. */
 export function FocalToolsPanel(): React.ReactElement {
   const [panel, setPanel] = useState<FocalPanel | null>(null);
   const [loadError, setLoadError] = useState(false);
