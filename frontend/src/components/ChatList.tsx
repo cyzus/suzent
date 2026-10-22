@@ -1806,7 +1806,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
         <div
           ref={scrollAreaRef}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-stable"
         >
           {isSearching ? (
             <section>

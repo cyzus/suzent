@@ -1,4 +1,5 @@
 export const zhCN = {
+  workspaceView: { fullscreen: '全屏', shrink: '缩小' },
   desktopMenu: {
     label: '菜单',
     cut: '剪切',
@@ -1832,6 +1833,9 @@ export const zhCN = {
     history: '历史',
   },
   a2uiSurface: {
+    showHere: '在此显示',
+    showInChat: '在聊天中显示',
+    inChat: '显示在聊天中',
     answered: '已回答',
     openInSidePanel: '在侧栏打开',
     fullscreen: '全屏',

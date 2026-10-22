@@ -1,3 +1,4 @@
+import { SidebarExpansionContext } from '../sidebar/SidebarExpansionContext';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { FOCAL_CHAT_ID, readFocalBoardOpen } from '../../lib/focalAgent';
@@ -6,6 +7,7 @@ import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
+import { useSurfaceEntry } from '../a2ui/InlineSurfaceContext';
 import { BackgroundTaskView } from '../sidebar/BackgroundTaskView';
 import { useBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import { BackgroundTaskList } from '../sidebar/BackgroundTaskList';
@@ -46,6 +48,9 @@ export interface AutoOpenFlags {
   fileToPreview: { path: string; name: string; nonce?: number } | null | undefined;
   canvas: boolean;
   canvasResolved: boolean;
+  activeTab?: TabId;
+  canvasSurfaceId?: string;
+  canvasLocation?: 'inline' | 'canvas';
   subAgent: boolean;
   viewingSubAgentTaskId: string | null | undefined;
   webContext: boolean;
@@ -98,8 +103,17 @@ export function evaluateSidebarAutoOpen(
     nextTab = 'plan';
   }
 
+  const returnedToChat =
+    flags.activeTab === 'canvas' &&
+    flags.canvasResolved &&
+    !!flags.canvasSurfaceId &&
+    prev.canvasSurfaceId === flags.canvasSurfaceId &&
+    prev.canvasLocation === 'canvas' &&
+    flags.canvasLocation === 'inline';
+
   return {
     nextTab,
+    ...(returnedToChat && !nextTab ? { shouldClose: true } : {}),
     shouldOpen:
       fileTriggered ||
       subAgentTriggered ||
@@ -131,7 +145,7 @@ interface RightSidebarProps {
   onDismissTaskError?: () => void;
   onTaskChat?: (chatId: string) => Promise<boolean>;
   fileToPreview?: { path: string; name: string; nonce?: number } | null;
-  onMaximizeFile?: (filePath: string, fileName: string) => void;
+  onMaximizeFile?: (filePath: string, fileName: string, anchor?: DOMRect) => void;
   canvas?: CanvasState;
   onCanvasDispatch?: (action: string, context: Record<string, unknown>, surfaceId: string) => void;
   viewingSubAgentTaskId?: string | null;
@@ -144,6 +158,7 @@ interface RightSidebarProps {
   messages?: Message[];
   forcedWebContextId?: string | null;
   canvasRequestNonce?: number;
+  canvasExpandNonce?: number;
   onClearForcedWebContext?: () => void;
   isNewChat?: boolean;
 }
@@ -190,6 +205,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   messages = [],
   forcedWebContextId,
   canvasRequestNonce,
+  canvasExpandNonce,
   onClearForcedWebContext,
   isNewChat = false,
 }) => {
@@ -206,6 +222,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
   const [coveringChat, setCoveringChat] = useState(false);
+  const previousCanvasExpand = useRef(canvasExpandNonce);
+  useEffect(() => {
+    if (canvasExpandNonce !== previousCanvasExpand.current) {
+      previousCanvasExpand.current = canvasExpandNonce;
+      setCoverWidth(null);
+      setCoveringChat(true);
+    }
+  }, [canvasExpandNonce]);
+
   const [coverWidth, setCoverWidth] = useState<number | null>(null);
   const [chatAreaWidth, setChatAreaWidth] = useState(0);
   const spacerRef = useRef<HTMLDivElement>(null);
@@ -221,6 +246,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // chat's canvas being read as current mid-switch).
   const canvasMatchesChat = !canvas || canvas.surfacesChatId === currentChatId;
   const hasCanvasContent = canvasMatchesChat && !!canvas?.hasSurfaces;
+  const canvasSurfaceId = canvasMatchesChat
+    ? (
+        canvas?.surfaces.find((surface) => surface.id === canvas.activeSurfaceId) ??
+        canvas?.surfaces[0]
+      )?.id
+    : undefined;
+  const canvasLocation = useSurfaceEntry(canvasSurfaceId ?? '')?.location;
 
   const isCanvasActive = activeTab === 'canvas' && hasCanvasContent;
   const isBrowserActive = activeTab === 'browser';
@@ -335,6 +367,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     fileToPreview,
     canvas: hasCanvasContent,
     canvasResolved: canvasMatchesChat,
+    activeTab,
+    canvasSurfaceId,
+    canvasLocation,
     subAgent: !!viewingSubAgentTaskId,
     viewingSubAgentTaskId,
     webContext: !!forcedWebContextId,
@@ -352,6 +387,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       fileToPreview,
       canvas: hasCanvasContent,
       canvasResolved: canvasMatchesChat,
+      activeTab,
+      canvasSurfaceId,
+      canvasLocation,
       subAgent: !!viewingSubAgentTaskId,
       viewingSubAgentTaskId,
       webContext: !!forcedWebContextId,
@@ -385,6 +423,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     fileToPreview,
     hasCanvasContent,
     canvasMatchesChat,
+    activeTab,
+    canvasSurfaceId,
+    canvasLocation,
     viewingSubAgentTaskId,
     forcedWebContextId,
     canvasRequestNonce,
@@ -476,6 +517,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     setCoverWidth(null);
     onClose();
   };
+  const sidebarLeftBorder = coveringChat
+    ? 'border-l border-neutral-300 dark:border-zinc-700'
+    : 'border-l-3 border-brutal-black';
+  const sidebarRightBorder = coveringChat
+    ? 'border-r border-neutral-300 dark:border-zinc-700'
+    : 'border-r-3 border-brutal-black';
   const desktopWidth = isNewChatOverlayHidden
     ? 0
     : effectiveOpen
@@ -517,7 +564,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   ]);
 
   return (
-    <>
+    <SidebarExpansionContext.Provider
+      value={{
+        expanded: isOverlayMode ? coveringChat : isCoveringChat,
+        toggle: () => {
+          if (coveringChat) {
+            dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+          } else {
+            setCoverWidth(null);
+            setCoveringChat(true);
+          }
+        },
+      }}
+    >
       <div
         ref={spacerRef}
         className="h-full shrink-0"
@@ -544,7 +603,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         // Animating docked width reflows the transcript and reports intermediate sizes back to App.
         className={`
         z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
-        ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
+        ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? sidebarLeftBorder : ''}`}
         relative
       `}
       >
@@ -553,10 +612,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         {/* In desktop mode: sits inline to the left of the icon strip */}
         {isOverlayMode ? (
           <div
-            className={`absolute inset-y-0 right-full transform-gpu will-change-transform transition-transform duration-300 ease-in-out border-l-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-900 ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}
+            className={`absolute inset-y-0 right-full transform-gpu will-change-transform transition-transform duration-300 ease-in-out ${sidebarLeftBorder} overflow-hidden bg-white dark:bg-zinc-900 ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}
             style={{
               width: isOpen
-                ? isBrowserActive
+                ? isBrowserActive || coveringChat
                   ? Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH)
                   : desktopOpenWidth
                 : 0,
@@ -652,7 +711,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               />
             )}
             <div
-              className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}
+              className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? `opacity-100 translate-x-0 ${sidebarRightBorder}` : 'opacity-0 translate-x-3 pointer-events-none'}`}
             >
               <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
                 <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
@@ -716,7 +775,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         )}
 
         <div
-          className={`absolute inset-y-0 z-10 overflow-hidden border-r-3 border-brutal-black bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? '' : 'hidden'}`}
+          className={`absolute inset-y-0 z-10 overflow-hidden ${sidebarRightBorder} bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? '' : 'hidden'}`}
           style={
             isOverlayMode
               ? { right: '100%', width: Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH) }
@@ -806,6 +865,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           })}
         </div>
       </div>
-    </>
+    </SidebarExpansionContext.Provider>
   );
 };

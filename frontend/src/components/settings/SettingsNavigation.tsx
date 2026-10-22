@@ -199,7 +199,7 @@ export function SettingsNavigation({
     >
       <SettingsTitle onClose={onClose} />
       <nav
-        className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin"
+        className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-stable"
         aria-label={t('settings.title')}
       >
         <div className="space-y-3">

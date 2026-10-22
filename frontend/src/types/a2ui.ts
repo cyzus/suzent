@@ -126,8 +126,8 @@ export interface A2UISurface {
   id: string;
   title?: string;
   component: A2UIComponent;
-  /** "inline" (default): inside the chat message. "canvas": the side panel,
-   *  with a compact pointer left in the chat message. */
+  /** Initial placement: "inline" (default) in the chat, or "canvas" in the
+   *  side panel. Users can move the same live surface between either location. */
   target?: 'canvas' | 'inline';
   /** When the frontend received this version. A later render of the same id
    *  supersedes the copies with a smaller rev, wherever they sit in history. */

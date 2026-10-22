@@ -113,7 +113,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900 w-full min-h-0 relative">
       {/* Neo-brutalist Header Bar */}
-      <div className="shrink-0 flex items-stretch justify-between bg-white dark:bg-zinc-900 border-b-4 border-brutal-black dark:border-black w-full min-w-0 z-30">
+      <div className="shrink-0 flex items-stretch justify-between bg-white dark:bg-zinc-900 border-b-2 border-brutal-black dark:border-black w-full min-w-0 z-30">
         {/* Left Side: Current Context Button (Switches to Browser if clicked) */}
         <button
           onClick={() => {
@@ -178,7 +178,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
 
       {/* Timeline Overlay */}
       {isTimelineOpen && hasHistory && (
-        <div className="absolute top-[52px] left-0 right-0 max-h-[65%] bg-white dark:bg-zinc-900 z-20 border-b-4 border-brutal-black dark:border-black shadow-[0_6px_0_0_rgba(0,0,0,1)] dark:shadow-[0_6px_0_0_rgba(0,0,0,0.5)] overflow-y-auto animate-fade-in origin-top scrollbar-thin">
+        <div className="absolute top-[52px] left-0 right-0 max-h-[65%] bg-white dark:bg-zinc-900 z-20 border-b-2 border-brutal-black dark:border-black overflow-y-auto animate-fade-in origin-top scrollbar-thin">
           <div className="p-4 py-6">
             <div className="relative pl-6 ml-2 border-l-2 border-brutal-black dark:border-zinc-700 space-y-5">
               {history.map((item) => {
