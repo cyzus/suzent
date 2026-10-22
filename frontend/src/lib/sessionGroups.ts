@@ -1,4 +1,4 @@
-import type { Task } from '../types/api';
+import type { Task, TaskStatus } from '../types/api';
 import type { KanbanData } from '../hooks/useGoalTasks';
 
 export type SessionGroupKey = 'attention' | 'active' | 'stalled' | 'waiting' | 'completed';
@@ -108,4 +108,29 @@ export function filterKanbanByProject(
     goals: kanban.goals.filter((goal) => goal.projectId === projectId),
     tasks: kanban.tasks.filter((task) => task.projectId === projectId),
   };
+}
+
+/** What the board's row menus can do to a session's tasks, or to one task. */
+export type BoardAction = 'resume' | 'complete' | 'reopen' | 'cancel';
+
+export const BOARD_ACTIONS: readonly BoardAction[] = ['resume', 'complete', 'reopen', 'cancel'];
+
+export interface StatusChange {
+  task: Task;
+  status: TaskStatus;
+}
+
+/**
+ * The status each task would move to under a manual action. Resuming only
+ * lifts the wait, so the work counts as stalled until a session picks it up.
+ */
+export function boardActionChanges(tasks: Task[], action: BoardAction): StatusChange[] {
+  const target: Record<BoardAction, [(task: Task) => boolean, TaskStatus]> = {
+    resume: [(task) => task.status === 'blocked', 'pending'],
+    complete: [isOpen, 'completed'],
+    reopen: [(task) => task.status === 'completed', 'pending'],
+    cancel: [isOpen, 'cancelled'],
+  };
+  const [applies, status] = target[action];
+  return tasks.filter(applies).map((task) => ({ task, status }));
 }
