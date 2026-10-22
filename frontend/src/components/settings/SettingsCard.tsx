@@ -1,16 +1,14 @@
 import React from 'react';
 import { BrutalButton } from '../BrutalButton';
 
-type IconTone = 'blue' | 'green' | 'yellow' | 'black' | 'neutral';
+type IconTone = 'blue' | 'green' | 'black' | 'neutral';
 
 const ICON_TONE: Record<IconTone, string> = {
   blue: 'bg-brutal-blue text-white dark:bg-blue-400/10 dark:text-blue-300 dark:border-blue-400/25',
   green:
     'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25',
-  yellow:
-    'bg-brutal-yellow text-brutal-black dark:bg-amber-400/10 dark:text-amber-200 dark:border-amber-400/25',
   black: 'bg-brutal-black text-white',
-  neutral: 'bg-neutral-400 text-white',
+  neutral: 'bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white',
 };
 
 interface SectionCardHeaderProps {

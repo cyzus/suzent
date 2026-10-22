@@ -159,7 +159,7 @@ function SettingsTitle({ onClose }: { onClose: () => void }): React.ReactElement
   const { t } = useI18n();
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b-4 border-brutal-black bg-brutal-yellow px-4 py-3 text-brutal-black">
+    <div className="flex items-center justify-between gap-3 border-b-4 border-brutal-black bg-white px-4 py-3 text-brutal-black dark:bg-zinc-900 dark:text-white">
       <div className="flex min-w-0 items-center gap-2.5">
         <Cog6ToothIcon className="h-6 w-6 shrink-0" aria-hidden="true" />
         <h1 className="truncate font-brutal text-xl font-bold uppercase tracking-tight">
@@ -222,7 +222,7 @@ export function SettingsNavigation({
                       aria-current={active ? 'page' : undefined}
                       className={`group flex w-full items-center gap-3 border-l-4 px-3 py-1.5 text-left text-sm font-bold transition-colors ${
                         active
-                          ? 'border-brutal-yellow bg-brutal-black text-white dark:border-brutal-yellow dark:bg-brutal-yellow/10 dark:text-zinc-100'
+                          ? 'border-brutal-black bg-brutal-black text-white dark:border-white dark:bg-white dark:text-brutal-black'
                           : 'border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-700'
                       }`}
                     >

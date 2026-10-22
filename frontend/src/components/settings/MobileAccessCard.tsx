@@ -312,7 +312,7 @@ export function MobileAccessCard({
               {(['prepareStep', 'scanStep', 'confirmStep'] as const).map((step, index) => (
                 <li key={step} className="flex items-start gap-3">
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-sm font-black text-brutal-black"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-neutral-200 text-sm font-black text-brutal-black dark:bg-zinc-700 dark:text-white"
                     aria-hidden="true"
                   >
                     {index + 1}

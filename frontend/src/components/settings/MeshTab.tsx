@@ -66,7 +66,9 @@ function ReachBadge({ reach }: { reach: Reach }): React.ReactElement {
   return (
     <span
       className={`px-2 py-0.5 text-[10px] font-bold uppercase border-2 border-brutal-black ${
-        isSuzent ? 'bg-brutal-blue text-white' : 'bg-brutal-yellow text-brutal-black'
+        isSuzent
+          ? 'bg-brutal-blue text-white'
+          : 'bg-neutral-200 text-brutal-black dark:bg-zinc-700 dark:text-white'
       }`}
       title={
         isSuzent
