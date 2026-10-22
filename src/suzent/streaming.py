@@ -1364,6 +1364,18 @@ async def stream_agent_responses(
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
+    shell_output_loop = asyncio.get_running_loop()
+
+    def publish_shell_output(tool_call_id: str, stream: str, chunk: str) -> None:
+        shell_output_loop.call_soon_threadsafe(
+            sse_queue.put_nowait,
+            (
+                "shell_output_delta",
+                {"toolCallId": tool_call_id, "stream": stream, "delta": chunk},
+            ),
+        )
+
+    deps.shell_output_callback = publish_shell_output
 
     # --- Inline citations ---
     # One manager per run. Tools register citable sources on the manager via
@@ -2273,6 +2285,9 @@ async def stream_agent_responses(
 
                 elif msg_type == "permission_decision":
                     yield CustomEvent(name="tool_permission_decision", value=payload)
+
+                elif msg_type == "shell_output_delta":
+                    await _queue_custom_event(out_queue, "shell_output_delta", payload)
 
                 elif msg_type == "permission_resolution":
                     yield CustomEvent(name="tool_permission_resolution", value=payload)

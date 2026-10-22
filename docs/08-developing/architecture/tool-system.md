@@ -88,7 +88,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
-| RunCommandTool | `run_command` | Sandbox config | **Yes** | Run bounded commands and wait for their output |
+| RunCommandTool | `run_command` | Sandbox config | **Yes** | Return quick output or yield a running process ID after 10 seconds |
 | StartCommandTool | `start_command` | Sandbox config | **Yes** | Start a long-running background command |
 | CheckCommandTool | `check_command` | Process registry | **Yes** | Read incremental output and command status |
 | StopCommandTool | `stop_command` | Process registry | **Yes** | Stop a background command and clean up resources |
