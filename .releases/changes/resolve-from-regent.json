@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The ✓ that marks a chat resolved now shows only on chats opened from Regent's board, so project chats opened directly keep their usual header."
+}
