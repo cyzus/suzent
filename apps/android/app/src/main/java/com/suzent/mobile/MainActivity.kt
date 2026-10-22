@@ -519,7 +519,7 @@ private fun StartPage(model: MobileModel, chat: Chat, keyboardVisible: Boolean) 
     val greeting = when { hour < 5 -> R.string.greeting_night; hour < 12 -> R.string.greeting_morning; hour < 17 -> R.string.greeting_build; hour < 21 -> R.string.greeting_evening; else -> R.string.greeting_bed }
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (keyboardVisible) 12.dp else 40.dp),
         horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(28.dp)) {
-        GreetingCube(Modifier.size(if (keyboardVisible) 90.dp else 160.dp))
+        GreetingCube(engaged = keyboardVisible, modifier = Modifier.size(if (keyboardVisible) 90.dp else 160.dp))
         Text(stringResource(greeting).uppercase(java.util.Locale.getDefault()), fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Box {
