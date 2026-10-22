@@ -21,6 +21,7 @@ FOCAL_TITLE = "SUZENT"
 ATTENTION_WAITING_KINDS = ("user", "error")
 
 _MAX_CONTEXT_SESSIONS_PER_PROJECT = 10
+_MAX_STARTED_SESSIONS = 20
 
 # The Focal Agent orchestrates; project sessions do the work. It gets no tools
 # that change files, run commands or act on a project directly, whatever the
@@ -284,7 +285,9 @@ def build_focal_global_context() -> str:
         "doing it here: wake an existing session with "
         "`agent_dispatch(agent_id=<session id>, message=...)`, or start a new one with "
         "`agent_dispatch(agent_id='new', project_id=<id or slug>, title=..., "
-        "task_title=..., message=...)`. Primary sessions run autonomously and "
+        "task_title=..., message=...)`; pass acp_agent_id instead of task_title "
+        "to have a configured ACP agent, such as a coding agent, do the work. "
+        "Primary sessions run autonomously and "
         "notify you when they block on the user; relay those blockers clearly.",
         "",
         "## Projects",
@@ -292,6 +295,15 @@ def build_focal_global_context() -> str:
     projects = db.list_projects(include_archived=False)
     if not projects:
         lines.append("(no projects)")
+    # Sessions SUZENT started show even without a task: an ACP session can't
+    # make one, and would otherwise vanish from view once idle.
+    started = [
+        chat
+        for row in db.list_chats_by_config(
+            "parent_chat_id", FOCAL_CHAT_ID, limit=_MAX_STARTED_SESSIONS
+        )
+        if (chat := db.get_chat(row["id"])) is not None
+    ]
     for project in projects:
         line = f"- {project.name} · slug `{project.slug}` · id `{project.id}`"
         overview = _project_overview(project.slug)
@@ -309,6 +321,11 @@ def build_focal_global_context() -> str:
             and (chat := db.get_chat(chat_id)) is not None
             and chat.project_id == project.id
         ]
+        session_ids += [
+            chat.id
+            for chat in started
+            if chat.project_id == project.id and chat.id not in session_ids
+        ]
         session_ids.sort(
             key=lambda chat_id: (
                 not any(_needs_attention(task) for task in by_chat.get(chat_id, [])),
@@ -320,8 +337,14 @@ def build_focal_global_context() -> str:
             if chat is None or is_focal_chat(chat):
                 continue
             state = "running" if chat_id in running else "idle"
+            config = chat.config or {}
+            runtime = (
+                f" · ACP `{config.get('acp_agent_id')}`"
+                if config.get("runtime") == "acp"
+                else ""
+            )
             lines.append(
-                f"  - Session `{chat_id}` · {chat.title or 'Untitled'} · {state}"
+                f"  - Session `{chat_id}` · {chat.title or 'Untitled'} · {state}{runtime}"
             )
             lines.extend(
                 f"    - {_format_task(task)}" for task in by_chat.get(chat_id, [])

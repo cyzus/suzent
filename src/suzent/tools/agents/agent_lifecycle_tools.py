@@ -189,8 +189,9 @@ class AgentListTool(Tool):
             Field(
                 description=(
                     "'active' or 'recent': existing sessions you can message. "
-                    "'acp': configured local ACP agents to start with agent(runtime='acp', "
-                    "acp_agent_id=...). Checks installation only, not authentication or handshake."
+                    "'acp': configured local ACP agents that can run work; the result "
+                    "says how to start one. Checks installation only, not "
+                    "authentication or handshake."
                 )
             ),
         ] = "active",
@@ -225,11 +226,17 @@ class AgentListTool(Tool):
                 + (f"\n  {record['description']}" if record["description"] else "")
                 for record in records
             ]
+            start = (
+                "Start a project session on one with agent_dispatch(agent_id='new', "
+                "project_id=..., acp_agent_id=<listed ID>, message=...)."
+                if is_focal_chat(current)
+                else "Start with agent(runtime='acp', acp_agent_id=<listed ID>, "
+                "description=...)."
+            )
             return ToolResult.success_result(
                 "Configured ACP agents (installation check only):\n"
                 + ("\n".join(lines) or "No ACP agents configured.")
-                + "\nStart with agent(runtime='acp', acp_agent_id=<listed ID>, "
-                "description=...). These IDs cannot be messaged. "
+                + f"\n{start} These IDs cannot be messaged. "
                 "If not installed, configure it in Settings → ACP Agents.",
                 metadata={"acp_agents": records, "has_more": len(configured) > limit},
             )

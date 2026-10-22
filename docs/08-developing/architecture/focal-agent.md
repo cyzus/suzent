@@ -58,8 +58,11 @@ The `inject_focal_context` prompt layer (runtime) adds
 `build_focal_global_context()` to Focal turns only: every non-archived project
 with its id and slug, up to 10 sessions per project, and each session's tasks.
 Sessions come from the project's tasks plus any chat in the project that is
-running now; sessions with work waiting on the user sort first, then running
-ones. A chat with no tasks that is not running is not listed.
+running now, plus the 20 most recent sessions SUZENT started
+(`parent_chat_id`), which may have no task. ACP sessions never do. Sessions
+with work waiting on the user sort first, then running ones, and ACP sessions
+are marked with their agent. Any other chat with no tasks that is not running
+is not listed.
 
 Each project line ends with one line from that project's `context.md`, read
 live by `_project_overview()`: the first line of its Overview section, else its
@@ -109,6 +112,18 @@ would also hold back the wake-ups and reports queued behind it.
   `task_title` is given, and enqueues the message. The desktop renders that
   first `system_triggered` message as a user message (`focalRequestText`), so
   the session shows what it was asked.
+- **New ACP session:** the same call with `acp_agent_id` (from
+  `agent_list(status="acp")`, which tells SUZENT to use `agent_dispatch` rather
+  than `agent`). The chat gets `runtime: "acp"` and `acp_agent_id`, so the inbox
+  delivers through `run_acp_turn_text()` with the project folder as its
+  working directory. Its `permission_mode` is `default`, not `auto`: for ACP,
+  `auto` allows every request outright (`acp/permissions.py`), with no reviewer
+  behind it. Headless approvals fail closed after the broker's timeout.
+  `task_title` is refused, because an ACP agent can't update Suzent tasks and
+  the task would stay `in_progress`, and the heartbeat would flag it as stalled.
+  An unknown or uninstalled agent is refused before anything is created.
+- **Paired Suzent:** `agent_dispatch(agent_id="peer:...")` goes through the
+  peer outbox in `_deliver()`, asynchronously like any other message.
 
 ## Hearing back
 
