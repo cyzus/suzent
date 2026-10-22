@@ -13,9 +13,10 @@ from suzent.tools.agents import agent_lifecycle_tools
 from suzent.tools.agents.agent_lifecycle_tools import (
     AgentListTool,
     AgentSendTool,
-    FocalDispatchTool,
     _accessible_agent,
 )
+from suzent.tools.focal import dispatch
+from suzent.tools.focal.dispatch import FocalDispatchTool
 from suzent.tools.base import ToolErrorCode
 from suzent.tools.tasks import task_update_tool
 from suzent.tools.tasks.task_update_tool import TaskUpdateTool
@@ -23,7 +24,7 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (focal_agent, agent_lifecycle_tools, task_update_tool):
+    for module in (focal_agent, agent_lifecycle_tools, dispatch, task_update_tool):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
@@ -436,7 +437,7 @@ def schedule_db(db, monkeypatch):
 def test_focal_wakeups_run_in_focal_and_reminders_always_notify(
     schedule_db, sandbox, kind, quiet, delivery
 ) -> None:
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     get_or_create_focal_chat()
 
@@ -460,7 +461,7 @@ def test_focal_wakeups_refuse_other_chats_and_stay_out_of_reach(
     schedule_db, sandbox
 ) -> None:
     from suzent.tools.registry import get_tool_capabilities
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     chat_id = schedule_db.create_chat("Regular", {})
 
@@ -550,7 +551,7 @@ def test_focal_panel_lists_fixed_tools_and_own_wakeups(
     schedule_db, sandbox, monkeypatch
 ) -> None:
     from suzent.routes import chat_routes
-    from suzent.tools.schedule_tool import FocalScheduleTool
+    from suzent.tools.focal.schedule import FocalScheduleTool
 
     monkeypatch.setattr(chat_routes, "get_database", lambda: schedule_db)
     client = TestClient(
@@ -861,7 +862,7 @@ def test_only_suzent_sees_the_dispatch_parameters() -> None:
         assert not any("Focal Agent" in text for text in described)
 
 
-def test_suzents_tools_never_point_it_at_agent_send() -> None:
+def test_suzents_tools_speak_to_it_as_suzent() -> None:
     from suzent.core.focal_agent import FOCAL_TOOL_NAMES
     from suzent.tools.registry import _all_tool_classes, _tool_description
 
@@ -872,7 +873,8 @@ def test_suzents_tools_never_point_it_at_agent_send() -> None:
             str(param.annotation)
             for param in signature(tool.forward).parameters.values()
         ]
-        assert not any("agent_send" in text for text in described), tool.name
+        for stale in ("agent_send", "Focal Agent"):
+            assert not any(stale in text for text in described), (tool.name, stale)
 
 
 def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
@@ -890,7 +892,7 @@ def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
 
 @pytest.mark.asyncio
 async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
-    from suzent.tools.focal_notes_tool import FocalNotesTool
+    from suzent.tools.focal.notes import FocalNotesTool
 
     get_or_create_focal_chat()
     path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
@@ -920,7 +922,7 @@ async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
 async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
     db, sandbox
 ) -> None:
-    from suzent.tools.focal_notes_tool import MAX_NOTES_CHARS, FocalNotesTool
+    from suzent.tools.focal.notes import MAX_NOTES_CHARS, FocalNotesTool
 
     get_or_create_focal_chat()
     (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").write_text("")
@@ -940,7 +942,7 @@ async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
 
 def test_notes_tool_is_suzents_alone() -> None:
     from suzent.core.focal_agent import FOCAL_TOOL_NAMES
-    from suzent.tools.focal_notes_tool import FocalNotesTool
+    from suzent.tools.focal.notes import FocalNotesTool
 
     assert "FocalNotesTool" in FOCAL_TOOL_NAMES
     assert (FocalNotesTool.group, FocalNotesTool.deferrable) == ("", False)
@@ -960,7 +962,7 @@ def test_suzents_memory_section_points_at_its_notes() -> None:
 
 @pytest.mark.asyncio
 async def test_notes_file_rules_under_their_section(db, sandbox) -> None:
-    from suzent.tools.focal_notes_tool import FocalNotesTool
+    from suzent.tools.focal.notes import FocalNotesTool
 
     get_or_create_focal_chat()
     path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
@@ -1010,7 +1012,7 @@ def test_global_context_shows_each_projects_overview(db, sandbox) -> None:
 
 @pytest.mark.asyncio
 async def test_only_the_suzent_singleton_keeps_notes(db, sandbox) -> None:
-    from suzent.tools.focal_notes_tool import FocalNotesTool
+    from suzent.tools.focal.notes import FocalNotesTool
 
     get_or_create_focal_chat()
     lookalike = db.create_chat("Old focal", {"is_focal_agent": True})
