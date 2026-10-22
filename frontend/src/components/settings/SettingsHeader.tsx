@@ -18,7 +18,7 @@ export function SettingsHeader({
 }: SettingsHeaderProps): React.ReactElement {
   return (
     <header className="relative flex flex-col gap-3 overflow-hidden border-2 border-brutal-black bg-brutal-black px-4 py-4 text-white shadow-brutal-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
-      <div className="absolute inset-y-0 left-0 w-1.5 bg-neutral-400" aria-hidden="true" />
+      <div className="absolute inset-y-0 left-0 w-1 bg-brutal-yellow" aria-hidden="true" />
       <div className="min-w-0">
         <h2 className="font-brutal text-xl uppercase leading-none tracking-tight sm:text-2xl">
           {title}

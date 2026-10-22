@@ -86,7 +86,7 @@ function DailyChart({ data, range }: { data: CostDaily[]; range: TimeRange }) {
               <div
                 className={[
                   'w-full rounded-t-sm transition-all duration-200',
-                  isToday ? 'bg-brutal-black dark:bg-white' : 'bg-neutral-400 dark:bg-neutral-500',
+                  isToday ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-neutral-500',
                   isHovered ? 'opacity-100 scale-x-110' : 'opacity-80 hover:opacity-100',
                 ].join(' ')}
                 style={{ height: `${barHeight}%`, minHeight: d.cost_usd > 0 ? '2px' : '0' }}
