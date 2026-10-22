@@ -6,6 +6,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
+from sqlmodel import select
 
 from suzent.core import chat_status, focal_agent
 from suzent.core.chat_status import (
@@ -226,3 +227,80 @@ def test_routes_list_states_and_resolve_chats(db, project) -> None:
     body = client.get("/focal/chats", params={"project_id": project}).json()
     assert body["counts"]["resolved"] == 1
     assert body["chats"][0]["chatId"] == chat_id
+
+
+def test_a_judgement_overtaken_by_a_newer_turn_is_dropped(
+    db, project, monkeypatch
+) -> None:
+    chat_id = db.create_chat("Plan", {}, project_id=project)
+
+    async def waiting(**kwargs):
+        return '{"waiting_on_user": true, "reason": "Old question", "summary": "Old"}'
+
+    _patch_judge(monkeypatch, "cheap/model", waiting)
+    first = chat_status.begin_turn(chat_id)
+    chat_status.begin_turn(chat_id)
+    asyncio.run(judge_turn(chat_id, "hi", "reply", turn=first))
+
+    assert db.get_chat_status(chat_id) is None
+
+
+def test_a_string_where_the_boolean_belongs_is_unreadable(
+    db, project, monkeypatch
+) -> None:
+    chat_id = db.create_chat("Plan", {}, project_id=project)
+
+    async def stringly(**kwargs):
+        return '{"waiting_on_user": "false", "summary": "Done"}'
+
+    _patch_judge(monkeypatch, "cheap/model", stringly)
+    asyncio.run(judge_turn(chat_id, "hi", "reply"))
+
+    assert db.get_chat_status(chat_id) is None
+
+
+def test_old_chats_still_waiting_stay_on_the_board(db, project) -> None:
+    long_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    judged = db.create_chat("Judged", {}, project_id=project)
+    db.update_chat_status(judged, waiting_on_user=True, waiting_reason="Go ahead?")
+    approval = db.create_chat(
+        "Approval", {"_pending_approvals": [{"approvalId": "a"}]}, project_id=project
+    )
+    db.create_chat("Old", {}, project_id=project)
+    with db._session() as session:
+        for chat in session.exec(select(ChatModel)).all():
+            chat.updated_at = long_ago
+            session.add(chat)
+        session.commit()
+
+    states = _states(project)
+
+    assert set(states) == {"Judged", "Approval"}
+    assert states["Judged"]["waitingKind"] == "reply"
+    assert approval == states["Approval"]["chatId"]
+
+
+def test_acp_turns_reopen_the_chat_and_get_judged(db, project, monkeypatch) -> None:
+    from suzent.acp import runtime
+
+    chat_id = db.create_chat("Agent", {}, project_id=project)
+    set_resolved(chat_id, True)
+    judged: list[tuple[str, str, int]] = []
+
+    async def fake_turn(*args, **kwargs):
+        yield runtime._sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "Which one?"})
+
+    async def record(chat_id, message, reply, turn):
+        judged.append((message, reply, turn))
+
+    monkeypatch.setattr(runtime, "_run_acp_turn", fake_turn)
+    monkeypatch.setattr(chat_status, "schedule_judgement", record)
+
+    async def run() -> None:
+        async for _ in runtime.stream_acp_turn(chat_id, "Pick a palette"):
+            pass
+
+    asyncio.run(run())
+
+    assert db.get_chat_status(chat_id).resolved_at is None
+    assert judged == [("Pick a palette", "Which one?", chat_status._turns[chat_id])]
