@@ -1933,6 +1933,7 @@ export const en = {
     narrow: 'Narrow',
 
     overview: '{attention} need your attention · {active} in progress',
+    sessionOverview: '{attention} need you · {active} running · {stalled} stalled',
     projectTitle: 'Project tasks',
     currentChat: 'chat',
     back: 'Back to conversation',

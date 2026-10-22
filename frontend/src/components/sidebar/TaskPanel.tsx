@@ -4,6 +4,7 @@ import { useGoalTasks, type KanbanData } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
 import { ProjectKanbanView } from './ProjectKanbanView';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
+import { BrutalSelect } from '../BrutalSelect';
 import { GoalSummary } from './GoalSummary';
 import { readFocalProjectFilter, writeFocalProjectFilter } from '../../lib/focalAgent';
 import { ALL_PROJECTS, filterKanbanByProject, projectOptions } from '../../lib/sessionGroups';
@@ -100,28 +101,16 @@ export function TaskPanel({
           <div className="space-y-2">
             {focal ? (
               projects.length > 1 && (
-                <div
-                  role="group"
-                  aria-label={t('taskFlow.projectFilter')}
-                  className="flex flex-wrap gap-1.5"
-                >
-                  {[{ id: ALL_PROJECTS, label: t('taskFlow.allProjects') }, ...projects].map(
-                    (project) => {
-                      const selected = project.id === effectiveFilter;
-                      return (
-                        <button
-                          key={project.id}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => chooseProject(project.id)}
-                          className={`max-w-full truncate border-2 border-brutal-black px-2 py-0.5 font-mono text-[11px] font-bold transition-colors ${selected ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
-                        >
-                          {project.label}
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
+                <BrutalSelect
+                  label={t('taskFlow.projectFilter')}
+                  value={effectiveFilter}
+                  onChange={chooseProject}
+                  options={[
+                    { value: ALL_PROJECTS, label: t('taskFlow.allProjects') },
+                    ...projects.map((project) => ({ value: project.id, label: project.label })),
+                  ]}
+                  className="w-full"
+                />
               )
             ) : (
               <div role="group" aria-label={t('taskFlow.scope')}>

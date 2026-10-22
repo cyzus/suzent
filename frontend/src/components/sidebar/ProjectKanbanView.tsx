@@ -114,6 +114,43 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
         : key === 'completed'
           ? 'bg-brutal-green text-brutal-black'
           : 'bg-white text-brutal-black';
+  const renderSessionSection = (
+    key: string,
+    label: string,
+    count: number,
+    tone: string,
+    children: React.ReactNode
+  ): React.ReactNode => (
+    <details
+      key={key}
+      open={!collapsedGroups[key]}
+      onToggle={(event) => {
+        const collapsed = !event.currentTarget.open;
+        setCollapsedGroups((previous) =>
+          previous[key] === collapsed ? previous : { ...previous, [key]: collapsed }
+        );
+      }}
+      className="group/task-section"
+    >
+      <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden px-1 pb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-brutal-black dark:text-white hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+        <span
+          aria-hidden="true"
+          className="inline-block text-neutral-400 transition-transform group-open/task-section:rotate-90"
+        >
+          ▸
+        </span>
+        {label}
+        <span
+          className={`ml-auto min-w-5 border border-brutal-black px-1 text-center ${badgeClass(tone)}`}
+        >
+          {count}
+        </span>
+      </summary>
+      <div className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
+        {children}
+      </div>
+    </details>
+  );
   const renderSection = (
     key: string,
     label: string,
@@ -180,85 +217,92 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
     const { open, done } = splitSessionTasks(session);
     const expanded = Boolean(expandedSessions[session.key]);
     const tasksId = `session-tasks-${session.key}`;
+    const dot =
+      group === 'attention'
+        ? 'bg-brutal-yellow'
+        : group === 'active'
+          ? 'bg-brutal-blue animate-brutal-blink'
+          : group === 'completed'
+            ? 'bg-brutal-green'
+            : group === 'stalled'
+              ? 'bg-neutral-400'
+              : 'bg-white dark:bg-zinc-700';
+    const state =
+      group === 'active'
+        ? t('taskFlow.sessionRunning')
+        : group === 'attention' && session.blocker
+          ? t(`taskFlow.wait.${session.blocker.waitingKind}`)
+          : group === 'stalled'
+            ? t('taskFlow.sessionIdle')
+            : null;
     return (
       <section
         key={session.key}
         aria-label={title}
-        className="m-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000]"
+        className="border-b border-neutral-200 last:border-b-0 dark:border-zinc-700"
       >
-        <header className="border-b-2 border-brutal-black px-3 py-2 space-y-1">
-          {session.chatId && onOpenChat ? (
-            <button
-              type="button"
-              className="block w-full text-left text-sm font-black leading-snug line-clamp-2 break-words hover:underline underline-offset-4"
-              title={`${title} · ${t('taskFlow.openChat')}`}
-              onClick={() => onOpenChat(session.chatId!)}
-            >
-              {title}
-            </button>
-          ) : (
-            <h2 className="text-sm font-black leading-snug line-clamp-2 break-words">{title}</h2>
-          )}
-          {(session.projectLabel || group !== 'completed') && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              {session.projectLabel && (
-                <span className="min-w-0 truncate text-[11px] text-neutral-500 dark:text-zinc-400">
-                  {session.projectLabel}
-                </span>
-              )}
-              {group === 'active' ? (
-                <span className="shrink-0 flex items-center gap-1 font-mono text-[10px] font-bold uppercase">
-                  <span
-                    aria-hidden="true"
-                    className="w-1.5 h-1.5 bg-brutal-blue animate-brutal-blink"
-                  />
-                  {t('taskFlow.sessionRunning')}
-                </span>
-              ) : group === 'attention' && session.blocker ? (
-                <span className="shrink-0 border border-brutal-black bg-brutal-yellow px-1 font-mono text-[10px] font-bold text-brutal-black">
-                  {t(`taskFlow.wait.${session.blocker.waitingKind}`)}
-                </span>
-              ) : group === 'stalled' ? (
-                <span className="shrink-0 border border-brutal-black bg-white dark:bg-zinc-700 px-1 font-mono text-[10px] font-bold uppercase">
-                  {t('taskFlow.sessionIdle')}
-                </span>
-              ) : null}
-            </div>
-          )}
-        </header>
-        {reason && (
-          <p
-            className={`border-b border-brutal-black/20 px-3 py-2 text-xs leading-relaxed ${group === 'attention' ? 'bg-brutal-yellow/20' : 'bg-neutral-50 dark:bg-zinc-900'}`}
-          >
-            {reason}
-          </p>
-        )}
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={tasksId}
-          onClick={() =>
-            setExpandedSessions((previous) => ({ ...previous, [session.key]: !expanded }))
-          }
-          className="group/toggle flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] font-bold text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-        >
+        <div className="flex items-start gap-2.5 px-3 py-2.5">
           <span
             aria-hidden="true"
-            className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}
+            className={`mt-1.5 h-2 w-2 shrink-0 border border-brutal-black ${dot}`}
+          />
+          <div className="min-w-0 flex-1">
+            {session.chatId && onOpenChat ? (
+              <button
+                type="button"
+                className="block w-full truncate text-left text-[13px] font-bold leading-snug hover:underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+                title={`${title} · ${t('taskFlow.openChat')}`}
+                onClick={() => onOpenChat(session.chatId!)}
+              >
+                {title}
+              </button>
+            ) : (
+              <h2 className="truncate text-[13px] font-bold leading-snug">{title}</h2>
+            )}
+            {(session.projectLabel || state) && (
+              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-neutral-500 dark:text-zinc-400">
+                {session.projectLabel && (
+                  <span className="min-w-0 truncate">{session.projectLabel}</span>
+                )}
+                {session.projectLabel && state && <span aria-hidden="true">·</span>}
+                {state && <span className="shrink-0 font-bold uppercase">{state}</span>}
+              </p>
+            )}
+            {reason && (
+              <p
+                className={`mt-1.5 line-clamp-2 text-xs leading-snug ${group === 'attention' ? 'border-l-2 border-brutal-yellow pl-2 text-brutal-black dark:text-white' : 'text-neutral-600 dark:text-zinc-300'}`}
+              >
+                {reason}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={tasksId}
+            onClick={() =>
+              setExpandedSessions((previous) => ({ ...previous, [session.key]: !expanded }))
+            }
+            className="shrink-0 flex items-center gap-1 pt-0.5 font-mono text-[10px] font-bold text-neutral-500 hover:text-brutal-black dark:text-zinc-400 dark:hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
           >
-            ▸
-          </span>
-          {[
-            open.length > 0 ? t('taskFlow.openCount', { count: open.length }) : null,
-            done.length > 0 ? t('taskFlow.doneCount', { count: done.length }) : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </button>
+            {[
+              open.length > 0 ? t('taskFlow.openCount', { count: open.length }) : null,
+              done.length > 0 ? t('taskFlow.doneCount', { count: done.length }) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            <span
+              aria-hidden="true"
+              className={`inline-block transition-transform ${expanded ? 'rotate-90' : ''}`}
+            >
+              ▸
+            </span>
+          </button>
+        </div>
         <div
           id={tasksId}
           hidden={!expanded}
-          className="border-t border-brutal-black/10 dark:border-zinc-700"
+          className="border-t border-neutral-200 bg-neutral-50 dark:border-zinc-700 dark:bg-zinc-900"
         >
           {open.length > 0 && <div>{renderTasks(open, true)}</div>}
           {done.length > 0 &&
@@ -284,25 +328,41 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   };
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-900 text-brutal-black dark:text-white">
-      <header className="task-header shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-5 py-4 space-y-4">
-        <div className="task-heading flex items-start justify-between gap-3">
-          <div>
-            {scope === 'project' && (
-              <p className="text-xs text-neutral-500 dark:text-zinc-400">{projectName}</p>
-            )}
-            <h1 className="text-xl font-black mt-1">{t('sidebar.tabs.plan')}</h1>
-            {scope === 'project' && kanban && !error && (
-              <p className="mt-2 text-sm text-neutral-500 dark:text-zinc-400">
-                {t('taskFlow.overview', {
-                  attention: groups[0].tasks.length,
-                  active: groups[1].tasks.length,
-                })}
-              </p>
-            )}
+      {sessionGroups ? (
+        <header className="shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-4 py-3 space-y-2">
+          {headerControls}
+          {kanban && !error && (
+            <p className="font-mono text-[11px] text-neutral-500 dark:text-zinc-400">
+              {t('taskFlow.sessionOverview', {
+                attention: sessionGroups.find((group) => group.key === 'attention')!.sessions
+                  .length,
+                active: sessionGroups.find((group) => group.key === 'active')!.sessions.length,
+                stalled: sessionGroups.find((group) => group.key === 'stalled')!.sessions.length,
+              })}
+            </p>
+          )}
+        </header>
+      ) : (
+        <header className="task-header shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-5 py-4 space-y-4">
+          <div className="task-heading flex items-start justify-between gap-3">
+            <div>
+              {scope === 'project' && (
+                <p className="text-xs text-neutral-500 dark:text-zinc-400">{projectName}</p>
+              )}
+              <h1 className="text-xl font-black mt-1">{t('sidebar.tabs.plan')}</h1>
+              {scope === 'project' && kanban && !error && (
+                <p className="mt-2 text-sm text-neutral-500 dark:text-zinc-400">
+                  {t('taskFlow.overview', {
+                    attention: groups[0].tasks.length,
+                    active: groups[1].tasks.length,
+                  })}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-        {headerControls}
-      </header>
+          {headerControls}
+        </header>
+      )}
       <div className="task-scroll flex-1 overflow-auto [scrollbar-gutter:stable] p-4 md:p-6 min-h-0">
         {summary && <div className="max-w-5xl mx-auto mb-4">{summary}</div>}
         {error ? (
@@ -349,7 +409,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
             </ol>
           </section>
         ) : (
-          <div className="max-w-5xl mx-auto space-y-3">
+          <div className={`max-w-5xl mx-auto ${sessionGroups ? 'space-y-5' : 'space-y-3'}`}>
             {goalsWithoutTasks.map((goal) => (
               <section
                 key={`goal-${goal.id}`}
@@ -374,7 +434,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
               ? sessionGroups
                   .filter((group) => group.sessions.length > 0)
                   .map((group) =>
-                    renderSection(
+                    renderSessionSection(
                       `session-${group.key}`,
                       t(`taskFlow.sessionGroups.${group.key}`),
                       group.sessions.length,

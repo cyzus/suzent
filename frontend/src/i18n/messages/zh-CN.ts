@@ -1876,6 +1876,7 @@ export const zhCN = {
     narrow: '收窄',
 
     overview: '{attention} 项需要你处理 · {active} 项正在进行',
+    sessionOverview: '{attention} 个等你 · {active} 个运行中 · {stalled} 个停滞',
     projectTitle: '项目任务',
     currentChat: '本次对话',
     back: '返回对话',
