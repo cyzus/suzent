@@ -8,10 +8,12 @@ leaves the next move to the user. Tasks stay the agent's own bookkeeping.
 
 from __future__ import annotations
 
-import json
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
+
+from pydantic import BaseModel, StrictBool, ValidationError
 
 from suzent.database import get_database
 from suzent.logger import get_logger
@@ -24,7 +26,6 @@ type WaitingKind = Literal["question", "approval", "task", "reply"]
 STATES: tuple[ChatState, ...] = ("waiting", "running", "idle", "resolved")
 # Idle and resolved chats drop off the board once they have been quiet this long.
 RECENT_WINDOW = timedelta(days=7)
-BOARD_SCAN_LIMIT = 300
 SUMMARY_MAX_CHARS = 160
 REASON_MAX_CHARS = 120
 
@@ -99,6 +100,18 @@ def set_resolved(chat_id: str, resolved: bool) -> bool:
     return True
 
 
+# Turns started per chat in this process, so a judgement of an earlier turn
+# that finishes after a newer turn began is dropped instead of overwriting it.
+_turns: dict[str, int] = {}
+
+
+def begin_turn(chat_id: str) -> int:
+    """Mark a new turn: reopen the chat and return the turn's number."""
+    _turns[chat_id] = _turns.get(chat_id, 0) + 1
+    reopen_on_turn_start(chat_id)
+    return _turns[chat_id]
+
+
 def reopen_on_turn_start(chat_id: str) -> None:
     """A new turn makes the chat active again and the last read of it stale."""
     db = get_database()
@@ -111,24 +124,47 @@ def reopen_on_turn_start(chat_id: str) -> None:
     _emit_changed(chat_id)
 
 
-def _parse_judgement(raw: str) -> Optional[dict[str, Any]]:
+class TurnJudgement(BaseModel):
+    """The Decision model's answer; a string where a boolean belongs is refused."""
+
+    waiting_on_user: StrictBool
+    reason: str = ""
+    summary: str = ""
+
+
+def _parse_judgement(raw: str) -> Optional[TurnJudgement]:
     match = re.search(r"\{.*\}", raw or "", re.DOTALL)
     if not match:
         return None
     try:
-        data = json.loads(match.group(0))
-    except json.JSONDecodeError:
+        return TurnJudgement.model_validate_json(match.group(0))
+    except ValidationError:
         return None
-    if not isinstance(data, dict) or "waiting_on_user" not in data:
-        return None
-    return data
 
 
-async def judge_turn(chat_id: str, user_message: str, reply: str) -> None:
+async def schedule_judgement(
+    chat_id: str, user_message: str, reply: str, turn: int
+) -> None:
+    """Judge a finished turn in the background, for chats the board tracks."""
+    if not reply.strip() or not is_tracked_chat(get_database().get_chat(chat_id)):
+        return
+    from suzent.core.task_registry import register_background_task
+
+    await register_background_task(
+        judge_turn(chat_id, user_message, reply, turn=turn),
+        task_id=f"chat_status_{chat_id}_{uuid.uuid4().hex}",
+        description=f"Chat status for {chat_id}",
+    )
+
+
+async def judge_turn(
+    chat_id: str, user_message: str, reply: str, *, turn: Optional[int] = None
+) -> None:
     """Record whether the turn left the next move to the user, with a one-line summary.
 
     Runs on the Decision model after the turn. Any failure keeps the previous
-    record, so the chat simply reads as idle rather than blocking anything.
+    record, so the chat simply reads as idle rather than blocking anything, and
+    a judgement that a newer turn has overtaken is dropped.
     """
     from suzent.core.role_router import get_role_router
     from suzent.llm import LLMClient
@@ -152,17 +188,20 @@ async def judge_turn(chat_id: str, user_message: str, reply: str) -> None:
     except Exception as exc:
         logger.warning(f"[chat_status] judge call failed for {chat_id}: {exc}")
         return
-    data = _parse_judgement(raw)
-    if data is None:
+    judgement = _parse_judgement(raw)
+    if judgement is None:
         logger.warning(f"[chat_status] unparseable judgement for {chat_id}: {raw!r}")
         return
-    waiting = bool(data.get("waiting_on_user"))
+    if turn is not None and _turns.get(chat_id) != turn:
+        logger.debug(f"[chat_status] dropped a stale judgement for {chat_id}")
+        return
+    waiting = judgement.waiting_on_user
     fields: dict[str, Any] = {
         "waiting_on_user": waiting,
-        "waiting_reason": _clip(data.get("reason"), REASON_MAX_CHARS)
+        "waiting_reason": _clip(judgement.reason, REASON_MAX_CHARS)
         if waiting
         else None,
-        "summary": _clip(data.get("summary"), SUMMARY_MAX_CHARS),
+        "summary": _clip(judgement.summary, SUMMARY_MAX_CHARS),
         "judged_at": datetime.now(timezone.utc),
     }
     if waiting:
@@ -216,6 +255,7 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
     they have been active within ``RECENT_WINDOW``.
     """
     from suzent.core.focal_agent import ATTENTION_WAITING_KINDS, running_chat_ids
+    from suzent.database.chats import SUMMARY_LAST_MESSAGE_KEY
 
     db = get_database()
     projects = {
@@ -232,24 +272,17 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
             if task.chat_id:
                 tasks_by_chat.setdefault(task.chat_id, []).append(task)
 
-    summaries = {
-        summary.id: summary
-        for summary in db.list_chats(limit=BOARD_SCAN_LIMIT)
-        if summary.projectId in projects
-    }
-    # A chat holding a wait stays on the board however old its last write is.
-    for chat_id in (set(tasks_by_chat) | running | questions) - set(summaries):
-        chat = db.get_chat(chat_id)
-        if chat is not None and chat.project_id in projects:
-            summaries[chat_id] = _summary_from_chat(chat, projects)
-
-    statuses = db.list_chat_statuses(list(summaries))
-    configs = db.get_chat_configs(list(summaries))
     now = datetime.now(timezone.utc)
+    # A chat holding a wait stays on the board however old its last write is.
+    holding = set(tasks_by_chat) | running | questions | db.waiting_chat_ids()
+    chats = db.list_board_chats(
+        list(projects), active_since=now - RECENT_WINDOW, include_ids=holding
+    )
+    statuses = db.list_chat_statuses([chat["id"] for chat in chats])
     rows: list[dict[str, Any]] = []
-    for chat_id, summary in summaries.items():
-        config = configs.get(chat_id, {})
-        if not is_tracked(chat_id, summary.projectId, config):
+    for chat in chats:
+        chat_id, config = chat["id"], chat["config"]
+        if not is_tracked(chat_id, chat["project_id"], config):
             continue
         tasks = tasks_by_chat.get(chat_id, [])
         blocked = next(
@@ -269,22 +302,23 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
             blocked_task=blocked,
             status=status,
         )
-        updated = _as_utc(datetime.fromisoformat(summary.updatedAt))
+        updated = _as_utc(chat["updated_at"])
         if state in ("idle", "resolved") and (
             updated is None or now - updated > RECENT_WINDOW
         ):
             continue
+        project = projects[chat["project_id"]]
         rows.append(
             {
                 "chatId": chat_id,
-                "title": summary.title,
-                "projectId": summary.projectId,
-                "projectName": summary.projectName,
+                "title": chat["title"],
+                "projectId": project.id,
+                "projectName": project.name,
                 "state": state,
                 "waitingKind": waiting_kind,
                 "waitingReason": waiting_reason,
                 "summary": (status.summary if status else None)
-                or _clip(summary.lastMessage, SUMMARY_MAX_CHARS),
+                or _clip(config.get(SUMMARY_LAST_MESSAGE_KEY), SUMMARY_MAX_CHARS),
                 "lastActiveAt": updated.isoformat() if updated else None,
                 "resolvedAt": status.resolved_at.isoformat()
                 if status and status.resolved_at
@@ -297,23 +331,6 @@ def list_chat_states(project_id: Optional[str] = None) -> list[dict[str, Any]]:
         )
     rows.sort(key=lambda row: row["lastActiveAt"] or "", reverse=True)
     return rows
-
-
-def _summary_from_chat(chat: Any, projects: dict[str, Any]) -> Any:
-    from suzent.database.chats import SUMMARY_LAST_MESSAGE_KEY
-    from suzent.database.models import ChatSummaryModel
-
-    project = projects.get(chat.project_id)
-    return ChatSummaryModel(
-        id=chat.id,
-        title=chat.title,
-        createdAt=chat.created_at.isoformat(),
-        updatedAt=chat.updated_at.isoformat(),
-        messageCount=0,
-        lastMessage=(chat.config or {}).get(SUMMARY_LAST_MESSAGE_KEY),
-        projectId=chat.project_id,
-        projectName=project.name if project else None,
-    )
 
 
 def count_states(rows: list[dict[str, Any]]) -> dict[str, int]:

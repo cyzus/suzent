@@ -211,16 +211,21 @@ waits below.
 beats running (the run is parked on the user), and resolving beats waits read
 from tasks or replies.
 
+- **When a turn starts** (not a heartbeat), `begin_turn()` numbers it and
+  clears `resolved_at` and the last judgement.
 - **After each turn** that is not a heartbeat, failed or was cancelled,
-  `ChatProcessor` runs `judge_turn()` in the background on the `decision` role.
-  It returns `waiting_on_user`, a short `reason` and a one-line `summary`, saved
-  in the `chat_status` table. A failure or unreadable answer keeps the previous
-  record.
-- **When a turn starts** (not a heartbeat), `reopen_on_turn_start()` clears
-  `resolved_at` and the last judgement.
+  `schedule_judgement()` runs `judge_turn()` in the background on the
+  `decision` role. The answer is parsed strictly (`TurnJudgement`) into
+  `waiting_on_user`, a short `reason` and a one-line `summary`, saved in the
+  `chat_status` table. A failure or unreadable answer keeps the previous record,
+  and a judgement whose turn a newer one has overtaken is dropped.
+- Both hooks run in `ChatProcessor.process_turn()` and in
+  `acp.runtime.stream_acp_turn()`, so chats on an ACP agent are tracked the
+  same way.
 - Changes emit a `chat_status_changed` bus event.
 - `list_chat_states()` lists waiting and running chats of any age, and idle or
-  resolved ones active in the last seven days. `focal_status()` counts waiting
+  resolved ones active in the last seven days. It queries the projects'
+  chats directly (`list_board_chats()`), with no cap on how many it scans. `focal_status()` counts waiting
   chats from it.
 
 ## HTTP API
