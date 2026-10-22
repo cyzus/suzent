@@ -40,3 +40,8 @@ def cancel(chat_id: str, surface_id: str) -> None:
     future = _PENDING.pop((chat_id, surface_id), None)
     if future and not future.done():
         future.cancel()
+
+
+def chats_waiting() -> set[str]:
+    """Chats with a question still open for the user."""
+    return {chat_id for (chat_id, _), future in _PENDING.items() if not future.done()}
