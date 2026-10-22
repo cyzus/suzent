@@ -118,7 +118,13 @@ would also hold back the wake-ups and reports queued behind it.
   delivers through `run_acp_turn_text()` with the project folder as its
   working directory. Its `permission_mode` is `default`, not `auto`: for ACP,
   `auto` allows every request outright (`acp/permissions.py`), with no reviewer
-  behind it. Headless approvals fail closed after the broker's timeout.
+  behind it. The inbox runs each ACP turn on a background stream, as ACP
+  sub-agents do, so opening the session attaches to it and shows any pending
+  approval. A request nobody answers fails closed after the broker's timeout.
+  If the turn fails before saying anything (the agent isn't signed in, the
+  handshake fails), `run_acp_turn_text(errors_out=...)` hands the inbox the
+  `RUN_ERROR`, and the reply becomes "The ACP agent could not run this: …".
+  Otherwise the empty reply would be dropped and SUZENT would never hear.
   `task_title` is refused, because an ACP agent can't update Suzent tasks and
   the task would stay `in_progress`, and the heartbeat would flag it as stalled.
   An unknown or uninstalled agent is refused before anything is created.
