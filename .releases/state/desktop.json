@@ -86,6 +86,7 @@
     ".releases/changes/resume-without-empty-prompt.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/shell-noninteractive-stdin.json",
+    ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/skill-default-enablement.json",
