@@ -1,16 +1,17 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import type { KanbanData } from '../../hooks/useGoalTasks';
-import type { FocalAgentStatus } from '../../lib/focalAgent';
+import { useFocalStatus } from '../../hooks/useFocalStatus';
+import { useChatStreamingStore } from '../../hooks/useChatStore';
+import { FOCAL_CHAT_ID, type FocalAgentStatus } from '../../lib/focalAgent';
 import { buildSessions, sessionGroupKey, type SessionCard } from '../../lib/sessionGroups';
 import { RegentCube } from './RegentCube';
 import { regentState, useRegentNod } from './regentState';
-import { useFocalStatus } from '../../hooks/useFocalStatus';
-
-const MAX_CHIPS = 4;
 
 interface RegentIdentityProps {
   status: FocalAgentStatus | null;
+  /** Regent is answering in this chat right now, ahead of the next status poll. */
+  working?: boolean;
   /** Bumped when Regent has something new to say; replays the cube's nod. */
   nod?: number;
 }
@@ -18,44 +19,32 @@ interface RegentIdentityProps {
 /**
  * Who the conversation is with, read like a contact in a messaging app: the
  * crowned cube, "SUZENT Regent" and what it is doing. Lives in the app header
- * on Regent's chat, in place of a chat title.
+ * on Regent's chat, in place of a chat title. Counts are left to the pinned bar.
  */
-export function RegentIdentity({ status, nod = 0 }: RegentIdentityProps): React.ReactElement {
+export function RegentIdentity({
+  status,
+  working = false,
+  nod = 0,
+}: RegentIdentityProps): React.ReactElement {
   const { t } = useI18n();
-  const state = regentState(status);
-  const waitingCount = Math.max(0, status?.waiting ?? 0);
-  const stalledCount = Math.max(0, status?.stalled ?? 0);
-  const counts = [
-    waitingCount > 0 ? t('chatList.focal.waitingCount', { count: waitingCount }) : null,
-    stalledCount > 0 ? t('chatList.focal.stalledCount', { count: stalledCount }) : null,
-  ].filter(Boolean);
-  const presence =
-    state === 'working'
-      ? t('chatList.focal.working')
-      : counts.length > 0
-        ? counts.join(' · ')
-        : t('chatList.focal.role');
+  const state = working ? 'working' : regentState(status);
 
   return (
     <div className="regent-identity flex min-w-0 items-center gap-2.5">
       <span key={nod} className={nod > 0 ? 'regent-nod inline-flex' : 'inline-flex'}>
-        <RegentCube size={38} state={state} />
+        <RegentCube size={34} state={state} />
       </span>
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
             {t('chatList.focal.brand')}
           </span>
-          <span className="shrink-0 font-brutal text-2xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor] text-brutal-black dark:text-white">
+          <span className="shrink-0 font-brutal text-xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor] text-brutal-black dark:text-white">
             {t('chatList.focal.name')}
           </span>
         </div>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
-          <span
-            className={`h-2 w-2 shrink-0 border border-brutal-black ${state === 'working' ? 'bg-brutal-blue animate-pulse' : state === 'waiting' ? 'bg-brutal-yellow' : 'bg-emerald-500'}`}
-            aria-hidden="true"
-          />
-          <span className="truncate">{presence}</span>
+        <p className="mt-0.5 truncate text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
+          {state === 'working' ? t('chatList.focal.working') : t('chatList.focal.role')}
         </p>
       </div>
     </div>
@@ -65,95 +54,100 @@ export function RegentIdentity({ status, nod = 0 }: RegentIdentityProps): React.
 /** `RegentIdentity` fed by Regent's live status, for the app header. */
 export function LiveRegentIdentity(): React.ReactElement {
   const status = useFocalStatus();
-  return <RegentIdentity status={status} nod={useRegentNod(status)} />;
+  const { isStreaming, activeStreamingChatId } = useChatStreamingStore();
+  return (
+    <RegentIdentity
+      status={status}
+      working={isStreaming && activeStreamingChatId === FOCAL_CHAT_ID}
+      nod={useRegentNod(status)}
+    />
+  );
 }
 
 interface RegentPinnedProps {
   kanban: KanbanData | null;
   onOpenChat: (chatId: string) => void;
+  /** Opens the full board; omitted while it is already showing. */
+  onOpenBoard?: () => void;
 }
 
 /**
- * The board, pinned under the header like a pinned message: what waits on the
- * user, then what has stalled, each opening its session.
+ * One slim line under the header, like a pinned message: how much waits on the
+ * user and the most pressing item, with the full board a click away. Nothing
+ * waiting means no bar at all.
  */
-export function RegentPinned({ kanban, onOpenChat }: RegentPinnedProps): React.ReactElement {
+export function RegentPinned({
+  kanban,
+  onOpenChat,
+  onOpenBoard,
+}: RegentPinnedProps): React.ReactElement | null {
   const { t } = useI18n();
   const sessions = kanban ? buildSessions(kanban.tasks, {}) : [];
-  const shown = [
-    ...sessions
-      .filter((session) => sessionGroupKey(session) === 'attention')
-      .map((session) => ({ session, kind: 'waiting' as const })),
-    ...sessions
-      .filter((session) => sessionGroupKey(session) === 'stalled')
-      .map((session) => ({ session, kind: 'stalled' as const })),
-  ];
+  const waiting = sessions.filter((session) => sessionGroupKey(session) === 'attention');
+  const stalled = sessions.filter((session) => sessionGroupKey(session) === 'stalled');
+  const top = waiting[0] ?? stalled[0];
+  if (!top) return null;
+
+  const counts = [
+    waiting.length > 0 ? t('chatList.focal.waitingCount', { count: waiting.length }) : null,
+    stalled.length > 0 ? t('chatList.focal.stalledCount', { count: stalled.length }) : null,
+  ].filter(Boolean);
 
   return (
-    <div className="regent-pinned flex min-h-9 shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-thin border-b-2 border-brutal-black bg-neutral-100 px-4 md:px-6 py-1.5 text-xs text-brutal-black dark:bg-zinc-900 dark:text-white">
-      {shown.length === 0 ? (
-        <span className="text-neutral-500 dark:text-neutral-400">
-          {t('chatList.focal.allClear')}
-        </span>
-      ) : (
-        <>
-          {shown.slice(0, MAX_CHIPS).map(({ session, kind }) => (
-            <PinnedChip key={session.key} session={session} kind={kind} onOpenChat={onOpenChat} />
-          ))}
-          {shown.length > MAX_CHIPS && (
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              {t('chatList.focal.moreCount', { count: shown.length - MAX_CHIPS })}
-            </span>
-          )}
-        </>
+    <div className="regent-pinned flex h-8 shrink-0 items-center gap-3 border-b-2 border-brutal-black bg-white px-4 md:px-6 text-xs text-brutal-black dark:bg-zinc-800 dark:text-white">
+      <span
+        className={`h-2 w-2 shrink-0 border border-brutal-black ${waiting.length > 0 ? 'bg-brutal-yellow' : 'bg-neutral-400'}`}
+        aria-hidden="true"
+      />
+      <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider">
+        {counts.join(' · ')}
+      </span>
+      <PinnedItem session={top} onOpenChat={onOpenChat} />
+      {onOpenBoard && (
+        <button
+          type="button"
+          onClick={onOpenBoard}
+          className="ml-auto shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+        >
+          {t('chatList.focal.openBoard')}
+        </button>
       )}
     </div>
   );
 }
 
-function PinnedChip({
+function PinnedItem({
   session,
-  kind,
   onOpenChat,
 }: {
   session: SessionCard;
-  kind: 'waiting' | 'stalled';
   onOpenChat: (chatId: string) => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const label = session.title || t('taskFlow.unassignedSession');
-  const reason = session.blocker?.waitingReason;
-  const tag = (
-    <span
-      className={`shrink-0 px-1 font-mono text-[10px] font-bold uppercase tracking-wider ${kind === 'waiting' ? 'border border-brutal-black bg-brutal-yellow text-brutal-black' : 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'}`}
-    >
-      {kind === 'waiting' ? t('chatList.focal.pinnedWaiting') : t('chatList.focal.pinnedStalled')}
-    </span>
-  );
+  const text = session.blocker?.waitingReason || label;
   const body = (
     <>
-      {tag}
       {session.projectLabel && (
-        <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
           {session.projectLabel}
         </span>
       )}
-      <span className="min-w-0 truncate">{reason || label}</span>
+      <span className="min-w-0 truncate">{text}</span>
     </>
   );
-  const className =
-    'inline-flex max-w-[22rem] items-center gap-1.5 border-2 border-brutal-black bg-white px-2 py-0.5 shadow-brutal-sm dark:bg-zinc-800';
   return session.chatId ? (
     <button
       type="button"
-      className={`${className} hover:bg-neutral-50 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue`}
-      title={reason ? `${label}: ${reason}` : label}
+      className="flex min-w-0 items-center gap-1.5 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+      title={text === label ? label : `${label}: ${text}`}
       onClick={() => onOpenChat(session.chatId!)}
     >
       {body}
+      <span aria-hidden="true">›</span>
     </button>
   ) : (
-    <span className={className} title={label}>
+    <span className="flex min-w-0 items-center gap-1.5" title={label}>
       {body}
     </span>
   );

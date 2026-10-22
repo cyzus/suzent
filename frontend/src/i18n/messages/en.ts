@@ -1534,9 +1534,7 @@ export const en = {
       stalledCount: '{count} stalled',
       autoRunCount: '{count} auto-running',
       waitingBadge: '{count} waiting on you',
-      pinnedWaiting: 'Needs you',
-      pinnedStalled: 'Stalled',
-      moreCount: '+{count} more',
+      openBoard: 'Board ›',
     },
     sections: {
       automation: 'Automation',

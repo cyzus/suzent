@@ -18,7 +18,6 @@ import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
 import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
-import { RegentMark } from '../regent/RegentMark';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import { IncomingMessage } from './IncomingMessage';
 import type { SubAgentStatus } from './SubAgentCallBlock';
@@ -94,7 +93,7 @@ function findLastActivityGroupIndex(groups: Array<{ type: string }>): number {
 
 interface AssistantMessageProps {
   conversational?: boolean;
-  /** Regent's own turns: signed with its circlet mark instead of Suzent's robot. */
+  /** Regent's own turns: its conversation header says who is speaking, so no badge. */
   regent?: boolean;
   message: Message;
   /** Wall-clock seconds the agent worked on this message's whole turn. */
@@ -932,13 +931,11 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             that agent's mark rather than with Suzent's robot. */}
         {isAcp ? (
           <AcpAgentIcon id={acpAgent} className="w-4 h-4 shrink-0" />
-        ) : regent ? (
-          <RegentMark size={16} />
         ) : (
           <RobotIcon className="w-4 h-4" />
         )}
         <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-          {isAcp ? acpAgent : regent ? t('chatList.focal.name') : 'Suzent'}
+          {isAcp ? acpAgent : 'Suzent'}
         </span>
       </div>
       {!conversational && (
@@ -966,13 +963,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           currentToolName={currentToolName}
           errorCount={errorCount}
           isPendingApproval={isPendingApproval}
-          icon={
-            isAcp ? (
-              <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />
-            ) : regent ? (
-              <RegentMark size={20} state={isThinking || isStreamingThis ? 'working' : 'idle'} />
-            ) : undefined
-          }
+          icon={isAcp ? <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" /> : undefined}
         />
         {isAcp && (
           // The badge box is only 90px wide, so keep this to a marker and let
@@ -1048,7 +1039,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         >
           {conversationCopy}
           {/* Badge/Assembly Container */}
-          {badgeContainer}
+          {!regent && badgeContainer}
 
           <div
             className={
@@ -1165,7 +1156,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       >
         {conversationCopy}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
-        {badgeContainer}
+        {!regent && badgeContainer}
 
         <div
           className={

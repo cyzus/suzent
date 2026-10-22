@@ -3286,7 +3286,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Main Chat Column */}
         <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
           {currentChatId === FOCAL_CHAT_ID && (
-            <RegentPinned kanban={kanban} onOpenChat={(chatId) => loadChat(chatId)} />
+            <RegentPinned
+              kanban={kanban}
+              onOpenChat={(chatId) => loadChat(chatId)}
+              onOpenBoard={isRightSidebarOpen ? undefined : () => onRightSidebarToggle(true)}
+            />
           )}
           {/* Keep sticky message animations below the composer's popovers. */}
           <div className="relative z-0 isolate flex-1 min-h-0">

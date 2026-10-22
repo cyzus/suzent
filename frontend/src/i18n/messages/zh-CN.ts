@@ -1483,9 +1483,7 @@ export const zhCN = {
       stalledCount: '{count} 个停滞',
       autoRunCount: '{count} 个自动运行',
       waitingBadge: '{count} 件事等你处理',
-      pinnedWaiting: '等你',
-      pinnedStalled: '停滞',
-      moreCount: '还有 {count} 个',
+      openBoard: '看板 ›',
     },
     sections: {
       scheduled: '定时任务',

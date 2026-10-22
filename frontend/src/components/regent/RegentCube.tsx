@@ -40,7 +40,7 @@ const FACES: Array<{ transform: string; tone: string }> = [
  * Regent as Suzent's greeting cube wearing its circlet. Used where Regent is
  * shown large: the head of its conversation and its first-run greeting.
  */
-export function RegentCube({
+export const RegentCube = React.memo(function RegentCube({
   size,
   state = 'idle',
   alwaysTurn = false,
@@ -115,4 +115,4 @@ export function RegentCube({
       </span>
     </span>
   );
-}
+});

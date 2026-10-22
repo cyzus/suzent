@@ -1521,6 +1521,14 @@ export const ChatList: React.FC<ChatListProps> = ({
           </section>
         ) : (
           <div className="flex flex-col">
+            {/* Regent sits above everything else, like a pinned contact. */}
+            <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
+              <FocalAgentCardView
+                status={focalStatus}
+                active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
+                onOpen={openChatById}
+              />
+            </div>
             <nav
               aria-label={t('chatList.sections.navigation')}
               className="order-0 px-1.5 pt-1 pb-1"
@@ -1770,13 +1778,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                 <span className="flex-1 truncate">{t('nav.skills')}</span>
               </button>
             </nav>
-            <div className="order-0 px-1.5 pb-2">
-              <FocalAgentCardView
-                status={focalStatus}
-                active={currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat'}
-                onOpen={openChatById}
-              />
-            </div>
 
             {pinnedChats.length > 0 && (
               <section className="order-0 px-1.5 pb-2 pt-1">

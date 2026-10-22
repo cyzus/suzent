@@ -203,17 +203,23 @@ which would run with a full tool set.
 ## Desktop
 
 - `FocalAgentCard` at the top of the sidebar, fed by `useFocalStatus`.
+- `FocalAgentCard` sits above the sidebar's navigation, like a pinned contact.
 - On the Focal chat the app header is Regent's contact card: `ConversationIdentity`
-  renders `LiveRegentIdentity` (the crowned cube, "SUZENT Regent" and a presence
-  line), and the header grows from `h-12` to `h-16` to fit the cube. Right under
-  it, `RegentPinned` pins the board's `attention` and `stalled` sessions as
-  chips that open them. Both live in `components/regent/RegentHeader.tsx`.
+  renders `LiveRegentIdentity` (the crowned cube, "SUZENT Regent" and whether it
+  is working), and the header grows from `h-12` to `h-14` to fit the cube. It
+  reads "working" from the chat's own stream as well as from status, so the
+  cube moves as soon as a reply starts. Right under it, `RegentPinned` is one
+  line, present only when sessions are `attention` or `stalled`: the counts, the
+  most pressing one (opens its session) and a link to the board while that
+  panel is closed. Both live in `components/regent/RegentHeader.tsx`.
+- Regent's replies carry no agent badge, live or past (`AssistantMessage`'s
+  `regent`): the header already says who is speaking.
 - `FocalBriefing` is only the greeting on an empty chat; the header carries the
   name and what waits on the user.
 - Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
-  head under a floating circlet, for small sizes (sidebar card, reply labels,
-  live badge via `AgentBadge`'s `icon`); and `RegentCube`, the greeting cube
-  wearing the circlet, for large ones. Both take a `RegentState` from
+  head under a floating circlet, for small sizes (the sidebar card); and
+  `RegentCube`, the greeting cube wearing the circlet, for large ones (the
+  header). Both take a `RegentState` from
   `regentState()`: `working` while Regent runs (cube turns, eyes scan, circlet
   lifts), `waiting` when something waits on the user (gem pulses orange), else
   `idle`. `useRegentNod()` replays a one-off nod when a new message arrives.

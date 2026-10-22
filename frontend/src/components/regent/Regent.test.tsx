@@ -66,48 +66,58 @@ describe('Regent marks', () => {
 });
 
 describe('RegentIdentity', () => {
-  it('reads as Suzent Regent with its role when all is clear', () => {
-    const html = text(renderToStaticMarkup(<RegentIdentity status={status()} />));
+  it('reads as Suzent Regent with its role, leaving counts to the pinned bar', () => {
+    const html = text(
+      renderToStaticMarkup(<RegentIdentity status={status({ waiting: 1, stalled: 1 })} />)
+    );
     expect(html).toBe('chatList.focal.brand chatList.focal.name chatList.focal.role');
   });
 
-  it('says what is waiting or stalled, and shows Regent working while it runs', () => {
-    const counts = text(
-      renderToStaticMarkup(<RegentIdentity status={status({ waiting: 1, stalled: 1 })} />)
-    );
-    expect(counts).toContain('chatList.focal.waitingCount:1 · chatList.focal.stalledCount:1');
-    const working = renderToStaticMarkup(<RegentIdentity status={status({ running: true })} />);
-    expect(text(working)).toContain('chatList.focal.working');
-    expect(working).toContain('data-regent-state="working"');
+  it('works while Regent runs, or while it answers in this chat before the next poll', () => {
+    for (const html of [
+      renderToStaticMarkup(<RegentIdentity status={status({ running: true })} />),
+      renderToStaticMarkup(<RegentIdentity status={status()} working />),
+    ]) {
+      expect(text(html)).toContain('chatList.focal.working');
+      expect(html).toContain('data-regent-state="working"');
+    }
   });
 });
 
 describe('RegentPinned', () => {
-  const render = (tasks: Task[] | null): string =>
+  const render = (tasks: Task[] | null, onOpenBoard?: () => void): string =>
     renderToStaticMarkup(
-      <RegentPinned kanban={tasks && { tasks, goals: [] }} onOpenChat={() => {}} />
+      <RegentPinned
+        kanban={tasks && { tasks, goals: [] }}
+        onOpenChat={() => {}}
+        onOpenBoard={onOpenBoard}
+      />
     );
+  const tasks = [
+    task(1, { chatId: 'b', chatTitle: 'Idle work', projectName: 'Docs' }),
+    task(2, {
+      status: 'blocked',
+      chatId: 'a',
+      chatTitle: 'Design',
+      waitingKind: 'user',
+      waitingReason: 'Choose a direction',
+    }),
+  ];
 
-  it('says all clear with nothing pinned', () => {
-    expect(text(render([]))).toBe('chatList.focal.allClear');
-    expect(text(render(null))).toBe('chatList.focal.allClear');
+  it('is not there when nothing waits on the user or has stalled', () => {
+    expect(render([])).toBe('');
+    expect(render(null)).toBe('');
   });
 
-  it('pins what waits on the user before what has stalled, as buttons into each session', () => {
-    const html = render([
-      task(1, { chatId: 'b', chatTitle: 'Idle work', projectName: 'Docs' }),
-      task(2, {
-        status: 'blocked',
-        chatId: 'a',
-        chatTitle: 'Design',
-        waitingKind: 'user',
-        waitingReason: 'Choose a direction',
-      }),
-    ]);
-    const plain = text(html);
-    expect(plain.indexOf('Choose a direction')).toBeLessThan(plain.indexOf('Idle work'));
-    expect(plain).toContain('chatList.focal.pinnedWaiting');
-    expect(plain).toContain('chatList.focal.pinnedStalled');
-    expect(html.match(/<button/g)).toHaveLength(2);
+  it('counts what waits and what stalled, and leads with the most pressing item', () => {
+    const plain = text(render(tasks));
+    expect(plain).toContain('chatList.focal.waitingCount:1 · chatList.focal.stalledCount:1');
+    expect(plain).toContain('Choose a direction');
+    expect(plain).not.toContain('Idle work');
+  });
+
+  it('offers the board only while it is closed', () => {
+    expect(text(render(tasks, () => {}))).toContain('chatList.focal.openBoard');
+    expect(text(render(tasks))).not.toContain('chatList.focal.openBoard');
   });
 });

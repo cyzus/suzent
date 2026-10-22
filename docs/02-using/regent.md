@@ -75,9 +75,12 @@ The Regent card in the sidebar shows, at a glance:
 Projects and chats holding something that waits on you get a badge in the
 sidebar too.
 
-Inside Regent, the header works like a contact in a messaging app: Regent's
-picture, its name, and what it's doing right now. Just below it, a pinned strip
-lists what needs you and what has stalled; click one to open that session. The **Tasks** side panel shows the full board for every project at
+Regent sits at the very top of the sidebar, above everything else, like a
+pinned contact. Inside its chat, the header works like a contact in a
+messaging app: Regent's picture, its name, and what it's doing right now. When
+something needs you or has stalled, a slim pinned line appears just below it
+with the count and the most pressing item; click the item to open that session,
+or **Board** to see everything. The **Tasks** side panel shows the full board for every project at
 once, grouped by session; pick one project to narrow it down.
 
 Regent's picture tells you its state at a glance, here and on the sidebar card:

@@ -9,6 +9,7 @@ const store = vi.hoisted(() => ({
 
 vi.mock('../hooks/useChatStore', () => ({
   useChatCoreStore: () => store,
+  useChatStreamingStore: () => ({ isStreaming: false, activeStreamingChatId: null }),
   useChatStore: () => ({}),
 }));
 vi.mock('../i18n', () => ({
