@@ -586,7 +586,7 @@ export function DevicesTab(): React.ReactElement {
       <SettingsCard>
         <SectionCardHeader
           icon={<ComputerDesktopIcon className="h-6 w-6" />}
-          iconTone="yellow"
+          iconTone="neutral"
           title={`Devices (${deviceRows.length})`}
           description="Linked devices and permissions."
         />

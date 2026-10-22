@@ -149,7 +149,7 @@ export function ModelDropdown({
         type="button"
         onClick={handleOpen}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-brutal-yellow/20 brutal-btn"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn"
       >
         <span className="min-w-0 truncate">{label}</span>
         <span className="text-[10px] opacity-60">▼</span>
@@ -192,7 +192,7 @@ export function ModelDropdown({
                 <button
                   type="button"
                   onClick={() => handleSelect(m)}
-                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left font-mono text-xs hover:bg-brutal-yellow dark:border-zinc-700 dark:text-white dark:hover:bg-brutal-yellow/20"
+                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left font-mono text-xs hover:bg-neutral-100 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-700"
                   title={m}
                 >
                   <span className="truncate">{m}</span>
@@ -209,7 +209,7 @@ export function ModelDropdown({
                 <button
                   type="button"
                   onClick={() => handleSelect(trimmed)}
-                  className="w-full text-left px-3 py-2 font-mono text-xs font-bold hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-t-2 border-brutal-black truncate dark:text-white"
+                  className="w-full text-left px-3 py-2 font-mono text-xs font-bold hover:bg-neutral-100 dark:hover:bg-zinc-700 border-t-2 border-brutal-black truncate dark:text-white"
                   title={trimmed}
                 >
                   + {t('settings.roles.addCustom', { id: trimmed })}

@@ -142,7 +142,7 @@ export function AboutTab(): React.ReactElement {
             label={t('settings.about.frontendVersion')}
             value={frontendVersion}
             commit={shortCommit(__FRONTEND_BUILD_COMMIT__)}
-            tone="yellow"
+            tone="neutral"
           />
           <VersionCard
             label={t('settings.about.backendVersion')}
@@ -209,7 +209,7 @@ interface VersionCardProps {
   value: string;
   commit?: string | null;
   badge?: string | null;
-  tone: 'yellow' | 'blue' | 'red';
+  tone: 'neutral' | 'blue' | 'red';
 }
 
 export function VersionCard({
@@ -220,7 +220,7 @@ export function VersionCard({
   tone,
 }: VersionCardProps): React.ReactElement {
   const toneClass = {
-    yellow: 'bg-brutal-yellow text-brutal-black',
+    neutral: 'bg-neutral-200 text-brutal-black dark:bg-zinc-700 dark:text-white',
     blue: 'bg-brutal-blue text-white',
     red: 'bg-brutal-red text-white',
   }[tone];
@@ -240,7 +240,7 @@ export function VersionCard({
           </div>
         )}
         {badge && (
-          <span className="mt-3 inline-block border-2 border-brutal-black bg-brutal-yellow px-2 py-0.5 text-[10px] font-black uppercase text-brutal-black">
+          <span className="mt-3 inline-block border-2 border-brutal-black bg-neutral-200 dark:bg-zinc-700 dark:text-white px-2 py-0.5 text-[10px] font-black uppercase text-brutal-black">
             {badge}
           </span>
         )}

@@ -25,7 +25,7 @@ export function SecurityTab({
 
       <SettingsCard>
         <SectionCardHeader
-          iconTone="yellow"
+          iconTone="neutral"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
