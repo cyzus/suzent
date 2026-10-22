@@ -1470,7 +1470,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       ref={sidebarBoundsRef}
       // Focusable so clicks in the sidebar give it keyboard focus for select-all.
       tabIndex={-1}
-      className="flex flex-col h-full relative outline-none"
+      className="flex flex-col h-full min-h-0 overflow-hidden relative outline-none"
     >
       {showRefreshIndicator && (
         <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
@@ -1478,11 +1478,8 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
       )}
 
-      <div
-        ref={scrollAreaRef}
-        className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800"
-      >
-        <div className="flex flex-col">
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-zinc-800">
+        <div className="flex shrink-0 flex-col">
           {/* Regent sits above everything else, like a pinned contact. */}
           {!isSearching && (
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
@@ -1806,6 +1803,11 @@ export const ChatList: React.FC<ChatListProps> = ({
               </div>
             )}
           </div>
+        </div>
+        <div
+          ref={scrollAreaRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin"
+        >
           {isSearching ? (
             <section>
               <div className="flex items-center justify-between px-3 py-2 border-y-2 border-brutal-black bg-white dark:bg-zinc-800">
