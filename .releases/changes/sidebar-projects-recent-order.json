@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it."
+}
