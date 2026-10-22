@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards.
 - Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
 - Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
+- A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task.
 - Project conversations now track whether they are waiting on you, running, idle or resolved: after each reply the Decision model notes whether the conversation needs you and writes a one-line summary of where it stands.
 - Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
 - SUZENT now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
