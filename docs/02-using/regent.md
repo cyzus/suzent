@@ -92,6 +92,10 @@ Regent's picture tells you its state at a glance, here and on the sidebar card:
 
 If your system is set to reduce motion, the picture stays still.
 
+Open a session from the board and Suzent switches to it: the sidebar opens
+that session's project and briefly highlights it, and a **← Regent** tag in
+the header takes you back to Regent.
+
 ## It checks in on its own
 
 Regent has a [heartbeat](../03-features/automation.md#heartbeat) that is on from

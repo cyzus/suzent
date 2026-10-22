@@ -322,6 +322,70 @@ export const ChatList: React.FC<ChatListProps> = ({
     return () => controller.abort();
   }, [activeStreams, knownChats, runningChatProjects]);
 
+  // When a chat opens from outside the sidebar (the task board, a link), open
+  // its project and bring its row into view so the list shows where you are.
+  const [locatedChatId, setLocatedChatId] = useState<string | null>(null);
+  const [locatingChatId, setLocatingChatId] = useState<string | null>(null);
+  const followedChatRef = useRef<string | null>(null);
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const findChatRow = useCallback(
+    (chatId: string): HTMLElement | null =>
+      scrollAreaRef.current?.querySelector<HTMLElement>(
+        `[data-chat-row="${CSS.escape(chatId)}"]`
+      ) ?? null,
+    []
+  );
+
+  useEffect(() => {
+    if (!currentChatId || currentChatId === FOCAL_CHAT_ID) return;
+    if (followedChatRef.current === currentChatId) return;
+    followedChatRef.current = currentChatId;
+    // A row already on screen is where the user just clicked; leave the list alone.
+    const row = findChatRow(currentChatId);
+    const area = scrollAreaRef.current?.getBoundingClientRect();
+    const rect = row?.getBoundingClientRect();
+    if (row && area && rect && rect.top >= area.top && rect.bottom <= area.bottom) return;
+    setLocatingChatId(currentChatId);
+    if (row || organization !== 'projects' || searchQuery) return;
+    const chatId = currentChatId;
+    const openProject = (projectId: string | null | undefined): void => {
+      if (followedChatRef.current !== chatId) return;
+      if (projectId && projectsRef.current.some((project) => project.id === projectId)) {
+        setFilterId(projectId);
+      }
+    };
+    const known = knownChats.get(chatId);
+    if (known) {
+      openProject(known.projectId);
+      return;
+    }
+    void fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((chat: { projectId?: string | null } | null) => openProject(chat?.projectId))
+      .catch(() => {});
+  }, [currentChatId, findChatRow, knownChats, organization, searchQuery]);
+
+  useEffect(() => {
+    if (!locatingChatId) return;
+    if (locatingChatId !== currentChatId) {
+      setLocatingChatId(null);
+      return;
+    }
+    const row = findChatRow(locatingChatId);
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    setLocatingChatId(null);
+    setLocatedChatId(locatingChatId);
+  });
+
+  useEffect(() => {
+    if (!locatedChatId) return;
+    const timer = setTimeout(() => setLocatedChatId(null), 1600);
+    return () => clearTimeout(timer);
+  }, [locatedChatId]);
+
   const runningProjectIds = useMemo(() => {
     const ids = new Set<string>();
     for (const chat of knownChats.values()) {
@@ -1256,6 +1320,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     return (
       <div
         key={chat.id}
+        data-chat-row={chat.id}
         onClick={(e) => {
           if (renamingChatId) return;
           const intent = selectionIntent(e, platform);
@@ -1282,7 +1347,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-1.5 border-transparent' : 'py-2 border-b last:border-b-0'}
           ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-2' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
-          ${rowSurface}`}
+          ${rowSurface} ${locatedChatId === chat.id ? 'chat-row-located' : ''}`}
       >
         {renamingChatId === chat.id && (
           <form
@@ -1407,7 +1472,10 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800">
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800"
+      >
         <div className="flex flex-col">
           {/* Regent sits above everything else, like a pinned contact. */}
           {!isSearching && (

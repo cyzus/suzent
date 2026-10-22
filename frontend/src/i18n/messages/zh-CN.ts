@@ -1470,6 +1470,7 @@ export const zhCN = {
       recentIn: '{name} 近期对话',
     },
     focal: {
+      back: '回到 Regent',
       primary: '主对话',
       chat: '聊聊吧',
       brand: 'Suzent',
