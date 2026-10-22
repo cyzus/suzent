@@ -1522,6 +1522,7 @@ export const en = {
     focal: {
       primary: 'Main conversation',
       chat: 'Let’s talk',
+      brand: 'Suzent',
       name: 'Regent',
       open: 'Open Regent',
       role: 'Always on watch',

@@ -1471,6 +1471,7 @@ export const zhCN = {
     focal: {
       primary: '主对话',
       chat: '聊聊吧',
+      brand: 'Suzent',
       name: 'Regent',
       open: '打开 Regent',
       role: '我一直在',

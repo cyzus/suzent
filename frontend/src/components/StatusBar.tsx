@@ -940,6 +940,9 @@ export function ConversationIdentity(): React.ReactElement | null {
   if (currentChatId === FOCAL_CHAT_ID) {
     return (
       <div className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+          {t('chatList.focal.brand')}
+        </span>
         <span className="shrink-0 font-brutal text-2xl font-black leading-none tracking-[-0.04em] [-webkit-text-stroke:0.75px_currentColor] text-brutal-black dark:text-white">
           {t('chatList.focal.name')}
         </span>
