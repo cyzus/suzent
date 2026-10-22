@@ -948,17 +948,21 @@ export function ConversationIdentity(): React.ReactElement | null {
   const chat = chats.find((item) => item.id === currentChatId);
   const title = chat?.title?.trim();
   const backToRegent = openedFromRegent === currentChatId && (
-    <button
-      type="button"
-      onClick={() => void loadChat(FOCAL_CHAT_ID)}
-      title={t('chatList.focal.back')}
-      aria-label={t('chatList.focal.back')}
-      className="regent-back inline-flex shrink-0 items-center gap-1.5 self-center border-2 border-brutal-black bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-brutal-sm hover:bg-brutal-yellow active:translate-x-px active:translate-y-px active:shadow-none dark:bg-zinc-700 dark:text-white dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-    >
-      <span aria-hidden="true">←</span>
-      <RegentMark size={12} />
-      {t('chatList.focal.name')}
-    </button>
+    <span className="flex shrink-0 items-center gap-1.5 self-center">
+      <button
+        type="button"
+        onClick={() => void loadChat(FOCAL_CHAT_ID)}
+        title={t('chatList.focal.back')}
+        aria-label={t('chatList.focal.back')}
+        className="regent-back -ml-1 inline-flex items-center gap-1.5 px-1 py-0.5 text-sm font-bold text-neutral-500 transition-colors hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400 dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+      >
+        <RegentMark size={14} />
+        {t('chatList.focal.name')}
+      </button>
+      <span aria-hidden="true" className="text-sm text-neutral-300 dark:text-zinc-600">
+        /
+      </span>
+    </span>
   );
   if (!title) return backToRegent || null;
   return (
