@@ -601,7 +601,8 @@ export const zhCN = {
         },
         FocalDispatchTool: {
           name: '派发给会话',
-          description: '把工作交给项目里的会话，或在项目中新开一个会话，可以由 ACP 编程智能体来做。',
+          description:
+            '把工作交给项目里的会话，或在项目中新开一个会话，可以由 ACP 编程智能体来做。',
         },
         FocalNotesTool: {
           name: '记笔记',

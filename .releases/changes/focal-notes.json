@@ -1,5 +1,5 @@
 {
   "products": {"desktop": "none"},
-  "summary": "Regent keeps its own notes on how you want it to work, with an update_notes tool limited to its own context.md.",
-  "reason": "Regent has not shipped yet; this refines it and is released with the pending focal-agent declaration."
+  "summary": "SUZENT keeps its own notes on how you want it to work, with an update_notes tool limited to its own context.md.",
+  "reason": "SUZENT has not shipped yet; this refines it and is released with the pending focal-agent declaration."
 }
