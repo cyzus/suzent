@@ -19,6 +19,16 @@ class PluginManifest(BaseModel):
     version: str = "0.0.0"
     description: str = ""
     api_version: int = PLUGIN_API_VERSION
+    # Other names `suzent plugin install` accepts, e.g. "telegram" for social.
+    aliases: list[str] = Field(default_factory=list)
+    # Optional-dependency groups of Suzent itself (pyproject extras) this
+    # plugin needs. Only built-in plugins can name them meaningfully.
+    extras: list[str] = Field(default_factory=list)
+    # pip requirements of a third-party plugin, installed into its own
+    # directory so a `uv sync` of Suzent's environment never removes them.
+    dependencies: list[str] = Field(default_factory=list)
+    # Built-in plugins only: on until the user removes it.
+    default_enabled: bool = False
 
     @property
     def display_name(self) -> str:

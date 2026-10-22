@@ -15,6 +15,14 @@ from suzent.core.citation_codec import (
 logger = get_logger(__name__)
 
 
+def _plugin_allows(platform: str) -> bool:
+    """False when the user removed the plugin that provides this chat app."""
+    from suzent.plugins import get_plugin_manager
+
+    record = get_plugin_manager().resolve(platform)
+    return record is None or record.enabled
+
+
 class ChannelManager:
     """
     Central coordinator for all social channels.
@@ -45,6 +53,11 @@ class ChannelManager:
             if platform in driver_map and isinstance(settings, dict):
                 # Check enabled status
                 if not settings.get("enabled", True):
+                    continue
+                if not _plugin_allows(platform):
+                    logger.info(
+                        f"Skipping {platform}: the plugin that provides it is removed."
+                    )
                     continue
 
                 module_path, class_name = driver_map[platform].rsplit(".", 1)

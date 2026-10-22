@@ -39,24 +39,30 @@ Planned, in order:
 
 ## Plugins
 
-See [Plugins](./architecture/plugins.md) for what exists today: tools, slash
-commands and skills.
+See [Plugins](./architecture/plugins.md) for what exists today: packages,
+tools, slash commands and skills, managed from the CLI and the settings page.
 
 Planned, in order:
 
-1. **Lifecycle hooks** — `ctx.register_hook()` for session start and end,
+1. **Chat apps as plugins** — `ctx.register_channel()` feeding
+   `ChannelManager`, whose `driver_map` is fixed today, so new chat apps can
+   ship outside this repository. The platform lists in `prompts.py`,
+   `social_message_tool.py` and `agent_lifecycle_tools.py` would read from the
+   same registry, and the built-in chat apps would register through
+   `plugins/social`.
+2. **Lifecycle hooks** — `ctx.register_hook()` for session start and end,
    before and after each model call, and before and after each tool call (with
    the option to block a call). The goal-turn accounting in
    `tools/plan_hooks.py` and the skill catalog reminder in `skills/hooks.py`
    would move onto these hooks as built-in plugins.
-2. **Chat apps as plugins** — `ctx.register_channel()` feeding
-   `ChannelManager`, whose `driver_map` is fixed today, so new chat apps can
-   ship outside this repository.
-3. **Providers as plugins** — model, image, video and speech providers.
-4. **Settings UI** — a Plugins page to list, enable and disable plugins and see
-   load errors, instead of only the CLI.
-5. **Declared capabilities** — a manifest list of what a plugin needs
-   (network, shell, sending messages) that the user grants when enabling it.
+3. **Desktop updater** — `apps/suzent-installer` still syncs `--extra social`
+   on every update. It should read the enabled plugins' extras the way
+   `suzent upgrade` does, so a user who removed `social` keeps it removed.
+4. **Import and sync** — restoring a data archive should mark plugin packages
+   as needing a sync rather than installing them during the import.
+5. **Providers as plugins** — model, image, video and speech providers.
+6. **Declared capabilities** — a manifest list of what a plugin needs
+   (network, shell, sending messages) that the user grants when installing it.
 
 ## Chat storage
 

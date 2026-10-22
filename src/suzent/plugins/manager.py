@@ -14,6 +14,7 @@ from typing import Any, Callable, Literal
 from pydantic import ValidationError
 
 from suzent.logger import get_logger
+from suzent.plugins import deps
 from suzent.plugins.context import PluginContext
 from suzent.plugins.manifest import (
     MANIFEST_FILENAME,
@@ -25,14 +26,16 @@ from suzent.tools.base import Tool
 logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "suzent.plugins"
+STATE_VERSION = 1
 
-type PluginStatus = Literal["disabled", "loaded", "error"]
+type PluginStatus = Literal["disabled", "enabled", "loaded", "error"]
+type PluginSource = Literal["builtin", "directory", "package"]
 
 
 @dataclass
 class PluginRecord:
     manifest: PluginManifest
-    source: Literal["directory", "package"]
+    source: PluginSource
     path: Path | None = None
     enabled: bool = False
     status: PluginStatus = "disabled"
@@ -46,6 +49,16 @@ class PluginRecord:
     def id(self) -> str:
         return self.manifest.id
 
+    @property
+    def has_code(self) -> bool:
+        """False for a plugin that only brings packages, such as ``social``."""
+        if self.entry_point is not None:
+            return True
+        return self.path is not None and (self.path / "__init__.py").is_file()
+
+    def names(self) -> set[str]:
+        return {self.id, *self.manifest.aliases}
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -53,6 +66,8 @@ class PluginRecord:
             "version": self.manifest.version,
             "description": self.manifest.description,
             "source": self.source,
+            "aliases": self.manifest.aliases,
+            "hasCode": self.has_code,
             "path": str(self.path) if self.path else None,
             "enabled": self.enabled,
             "status": self.status,
@@ -75,10 +90,14 @@ class PluginManager:
         plugin_dirs: list[Path],
         state_file: Path,
         *,
+        builtin_dirs: list[Path] | None = None,
+        deps_root: Path | None = None,
         entry_point_group: str | None = ENTRY_POINT_GROUP,
     ) -> None:
+        self.builtin_dirs = builtin_dirs or []
         self.plugin_dirs = plugin_dirs
         self.state_file = state_file
+        self.deps_root = deps_root
         self.entry_point_group = entry_point_group
         self._records: dict[str, PluginRecord] = {}
         self._loaded = False
@@ -88,39 +107,65 @@ class PluginManager:
 
     # -- enablement --------------------------------------------------------
 
-    def enabled_ids(self) -> set[str]:
+    def _read_state(self) -> dict[str, dict[str, Any]]:
         try:
             data = json.loads(self.state_file.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return set()
+            return {}
         except (OSError, ValueError) as exc:
             logger.warning(f"Ignoring unreadable plugin state {self.state_file}: {exc}")
-            return set()
-        enabled = data.get("enabled", []) if isinstance(data, dict) else []
-        return {str(plugin_id) for plugin_id in enabled}
+            return {}
+        plugins = data.get("plugins") if isinstance(data, dict) else None
+        if not isinstance(plugins, dict):
+            return {}
+        return {str(k): v for k, v in plugins.items() if isinstance(v, dict)}
 
-    def set_enabled(self, plugin_id: str, enabled: bool) -> None:
-        """Persist the choice; it takes effect the next time Suzent starts."""
-        ids = self.enabled_ids()
-        if enabled:
-            ids.add(plugin_id)
-        else:
-            ids.discard(plugin_id)
+    def _write_state(self, plugins: dict[str, dict[str, Any]]) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"version": STATE_VERSION, "plugins": plugins}
         self.state_file.write_text(
-            json.dumps({"enabled": sorted(ids)}, indent=2) + "\n", encoding="utf-8"
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8"
         )
+
+    def set_enabled(
+        self, plugin_id: str, enabled: bool, *, requested_as: str | None = None
+    ) -> None:
+        """Record the user's choice. An explicit off is kept, so a built-in
+        plugin that defaults to on stays off across upgrades."""
+        plugins = self._read_state()
+        entry = plugins.get(plugin_id, {})
+        entry["enabled"] = enabled
+        requested = [name for name in entry.get("requested_by", []) if enabled]
+        if enabled and requested_as and requested_as not in requested:
+            requested.append(requested_as)
+        entry["requested_by"] = requested
+        plugins[plugin_id] = entry
+        self._write_state(plugins)
+
+    def _is_enabled(
+        self, record: PluginRecord, state: dict[str, dict[str, Any]]
+    ) -> bool:
+        if record.id in state:
+            return bool(state[record.id].get("enabled"))
+        # Only plugins shipped with Suzent may switch themselves on.
+        return record.source == "builtin" and record.manifest.default_enabled
 
     # -- discovery ---------------------------------------------------------
 
     def discover(self) -> dict[str, PluginRecord]:
         """Every plugin on disk or installed as a package, without running any of them.
 
-        Packages come first and plugin directories after, in configured order,
-        so a plugin checked out for development replaces the installed one.
+        Later sources replace earlier ones with the same id: built-in plugins,
+        then packages, then plugin directories in configured order, so a
+        plugin checked out for development replaces the installed one.
         """
         records: dict[str, PluginRecord] = {}
-        for record in [*self._discover_packages(), *self._discover_directories()]:
+        found = [
+            *self._discover_directories(self.builtin_dirs, "builtin"),
+            *self._discover_packages(),
+            *self._discover_directories(self.plugin_dirs, "directory"),
+        ]
+        for record in found:
             previous = records.get(record.id)
             if previous is not None:
                 logger.info(
@@ -128,14 +173,58 @@ class PluginManager:
                     f"overrides {previous.path or previous.source}"
                 )
             records[record.id] = record
-        enabled = self.enabled_ids()
+        state = self._read_state()
         for record in records.values():
-            record.enabled = record.id in enabled
+            record.enabled = self._is_enabled(record, state)
+            if record.enabled and record.status == "disabled":
+                record.status = "enabled"
         return records
 
-    def _discover_directories(self) -> list[PluginRecord]:
+    def enabled_ids(self) -> set[str]:
+        return {record.id for record in self.discover().values() if record.enabled}
+
+    def resolve(self, name: str) -> PluginRecord | None:
+        """The plugin called ``name``, by id or alias."""
+        records = self.discover()
+        if name in records:
+            return records[name]
+        return next((r for r in records.values() if name in r.manifest.aliases), None)
+
+    def deps_dir(self, record: PluginRecord) -> Path | None:
+        if self.deps_root is None or not record.manifest.dependencies:
+            return None
+        return self.deps_root / record.id
+
+    def missing_packages(self, record: PluginRecord) -> list[str]:
+        return deps.missing_packages(
+            record.manifest.extras, record.manifest.dependencies, self.deps_dir(record)
+        )
+
+    def enabled_extras(self) -> list[str]:
+        """Suzent extras the enabled plugins need, for ``uv sync``."""
+        extras: dict[str, None] = {}
+        for record in self.discover().values():
+            if record.enabled:
+                extras.update(dict.fromkeys(record.manifest.extras))
+        return list(extras)
+
+    def install_dependencies(self, record: PluginRecord, project_dir: Path) -> None:
+        """Install what ``record`` needs. Adds packages; never removes any."""
+        if record.manifest.extras:
+            # All enabled extras, not only this plugin's: uv resolves the set together.
+            extras = list(
+                dict.fromkeys([*self.enabled_extras(), *record.manifest.extras])
+            )
+            deps.sync_extras(project_dir, extras)
+        target = self.deps_dir(record)
+        if target is not None:
+            deps.install_requirements(record.manifest.dependencies, target)
+
+    def _discover_directories(
+        self, roots: list[Path], source: PluginSource
+    ) -> list[PluginRecord]:
         records: list[PluginRecord] = []
-        for root in self.plugin_dirs:
+        for root in roots:
             if not root.is_dir():
                 continue
             for child in sorted(root.iterdir()):
@@ -145,11 +234,9 @@ class PluginManager:
                 try:
                     manifest = PluginManifest.from_file(manifest_path)
                 except (OSError, ValueError, ValidationError) as exc:
-                    records.append(_broken_record(child.name, "directory", child, exc))
+                    records.append(_broken_record(child.name, source, child, exc))
                     continue
-                records.append(
-                    _checked_record(PluginRecord(manifest, "directory", child))
-                )
+                records.append(_checked_record(PluginRecord(manifest, source, child)))
         return records
 
     def _discover_packages(self) -> list[PluginRecord]:
@@ -185,6 +272,12 @@ class PluginManager:
                     self._load_one(record)
 
     def _load_one(self, record: PluginRecord) -> None:
+        target = self.deps_dir(record)
+        if target is not None and target.is_dir() and str(target) not in sys.path:
+            sys.path.append(str(target))
+        if not record.has_code:
+            record.status = "loaded"
+            return
         ctx = PluginContext(record.manifest, record.path)
         try:
             register = self._resolve_register(record)
@@ -278,7 +371,7 @@ def _checked_record(record: PluginRecord) -> PluginRecord:
 
 def _broken_record(
     name: str,
-    source: Literal["directory", "package"],
+    source: PluginSource,
     path: Path | None,
     exc: Exception,
 ) -> PluginRecord:
@@ -295,6 +388,7 @@ def get_plugin_manager() -> PluginManager:
     global _manager
     if _manager is None:
         from suzent.config.paths import (
+            BUILTIN_PLUGINS_DIR,
             PLUGINS_DIR,
             USER_CONFIG_DIR,
             get_external_plugin_dirs,
@@ -303,5 +397,7 @@ def get_plugin_manager() -> PluginManager:
         _manager = PluginManager(
             [PLUGINS_DIR, *get_external_plugin_dirs()],
             USER_CONFIG_DIR / "plugins.json",
+            builtin_dirs=[BUILTIN_PLUGINS_DIR],
+            deps_root=PLUGINS_DIR / ".deps",
         )
     return _manager

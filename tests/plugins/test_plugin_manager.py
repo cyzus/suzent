@@ -39,7 +39,8 @@ def _write_plugin(root: Path, plugin_id: str, body: str, **manifest) -> Path:
 
 def _manager(tmp_path: Path, *dirs: Path, enabled: list[str] = ()) -> PluginManager:
     state = tmp_path / "plugins.json"
-    state.write_text(json.dumps({"enabled": list(enabled)}))
+    plugins = {plugin_id: {"enabled": True} for plugin_id in enabled}
+    state.write_text(json.dumps({"version": 1, "plugins": plugins}))
     return PluginManager(
         list(dirs) or [tmp_path / "plugins"], state, entry_point_group=None
     )
@@ -151,12 +152,23 @@ def test_later_directory_overrides_earlier(tmp_path):
 
 
 def test_set_enabled_round_trips(tmp_path):
-    manager = _manager(tmp_path)
-    manager.set_enabled("x", True)
+    root = tmp_path / "plugins"
+    for plugin_id in ("x", "y"):
+        _write_plugin(root, plugin_id, "def register(ctx): pass\n")
+    manager = _manager(tmp_path, root)
+    manager.set_enabled("x", True, requested_as="x")
     manager.set_enabled("y", True)
     manager.set_enabled("x", False)
 
     assert manager.enabled_ids() == {"y"}
+    state = json.loads(manager.state_file.read_text())
+    assert state == {
+        "version": 1,
+        "plugins": {
+            "x": {"enabled": False, "requested_by": []},
+            "y": {"enabled": True, "requested_by": []},
+        },
+    }
 
 
 def test_command_alias_clash_is_skipped(tmp_path, restore_commands):
@@ -237,19 +249,19 @@ def test_example_plugin_loads_and_runs(tmp_path, restore_commands):
     assert reply.startswith("🎲")
 
 
-def test_cli_enable_and_disable(tmp_path, monkeypatch):
+def test_cli_install_and_remove(tmp_path, monkeypatch):
     from suzent.cli.plugin import plugin_app
 
     root = tmp_path / "plugins"
-    _write_plugin(root, "cli-demo", "def register(ctx): pass\n")
+    _write_plugin(root, "cli-demo", "def register(ctx): pass\n", aliases="[demo]")
     manager = _manager(tmp_path, root)
     monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
     runner = CliRunner()
 
-    assert runner.invoke(plugin_app, ["enable", "cli-demo"]).exit_code == 0
+    assert runner.invoke(plugin_app, ["install", "demo"]).exit_code == 0
     assert manager.enabled_ids() == {"cli-demo"}
     listing = runner.invoke(plugin_app, ["list"])
-    assert "[ON ]  cli-demo" in listing.output
-    assert runner.invoke(plugin_app, ["enable", "missing"]).exit_code == 1
-    assert runner.invoke(plugin_app, ["disable", "cli-demo"]).exit_code == 0
+    assert "[ON ]  cli-demo (demo)" in listing.output
+    assert runner.invoke(plugin_app, ["install", "missing"]).exit_code == 1
+    assert runner.invoke(plugin_app, ["remove", "cli-demo"]).exit_code == 0
     assert manager.enabled_ids() == set()

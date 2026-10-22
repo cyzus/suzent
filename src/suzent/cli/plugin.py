@@ -3,41 +3,75 @@ CLI subcommands for plugins.
 
 Usage:
     suzent plugin list
-    suzent plugin enable my-plugin
-    suzent plugin disable my-plugin
+    suzent plugin install telegram     # by id or alias
+    suzent plugin remove social
+    suzent plugin status
+    suzent plugin sync                 # install what enabled plugins need
 
-These read and write the plugin state file directly, so they work while the
-server is stopped; a running server picks the change up on its next start.
+These work while the server is stopped. A running server picks up a plugin's
+packages after a restart; installing from Settings > Plugins applies a
+packages-only plugin such as `social` immediately.
 """
 
 import typer
 
-plugin_app = typer.Typer(help="Manage plugins (list, enable, disable).")
-
-_RESTART_NOTE = "Restart Suzent for the change to take effect."
+plugin_app = typer.Typer(help="Manage plugins (list, install, remove, status).")
 
 
-def _discovered() -> dict:
+def _manager():
     # Imported here so `suzent --help` stays clear of pydantic and the tool stack.
     from suzent.plugins import get_plugin_manager
 
-    return get_plugin_manager().discover()
+    return get_plugin_manager()
+
+
+def _project_dir():
+    from suzent.config.paths import PROJECT_DIR
+
+    return PROJECT_DIR
+
+
+def _resolve(name: str):
+    record = _manager().resolve(name)
+    if record is None:
+        typer.echo(f"❌ No plugin named '{name}'. Run `suzent plugin list`.")
+        raise typer.Exit(code=1)
+    return record
+
+
+def _install_dependencies(record) -> None:
+    from suzent.plugins.deps import DependencyError
+
+    if not (record.manifest.extras or record.manifest.dependencies):
+        return
+    typer.echo(f"  • Installing packages for '{record.id}'...")
+    try:
+        _manager().install_dependencies(record, _project_dir())
+    except DependencyError as exc:
+        typer.echo(f"❌ {exc}")
+        typer.echo("   The plugin stays enabled; run `suzent plugin sync` to retry.")
+        raise typer.Exit(code=1)
 
 
 @plugin_app.command("list")
 def list_plugins():
-    """List installed plugins and whether each is enabled."""
-    records = _discovered()
+    """List plugins and whether each is enabled."""
+    records = _manager().discover()
     if not records:
         typer.echo("No plugins found.")
         return
     for record in sorted(records.values(), key=lambda r: r.id):
-        state = (
-            "ERR" if record.status == "error" else ("ON " if record.enabled else "OFF")
+        if record.status == "error":
+            state = "ERR"
+        else:
+            state = "ON " if record.enabled else "OFF"
+        aliases = (
+            f" ({', '.join(record.manifest.aliases)})"
+            if record.manifest.aliases
+            else ""
         )
-        where = str(record.path) if record.path else "pip package"
         typer.echo(
-            f"  [{state}]  {record.id:<24}  {record.manifest.version:<10}  {where}"
+            f"  [{state}]  {record.id + aliases:<48}  {record.source:<9}  {record.manifest.description}"
         )
         if record.error:
             typer.echo(f"           {record.error}")
@@ -45,23 +79,55 @@ def list_plugins():
     typer.echo(f"\n  {len(records)} plugin(s), {enabled} enabled")
 
 
-def _set_enabled(plugin_id: str, enabled: bool) -> None:
-    from suzent.plugins import get_plugin_manager
-
-    if enabled and plugin_id not in _discovered():
-        typer.echo(f"❌ No plugin named '{plugin_id}'. Run `suzent plugin list`.")
+@plugin_app.command("install")
+def install_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
+    """Enable a plugin and install the packages it needs."""
+    record = _resolve(name)
+    if record.status == "error":
+        typer.echo(f"❌ '{record.id}' cannot be loaded: {record.error}")
         raise typer.Exit(code=1)
-    get_plugin_manager().set_enabled(plugin_id, enabled)
-    typer.echo(f"{'Enabled' if enabled else 'Disabled'} '{plugin_id}'. {_RESTART_NOTE}")
+    if record.has_code and record.source != "builtin":
+        typer.echo("  ⚠️  This plugin's code runs inside Suzent with your permissions.")
+    _manager().set_enabled(record.id, True, requested_as=name)
+    _install_dependencies(record)
+    typer.echo(f"Enabled '{record.id}'. Restart Suzent for it to take effect.")
 
 
-@plugin_app.command("enable")
-def enable_plugin(plugin_id: str = typer.Argument(..., help="Plugin id")):
-    """Enable a plugin. Its code runs inside Suzent with your permissions."""
-    _set_enabled(plugin_id, True)
+@plugin_app.command("remove")
+def remove_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
+    """Disable a plugin. Its packages are removed on the next upgrade."""
+    record = _resolve(name)
+    _manager().set_enabled(record.id, False)
+    typer.echo(f"Disabled '{record.id}'. Restart Suzent for it to take effect.")
 
 
-@plugin_app.command("disable")
-def disable_plugin(plugin_id: str = typer.Argument(..., help="Plugin id")):
-    """Disable a plugin."""
-    _set_enabled(plugin_id, False)
+@plugin_app.command("sync")
+def sync_plugins():
+    """Install the packages every enabled plugin needs."""
+    manager = _manager()
+    enabled = [r for r in manager.discover().values() if r.enabled]
+    for record in enabled:
+        _install_dependencies(record)
+    typer.echo(f"Packages are in place for {len(enabled)} enabled plugin(s).")
+
+
+@plugin_app.command("status")
+def plugin_status():
+    """Show enabled plugins, missing packages and the upgrade sync command."""
+    from suzent.plugins.deps import sync_command
+
+    manager = _manager()
+    problems = 0
+    for record in sorted(manager.discover().values(), key=lambda r: r.id):
+        if not record.enabled:
+            continue
+        missing = manager.missing_packages(record)
+        problems += bool(missing or record.error)
+        detail = record.error or (f"missing: {', '.join(missing)}" if missing else "ok")
+        typer.echo(f"  {record.id:<24}  {detail}")
+    typer.echo(
+        f"\n  Upgrade runs: {' '.join(sync_command('uv', manager.enabled_extras()))}"
+    )
+    if problems:
+        typer.echo("  Run `suzent plugin sync` to install missing packages.")
+        raise typer.Exit(code=1)

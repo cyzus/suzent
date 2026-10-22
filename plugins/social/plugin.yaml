@@ -1,0 +1,8 @@
+id: social
+name: Chat apps
+description: Telegram, Slack, Discord and Feishu/Lark channels. WeChat needs no extra packages and works without this plugin.
+version: 1.0.0
+api_version: 1
+aliases: [telegram, slack, discord, feishu, lark]
+extras: [social]
+default_enabled: true

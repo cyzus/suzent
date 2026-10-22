@@ -1,7 +1,7 @@
 """Example Suzent plugin: one tool, one slash command, one skill.
 
 Try it:
-    SUZENT_PLUGINS_DIR=examples/plugins suzent plugin enable dice
+    SUZENT_PLUGINS_DIR=examples/plugins suzent plugin install dice
     SUZENT_PLUGINS_DIR=examples/plugins suzent start
 """
 

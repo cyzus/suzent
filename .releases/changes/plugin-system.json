@@ -2,5 +2,5 @@
   "products": {
     "desktop": "minor"
   },
-  "summary": "Add plugins: Python packages that add tools, slash commands and skills, discovered from the plugins folder or pip, off until enabled with `suzent plugin enable`."
+  "summary": "Add plugins, managed from Settings > Plugins or `suzent plugin`. Chat apps are now a built-in plugin whose packages install on demand, start working without a restart, and survive upgrades. Plugins can also add tools, slash commands and skills."
 }

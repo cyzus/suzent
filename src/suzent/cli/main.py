@@ -54,11 +54,33 @@ def _is_development_workspace(root: Path) -> bool:
     return not (root / ".suzent-bootstrap-complete").exists()
 
 
+def _plugin_extras(root: Path) -> list[str]:
+    """Extras the user's enabled plugins need, read from the checkout at ``root``.
+
+    A checkout from before plugins existed has no ``plugins/`` folder; it gets
+    ``social``, which every install synced back then.
+    """
+    builtin_dir = root / "plugins"
+    if not builtin_dir.is_dir():
+        return ["social"]
+    from suzent.config.paths import PLUGINS_DIR, USER_CONFIG_DIR
+    from suzent.plugins import PluginManager
+
+    manager = PluginManager(
+        [PLUGINS_DIR],
+        USER_CONFIG_DIR / "plugins.json",
+        builtin_dirs=[builtin_dir],
+        entry_point_group=None,
+    )
+    return manager.enabled_extras()
+
+
 def _backend_sync_args(root: Path) -> list[str]:
-    args = ["uv", "sync", "--frozen", "--extra", "social"]
-    if _is_development_workspace(root):
-        args.extend(["--extra", "dev"])
-    return args
+    from suzent.plugins.deps import sync_command
+
+    return sync_command(
+        "uv", _plugin_extras(root), development=_is_development_workspace(root)
+    )
 
 
 def _interrupted_update_message(root: Path) -> str | None:
