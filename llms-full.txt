@@ -5260,8 +5260,11 @@ and overrides whatever the request asked for:
   outside Suzent.
 
 Focal-only behavior lives in Focal-only tools, so other agents' schemas never
-carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`),
-`FocalScheduleTool` (`schedule_wakeup`) and `FocalNotesTool` (`update_notes`).
+carry it. They sit together in `suzent.tools.focal`: `FocalDispatchTool`
+(`agent_dispatch`, a subclass of `AgentSendTool`), `FocalScheduleTool`
+(`schedule_wakeup`, a subclass of `ScheduleTool`) and `FocalNotesTool`
+(`update_notes`). The two subclasses call their parents' internals, so a change
+to `AgentSendTool._deliver` or `ScheduleTool`'s helpers needs a look there too.
 All three have an empty `group` and are
 not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than
