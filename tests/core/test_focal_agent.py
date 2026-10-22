@@ -886,3 +886,150 @@ def test_an_untouched_old_checklist_is_upgraded(db, sandbox) -> None:
     path.write_text("- My own item\n", encoding="utf-8")
     get_or_create_focal_chat()
     assert path.read_text(encoding="utf-8") == "- My own item\n"
+
+
+@pytest.mark.asyncio
+async def test_suzent_keeps_its_own_notes(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    assert path.read_text(encoding="utf-8") == focal_agent.DEFAULT_FOCAL_NOTES
+    path.write_text("", encoding="utf-8")
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Ask before anything about deploys")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Reports in Chinese, one line each")
+    assert path.read_text(encoding="utf-8") == (
+        "- Ask before anything about deploys\n- Reports in Chinese, one line each\n"
+    )
+
+    result = await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "Reports in English", old_text="Reports in Chinese"
+    )
+    assert result.success
+    assert "Reports in English, one line each" in result.message
+
+    await tool.forward(
+        _ctx(FOCAL_CHAT_ID), "", old_text="- Ask before anything about deploys\n"
+    )
+    assert path.read_text(encoding="utf-8") == "- Reports in English, one line each\n"
+
+
+@pytest.mark.asyncio
+async def test_notes_refuse_ambiguous_edits_other_chats_and_overflow(
+    db, sandbox
+) -> None:
+    from suzent.tools.focal_notes_tool import MAX_NOTES_CHARS, FocalNotesTool
+
+    get_or_create_focal_chat()
+    (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").write_text("")
+    tool = FocalNotesTool()
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- quiet after 22:00\n- quiet on Sunday")
+
+    ambiguous = await tool.forward(_ctx(FOCAL_CHAT_ID), "x", old_text="quiet")
+    other = await tool.forward(_ctx(db.create_chat("Regular", {})), "- rule")
+    overflow = await tool.forward(_ctx(FOCAL_CHAT_ID), "x" * MAX_NOTES_CHARS)
+
+    assert ambiguous.error_code == ToolErrorCode.INVALID_ARGUMENT
+    assert other.error_code == ToolErrorCode.PERMISSION_DENIED
+    assert overflow.error_code == ToolErrorCode.INVALID_ARGUMENT
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == "- quiet after 22:00\n- quiet on Sunday\n"
+
+
+def test_notes_tool_is_suzents_alone() -> None:
+    from suzent.core.focal_agent import FOCAL_TOOL_NAMES
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    assert "FocalNotesTool" in FOCAL_TOOL_NAMES
+    assert (FocalNotesTool.group, FocalNotesTool.deferrable) == ("", False)
+
+
+def test_suzents_memory_section_points_at_its_notes() -> None:
+    from suzent.memory.memory_context import format_core_memory_section
+
+    focal = format_core_memory_section({"context": "- rule"}, chat_id=FOCAL_CHAT_ID)
+    regular = format_core_memory_section({"context": "- rule"}, chat_id="chat-1")
+
+    assert "update_notes" in focal
+    assert "edit_file" not in focal
+    assert "edit_file" in regular and "update_notes" not in regular
+    assert "<!-- /memory:generated" in regular
+
+
+@pytest.mark.asyncio
+async def test_notes_file_rules_under_their_section(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    tool = FocalNotesTool()
+
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- after 22:00", section="Don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- Sundays", section="don't disturb")
+    await tool.forward(_ctx(FOCAL_CHAT_ID), "- ask over $50", section="Budget")
+
+    notes = path.read_text(encoding="utf-8")
+    assert "## Don't disturb\n- after 22:00\n- Sundays\n\n## Project names" in notes
+    assert notes.endswith("\n## Budget\n- ask over $50\n")
+
+
+def test_edited_notes_are_never_reseeded(db, sandbox) -> None:
+    get_or_create_focal_chat()
+    path = db.get_project_dir(FOCAL_CHAT_ID) / "context.md"
+    path.write_text("- my rule\n", encoding="utf-8")
+
+    get_or_create_focal_chat()
+
+    assert path.read_text(encoding="utf-8") == "- my rule\n"
+
+
+def test_global_context_shows_each_projects_overview(db, sandbox) -> None:
+    db.create_project("Site", "site")
+    db.create_project("Ops", "ops")
+    db.create_project("Bare", "bare")
+    (sandbox / "projects" / "site").mkdir(parents=True)
+    (sandbox / "projects" / "site" / "context.md").write_text(
+        "# Site\n## Overview\nMarketing site rebuild in Next.js\n## Decisions\n- x\n"
+    )
+    (sandbox / "projects" / "ops").mkdir(parents=True)
+    (sandbox / "projects" / "ops" / "context.md").write_text(
+        "# Migration plan\n\nMove every service to the Mac mini. " + "y" * 300
+    )
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `site`" in context and "— Marketing site rebuild in Next.js" in context
+    ops_line = next(line for line in context.splitlines() if "slug `ops`" in line)
+    assert "— Move every service to the Mac mini." in ops_line
+    assert ops_line.endswith("…")
+    bare_line = next(line for line in context.splitlines() if "slug `bare`" in line)
+    assert "—" not in bare_line
+
+
+@pytest.mark.asyncio
+async def test_only_the_suzent_singleton_keeps_notes(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    lookalike = db.create_chat("Old focal", {"is_focal_agent": True})
+
+    result = await FocalNotesTool().forward(_ctx(lookalike), "- rule")
+
+    assert result.error_code == ToolErrorCode.PERMISSION_DENIED
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == focal_agent.DEFAULT_FOCAL_NOTES
+
+
+def test_an_unreadable_project_context_drops_only_its_overview(db, sandbox) -> None:
+    db.create_project("Broken", "broken")
+    db.create_project("Fine", "fine")
+    for slug, content in (("broken", b"\xff\xfe bad"), ("fine", b"All good")):
+        (sandbox / "projects" / slug).mkdir(parents=True)
+        (sandbox / "projects" / slug / "context.md").write_bytes(content)
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `broken`" in context
+    assert "slug `fine` · id" in context and "— All good" in context
