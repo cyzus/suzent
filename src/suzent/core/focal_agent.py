@@ -1,4 +1,4 @@
-"""The Focal Agent: a singleton SUZENT chat that orchestrates every project.
+"""The Focal Agent: a singleton Regent chat that orchestrates every project.
 
 The Focal Agent is the user's one point of attention. It sees all projects,
 dispatches work to project primary sessions, and is woken when one of them
@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 FOCAL_CHAT_ID = "focal-suzent"
 FOCAL_PLATFORM = "focal"
-FOCAL_TITLE = "SUZENT"
+FOCAL_TITLE = "Regent"
 ATTENTION_WAITING_KINDS = ("user", "error")
 
 _MAX_CONTEXT_SESSIONS_PER_PROJECT = 10
@@ -50,12 +50,11 @@ FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
 STALL_AFTER = timedelta(minutes=30)
 # A blocker the user was already told about is raised again only after this.
 REMIND_BLOCKED_AFTER = timedelta(hours=2)
-DEFAULT_FOCAL_HEARTBEAT = """# SUZENT check-in
+DEFAULT_FOCAL_HEARTBEAT = """# Regent check-in
 - Sessions idle with open tasks: nudge them with agent_dispatch if the next step is clear, otherwise tell the user what is stuck.
 - Tasks that have waited on the user for a long time: remind the user once, in one line.
 """
-# Earlier built-in checklists, upgraded in place since the user never edited them.
-DEFAULT_FOCAL_NOTES = """# SUZENT's notes
+DEFAULT_FOCAL_NOTES = """# Regent's notes
 How the user wants me to work. Rules only, never project or task status.
 
 ## Bring to the user
@@ -69,9 +68,13 @@ How the user wants me to work. Rules only, never project or task status.
 ## Reports
 """
 _OVERVIEW_CHARS = 160
+# Earlier built-in files, upgraded in place since the user never edited them.
+_SUZENT_HEARTBEAT = DEFAULT_FOCAL_HEARTBEAT.replace("# Regent", "# SUZENT")
 _PREVIOUS_FOCAL_HEARTBEATS = (
-    DEFAULT_FOCAL_HEARTBEAT.replace("agent_dispatch", "agent_send"),
+    _SUZENT_HEARTBEAT,
+    _SUZENT_HEARTBEAT.replace("agent_dispatch", "agent_send"),
 )
+_PREVIOUS_FOCAL_NOTES = (DEFAULT_FOCAL_NOTES.replace("# Regent's", "# SUZENT's"),)
 
 
 def is_focal_chat(chat: Optional[ChatModel]) -> bool:
@@ -149,19 +152,25 @@ def _ensure_default_heartbeat_file(seed: bool) -> None:
 
 
 def _ensure_notes_file() -> None:
-    """Give SUZENT's notes their sections when there are none yet."""
+    """Give Regent's notes their sections, or upgrade an untouched old skeleton."""
     path = notes_path()
-    if path.exists():
+    try:
+        if path.exists() and path.read_text(encoding="utf-8") not in (
+            _PREVIOUS_FOCAL_NOTES
+        ):
+            return
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read Regent's notes: {}", exc)
         return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(DEFAULT_FOCAL_NOTES, encoding="utf-8")
     except OSError as exc:
-        logger.warning("Could not write SUZENT's notes: {}", exc)
+        logger.warning("Could not write Regent's notes: {}", exc)
 
 
 def notes_path() -> Path:
-    """SUZENT's notes: its system project's context.md, loaded as core memory."""
+    """Regent's notes: its system project's context.md, loaded as core memory."""
     return get_database().get_project_dir(FOCAL_CHAT_ID) / "context.md"
 
 
@@ -186,7 +195,7 @@ def get_or_create_focal_chat() -> ChatModel:
     else:
         if chat.project_id != project_id:
             db.link_chat_to_project(FOCAL_CHAT_ID, project_id)
-        # Auto-title once renamed SUZENT after its first topic; put the name back.
+        # Auto-title once renamed Regent after its first topic; put the name back.
         if chat.title != FOCAL_TITLE:
             db.update_chat(FOCAL_CHAT_ID, title=FOCAL_TITLE, reindex=False)
     chat = db.get_chat(FOCAL_CHAT_ID)
@@ -242,7 +251,7 @@ def _format_task(task: Any) -> str:
 def _project_overview(slug: str) -> Optional[str]:
     """One line from a project's context.md: its Overview, else its first prose line.
 
-    Read live, so SUZENT never keeps a copy of project knowledge that could
+    Read live, so Regent never keeps a copy of project knowledge that could
     drift from what the project's own sessions maintain.
     """
     from suzent.config import CONFIG
@@ -278,8 +287,8 @@ def build_focal_global_context() -> str:
     db = get_database()
     running = running_chat_ids()
     lines = [
-        "# SUZENT Global Context",
-        "You are SUZENT: the user's single point of attention "
+        "# Regent Global Context",
+        "You are Regent, the user's Suzent Regent: their single point of attention "
         "across every project. Converse naturally with the user. When they ask "
         "for project work, dispatch it to a Project Primary Session instead of "
         "doing it here: wake an existing session with "
@@ -295,7 +304,7 @@ def build_focal_global_context() -> str:
     projects = db.list_projects(include_archived=False)
     if not projects:
         lines.append("(no projects)")
-    # Sessions SUZENT started show even without a task: an ACP session can't
+    # Sessions Regent started show even without a task: an ACP session can't
     # make one, and would otherwise vanish from view once idle.
     started = [
         chat
@@ -360,7 +369,7 @@ def build_focal_global_context() -> str:
 
 
 def _last_activity(chat: Optional[ChatModel]) -> Optional[str]:
-    """When SUZENT last said something, from a user turn or a background one."""
+    """When Regent last said something, from a user turn or a background one."""
     if chat is None:
         return None
     # SQLite drops the zone: turns stamp local time, background runs stamp UTC.
@@ -425,7 +434,7 @@ def focal_status() -> dict[str, Any]:
         "waitingByChat": waiting_by_chat,
         "running": FOCAL_CHAT_ID in running_chat_ids(),
         # New messages from background check-ins, wake-ups and events show on
-        # SUZENT's card rather than as tasks in the sidebar.
+        # Regent's card rather than as tasks in the sidebar.
         "unread": int(config.get("unread_count") or 0),
         "lastMessage": config.get(SUMMARY_LAST_MESSAGE_KEY),
         "lastMessageAt": _last_activity(focal),

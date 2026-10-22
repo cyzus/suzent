@@ -5,7 +5,7 @@ import { fetchFocalAgentStatus, type FocalAgentStatus } from '../lib/focalAgent'
 const STATUS_POLL_MS = 10_000;
 
 /**
- * SUZENT's status, shared by its card and the project list's "waiting on you"
+ * Regent's status, shared by its card and the project list's "waiting on you"
  * markers. Polled, and refreshed at once whenever tasks change.
  */
 export function useFocalStatus(): FocalAgentStatus | null {

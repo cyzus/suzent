@@ -930,7 +930,7 @@ function ActiveChatTitle() {
 }
 
 /**
- * Who the header is about: SUZENT with its role, or a chat with its project.
+ * Who the header is about: Regent with its role, or a chat with its project.
  * Returns null on a new, unsaved chat, where the header keeps the brand title.
  */
 export function ConversationIdentity(): React.ReactElement | null {

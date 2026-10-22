@@ -18,7 +18,7 @@ def should_generate_auto_title(chat: Any) -> bool:
         return False
     from suzent.core.focal_agent import is_focal_chat
 
-    # SUZENT keeps its name: it is one standing conversation, not a topic.
+    # Regent keeps its name: it is one standing conversation, not a topic.
     if is_focal_chat(chat):
         return False
     turn_count = getattr(chat, "turn_count", 0) or 0

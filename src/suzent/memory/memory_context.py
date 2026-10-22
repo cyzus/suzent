@@ -124,7 +124,7 @@ def format_core_memory_section(
     from suzent.core.focal_agent import FOCAL_CHAT_ID
 
     if chat_id == FOCAL_CHAT_ID:
-        # SUZENT has no file-writing tools; its Context block is its own notes.
+        # Regent has no file-writing tools; its Context block is its own notes.
         update_hint = (
             "- The Context block is your own notes. Keep it with `update_notes`; "
             "you cannot edit the other memory files, which Suzent maintains from "

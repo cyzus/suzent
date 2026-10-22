@@ -629,7 +629,7 @@ const MessageList: React.FC<{
               className="chat-msg-row chat-msg-row-user w-full flex flex-col items-end group/message"
             >
               <span className="mb-1 pr-1 text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-                {t('chatMessage.sentBySuzent')}
+                {t('chatMessage.sentByRegent')}
               </span>
               <UserMessage
                 message={{ ...m, role: 'user', content: focalRequest }}
@@ -1894,7 +1894,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
   // agent's reply appears with full streaming (tool calls, typewriter, etc.).
-  // Set once send() exists below; SUZENT's question forms answer through it.
+  // Set once send() exists below; Regent's question forms answer through it.
   const sendQuestionAnswerRef = useRef<(text: string) => void>(() => {});
   const handleCanvasDispatch = useCallback(
     async (action: string, context: Record<string, unknown>, surfaceId: string) => {
@@ -1921,7 +1921,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       }
 
-      // A question form that did not hold its turn open (SUZENT's): nothing is
+      // A question form that did not hold its turn open (Regent's): nothing is
       // waiting on it, so the answer is sent as the user's next message.
       if (action === 'submit_question') {
         const text = formatQuestionAnswer(context);
@@ -3330,7 +3330,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               ) : (
                 <InlineSurfaceProvider openInCanvas={handleOpenSurfaceInCanvas}>
                   {/* Background rows (a reminder, a session report) arrive before
-                      the user ever writes; keep SUZENT's briefing up until they do. */}
+                      the user ever writes; keep Regent's briefing up until they do. */}
                   {currentChatId === FOCAL_CHAT_ID &&
                     !safeMessages.some((message) => message.role === 'user') && (
                       <div className="flex justify-center pt-4 pb-2">

@@ -14,7 +14,7 @@ vi.mock('../i18n', () => ({
 
 const status = (extra: Partial<FocalAgentStatus> = {}): FocalAgentStatus => ({
   chatId: 'focal-suzent',
-  title: 'SUZENT',
+  title: 'Regent',
   waiting: 0,
   autoRun: 0,
   running: false,
@@ -24,7 +24,7 @@ const render = (value: FocalAgentStatus | null, active = false): string =>
   renderToStaticMarkup(<FocalAgentCardView status={value} active={active} onOpen={() => {}} />);
 const text = (html: string): string => html.replace(/<[^>]+>/g, ' ');
 
-describe('SUZENT contact card', () => {
+describe('Regent contact card', () => {
   it('reads like a contact: name, role and an online presence dot', () => {
     const html = render(status());
     expect(html).toContain('chatList.focal.name');
@@ -42,7 +42,7 @@ describe('SUZENT contact card', () => {
     expect(html).toContain('title="chatList.focal.waitingBadge:1"');
   });
 
-  it('shows when SUZENT itself is working', () => {
+  it('shows when Regent itself is working', () => {
     const html = render(status({ running: true, autoRun: 2 }));
     expect(text(html)).toContain('chatList.focal.working · chatList.focal.autoRunCount:2');
     expect(html).toContain('bg-brutal-blue animate-pulse');
@@ -66,7 +66,7 @@ describe('SUZENT contact card', () => {
     expect(html).not.toContain('chatList.focal.waitingCount');
   });
 
-  it('drops the new-message state once SUZENT is open', () => {
+  it('drops the new-message state once Regent is open', () => {
     const html = render(status({ unread: 2, lastMessage: 'Deploy needs your approval.' }), true);
     expect(html).toContain('aria-current="page"');
     expect(html).not.toContain('Deploy needs your approval.');

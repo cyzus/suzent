@@ -8,7 +8,7 @@ import { UserMessage } from './UserMessage';
  * A message the running turn took in partway through, shown where it landed.
  *
  * Another agent's message reaches a busy chat this way rather than as a new
- * turn. SUZENT relays the user's requests, so its messages read as the user's.
+ * turn. Regent relays the user's requests, so its messages read as the user's.
  */
 export function IncomingMessage({
   text,
@@ -23,7 +23,7 @@ export function IncomingMessage({
     return (
       <div className="my-3 flex w-full flex-col items-end">
         <span className="mb-1 pr-1 text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-          {t('chatMessage.sentBySuzent')}
+          {t('chatMessage.sentByRegent')}
         </span>
         <UserMessage message={{ role: 'user', content: request }} chatId={chatId} />
       </div>
