@@ -869,6 +869,7 @@ class CoreMemoryFileIndexer:
         "literature",
         "project",
         "personal",
+        "experience",
         "documentation",
     }
 

@@ -56,7 +56,7 @@ def test_links_resolve_to_folders_pages_and_unique_bare_names(store):
 
 def test_lint_reports_what_a_map_line_must_not_be(store):
     _page(store, "3_Personal/Identity.md")
-    _page(store, "3_Personal/Health.md")
+    _page(store, "3_Personal/Health.md", "---\ntype: personal\n---\n")
     _page(store, "2_Wiki/Rust.md")
     text = (
         "# Memory map\n\n"
@@ -122,8 +122,13 @@ def test_over_cap_and_recall_suggestions(store):
 
 
 def test_the_draft_map_passes_its_own_lint(store):
-    _page(store, "3_Personal/Identity.md", "---\ntitle: Identity\n---\n## Name\n")
-    _page(store, "3_Personal/Work.md", "# Work\n## Role\n## Team\n")
+    _page(
+        store,
+        "3_Personal/Identity.md",
+        "---\ntitle: Identity\ntype: personal\n---\n## Name\n",
+    )
+    # Found by its type, in a folder the user named themselves.
+    _page(store, "About me/Work.md", "---\ntype: personal\n---\n## Role\n## Team\n")
     _page(store, "2_Wiki/Rust.md")
     _page(store, "1_Projects/suzent/Plan.md")
     pages = store.list_notebook_pages()
@@ -132,8 +137,22 @@ def test_the_draft_map_passes_its_own_lint(store):
 
     assert draft.startswith(memory_map.MAP_HEADING)
     assert "[[3_Personal/Identity]] — holds Name;" in draft
+    assert "[[About me/Work]] — holds Role, Team;" in draft
     assert "[[2_Wiki/]]" in draft and "[[1_Projects/]]" in draft
     assert memory_map.lint_map(draft, store.notebook_dir, pages) == []
+
+
+def test_untyped_pages_are_one_finding(store):
+    _page(store, "3_Personal/Identity.md", "# Identity\n")
+    _page(store, "2_Wiki/Rust.md", "---\ntype: concept\n---\n")
+
+    findings = memory_map.lint_page_types(
+        store.notebook_dir, store.list_notebook_pages()
+    )
+
+    assert _codes(findings) == ["untyped"]
+    assert "1 page(s)" in findings[0].detail
+    assert "3_Personal/Identity.md" in findings[0].detail
 
 
 def test_user_md_contract():
@@ -252,7 +271,7 @@ async def test_ensure_memory_map_drafts_only_when_missing(store):
     mgr = _manager(store)
 
     assert await mgr.ensure_memory_map()
-    assert "[[3_Personal/Identity]]" in store.memory_file_path.read_text("utf-8")
+    assert "[[3_Personal/]]" in store.memory_file_path.read_text("utf-8")
     assert not await mgr.ensure_memory_map()
 
 

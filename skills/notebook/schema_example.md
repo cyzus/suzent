@@ -19,6 +19,7 @@ The vault is organized into layers by purpose:
   - `Literature/` — summaries of specific papers, articles, or sources (1 source = 1 page)
   - `Syntheses/` — comparative analyses, cross-cutting insights, overviews
   - `Entities/` — specific concrete nouns (models, datasets, tools, people)
+  - `Experience/` — what the agent learned doing work: what failed, what worked
 - `3_Personal/` — long-term personal tracking
 - `4_Assets/` — read-only binary files (PDFs, images). Never modify.
 - `5_Archives/` — completed or inactive work
@@ -39,14 +40,31 @@ Link to what exists instead.
 
 ---
 
+## Memory placement
+
+Where the memory dream files each page type. Folders here are yours to rename: change the
+table and the dream follows it. If this section is missing, the dream adds one that maps
+each type to a folder the vault already has.
+
+| Page type | Folder |
+|---|---|
+| `personal` | `3_Personal/` |
+| `experience` | `2_Wiki/Experience/` |
+| `concept` | `2_Wiki/Concepts/` |
+| `literature` | `2_Wiki/Literature/` |
+| `synthesis` | `2_Wiki/Syntheses/` |
+| `entity` | `2_Wiki/Entities/` |
+
+---
+
 ## Page Types
 
-Every page in `2_Wiki/` must have YAML frontmatter. `type` is required; retain the other
+Every page must have YAML frontmatter. `type` is required; retain the other
 fields when they carry useful information:
 
 ```yaml
 ---
-type: concept | literature | synthesis | entity
+type: concept | literature | synthesis | entity | experience | personal
 title: Human-readable title
 description: One-sentence summary
 tags: []
@@ -70,7 +88,7 @@ Use standard Markdown links with full vault-relative paths, for example
 
 Standard sections: `## Overview`, `## Key Facts`, `## Related`, `## Sources`.
 
-### Personal pages (`3_Personal/`)
+### Personal pages (`type: personal`)
 
 These hold consolidated facts about the user, so their lifecycle matters more than their
 structure. Frontmatter:

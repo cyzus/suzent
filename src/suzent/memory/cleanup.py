@@ -4,8 +4,8 @@ Fixing the pipeline does not repair what is already in the vault and the core fi
 This module never edits them: it writes drafts, diffs and a brief into
 `.state/cleanup/<date>/`, and the user decides what to apply. The steps follow the
 design's §5: a pointer map to replace MEMORY.md, the non-contract lines of `user.md`
-moved out, what `user.md` owns removed from `Profile.md`, a rewrite brief for
-`3_Personal/`, and claims already known to be wrong seeded into the rejected list.
+moved out, what `user.md` owns removed from the vault pages, a rewrite brief for
+the pages, and claims already known to be wrong seeded into the rejected list.
 See docs/08-developing/architecture/memory-architecture.md.
 """
 
@@ -30,12 +30,10 @@ SEED_REJECTED: tuple[tuple[str, str], ...] = (
         "a story the agent wrote, recorded as the user's own project",
     ),
 )
-PROFILE_PAGE = "3_Personal/Profile.md"
-# A Profile bullet this close to a user.md line repeats what user.md owns.
+# A page bullet this close to a user.md line repeats what user.md owns.
 DUPLICATE_MATCH = 0.9
 
 _BULLET = re.compile(r"^\s*[-*+]\s+(.*)$")
-_CITATION = re.compile(r"https?://|`[^`]*[/.][^`]*`|\[\[[^\]]+\]\]|\b[\w-]+/[\w./-]+")
 
 
 @dataclass
@@ -106,8 +104,8 @@ def draft_user_md(text: str, rejected: list[str]) -> tuple[str, list[str]]:
     return "\n".join(kept).rstrip() + "\n", moved
 
 
-def draft_profile(profile: str, user_md: str) -> tuple[str, list[str]]:
-    """`Profile.md` without the bullets `user.md` already holds."""
+def draft_page(page: str, user_md: str) -> tuple[str, list[str]]:
+    """A vault page without the bullets `user.md` already holds."""
     owned = [
         capture.normalize(m.group(1))
         for m in map(_BULLET.match, user_md.splitlines())
@@ -115,7 +113,7 @@ def draft_profile(profile: str, user_md: str) -> tuple[str, list[str]]:
     ]
     kept: list[str] = []
     removed: list[str] = []
-    for line in profile.splitlines():
+    for line in page.splitlines():
         m = _BULLET.match(line)
         body = capture.normalize(m.group(1)) if m else ""
         if body and any(capture.similarity(body, o) >= DUPLICATE_MATCH for o in owned):
@@ -126,18 +124,20 @@ def draft_profile(profile: str, user_md: str) -> tuple[str, list[str]]:
 
 
 def _page_notes(store: MarkdownMemoryStore, rejected: list[str]) -> list[str]:
-    """What the rewrite has to look at, page by page."""
+    """What the rewrite has to look at, page by page.
+
+    Pages are judged by their declared `type:`, never their folder. Only personal
+    pages get the repo-state and scheduler checks: a wiki page may cite a version.
+    """
     vault = store.notebook_dir
     notes: list[str] = []
     for page in store.list_notebook_pages():
         rel = page.relative_to(vault).as_posix()
-        top = rel.split("/", 1)[0]
-        if top not in ("3_Personal", "2_Wiki"):
-            continue
         try:
             text = page.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        personal = memory_map.page_type(text) == memory_map.PERSONAL_TYPE
         issues: list[str] = []
         size = len(text.encode("utf-8"))
         if size > memory_map.PAGE_BUDGET_BYTES:
@@ -145,16 +145,15 @@ def _page_notes(store: MarkdownMemoryStore, rejected: list[str]) -> list[str]:
                 f"{size // 1024} KB, over the {memory_map.PAGE_BUDGET_BYTES // 1024} KB "
                 "budget: condense, or split by topic"
             )
-        if top == "3_Personal":
-            for i, line in enumerate(text.splitlines(), 1):
-                code = memory_map.line_issue(line)
-                hit = memory_map.matches_rejected(line, rejected)
-                if hit:
-                    issues.append(f"line {i} holds rejected claim {hit!r}: retire it")
-                elif code:
-                    issues.append(f"line {i} looks like {code}: retire it")
-        elif not _CITATION.search(text):
-            issues.append("no path, URL or link: add the source or flag it for review")
+        if not memory_map.page_type(text):
+            issues.append("no `type:` in frontmatter: add one from schema.md")
+        for i, line in enumerate(text.splitlines(), 1):
+            code = memory_map.line_issue(line) if personal else None
+            hit = memory_map.matches_rejected(line, rejected)
+            if hit:
+                issues.append(f"line {i} holds rejected claim {hit!r}: retire it")
+            elif code:
+                issues.append(f"line {i} looks like {code}: retire it")
         if issues:
             notes.append(f"### {rel}\n" + "\n".join(f"- {s}" for s in issues))
     return notes
@@ -162,19 +161,21 @@ def _page_notes(store: MarkdownMemoryStore, rejected: list[str]) -> list[str]:
 
 _REWRITE_RULES = """\
 ## Rules
-- Each fact has one home. Facts in `user.md` are not repeated in `3_Personal/`.
+- Each fact has one home. Facts in `user.md` are not repeated in the vault.
+- Every page declares a `type:` from `schema.md`; facts about the user go on
+  `type: personal` pages. `schema.md` decides which folder each type lives in.
 - Keep the current value in the bullet. Move a superseded value to the page's
   `## History` section, or drop it when it never mattered.
 - Retire bullets that are repo state (PRs, commits, versions, branches), transient
   status, scheduler specs or analyses the agent wrote. Retiring is allowed.
-- Something the agent made, proposed or designed is not the user's: move it out of
-  `3_Personal/` to `4_Experience/` (a lesson with its outcome) or `2_Wiki/` (with
-  its source), or retire it.
+- Something the agent made, proposed or designed is not the user's: move it off
+  the personal pages to an experience page (a lesson with its outcome) or a
+  knowledge page (with its source), or retire it.
 - A contradiction you cannot settle becomes a question in
   `.state/review_queue.md`, not a callout on the page.
 - Counters go to frontmatter (`confirmed: 12`); a bullet carries at most one
   "last confirmed" date.
-- Keep each page under 8 KB; split `Profile.md` by topic when it is over.
+- Keep each page under 8 KB; split a page by topic when it is over.
 - Every page you create, retire or rename gets its `MEMORY.md` line fixed in the
   same step.
 - Record each operation in `.state/dream_ops.md` with the text before and after."""
@@ -186,7 +187,7 @@ def rewrite_brief(
     parts = [
         "# Memory rewrite brief",
         "",
-        "A one-off pass over `3_Personal/` and `2_Wiki/`, run once the drafts in this "
+        "A one-off pass over the vault pages, run once the drafts in this "
         "folder are applied. Give it to the dream agent or work through it by hand.",
         "",
         _REWRITE_RULES,
@@ -219,8 +220,8 @@ apply what you accept.
 |---|---|---|
 | `MEMORY.draft.md` | The pointer map to replace `MEMORY.md` | copy over `{memory_md}` |
 | `user.draft.md` | `user.md` without scheduler specs, repo state and rejected claims | copy over `{user_md}` |
-| `Profile.draft.md` | `{profile}` without what `user.md` already holds | copy over the page |
-| `migration.diff` | All three changes as one diff | read it before copying |
+| `pages/` | Vault pages without what `user.md` already holds | copy each over the page at the same path |
+| `migration.diff` | All of these changes as one diff | read it before copying |
 | `rewrite_brief.md` | Where the moved lines go, and what to fix page by page | ask the agent to work through it |
 | `rejected.seed.jsonl` | Claims already known to be wrong | append to `{rejected}` |
 
@@ -248,12 +249,6 @@ async def write_cleanup_drafts(
 
     memory_md = await store.read_memory_file() or ""
     user_md = await store.read_block("user") or ""
-    profile_path = vault / PROFILE_PAGE
-    profile = (
-        profile_path.read_text(encoding="utf-8", errors="replace")
-        if profile_path.exists()
-        else ""
-    )
 
     seeds = [
         {"content": claim, "date": date, "correction_id": "", "reason": reason}
@@ -266,18 +261,26 @@ async def write_cleanup_drafts(
     user_draft, from_user = (
         draft_user_md(user_md, all_rejected) if user_md else ("", [])
     )
-    profile_draft, _ = draft_profile(profile, user_md) if profile else ("", [])
+    page_drafts: dict[str, tuple[str, str]] = {}
+    for page in pages if user_md else []:
+        try:
+            before = page.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        after, removed = draft_page(before, user_md)
+        if removed:
+            page_drafts[page.relative_to(vault).as_posix()] = (before, after)
     result.moved_lines = len(from_map) + len(from_user)
 
     drafts: dict[str, str] = {"MEMORY.draft.md": map_draft}
     if user_md:
         drafts["user.draft.md"] = user_draft
-    if profile:
-        drafts["Profile.draft.md"] = profile_draft
+    for rel, (_, after) in page_drafts.items():
+        drafts[f"pages/{rel}"] = after
     drafts["migration.diff"] = (
         _diff("MEMORY.md", memory_md, map_draft)
         + (_diff("user.md", user_md, user_draft) if user_md else "")
-        + (_diff(PROFILE_PAGE, profile, profile_draft) if profile else "")
+        + "".join(_diff(rel, b, a) for rel, (b, a) in page_drafts.items())
     )
     drafts["rewrite_brief.md"] = rewrite_brief(
         {"MEMORY.md": from_map, "user.md": from_user},
@@ -291,13 +294,13 @@ async def write_cleanup_drafts(
         date=date,
         memory_md=store.memory_file_path,
         user_md=store.base_dir / "user.md",
-        profile=PROFILE_PAGE,
         rejected=store.rejected_path,
         findings=memory_map.format_findings(findings, limit=100),
     )
 
     for name, text in drafts.items():
         path = out / name
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
         result.files.append(path)
     logger.info(

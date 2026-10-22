@@ -48,22 +48,35 @@ def test_a_page_with_no_expiry_is_due_but_queues_last(store):
     """Every page written before the rule existed has no `stale_after`. Selecting
     strictly on the field would exempt exactly those pages from ever being visited,
     which is how the field would stay unwritten forever."""
-    _page(store, "3_Personal/never_set.md", "---\nstatus: active\n---\n- a claim")
+    _page(store, "3_Personal/never_set.md", "---\ntype: personal\n---\n- a claim")
     _page(store, "3_Personal/expired.md", "---\nstale_after: 2020-01-01\n---\n- old")
-    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+    _page(store, "9_Me/renamed.md", "---\ntype: personal\n---\n- a claim")
 
     rows = DreamRunner._due_revisits(_Mgr(store))
 
     assert rows[0]["page"] == "3_Personal/expired.md"
     assert {r["page"] for r in rows[1:]} == {
         "3_Personal/never_set.md",
-        "3_Personal/plain.md",
+        "9_Me/renamed.md",
     }
     assert all(r["stale_after"] == "unset" for r in rows[1:])
 
 
+def test_only_personal_pages_owe_an_expiry(store):
+    """`stale_after` is a personal-claim field, found by the page's type wherever
+    the user keeps it. Untyped pages surface as a lint finding instead."""
+    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+    _page(store, "2_Wiki/Rust.md", "---\ntype: concept\n---\n- a fact")
+
+    assert DreamRunner._due_revisits(_Mgr(store)) == []
+
+
 def test_an_undated_page_is_still_skipped_when_deprecated(store):
-    _page(store, "3_Personal/a.md", "---\nstatus: deprecated\n---\n- retired")
+    _page(
+        store,
+        "3_Personal/a.md",
+        "---\ntype: personal\nstatus: deprecated\n---\n- retired",
+    )
 
     assert DreamRunner._due_revisits(_Mgr(store)) == []
 

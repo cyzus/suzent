@@ -909,6 +909,7 @@ class DreamRunner(BaseBrain):
         see which category the claim belongs to.
         """
         try:
+            from suzent.memory import memory_map
             from suzent.memory.indexer import CoreMemoryFileIndexer
 
             store_md = mgr.markdown_store
@@ -916,11 +917,10 @@ class DreamRunner(BaseBrain):
             rows: List[dict] = []
             for path in store_md.list_notebook_pages():
                 try:
-                    lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(
-                        path.read_text(encoding="utf-8", errors="replace")
-                    )
+                    text = path.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
+                lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(text)
                 stale_after = lifecycle.get("stale_after", "")[:10]
                 if lifecycle.get("status", "").lower() == "deprecated":
                     continue
@@ -928,7 +928,7 @@ class DreamRunner(BaseBrain):
                 dated = len(stale_after) == 10
                 if dated and stale_after >= today:
                     continue
-                if not dated and not rel.replace("\\", "/").startswith("3_Personal/"):
+                if not dated and memory_map.page_type(text) != memory_map.PERSONAL_TYPE:
                     # `stale_after` is a personal-claim field. A wiki or project page
                     # having none is correct, not a backlog item — only the pages the
                     # rule actually applies to are missing anything.

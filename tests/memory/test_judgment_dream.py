@@ -32,13 +32,28 @@ def test_candidates_are_routed_by_kind():
     text = _brief()
 
     for tag, home in (
-        ("`kind:user`", "3_Personal/"),
-        ("`kind:experience`", "4_Experience/"),
-        ("`kind:world`", "2_Wiki/"),
+        ("`kind:user`", "a `type: personal` page"),
+        ("`kind:experience`", "a `type: experience` page"),
+        ("`kind:world`", "a knowledge page"),
     ):
         assert f"{tag} -> {home}" in text
-    assert "Never in 3_Personal/" in text
+    assert "Never on a personal page" in text
     assert "`ungrounded`" in text
+
+
+def test_prompts_name_no_vault_folders():
+    """Users rename and renumber folders; schema.md decides placement, not the prompt."""
+    texts = (
+        _brief(),
+        memory_context.build_dream_system_prompt(ROOTS),
+        memory_context.build_lint_system_prompt(ROOTS),
+        memory_context.build_lint_instructions(ROOTS),
+    )
+    for text in texts:
+        for folder in ("0_Inbox", "1_Projects", "2_Wiki", "3_Personal", "4_Experience"):
+            assert folder not in text
+    assert "## Memory placement" in texts[1]
+    assert "Never add a new numbered top-level folder" in texts[1]
 
 
 def test_the_brief_carries_rejected_claims_open_questions_and_findings():

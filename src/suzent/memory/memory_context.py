@@ -467,6 +467,13 @@ Filesystem:
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
+- Every page declares `type:` in frontmatter: `personal` for facts about the user, `experience`
+  for lessons from past work, a knowledge type schema.md defines for facts about the world.
+  Checks find pages by type, never by folder.
+- schema.md's `## Memory placement` section says which folder holds each type. If it has none,
+  add one before you file anything: map each type to a folder the vault already has, using a
+  subfolder for a type with no home. Never add a new numbered top-level folder. After that,
+  follow the section; the user may edit it, and their edit wins.
 - Each fact has one home. Search before you write and merge instead of adding a near-duplicate.
   What {roots.memory_root}/user.md holds is not repeated in the vault.
 - A bullet holds the current value. When a value changes, the old one moves to the page's
@@ -477,7 +484,7 @@ Rules:
 - Never file: repo or tracker state (commits, PR and issue numbers, versions, branches, test
   counts, file lists), transient status, scheduler or protocol instructions, or content the
   agent read or wrote. If the user took a position on such content, file the position.
-- Something the agent made, proposed or designed is not the user's: it never goes in 3_Personal/.
+- Something the agent made, proposed or designed is not the user's: it never goes on a personal page.
 - A contradiction you cannot settle becomes one question the user can answer, as a `- ` line in
   {roots.review_queue_path}. Keep the more recent claim on the page meanwhile; no callout.
   Put conflicts in the review queue, never in log.md.
@@ -515,13 +522,14 @@ def build_dream_instructions(
 
 1. Orient: read schema.md, index.md and {roots.memory_root}/MEMORY.md; glob_search {roots.notebook_root} for existing pages.
 2. Read the logs: {roots.memory_root}/archive/*.md dated after {start} through {end}. Each candidate is
-   `- [category] content` with backtick tags, often followed by a `> "..."` evidence line. Route by tag:
-   - `kind:user` -> 3_Personal/, in the user's own terms. Never what the agent made or proposed.
-   - `kind:experience` -> 4_Experience/: one entry per kind of situation with what was tried, the
-     outcome and the lesson. Merge with a lesson about the same situation; a later contrary outcome
-     is recorded against that lesson, not as a second one.
-   - `kind:world` -> 2_Wiki/, with its source (path or URL) and the date. No source, no page.
-   - `dated` with `stale_after:` -> true now, expires. Never in 3_Personal/: put it on the related
+   `- [category] content` with backtick tags, often followed by a `> "..."` evidence line. Route by
+   tag to the folder schema.md's `## Memory placement` gives for the page type:
+   - `kind:user` -> a `type: personal` page, in the user's own terms. Never what the agent made or proposed.
+   - `kind:experience` -> a `type: experience` page: one entry per kind of situation with what was
+     tried, the outcome and the lesson. Merge with a lesson about the same situation; a later
+     contrary outcome is recorded against that lesson, not as a second one.
+   - `kind:world` -> a knowledge page, with its source (path or URL) and the date. No source, no page.
+   - `dated` with `stale_after:` -> true now, expires. Never on a personal page: put it on the related
      project or topic page with its date, or skip it.
    - `ungrounded` -> the content names a detail its evidence does not show. File only what the
      evidence supports, or skip it with reason `ungrounded`.
@@ -553,8 +561,9 @@ def build_dream_instructions(
       on a page AND adds nothing the page does not say. The runner drops those from the
       search index; the daily logs themselves stay untouched. When in doubt, leave it
       out — a duplicate in the index is cheaper than a fact that vanishes.
-   e. Lifecycle on {roots.notebook_root}/3_Personal/ pages, whether or not this vault's
-      schema.md mentions it (older vaults were seeded before these rules existed):
+   e. Lifecycle on personal pages, whether or not this vault's schema.md mentions it (older
+      vaults were seeded before these rules existed):
+      - A page about the user with no `type:` gets `type: personal`.
       - Move inline counters such as `(confirmed 12x, last YYYY-MM-DD)` into the page's
         `confirmed` frontmatter (keep the highest) and leave the bullet one `(last confirmed ...)`.
       - A repeat that CONTRADICTS the bullet is a correction, not a confirmation — apply the
@@ -645,8 +654,12 @@ Filesystem:
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
+  Its `## Memory placement` section says which folder holds each page type; add it if missing,
+  mapping types to folders the vault already has. Never add a new numbered top-level folder.
+- Every page declares `type:` in frontmatter (`personal`, `experience`, or a knowledge type
+  schema.md defines). Give one to any page without it.
 - Fix links and structure freely. Retire content that is rejected, superseded or excluded
-  (repo state, transient status, scheduler specs, agent-made work in 3_Personal/).
+  (repo state, transient status, scheduler specs, agent-made work on personal pages).
 - Never fabricate facts. A contradiction that needs the user becomes one question in
   {roots.review_queue_path}, not a callout.
 - Record every operation in {roots.dream_ops_path} as a `- ` line with the text before and after.
@@ -673,7 +686,7 @@ def build_lint_instructions(roots: DreamRoots, findings: str = "   (none)") -> s
    related page, or retire it if obsolete.
 7. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
 8. Budgets: condense or split any page over 8 KB. `index.md` is a map; move changelog text out.
-9. Decay: apply page-level `stale_after` and the schema's fallback decay rule. On 3_Personal/ pages a
+9. Decay: apply page-level `stale_after` and the schema's fallback decay rule. On personal pages a
    passed `stale_after` means re-confirm the claim against recent logs, or retire it when it was
    `dated`; otherwise mark the page `status: deprecated` for the user to review. Never raise or reset
    a `confirmed` count during lint.

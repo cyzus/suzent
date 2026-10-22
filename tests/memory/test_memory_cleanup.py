@@ -21,7 +21,10 @@ USER_MD = """# User
 - PR #398 merged
 - Wrote The Perfect Drone
 """
-PROFILE = """# Profile
+PROFILE = """---
+type: personal
+---
+# Profile
 - Name: Sam
 - PhD in robotics at ETH
 """
@@ -46,7 +49,7 @@ async def drafted(store):
     await store.write_block("user", USER_MD)
     _page(store, "3_Personal/Profile.md", PROFILE + "- Commit abc1234def merged\n")
     _page(store, "2_Wiki/Rust.md", "# Rust\nOwnership rules.\n")
-    _page(store, "2_Wiki/Acp.md", "# ACP\nSign-in lives in src/suzent/acp/.\n")
+    _page(store, "2_Wiki/Acp.md", "---\ntype: concept\n---\n# ACP\nv1.2.3 signs in.\n")
     result = await cleanup.write_cleanup_drafts(store, date="2026-10-22")
     return result, {p.name: p.read_text(encoding="utf-8") for p in result.files}
 
@@ -86,8 +89,8 @@ async def test_user_md_keeps_only_its_contract(drafted):
 async def test_profile_loses_what_user_md_owns(drafted):
     _, files = drafted
 
-    assert "Name: Sam" not in files["Profile.draft.md"]
-    assert "PhD in robotics" in files["Profile.draft.md"]
+    assert "Name: Sam" not in files["Profile.md"]
+    assert "PhD in robotics" in files["Profile.md"]
     assert "-- Name: Sam" in files["migration.diff"]
 
 
@@ -95,8 +98,9 @@ async def test_the_brief_flags_pages(drafted):
     _, files = drafted
     brief = files["rewrite_brief.md"]
 
-    assert "### 3_Personal/Profile.md\n- line 4 looks like repo_state" in brief
-    assert "### 2_Wiki/Rust.md\n- no path, URL or link" in brief
+    assert "### 3_Personal/Profile.md\n- line 7 looks like repo_state" in brief
+    # A version on a knowledge page is a citation, not repo state.
+    assert "### 2_Wiki/Rust.md\n- no `type:` in frontmatter" in brief
     assert "2_Wiki/Acp.md" not in brief
 
 
@@ -117,7 +121,7 @@ async def test_the_readme_carries_the_lint(drafted):
 
 def test_an_existing_map_keeps_the_users_lines(store):
     _page(store, "3_Personal/Identity.md", "# Identity\n")
-    _page(store, "3_Personal/Health.md", "# Health\n")
+    _page(store, "3_Personal/Health.md", "---\ntype: personal\n---\n# Health\n")
     current = (
         "# Memory map\n\n"
         "- [[3_Personal/Identity]] — who I am; my own words\n"

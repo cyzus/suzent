@@ -176,9 +176,10 @@ consolidation of new logs.
 ### What the dream is told
 
 The dream is a judgment agent: capture proposes, the dream decides. Its brief
-(`memory_context.build_dream_instructions`) routes by tag — `kind:user` to
-`3_Personal/`, `kind:experience` to `4_Experience/` (merged per situation),
-`kind:world` to `2_Wiki/` with its source; `dated` never lands in `3_Personal/`,
+(`memory_context.build_dream_instructions`) routes by tag to a page type —
+`kind:user` to a `type: personal` page, `kind:experience` to a `type: experience`
+page (merged per situation), `kind:world` to a knowledge page with its source;
+`dated` never lands on a personal page,
 `ungrounded` is filed only as far as its evidence goes, and `explicit` wins over what it
 contradicts. Untagged lines from before typed capture must pass the exclusion rules.
 
@@ -254,7 +255,14 @@ and a person may edit it; the old per-turn `refresh_core_memory_facts`,
   rejected claims;
 - `persona.md`: at most `PERSONA_MD_MAX_LINES` (60);
 - `heartbeat.md`: no rejected claims;
-- notebook pages: at most `PAGE_BUDGET_BYTES` (8 KB).
+- notebook pages: at most `PAGE_BUDGET_BYTES` (8 KB), and one `untyped` finding naming
+  pages with no frontmatter `type:`.
+
+Code never assumes a folder layout. Personal pages are found by `type: personal`
+(`memory_map.PERSONAL_TYPE`), so a user who renamed or renumbered folders loses nothing.
+Where each type lives is the vault's own `schema.md` `## Memory placement` table, which
+the dream adds once from existing folders if missing and follows after; code never
+parses it. `wiki_manager`'s numbered zones are only the seed for a new vault.
 
 `suzent memory lint` prints these findings. `suzent memory cleanup`
 (`memory/cleanup.py`) writes the one-time migration as drafts only, into the vault's
@@ -349,13 +357,13 @@ confirmations: vault pages past their `stale_after`, soonest first, to be re-con
 against the logs being ingested — never deleted. Both queues are runner-owned for the same
 reason the watermark is: index and lifecycle mutation stays out of the agent's hands.
 
-A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
+A `type: personal` page with no `stale_after` *at all* is queued too, after every genuinely
 expired one. Selecting strictly on the field would mean pages written before the field
 existed are never queued, so the dream never visits them, so the field is never written —
 the pages most in need of a first pass would be the only ones permanently exempt from one.
 Letting the dream backfill the field beats a script guessing it, because a wrong
 `stale_after` actively damps a good claim in the ranking above, and only the dream can see
-which category a claim belongs to. The undated branch is scoped to `3_Personal/`: a wiki
+which category a claim belongs to. The undated branch is scoped to personal pages: a wiki
 or project page having no expiry is correct, not a backlog item.
 
 ## Testing a mutating pass

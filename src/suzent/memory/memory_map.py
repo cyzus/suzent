@@ -26,6 +26,9 @@ MAP_LINE_MAX_CHARS = 200
 USER_MD_MAX_LINES = 40
 PERSONA_MD_MAX_LINES = 60
 PAGE_BUDGET_BYTES = 8 * 1024
+# Pages are found by the `type:` they declare, not by folder: the vault's own
+# schema.md decides where things live, and users rename and renumber folders.
+PERSONAL_TYPE = "personal"
 
 # Pre-map MEMORY.md files: the zone markers and the footer of the old generator.
 _LEGACY_MARKERS = (
@@ -38,6 +41,8 @@ _LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 _BULLET_RE = re.compile(r"^\s*[-*+]\s+(.*)$")
 _DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _COUNTER_RE = re.compile(r"\b(?:confirmed\s+\d+x|\d+x\b|\d+\s+times\b)", re.IGNORECASE)
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+_TYPE_RE = re.compile(r"^type\s*:\s*(.+?)\s*$", re.MULTILINE)
 
 FindingCode = Literal[
     "not_a_map",
@@ -50,6 +55,7 @@ FindingCode = Literal[
     "over_budget",
     "scheduler_spec",
     "repo_state",
+    "untyped",
 ]
 
 
@@ -71,6 +77,20 @@ class Finding:
     def render(self) -> str:
         where = f"{self.file}:{self.line}" if self.line else self.file
         return f"- [{self.code}] {where} — {self.detail}"
+
+
+def page_type(text: str) -> str:
+    """The `type:` a page declares in its frontmatter, lowercased, or ""."""
+    fm = _FRONTMATTER_RE.match(text)
+    m = _TYPE_RE.search(fm.group(1)) if fm else None
+    return m.group(1).strip().strip("\"'").lower() if m else ""
+
+
+def read_page_type(page: Path) -> str:
+    try:
+        return page_type(page.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return ""
 
 
 def is_legacy(text: str) -> bool:
@@ -244,9 +264,9 @@ def lint_map(
                 )
             )
     for page in pages:
-        rel = page.relative_to(vault)
-        if rel.parts[0] != "3_Personal":
+        if read_page_type(page) != PERSONAL_TYPE:
             continue
+        rel = page.relative_to(vault)
         if not any(_covers(r, page) for r in resolved):
             findings.append(
                 Finding(
@@ -349,6 +369,24 @@ def lint_page_budgets(
     return out
 
 
+def lint_page_types(vault: Path, pages: list[Path], shown: int = 5) -> list[Finding]:
+    """One finding for all pages without a `type:`, which the checks above cannot see."""
+    untyped = [
+        page.relative_to(vault).as_posix() for page in pages if not read_page_type(page)
+    ]
+    if not untyped:
+        return []
+    names = ", ".join(untyped[:shown]) + (" …" if len(untyped) > shown else "")
+    return [
+        Finding(
+            "vault",
+            "untyped",
+            f"{len(untyped)} page(s) have no `type:` in frontmatter; give each one "
+            f"from schema.md ({names})",
+        )
+    ]
+
+
 def _page_title(page: Path) -> tuple[str, str]:
     """The page's title and its first `##` headings, from frontmatter or headings."""
     try:
@@ -372,25 +410,22 @@ def _page_title(page: Path) -> tuple[str, str]:
 def draft_map(vault: Path, pages: list[Path]) -> str:
     """A starting map built from titles and headings, for when MEMORY.md is missing.
 
-    One line per `3_Personal/` page and one per other top-level folder. It is a
-    fallback only: the dream rewrites it on its next run and the user can edit it.
+    One line per personal page and one per top-level folder holding the rest. It is
+    a fallback only: the dream rewrites it on its next run and the user can edit it.
     """
     lines = [MAP_HEADING, ""]
     folders: dict[str, int] = {}
     for page in pages:
         rel = page.relative_to(vault)
-        if len(rel.parts) == 1:
-            continue
-        top = rel.parts[0]
-        if top == "3_Personal":
+        if read_page_type(page) == PERSONAL_TYPE:
             title, sections = _page_title(page)
             link = rel.with_suffix("").as_posix()
             holds = f"holds {sections}" if sections else f"holds {title}"
             lines.append(
                 f"- [[{link}]] — {holds}; read when the user's {title.lower()} matters"
             )
-        else:
-            folders[top] = folders.get(top, 0) + 1
+        elif len(rel.parts) > 1:
+            folders[rel.parts[0]] = folders.get(rel.parts[0], 0) + 1
     for top, count in sorted(folders.items()):
         lines.append(
             f"- [[{top}/]] — {count} page(s); read before answering from memory about anything filed here"
@@ -426,4 +461,5 @@ async def lint_store(store: "MarkdownMemoryStore", *, max_lines: int) -> list[Fi
             label, await store.read_block(label), rejected=rejected
         )
     findings += lint_page_budgets(vault, pages)
+    findings += lint_page_types(vault, pages)
     return findings
