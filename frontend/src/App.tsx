@@ -7,7 +7,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
-import { ChatList, SidebarHeaderActions } from './components/ChatList';
+import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -718,7 +718,6 @@ function AppInner(): React.ReactElement {
           maxWidth={leftSidebarMaxWidth}
           isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
           onWidthChange={setPreferredLeftWidth}
-          headerActions={<SidebarHeaderActions onSearch={() => setSidebarSearchOpen(true)} />}
           chatsContent={
             <ChatList
               searchOpen={sidebarSearchOpen}

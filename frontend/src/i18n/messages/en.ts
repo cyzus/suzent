@@ -1509,6 +1509,7 @@ export const en = {
     searchChatsPlaceholder: 'Search chats…',
     clearSearch: 'Clear search',
     newChat: 'New chat',
+    search: 'Search',
     newProject: 'New project',
     newProjectPlaceholder: 'Project name...',
     moveToProject: 'Move to project',

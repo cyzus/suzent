@@ -150,44 +150,12 @@ interface ChatListProps {
   /** The main area's current view, so its sidebar entry reads as selected. */
   activeView?: string;
   onOpenView?: (view: Exclude<SidebarView, 'chat'>) => void;
-  /** Search is opened from the sidebar's logo row (see SidebarHeaderActions). */
+  /** Search opens from the row under Regent, or its keyboard shortcut. */
   searchOpen?: boolean;
   onSearchOpenChange?: (open: boolean) => void;
 }
 
 /** Search and new chat, as icons in the sidebar's logo row. */
-export function SidebarHeaderActions({ onSearch }: { onSearch: () => void }): React.ReactElement {
-  const { t } = useI18n();
-  const { beginNewChat, switchToView } = useChatStore();
-  const iconButton =
-    'h-8 w-8 flex items-center justify-center text-brutal-black hover:bg-neutral-200 dark:text-white dark:hover:bg-zinc-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue';
-  return (
-    <div className="ml-auto flex items-center gap-0.5">
-      <button
-        type="button"
-        onClick={onSearch}
-        className={iconButton}
-        title={t('chatList.searchChatsPlaceholder')}
-        aria-label={t('chatList.searchChatsPlaceholder')}
-      >
-        <MagnifyingGlassIcon className="h-[18px] w-[18px] stroke-2" />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          beginNewChat();
-          if (switchToView) switchToView('chat');
-        }}
-        className={iconButton}
-        title={t('chatList.newChat')}
-        aria-label={t('chatList.newChat')}
-      >
-        <PencilSquareIcon className="h-[18px] w-[18px] stroke-2" />
-      </button>
-    </div>
-  );
-}
-
 const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
@@ -1526,6 +1494,29 @@ export const ChatList: React.FC<ChatListProps> = ({
             {/* Regent sits above everything else, like a pinned contact. */}
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
               <FocalAgentCardView status={focalStatus} active={regentOpen} onOpen={openChatById} />
+            </div>
+            {/* Starting or finding a chat sits right under Regent, at full strength
+                even while Regent's chat dims the rest of the sidebar. */}
+            <div className="order-0 border-b border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
+              <button
+                type="button"
+                onClick={() => {
+                  beginNewChat();
+                  if (switchToView) switchToView('chat');
+                }}
+                className={sidebarNavRowClass(false)}
+              >
+                <PencilSquareIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('chatList.newChat')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSearchOpenChange?.(true)}
+                className={sidebarNavRowClass(searchOpen)}
+              >
+                <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('chatList.search')}</span>
+              </button>
             </div>
             <nav
               aria-label={t('chatList.sections.navigation')}
