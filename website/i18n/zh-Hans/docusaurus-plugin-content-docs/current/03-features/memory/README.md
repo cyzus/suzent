@@ -88,6 +88,8 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 dream 的运行频率、笔记本的位置等调优项，见[高级记忆设置](./configuration.md)。
 
+<a id="checking-and-tidying-your-memory-files"></a>
+
 ## 检查和整理记忆文件
 
 记忆变乱时，有两个命令可以帮忙：
