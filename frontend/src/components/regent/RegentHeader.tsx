@@ -28,15 +28,12 @@ interface RegentIdentityProps {
 export function RegentIdentity({ status, state }: RegentIdentityProps): React.ReactElement {
   const { t } = useI18n();
   const waiting = Math.max(0, status?.waiting ?? 0);
-  const stalled = Math.max(0, status?.stalled ?? 0);
   const pill =
     state === 'working'
       ? { label: t('chatList.focal.working'), dot: 'bg-brutal-blue animate-pulse' }
       : waiting > 0
         ? { label: t('chatList.focal.waitingCount', { count: waiting }), dot: 'bg-brutal-yellow' }
-        : stalled > 0
-          ? { label: t('chatList.focal.stalledCount', { count: stalled }), dot: 'bg-neutral-400' }
-          : null;
+        : null;
 
   return (
     <div className="regent-identity flex min-w-0 items-baseline gap-2">

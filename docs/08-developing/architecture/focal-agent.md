@@ -233,7 +233,7 @@ from tasks or replies.
 | Route | Purpose |
 |---|---|
 | `GET /focal` | Create the chat if needed and return `focal_status()`: waiting chats, stalled sessions and auto-running counts, chats per state, per-project and per-chat waiting counts, unread count and last message |
-| `GET /focal/chats` | `list_chat_states()` with per-state counts; `?project_id=` narrows it to one project |
+| `GET /focal/chats` | `list_chat_states()` with per-state counts; `?project_id=` narrows it to one project, and `?chat_id=` returns that one chat however long it has been quiet |
 | `POST /chats/{id}/resolved` | Body `{"resolved": bool}`: resolve the chat for the user, or reopen it |
 | `GET /focal/panel` | The fixed tool list and scheduled wake-ups, for the Tools tab |
 | `DELETE /focal/wakeups/{job_id}` | Cancel one of Focal's own wake-ups; any other job id is refused |

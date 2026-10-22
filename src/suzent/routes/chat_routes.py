@@ -1304,7 +1304,10 @@ async def get_chat_states(request: Request) -> JSONResponse:
     from suzent.core.chat_status import count_states, list_chat_states
 
     try:
-        rows = list_chat_states(request.query_params.get("project_id") or None)
+        rows = list_chat_states(
+            request.query_params.get("project_id") or None,
+            request.query_params.get("chat_id") or None,
+        )
         return JSONResponse({"chats": rows, "counts": count_states(rows)})
     except Exception as e:
         logger.error(f"Error in get_chat_states: {e}")
