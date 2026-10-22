@@ -383,7 +383,7 @@ body,
   --scrollbar-thumb: var(--brutal-yellow);
   --scrollbar-thumb-hover: var(--brutal-yellow);
   --scrollbar-edge: var(--brutal-yellow);
-  --brutal-yellow: #ff6600;
+  --brutal-yellow: var(--suzent-yellow-dark);
 }
 
 /* ── Cold scheme: subtly blue-tinted dark surfaces ─────────────────────── */
