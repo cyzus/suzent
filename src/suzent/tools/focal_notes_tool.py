@@ -74,9 +74,11 @@ class FocalNotesTool(Tool):
             ),
         ] = "",
     ) -> ToolResult:
-        from suzent.core.focal_agent import is_focal_chat_id, notes_path
+        from suzent.core.focal_agent import FOCAL_CHAT_ID, notes_path
 
-        if not is_focal_chat_id(ctx.deps.chat_id):
+        # The notes belong to the singleton, so only it may edit them: another
+        # chat flagged as focal would write notes it never reads.
+        if ctx.deps.chat_id != FOCAL_CHAT_ID:
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED,
                 "update_notes belongs to SUZENT; project notes live in context.md.",

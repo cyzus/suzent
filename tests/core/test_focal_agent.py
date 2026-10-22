@@ -1006,3 +1006,30 @@ def test_global_context_shows_each_projects_overview(db, sandbox) -> None:
     assert ops_line.endswith("…")
     bare_line = next(line for line in context.splitlines() if "slug `bare`" in line)
     assert "—" not in bare_line
+
+
+@pytest.mark.asyncio
+async def test_only_the_suzent_singleton_keeps_notes(db, sandbox) -> None:
+    from suzent.tools.focal_notes_tool import FocalNotesTool
+
+    get_or_create_focal_chat()
+    lookalike = db.create_chat("Old focal", {"is_focal_agent": True})
+
+    result = await FocalNotesTool().forward(_ctx(lookalike), "- rule")
+
+    assert result.error_code == ToolErrorCode.PERMISSION_DENIED
+    notes = (db.get_project_dir(FOCAL_CHAT_ID) / "context.md").read_text()
+    assert notes == focal_agent.DEFAULT_FOCAL_NOTES
+
+
+def test_an_unreadable_project_context_drops_only_its_overview(db, sandbox) -> None:
+    db.create_project("Broken", "broken")
+    db.create_project("Fine", "fine")
+    for slug, content in (("broken", b"\xff\xfe bad"), ("fine", b"All good")):
+        (sandbox / "projects" / slug).mkdir(parents=True)
+        (sandbox / "projects" / slug / "context.md").write_bytes(content)
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "slug `broken`" in context
+    assert "slug `fine` · id" in context and "— All good" in context

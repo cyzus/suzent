@@ -249,7 +249,7 @@ def _project_overview(slug: str) -> Optional[str]:
     path = Path(CONFIG.sandbox_data_path) / "projects" / slug / "context.md"
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     in_overview = False
     first_prose = None
