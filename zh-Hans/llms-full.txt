@@ -772,10 +772,29 @@ SUZENT's **Tools** tab, where you can cancel them.
 When SUZENT says something while you are elsewhere, its card shows the new
 message and you get a desktop notification.
 
+## What it remembers about working with you
+
+SUZENT keeps its own short notes on how you want it to work: what to bring to
+you and what to handle itself, what counts as urgent, when not to disturb you,
+which project you mean by a nickname, and how you like your reports. Tell it a
+rule ("don't ping me about tests failing, just restart them") and it writes it
+down; it also notes rules you keep repeating.
+
+The notes start with empty sections, **Bring to the user**, **Handle without
+asking**, **Don't disturb**, **Project names**, and **Reports**, and each rule
+goes under the one it belongs to. SUZENT reads them at the start of every turn.
+They never hold project or task status, which it looks up fresh each time; for
+what a project is about, it reads a line from that project's own context
+instead of keeping a copy. To read or change them
+yourself, open SUZENT's **Context** tab and click **Edit**.
+
+What it learns about *you* in general goes to your
+[memory](https://suzent.com/zh-Hans/docs/features/memory), like any other chat.
+
 ## What it won't do
 
 SUZENT can read files and search the web, your memory, and past
-conversations, but it can't edit files, run commands, or use MCP servers, and
+conversations, but apart from its own notes it can't edit files, run commands, or use MCP servers, and
 the tool picker doesn't apply to it. That keeps one agent with a view of every
 project from making changes in all of them at once: the work happens in a
 project session, where you can see and steer it.
@@ -5087,7 +5106,8 @@ and overrides whatever the request asked for:
 
 - `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
   `FocalDispatchTool`, web search and fetch, memory and session search,
-  ask-question, skills, read-only file tools, and `FocalScheduleTool`. The plain
+  ask-question, skills, read-only file tools, `FocalScheduleTool`, and
+  `FocalNotesTool`. The plain
   `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
@@ -5097,9 +5117,10 @@ and overrides whatever the request asked for:
   outside Suzent.
 
 Focal-only behavior lives in Focal-only tools, so other agents' schemas never
-carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`)
-and `FocalScheduleTool` (`schedule_wakeup`). Both have an empty `group` and are
-not deferrable, so no other chat can equip or discover them, and both refuse
+carry it: `FocalDispatchTool` (`agent_dispatch`, a subclass of `AgentSendTool`),
+`FocalScheduleTool` (`schedule_wakeup`) and `FocalNotesTool` (`update_notes`).
+All three have an empty `group` and are
+not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than
 naming the Focal Agent, so nothing SUZENT reads calls it anything but SUZENT.
 
@@ -5115,6 +5136,37 @@ with its id and slug, up to 10 sessions per project, and each session's tasks.
 Sessions come from the project's tasks plus any chat in the project that is
 running now; sessions with work waiting on the user sort first, then running
 ones. A chat with no tasks that is not running is not listed.
+
+Each project line ends with one line from that project's `context.md`, read
+live by `_project_overview()`: the first line of its Overview section, else its
+first line of prose, cut at 160 characters. That gives SUZENT what each project
+is about without a copy that could drift.
+
+## Notes
+
+SUZENT's notes are the `context.md` of `suzent-focal`, which core memory already
+loads as the Context block for any chat in that project. Other chats keep their
+project's `context.md` with the file tools; SUZENT has none, so
+`FocalNotesTool` (`update_notes`) edits that one file and nothing else: an exact
+`old_text` replacement, an entry added at the end of a `section` (created if
+missing), or a plain append, capped at
+`MAX_NOTES_CHARS` (8,000, where core memory starts truncating the block). An
+edit reaches later turns as a core-memory diff reminder, like any other
+context.md change.
+
+`get_or_create_focal_chat()` seeds the file with `DEFAULT_FOCAL_NOTES`, a title
+and empty sections, whenever it is missing. An existing file, even an empty
+one, is left alone.
+
+SUZENT has no library: it does no project work, so it produces no deliverables,
+and `suzent-focal/` holds only its notes and `heartbeat.md`. Project knowledge
+stays in each project's own `context.md`, maintained by that project's
+sessions.
+
+`format_core_memory_section()` swaps the "How to update your memory" lines for
+the Focal chat: point at `update_notes`, and keep project and task status out,
+since `build_focal_global_context()` supplies it fresh each turn. The tool's
+`session_guidance` says what belongs in the notes.
 
 ## Dispatch
 
