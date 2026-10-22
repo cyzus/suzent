@@ -243,6 +243,20 @@ export const ChatList: React.FC<ChatListProps> = ({
     moveAllChats,
     refresh: refreshProjects,
   } = useProjects();
+  // The fetched order goes stale as soon as a chat updates, so fold in the
+  // live chat timestamps to keep the most recently active project on top.
+  const sortedProjects = useMemo(() => {
+    const activity = new Map<string, number>();
+    for (const project of projects) {
+      activity.set(project.id, Date.parse(project.lastActivityAt ?? project.createdAt) || 0);
+    }
+    for (const chat of chats) {
+      if (!chat.projectId || !activity.has(chat.projectId)) continue;
+      const updated = Date.parse(chat.updatedAt) || 0;
+      if (updated > activity.get(chat.projectId)!) activity.set(chat.projectId, updated);
+    }
+    return [...projects].sort((a, b) => activity.get(b.id)! - activity.get(a.id)!);
+  }, [projects, chats]);
 
   const unreadSummaryKey = JSON.stringify(chats.map((chat) => [chat.id, chat.unreadCount ?? 0]));
   useEffect(() => {
@@ -1887,7 +1901,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   )}
 
                   <div className="space-y-0.5 px-2 pb-2">
-                    {projects.map((project) => {
+                    {sortedProjects.map((project) => {
                       const isOpen = filterId === project.id;
                       const isSystem = project.slug === 'default' || project.slug === 'social';
                       const isRenaming = renamingProjectId === project.id;
