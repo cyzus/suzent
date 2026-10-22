@@ -2,6 +2,7 @@ import { VoiceSettingsCard } from './VoiceSettingsCard';
 import { SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import {
@@ -41,7 +42,7 @@ import { SecurityTab } from './SecurityTab';
 import { BackgroundServiceTab } from './BackgroundServiceTab';
 import { BrowserTab } from './BrowserTab';
 import { useI18n } from '../../i18n';
-import { FullscreenOverlay } from '../FullscreenOverlay';
+import { WorkspacePanel } from '../WorkspacePanel';
 import { closeImmediatelyAndPersist } from './settingsPersistence';
 import {
   SettingsMobileNavigation,
@@ -72,14 +73,13 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: CategoryType;
+  navigationHost?: HTMLElement | null;
+  showInlineNavigation?: boolean;
   /**
    * Show this category, and nothing else -- no dialog, no category list.
    *
-   * The desktop app opens settings on top of the chat window it interrupted,
-   * so a modal with its own sidebar is right there. The web console gives every
-   * category a route instead and navigates with its own sidebar, so what it
-   * needs from here is the panel and the state behind it. Passing a category
-   * says the caller owns both the frame and the navigation.
+   * The web console gives every category a route and owns the frame and
+   * navigation. Desktop settings render navigation into the global sidebar.
    */
   category?: CategoryType;
   /** Where a panel's own cross-links go, in controlled mode. */
@@ -95,6 +95,8 @@ export function SettingsModal({
   initialCategory = 'providers',
   category,
   onCategoryChange,
+  navigationHost,
+  showInlineNavigation = false,
 }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const { t } = useI18n();
@@ -703,19 +705,27 @@ export function SettingsModal({
 
   const body = (
     <>
-      <SettingsNavigation
-        activeCategory={activeCategory}
-        onCategoryChange={selectCategory}
-        onClose={handleClose}
-      />
+      {navigationHost &&
+        createPortal(
+          <SettingsNavigation
+            embedded
+            activeCategory={activeCategory}
+            onCategoryChange={selectCategory}
+            onClose={handleClose}
+          />,
+          navigationHost
+        )}
 
       {/* Content Area */}
-      <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
-        <SettingsMobileNavigation
-          activeCategory={activeCategory}
-          onCategoryChange={selectCategory}
-          onClose={handleClose}
-        />
+      <div className="min-w-0 min-h-0 flex-1 overflow-hidden bg-dot-pattern flex flex-col">
+        {showInlineNavigation && (
+          <SettingsMobileNavigation
+            embedded
+            activeCategory={activeCategory}
+            onCategoryChange={selectCategory}
+            onClose={handleClose}
+          />
+        )}
         <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
           <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
             {panel}
@@ -726,14 +736,8 @@ export function SettingsModal({
   );
 
   return (
-    <FullscreenOverlay
-      open={isOpen}
-      onClose={handleClose}
-      zIndexClassName="z-[100]"
-      backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
-      containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
-    >
+    <WorkspacePanel open={isOpen} className="flex-row" onClose={handleClose}>
       {body}
-    </FullscreenOverlay>
+    </WorkspacePanel>
   );
 }

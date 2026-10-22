@@ -6,12 +6,13 @@
  * endpoint and inject a lightweight "action message" into the chat.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/outline';
 import type { CanvasState } from '../../hooks/useCanvas';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import { BrutalButton } from '../BrutalButton';
-import { FullscreenOverlay } from '../FullscreenOverlay';
+import { WorkspacePanel } from '../WorkspacePanel';
 import { useI18n } from '../../i18n';
 
 interface CanvasViewProps {
@@ -25,6 +26,13 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
   const hasMultipleSurfaces = surfaces.length > 1;
   const activeSurface = surfaces.find((s) => s.id === activeSurfaceId) ?? surfaces[0] ?? null;
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [host] = useState(() => document.createElement('div'));
+  const [inlineSlot, setInlineSlot] = useState<HTMLDivElement | null>(null);
+  const [expandedSlot, setExpandedSlot] = useState<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const slot = isFullscreen ? expandedSlot : inlineSlot;
+    if (slot && host.parentNode !== slot) slot.appendChild(host);
+  }, [isFullscreen, inlineSlot, expandedSlot, host]);
 
   const dispatchAction = useCallback(
     (action: string, context: Record<string, unknown>) => {
@@ -74,7 +82,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
   );
 
   const content = (
-    <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
+    <div className="min-w-0 p-4">
       <A2UIRenderer component={activeSurface.component} onAction={dispatchAction} />
     </div>
   );
@@ -97,14 +105,11 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
             </BrutalButton>
           </div>
         </div>
-        {content}
+        <div ref={setInlineSlot} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" />
       </div>
+      {createPortal(content, host)}
 
-      <FullscreenOverlay
-        open={isFullscreen}
-        onClose={() => setIsFullscreen(false)}
-        containerClassName="relative w-full max-w-[96vw] h-[94vh] bg-white dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex flex-col"
-      >
+      <WorkspacePanel open={isFullscreen} onClose={() => setIsFullscreen(false)}>
         <div className="flex items-center justify-between px-3 py-2 border-b-3 border-brutal-black bg-brutal-yellow dark:bg-zinc-800 shrink-0">
           <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-brutal-black dark:text-white">
             {activeSurface.title ?? activeSurface.id}
@@ -125,9 +130,9 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
           {/* surfaceNav carries flex-1 for the horizontal header; in this vertical
               column it must not grow vertically, so pin it with shrink-0 + h-11. */}
           <div className="shrink-0 h-11 flex border-b-2 border-brutal-black">{surfaceNav}</div>
-          {content}
+          <div ref={setExpandedSlot} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" />
         </div>
-      </FullscreenOverlay>
+      </WorkspacePanel>
     </>
   );
 };

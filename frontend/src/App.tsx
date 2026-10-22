@@ -1,3 +1,4 @@
+import { WorkspacePanelHost, WorkspacePanelProvider } from './components/WorkspacePanel';
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
@@ -344,6 +345,8 @@ function AppInner(): React.ReactElement {
     'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined
   >(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsNavigationHost, setSettingsNavigationHost] = useState<HTMLDivElement | null>(null);
+  const sidebarOpenBeforeSettings = React.useRef(false);
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<
     | 'providers'
     | 'roles'
@@ -357,16 +360,16 @@ function AppInner(): React.ReactElement {
     | 'appearance'
   >('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
-    // The console gives every settings category a route of its own and keeps
-    // its navigation on screen, so in a browser this goes to the page rather
-    // than laying the desktop's modal over the conversation.
+    // The web console gives every settings category a route of its own.
     const consolePath = isWeb() ? consolePathForCategory(category) : null;
     if (consolePath) {
       window.location.hash = `#${consolePath}`;
       return;
     }
     setSettingsInitialCategory(category);
+    if (!isSettingsOpen) sidebarOpenBeforeSettings.current = isLeftSidebarOpen;
     setIsSettingsOpen(true);
+    setIsLeftSidebarOpen(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   };
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
@@ -707,112 +710,127 @@ function AppInner(): React.ReactElement {
   }, []);
 
   return (
-    <div
-      className={`h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans ${
-        showMacWindowControls ? 'macos-tauri-webview' : ''
-      }`}
-    >
-      {isDesktop() && <DesktopContextMenu onSettings={() => openSettings()} />}
-      <TitleBar />
-      <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
-        <Sidebar
-          width={leftSidebarWidth}
-          maxWidth={leftSidebarMaxWidth}
-          isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
-          onWidthChange={setPreferredLeftWidth}
-          chatsContent={
-            <ChatList
-              searchOpen={sidebarSearchOpen}
-              onSearchOpenChange={setSidebarSearchOpen}
-              onOpenAutomation={() => openSettings('automation')}
-              activeView={mainView}
-              onOpenView={(view) => {
-                setMemoryInitialTab(undefined);
-                setMainView(view);
-              }}
-            />
-          }
-          isOpen={isLeftSidebarOpen}
-          onOpenSettings={() => openSettings()}
-          onClose={closeLeftSidebar}
-          titlebarControls={
-            showMacWindowControls && isLeftSidebarOpen ? (
-              <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
-            ) : null
-          }
-        />
-        <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
-          <header
-            className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
-            onMouseDown={handleHeaderMouseDown}
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
-              {showMacWindowControls && !isLeftSidebarOpen ? (
+    <WorkspacePanelProvider navigationKey={`${currentChatId}:${mainView}`}>
+      <div
+        className={`h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans ${
+          showMacWindowControls ? 'macos-tauri-webview' : ''
+        }`}
+      >
+        {isDesktop() && <DesktopContextMenu onSettings={() => openSettings()} />}
+        <TitleBar />
+        <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
+          <Sidebar
+            width={leftSidebarWidth}
+            maxWidth={leftSidebarMaxWidth}
+            isDesktop={viewportWidth >= DESKTOP_BREAKPOINT_PX}
+            onWidthChange={setPreferredLeftWidth}
+            chatsContent={
+              <>
+                <div className={isSettingsOpen ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+                  <ChatList
+                    searchOpen={sidebarSearchOpen}
+                    onSearchOpenChange={setSidebarSearchOpen}
+                    onOpenAutomation={() => openSettings('automation')}
+                    activeView={mainView}
+                    onOpenView={(view) => {
+                      setMemoryInitialTab(undefined);
+                      setMainView(view);
+                    }}
+                  />
+                </div>
+                <div
+                  ref={setSettingsNavigationHost}
+                  className={isSettingsOpen ? 'min-h-0 flex-1' : 'hidden'}
+                />
+              </>
+            }
+            showSettingsButton={!isSettingsOpen}
+            isOpen={isLeftSidebarOpen}
+            onOpenSettings={() => openSettings()}
+            onClose={closeLeftSidebar}
+            titlebarControls={
+              showMacWindowControls && isLeftSidebarOpen ? (
                 <MacTrafficLights
                   isMaximized={isWindowMaximized}
                   onMaximize={toggleWindowMaximize}
                 />
-              ) : null}
-              {isLeftSidebarOpen ? (
-                <div className="h-10 w-10 mr-3" aria-hidden="true" />
-              ) : (
-                <div
-                  className="app-sidebar-trigger mr-3 shrink-0 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
-                  onClick={toggleLeftSidebar}
-                  role="button"
-                  aria-label={t('sidebar.open')}
-                  title={t('sidebar.open')}
-                >
-                  <div className="flex h-full w-full items-center justify-center group-hover:hidden">
-                    {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
-                    <RegentLogoSlot regent={regentHeader}>
-                      <SuzentLogo className="h-7 w-7" interactive />
-                    </RegentLogoSlot>
-                  </div>
-                  <div className="hidden h-full w-full items-center justify-center group-hover:flex">
-                    <SidebarToggleIcon
-                      side="left"
-                      open={false}
-                      className="h-6 w-6 text-brutal-black dark:text-white"
-                    />
-                  </div>
-                </div>
-              )}
-              {/* The header names the conversation; a new chat keeps the brand title. */}
-              {mainView === 'chat' && currentChatId ? (
-                <ConversationIdentity />
-              ) : (
-                <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
-              )}
-            </div>
-
-            <div
-              className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
+              ) : null
+            }
+          />
+          <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
+            <header
+              className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
+              onMouseDown={handleHeaderMouseDown}
             >
-              {/* The sidebar carries these on wider screens; a phone keeps them here
+              <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
+                {showMacWindowControls && !isLeftSidebarOpen ? (
+                  <MacTrafficLights
+                    isMaximized={isWindowMaximized}
+                    onMaximize={toggleWindowMaximize}
+                  />
+                ) : null}
+                {isLeftSidebarOpen ? (
+                  <div className="h-10 w-10 mr-3" aria-hidden="true" />
+                ) : (
+                  <div
+                    className="app-sidebar-trigger mr-3 shrink-0 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
+                    onClick={toggleLeftSidebar}
+                    role="button"
+                    aria-label={t('sidebar.open')}
+                    title={t('sidebar.open')}
+                  >
+                    <div className="flex h-full w-full items-center justify-center group-hover:hidden">
+                      {/* On Regent's chat the collapsed sidebar hands its cube to this slot. */}
+                      <RegentLogoSlot regent={regentHeader}>
+                        <SuzentLogo className="h-7 w-7" interactive />
+                      </RegentLogoSlot>
+                    </div>
+                    <div className="hidden h-full w-full items-center justify-center group-hover:flex">
+                      <SidebarToggleIcon
+                        side="left"
+                        open={false}
+                        className="h-6 w-6 text-brutal-black dark:text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* The header names the conversation; a new chat keeps the brand title. */}
+                {isSettingsOpen ? (
+                  <HeaderTitle text={t('settings.title')} />
+                ) : mainView === 'chat' && currentChatId ? (
+                  <ConversationIdentity />
+                ) : (
+                  <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
+                )}
+              </div>
+
+              <div
+                className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
+              >
+                {/* The sidebar carries these on wider screens; a phone keeps them here
                   because its sidebar is tucked away. */}
-              <div className="md:hidden">
-                <NavTabs
-                  mainView={mainView}
-                  setMainView={(v) => {
-                    setMemoryInitialTab(undefined);
-                    setMainView(v);
+                <div className="md:hidden">
+                  <NavTabs
+                    mainView={mainView}
+                    setMainView={(v) => {
+                      setMemoryInitialTab(undefined);
+                      setMainView(v);
+                    }}
+                  />
+                </div>
+                <StatusBar
+                  inline
+                  onOpenMemorySettings={() => {
+                    setMemoryInitialTab('dreaming');
+                    setMainView('memory');
                   }}
                 />
-              </div>
-              <StatusBar
-                inline
-                onOpenMemorySettings={() => {
-                  setMemoryInitialTab('dreaming');
-                  setMainView('memory');
-                }}
-              />
-              <UpdateButton />
+                <UpdateButton />
 
-              {mainView === 'chat' ? (
-                <button
-                  onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
-                  className={`
+                {mainView === 'chat' && !isSettingsOpen ? (
+                  <button
+                    onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
+                    className={`
                     h-10 w-10 flex items-center justify-center rounded-md transition-colors
                     ${
                       isRightSidebarOpen
@@ -820,113 +838,132 @@ function AppInner(): React.ReactElement {
                         : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
                     }
                   `}
-                  aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                  title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                >
-                  <SidebarToggleIcon side="right" open={isRightSidebarOpen} />
-                </button>
-              ) : (
-                <div className="h-10 w-10" aria-hidden="true" />
-              )}
+                    aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
+                    title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
+                  >
+                    <SidebarToggleIcon side="right" open={isRightSidebarOpen} />
+                  </button>
+                ) : (
+                  <div className="h-10 w-10" aria-hidden="true" />
+                )}
 
-              {showWindowsWindowControls ? (
-                <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
-                  <button
-                    onClick={() => appWindow?.minimize()}
-                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
-                    title={t('titlebar.minimize')}
-                  >
-                    <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor">
-                      <rect width="10" height="2" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={toggleWindowMaximize}
-                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
-                    title={isWindowMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-                  >
-                    {isWindowMaximized ? (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <rect x="2" y="0" width="8" height="8" rx="0" />
-                        <rect x="0" y="2" width="8" height="8" rx="0" />
-                      </svg>
-                    ) : (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <rect x="0" y="0" width="10" height="10" rx="0" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => appWindow?.close()}
-                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
-                    title={t('titlebar.close')}
-                  >
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 10 10"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                {showWindowsWindowControls ? (
+                  <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
+                    <button
+                      onClick={() => appWindow?.minimize()}
+                      className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
+                      title={t('titlebar.minimize')}
                     >
-                      <line x1="0" y1="0" x2="10" y2="10" />
-                      <line x1="10" y1="0" x2="0" y2="10" />
-                    </svg>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </header>
-          {mainView === 'chat' && (
-            <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <ChatWindow
-                isRightSidebarOpen={isRightSidebarOpen}
-                onRightSidebarToggle={handleRightSidebarToggle}
-                onRightSidebarWidthChange={setRightSidebarWidth}
-                rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
-                rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-                viewportWidthPx={viewportWidth}
-                rightSidebarForceFullView={rightSidebarForceFullView}
-              />
-            </div>
-          )}
-          {mainView === 'memory' && (
-            <div key="memory" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <MemoryView initialTab={memoryInitialTab} />
-            </div>
-          )}
-          {mainView === 'skills' && (
-            <div key="skills" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <SkillsView chatId={currentChatId} />
-            </div>
-          )}
-          {mainView === 'emotes' && (
-            <div key="emotes" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <RobotShowcase />
-            </div>
-          )}
+                      <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor">
+                        <rect width="10" height="2" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={toggleWindowMaximize}
+                      className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
+                      title={isWindowMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+                    >
+                      {isWindowMaximized ? (
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <rect x="2" y="0" width="8" height="8" rx="0" />
+                          <rect x="0" y="2" width="8" height="8" rx="0" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <rect x="0" y="0" width="10" height="10" rx="0" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => appWindow?.close()}
+                      className="h-full w-9 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
+                      title={t('titlebar.close')}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 10 10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <line x1="0" y1="0" x2="10" y2="10" />
+                        <line x1="10" y1="0" x2="0" y2="10" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </header>
+            <WorkspacePanelHost />
+            {mainView === 'chat' && (
+              <div
+                key="chat"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <ChatWindow
+                  isRightSidebarOpen={isRightSidebarOpen}
+                  onRightSidebarToggle={handleRightSidebarToggle}
+                  onRightSidebarWidthChange={setRightSidebarWidth}
+                  rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                  rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                  viewportWidthPx={viewportWidth}
+                  rightSidebarForceFullView={rightSidebarForceFullView}
+                />
+              </div>
+            )}
+            {mainView === 'memory' && (
+              <div
+                key="memory"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <MemoryView initialTab={memoryInitialTab} />
+              </div>
+            )}
+            {mainView === 'skills' && (
+              <div
+                key="skills"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <SkillsView chatId={currentChatId} />
+              </div>
+            )}
+            {mainView === 'emotes' && (
+              <div
+                key="emotes"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <RobotShowcase />
+              </div>
+            )}
+          </div>
         </div>
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => {
+            setIsSettingsOpen(false);
+            setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
+          }}
+          initialCategory={settingsInitialCategory}
+          navigationHost={settingsNavigationHost}
+          showInlineNavigation={!isLeftSidebarOpen || viewportWidth < DESKTOP_BREAKPOINT_PX}
+        />
       </div>
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        initialCategory={settingsInitialCategory}
-      />
-    </div>
+    </WorkspacePanelProvider>
   );
 }
 

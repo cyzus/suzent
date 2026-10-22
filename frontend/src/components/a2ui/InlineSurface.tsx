@@ -18,7 +18,7 @@ import type { A2UISurface } from '../../types/a2ui';
 import { useI18n } from '../../i18n';
 import { A2UIRenderer } from './A2UIRenderer';
 import { isAnsweredQuestion } from '../../lib/questionAnswer';
-import { FullscreenOverlay } from '../FullscreenOverlay';
+import { WorkspacePanel } from '../WorkspacePanel';
 import { BrutalButton } from '../BrutalButton';
 import { useInlineSurfaceContext, useIsSuperseded } from './InlineSurfaceContext';
 
@@ -164,11 +164,7 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({
       <div ref={setInlineSlot} />
       {createPortal(body, host)}
 
-      <FullscreenOverlay
-        open={fullscreen}
-        onClose={() => setFullscreen(false)}
-        containerClassName="relative w-full max-w-[96vw] h-[94vh] bg-white dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex flex-col"
-      >
+      <WorkspacePanel open={fullscreen} onClose={() => setFullscreen(false)}>
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b-3 border-brutal-black bg-brutal-yellow dark:bg-zinc-800 shrink-0">
           <span className={`${labelClass} text-brutal-black dark:text-white`}>{title}</span>
           <BrutalButton
@@ -181,7 +177,7 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({
           </BrutalButton>
         </div>
         <div ref={setFullscreenSlot} className="flex-1 min-h-0 overflow-y-auto p-4" />
-      </FullscreenOverlay>
+      </WorkspacePanel>
     </div>
   );
 };
