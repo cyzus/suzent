@@ -306,6 +306,7 @@ const AGUIPartsContent: React.FC<{
                       toolName: tp.toolName || 'unknown',
                       toolArgs: tp.args || undefined,
                       output: tp.output || undefined,
+                      state: tp.state,
                       approvalState,
                       permission: tp.permission,
                       permissionDecision: tp.permissionDecision,
@@ -350,7 +351,7 @@ const AGUIPartsContent: React.FC<{
                         ? ('pending' as const)
                         : t.approvalState === 'denied' || toolCallFailed(t.outcome, t.output)
                           ? ('error' as const)
-                          : isStreaming && !t.output
+                          : isStreaming && t.state === 'running'
                             ? ('active' as const)
                             : t.output
                               ? ('done' as const)
@@ -402,7 +403,7 @@ const AGUIPartsContent: React.FC<{
                           output={t.output}
                           defaultCollapsed={t.approvalState !== 'pending'}
                           approvalState={t.approvalState}
-                          isStreaming={isStreaming && !t.output}
+                          isStreaming={isStreaming && t.state === 'running'}
                           onApprove={t.onApprove}
                           onDeny={t.onDeny}
                           permission={t.permission}
