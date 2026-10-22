@@ -1919,13 +1919,11 @@ export const en = {
     retry: 'Retry',
     loading: 'Loading…',
   },
-  regentPanel: {
+  regentHeader: {
     needsYou: 'Needs you',
-    running: 'Running',
     stalled: 'Stalled',
-    wakeups: 'Scheduled wake-ups',
-    fullBoard: 'Full board ›',
-    overview: '‹ Overview',
+    wakeups: '{count} wake-ups',
+    board: 'Board ›',
   },
   focalBriefing: {
     greeting: 'Hey, I’m here.',

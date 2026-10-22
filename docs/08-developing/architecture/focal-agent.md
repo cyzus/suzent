@@ -204,16 +204,18 @@ which would run with a full tool set.
 
 - `FocalAgentCard` at the top of the sidebar, fed by `useFocalStatus`.
 - `FocalAgentCard` sits above the sidebar's navigation, like a pinned contact.
-- On the Focal chat `ConversationIdentity` renders `LiveRegentIdentity`
-  (`components/regent/RegentHeader.tsx`): a small crowned cube beside "SUZENT
-  Regent", sized to the normal `h-12` header so nothing else moves. It reads
-  "working" from the chat's own stream as well as from status, so the cube moves
-  as soon as a reply starts.
-- The Tasks tab on the Focal chat is `RegentPanel`, a stack of cards: Regent
-  (large cube, presence, counts), then `attention`, `active` and `stalled`
-  sessions (each hidden when empty, rows open the session), then Regent's
-  wake-ups from `/focal/panel`. "Full board" swaps in the all-projects
-  `TaskPanel` with a way back.
+- On the Focal chat the header grows downward without moving the icon row:
+  the `<header>` keeps `h-12` and its border width (the border turns
+  transparent), and `RegentHeaderDetails` renders right below it as a second
+  row that carries the bottom border. In the first row `ConversationIdentity`
+  renders `LiveRegentIdentity`: "SUZENT Regent" beside a crowned cube that is
+  absolutely positioned and hangs into the second row (the header gets `z-20`
+  so it paints over it). The second row measures where the name starts and
+  lines up under it: presence, the board's `attention` and `stalled` sessions
+  (each opens its session), Regent's wake-up count from `/focal/panel`, and a
+  link to the board while the panel is closed. Both read "working" from the
+  chat's own stream as well as from status. All of it is in
+  `components/regent/RegentHeader.tsx`.
 - Regent's replies carry no agent badge, live or past (`AssistantMessage`'s
   `regent`): the header already says who is speaking.
 - `FocalBriefing` is only the greeting on an empty chat; the header carries the

@@ -32,7 +32,6 @@ import {
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { ToolsPanel } from './ToolsPanel';
 import { FocalToolsPanel } from './FocalToolsPanel';
-import { RegentPanel } from '../regent/RegentPanel';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
@@ -723,70 +722,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               : { left: 0, right: ICON_STRIP_WIDTH }
           }
         >
-          {currentChatId === FOCAL_CHAT_ID ? (
-            <RegentPanel
-              kanban={kanban}
-              onOpenChat={async (chatId) => {
-                const opened = await onTaskChat?.(chatId);
-                if (opened) {
-                  if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                  if (isOverlayMode) onClose();
-                }
-              }}
-              board={
-                <TaskPanel
-                  navigationError={taskNavigationError}
-                  onDismissError={onDismissTaskError}
-                  goal={goalMatchesChat ? goal : null}
-                  tasks={goalMatchesChat ? tasks : []}
-                  kanban={kanban}
-                  projectName={currentProjectName}
-                  chatTitles={chatTitles}
-                  focal
-                  onOpenTask={async (task) => {
-                    const opened = (await onOpenTask?.(task)) ?? false;
-                    if (opened) {
-                      if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                      if (isOverlayMode) onClose();
-                    }
-                    return opened;
-                  }}
-                  onOpenChat={async (chatId) => {
-                    const opened = await onTaskChat?.(chatId);
-                    if (opened) {
-                      if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                      if (isOverlayMode) onClose();
-                    }
-                  }}
-                />
+          <TaskPanel
+            navigationError={taskNavigationError}
+            onDismissError={onDismissTaskError}
+            goal={goalMatchesChat ? goal : null}
+            tasks={goalMatchesChat ? tasks : []}
+            kanban={kanban}
+            projectName={currentProjectName}
+            chatTitles={chatTitles}
+            focal={currentChatId === FOCAL_CHAT_ID}
+            onOpenTask={async (task) => {
+              const opened = (await onOpenTask?.(task)) ?? false;
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
               }
-            />
-          ) : (
-            <TaskPanel
-              navigationError={taskNavigationError}
-              onDismissError={onDismissTaskError}
-              goal={goalMatchesChat ? goal : null}
-              tasks={goalMatchesChat ? tasks : []}
-              kanban={kanban}
-              projectName={currentProjectName}
-              chatTitles={chatTitles}
-              onOpenTask={async (task) => {
-                const opened = (await onOpenTask?.(task)) ?? false;
-                if (opened) {
-                  if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                  if (isOverlayMode) onClose();
-                }
-                return opened;
-              }}
-              onOpenChat={async (chatId) => {
-                const opened = await onTaskChat?.(chatId);
-                if (opened) {
-                  if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                  if (isOverlayMode) onClose();
-                }
-              }}
-            />
-          )}
+              return opened;
+            }}
+            onOpenChat={async (chatId) => {
+              const opened = await onTaskChat?.(chatId);
+              if (opened) {
+                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                if (isOverlayMode) onClose();
+              }
+            }}
+          />
         </div>
 
         {/* ── Icon Strip — always visible (except new chat) ─────────── */}

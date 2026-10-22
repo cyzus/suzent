@@ -1862,13 +1862,11 @@ export const zhCN = {
     retry: '重试',
     loading: '加载中…',
   },
-  regentPanel: {
-    needsYou: '等你处理',
-    running: '运行中',
+  regentHeader: {
+    needsYou: '等你',
     stalled: '停滞',
-    wakeups: '定时唤醒',
-    fullBoard: '完整看板 ›',
-    overview: '‹ 概览',
+    wakeups: '{count} 个唤醒',
+    board: '看板 ›',
   },
   focalBriefing: {
     greeting: '我在，聊聊吧。',
