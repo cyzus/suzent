@@ -544,11 +544,11 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   // A turn counts as unread when post-processing saves it, after the reply has
   // streamed in. Regent is not in `chats`, so the refresh that re-marks an open
-  // chat read never reaches it; watch its own count instead.
+  // chat read never reaches it; watch its own count while its chat is on screen.
   const focalUnread = focalStatus?.unread ?? 0;
   useEffect(() => {
-    if (currentChatId === FOCAL_CHAT_ID && focalUnread > 0) markRead(FOCAL_CHAT_ID);
-  }, [currentChatId, focalUnread, markRead]);
+    if (regentOpen && focalUnread > 0) markRead(FOCAL_CHAT_ID);
+  }, [regentOpen, focalUnread, markRead]);
 
   useEffect(() => {
     setLocalSearchQuery(searchQuery);
@@ -1300,7 +1300,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           clearSelection();
           markRead(chat.id);
           pickedInSidebarRef.current = chat.id;
-          loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
+          loadChat(chat.id);
           if (switchToView) switchToView('chat');
         }}
         onMouseDown={(e) => {
@@ -1425,8 +1425,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const openChatById = (chatId: string): void => {
     pickedInSidebarRef.current = chatId;
     markRead(chatId);
-    const chat = chats.find((item) => item.id === chatId);
-    loadChat(chatId, { authoritative: !isChatRunning(chatId, chat?.isRunning) });
+    loadChat(chatId);
     if (switchToView) switchToView('chat');
   };
 
