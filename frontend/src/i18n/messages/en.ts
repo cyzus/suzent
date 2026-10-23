@@ -1414,6 +1414,7 @@ export const en = {
     waitingForStream: 'Waiting for preview',
     showTab: 'Show tab',
     showTabError: 'Could not show the browser tab.',
+    previewTabError: 'Could not select an active web tab for preview.',
     noSelectedTab: 'No tab selected',
     title: 'Browser',
     navigate: 'Navigate',
@@ -1888,6 +1889,10 @@ export const en = {
   webActivities: {
     returnToBrowser: 'Return to Browser',
     history: 'History',
+    webPage: 'Web page',
+    embedError: 'Could not open this page in the side panel. Use the link above or read the text.',
+    showReader: 'Read text',
+    showPage: 'View page',
   },
   a2uiSurface: {
     showHere: 'Show here',
