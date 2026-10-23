@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Clear Regent's unread count while it is open, and show only read state in the sidebar instead of waiting-on-you counts."
+}
