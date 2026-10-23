@@ -485,16 +485,18 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
         },
         table: (p: any) => (
           <div className="overflow-x-auto">
-            <table className="text-xs border-3 border-brutal-black">{p.children}</table>
+            <table className="text-xs border-3 border-brutal-black dark:border-zinc-500">
+              {p.children}
+            </table>
           </div>
         ),
         th: (p: any) => (
-          <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">
+          <th className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 bg-brutal-yellow text-brutal-black font-bold break-normal">
             {applyCitations(p.children, 'th')}
           </th>
         ),
         td: (p: any) => (
-          <td className="border-2 border-brutal-black px-2 py-1 align-top">
+          <td className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 align-top break-normal">
             {applyCitations(p.children, 'td')}
           </td>
         ),
