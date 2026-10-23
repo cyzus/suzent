@@ -65,6 +65,8 @@ describe('Provider settings overview', () => {
     expect(summary).not.toContain('Sign in with your ChatGPT account');
     expect(html).toContain('Sign In');
     expect(html).toContain('Not Signed In');
+    const card = html.slice(html.lastIndexOf('<details'));
+    expect(card.indexOf('Connection successful')).toBeLessThan(card.indexOf('</details>'));
   });
   it('starts collapsed with search and enabled-model count', () => {
     const html = render();
