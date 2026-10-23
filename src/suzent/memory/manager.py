@@ -16,9 +16,7 @@ from .classifier import classify_fact
 from . import capture, experience, memory_context, memory_map
 from .models import (
     ExtractedFact,
-    ConversationContext,
     MemoryExtractionResult,
-    FactExtractionResponse,
 )
 
 logger = get_logger(__name__)
@@ -29,9 +27,6 @@ if TYPE_CHECKING:
 # Memory system constants
 DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
 DEFAULT_MEMORY_SEARCH_LIMIT = 10
-
-# Heuristic extraction importance scores
-DEFAULT_IMPORTANCE = 0.5
 
 # Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
@@ -551,19 +546,9 @@ class MemoryManager:
             # log at all, and `_split_confirmations` cannot recover a fact the model
             # already declined to emit.
             durable_known = [k["content"] for k in known if k.get("durable")]
-            mode = self._capture_mode()
-            if mode == "typed":
-                extracted_facts = await self._capture_facts(
-                    conversation_text, durable_known
-                )
-            else:
-                extracted_facts = await self._extract_facts_llm(
-                    conversation_text, durable_known
-                )
-                if mode == "shadow":
-                    await self._shadow_capture(
-                        conversation_text, durable_known, extracted_facts, chat_id
-                    )
+            extracted_facts = await self._capture_facts(
+                conversation_text, durable_known, chat_id
+            )
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation")
@@ -612,15 +597,13 @@ class MemoryManager:
         """Capture lessons from a batch that shows a failure and its fix.
 
         Runs on every batch, scheduled turns included; one with no failure or
-        correction in it costs no model call. In shadow mode the result is only logged.
-        A lesson memory already holds is recorded as a confirmation, so the dream
+        correction in it costs no model call. A lesson memory already holds is recorded as a confirmation, so the dream
         raises its count instead of filing it twice. Never raises: the user-fact pass
         for the same batch has already been written, and a retry would repeat it.
 
         Returns the contents of the lessons written to the daily log.
         """
-        mode = self._capture_mode()
-        if mode == "legacy" or self.llm_client is None:
+        if self.llm_client is None:
             return []
         if not experience.has_signal(batch):
             return []
@@ -642,31 +625,16 @@ class MemoryManager:
             result = experience.gate(
                 response.lessons, batch, rejected=rejected, known=known
             )
-            if result.dropped:
-                logger.info(
-                    f"Experience gate dropped {len(result.dropped)} lesson(s): "
-                    + ", ".join(code for code, _ in result.dropped)
-                )
             if not self.markdown_store:
                 return []
-            if mode == "shadow":
-                self.markdown_store.append_capture_shadow(
-                    {
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                        "chat_id": chat_id,
-                        "channel": "experience",
-                        "kept": [lesson.model_dump() for lesson in result.kept],
-                        "repeated": [
-                            {"matched": m, **lesson.model_dump()}
-                            for lesson, m in result.repeated
-                        ],
-                        "dropped": [
-                            {"code": code, **lesson.model_dump()}
-                            for code, lesson in result.dropped
-                        ],
-                    }
-                )
-                return []
+            self._log_dropped(
+                "experience",
+                chat_id,
+                [
+                    {"code": code, **lesson.model_dump()}
+                    for code, lesson in result.dropped
+                ],
+            )
             date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             for lesson, matched in result.repeated:
                 await self.markdown_store.append_confirmation(
@@ -943,11 +911,23 @@ class MemoryManager:
         )
         return date
 
-    @staticmethod
-    def _capture_mode() -> str:
-        from suzent.config import CONFIG
-
-        return getattr(CONFIG, "memory_capture_mode", "shadow")
+    def _log_dropped(self, channel: str, chat_id: str, dropped: List[dict]) -> None:
+        """Keep what a gate turned away, so a wrong drop can be found later."""
+        if not dropped:
+            return
+        logger.info(
+            f"{channel} gate dropped {len(dropped)}: "
+            + ", ".join(d["code"] for d in dropped)
+        )
+        if self.markdown_store:
+            self.markdown_store.append_capture_dropped(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "chat_id": chat_id,
+                    "channel": channel,
+                    "dropped": dropped,
+                }
+            )
 
     async def _run_capture(
         self, content: str, known_facts: List[str]
@@ -968,21 +948,21 @@ class MemoryManager:
         )
 
     async def _capture_facts(
-        self, content: str, known_facts: List[str]
+        self, content: str, known_facts: List[str], chat_id: str
     ) -> List[ExtractedFact]:
         """Typed capture: what the gate keeps, as facts for the daily log.
 
-        Raises when the model fails, like the legacy extractor, so the extraction
-        queue keeps the turns and retries them.
+        Raises when the model fails, so the extraction queue keeps the turns and
+        retries them.
         """
         result = await self._run_capture(content, known_facts)
         if result is None:
             return []
-        if result.dropped:
-            logger.info(
-                f"Capture gate dropped {len(result.dropped)} candidate(s): "
-                + ", ".join(code for code, _ in result.dropped)
-            )
+        self._log_dropped(
+            "facts",
+            chat_id,
+            [{"code": code, **f.model_dump()} for code, f in result.dropped],
+        )
         stale_after = (
             datetime.now(timezone.utc) + timedelta(days=capture.DATED_STALE_DAYS)
         ).strftime("%Y-%m-%d")
@@ -1001,175 +981,6 @@ class MemoryManager:
                 )
             )
         return facts
-
-    async def _shadow_capture(
-        self,
-        content: str,
-        known_facts: List[str],
-        legacy: List[ExtractedFact],
-        chat_id: str,
-    ) -> None:
-        """Run typed capture beside the legacy extractor and log both. Never raises."""
-        if not self.markdown_store:
-            return
-        try:
-            result = await self._run_capture(content, known_facts)
-        except Exception as e:
-            logger.warning(f"Shadow capture failed: {e}")
-            return
-        if result is None:
-            return
-        self.markdown_store.append_capture_shadow(
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "chat_id": chat_id,
-                "legacy": [f.content for f in legacy],
-                "kept": [f.model_dump() for f in result.kept],
-                "dropped": [
-                    {"code": code, **f.model_dump()} for code, f in result.dropped
-                ],
-                "ungrounded": result.ungrounded,
-            }
-        )
-
-    async def _extract_facts_llm(
-        self, content: str, known_facts: Optional[List[str]] = None
-    ) -> List[ExtractedFact]:
-        """
-        Extract facts using LLM with Pydantic schema-based structured output.
-
-        Uses LiteLLM's structured output feature to enforce the FactExtractionResponse
-        schema, ensuring validated ExtractedFact models are returned.
-
-        Args:
-            content: The formatted conversation turn.
-            known_facts: Facts already in memory, nearest-first, so the model can tell
-                a repeat from an update. Omitted when retrieval is unavailable.
-
-        Returns:
-            List of ExtractedFact models
-        """
-        system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
-        user_prompt = memory_context.format_fact_extraction_user_prompt(
-            content, known_facts
-        )
-        # Keep one client throughout an extraction if settings change mid-request.
-        client = self.llm_client
-        if client is None:
-            return []
-        extraction_model = self.llm_extraction_model or getattr(client, "model", None)
-        logger.debug(f"Starting LLM fact extraction with model={extraction_model!r}")
-
-        try:
-            # Use schema-based extraction with Pydantic model
-            # LiteLLM converts FactExtractionResponse to json_schema format
-            extraction_result = await client.extract_with_schema(
-                prompt=user_prompt,
-                response_model=FactExtractionResponse,
-                system=system_prompt,
-                temperature=LLM_EXTRACTION_TEMPERATURE,
-            )
-
-            facts = extraction_result.facts
-
-            # Ensure defaults for context fields if missing (should be handled by Pydantic defaults but safe to check)
-            # No action needed as Pydantic model has defaults for these fields
-
-            logger.info(f"LLM extracted {len(facts)} facts via schema")
-
-            # Debug: Show detailed extracted facts
-            for i, fact in enumerate(facts, 1):
-                logger.debug(
-                    f"Extracted Fact #{i}:\n"
-                    f"  Content: {fact.content}\n"
-                    f"  Category: {fact.category}\n"
-                    f"  Importance: {fact.importance}\n"
-                    f"  Tags: {fact.tags}\n"
-                    f"  Context: intent={fact.context_user_intent}, outcome={fact.context_outcome}"
-                )
-
-            return facts
-
-        except Exception as e:
-            logger.warning(
-                f"Schema-based extraction failed for model={extraction_model!r}, "
-                f"trying fallback: {e}"
-            )
-
-            # Fallback to basic JSON extraction
-            try:
-                response = await client.extract_structured(
-                    prompt=user_prompt,
-                    system=system_prompt,
-                    temperature=LLM_EXTRACTION_TEMPERATURE,
-                )
-
-                # Handle different return formats from extract_structured
-                raw_facts = []
-                if isinstance(response, list):
-                    # LLM returned a list directly
-                    raw_facts = response
-                elif isinstance(response, dict):
-                    # LLM returned a dict, look for "facts" key
-                    raw_facts = response.get("facts", [])
-                else:
-                    logger.warning(
-                        f"Unexpected response format in fallback extraction: {type(response)}"
-                    )
-
-                # Convert to Pydantic models with defaults
-                facts = []
-                for f in raw_facts:
-                    # validation: ensure f is a dict
-                    if not isinstance(f, dict):
-                        continue
-
-                    # Build conversation context if present
-                    ctx_data = f.get("conversation_context")
-                    conversation_context = None
-                    if ctx_data and isinstance(ctx_data, dict):
-                        conversation_context = ConversationContext(
-                            user_intent=ctx_data.get(
-                                "user_intent", "inferred from conversation"
-                            ),
-                            agent_actions_summary=ctx_data.get("agent_actions_summary"),
-                            outcome=ctx_data.get(
-                                "outcome", "extracted from conversation turn"
-                            ),
-                        )
-                    else:
-                        # Provide default context for new facts
-                        conversation_context = ConversationContext()
-
-                    facts.append(
-                        ExtractedFact(
-                            content=f.get("content", ""),
-                            category=f.get("category"),
-                            importance=f.get("importance", DEFAULT_IMPORTANCE),
-                            tags=f.get("tags", []),
-                            # Map flat context fields from potentially nested JSON or flat JSON
-                            context_user_intent=conversation_context.user_intent
-                            if conversation_context
-                            else "inferred from conversation",
-                            context_agent_actions_summary=conversation_context.agent_actions_summary
-                            if conversation_context
-                            else None,
-                            context_outcome=conversation_context.outcome
-                            if conversation_context
-                            else "extracted from conversation turn",
-                        )
-                    )
-
-                logger.info(f"LLM extracted {len(facts)} facts via fallback")
-                return facts
-
-            except Exception as fallback_error:
-                # Raised, not swallowed: the caller keeps the turns queued and
-                # retries them, instead of treating them as having held nothing.
-                raise RuntimeError(
-                    f"LLM fact extraction failed for model={extraction_model!r}: "
-                    f"{fallback_error}"
-                ) from fallback_error
 
     # ===== Utility Methods =====
 

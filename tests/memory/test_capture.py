@@ -1,6 +1,6 @@
 """Typed capture labels every candidate, and a deterministic gate checks the labels.
 
-The legacy extractor stored the agent's own words, scheduled-task specs and context-free
+Unlabelled extraction stored the agent's own words, scheduled-task specs and context-free
 choices as facts about the user. Capture asks the model where each candidate came from
 and the exact words behind it; the gate drops what those labels prove is not a memory.
 """
@@ -14,7 +14,6 @@ from suzent.memory import capture
 from suzent.memory.capture import CapturedFact, CaptureResponse
 from suzent.memory.extraction_queue import CURSORS_FILE, ExtractionQueue
 from suzent.memory.markdown_store import MarkdownMemoryStore
-from suzent.memory.models import ExtractedFact, FactExtractionResponse
 from suzent.session.transcript import TranscriptManager
 
 BATCH = """## Earlier context (already processed; do not extract)
@@ -66,12 +65,6 @@ def test_loose_labels_are_mapped_onto_the_schema():
         "dated",
         "context",
     )
-
-
-def test_evidence_stays_out_of_the_legacy_schema():
-    schema = json.dumps(FactExtractionResponse.model_json_schema())
-    assert "evidence" not in schema
-    assert "evidence" in json.dumps(CaptureResponse.model_json_schema())
 
 
 # --- gate ---
@@ -233,17 +226,12 @@ def store(tmp_path):
 
 
 class _Client:
-    """Answers each extractor with its own schema."""
-
     def __init__(self, captured: list[CapturedFact]) -> None:
         self.captured = captured
 
     async def extract_with_schema(self, *, prompt, response_model, system, temperature):
-        if response_model is CaptureResponse:
-            return CaptureResponse(facts=self.captured)
-        return FactExtractionResponse(
-            facts=[ExtractedFact(content="User likes tea", category="preference")]
-        )
+        assert response_model is CaptureResponse
+        return CaptureResponse(facts=self.captured)
 
 
 class _Indexer:
@@ -262,7 +250,7 @@ class _Rows:
         self.deleted.append(memory_id)
 
 
-def _manager(store, monkeypatch, *, mode="typed", captured=(), rows=()):
+def _manager(store, monkeypatch, *, captured=(), rows=()):
     from suzent.memory.manager import MemoryManager
 
     mgr = MemoryManager.__new__(MemoryManager)
@@ -277,7 +265,6 @@ def _manager(store, monkeypatch, *, mode="typed", captured=(), rows=()):
         return list(rows)
 
     mgr.search_memories = search_memories
-    monkeypatch.setattr(MemoryManager, "_capture_mode", staticmethod(lambda: mode))
     return mgr
 
 
@@ -287,21 +274,14 @@ def _log(store) -> str:
     )
 
 
-async def test_shadow_mode_writes_legacy_facts_and_logs_capture(store, monkeypatch):
-    mgr = _manager(
-        store,
-        monkeypatch,
-        mode="shadow",
-        captured=[_fact(), _fact(source="agent_said")],
-    )
+async def test_gate_drops_are_logged_for_review(store, monkeypatch):
+    mgr = _manager(store, monkeypatch, captured=[_fact(), _fact(source="agent_said")])
 
     result = await mgr.process_conversation_for_memories(BATCH, "chat-1", "u1")
 
-    assert result.extracted_facts == ["User likes tea"]
-    assert "evidence" not in _log(store) and "kind:" not in _log(store)
-    record = json.loads(store.capture_shadow_path.read_text(encoding="utf-8"))
-    assert record["legacy"] == ["User likes tea"]
-    assert [f["content"] for f in record["kept"]] == ["User prefers tea over coffee"]
+    assert result.extracted_facts == ["User prefers tea over coffee"]
+    record = json.loads(store.capture_dropped_path.read_text(encoding="utf-8"))
+    assert (record["channel"], record["chat_id"]) == ("facts", "chat-1")
     assert [d["code"] for d in record["dropped"]] == ["agent_said"]
 
 
@@ -314,7 +294,7 @@ async def test_typed_mode_writes_evidence_and_tags(store, monkeypatch):
     log = _log(store)
     assert "kind:user source:user_said dated stale_after:" in log
     assert '> "I always drink tea, never coffee"' in log
-    assert not store.capture_shadow_path.exists()
+    assert not store.capture_dropped_path.exists()
     assert mgr._core_indexer.files
 
 

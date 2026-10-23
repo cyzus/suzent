@@ -76,8 +76,8 @@ whole chat.
 %%{init: {'theme':'neutral'}}%%
 flowchart TD
     A["turn text"] --> B["recall 10 nearest known facts<br/>(best-effort — failure means<br/>extraction runs as before)"]
-    B --> C["LLM extraction<br/>prompt carries 'already in memory'"]
-    C -->|nothing new| Z["stop"]
+    B --> C["typed capture + gate<br/>prompt carries 'already in memory'"]
+    C -->|nothing kept| Z["stop"]
     C --> D["append to today's log"]
     D --> E["reindex_file_now(archive, today)"]
     E --> F[("LanceDB")]
@@ -90,8 +90,7 @@ which *changes* a known one must still be emitted.
 
 ## Typed capture
 
-`memory_capture_mode` picks the extractor. `legacy` is the untyped one above. `typed`
-uses `memory/capture.py`: the model proposes at most `MAX_CANDIDATES` (5) candidates per
+Extraction is `memory/capture.py`: the model proposes at most `MAX_CANDIDATES` (5) candidates per
 batch, each labelled with
 
 - `kind`: `user` (about the person), `experience` (a lesson from how a task went) or
@@ -120,10 +119,12 @@ Kept facts go to the daily log as before, with tags (`kind:` `source:`, `dated
 stale_after:<+90 days>`, `ungrounded` when a specific is not in the evidence) and a
 `> "evidence"` line under the fact, which the dream reads.
 
-`shadow`, the default, runs both: the legacy extractor still writes, and typed capture
-runs on the same batch and appends the legacy facts beside what it would have kept and dropped (with codes) to
-`.state/capture_shadow.jsonl` without writing. A shadow failure never fails the batch.
-The point is a week of side-by-side evidence before switching to `typed`.
+Every drop, with its code and the full candidate, is appended to
+`.state/capture_dropped.jsonl` as `{"ts", "chat_id", "channel": "facts", "dropped"}`, so a
+wrongly dropped fact can be found and the gate tuned. This replaced an untyped extractor
+that wrote whatever looked like a fact; a replay of past batches showed it storing the
+agent's own words and task specs as facts about the user, so it was removed rather than
+kept as an option.
 
 Scheduled turns are filtered per turn in `extraction_queue._is_scheduled`, so a cron or
 heartbeat run inside a normal chat is not captured as user facts. `cron` is deliberately
@@ -148,8 +149,8 @@ works. `memory/experience.py` is a second step on every batch, scheduled turns i
    overlaps a known memory by `REPEAT_MATCH` (0.8 of bigrams) is a repeat: it is appended
    to the confirmations sidecar instead of being written again.
 4. Kept lessons go to the daily log tagged `kind:experience source:outcome scope:<slug>`
-   with both quotes as the evidence line. In `shadow` mode they only go to
-   `capture_shadow.jsonl` with `"channel": "experience"`; `legacy` skips the step.
+   with both quotes as the evidence line. Drops go to `capture_dropped.jsonl` with
+   `"channel": "experience"`.
 
 A failure here is logged and never fails the batch.
 

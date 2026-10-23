@@ -35,7 +35,7 @@ DATA_DIR/
       superseded.txt              # log lines the dream folded, for the runner to retire
       review_queue.md             # open questions the dream could not settle
       dream_ops.md                # the dream's op log, flushed to log.md by the runner
-      capture_shadow.jsonl        # shadow-mode typed capture results
+      capture_dropped.jsonl       # candidates the capture gates dropped, with codes
       cleanup/YYYY-MM-DD/         # `suzent memory cleanup` drafts
     0_Inbox/
     1_Projects/

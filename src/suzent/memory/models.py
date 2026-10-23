@@ -213,21 +213,6 @@ ASSISTANT RESPONSE:
 """
 
 
-class ConversationContext(BaseModel):
-    """Context metadata for a memory entry."""
-
-    user_intent: str = Field(
-        "inferred from conversation",
-        description="What the user was trying to accomplish",
-    )
-    agent_actions_summary: Optional[str] = Field(
-        None, description="Summary of agent actions"
-    )
-    outcome: str = Field(
-        "extracted from conversation turn", description="Result of the interaction"
-    )
-
-
 class ExtractedFact(BaseModel):
     """A fact extracted from conversation for memory storage."""
 
@@ -253,7 +238,7 @@ class ExtractedFact(BaseModel):
     context_agent_actions_summary: Optional[str] = Field(
         None, description="Summary of agent actions"
     )
-    # Set by typed capture only; kept out of the legacy extractor's schema.
+    # Set by the gate, never by the model.
     evidence: SkipJsonSchema[Optional[str]] = None
 
     # Transcript linkage (Phase 5) — traces where this fact came from
@@ -289,16 +274,3 @@ class MemoryExtractionResult(BaseModel):
     def empty(cls) -> "MemoryExtractionResult":
         """Create an empty result."""
         return cls()
-
-
-class FactExtractionResponse(BaseModel):
-    """LLM response model for fact extraction.
-
-    This model is used with LiteLLM's structured output feature to ensure
-    the LLM returns properly formatted fact extraction results.
-    """
-
-    facts: List[ExtractedFact] = Field(
-        default_factory=list,
-        description="List of extracted facts from the conversation",
-    )

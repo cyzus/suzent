@@ -52,19 +52,9 @@ memory_map_max_lines: 30                      # Size cap on the MEMORY.md map
 
 ## How facts are picked out
 
-```yaml
-memory_capture_mode: shadow   # legacy, shadow or typed
-```
-
-- `legacy` keeps the older extractor, which saves anything that looks like a fact.
-- `shadow` (the default) keeps the older extractor saving, and runs the stricter one
-  beside it without saving anything, so you can compare the two.
-- `typed` uses only the stricter extractor: facts about you must be in your own
-  words, lessons need both the failure and the fix, and facts from files or pages
-  need their source.
-
-Lessons follow the same setting: `legacy` does not look for them, `shadow` only
-records what it would have saved, and `typed` saves them.
+There is nothing to set here. Facts about you are saved only when they are in your own
+words, lessons only when the chat shows both the failure and the fix, and facts from
+files or pages only with their source.
 
 The notebook audit runs on its own, slower schedule, and only once consolidation is
 caught up:

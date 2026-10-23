@@ -184,7 +184,7 @@ class _Indexer:
         pass
 
 
-def _manager(tmp_path, monkeypatch, *, mode="typed", lessons=(), rows=()):
+def _manager(tmp_path, monkeypatch, *, lessons=(), rows=()):
     from suzent.memory.manager import MemoryManager
 
     mgr = MemoryManager.__new__(MemoryManager)
@@ -200,7 +200,6 @@ def _manager(tmp_path, monkeypatch, *, mode="typed", lessons=(), rows=()):
         return list(rows)
 
     mgr.search_memories = search_memories
-    monkeypatch.setattr(MemoryManager, "_capture_mode", staticmethod(lambda: mode))
     return mgr
 
 
@@ -211,7 +210,7 @@ def _log(mgr) -> str:
     )
 
 
-async def test_typed_mode_writes_the_lesson_with_its_tags(tmp_path, monkeypatch):
+async def test_a_kept_lesson_is_written_with_its_tags(tmp_path, monkeypatch):
     mgr = _manager(tmp_path, monkeypatch, lessons=[_lesson()])
 
     written = await mgr.process_experience(BATCH, "c1", "u1")
@@ -240,16 +239,16 @@ async def test_a_repeat_is_recorded_as_a_confirmation(tmp_path, monkeypatch):
     assert confirmation["matched"] == rows[0]["content"]
 
 
-async def test_shadow_mode_only_logs(tmp_path, monkeypatch):
-    mgr = _manager(tmp_path, monkeypatch, mode="shadow", lessons=[_lesson()])
+async def test_a_dropped_lesson_is_logged_not_written(tmp_path, monkeypatch):
+    mgr = _manager(tmp_path, monkeypatch, lessons=[_lesson(scope="general")])
 
     assert await mgr.process_experience(BATCH, "c1", "u1") == []
     assert _log(mgr) == ""
     record = json.loads(
-        mgr.markdown_store.capture_shadow_path.read_text(encoding="utf-8")
+        mgr.markdown_store.capture_dropped_path.read_text(encoding="utf-8")
     )
     assert record["channel"] == "experience"
-    assert [r["scope"] for r in record["kept"]] == ["Windows shell"]
+    assert [d["code"] for d in record["dropped"]] == ["no_scope"]
 
 
 async def test_a_batch_without_a_signal_costs_no_model_call(tmp_path, monkeypatch):

@@ -321,19 +321,19 @@ class MarkdownMemoryStore:
         p.write_text("", encoding="utf-8")
         return sum(1 for ln in body.splitlines() if ln.lstrip().startswith("- "))
 
-    # --- Capture shadow log (new capture beside the old one, nothing written) ---
+    # --- Capture drops (what a gate turned away, for review) ---
 
     @property
-    def capture_shadow_path(self) -> Path:
-        return self.notebook_state_dir / "capture_shadow.jsonl"
+    def capture_dropped_path(self) -> Path:
+        return self.notebook_state_dir / "capture_dropped.jsonl"
 
-    def append_capture_shadow(self, record: dict) -> None:
-        """Best-effort append of one shadow capture result (never raises)."""
+    def append_capture_dropped(self, record: dict) -> None:
+        """Best-effort append of one batch's gate drops (never raises)."""
         try:
-            with open(self.capture_shadow_path, "a", encoding="utf-8") as f:
+            with open(self.capture_dropped_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.warning(f"Failed to write capture shadow log: {e}")
+            logger.warning(f"Failed to write capture drop log: {e}")
 
     # --- Superseded facts (dream hand-off to the runner) ---
 
