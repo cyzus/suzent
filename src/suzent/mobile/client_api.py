@@ -212,6 +212,11 @@ async def scheduled_tasks(request: Request) -> JSONResponse:
 
     tasks: list[dict[str, object]] = []
     for job in db.list_cron_jobs():
+        # Heartbeats are the desktop's local background checks, not scheduled tasks.
+        # Tasks bound to Regent's own chat stay listed here: the desktop hides them
+        # because its Regent card surfaces them, and a paired device has no card.
+        if job.source == "heartbeat":
+            continue
         chat_id = _task_chat_id(job)
         if not grant.permissions.permits_chat(chat_id):
             continue

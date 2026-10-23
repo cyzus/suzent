@@ -50,14 +50,32 @@ data class ScheduledSidebarGroup(val task: ScheduledTask?, val root: SidebarChat
     val id: String get() = task?.let { "task:${it.id}" } ?: "chat:${root!!.chat.id}"
 }
 
+/**
+ * Desktop automation order: unresolved failures first, then active tasks, then paused
+ * ones, each group by next run (tasks without a next run last).
+ */
+private fun ScheduledTask.failureRank(): Int = when {
+    hasError -> 0
+    active -> 1
+    else -> 2
+}
+
+private fun ScheduledTask.nextRunOrder(): Long = nextRunAt?.let { raw ->
+    runCatching { java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli() }.getOrNull()
+} ?: Long.MAX_VALUE
+
+fun orderedScheduledTasks(tasks: List<ScheduledTask>): List<ScheduledTask> =
+    tasks.sortedWith(compareBy({ it.failureRank() }, { it.nextRunOrder() }))
+
 fun scheduledSidebarGroups(chats: List<Chat>, tasks: List<ScheduledTask>, search: String, expanded: Set<String>): List<ScheduledSidebarGroup> {
+    val ordered = orderedScheduledTasks(tasks)
     val ids = scheduledChatIds(chats)
     val source = chats.filter { it.id in ids }
     val allRows = sidebarChats(source, "", expanded)
     val searched = sidebarChats(source, search, expanded)
     val result = mutableListOf<ScheduledSidebarGroup>()
-    val taskChatIds = tasks.mapNotNull { it.chatId }.toSet()
-    for (task in tasks) {
+    val taskChatIds = ordered.mapNotNull { it.chatId }.toSet()
+    for (task in ordered) {
         val matches = task.name.contains(search.trim(), ignoreCase = true)
         val rows = (if (matches) allRows else searched).filter { it.root.id == task.chatId }
         if (!matches && rows.isEmpty()) continue

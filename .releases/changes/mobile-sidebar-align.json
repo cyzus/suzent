@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Align the iOS and Android sidebar with the desktop: shared border, shadow and spacing tokens, single-expand projects sorted by recent activity, scheduled tasks ordered like the automation list with a heartbeat filter, full-height drawer rule, flat rows and an inline sub-agent control."
+}

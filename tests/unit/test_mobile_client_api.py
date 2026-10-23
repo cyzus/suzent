@@ -1266,7 +1266,9 @@ def test_scheduled_tasks_are_scoped_and_safe(
 
     db = get_database()
 
-    def job(id: int, mode: str, chat_id: str | None) -> SimpleNamespace:
+    def job(
+        id: int, mode: str, chat_id: str | None, source: str = "user"
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             id=id,
             name=f"Task {id}",
@@ -1277,16 +1279,20 @@ def test_scheduled_tasks_are_scoped_and_safe(
             last_run_at=None,
             last_error="private error",
             prompt="private prompt",
+            source=source,
         )
 
     db.list_cron_jobs = lambda: [
         job(1, "bound", "shared"),
         job(2, "bound", "private"),
         job(3, "isolated", None),
+        # Heartbeats are desktop-only rows; Regent-bound user tasks stay visible.
+        job(4, "bound", "shared", source="heartbeat"),
+        job(5, "bound", "focal-suzent"),
     ]
     for permissions, expected in [
         ({"chat_ids": ["shared"]}, ["1"]),
-        ({"all_chats": True}, ["1", "2", "3"]),
+        ({"all_chats": True}, ["1", "2", "3", "5"]),
         ({}, []),
     ]:
         result = grant(store, **permissions)
@@ -1296,11 +1302,12 @@ def test_scheduled_tasks_are_scoped_and_safe(
         tasks = response.json()["tasks"]
         assert [task["id"] for task in tasks] == expected
         assert all("prompt" not in task and "lastError" not in task for task in tasks)
+        assert "4" not in {task["id"] for task in tasks}  # heartbeat rows never surface
         if tasks:
             assert tasks[0]["chatId"] == "shared"
             assert tasks[0]["hasError"] is True
             assert datetime.fromisoformat(tasks[0]["nextRunAt"]).utcoffset() is not None
-        if len(tasks) == 3:
-            assert tasks[-1]["chatId"] is None
+        if len(tasks) == 4:
+            assert tasks[-1]["id"] == "5"
     store.revoke(result["device"]["device_id"])
     assert client.get("/mobile/client/scheduled-tasks").status_code == 401

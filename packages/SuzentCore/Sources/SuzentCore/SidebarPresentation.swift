@@ -57,6 +57,34 @@ public func sidebarChats(_ chats: [Chat], search: String, expanded: Set<String>)
     return result
 }
 
+/// Desktop automation order: unresolved failures first, then active tasks, then paused
+/// ones, each group by next run (tasks without a next run last).
+private func scheduledTaskRank(_ task: ScheduledTask) -> Int {
+    task.hasError ? 0 : (task.active ? 1 : 2)
+}
+
+private func scheduledTaskNextRun(_ task: ScheduledTask) -> TimeInterval {
+    guard let raw = task.nextRunAt else { return .greatestFiniteMagnitude }
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    return date?.timeIntervalSince1970 ?? .greatestFiniteMagnitude
+}
+
+public func orderedScheduledTasks(_ tasks: [ScheduledTask]) -> [ScheduledTask] {
+    tasks.enumerated()
+        .sorted { left, right in
+            let leftRank = scheduledTaskRank(left.element)
+            let rightRank = scheduledTaskRank(right.element)
+            if leftRank != rightRank { return leftRank < rightRank }
+            let leftNext = scheduledTaskNextRun(left.element)
+            let rightNext = scheduledTaskNextRun(right.element)
+            if leftNext != rightNext { return leftNext < rightNext }
+            return left.offset < right.offset
+        }
+        .map(\.element)
+}
+
 public struct ScheduledSidebarGroup: Identifiable, Sendable {
     public let task: ScheduledTask?
     public let root: SidebarChatEntry?
@@ -71,8 +99,9 @@ public func scheduledSidebarGroups(_ chats: [Chat], tasks: [ScheduledTask], sear
     let searched = sidebarChats(source, search: search, expanded: expanded)
     let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
     var result: [ScheduledSidebarGroup] = []
-    let taskChatIDs = Set(tasks.compactMap(\.chatId))
-    for task in tasks {
+    let ordered = orderedScheduledTasks(tasks)
+    let taskChatIDs = Set(ordered.compactMap(\.chatId))
+    for task in ordered {
         let matches = query.isEmpty || task.name.localizedCaseInsensitiveContains(query)
         let rows = (matches ? allRows : searched).filter { $0.root.id == task.chatId }
         guard matches || !rows.isEmpty else { continue }
