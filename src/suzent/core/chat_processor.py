@@ -2641,11 +2641,11 @@ def _agent_history_is_compacted(messages: list) -> bool:
     return False
 
 
-def _last_user_index(messages: list) -> int:
-    """Index of the last user-role row in ``messages`` (or -1)."""
+def _last_turn_boundary_index(messages: list) -> int:
+    """Index of the last user or system-triggered turn boundary (or -1)."""
     last = -1
     for idx, m in enumerate(messages):
-        if m.get("role") == "user":
+        if m.get("role") in {"user", "system_triggered"}:
             last = idx
     return last
 
@@ -2657,13 +2657,13 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
     history plus this turn's new output; the original earlier messages are gone
     from the LLM context but still live in the stored ``chat_messages``. We keep
     the stored rows *before* this turn as the base, then splice in the freshly
-    rebuilt current turn (from its last user message onward).
+    rebuilt current turn (from its last user or system-triggered message onward).
 
     Critically this must be idempotent: post-process can run more than once for a
     turn (retries, snapshot + finalize), and the turn's user row is pre-written to
     the display log at turn start. A naive ``stored + new_rows`` appends the
     assistant reply again on every pass, producing duplicate responses. Instead we
-    truncate the stored log at *its* last user row (this turn's pre-saved prompt)
+    truncate the stored log at *its* last turn boundary (this turn's pre-saved prompt)
     and replace everything from there with the rebuilt turn.
     """
     stored = list(chat_messages or [])
@@ -2675,15 +2675,15 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
         # least omits the synthetic summary rows.
         return rebuilt
 
-    # This turn's rows in the rebuild: from its last user message onward.
-    rb_user_idx = _last_user_index(rebuilt)
+    # This turn's rows in the rebuild: from its last user or system-triggered message onward.
+    rb_user_idx = _last_turn_boundary_index(rebuilt)
     turn_rows = rebuilt[rb_user_idx:] if rb_user_idx >= 0 else rebuilt
 
     # Base = stored rows before this turn. The turn's user prompt was pre-written
-    # to the display log, so the stored log's last user row IS this turn's prompt;
+    # to the display log, so the stored log's last turn boundary IS this turn's prompt;
     # drop it and anything after (a reply appended by an earlier persist pass) so
     # re-running yields the same result instead of appending duplicates.
-    st_user_idx = _last_user_index(stored)
+    st_user_idx = _last_turn_boundary_index(stored)
     base = stored[:st_user_idx] if st_user_idx >= 0 else stored
 
     return base + turn_rows
