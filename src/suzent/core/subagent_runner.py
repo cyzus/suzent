@@ -568,6 +568,69 @@ def followup_config(base_config: dict) -> dict:
     return {key: base_config[key] for key in _FOLLOWUP_KEYS if key in base_config}
 
 
+# What a fork takes from its own setup rather than from its parent's turn.
+# None of these change the tool definitions or are read from the system
+# prompt the fork replays, so overriding them keeps the cached prefix intact.
+_FORK_OWN_KEYS = (
+    "permission_mode",
+    "interaction_profile",
+    "memory_enabled",
+    "platform",
+    "cwd",
+    "sandbox_volumes",
+    *_INHERITED_PERMISSION_KEYS,
+)
+
+
+def fork_turn_config(task: "SubAgentTask", base_config: dict) -> Optional[dict]:
+    """The turn config of a fork that shares its parent's cached prefix.
+
+    The fork is built from the config its parent's current turn used, so its
+    tool definitions match, and is sent the parent's exact instruction parts
+    (see ``prompt_cache.pin_fork_prefix``). Its own tool set is enforced when
+    it calls a tool instead of by narrowing the list. Returns None when the
+    parent has no turn recorded in this process, or the fork runs another
+    model, which has no cache to share; the caller then builds a standalone
+    sub-agent.
+    """
+    from suzent.core.prompt_cache import pin_fork_prefix, turn_config
+
+    parent = turn_config(task.parent_chat_id)
+    if parent is None or base_config.get("model") not in (
+        None,
+        parent.get("model"),
+        parent.get("_model_id"),
+    ):
+        return None
+    if not pin_fork_prefix(task.chat_id, task.parent_chat_id):
+        return None
+    config = {key: value for key, value in parent.items() if not key.startswith("_")}
+    for key in _FORK_OWN_KEYS:
+        if key in base_config:
+            config[key] = base_config[key]
+        else:
+            config.pop(key, None)
+    allowed = task.tools_allowed or list(parent.get("tools") or [])
+    config["call_allowed_tools"] = [t for t in allowed if t not in _ALWAYS_DENIED]
+    config["prompt_cache_chat_id"] = task.parent_chat_id
+    return config
+
+
+def fork_reminder(task: "SubAgentTask", config: dict, parent_cwd: Optional[str]) -> str:
+    from suzent.prompts import SUBAGENT_FORK_REMINDER, SUBAGENT_INSTRUCTIONS
+
+    role = SUBAGENT_INSTRUCTIONS.get(
+        task.subagent_type or "", SUBAGENT_INSTRUCTIONS["_default"]
+    )
+    # The replayed system prompt still names the parent's directory.
+    if (cwd := config.get("cwd")) and cwd != parent_cwd:
+        role += (
+            f"\nYour working directory is {cwd}, not the one the system prompt names."
+        )
+    tools = ", ".join(config["call_allowed_tools"]) or "none"
+    return SUBAGENT_FORK_REMINDER.format(role=role, tools=tools)
+
+
 # Roots the agent addresses virtually; everything else absolute is a host path.
 _VIRTUAL_PREFIXES = ("/mnt", "/workspace", "/shared", "/persistence", "/uploads")
 
@@ -638,13 +701,14 @@ async def _run_subagent(
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
     try:
+        # A sub-agent works on its parent's task, so it runs on the model the
+        # user chose for that chat; the catalog default is only a last resort.
         if task.runtime != "acp" and not task.model_override:
             from suzent.core.providers import get_default_chat_model
 
-            if task.inherit_context:
-                task.model_override = _parent_model_id(task.parent_chat_id)
-            if not task.model_override:
-                task.model_override = get_default_chat_model()
+            task.model_override = (
+                _parent_model_id(task.parent_chat_id) or get_default_chat_model()
+            )
 
         task.status = "running"
         task.started_at = datetime.now()
@@ -824,15 +888,36 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
-            db.merge_chat_config(
-                task.chat_id,
-                {
-                    **followup_config(base_config),
-                    **persistable_grants(base_config, task.isolation),
-                },
+            fork_config = (
+                fork_turn_config(task, base_config) if task.inherit_context else None
             )
-            config_override = build_agent_config(base_config, require_social_tool=False)
-            message_content, reminders = task.description, None
+            if fork_config is not None:
+                # Follow-up turns rebuild from the stored config, so it has to
+                # be the whole fork config for them to keep the shared prefix.
+                stored = dict(fork_config)
+                if task.isolation == "worktree":
+                    stored.pop("cwd", None)
+                db.merge_chat_config(task.chat_id, stored)
+                config_override = fork_config
+                reminders = [fork_reminder(task, fork_config, parent_cwd)]
+            else:
+                if task.inherit_context:
+                    logger.info(
+                        f"Sub-agent {task.task_id} forks without its parent's "
+                        "cached prefix: no parent turn recorded, or another model"
+                    )
+                db.merge_chat_config(
+                    task.chat_id,
+                    {
+                        **followup_config(base_config),
+                        **persistable_grants(base_config, task.isolation),
+                    },
+                )
+                config_override = build_agent_config(
+                    base_config, require_social_tool=False
+                )
+                reminders = None
+            message_content = task.description
             stalls = 0
             while True:
                 try:

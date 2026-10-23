@@ -181,8 +181,9 @@ class AgentTool(Tool):
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
                     "Invalid or disabled IDs are rejected instead of silently falling back. "
-                    "With inherit_context it defaults to your current model, which reuses "
-                    "the cached conversation prefix."
+                    "Defaults to your current model. Pick another only for independent "
+                    "work, such as a cheaper model for broad searches or a different "
+                    "model for a second opinion."
                 ),
             ),
         ] = None,
@@ -270,7 +271,7 @@ class AgentTool(Tool):
             run_in_background: True (default) = fire-and-forget, auto-wakeup on completion.
                 False = blocking, result returned inline.
             cwd: Working directory for the sub-agent's shell and file tools.
-            model_override: Optional enabled model ID for the sub-agent.
+            model_override: Optional enabled model ID; defaults to the current model.
             inherit_context: If True, sub-agent receives a snapshot of current conversation history.
             isolation: 'none' (default) or 'worktree' (git-isolated branch).
             isolation_target_path: Git repo root. Required when isolation='worktree'.
@@ -330,9 +331,10 @@ class AgentTool(Tool):
                     },
                 )
 
-        # Another model would have to prefill the whole inherited history again.
-        if inherit_context and not model_override and runtime != "acp":
-            model_override = ctx.deps.model_id
+        # The model running this turn, which can be newer than what the parent
+        # chat has stored; the runner falls back to the stored one.
+        if not model_override and runtime != "acp":
+            model_override = getattr(ctx.deps, "model_id", None)
 
         if runtime == "acp":
             effective_tools = []
