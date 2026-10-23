@@ -110,6 +110,7 @@ A deterministic gate then drops what the labels prove is not a memory. Its drop 
 | `evidence_not_in_user_line` | the evidence is not in any USER line of the new turns (≥0.8 bigram overlap) |
 | `tool_output_without_citation` | tool output that is not a World fact, or has no path or URL |
 | `outcome_not_experience` | an outcome filed as something other than Experience |
+| `experience_channel` | a lesson; only the experience step below proposes those |
 | `context_free_choice` | a pick that only makes sense inside the chat ("option 2", "the second one") |
 | `rejected` | matches `.state/rejected.jsonl` |
 | `restatement` | ≥0.9 similar to a fact already in the recall set |
@@ -125,8 +126,38 @@ runs on the same batch and appends the legacy facts beside what it would have ke
 The point is a week of side-by-side evidence before switching to `typed`.
 
 Scheduled turns are filtered per turn in `extraction_queue._is_scheduled`, so a cron or
-heartbeat run inside a normal chat is not captured. `cron` is deliberately not in
-`_is_system_chat`: that list also makes a chat stateless.
+heartbeat run inside a normal chat is not captured as user facts. `cron` is deliberately
+not in `_is_system_chat`: that list also makes a chat stateless.
+
+### Experience capture
+
+The user-fact pass reads USER lines, so it never sees the agent fail and then find what
+works. `memory/experience.py` is a second step on every batch, scheduled turns included
+(`MemoryManager.process_experience`, called from `ExtractionQueue.flush`):
+
+1. `has_signal` is a regex pre-filter: an error, failed exit code or named root cause in
+   an ASSISTANT or ACTION line, or a correction in a USER line. Without one there is no
+   model call; on the replay below about half the batches had one.
+2. The model returns `Lesson`s: situation, attempt, outcome, lesson, scope, and two
+   verbatim quotes, `evidence_fail` and `evidence_fix`. Known durable memories are listed
+   so a recurring lesson is proposed in its existing wording.
+3. `gate` drops a lesson when either quote is not in one new-turn message (lines of a
+   quote may skip lines of that message, but cannot span two messages) or both quote the
+   same words (`no_outcome`), when its scope is generic (`no_scope`), when it matches the
+   rejected list (`rejected`), or past `MAX_LESSONS` (3, `over_cap`). A lesson whose text
+   overlaps a known memory by `REPEAT_MATCH` (0.8 of bigrams) is a repeat: it is appended
+   to the confirmations sidecar instead of being written again.
+4. Kept lessons go to the daily log tagged `kind:experience source:outcome scope:<slug>`
+   with both quotes as the evidence line. In `shadow` mode they only go to
+   `capture_shadow.jsonl` with `"channel": "experience"`; `legacy` skips the step.
+
+A failure here is logged and never fails the batch.
+
+A replay of 63 historical batches (2026-10-21 to 23) found a signal in 33 and kept 7
+lessons, each tied to a real failure and fix (`gh pr create --repo`, `python -X utf8`, the
+CSS-vs-canvas coordinate handedness, the `.releases/changes` declaration, among others).
+An expired login and an unresolved push failure produced none. The `.releases/changes`
+lesson came back as a repeat of an existing page.
 
 ### `memory_update`, the explicit path
 
@@ -178,7 +209,9 @@ consolidation of new logs.
 The dream is a judgment agent: capture proposes, the dream decides. Its brief
 (`memory_context.build_dream_instructions`) routes by tag to a page type —
 `kind:user` to a `type: personal` page, `kind:experience` to a `type: experience`
-page (merged per situation), `kind:world` to a knowledge page with its source;
+page (merged per situation, keeping its `scope:`; a repo-scoped lesson confirmed 3 or
+more times becomes a review-queue proposal to add it to that repo's AGENTS.md),
+`kind:world` to a knowledge page with its source;
 `dated` never lands on a personal page,
 `ungrounded` is filed only as far as its evidence goes, and `explicit` wins over what it
 contradicts. Untagged lines from before typed capture must pass the exclusion rules.

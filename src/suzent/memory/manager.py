@@ -13,7 +13,7 @@ from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import CoreMemoryFileIndexer
 from .classifier import classify_fact
-from . import capture, memory_context, memory_map
+from . import capture, experience, memory_context, memory_map
 from .models import (
     ExtractedFact,
     ConversationContext,
@@ -605,6 +605,94 @@ class MemoryManager:
             raise
 
         return result
+
+    async def process_experience(
+        self, batch: str, chat_id: str, user_id: str
+    ) -> List[str]:
+        """Capture lessons from a batch that shows a failure and its fix.
+
+        Runs on every batch, scheduled turns included; one with no failure or
+        correction in it costs no model call. In shadow mode the result is only logged.
+        A lesson memory already holds is recorded as a confirmation, so the dream
+        raises its count instead of filing it twice. Never raises: the user-fact pass
+        for the same batch has already been written, and a retry would repeat it.
+
+        Returns the contents of the lessons written to the daily log.
+        """
+        mode = self._capture_mode()
+        if mode == "legacy" or self.llm_client is None:
+            return []
+        if not experience.has_signal(batch):
+            return []
+        try:
+            known = [
+                k["content"]
+                for k in await self._recall_known_facts(batch, user_id, chat_id)
+                if k.get("durable")
+            ]
+            response = await self.llm_client.extract_with_schema(
+                prompt=experience.format_experience_prompt(batch, known),
+                response_model=experience.LessonResponse,
+                system=experience.EXPERIENCE_SYSTEM_PROMPT,
+                temperature=LLM_EXTRACTION_TEMPERATURE,
+            )
+            rejected = (
+                self.markdown_store.read_rejected() if self.markdown_store else []
+            )
+            result = experience.gate(
+                response.lessons, batch, rejected=rejected, known=known
+            )
+            if result.dropped:
+                logger.info(
+                    f"Experience gate dropped {len(result.dropped)} lesson(s): "
+                    + ", ".join(code for code, _ in result.dropped)
+                )
+            if not self.markdown_store:
+                return []
+            if mode == "shadow":
+                self.markdown_store.append_capture_shadow(
+                    {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "chat_id": chat_id,
+                        "channel": "experience",
+                        "kept": [lesson.model_dump() for lesson in result.kept],
+                        "repeated": [
+                            {"matched": m, **lesson.model_dump()}
+                            for lesson, m in result.repeated
+                        ],
+                        "dropped": [
+                            {"code": code, **lesson.model_dump()}
+                            for code, lesson in result.dropped
+                        ],
+                    }
+                )
+                return []
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            for lesson, matched in result.repeated:
+                await self.markdown_store.append_confirmation(
+                    content=lesson.content, matched=matched, date=date, chat_id=chat_id
+                )
+            if not result.kept:
+                return []
+            await self._write_facts_to_markdown(
+                [
+                    ExtractedFact(
+                        content=lesson.content,
+                        category="technical",
+                        importance=lesson.importance,
+                        tags=["kind:experience", "source:outcome", lesson.scope_tag],
+                        evidence=lesson.evidence,
+                    )
+                    for lesson in result.kept
+                ],
+                chat_id,
+            )
+            await self._index_daily_log(date, user_id)
+            logger.info(f"Captured {len(result.kept)} lesson(s) from chat {chat_id}")
+            return [lesson.content for lesson in result.kept]
+        except Exception as e:
+            logger.warning(f"Experience capture for {chat_id} failed: {e}")
+            return []
 
     async def _index_daily_log(self, date: str, user_id: str) -> None:
         """Reindex one day's log. The indexer is the only writer to LanceDB."""

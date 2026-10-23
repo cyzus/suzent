@@ -26,10 +26,19 @@ through, only where you ended up is saved.
 
 A fact about you is only kept when you said it yourself; something the agent
 said or guessed is not. Each saved fact carries the words it came from, so you
-can see why it was kept. Lessons from how a task went, and facts the agent read
-in a file or on a web page, are kept too, together with what happened or where
-they were read. Scheduled tasks are left out, and so is anything that only
-matters today.
+can see why it was kept. Facts the agent read in a file or on a web page are kept
+too, with where they were read. Scheduled tasks are left out of facts about you,
+and so is anything that only matters today.
+
+Lessons come from a separate check. When something goes wrong (a command fails,
+or you tell the agent it got something wrong) and the same exchanges then show
+what fixed it, the agent saves what to do next time and where it applies, such
+as a repository or a tool. A failure that was never fixed, or that will not
+happen again, like an expired login, teaches nothing and is not saved. This
+check also covers scheduled tasks. When a lesson already in your notebook comes
+up again, it is counted rather than saved twice; once a lesson about a
+repository has come up three times, the dream asks whether to add it to that
+repository's agent instructions.
 
 **Overnight.** A background pass called the **dream** reads the new logs and
 folds them into tidy pages: one page per topic, duplicates merged,

@@ -260,8 +260,8 @@ class ExtractionQueue:
                     ][-CONTEXT_TURNS:]
                     budget = MAX_BATCH_CHARS - len(format_batch(context, []))
                     batch = self._split(pending, budget)[0]
-                    # Scheduled turns still move the cursor; with nothing else in
-                    # the batch no model call is made at all.
+                    # Scheduled turns never reach user-fact capture, but their
+                    # failures and fixes are lessons like any other.
                     new = [t for t in batch if not _is_scheduled(t)]
                     if new:
                         await memory_mgr.process_conversation_for_memories(
@@ -270,6 +270,9 @@ class ExtractionQueue:
                             user_id=user_id,
                             recall_query=format_batch([], new),
                         )
+                    await memory_mgr.process_experience(
+                        format_batch(context, batch), chat_id=chat_id, user_id=user_id
+                    )
                     await self._advance(
                         chat_id, cursor + sum(len(turn) for turn in batch)
                     )

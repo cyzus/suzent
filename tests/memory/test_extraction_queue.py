@@ -22,6 +22,9 @@ class _RecordingMemory:
             raise RuntimeError("model down")
         self.batches.append(conversation_text)
 
+    async def process_experience(self, batch, chat_id, user_id):
+        return []
+
 
 @pytest.fixture
 def memory(monkeypatch):

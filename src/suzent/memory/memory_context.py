@@ -543,8 +543,11 @@ def build_dream_instructions(
    tag to a page type, placed as the filing reference says:
    - `kind:user` -> a `type: personal` page, in the user's own terms. Never what the agent made or proposed.
    - `kind:experience` -> a `type: experience` page: one entry per kind of situation with what was
-     tried, the outcome and the lesson. Merge with a lesson about the same situation; a later
-     contrary outcome is recorded against that lesson, not as a second one.
+     tried, the outcome and the lesson, and the `scope:` tag as where it applies. Merge with a
+     lesson about the same situation; a later contrary outcome is recorded against that
+     lesson, not as a second one. Once a lesson scoped to a repository has been confirmed 3
+     times or more, add a question to the review queue proposing it for that repository's
+     AGENTS.md, unless the queue or the page already records that question.
    - `kind:world` -> a knowledge page, with its source (path or URL) and the date. No source, no page.
    - `dated` with `stale_after:` -> true now, expires. Never on a personal page: put it on the related
      project or topic page with its date, or skip it.

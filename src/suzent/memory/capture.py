@@ -119,9 +119,8 @@ The batch has lines of three kinds:
 - user: what the user would say about themselves: identity, relationships, preferences
   and working style, long-running goals at the level the user would describe them,
   decisions with their reason, life events. Only from USER lines.
-- experience: a lesson tied to an outcome: the situation, what was tried, what happened
-  (tests passed, the user accepted it, the user corrected it) and what to do next time.
-  No outcome, no experience.
+- experience: a lesson tied to an outcome. A separate step reads failures and their fixes
+  for these; never propose one here.
 - world: how something works, why it is built that way, or where to look, learned in
   this batch, with the file path or URL it came from. Only what the source itself does
   not already say.
@@ -201,7 +200,10 @@ Return JSON with a "facts" array; an empty array when nothing qualifies."""
 
 # --- gate ---
 
-_LINE_START = re.compile(r"^(USER: |ASSISTANT: |ACTION: |### Turn|## )", re.M)
+# Only the batch's own section headers: a reply's markdown headings stay in its message.
+_LINE_START = re.compile(
+    r"^(USER: |ASSISTANT: |ACTION: |### Turn|## (New turns|Earlier context))", re.M
+)
 _CITATION = re.compile(r"https?://|[\w.-]+/[\w./-]+|\w+\.(py|ts|tsx|md|json|toml)\b")
 _CONTEXT_FREE_CHOICE = re.compile(
     r"\b(option|choice|alternative|approach|plan|proposal)\s*(#?\d+|[a-d])\b"
@@ -216,7 +218,8 @@ _GENERIC_CAPITALS = frozenset({"User", "Agent", "I", "The", "A", "An"})
 
 
 def normalize(text: str) -> str:
-    return re.sub(r"[\s\"'`“”‘’「」.,;:!?，。；：！？、]+", "", text).lower()
+    # `*` too: agents bold words in their replies, and a quote copied out drops it.
+    return re.sub(r"[\s\"'`*“”‘’「」.,;:!?，。；：！？、]+", "", text).lower()
 
 
 def _bigrams(text: str) -> list[str]:
@@ -243,18 +246,26 @@ def _new_section(batch: str) -> str:
     return batch.split("## New turns", 1)[-1]
 
 
-def user_lines(batch: str) -> list[str]:
-    """Each USER line of the new turns, normalised. Earlier context never counts."""
+def messages(batch: str, prefix: str = "USER: ") -> list[str]:
+    """The text of each new-turn line starting with *prefix*, which may be a regex.
+
+    A message runs until the next line of any kind. Earlier context never counts.
+    """
     new = _new_section(batch)
-    lines: list[str] = []
-    for match in re.finditer(r"^USER: ", new, re.M):
+    out: list[str] = []
+    for match in re.finditer(f"^(?:{prefix})", new, re.M):
         rest = new[match.end() :]
         nxt = _LINE_START.search(rest)
-        lines.append(normalize(rest[: nxt.start()] if nxt else rest))
-    return lines
+        out.append(rest[: nxt.start()] if nxt else rest)
+    return out
 
 
-def evidence_in_user_line(evidence: str, lines: list[str]) -> bool:
+def user_lines(batch: str) -> list[str]:
+    """Each USER line of the new turns, normalised."""
+    return [normalize(line) for line in messages(batch)]
+
+
+def evidence_in_lines(evidence: str, lines: list[str]) -> bool:
     ev = normalize(evidence)
     if not ev:
         return False
@@ -302,11 +313,13 @@ def _drop_reason(
 ) -> Optional[str]:
     if fact.source == "agent_said":
         return "agent_said"
+    if fact.kind == "experience":
+        return "experience_channel"
     if fact.horizon == "ephemeral":
         return "ephemeral"
     if fact.kind == "user" and fact.source not in ("user_said", "user_did"):
         return "user_kind_wrong_source"
-    if fact.kind == "user" and not evidence_in_user_line(fact.evidence, users):
+    if fact.kind == "user" and not evidence_in_lines(fact.evidence, users):
         return "evidence_not_in_user_line"
     if fact.source == "tool_output" and (
         fact.kind != "world" or not _CITATION.search(f"{fact.evidence} {fact.content}")

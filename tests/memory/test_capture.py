@@ -92,6 +92,7 @@ def test_evidence_matches_despite_spacing_and_punctuation():
     ("overrides", "code"),
     [
         ({"source": "agent_said"}, "agent_said"),
+        ({"kind": "experience", "source": "outcome"}, "experience_channel"),
         ({"horizon": "ephemeral"}, "ephemeral"),
         ({"source": "tool_output"}, "user_kind_wrong_source"),
         ({"evidence": "I used to live in Paris"}, "evidence_not_in_user_line"),
@@ -177,6 +178,9 @@ class _Recorder:
         self, conversation_text, chat_id, user_id, recall_query=None
     ):
         self.batches.append(conversation_text)
+
+    async def process_experience(self, batch, chat_id, user_id):
+        return []
 
 
 @pytest.fixture
