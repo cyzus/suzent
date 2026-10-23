@@ -1546,7 +1546,6 @@ export const en = {
       allClear: 'All clear',
       waitingCount: '{count} waiting on you',
       runningCount: '{count} running',
-      waitingBadge: '{count} waiting on you',
     },
     sections: {
       automation: 'Automation',
@@ -1595,7 +1594,6 @@ export const en = {
       all: 'All',
     },
     labels: {
-      waiting: 'Waiting on you',
       heartbeat: 'Heartbeat',
       running: 'Running',
       unreadCount: '{count} unread',

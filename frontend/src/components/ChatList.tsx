@@ -19,7 +19,7 @@ import { useEventBus } from '../hooks/useEventBus';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { FocalAgentCardView } from './FocalAgentCard';
-import { useFocalStatus } from '../hooks/useFocalStatus';
+import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import {
@@ -65,63 +65,19 @@ const isCronFailureHandledInChat = (job: CronJob): boolean => {
 };
 
 /**
- * A row's status, Slack-style: unread is carried by bold text, so the only
- * marks are a blue square while something runs and a yellow count for work
- * waiting on the user.
+ * A row's or project's status, Slack-style: unread is carried by bold text, so the only
+ * mark is a blue square while something runs. What waits on the user lives on
+ * Regent's board, not in the sidebar.
  */
-function SessionStatusBadges({
-  running,
-  waitingCount,
-}: {
-  running?: boolean;
-  waitingCount?: number;
-}): React.ReactElement | null {
+function RunningMark({ running }: { running?: boolean }): React.ReactElement | null {
   const { t } = useI18n();
-  const waiting = Math.max(0, waitingCount ?? 0);
-
-  if (!running && waiting === 0) return null;
-
-  return (
-    <span className="inline-flex flex-shrink-0 items-center gap-1.5">
-      {running && (
-        <span
-          className="h-2 w-2 bg-brutal-blue animate-pulse"
-          role="img"
-          aria-label={t('chatList.labels.running')}
-          title={t('chatList.labels.running')}
-        />
-      )}
-      {waiting > 0 && (
-        <span
-          className="inline-flex h-4 min-w-4 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
-          title={t('chatList.focal.waitingBadge', { count: waiting })}
-        >
-          {waiting > 99 ? '99+' : waiting}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** A project's one status mark: yellow when work waits on you, blue while something runs. */
-function ProjectStatusSquare({
-  running,
-  waiting,
-}: {
-  running: boolean;
-  waiting: boolean;
-}): React.ReactElement | null {
-  const { t } = useI18n();
-  if (!running && !waiting) return null;
-  const label = waiting
-    ? t('chatList.focal.waitingCount', { count: 1 })
-    : t('chatList.labels.running');
+  if (!running) return null;
   return (
     <span
-      className={`h-2 w-2 shrink-0 ${waiting ? 'bg-brutal-yellow ring-1 ring-brutal-black dark:ring-white' : 'bg-brutal-blue animate-pulse'}`}
+      className="h-2 w-2 flex-shrink-0 bg-brutal-blue animate-pulse"
       role="img"
-      aria-label={waiting ? t('chatList.labels.waiting') : label}
-      title={waiting ? t('chatList.labels.waiting') : label}
+      aria-label={t('chatList.labels.running')}
+      title={t('chatList.labels.running')}
     />
   );
 }
@@ -564,7 +520,10 @@ export const ChatList: React.FC<ChatListProps> = ({
             }
           : prev
       );
-      void markChatRead(chatId).then(() => refreshProjects());
+      void markChatRead(chatId).then(() => {
+        void refreshProjects();
+        if (chatId === FOCAL_CHAT_ID) void refreshFocalStatus();
+      });
     },
     [refreshProjects]
   );
@@ -582,6 +541,14 @@ export const ChatList: React.FC<ChatListProps> = ({
   useEffect(() => {
     if (currentChatId) markRead(currentChatId);
   }, [currentChatId, chats, markRead]);
+
+  // A turn counts as unread when post-processing saves it, after the reply has
+  // streamed in. Regent is not in `chats`, so the refresh that re-marks an open
+  // chat read never reaches it; watch its own count instead.
+  const focalUnread = focalStatus?.unread ?? 0;
+  useEffect(() => {
+    if (currentChatId === FOCAL_CHAT_ID && focalUnread > 0) markRead(FOCAL_CHAT_ID);
+  }, [currentChatId, focalUnread, markRead]);
 
   useEffect(() => {
     setLocalSearchQuery(searchQuery);
@@ -1187,10 +1154,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           >
             {formatDate(chat.updatedAt)}
           </span>
-          <SessionStatusBadges
-            running={isChatRunning(chat.id, chat.isRunning)}
-            waitingCount={focalStatus?.waitingByChat?.[chat.id]}
-          />
+          <RunningMark running={isChatRunning(chat.id, chat.isRunning)} />
         </span>
         <button
           type="button"
@@ -1336,7 +1300,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           clearSelection();
           markRead(chat.id);
           pickedInSidebarRef.current = chat.id;
-          loadChat(chat.id);
+          loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
           if (switchToView) switchToView('chat');
         }}
         onMouseDown={(e) => {
@@ -1461,7 +1425,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const openChatById = (chatId: string): void => {
     pickedInSidebarRef.current = chatId;
     markRead(chatId);
-    loadChat(chatId);
+    const chat = chats.find((item) => item.id === chatId);
+    loadChat(chatId, { authoritative: !isChatRunning(chatId, chat?.isRunning) });
     if (switchToView) switchToView('chat');
   };
 
@@ -1607,7 +1572,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                             {job.name}
                                           </span>
                                           <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                            <SessionStatusBadges
+                                            <RunningMark
                                               running={isChatRunning(chatId, job.is_running)}
                                             />
                                             <span
@@ -1686,7 +1651,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                     {session.title}
                                   </span>
                                   <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                    <SessionStatusBadges
+                                    <RunningMark
                                       running={isChatRunning(session.chat_id, session.is_running)}
                                     />
                                     <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
@@ -2040,12 +2005,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                                     <span
                                       className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
                                     >
-                                      <ProjectStatusSquare
+                                      <RunningMark
                                         running={!isOpen && runningProjectIds.has(project.id)}
-                                        waiting={
-                                          !isOpen &&
-                                          (focalStatus?.waitingByProject?.[project.id] ?? 0) > 0
-                                        }
                                       />
                                     </span>
                                     {!isSystem && (

@@ -24,6 +24,11 @@ async function refresh(): Promise<void> {
   }
 }
 
+/** Re-reads Regent's status now, e.g. once its unread count was reset. */
+export function refreshFocalStatus(): Promise<void> {
+  return refresh();
+}
+
 /** Exported for tests; components use `useFocalStatus`. */
 export function subscribeToFocalStatus(listener: () => void): () => void {
   listeners.add(listener);
