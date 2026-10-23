@@ -459,7 +459,9 @@ def test_image_edit_capability(entry: dict, expected: bool | None) -> None:
     assert caps.supported_endpoints == tuple(entry.get("supported_endpoints", []))
 
 
-async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -> None:
+async def test_sync_image_endpoints_and_bare_provider_ids(
+    tmp_path, monkeypatch
+) -> None:
     from unittest.mock import AsyncMock, MagicMock
     from suzent.core import model_registry as module
 
@@ -472,6 +474,12 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         "openai/edit-test": {
             "mode": "image_edit",
             "supported_endpoints": ["/v1/images/edits"],
+        },
+        "claude-sonnet-5-5": {
+            "litellm_provider": "anthropic",
+            "mode": "chat",
+            "max_input_tokens": 1000000,
+            "supports_function_calling": True,
         },
     }
     response = MagicMock()
@@ -490,3 +498,5 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         == raw["gpt-image-test"]["supported_endpoints"]
     )
     assert saved["openai/edit-test"]["mode"] == "image_edit"
+    anthropic = json.loads((tmp_path / "local/anthropic.json").read_text())["models"]
+    assert anthropic["anthropic/claude-sonnet-5-5"]["max_input_tokens"] == 1000000
