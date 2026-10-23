@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The app header keeps a gap between a long chat title and the status marks on the right, so the resolve check no longer touches them."
+}
