@@ -72,6 +72,7 @@
     ".releases/changes/mobile-reconnect-animation.json",
     ".releases/changes/mobile-send-idempotency.json",
     ".releases/changes/mobile-sidebar-agents-schedules.json",
+    ".releases/changes/mobile-sidebar-align.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/model-wait-ux.json",
     ".releases/changes/native-notifications-only.json",
