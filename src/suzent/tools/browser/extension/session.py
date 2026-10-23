@@ -77,6 +77,14 @@ class ExtensionSession:
             )
             self.streaming = True
 
+    async def activate_selected_tab(self, tab_id: str) -> None:
+        self.connection_generation = bridge.generation
+        self.selected = tab_id
+        self.world = None
+        self.streaming = False
+        self.invalidate()
+        await self.start_streaming()
+
     async def remove_client(self, client: WebSocket) -> None:
         if client in self.clients:
             self.clients.remove(client)
@@ -300,11 +308,7 @@ class ExtensionSession:
                     if command == "open"
                     else await bridge.request("select", id=args[0])
                 )
-                self.selected = result["id"]
-                self.world = None
-                self.streaming = False
-                self.invalidate()
-                await self.start_streaming()
+                await self.activate_selected_tab(result["id"])
                 return ToolResult.success_result(
                     "Page selected. Take a snapshot before interacting."
                 )

@@ -217,7 +217,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const hasBackgroundActivity = backgroundTasks.some(
     (task) => task.status === 'running' || task.status === 'queued'
   );
-  const [activeTab, setActiveTab] = useState<TabId>('browser');
+  const [activeTab, setActiveTab] = useState<TabId>('tools');
+  const selectedTabByChat = useRef<Map<string, TabId>>(new Map());
+  const previousChatId = useRef(currentChatId);
+  useEffect(() => {
+    if (previousChatId.current !== currentChatId) {
+      if (previousChatId.current) {
+        selectedTabByChat.current.set(previousChatId.current, activeTab);
+      }
+      previousChatId.current = currentChatId;
+      setActiveTab(
+        currentChatId ? (selectedTabByChat.current.get(currentChatId) ?? 'tools') : 'tools'
+      );
+    } else if (currentChatId) {
+      selectedTabByChat.current.set(currentChatId, activeTab);
+    }
+  }, [activeTab, currentChatId]);
   const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
@@ -304,7 +319,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: GlobeAltIcon,
       labelKey: 'sidebar.tabs.browser',
       fallbackLabel: 'Web',
-      hasContent: isBrowserStreamActive || hasWebActivity,
+      hasContent: Boolean(currentChatId),
       hasActivity: isBrowserStreamActive || hasWebActivity,
       activityClass: 'bg-brutal-green',
     },
@@ -351,9 +366,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // ── Auto-switch tab & open sidebar when content arrives ────────────
   // Only auto-switch or auto-open when content transitions absent → present
-  // *within the same chat*. On a chat switch we re-baseline without changing
-  // the active tab or popping the sidebar, so switching chats preserves the
-  // user's current sidebar state.
+  // *within the same chat*. On a chat switch we re-baseline without popping
+  // the sidebar; the selected tab is restored separately for that chat.
   //
   // Canvas and goal load asynchronously, so right after a switch their flags
   // read false simply because the fetch hasn't landed — baselining on that and
