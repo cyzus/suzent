@@ -608,6 +608,29 @@ def _focal_request_in_flight(chat_id: str) -> bool:
     )
 
 
+def _reported_to_focal_since(message: dict[str, Any], session_chat_id: str) -> bool:
+    """Whether the session already sent the Focal Agent a message this turn.
+
+    A session that reports with agent_send has already put its answer in front
+    of the Focal Agent, so the turn's final answer would repeat it.
+    """
+    db = get_database()
+    requests = [
+        record
+        for record in db.list_agent_messages(target_chat_id=session_chat_id, limit=50)
+        if record["message_id"] == message.get("message_id")
+    ]
+    if not requests:
+        return False
+    since = datetime.fromisoformat(requests[0]["created_at"])
+    return any(
+        record["sender_chat_id"] == session_chat_id
+        and record["kind"] == "agent_message"
+        and datetime.fromisoformat(record["created_at"]) >= since
+        for record in db.list_agent_messages(target_chat_id=FOCAL_CHAT_ID, limit=200)
+    )
+
+
 def route_focal_reply(message: dict[str, Any], reply_text: str) -> bool:
     """Send a session's answer to a Focal Agent message back to the Focal Agent.
 
@@ -626,6 +649,12 @@ def route_focal_reply(message: dict[str, Any], reply_text: str) -> bool:
     db = get_database()
     chat = db.get_chat(target_chat_id)
     if chat is None:
+        return False
+    if _reported_to_focal_since(message, target_chat_id):
+        logger.debug(
+            "Session {} already reported to Focal this turn; skipping reply",
+            target_chat_id,
+        )
         return False
     project = db.get_project(chat.project_id) if chat.project_id else None
     text = reply_text.strip()
