@@ -1149,12 +1149,17 @@ export const ChatList: React.FC<ChatListProps> = ({
         <span
           className={`flex items-center gap-1.5 transition-opacity ${menuOpen ? 'opacity-0' : 'group-hover:opacity-0 group-focus-within:opacity-0'}`}
         >
-          <span
-            className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-          >
-            {formatDate(chat.updatedAt)}
-          </span>
-          <RunningMark running={isChatRunning(chat.id, chat.isRunning)} />
+          {/* A running chat's time is always "now", so the mark takes its place
+              rather than pushing it out of line with the rows below. */}
+          {isChatRunning(chat.id, chat.isRunning) ? (
+            <RunningMark running />
+          ) : (
+            <span
+              className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+            >
+              {formatDate(chat.updatedAt)}
+            </span>
+          )}
         </span>
         <button
           type="button"
