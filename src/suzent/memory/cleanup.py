@@ -146,7 +146,7 @@ def _page_notes(store: MarkdownMemoryStore, rejected: list[str]) -> list[str]:
                 "budget: condense, or split by topic"
             )
         if not memory_map.page_type(text):
-            issues.append("no `type:` in frontmatter: add one from schema.md")
+            issues.append("no `type:` in frontmatter: add one")
         for i, line in enumerate(text.splitlines(), 1):
             code = memory_map.line_issue(line) if personal else None
             hit = memory_map.matches_rejected(line, rejected)
@@ -162,8 +162,8 @@ def _page_notes(store: MarkdownMemoryStore, rejected: list[str]) -> list[str]:
 _REWRITE_RULES = """\
 ## Rules
 - Each fact has one home. Facts in `user.md` are not repeated in the vault.
-- Every page declares a `type:` from `schema.md`; facts about the user go on
-  `type: personal` pages. `schema.md` decides which folder each type lives in.
+- Every page declares a `type:`; facts about the user go on `type: personal` pages.
+  Place pages as the notebook skill's `memory.md` says, without editing `schema.md`.
 - Keep the current value in the bullet. Move a superseded value to the page's
   `## History` section, or drop it when it never mattered.
 - Retire bullets that are repo state (PRs, commits, versions, branches), transient

@@ -260,9 +260,12 @@ and a person may edit it; the old per-turn `refresh_core_memory_facts`,
 
 Code never assumes a folder layout. Personal pages are found by `type: personal`
 (`memory_map.PERSONAL_TYPE`), so a user who renamed or renumbered folders loses nothing.
-Where each type lives is the vault's own `schema.md` `## Memory placement` table, which
-the dream adds once from existing folders if missing and follows after; code never
-parses it. `wiki_manager`'s numbered zones are only the seed for a new vault.
+Where each type lives is decided by the notebook skill's `skills/notebook/memory.md`:
+`schema.md` first, then where pages of that type already are, then the closest existing
+folder, never a new numbered top-level folder and never an edit to `schema.md`. The dream
+loads no skills, so `memory_context.filing_reference()` inlines that file into the dream
+and lint system prompts; agents that load the skill read the same file. Code never parses
+placement. `wiki_manager`'s numbered zones are only the seed for a new vault.
 
 `suzent memory lint` prints these findings. `suzent memory cleanup`
 (`memory/cleanup.py`) writes the one-time migration as drafts only, into the vault's

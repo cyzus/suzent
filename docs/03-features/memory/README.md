@@ -105,13 +105,14 @@ fact, does one of four things:
 - **Supersede**: the page is now wrong, so it corrects it.
 - **Add**: the fact is new, so it writes it down.
 
-Each page says what kind it is (facts about you, lessons from past work, or
-general knowledge), and the notebook's `schema.md` has a **Memory placement**
-table saying which folder holds each kind. By default facts about you go into
-`3_Personal/`, lessons into `2_Wiki/Experience/`, and knowledge under
-`2_Wiki/`. Your folders don't have to match: if the table is missing, the dream
-adds one that uses folders you already have, and it never adds new numbered
-top-level folders. Edit the table and the dream follows it. The dream never touches today's log, and an interrupted run is retried rather than
+Each page says what kind it is: facts about you, lessons from past work, or
+general knowledge. The dream files each kind where your notebook's `schema.md`
+says, or beside existing pages of the same kind, or in the closest folder you
+already have. In a new notebook that means `3_Personal/` for facts about you,
+`2_Wiki/Experience/` for lessons, and `2_Wiki/` for knowledge. Your folders
+don't have to match: the dream never edits `schema.md` and never adds numbered
+top-level folders. To steer it, say where each kind goes in `schema.md`.
+The dream never touches today's log, and an interrupted run is retried rather than
 skipped. Everything it changed is listed in the notebook's `log.md`.
 
 **Facts expire, gently.** Each fact about you gets a review date based on its

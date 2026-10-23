@@ -6,7 +6,27 @@ Centralizes all prompt engineering for the memory system.
 
 from datetime import datetime
 from dataclasses import dataclass
+from functools import cache
 from typing import Dict, List, Any, Optional
+
+from suzent.config import PROJECT_DIR
+
+# The dream loads no skills, so the notebook skill's filing reference is inlined: one
+# source for where memory goes, shared with agents that do load the skill.
+_FILING_REFERENCE_PATH = PROJECT_DIR / "skills" / "notebook" / "memory.md"
+
+
+@cache
+def filing_reference() -> str:
+    """The notebook skill's rules for typing and placing memory pages."""
+    try:
+        return _FILING_REFERENCE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return (
+            "Every page declares `type:` (`personal`, `experience`, or a knowledge type). "
+            "Place pages where schema.md or existing pages of that type say; never edit "
+            "schema.md for this and never create a new numbered top-level folder."
+        )
 
 
 # ===== Core Memory Context Prompts =====
@@ -467,13 +487,8 @@ Filesystem:
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
-- Every page declares `type:` in frontmatter: `personal` for facts about the user, `experience`
-  for lessons from past work, a knowledge type schema.md defines for facts about the world.
-  Checks find pages by type, never by folder.
-- schema.md's `## Memory placement` section says which folder holds each type. If it has none,
-  add one before you file anything: map each type to a folder the vault already has, using a
-  subfolder for a type with no home. Never add a new numbered top-level folder. After that,
-  follow the section; the user may edit it, and their edit wins.
+  It belongs to the user: never edit it.
+- Type and place every page by the filing reference at the end of this prompt.
 - Each fact has one home. Search before you write and merge instead of adding a near-duplicate.
   What {roots.memory_root}/user.md holds is not repeated in the vault.
 - A bullet holds the current value. When a value changes, the old one moves to the page's
@@ -498,6 +513,8 @@ Rules:
   `- skip <candidate>: <reason>` for each candidate you do not file.
 - Do NOT write to log.md — the runner owns it and moves your op log there.
 - {roots.superseded_path} is append-only and write-only for you: read it if you must, never clear it.
+
+{filing_reference()}
 """
 
 
@@ -523,7 +540,7 @@ def build_dream_instructions(
 1. Orient: read schema.md, index.md and {roots.memory_root}/MEMORY.md; glob_search {roots.notebook_root} for existing pages.
 2. Read the logs: {roots.memory_root}/archive/*.md dated after {start} through {end}. Each candidate is
    `- [category] content` with backtick tags, often followed by a `> "..."` evidence line. Route by
-   tag to the folder schema.md's `## Memory placement` gives for the page type:
+   tag to a page type, placed as the filing reference says:
    - `kind:user` -> a `type: personal` page, in the user's own terms. Never what the agent made or proposed.
    - `kind:experience` -> a `type: experience` page: one entry per kind of situation with what was
      tried, the outcome and the lesson. Merge with a lesson about the same situation; a later
@@ -654,16 +671,17 @@ Filesystem:
 
 Rules:
 - ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
-  Its `## Memory placement` section says which folder holds each page type; add it if missing,
-  mapping types to folders the vault already has. Never add a new numbered top-level folder.
-- Every page declares `type:` in frontmatter (`personal`, `experience`, or a knowledge type
-  schema.md defines). Give one to any page without it.
+  It belongs to the user: never edit it.
+- Type and place every page by the filing reference at the end of this prompt. Give a
+  `type:` to any page without one.
 - Fix links and structure freely. Retire content that is rejected, superseded or excluded
   (repo state, transient status, scheduler specs, agent-made work on personal pages).
 - Never fabricate facts. A contradiction that needs the user becomes one question in
   {roots.review_queue_path}, not a callout.
 - Record every operation in {roots.dream_ops_path} as a `- ` line with the text before and after.
 - Do NOT write the lint log entry to log.md — the runner records that and moves your op log there.
+
+{filing_reference()}
 """
 
 

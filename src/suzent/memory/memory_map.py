@@ -26,8 +26,8 @@ MAP_LINE_MAX_CHARS = 200
 USER_MD_MAX_LINES = 40
 PERSONA_MD_MAX_LINES = 60
 PAGE_BUDGET_BYTES = 8 * 1024
-# Pages are found by the `type:` they declare, not by folder: the vault's own
-# schema.md decides where things live, and users rename and renumber folders.
+# Pages are found by the `type:` they declare, not by folder: users rename and
+# renumber folders, and placement is the notebook skill's call, not the code's.
 PERSONAL_TYPE = "personal"
 
 # Pre-map MEMORY.md files: the zone markers and the footer of the old generator.
@@ -382,7 +382,7 @@ def lint_page_types(vault: Path, pages: list[Path], shown: int = 5) -> list[Find
             "vault",
             "untyped",
             f"{len(untyped)} page(s) have no `type:` in frontmatter; give each one "
-            f"from schema.md ({names})",
+            f"({names})",
         )
     ]
 

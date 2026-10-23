@@ -26,7 +26,7 @@ The vault is organized into layers by purpose:
 
 ---
 
-## Where to Place New Synthesized Pages
+## Where to Place New Pages
 
 | Content type | Destination |
 |---|---|
@@ -34,26 +34,11 @@ The vault is organized into layers by purpose:
 | Paper or article summary | `2_Wiki/Literature/` |
 | Comparative or cross-cutting analysis | `2_Wiki/Syntheses/` |
 | Specific model, dataset, or tool | `2_Wiki/Entities/` |
+| Fact about you (`type: personal`) | `3_Personal/` |
+| Lesson from past work (`type: experience`) | `2_Wiki/Experience/` |
 
 **Do not create a page for a topic that already has a folder or file.**
 Link to what exists instead.
-
----
-
-## Memory placement
-
-Where the memory dream files each page type. Folders here are yours to rename: change the
-table and the dream follows it. If this section is missing, the dream adds one that maps
-each type to a folder the vault already has.
-
-| Page type | Folder |
-|---|---|
-| `personal` | `3_Personal/` |
-| `experience` | `2_Wiki/Experience/` |
-| `concept` | `2_Wiki/Concepts/` |
-| `literature` | `2_Wiki/Literature/` |
-| `synthesis` | `2_Wiki/Syntheses/` |
-| `entity` | `2_Wiki/Entities/` |
 
 ---
 

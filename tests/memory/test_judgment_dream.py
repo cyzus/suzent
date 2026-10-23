@@ -41,19 +41,25 @@ def test_candidates_are_routed_by_kind():
     assert "`ungrounded`" in text
 
 
-def test_prompts_name_no_vault_folders():
-    """Users rename and renumber folders; schema.md decides placement, not the prompt."""
-    texts = (
-        _brief(),
-        memory_context.build_dream_system_prompt(ROOTS),
-        memory_context.build_lint_system_prompt(ROOTS),
-        memory_context.build_lint_instructions(ROOTS),
-    )
-    for text in texts:
+def test_the_briefs_name_no_vault_folders():
+    """Users rename and renumber folders; placement follows their schema, not the brief."""
+    for text in (_brief(), memory_context.build_lint_instructions(ROOTS)):
         for folder in ("0_Inbox", "1_Projects", "2_Wiki", "3_Personal", "4_Experience"):
             assert folder not in text
-    assert "## Memory placement" in texts[1]
-    assert "Never add a new numbered top-level folder" in texts[1]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [memory_context.build_dream_system_prompt, memory_context.build_lint_system_prompt],
+)
+def test_placement_comes_from_the_notebook_skill(build):
+    """The dream loads no skills, so the skill's filing reference is inlined. It must
+    leave schema.md to the user rather than have the dream record placement there."""
+    system = build(ROOTS)
+
+    assert "# Filing memory pages" in system
+    assert "Never create a new numbered top-level folder" in system
+    assert "never edit it" in system
 
 
 def test_the_brief_carries_rejected_claims_open_questions_and_findings():
