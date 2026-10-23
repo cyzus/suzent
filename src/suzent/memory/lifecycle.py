@@ -293,9 +293,10 @@ async def _initialize_memory_system() -> bool:
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend
         tool_options = CONFIG.ensure_tool_options()
-        if "MemorySearchTool" not in tool_options:
-            tool_options.append("MemorySearchTool")
-            logger.info("Added MemorySearchTool to config")
+        for tool_name in ("MemorySearchTool", "MemoryUpdateTool"):
+            if tool_name not in tool_options:
+                tool_options.append(tool_name)
+                logger.info(f"Added {tool_name} to config")
 
         # Start background core-file watcher only when embedding is configured.
         # The watcher maintains the LanceDB search index, so it cannot do useful

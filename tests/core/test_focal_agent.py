@@ -1055,7 +1055,7 @@ def test_suzents_memory_section_points_at_its_notes() -> None:
     assert "update_notes" in focal
     assert "edit_file" not in focal
     assert "edit_file" in regular and "update_notes" not in regular
-    assert "<!-- /memory:generated" in regular
+    assert "`MEMORY.md` is a map" in regular
 
 
 @pytest.mark.asyncio

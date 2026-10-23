@@ -32,6 +32,8 @@ Use the schema's link style. Prefer full vault-relative paths when links could b
 
 - For source consolidation, read `ingest.md` in this skill directory.
 - For structural and contradiction checks, read `lint.md` in this skill directory.
+- For filing memory (facts about the user, lessons from past work, knowledge to
+  remember), read `memory.md` in this skill directory.
 
 Read the selected procedure completely before acting. Treat referenced binary assets as
 immutable unless the user explicitly asks to replace them.

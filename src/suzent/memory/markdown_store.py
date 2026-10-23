@@ -9,7 +9,7 @@ in the /shared/memory/ workspace. This creates a transparent memory layer where:
 
 Two-tier structure (inspired by OpenClaw):
 - Daily logs: YYYY-MM-DD.md (append-only, timestamped facts per conversation)
-- Long-term memory: MEMORY.md (curated summary of important facts)
+- MEMORY.md: a curated map of vault pages, one pointer per line (see memory_map.py)
 """
 
 import asyncio
@@ -22,17 +22,6 @@ from typing import Dict, List, Optional
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
-
-# MEMORY.md is written by two generators and edited directly by the agent, which the
-# core-memory prompt actively tells it to do. Only the region between these markers is
-# regenerated; everything after the end marker is preserved verbatim, so a note the
-# agent or the user adds is not destroyed by the next consolidation.
-MEMORY_GENERATED_START = "<!-- memory:generated - rewritten on consolidation -->"
-MEMORY_GENERATED_END = "<!-- /memory:generated - notes below this line are kept -->"
-
-# The footer written by every pre-marker version of write_memory_file. Its presence is
-# what identifies an unmarked file as generator-authored and therefore safe to replace.
-_LEGACY_FOOTER_RE = re.compile(r"^\*Last updated: .*UTC\*\s*$", re.MULTILINE)
 
 
 def _read_text(path: Path) -> str:
@@ -145,13 +134,15 @@ class MarkdownMemoryStore:
             line += f"\n{summary.strip()}"
         await self.append_notebook_log(line)
 
-    # --- Recall log (usage signal for MEMORY.md promotion) ---
+    # --- Recall log (usage signal for the MEMORY.md map lint) ---
 
     @property
     def recall_log_path(self) -> Path:
         return self.notebook_state_dir / "recall_log.jsonl"
 
-    def append_recall(self, snippet: str, source_type: str = "") -> None:
+    def append_recall(
+        self, snippet: str, source_type: str = "", source_file: str = ""
+    ) -> None:
         """Best-effort append of one retrieval event (never raises)."""
         try:
             line = json.dumps(
@@ -159,6 +150,7 @@ class MarkdownMemoryStore:
                     "ts": datetime.now(timezone.utc).isoformat(),
                     "snippet": (snippet or "")[:160],
                     "source_type": source_type,
+                    "source_file": source_file,
                 }
             )
             with open(self.recall_log_path, "a", encoding="utf-8") as f:
@@ -212,6 +204,136 @@ class MarkdownMemoryStore:
     def is_tombstoned(self, content: str, tombstones: Optional[set] = None) -> bool:
         ts = tombstones if tombstones is not None else self.read_tombstones()
         return self._normalize(content) in ts
+
+    def recalled_files(self, days: int = 60) -> set:
+        """Vault files retrieval returned in the last *days* days."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        return {
+            r["source_file"]
+            for r in self.read_recalls()
+            if r.get("source_file") and str(r.get("ts", "")) >= cutoff
+        }
+
+    # --- Rejected claims (the user said they are wrong; never captured again) ---
+
+    @property
+    def rejected_path(self) -> Path:
+        return self.notebook_state_dir / "rejected.jsonl"
+
+    async def append_rejected(
+        self, content: str, date: str, correction_id: str = ""
+    ) -> None:
+        """Record a claim the user rejected.
+
+        A tombstone hides one index row; a rejection stops the claim coming back:
+        capture drops matching candidates, the dream treats the list as exclusions and
+        lint flags matches in every always-injected file.
+        """
+        async with self._write_lock:
+            with open(self.rejected_path, "a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "content": content.strip(),
+                            "date": date,
+                            "correction_id": correction_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    def read_rejected(self) -> List[str]:
+        """Rejected claim texts, oldest first, de-duplicated."""
+        return [r["content"] for r in self._read_jsonl(self.rejected_path, "content")]
+
+    def is_rejected(self, content: str, rejected: Optional[List[str]] = None) -> bool:
+        """Whether *content* restates a rejected claim (normalized, either direction)."""
+        body = self._normalize(content)
+        if not body:
+            return False
+        for claim in rejected if rejected is not None else self.read_rejected():
+            key = self._normalize(claim)
+            if key and (key in body or body in key):
+                return True
+        return False
+
+    def _read_jsonl(self, path: Path, key: str) -> List[dict]:
+        """Records of a sidecar that carry *key*, de-duplicated on it."""
+        if not path.exists():
+            return []
+        out: List[dict] = []
+        seen: set = set()
+        for line in _read_text(path).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(rec, dict) or not rec.get(key):
+                continue
+            norm = self._normalize(str(rec[key]))
+            if norm in seen:
+                continue
+            seen.add(norm)
+            out.append(rec)
+        return out
+
+    # --- Review queue (questions the dream leaves for the user) ---
+
+    @property
+    def review_queue_path(self) -> Path:
+        return self.notebook_state_dir / "review_queue.md"
+
+    def read_review_queue(self) -> List[str]:
+        """Open questions, one per `- ` line. The dream writes; the user answers."""
+        p = self.review_queue_path
+        if not p.exists():
+            return []
+        return [
+            ln.strip()[2:].strip()
+            for ln in _read_text(p).splitlines()
+            if ln.strip().startswith("- ") and ln.strip()[2:].strip()
+        ]
+
+    # --- Dream op log (agent hand-off to log.md) ---
+
+    @property
+    def dream_ops_path(self) -> Path:
+        return self.notebook_state_dir / "dream_ops.md"
+
+    async def flush_dream_ops(self) -> int:
+        """Move the operations the dream recorded into log.md; returns how many.
+
+        The agent may not write log.md (the runner owns the watermark there), so it
+        records each create, update, retire and skip in this file and the runner
+        appends them under the run's entry.
+        """
+        p = self.dream_ops_path
+        if not p.exists():
+            return 0
+        body = _read_text(p).strip()
+        if not body:
+            return 0
+        await self.append_notebook_log(body)
+        p.write_text("", encoding="utf-8")
+        return sum(1 for ln in body.splitlines() if ln.lstrip().startswith("- "))
+
+    # --- Capture drops (what a gate turned away, for review) ---
+
+    @property
+    def capture_dropped_path(self) -> Path:
+        return self.notebook_state_dir / "capture_dropped.jsonl"
+
+    def append_capture_dropped(self, record: dict) -> None:
+        """Best-effort append of one batch's gate drops (never raises)."""
+        try:
+            with open(self.capture_dropped_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning(f"Failed to write capture drop log: {e}")
 
     # --- Superseded facts (dream hand-off to the runner) ---
 
@@ -450,7 +572,8 @@ class MarkdownMemoryStore:
 
         Args:
             chat_id: Chat session identifier
-            facts: List of dicts with keys: content, category, importance, tags, context
+            facts: List of dicts with keys: content, category, tags and, for typed
+                capture, evidence (written as a quoted line under the fact)
             date: Date string (defaults to today in UTC)
         """
         if not facts:
@@ -470,6 +593,9 @@ class MarkdownMemoryStore:
             tag_str = f" `{' '.join(tags)}`" if tags else ""
 
             lines.append(f"- [{category}] {content}{tag_str}")
+            evidence = " ".join(str(fact.get("evidence") or "").split())
+            if evidence:
+                lines.append(f'  > "{evidence[:300]}"')
 
         entry = "\n".join(lines) + "\n"
 
@@ -537,13 +663,13 @@ class MarkdownMemoryStore:
 
     @property
     def memory_file_path(self) -> Path:
-        """Path to the curated long-term memory file."""
+        """Path to the memory map."""
         return self.base_dir / "MEMORY.md"
 
     def core_memory_revision(self, chat_id: Optional[str] = None) -> tuple:
         """Cheap fingerprint of every file that feeds the core-memory prompt.
 
-        Four ``stat`` calls, so it is safe to consult on every model request.
+        A handful of ``stat`` calls, so it is safe to consult on every model request.
         Callers cache the rendered core-memory section against this value and
         rebuild only when it changes, which is what keeps an edit to
         ``persona.md`` from waiting on the next agent rebuild to take effect.
@@ -552,6 +678,7 @@ class MarkdownMemoryStore:
             self._block_path("persona"),
             self._block_path("user"),
             self.memory_file_path,
+            self.review_queue_path,
         ]
         if chat_id:
             try:
@@ -570,97 +697,29 @@ class MarkdownMemoryStore:
                 fingerprint.append((str(path), None, None))
         return tuple(fingerprint)
 
-    def manual_tail(self, existing: str) -> str:
-        """Whatever a generator must not touch, taken from the current MEMORY.md.
+    async def write_memory_map(self, content: str) -> None:
+        """Replace MEMORY.md with *content*, whole.
 
-        Three cases, in order:
-
-        - Marked file: everything after the end marker is the manual zone.
-        - Unmarked but generator-authored: nothing to keep. Recognised by the footer
-          only this method ever wrote, so the test cannot be fooled by an agent that
-          merely reused the heading.
-        - Anything else: the whole file. A file we did not write is somebody's work,
-          and a blind overwrite is exactly how it used to get lost.
+        The file is one curated map with no generated zone: the dream and the user
+        both edit it, and lint checks every line the same way.
         """
-        if MEMORY_GENERATED_END in existing:
-            return existing.split(MEMORY_GENERATED_END, 1)[1].strip()
-        if not existing.strip():
-            return ""
-        if _LEGACY_FOOTER_RE.search(existing):
-            return ""
-        return existing.strip()
+        async with self._write_lock:
+            self.memory_file_path.write_text(content.rstrip() + "\n", encoding="utf-8")
+        logger.info("Updated MEMORY.md map")
 
-    async def write_memory_manual_zone(self, content: str, actor: str) -> None:
-        """Replace the human-owned half of MEMORY.md, keeping the generated half.
+    async def write_memory_map_if_missing(self, draft: str) -> bool:
+        """Write *draft* only when MEMORY.md does not exist or is empty.
 
-        This is the fourth writer to this file: a person editing the `facts` block in
-        the UI. It used to be a raw whole-file write, which meant a human correction
-        either got clobbered by the next consolidation or got copied down into the
-        manual zone alongside the generated original.
-
-        Their text lands in the manual zone, where nothing overwrites it, and carries
-        an OKF-style `human:` verification stamp — a person's correction is evidence
-        of a different quality than anything the extractor produced, and this is the
-        record of that. Anything they typed inside the generated zone is dropped: the
-        marker says outright that the region is rewritten, and silently preserving it
-        would duplicate every fact the next pass regenerates.
+        An existing file is somebody's work, even when it is not a map yet; turning
+        it into one goes through the cleanup drafts and the user's review.
         """
         async with self._write_lock:
             path = self.memory_file_path
-            existing = path.read_text(encoding="utf-8") if path.exists() else ""
-
-            if MEMORY_GENERATED_START in existing and MEMORY_GENERATED_END in existing:
-                head = existing.split(MEMORY_GENERATED_END, 1)[0] + MEMORY_GENERATED_END
-            else:
-                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-                head = (
-                    f"# Long-term Memory\n_Consolidated {timestamp}._\n\n"
-                    f"{MEMORY_GENERATED_START}\n{MEMORY_GENERATED_END}"
-                )
-
-            submitted = content
-            if MEMORY_GENERATED_END in submitted:
-                submitted = submitted.split(MEMORY_GENERATED_END, 1)[1]
-
-            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            body = f"{head}\n\n<!-- verified: {actor} at {stamp} -->\n"
-            if submitted.strip():
-                body += f"{submitted.strip()}\n"
-
-            path.write_text(body, encoding="utf-8")
-
-        logger.info("Updated MEMORY.md manual zone (%s)", actor)
-
-    async def write_memory_file(self, content: str) -> None:
-        """Rewrite the generated zone of MEMORY.md, preserving the manual zone.
-
-        This file has two writers in code and a third in practice: the agent edits it
-        with its ordinary file tools because the core-memory prompt invites it to. The
-        write used to be an unconditional `write_text`, so whichever generator ran next
-        destroyed that work with no merge, no warning, and no way to notice afterwards.
-
-        Args:
-            content: the generated section. Everything after the end marker survives.
-        """
-        async with self._write_lock:
-            path = self.memory_file_path
-            existing = path.read_text(encoding="utf-8") if path.exists() else ""
-            tail = self.manual_tail(existing)
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-            body = (
-                f"# Long-term Memory\n"
-                f"_Consolidated {timestamp}._\n\n"
-                f"{MEMORY_GENERATED_START}\n"
-                f"{content.strip()}\n"
-                f"{MEMORY_GENERATED_END}\n"
-            )
-            if tail:
-                body += f"\n{tail}\n"
-
-            path.write_text(body, encoding="utf-8")
-
-        logger.info("Updated MEMORY.md (generated zone, %d chars kept)", len(tail))
+            if path.exists() and _read_text(path).strip():
+                return False
+            path.write_text(draft.rstrip() + "\n", encoding="utf-8")
+        logger.info("Wrote a draft MEMORY.md map")
+        return True
 
     async def read_memory_file(self) -> Optional[str]:
         """
