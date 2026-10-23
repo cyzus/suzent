@@ -156,19 +156,10 @@ export function FocalAgentCardView({
           >
             {statusLine}
           </span>
-          {hasNews ? (
+          {hasNews && (
             <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-neutral-900 px-1 text-[9px] font-extrabold tabular-nums text-white dark:bg-neutral-100 dark:text-neutral-900">
               {unread > 99 ? '99+' : unread}
             </span>
-          ) : (
-            waiting > 0 && (
-              <span
-                className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
-                title={t('chatList.focal.waitingBadge', { count: waiting })}
-              >
-                {waiting}
-              </span>
-            )
           )}
         </span>
       </span>
