@@ -691,3 +691,17 @@ def test_strip_attachment_annotations_removes_file_reference_annotations():
     )
 
     assert _strip_attachment_annotations(text) == "summarize this"
+
+
+def test_compacted_triggered_turn_replaces_draft_idempotently() -> None:
+    previous = [
+        {"role": "system_triggered", "content": "previous trigger"},
+        {"role": "assistant", "content": "previous reply"},
+    ]
+    trigger = {"role": "system_triggered", "content": "Regent request"}
+    draft = {"role": "assistant", "content": "reply", "_streaming_draft": True}
+    reply = {"role": "assistant", "content": "reply"}
+    rebuilt = previous + [trigger, reply]
+    merged = _merge_rebuilt_after_compaction(previous + [trigger, draft], rebuilt)
+    assert merged == previous + [trigger, reply]
+    assert _merge_rebuilt_after_compaction(merged, rebuilt) == merged

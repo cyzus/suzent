@@ -3453,8 +3453,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               )}
             </div>
 
-            {/* Input Panel (shown when messages exist) */}
-            {safeMessages.length > 0 && (
+            {/* Existing and live conversations share the same composer. */}
+            {(safeMessages.length > 0 || showTransientAssistant) && (
               <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
                 {hasPendingTransientApprovals && (
                   <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />

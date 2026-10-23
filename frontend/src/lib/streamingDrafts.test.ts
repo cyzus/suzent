@@ -1,7 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../types/api';
 import type { AGUIPart } from '../types/agui';
-import { hideLiveTriggerRows, hideStreamingDrafts } from './streamingDrafts';
+import { hideLiveTriggerRows, hideStreamingDrafts, splitLeadingTriggers } from './streamingDrafts';
+
+describe('splitLeadingTriggers', () => {
+  const trigger: AGUIPart = { type: 'incoming-message', text: 'Run the task', persisted: true };
+  const reply: AGUIPart = { type: 'text', text: 'Working on it' };
+
+  it('places the opening trigger before the assistant response', () => {
+    expect(splitLeadingTriggers([trigger, reply])).toEqual({
+      triggers: [trigger],
+      response: [reply],
+    });
+  });
+
+  it('shows the trigger even before any response arrives', () => {
+    expect(splitLeadingTriggers([trigger])).toEqual({ triggers: [trigger], response: [] });
+    expect(splitLeadingTriggers([])).toEqual({ triggers: [], response: [] });
+  });
+
+  it('keeps mid-turn messages in their original timeline position', () => {
+    const incoming: AGUIPart = { type: 'incoming-message', text: 'One more thing' };
+    expect(splitLeadingTriggers([trigger, reply, incoming, trigger])).toEqual({
+      triggers: [trigger],
+      response: [reply, incoming, trigger],
+    });
+    expect(splitLeadingTriggers([incoming, reply])).toEqual({
+      triggers: [],
+      response: [incoming, reply],
+    });
+  });
+});
 
 describe('hideStreamingDrafts', () => {
   it('hides backend streaming drafts while a transient stream is shown', () => {
@@ -53,5 +82,21 @@ describe('hideLiveTriggerRows', () => {
     const injected: AGUIPart[] = [{ type: 'incoming-message', text: trigger }];
 
     expect(hideLiveTriggerRows([row], injected)).toEqual([row]);
+  });
+});
+
+describe('settled streaming drafts', () => {
+  const draft: Message = { role: 'assistant', content: 'done', _streaming_draft: true };
+  const reply: Message = { role: 'assistant', content: 'done' };
+  it('hides a stale draft duplicated by the settled reply in its turn', () => {
+    expect(hideStreamingDrafts([draft, reply], false)).toEqual([reply]);
+  });
+  it('does not match identical replies across triggered turns', () => {
+    const trigger: Message = { role: 'system_triggered', content: 'run again' };
+    expect(hideStreamingDrafts([draft, trigger, reply], false)).toEqual([draft, trigger, reply]);
+  });
+  it('keeps an unmatched recovery draft', () => {
+    const partial: Message = { role: 'assistant', content: 'partial' };
+    expect(hideStreamingDrafts([draft, partial], false)).toEqual([draft, partial]);
   });
 });
