@@ -1831,6 +1831,10 @@ export const zhCN = {
   webActivities: {
     returnToBrowser: '返回浏览器',
     history: '历史',
+    webPage: '网页',
+    embedError: '无法在侧栏打开此网页。请使用上方链接，或切换到阅读文本。',
+    showReader: '阅读文本',
+    showPage: '查看网页',
   },
   a2uiSurface: {
     showHere: '在此显示',
@@ -2575,6 +2579,7 @@ export const zhCN = {
     waitingForStream: '等待预览画面',
     showTab: '显示标签页',
     showTabError: '无法显示浏览器标签页。',
+    previewTabError: '无法选择当前网页标签页进行预览。',
     noSelectedTab: '未选择标签页',
     title: '浏览器',
     navigate: '导航',

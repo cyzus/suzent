@@ -55,7 +55,6 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
   const [lastHistoryCount, setLastHistoryCount] = useState(history.length);
   useEffect(() => {
     if (history.length > lastHistoryCount) {
-      // New item added, switch to it ONLY if browser is not streaming right now
       if (!isBrowserStreamActive) {
         setActiveViewId(history[history.length - 1].id);
         setIsTimelineOpen(false);
@@ -94,7 +93,15 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
       } catch {
         parsedArgs = { url: '' };
       }
-      return <WebPageReaderView markdown={log.output} title={log.title} url={parsedArgs.url} />;
+      return (
+        <WebPageReaderView
+          key={log.id}
+          markdown={log.output}
+          title={log.title}
+          url={parsedArgs.url}
+          visible={visible && !isTimelineOpen}
+        />
+      );
     }
 
     return null;

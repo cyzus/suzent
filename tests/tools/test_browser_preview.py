@@ -137,6 +137,65 @@ async def test_status_and_focus_do_not_start_preview(
     ]
 
 
+@pytest.mark.parametrize("already_selected", [False, True])
+async def test_preview_selects_focused_extension_tab(
+    monkeypatch: pytest.MonkeyPatch,
+    already_selected: bool,
+) -> None:
+    monkeypatch.setattr(
+        browser_routes.BrowserSettings,
+        "load",
+        lambda: BrowserSettings(connection_mode="extension"),
+    )
+    monkeypatch.setattr(browser_routes.bridge, "socket", object())
+    activate = AsyncMock()
+    monkeypatch.setattr(
+        browser_routes.extension_session, "activate_selected_tab", activate
+    )
+
+    async def browser_request(action: str, **params: str) -> object:
+        if action == "tabs":
+            return [
+                {
+                    "id": "tab-7",
+                    "focused": True,
+                    "active": True,
+                    "selected": already_selected,
+                }
+            ]
+        if action == "select":
+            assert params == {"id": "tab-7"}
+            return {"id": "tab-7"}
+        assert action == "status"
+        return {"selected": True, "title": "Example", "browser": "Edge"}
+
+    request = AsyncMock(side_effect=browser_request)
+    monkeypatch.setattr(browser_routes.bridge, "request", request)
+    app = Starlette(
+        routes=[
+            Route(
+                "/browser/preview-tab",
+                browser_routes.browser_preview_tab_endpoint,
+                methods=["POST"],
+            )
+        ]
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        assert (await client.post("/browser/preview-tab")).status_code == 403
+        response = await client.post(
+            "/browser/preview-tab",
+            headers={"X-Suzent-Browser-Setup": "1", "Origin": "tauri://localhost"},
+        )
+    assert response.status_code == 200
+    assert response.json()["selected"] is True
+    activate.assert_awaited_once_with("tab-7")
+    assert [call.args[0] for call in request.call_args_list] == (
+        ["tabs", "status"] if already_selected else ["tabs", "select", "status"]
+    )
+
+
 @pytest.mark.parametrize(
     "origin",
     [
