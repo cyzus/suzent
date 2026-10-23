@@ -236,6 +236,7 @@ def build_agent_deps(
     file_tracker = FileTracker(chat_id)
 
     base_tool_names = frozenset(_get_config_value(config, "tools", []) or [])
+    call_allowed_tools = _get_config_value(config, "call_allowed_tools", None)
 
     return AgentDeps(
         chat_id=chat_id,
@@ -259,6 +260,11 @@ def build_agent_deps(
         interaction_profile=interaction_profile,
         permission_rules=permission_rules,
         base_tool_names=base_tool_names,
+        call_allowed_tools=(
+            frozenset(call_allowed_tools) if call_allowed_tools is not None else None
+        ),
+        prompt_cache_chat_id=_get_config_value(config, "prompt_cache_chat_id", "")
+        or "",
         a2ui_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},
         file_tracker=file_tracker,

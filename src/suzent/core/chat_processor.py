@@ -38,6 +38,7 @@ from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
+from suzent.core.prompt_cache import record_turn_config
 from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.streaming import (
     MODEL_STALLED_CODE,
@@ -713,6 +714,7 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
             raise
+        record_turn_config(chat_id, config, getattr(agent, "_model_id", None))
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
