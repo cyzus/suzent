@@ -483,6 +483,40 @@ export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
 
 // ─── Agent Client Protocol (ACP) ─────────────────────────────────────
 
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  source: 'builtin' | 'directory' | 'package';
+  aliases: string[];
+  hasCode: boolean;
+  enabled: boolean;
+  status: 'disabled' | 'enabled' | 'loaded' | 'error';
+  error: string | null;
+  tools: string[];
+  commands: string[];
+  missing: string[];
+  restartRequired: boolean;
+}
+
+export async function fetchPlugins(): Promise<PluginInfo[]> {
+  const res = await fetch(`${getApiBase()}/plugins`);
+  if (!res.ok) throw new Error(`Failed to load plugins: ${res.status}`);
+  return res.json();
+}
+
+/** Install or remove a plugin. Throws with the server's message on failure. */
+export async function setPluginInstalled(id: string, installed: boolean): Promise<PluginInfo> {
+  const action = installed ? 'install' : 'remove';
+  const res = await fetch(`${getApiBase()}/plugins/${encodeURIComponent(id)}/${action}`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to ${action} plugin: ${res.status}`);
+  return data;
+}
+
 export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
   const res = await fetch(`${getApiBase()}/acp/agents`);
   if (!res.ok) throw new Error(`Failed to load ACP agents: ${res.status}`);
