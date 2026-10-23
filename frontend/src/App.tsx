@@ -19,7 +19,6 @@ import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
-import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
@@ -259,27 +258,6 @@ function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): R
 }
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
-
-function NavTabs({
-  mainView,
-  setMainView,
-}: {
-  mainView: MainView;
-  setMainView: (v: MainView) => void;
-}): React.ReactElement {
-  const { t } = useI18n();
-  return (
-    <BrutalSegmentedTabs
-      value={mainView}
-      onChange={setMainView}
-      tabs={[
-        { id: 'chat', label: t('nav.chat') },
-        { id: 'memory', label: t('nav.memory') },
-        { id: 'skills', label: t('nav.skills') },
-      ]}
-    />
-  );
-}
 
 function UpdateButton(): React.ReactElement | null {
   const { t } = useI18n();
@@ -759,7 +737,7 @@ function AppInner(): React.ReactElement {
           />
           <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
             <header
-              className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
+              className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between gap-4 md:gap-6 bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
               onMouseDown={handleHeaderMouseDown}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
@@ -807,17 +785,6 @@ function AppInner(): React.ReactElement {
               <div
                 className={`app-header-actions flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
               >
-                {/* The sidebar carries these on wider screens; a phone keeps them here
-                  because its sidebar is tucked away. */}
-                <div className="md:hidden">
-                  <NavTabs
-                    mainView={mainView}
-                    setMainView={(v) => {
-                      setMemoryInitialTab(undefined);
-                      setMainView(v);
-                    }}
-                  />
-                </div>
                 <StatusBar
                   inline
                   onOpenMemorySettings={() => {
