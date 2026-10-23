@@ -388,28 +388,26 @@ def _cancel_unprocessed_tool_calls(
     if not pending_ids:
         return messages, set()
 
-    pending_calls: dict[str, ToolCallPart] = {}
+    denial = f"The tool call was denied because {reason}."
+    repaired: list[Any] = []
+    cancelled_ids: set[str] = set()
     for message in messages:
+        repaired.append(message)
         if not isinstance(message, ModelResponse):
             continue
-        for part in message.parts:
-            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids:
-                pending_calls[part.tool_call_id] = part
-
-    cancelled_ids = set(pending_calls)
-    if not cancelled_ids:
-        return messages, set()
-
-    denial = f"The tool call was denied because {reason}."
-    denial_parts = [
-        ToolReturnPart(
-            tool_name=pending_calls[tool_call_id].tool_name,
-            tool_call_id=tool_call_id,
-            content=ToolDenied(message=denial),
-        )
-        for tool_call_id in sorted(cancelled_ids)
-    ]
-    return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
+        denial_parts = [
+            ToolReturnPart(
+                tool_name=part.tool_name,
+                tool_call_id=part.tool_call_id,
+                content=ToolDenied(message=denial),
+            )
+            for part in message.parts
+            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids
+        ]
+        if denial_parts:
+            cancelled_ids.update(part.tool_call_id for part in denial_parts)
+            repaired.append(ModelRequest(parts=denial_parts))
+    return repaired, cancelled_ids
 
 
 def _expire_display_tool_parts(
