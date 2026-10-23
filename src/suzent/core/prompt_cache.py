@@ -148,14 +148,18 @@ def _remember(store: OrderedDict, key: str, value: Any) -> None:
         store.popitem(last=False)
 
 
-def record_turn_config(chat_id: str, config: dict[str, Any]) -> None:
-    """Keep the config a chat's current turn built its agent from."""
+def record_turn_config(
+    chat_id: str, config: dict[str, Any], model_id: str | None = None
+) -> None:
+    """Keep the config a chat's current turn built its agent from.
+
+    ``model_id`` is the model the agent resolved to, which ``config`` leaves
+    unset when the user has no model preference.
+    """
     if chat_id:
-        _remember(
-            _TURN_CONFIGS,
-            chat_id,
-            {key: value for key, value in config.items() if key != "_runtime"},
-        )
+        recorded = {key: value for key, value in config.items() if key != "_runtime"}
+        recorded["_model_id"] = model_id or config.get("model")
+        _remember(_TURN_CONFIGS, chat_id, recorded)
 
 
 def turn_config(chat_id: str) -> dict[str, Any] | None:

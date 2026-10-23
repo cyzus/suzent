@@ -391,10 +391,10 @@ def _fork_task(task_id: str, parent: str, **fields) -> SubAgentTask:
     )
 
 
-def _record_parent_turn(parent: str, config: dict) -> None:
+def _record_parent_turn(parent: str, config: dict, model_id: str | None = None) -> None:
     from suzent.core import prompt_cache
 
-    prompt_cache.record_turn_config(parent, config)
+    prompt_cache.record_turn_config(parent, config, model_id)
     prompt_cache._remember(
         prompt_cache._LATEST_PREFIXES,
         parent,
@@ -462,6 +462,19 @@ def test_fork_falls_back_without_a_recorded_parent_or_on_another_model():
         )
         is None
     )
+
+
+def test_fork_matches_a_parent_whose_model_was_resolved_by_default():
+    parent_turn = {k: v for k, v in _PARENT_TURN.items() if k != "model"}
+    _record_parent_turn("parent-dm", parent_turn, model_id="claude-opus-5-5")
+
+    config = subagent_runner.fork_turn_config(
+        _fork_task("dm", "parent-dm"), {"model": "claude-opus-5-5"}
+    )
+
+    assert config is not None
+    assert "model" not in config
+    assert "_model_id" not in config
 
 
 def test_fork_reminder_carries_role_tools_and_a_moved_cwd():

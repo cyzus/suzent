@@ -714,7 +714,7 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
             raise
-        record_turn_config(chat_id, config)
+        record_turn_config(chat_id, config, getattr(agent, "_model_id", None))
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)

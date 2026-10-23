@@ -596,7 +596,11 @@ def fork_turn_config(task: "SubAgentTask", base_config: dict) -> Optional[dict]:
     from suzent.core.prompt_cache import pin_fork_prefix, turn_config
 
     parent = turn_config(task.parent_chat_id)
-    if parent is None or base_config.get("model") not in (None, parent.get("model")):
+    if parent is None or base_config.get("model") not in (
+        None,
+        parent.get("model"),
+        parent.get("_model_id"),
+    ):
         return None
     if not pin_fork_prefix(task.chat_id, task.parent_chat_id):
         return None
