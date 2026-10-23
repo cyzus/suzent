@@ -50,14 +50,47 @@ data class ScheduledSidebarGroup(val task: ScheduledTask?, val root: SidebarChat
     val id: String get() = task?.let { "task:${it.id}" } ?: "chat:${root!!.chat.id}"
 }
 
+/** Desktop parity: a failure is resolved once the chat was updated after the run finished. */
+internal fun ScheduledTask.failureHandled(): Boolean {
+    if (!hasError) return false
+    val finished = lastRunFinishedAt ?: return false
+    val updated = chatUpdatedAt ?: return false
+    fun parse(raw: String) =
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
+    val finish = parse(finished) ?: return false
+    val chat = parse(updated) ?: return false
+    return chat.isAfter(finish)
+}
+
+/** True while a failure still needs attention; a handled one stops ranking and reading as failed. */
+val ScheduledTask.unresolvedError: Boolean get() = hasError && !failureHandled()
+
+/**
+ * Desktop automation order: unresolved failures first, then active tasks, then paused
+ * ones, each group by next run (tasks without a next run last).
+ */
+private fun ScheduledTask.failureRank(): Int = when {
+    unresolvedError -> 0
+    active -> 1
+    else -> 2
+}
+
+private fun ScheduledTask.nextRunOrder(): Long = nextRunAt?.let { raw ->
+    runCatching { java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli() }.getOrNull()
+} ?: Long.MAX_VALUE
+
+fun orderedScheduledTasks(tasks: List<ScheduledTask>): List<ScheduledTask> =
+    tasks.sortedWith(compareBy({ it.failureRank() }, { it.nextRunOrder() }))
+
 fun scheduledSidebarGroups(chats: List<Chat>, tasks: List<ScheduledTask>, search: String, expanded: Set<String>): List<ScheduledSidebarGroup> {
+    val ordered = orderedScheduledTasks(tasks)
     val ids = scheduledChatIds(chats)
     val source = chats.filter { it.id in ids }
     val allRows = sidebarChats(source, "", expanded)
     val searched = sidebarChats(source, search, expanded)
     val result = mutableListOf<ScheduledSidebarGroup>()
-    val taskChatIds = tasks.mapNotNull { it.chatId }.toSet()
-    for (task in tasks) {
+    val taskChatIds = ordered.mapNotNull { it.chatId }.toSet()
+    for (task in ordered) {
         val matches = task.name.contains(search.trim(), ignoreCase = true)
         val rows = (if (matches) allRows else searched).filter { it.root.id == task.chatId }
         if (!matches && rows.isEmpty()) continue

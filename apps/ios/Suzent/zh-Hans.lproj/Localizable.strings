@@ -117,7 +117,6 @@
 "Good evening." = "晚上好。";
 "Bed time? Or maybe late night coding?" = "该睡了？还是深夜爆肝？";
 "Creating in" = "创建于";
-"Default" = "默认项目";
 
 "Input" = "参数";
 
@@ -190,6 +189,7 @@
 
 "Expand sub-agents: %lld" = "展开 %lld 个子智能体";
 "Collapse sub-agents: %lld" = "折叠 %lld 个子智能体";
+"%lld sub-agents" = "%lld 个子智能体";
 
 "Connecting to Suzent" = "正在连接 Suzent";
 "Connection help" = "连接帮助";

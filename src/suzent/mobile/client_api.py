@@ -212,10 +212,19 @@ async def scheduled_tasks(request: Request) -> JSONResponse:
 
     tasks: list[dict[str, object]] = []
     for job in db.list_cron_jobs():
+        # Heartbeats are the desktop's local background checks, not scheduled tasks.
+        # Tasks bound to Regent's own chat stay listed here: the desktop hides them
+        # because its Regent card surfaces them, and a paired device has no card.
+        if job.source == "heartbeat":
+            continue
         chat_id = _task_chat_id(job)
         if not grant.permissions.permits_chat(chat_id):
             continue
         stored_chat = db.get_chat(chat_id)
+        # Same source as the desktop automation list: the newest run's finish time lets a
+        # client tell an unresolved failure from one already answered in the chat.
+        latest_runs = db.list_cron_runs(job.id, limit=1)
+        latest_run = latest_runs[0] if latest_runs else None
         tasks.append(
             {
                 "id": str(job.id),
@@ -228,6 +237,12 @@ async def scheduled_tasks(request: Request) -> JSONResponse:
                 else None,
                 "lastRunAt": job.last_run_at.astimezone().isoformat()
                 if job.last_run_at
+                else None,
+                "chatUpdatedAt": stored_chat.updated_at.astimezone().isoformat()
+                if stored_chat
+                else None,
+                "lastRunFinishedAt": latest_run.finished_at.astimezone().isoformat()
+                if latest_run and latest_run.finished_at
                 else None,
                 "hasError": bool(job.last_error),
             }
