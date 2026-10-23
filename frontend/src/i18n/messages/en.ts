@@ -1166,7 +1166,7 @@ export const en = {
       modes: { light: 'Light', dark: 'Dark', system: 'System' },
       colorScheme: 'Color Scheme',
       colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
-      schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
+      schemes: { warm: 'Warm', cold: 'Cold', green: 'Green', ember: 'Ember' },
     },
     notifications: {
       title: 'Notifications',

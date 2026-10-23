@@ -1208,7 +1208,7 @@ export const zhCN = {
       modes: { light: '浅色', dark: '深色', system: '跟随系统' },
       colorScheme: '颜色方案',
       colorSchemeDesc: '选择浅色与深色模式使用的强调色。',
-      schemes: { warm: '暖色', cold: '冷色', green: '绿色' },
+      schemes: { warm: '暖色', cold: '冷色', green: '绿色', ember: '琥珀' },
     },
     notifications: {
       title: '通知',
