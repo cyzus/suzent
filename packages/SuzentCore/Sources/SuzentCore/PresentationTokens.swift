@@ -19,9 +19,16 @@ public enum PresentationTokens {
     public static let shadow_dark: UInt32 = 0x080808
     public static let link_dark: UInt32 = 0x78AAFF
     public static let code_header_dark: UInt32 = 0x2B2B2B
+    public static let selection_light: UInt32 = 0xE5E5E5
+    public static let selection_dark: UInt32 = 0x3F3F46
     public static let borderWidth: Double = 2
     public static let shadowOffset: Double = 2
+    public static let borderWidthHeavy: Double = 3
+    public static let shadowOffsetHeavy: Double = 4
+    public static let shadowOffsetOverlay: Double = 3
+    public static let radius: Double = 0
     public static let spaceSmall: Double = 8
+    public static let spaceRow: Double = 10
     public static let spaceMedium: Double = 12
     public static let spacePage: Double = 16
     public static let spaceLarge: Double = 24
@@ -31,6 +38,7 @@ public enum PresentationTokens {
     public static let typeChat: Double = 15
     public static let typeControl: Double = 15
     public static let typeSection: Double = 20
+    public static let typeSidebarSection: Double = 10
     public static let controlHeight: Double = 44
     public static let sidebarWidth: Double = 320
     public static let ignoredToolNames: [String] = ["final_answer", "final answer"]

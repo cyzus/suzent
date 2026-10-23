@@ -30,18 +30,28 @@ private struct ChatMenuPreferenceKey: PreferenceKey {
     }
 }
 
+private struct SidebarFoldAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
 private struct SidebarFoldControl: View {
     let count: Int
     let expanded: Bool
     let toggle: () -> Void
     var body: some View {
+        // Inline in the reserved meta slot: 16pt tall, widened horizontally for the tap target.
         Button(action: toggle) {
-            HStack(spacing: 5) {
-                Text("\(count)").font(.system(size: 11, weight: .medium, design: .monospaced))
-                Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
-            }.foregroundStyle(Color.suzentMuted).padding(.horizontal, 7).padding(.vertical, 4)
-                .background(Color.suzentText.opacity(0.06)).frame(width: 52, height: 44)
-        }.buttonStyle(.plain).padding(.trailing, 6)
+            HStack(spacing: 2) {
+                Text("\(count) sub-agents")
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+            }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium)).foregroundStyle(Color.suzentMuted)
+                .padding(.horizontal, 4)
+                .frame(minHeight: 16).contentShape(Rectangle())
+        }.buttonStyle(.plain)
             .accessibilityLabel(expanded ? Text("Collapse sub-agents: \(count)") : Text("Expand sub-agents: \(count)"))
     }
 }
@@ -65,26 +75,45 @@ private struct ChatSidebarRow: View {
     @State private var deleting = false
     @State private var title = ""
 
+    private var meta: Text? {
+        if chat.isSubagent && !nested { return parentTitle.map { Text("Sub-agent of \($0)") } ?? Text("Sub-agent") }
+        if chat.isScheduled { return Text("Scheduled task") }
+        return nil
+    }
+
     var body: some View {
         Button { if !menu { open() } } label: {
-            HStack {
-                if chat.pinned == true { Image(systemName: "pin.fill").font(.caption) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                    if chat.isSubagent && !nested {
-                        if let parentTitle { Text("Sub-agent of \(parentTitle)").font(.caption) }
-                        else { Text("Sub-agent").font(.caption) }
-                    } else if chat.isScheduled { Text("Scheduled task").font(.caption) }
+            HStack(spacing: 6) {
+                if chat.pinned == true { Image(systemName: "pin.fill").font(.system(size: 10)) }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(chat.title).font(.system(size: PresentationTokens.typeCaption, weight: .medium))
+                        .lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: 0) {
+                        if let meta { meta.lineLimit(1).truncationMode(.tail) }
+                        if meta != nil && childCount > 0 { Text(" · ") }
+                        if childCount > 0 {
+                            SidebarFoldControl(count: childCount, expanded: childrenExpanded, toggle: {}).hidden()
+                                .anchorPreference(key: SidebarFoldAnchorKey.self, value: .bounds) { $0 }
+                        }
+                    }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
+                        .foregroundStyle(Color.suzentMuted)
+                        .frame(height: 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 if chat.isRunning == true { Image(systemName: "ellipsis") }
-                if childCount > 0 { Color.clear.frame(width: 44) }
-            }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
-            .overlay(alignment: .trailing) {
-                if childCount > 0 {
-                    SidebarFoldControl(count: childCount, expanded: childrenExpanded, toggle: toggleChildren)
+            }.padding(.leading, nested ? 32 : 12).padding(.trailing, 12).padding(.vertical, PresentationTokens.spaceRow)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(ChatRowButtonStyle(selected: selected, divider: !nested)).disabled(!enabled)
+            // The fold control sits over a hidden placeholder so it is not a button nested inside the row button.
+            .overlayPreferenceValue(SidebarFoldAnchorKey.self) { anchor in
+                GeometryReader { proxy in
+                    if let anchor {
+                        let rect = proxy[anchor]
+                        SidebarFoldControl(count: childCount, expanded: childrenExpanded, toggle: toggleChildren)
+                            .frame(width: rect.width, height: rect.height)
+                            .offset(x: rect.minX, y: rect.minY)
+                    }
                 }
             }
             .simultaneousGesture(LongPressGesture().onEnded { _ in
@@ -135,9 +164,9 @@ private struct ChatSidebarRow: View {
                     .disabled(chat.isRunning == true)
             }
         }.frame(width: 260).background(Color.suzentSurface)
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .background {
-                Rectangle().fill(Color.black).offset(x: 3, y: 3)
+                Rectangle().fill(Color.black).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
     }
@@ -157,7 +186,8 @@ struct ContentView: View {
     @State private var repairScanner = false
     @State private var showConnectionHelp = false
     @State private var search = ""
-    @State private var collapsedProjects: Set<String> = []
+    @State private var expandedProject: String? = nil
+    @State private var showAllScheduled = false
     @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
@@ -166,13 +196,33 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var projects: [Project] {
-        var result = model.projects
+        // Android dedupes the merged list; keep the same guarantee so duplicate ids
+        // cannot reach ForEach identity or the activity lookup.
+        var result: [Project] = []
+        for project in model.projects where !result.contains(where: { $0.id == project.id }) {
+            result.append(project)
+        }
         for chat in model.chats {
             if let id = chat.projectId, !result.contains(where: { $0.id == id }) {
                 result.append(Project(id: id, name: chat.projectName ?? id))
             }
         }
-        return result
+        // The backend lists chats newest-first (updated_at desc), so a project's earliest
+        // chat index is its latest activity. Mirrors the desktop sidebar's sortedProjects
+        // ordering without adding a timestamp to the mobile payload.
+        var activity: [String: Int] = [:]
+        for (index, chat) in model.chats.enumerated() {
+            guard let id = chat.projectId, activity[id] == nil else { continue }
+            activity[id] = index
+        }
+        var serverOrder: [String: Int] = [:]
+        for (index, project) in result.enumerated() where serverOrder[project.id] == nil { serverOrder[project.id] = index }
+        return result.sorted { lhs, rhs in
+            let left = activity[lhs.id] ?? Int.max
+            let right = activity[rhs.id] ?? Int.max
+            if left != right { return left < right }
+            return (serverOrder[lhs.id] ?? 0) < (serverOrder[rhs.id] ?? 0)
+        }
     }
 
     var body: some View {
@@ -180,13 +230,17 @@ struct ContentView: View {
             let wide = geometry.size.width >= 760
             ZStack(alignment: .leading) {
                 HStack(spacing: 0) {
-                    if wide && model.connected { sidebar.frame(width: 280); Divider() }
+                    if wide && model.connected {
+                        sidebar.frame(width: PresentationTokens.sidebarWidth)
+                        Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
                     VStack(spacing: 0) {
                         HStack {
                             if model.connected && !wide {
                                 Button { composing = false; withAnimation { showSidebar = true } } label: {
-                                    Image(systemName: "line.3.horizontal").frame(width: 44, height: 44)
-                                }.accessibilityLabel("Open sidebar")
+                                    Image(systemName: "line.3.horizontal")
+                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Open sidebar")
                             }
                             Group {
                                 if model.connected && showSettings {
@@ -206,8 +260,8 @@ struct ContentView: View {
                             }.frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
                             if model.connected {
                                 Button { composing = false; Task { await model.createChat(); showSettings = false; showSidebar = false } } label: {
-                                    Image(systemName: "square.and.pencil").frame(width: 44, height: 44)
-                                }.accessibilityLabel("New conversation")
+                                    Image(systemName: "square.and.pencil")
+                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("New conversation")
                                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
@@ -257,7 +311,9 @@ struct ContentView: View {
                         .onTapGesture { withAnimation { showSidebar = false } }
                     sidebar.frame(width: min(geometry.size.width - 48, PresentationTokens.sidebarWidth), height: geometry.size.height)
                         .background(Color.suzentSurface)
-                        .overlay(alignment: .trailing) { Rectangle().fill(Color.suzentOutline).frame(width: 2) }
+                        .overlay(alignment: .trailing) {
+                            Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy).ignoresSafeArea(edges: .bottom)
+                        }
                         .compositingGroup()
                         .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, PresentationTokens.sidebarWidth) - 2)
                         .allowsHitTesting(showSidebar)
@@ -337,27 +393,30 @@ struct ContentView: View {
             HStack {
                 Text("Chats").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                 Spacer()
-                Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
-                    .accessibilityLabel("Close sidebar")
+                Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Close sidebar")
             }.padding(.horizontal, 16)
-            SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.bottom, 12)
+            Rectangle().fill(Color.suzentShadow).frame(height: PresentationTokens.borderWidthHeavy)
+            Button { composing = false; Task { await model.createChat(); showSidebar = false; showSettings = false } } label: {
+                Label("New conversation", systemImage: "square.and.pencil")
+                    .font(.system(size: PresentationTokens.typeCaption, weight: .medium))
+                    .foregroundStyle(Color.suzentMuted)
+            }.buttonStyle(SuzentRowButtonStyle())
+                .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
+                .padding(.horizontal, 16).padding(.top, 12)
+            SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
             ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Color.clear.frame(height: 0).id("sidebar-top")
+                    scheduledSection
                     if normalRows.contains(where: { $0.root.pinned == true }) {
-                        Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
+                        sidebarHeading("Pinned")
                         conversationRows(normalRows.filter { $0.root.pinned == true })
-                        Divider()
                     }
                     ForEach(projects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
                     let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
                     if !unassigned.isEmpty { conversationRows(unassigned) }
-                    scheduledSection
-                    if projects.isEmpty && model.chats.isEmpty {
-                        Button("New conversation") { Task { await model.createChat(); showSidebar = false; showSettings = false } }
-                            .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
-                    }
                 }.padding(.horizontal, 16)
             }
             .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
@@ -376,22 +435,22 @@ struct ContentView: View {
     }
 
     private func projectSection(_ project: Project, rows: [SidebarChatEntry]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Button {
-                    if collapsedProjects.contains(project.id) { collapsedProjects.remove(project.id) }
-                    else { collapsedProjects.insert(project.id) }
-                } label: {
-                    HStack { Image(systemName: collapsedProjects.contains(project.id) ? "chevron.right" : "chevron.down"); Text(project.name).lineLimit(2) }
-                        .font(.system(.subheadline, design: .monospaced).bold()).frame(minHeight: 44)
-                }.buttonStyle(.plain)
-                Spacer()
-                Button { Task { await model.createChat(projectID: project.id); showSidebar = false; showSettings = false } } label: {
-                    Image(systemName: "plus").frame(width: 44, height: 44)
-                }.accessibilityLabel("New conversation")
-                    .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true || !model.projects.contains(where: { $0.id == project.id }))
-            }
-            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(rows) }
+        let projectOpen = expandedProject == project.id
+        let isOpen = projectOpen || !search.isEmpty
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                expandedProject = projectOpen ? nil : project.id
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
+                    Text(project.name).lineLimit(1).truncationMode(.tail)
+                }
+                .font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
+                .foregroundStyle(Color.suzentText)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }.buttonStyle(SuzentRowButtonStyle())
+            if isOpen { conversationRows(rows) }
         }
     }
 
@@ -412,11 +471,7 @@ struct ContentView: View {
                                projects: model.projects, manage: { action, value in
                     Task { await model.manageChat(chat, action: action, value: value) }
                 }) { openSidebarChat(chat) }
-            }.padding(.leading, entry.depth > 0 ? 8 : 0)
-                .overlay(alignment: .leading) {
-                    if entry.depth > 0 { Rectangle().fill(Color.suzentOutline.opacity(0.45)).frame(width: 1) }
-                }
-                .padding(.leading, entry.depth > 0 ? 12 : 0)
+            }
         }
     }
 
@@ -436,42 +491,95 @@ struct ContentView: View {
         expandedAgents.formUnion(parents)
     }
 
+    private func sidebarHeading(_ title: LocalizedStringKey, count: Int? = nil) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: PresentationTokens.typeSidebarSection, weight: .heavy))
+                .textCase(.uppercase).tracking(1.6).foregroundStyle(Color.suzentMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let count {
+                Text("\(count)").font(.system(size: PresentationTokens.typeSidebarSection, weight: .bold))
+                    .foregroundStyle(Color.suzentMuted)
+            }
+        }
+    }
+
+    /// Desktop status line order: paused (with failure) → failed → next run → active;
+    /// a running task keeps the marker and still reports the schedule.
+    private func scheduledTaskStatus(_ task: ScheduledTask) -> String {
+        if !task.active { return task.unresolvedError ? "Paused · Failed" : "Paused" }
+        if task.unresolvedError { return "Last run failed" }
+        if let raw = task.nextRunAt, let date = taskDate(raw) {
+            return "Next run \(date.formatted(date: .abbreviated, time: .shortened))"
+        }
+        return "Active"
+    }
+
+    private func scheduledTaskActivity(_ task: ScheduledTask) -> String {
+        let raw = task.failureHandled ? task.chatUpdatedAt : task.lastRunAt
+        return raw.flatMap(taskDate)?.formatted(date: .abbreviated, time: .shortened) ?? "Not yet"
+    }
+
     @ViewBuilder private var scheduledSection: some View {
         let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents)
+        // Matches the desktop automation preview: five rows, then View all.
+        let previewLimit = 5
+        let visible = showAllScheduled || !search.isEmpty ? groups : Array(groups.prefix(previewLimit))
         if !groups.isEmpty {
-            Text("Scheduled tasks").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
-            ForEach(groups) { group in
+            sidebarHeading("Scheduled tasks", count: groups.count)
+            ForEach(visible) { group in
                 VStack(alignment: .leading, spacing: 0) {
                     if let task = group.task {
                         Button {
                             if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(task.name).font(.system(size: PresentationTokens.typeChat, weight: .semibold)).lineLimit(2)
-                                    if task.isRunning { Text("Running").font(.caption).foregroundStyle(Color.suzentMuted) }
-                                    else if !task.active { Text("Paused").font(.caption).foregroundStyle(Color.suzentMuted) }
-                                    else if task.hasError { Text("Last run failed").font(.caption).foregroundStyle(Color.suzentMuted) }
-                                    else if let raw = task.nextRunAt, let date = taskDate(raw) {
-                                        Text("Next run: \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(Color.suzentMuted)
-                                    } else { Text("Active").font(.caption).foregroundStyle(Color.suzentMuted) }
-                                    if task.chatId == nil { Text("No conversation yet").font(.caption).foregroundStyle(Color.suzentMuted) }
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(task.name).font(.system(size: PresentationTokens.typeCaption, weight: .medium))
+                                        .lineLimit(1).truncationMode(.tail)
+                                    HStack(spacing: 6) {
+                                        if task.isRunning { Rectangle().fill(Color.suzentLink).frame(width: 8, height: 8) }
+                                        Text(scheduledTaskStatus(task)).lineLimit(1).truncationMode(.tail)
+                                        if let root = group.root, root.childCount > 0 {
+                                            Text("·")
+                                            SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id), toggle: {}).hidden()
+                                                .anchorPreference(key: SidebarFoldAnchorKey.self, value: .bounds) { $0 }
+                                        }
+                                    }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
+                                        .foregroundStyle(Color.suzentMuted)
+                                    if task.chatId == nil {
+                                        Text("No conversation yet").font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
+                                            .foregroundStyle(Color.suzentMuted)
+                                    }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
-                                if (group.root?.childCount ?? 0) > 0 { Color.clear.frame(width: 44) }
-                            }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                Text(scheduledTaskActivity(task))
+                                    .font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium)).monospacedDigit()
+                                    .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.leading, 8)
+                            }.padding(.horizontal, 12).padding(.vertical, PresentationTokens.spaceRow).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }.buttonStyle(ChatRowButtonStyle(selected: task.chatId != nil && model.selected?.id == task.chatId && !showSettings))
                             .disabled(model.busy || task.chatId == nil)
-                            .overlay(alignment: .trailing) {
-                                if let root = group.root, root.childCount > 0 {
-                                    SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id)) {
-                                        if expandedAgents.contains(root.id) { expandedAgents.remove(root.id) }
-                                        else { expandedAgents.insert(root.id) }
+                            .overlayPreferenceValue(SidebarFoldAnchorKey.self) { anchor in
+                                GeometryReader { proxy in
+                                    if let anchor, let root = group.root {
+                                        let rect = proxy[anchor]
+                                        SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id)) {
+                                            if expandedAgents.contains(root.id) { expandedAgents.remove(root.id) }
+                                            else { expandedAgents.insert(root.id) }
+                                        }
+                                        .frame(width: rect.width, height: rect.height)
+                                        .offset(x: rect.minX, y: rect.minY)
                                     }
                                 }
                             }
                     } else if let root = group.root { conversationRows([root]) }
                     conversationRows(group.children)
                 }
+            }
+            if search.isEmpty && groups.count > previewLimit {
+                Button { showAllScheduled.toggle() } label: {
+                    Text(showAllScheduled ? "Show fewer" : "View all \(groups.count) scheduled tasks")
+                        .font(.system(size: PresentationTokens.typeCaption, weight: .bold))
+                        .frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
+                }.buttonStyle(.plain)
             }
         }
     }
@@ -561,7 +669,7 @@ struct ContentView: View {
                 Text(greeting).textCase(.uppercase).font(.system(size: 30, weight: .black))
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
-            SuzentSelectionTrigger(value: chat.projectName ?? String(localized: "Default"), prefix: String(localized: "Creating in")) {
+            SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
                 composing = false; showProjectPicker = true
             }.disabled(model.busy || model.projects.isEmpty)
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)

@@ -45,6 +45,8 @@ files. Reuse these for new screens instead of default platform controls:
 | Component | Contract |
 | --- | --- |
 | Action | 15 pt/sp semibold, minimum height 44, padding 12/16 horizontal and 8 vertical, 2 px border and bottom-right shadow; pressed face moves onto shadow; disabled opacity 45% |
+| Icon action | Square `controlHeight` target, centred glyph inheriting `onSurface`; no border or shadow, quiet 8% pressed fill — the desktop header icons are plain too |
+| Row action | Full-width square row, leading icon plus 13 pt/sp medium muted label, 40 minimum height; no border or shadow, quiet 8% pressed fill; used for the sidebar's New conversation entry and project headers |
 | Quiet/destructive action | Same target and typography, without border or shadow; destructive text is red |
 | Text input | 15 pt/sp, padding 12, minimum height 44, 2 px outline turning blue on focus; invitation accepts 3–6 lines |
 | Toggle | Entire labeled row activates the switch; 44×26 rectangular track, 18×18 thumb, 150 ms transition, native accessibility state |
@@ -56,7 +58,21 @@ files. Reuse these for new screens instead of default platform controls:
 | Reconnection | Badge, section heading, primary reconnect, secondary pairing, quiet forget; same busy/cancel hierarchy |
 
 The shared tokens define dimensions, type sizes, and colors; platform implementations
-retain native keyboard, focus, and accessibility. iOS selectors use an in-page
+retain native keyboard, focus, and accessibility. Sidebar chrome reads its rules from
+the same source: `spaceRow` for the 10 pt vertical rhythm shared by chat rows,
+scheduled rows, project headers and section spacing, `borderWidthHeavy` for the rule under the sidebar header and along the
+drawer edge, `typeSidebarSection` for the uppercase tracked section headings,
+`selection-light`/`selection-dark` for the selected row fill, and `radius` for the
+square corners every surface uses. Sidebar chrome follows the desktop exactly: a 3 px
+rule under the header and along the drawer's trailing edge, 10 pt uppercase tracked
+section headings, and plain icon/row actions built from the shared primitives rather
+than platform controls. Conversation rows and project headers carry no border or
+shadow — only hairline rules and a quiet pressed fill — so the chat list stays as flat
+as the desktop sidebar. Hard shadows are reserved for menus, dialogs, messages and
+primary actions. The three shadow steps map one-to-one onto desktop: `shadowOffset`
+for actions and the composer, `shadowOffsetOverlay` for popups, dialogs and the
+selectors' panels, `shadowOffsetHeavy` for the assistant badge and the model/project
+selection panels. iOS selectors use an in-page
 modal overlay so system sheet chrome does not wrap the Suzent panel; dismiss via
 the backdrop, close button, selection, or accessibility escape. Build both clients
 when changing a primitive and inspect light/dark themes, large text, pressed/disabled

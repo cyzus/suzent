@@ -11,6 +11,8 @@ extension Color {
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
     static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
+    static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
     static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
@@ -238,14 +240,15 @@ private extension String {
 struct ChatRowButtonStyle: ButtonStyle {
     var selected: Bool
     var destructive = false
+    var divider = false
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.red : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.primary.opacity(0.08) : .clear)
-            .overlay(alignment: .leading) {
-                if selected { Rectangle().fill(Color.primary).frame(width: 3) }
+            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
+            .overlay(alignment: .bottom) {
+                if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
             }
             .opacity(enabled ? 1 : 0.4)
     }
@@ -275,6 +278,33 @@ struct SuzentButtonStyle: ButtonStyle {
             .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
             .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
             .padding(.bottom, quiet ? 0 : PresentationTokens.shadowOffset)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Header icon control: 44 target, no border or shadow, quiet pressed fill (desktop header icons).
+struct SuzentIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.suzentText)
+            .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Plain navigation row, mirroring the desktop sidebar's New chat row: icon, label, pressed fill.
+struct SuzentRowButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
             .opacity(enabled ? 1 : 0.45)
     }
 }
@@ -728,8 +758,8 @@ struct SuzentAssistantBadge: View {
                 SuzentLogoMark().frame(width: 26, height: 26)
                     .frame(width: 90, height: 40).background(Color.suzentSurface)
                     .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
-                    .padding(.trailing, 3).padding(.bottom, 3)
+                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
+                    .padding(.trailing, PresentationTokens.shadowOffsetOverlay).padding(.bottom, PresentationTokens.shadowOffsetOverlay)
             }
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
@@ -948,7 +978,7 @@ struct SuzentSelectionPanel: View {
             }
         }.background(Color.suzentSurface)
             .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 4, y: 4) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetHeavy, y: PresentationTokens.shadowOffsetHeavy) }
             .padding(.trailing, 4).padding(.bottom, 4)
             .onAppear { titleFocused = true }
     }
@@ -1066,7 +1096,7 @@ struct AssemblyBadge: View {
             .background(Color.suzentSurface)
             .clipped()
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
             .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
         }
         .frame(height: expanded ? 111 : 43)

@@ -20,7 +20,12 @@ def outputs() -> dict[Path, str]:
     for key in (
         "borderWidth",
         "shadowOffset",
+        "borderWidthHeavy",
+        "shadowOffsetHeavy",
+        "shadowOffsetOverlay",
+        "radius",
         "spaceSmall",
+        "spaceRow",
         "spaceMedium",
         "spacePage",
         "spaceLarge",
@@ -30,6 +35,7 @@ def outputs() -> dict[Path, str]:
         "typeChat",
         "typeControl",
         "typeSection",
+        "typeSidebarSection",
         "controlHeight",
         "sidebarWidth",
     ):
