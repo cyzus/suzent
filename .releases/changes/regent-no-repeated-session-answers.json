@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Stop Regent from receiving a session's final answer twice when the session already reported it to Regent."
+}
