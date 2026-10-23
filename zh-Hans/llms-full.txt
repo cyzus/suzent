@@ -6736,6 +6736,51 @@ byte-identical from one request to the next:
   Closing the gap for the other providers needs an upstream wire format, or
   sending every deferred schema up front.
 
+### Forked sub-agents
+
+A sub-agent spawned with `inherit_context=True` starts from its parent's
+history, so it can read the parent's cached prefix, but only if the tools and
+system prompt in front of that history are byte-identical. A sub-agent built
+the ordinary way gets its own system prompt and a narrowed tool list, which
+misses the cache on its first request. A fork is built to match instead
+(`fork_turn_config()` in `core/subagent_runner.py`):
+
+- **Same config.** `ChatProcessor` records the config each chat's current turn
+  built its agent from (`record_turn_config()`). The fork copies its parent's,
+  so it resolves to the same cached agent and the same tool definitions, and
+  overrides only keys that change neither: permission mode, interaction
+  profile, memory, working directory and grants.
+- **Same instructions.** `ForkPrefixCapability` snapshots the instruction parts
+  of every request. At spawn the parent's latest snapshot is pinned to the fork,
+  and every request the fork makes, follow-ups included, sends those parts
+  instead of its own. Recomputing them would differ in the chat id, permission
+  mode text and memory pin.
+- **Role as a reminder.** The sub-agent role, its tool set and the rules that
+  outrank the inherited prompt (no spawning, no questions to the user) go in a
+  hidden system reminder with the task (`SUBAGENT_FORK_REMINDER`), after the
+  cached history.
+- **Tools refused at call time.** The fork keeps every tool definition, and
+  `ToolDenyCapability.before_tool_validate` fails a call outside
+  `call_allowed_tools`. Builtins and MCP tools stay callable, as they are for an
+  ordinary sub-agent. Without an explicit tool list the allowlist is the
+  parent's tools, minus the agent tools, so a fork cannot spawn sub-agents.
+- **Same routing key.** `prompt_cache_chat_id` makes `PromptCacheRoutingCapability`
+  key the fork by its parent's chat, so OpenAI and ChatGPT route both to the
+  machine holding the prefix.
+
+The fork falls back to an ordinary sub-agent when the parent has no turn
+recorded in this process (after a restart) or the fork runs another model. A
+pinned fork logs its tool-definition drift from the parent, if any, and its
+cache read share for every request.
+
+Set `SUZENT_CACHE_DIAGNOSTICS=1` to also send `anthropic_cache_diagnostics` on
+requests to `api.anthropic.com`, so a miss is explained by the first point where
+the prefix diverged. Anthropic compares a request only with an earlier one that
+also opted in, so the parent's requests carry the flag too. It is off by
+default because HIPAA-enabled organizations reject it, and other Anthropic
+endpoints do not support it. OpenAI's Responses API reports its own
+diagnostics without a flag, and the fork log includes either.
+
 
 ---
 
