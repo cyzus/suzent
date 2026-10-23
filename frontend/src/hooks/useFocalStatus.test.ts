@@ -11,7 +11,7 @@ vi.mock('./useEventBus', () => ({
   },
 }));
 
-import { subscribeToFocalStatus } from './useFocalStatus';
+import { refreshFocalStatus, subscribeToFocalStatus } from './useFocalStatus';
 
 describe('subscribeToFocalStatus', () => {
   afterEach(() => {
@@ -41,5 +41,20 @@ describe('subscribeToFocalStatus', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(fetchStatus).not.toHaveBeenCalled();
     expect(busListeners.size).toBe(0);
+  });
+
+  it('pushes a fresh status to subscribers on demand, between polls', async () => {
+    vi.useFakeTimers();
+    fetchStatus.mockResolvedValue({ chatId: 'focal-suzent', unread: 1 });
+    const card = vi.fn();
+    const leave = subscribeToFocalStatus(card);
+    await vi.advanceTimersByTimeAsync(0);
+    card.mockClear();
+
+    fetchStatus.mockResolvedValue({ chatId: 'focal-suzent', unread: 0 });
+    await refreshFocalStatus();
+
+    expect(card).toHaveBeenCalledTimes(1);
+    leave();
   });
 });

@@ -1495,7 +1495,6 @@ export const zhCN = {
       allClear: '一切正常',
       waitingCount: '{count} 个等你',
       runningCount: '{count} 个进行中',
-      waitingBadge: '{count} 件事等你处理',
     },
     sections: {
       scheduled: '定时任务',
@@ -1543,7 +1542,6 @@ export const zhCN = {
       all: '全部',
     },
     labels: {
-      waiting: '等你处理',
       heartbeat: '心跳',
       running: '运行中',
       unreadCount: '{count} 条未读',
