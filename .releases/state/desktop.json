@@ -110,6 +110,7 @@
     ".releases/changes/skill-default-enablement.json",
     ".releases/changes/subagent-followup.json",
     ".releases/changes/subagent-fork-model-live-view.json",
+    ".releases/changes/subagent-parent-model.json",
     ".releases/changes/subagent-stall-recovery.json",
     ".releases/changes/task-progress-panel.json",
     ".releases/changes/tool-argument-conventions.json",

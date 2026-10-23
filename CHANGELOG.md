@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a chat from the task board or a link now opens its project in the sidebar and highlights its row; chats opened from Regent's board get a back-to-Regent tag in the header.
 - List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
+- Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
 
 ## [v0.17.0] - 2026-10-18
