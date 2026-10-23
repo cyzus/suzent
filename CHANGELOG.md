@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
 - Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
+- Stop Regent from receiving a session's final answer twice when the session already reported it to Regent.
 - The ✓ that marks a chat resolved now shows only on chats opened from Regent's board, so project chats opened directly keep their usual header.
 - Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
 - Show shell output while commands run and let the agent continue when a command outlives the initial wait.
