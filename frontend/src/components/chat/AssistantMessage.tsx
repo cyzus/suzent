@@ -21,6 +21,7 @@ import { AcpAgentIcon } from '../AcpAgentIcon';
 import { RegentMark } from '../regent/RegentMark';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import { IncomingMessage } from './IncomingMessage';
+import { splitLeadingTriggers } from '../../lib/streamingDrafts';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
@@ -1042,12 +1043,18 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (effectiveParts !== undefined) {
+    const { triggers, response } = splitLeadingTriggers(effectiveParts);
     return (
       <CitationProvider sources={citationSourcesMap}>
         <div
           className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message pr-10' : 'pr-4 md:pr-12'}`}
         >
           {conversationCopy}
+          {triggers.map((part, index) => (
+            <div key={`trigger-${index}`} className="mb-6">
+              <IncomingMessage text={part.text || ''} />
+            </div>
+          ))}
           {/* Badge/Assembly Container */}
           {badgeContainer}
 
@@ -1063,7 +1070,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             >
               {hasParts ? (
                 <AGUIPartsContent
-                  parts={effectiveParts}
+                  parts={response}
                   messageIndex={messageIndex}
                   workedDurationSeconds={workedDurationSeconds}
                   streamStartedAtMs={streamStartedAtMs}
