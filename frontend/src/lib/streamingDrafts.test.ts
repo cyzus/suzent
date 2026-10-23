@@ -91,6 +91,17 @@ describe('settled streaming drafts', () => {
   it('hides a stale draft duplicated by the settled reply in its turn', () => {
     expect(hideStreamingDrafts([draft, reply], false)).toEqual([reply]);
   });
+  it('removes the draft before tool activity is folded into the settled reply', () => {
+    const trigger: Message = { role: 'system_triggered', content: 'Regent request' };
+    const activity: Message = { role: 'assistant', content: '<details>Tool call</details>' };
+    const raw = [trigger, draft, activity, reply];
+    const visible = new Set(hideStreamingDrafts(raw, false));
+    const retained = raw.flatMap((message, index) =>
+      visible.has(message) ? [{ message, index }] : []
+    );
+    expect(retained.map(({ index }) => index)).toEqual([0, 2, 3]);
+    expect(retained.map(({ message }) => message)).toEqual([trigger, activity, reply]);
+  });
   it('does not match identical replies across triggered turns', () => {
     const trigger: Message = { role: 'system_triggered', content: 'run again' };
     expect(hideStreamingDrafts([draft, trigger, reply], false)).toEqual([draft, trigger, reply]);
