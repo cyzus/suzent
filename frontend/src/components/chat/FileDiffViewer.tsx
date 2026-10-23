@@ -55,7 +55,7 @@ const getMonacoThemeName = (theme: 'light' | 'dark', scheme: Scheme): string => 
 const makeBeforeMount = (): BeforeMount => {
   return (monaco) => {
     (['light', 'dark'] as const).forEach((themeNamePart) => {
-      (['warm', 'cold', 'green'] as const).forEach((schemeNamePart) => {
+      (['warm', 'cold', 'green', 'ember'] as const).forEach((schemeNamePart) => {
         const themeName = getMonacoThemeName(themeNamePart, schemeNamePart);
         if (REGISTERED_THEMES.has(themeName)) return;
 
