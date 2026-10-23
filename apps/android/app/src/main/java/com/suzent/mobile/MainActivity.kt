@@ -336,8 +336,8 @@ private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: 
             Text(task.name, fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             val status = when {
-                !task.active -> if (task.hasError) stringResource(R.string.task_paused_failed) else stringResource(R.string.task_paused)
-                task.hasError -> stringResource(R.string.task_failed)
+                !task.active -> if (task.unresolvedError) stringResource(R.string.task_paused_failed) else stringResource(R.string.task_paused)
+                task.unresolvedError -> stringResource(R.string.task_failed)
                 task.nextRunAt != null -> stringResource(R.string.task_next_run, formatTaskDate(task.nextRunAt))
                 else -> stringResource(R.string.task_active)
             }
@@ -354,7 +354,9 @@ private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: 
             }
             if (task.chatId == null) Text(stringResource(R.string.task_no_conversation), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(task.lastRunAt?.let { formatTaskDate(it) } ?: stringResource(R.string.task_not_yet),
+        val activity = (if (task.failureHandled()) task.chatUpdatedAt else task.lastRunAt)?.let { formatTaskDate(it) }
+            ?: stringResource(R.string.task_not_yet)
+        Text(activity,
             fontSize = PresentationTokens.typeSidebarSection.sp, fontWeight = FontWeight.Medium,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(start = 8.dp))

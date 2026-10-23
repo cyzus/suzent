@@ -57,10 +57,31 @@ public func sidebarChats(_ chats: [Chat], search: String, expanded: Set<String>)
     return result
 }
 
+/// Desktop parity: a failure is resolved once the chat was updated after the run finished.
+public extension ScheduledTask {
+    var failureHandled: Bool {
+        guard hasError, let finished = lastRunFinishedAt, let updated = chatUpdatedAt else { return false }
+        guard let finish = SidebarPresentationDate.parse(finished),
+              let chat = SidebarPresentationDate.parse(updated) else { return false }
+        return chat > finish
+    }
+
+    /// True while a failure still needs attention; a handled one stops ranking and reading as failed.
+    var unresolvedError: Bool { hasError && !failureHandled }
+}
+
+enum SidebarPresentationDate {
+    static func parse(_ raw: String) -> Date? {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    }
+}
+
 /// Desktop automation order: unresolved failures first, then active tasks, then paused
 /// ones, each group by next run (tasks without a next run last).
 private func scheduledTaskRank(_ task: ScheduledTask) -> Int {
-    task.hasError ? 0 : (task.active ? 1 : 2)
+    task.unresolvedError ? 0 : (task.active ? 1 : 2)
 }
 
 private func scheduledTaskNextRun(_ task: ScheduledTask) -> TimeInterval {

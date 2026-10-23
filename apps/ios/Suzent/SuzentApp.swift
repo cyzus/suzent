@@ -506,8 +506,8 @@ struct ContentView: View {
     /// Desktop status line order: paused (with failure) → failed → next run → active;
     /// a running task keeps the marker and still reports the schedule.
     private func scheduledTaskStatus(_ task: ScheduledTask) -> String {
-        if !task.active { return task.hasError ? "Paused · Failed" : "Paused" }
-        if task.hasError { return "Last run failed" }
+        if !task.active { return task.unresolvedError ? "Paused · Failed" : "Paused" }
+        if task.unresolvedError { return "Last run failed" }
         if let raw = task.nextRunAt, let date = taskDate(raw) {
             return "Next run \(date.formatted(date: .abbreviated, time: .shortened))"
         }
@@ -515,7 +515,8 @@ struct ContentView: View {
     }
 
     private func scheduledTaskActivity(_ task: ScheduledTask) -> String {
-        task.lastRunAt.flatMap(taskDate)?.formatted(date: .abbreviated, time: .shortened) ?? "Not yet"
+        let raw = task.failureHandled ? task.chatUpdatedAt : task.lastRunAt
+        return raw.flatMap(taskDate)?.formatted(date: .abbreviated, time: .shortened) ?? "Not yet"
     }
 
     @ViewBuilder private var scheduledSection: some View {

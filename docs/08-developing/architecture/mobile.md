@@ -216,8 +216,13 @@ desktop, and only tasks whose target conversation is permitted for the device ar
 included, covering bound tasks and isolated `cron-{id}` tasks. Unlike the desktop,
 tasks bound to the focal agent's chat stay listed: the desktop hides them because its
 Regent card shows them, and a paired device has no such card.
-It exposes name, active/running/error flags, offset-qualified run times, and an
-openable chat ID only when that chat exists; prompts and raw errors stay private.
+It exposes name, active/running/error flags, offset-qualified run times, an
+openable chat ID only when that chat exists, and `chatUpdatedAt` plus
+`lastRunFinishedAt` (the newest run's finish time) so a client can tell an unresolved
+failure from one already answered in the chat; prompts and raw errors stay private.
+A failure counts as resolved once the chat was updated after that run finished: it
+leaves the failing rank, drops the failure status line, and shows the chat's activity
+time instead of the run time, exactly as the desktop automation list does.
 Both clients order the section like the desktop: unresolved failures first, then
 active tasks, then paused ones, each group by next run (tasks without a next run
 last). Rows show the desktop status line (paused, paused · failed, last run failed,

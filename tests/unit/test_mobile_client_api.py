@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -27,7 +28,13 @@ def setup_client(tmp_path, monkeypatch):
     app.state.mobile_store = store
     app.add_middleware(AuthBoundaryMiddleware)
     records = {
-        key: SimpleNamespace(id=key, title=key, config={}, state_revision=0)
+        key: SimpleNamespace(
+            id=key,
+            title=key,
+            config={},
+            state_revision=0,
+            updated_at=datetime(2026, 10, 7, 12, 0),
+        )
         for key in ("shared", "private")
     }
 
@@ -54,6 +61,11 @@ def setup_client(tmp_path, monkeypatch):
             if key in records
         },
         list_cron_jobs=lambda: [],
+        list_cron_runs=lambda job_id, limit=20: (
+            [SimpleNamespace(finished_at=datetime(2026, 10, 7, 11, 0))]
+            if job_id == 1
+            else []
+        ),
         get_subagent_chat_ids_for_parent_chat=lambda chat_id: [],
         update_chat=update_chat,
         get_chat=records.get,
@@ -1302,6 +1314,13 @@ def test_scheduled_tasks_are_scoped_and_safe(
         tasks = response.json()["tasks"]
         assert [task["id"] for task in tasks] == expected
         assert all("prompt" not in task and "lastError" not in task for task in tasks)
+        # Desktop parity: the two timestamps that decide whether a failure is already handled.
+        assert all(
+            "chatUpdatedAt" in task and "lastRunFinishedAt" in task for task in tasks
+        )
+        finished = {task["id"]: task["lastRunFinishedAt"] for task in tasks}
+        if "1" in finished:
+            assert finished["1"] is not None
         assert "4" not in {task["id"] for task in tasks}  # heartbeat rows never surface
         if tasks:
             assert tasks[0]["chatId"] == "shared"

@@ -50,12 +50,27 @@ data class ScheduledSidebarGroup(val task: ScheduledTask?, val root: SidebarChat
     val id: String get() = task?.let { "task:${it.id}" } ?: "chat:${root!!.chat.id}"
 }
 
+/** Desktop parity: a failure is resolved once the chat was updated after the run finished. */
+internal fun ScheduledTask.failureHandled(): Boolean {
+    if (!hasError) return false
+    val finished = lastRunFinishedAt ?: return false
+    val updated = chatUpdatedAt ?: return false
+    fun parse(raw: String) =
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
+    val finish = parse(finished) ?: return false
+    val chat = parse(updated) ?: return false
+    return chat.isAfter(finish)
+}
+
+/** True while a failure still needs attention; a handled one stops ranking and reading as failed. */
+val ScheduledTask.unresolvedError: Boolean get() = hasError && !failureHandled()
+
 /**
  * Desktop automation order: unresolved failures first, then active tasks, then paused
  * ones, each group by next run (tasks without a next run last).
  */
 private fun ScheduledTask.failureRank(): Int = when {
-    hasError -> 0
+    unresolvedError -> 0
     active -> 1
     else -> 2
 }
