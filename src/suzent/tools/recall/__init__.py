@@ -13,12 +13,14 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from suzent.tools.recall.memory_tools import MemorySearchTool as MemorySearchTool
+    from suzent.tools.recall.memory_tools import MemoryUpdateTool as MemoryUpdateTool
     from suzent.tools.recall.session_search_tool import (
         SessionSearchTool as SessionSearchTool,
     )
 
 _EXPORTS = {
     "MemorySearchTool": "suzent.tools.recall.memory_tools",
+    "MemoryUpdateTool": "suzent.tools.recall.memory_tools",
     "SessionSearchTool": "suzent.tools.recall.session_search_tool",
 }
 

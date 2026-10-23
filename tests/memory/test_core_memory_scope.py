@@ -82,13 +82,13 @@ def test_an_unconfigured_notebook_says_so_and_nothing_more() -> None:
 
 
 @pytest.mark.parametrize("sandbox", [True, False])
-def test_the_memory_file_safety_rule_survives(sandbox: bool) -> None:
-    """MEMORY.md's generated zone is overwritten by consolidation; losing that
-    warning would cost the user real text."""
+def test_the_memory_map_rule_survives(sandbox: bool) -> None:
+    """MEMORY.md is a map; an agent that writes facts into it rebuilds the summary
+    the map replaced."""
     section = _section(sandbox)
 
     assert "MEMORY.md" in section
-    assert "below" in section
+    assert "is a map" in section
 
 
 @pytest.mark.parametrize("sandbox", [True, False])

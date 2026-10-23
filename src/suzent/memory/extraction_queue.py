@@ -54,6 +54,22 @@ def _turns(entries: list[Entry]) -> list[list[Entry]]:
     return turns
 
 
+def _is_scheduled(turn: list[Entry]) -> bool:
+    """A turn a scheduled task started, not the user.
+
+    Its prompt is the task's spec, which capture must never store as something the
+    user said. The transcript keeps it either as the raw trigger or, once the system
+    reminder it arrived in is stripped, as an empty user line.
+    """
+    from suzent.core.system_reminder import SCHEDULED_TASK_TRIGGER_PREFIX
+
+    first = turn[0]
+    if first.get("role") != "user":
+        return False
+    text = str(first.get("content") or "").lstrip()
+    return not text or text.startswith(SCHEDULED_TASK_TRIGGER_PREFIX)
+
+
 def _entry_chars(entry: Entry) -> int:
     return len(str(entry.get("content", "")))
 
@@ -239,14 +255,23 @@ class ExtractionQueue:
                         pending.pop()
                     if not pending:
                         break
-                    context = _turns(entries[:cursor])[-CONTEXT_TURNS:]
+                    context = [
+                        t for t in _turns(entries[:cursor]) if not _is_scheduled(t)
+                    ][-CONTEXT_TURNS:]
                     budget = MAX_BATCH_CHARS - len(format_batch(context, []))
                     batch = self._split(pending, budget)[0]
-                    await memory_mgr.process_conversation_for_memories(
-                        format_batch(context, batch),
-                        chat_id=chat_id,
-                        user_id=user_id,
-                        recall_query=format_batch([], batch),
+                    # Scheduled turns never reach user-fact capture, but their
+                    # failures and fixes are lessons like any other.
+                    new = [t for t in batch if not _is_scheduled(t)]
+                    if new:
+                        await memory_mgr.process_conversation_for_memories(
+                            format_batch(context, new),
+                            chat_id=chat_id,
+                            user_id=user_id,
+                            recall_query=format_batch([], new),
+                        )
+                    await memory_mgr.process_experience(
+                        format_batch(context, batch), chat_id=chat_id, user_id=user_id
                     )
                     await self._advance(
                         chat_id, cursor + sum(len(turn) for turn in batch)

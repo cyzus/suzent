@@ -10,7 +10,7 @@ This page describes the implementation-level structure of Suzent memory as it ex
 
 | Layer | Responsibility |
 |---|---|
-| Agent prompt and tools | `memory_search`, `block_update`, and file access. |
+| Agent prompt and tools | `memory_search`, `memory_update`, and file access. |
 | `MemoryManager` | Extraction, retrieval, and core memory formatting. |
 | `MarkdownMemoryStore` | File-backed operational memory plus notebook state helpers. |
 | `CoreMemoryFileIndexer` | Converts memory files into embedding rows in LanceDB. |
@@ -30,6 +30,13 @@ DATA_DIR/
     .state/
       recall_log.jsonl
       tombstones.jsonl
+      rejected.jsonl              # claims the user said are wrong
+      confirmations.jsonl         # restatements waiting for the dream
+      superseded.txt              # log lines the dream folded, for the runner to retire
+      review_queue.md             # open questions the dream could not settle
+      dream_ops.md                # the dream's op log, flushed to log.md by the runner
+      capture_dropped.jsonl       # candidates the capture gates dropped, with codes
+      cleanup/YYYY-MM-DD/         # `suzent memory cleanup` drafts
     0_Inbox/
     1_Projects/
     2_Wiki/
@@ -91,12 +98,9 @@ The current implementation reindexes the whole current-day archive file after a 
 
 `retrieve_relevant_memories()` first checks whether the archival index has rows. It then uses either embedding-backed hybrid search or FTS-only search. Results are formatted for prompt injection and logged best-effort to the notebook recall log for later `MEMORY.md` promotion.
 
-### MEMORY.md writers
+### MEMORY.md
 
-There are two MEMORY.md update paths:
-
-- `refresh_core_memory_facts()` summarizes high-importance archival rows. This remains as a compatibility path for high-importance per-turn extraction.
-- `promote_memory_md()` is the dream-era path. It summarizes consolidated personal notebook pages plus recall signals after successful consolidation.
+No code path regenerates MEMORY.md. `ensure_memory_map()` drafts a pointer map from notebook page titles only when the file is missing or empty; after that the dream and the user maintain it. `lint_memory_files()` returns the contract findings described in memory-architecture.md.
 
 ## CoreMemoryFileIndexer
 

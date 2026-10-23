@@ -4,6 +4,7 @@ Pydantic models for memory system data structures.
 
 from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 
 class Message(BaseModel):
@@ -212,21 +213,6 @@ ASSISTANT RESPONSE:
 """
 
 
-class ConversationContext(BaseModel):
-    """Context metadata for a memory entry."""
-
-    user_intent: str = Field(
-        "inferred from conversation",
-        description="What the user was trying to accomplish",
-    )
-    agent_actions_summary: Optional[str] = Field(
-        None, description="Summary of agent actions"
-    )
-    outcome: str = Field(
-        "extracted from conversation turn", description="Result of the interaction"
-    )
-
-
 class ExtractedFact(BaseModel):
     """A fact extracted from conversation for memory storage."""
 
@@ -252,6 +238,8 @@ class ExtractedFact(BaseModel):
     context_agent_actions_summary: Optional[str] = Field(
         None, description="Summary of agent actions"
     )
+    # Set by the gate, never by the model.
+    evidence: SkipJsonSchema[Optional[str]] = None
 
     # Transcript linkage (Phase 5) — traces where this fact came from
     source_session_id: Optional[str] = Field(
@@ -286,16 +274,3 @@ class MemoryExtractionResult(BaseModel):
     def empty(cls) -> "MemoryExtractionResult":
         """Create an empty result."""
         return cls()
-
-
-class FactExtractionResponse(BaseModel):
-    """LLM response model for fact extraction.
-
-    This model is used with LiteLLM's structured output feature to ensure
-    the LLM returns properly formatted fact extraction results.
-    """
-
-    facts: List[ExtractedFact] = Field(
-        default_factory=list,
-        description="List of extracted facts from the conversation",
-    )

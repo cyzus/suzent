@@ -34,6 +34,7 @@ FOCAL_TOOL_NAMES = (
     "WebSearchTool",
     "WebpageTool",
     "MemorySearchTool",
+    "MemoryUpdateTool",
     "SessionSearchTool",
     "AskQuestionTool",
     "SkillTool",

@@ -4,7 +4,7 @@ from suzent.memory import memory_context
 
 
 def test_dream_conflict_instructions_do_not_write_log_md():
-    """Conflict handling must happen on content pages, not the runner-owned log."""
+    """An unsettled conflict becomes a question for the user, not a log.md entry."""
     roots = memory_context.resolve_dream_roots(sandbox_enabled=True)
     instructions = (
         memory_context.build_dream_system_prompt(roots)
@@ -19,5 +19,6 @@ def test_dream_conflict_instructions_do_not_write_log_md():
     )
 
     assert "prepend `[!alert]" not in instructions
-    assert "Put conflicts on content pages" in instructions
-    assert "schema's appropriate location" in instructions
+    assert "Put conflicts in the review queue, never in log.md" in instructions
+    assert ".state/review_queue.md" in instructions
+    assert "Do NOT write to log.md" in instructions

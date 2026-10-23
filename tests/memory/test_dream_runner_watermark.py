@@ -229,6 +229,27 @@ async def test_watermark_advances_on_clean_run_with_changes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_run_that_only_records_skips_advances(monkeypatch):
+    """Every candidate judged and skipped: no page changes, but the op log does."""
+    runner = DreamRunner()
+    advanced = _wire(
+        runner,
+        monkeypatch,
+        _FakeManager(),
+        page_states=[{"p": 1.0}, {"p": 1.0}],
+        agent=_anoop,
+    )
+    ops = iter([None, (2.0, 40)])
+    monkeypatch.setattr(runner, "_dream_ops_state", lambda m: next(ops))
+
+    result = await runner.force_run()
+
+    assert advanced == ["2026-06-03"]
+    assert result["advanced"] is True
+    assert "2026-06-03" not in runner._failures
+
+
+@pytest.mark.asyncio
 async def test_a_queue_only_run_leaves_the_watermark_alone(monkeypatch):
     """With no new logs there is nothing to mark consolidated.
 
