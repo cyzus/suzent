@@ -16,13 +16,14 @@ export type Theme = 'light' | 'dark';
  * it. The stored value used to be a `Theme`, and still reads as one.
  */
 export type ThemeMode = Theme | 'system';
-export type Scheme = 'warm' | 'cold' | 'green';
+export type Scheme = 'warm' | 'cold' | 'green' | 'ember';
 
 /** Accent colors shown on interactive elements, headers, buttons */
 export const SCHEME_COLORS: Record<Scheme, { light: string; dark: string }> = {
-  warm: { light: '#FFE666', dark: '#FF6600' },
+  warm: { light: '#FFE666', dark: '#FFE666' },
   cold: { light: '#7DD3FC', dark: '#38BDF8' },
   green: { light: '#86EFAC', dark: '#4ADE80' },
+  ember: { light: '#FFA64D', dark: '#FF6600' },
 };
 
 /** Dark-mode surface colors used in card previews (mirrors CSS overrides below) */
@@ -30,6 +31,7 @@ export const SCHEME_SURFACES: Record<Scheme, { bg1: string; bg2: string; bg3: st
   warm: { bg1: '#18181b', bg2: '#27272a', bg3: '#3f3f46' },
   cold: { bg1: '#14161e', bg2: '#1e222e', bg3: '#2b3040' },
   green: { bg1: '#131816', bg2: '#202622', bg3: '#2d352e' },
+  ember: { bg1: '#18181b', bg2: '#27272a', bg3: '#3f3f46' },
 };
 
 const SYSTEM_DARK = '(prefers-color-scheme: dark)';
@@ -58,7 +60,8 @@ function getInitialMode(): ThemeMode {
 function getInitialScheme(): Scheme {
   try {
     const stored = localStorage.getItem('suzent-scheme') as Scheme | null;
-    if (stored === 'warm' || stored === 'cold' || stored === 'green') return stored;
+    if (stored === 'warm' || stored === 'cold' || stored === 'green' || stored === 'ember')
+      return stored;
     // Migrate from previous per-color localStorage keys
     const oldDark = localStorage.getItem('suzent-color-dark');
     if (oldDark?.toLowerCase() === '#38bdf8') return 'cold';
