@@ -118,6 +118,37 @@ class ToolDenyCapability(AbstractCapability[AgentDeps]):
             if not is_denied(tool_def.name, self.denied_names, policy)
         ]
 
+    async def before_tool_validate(
+        self,
+        ctx: RunContext[AgentDeps],
+        *,
+        call: ToolCallPart,
+        tool_def: ToolDefinition,
+        args: str | dict[str, Any],
+    ) -> str | dict[str, Any]:
+        allowed = getattr(ctx.deps, "call_allowed_tools", None)
+        if allowed is not None and not is_call_allowed(call.tool_name, allowed):
+            raise ToolFailed(
+                f"{call.tool_name} is not available to this sub-agent. "
+                "Use one of the tools it was given."
+            )
+        return args
+
+
+def is_call_allowed(runtime_name: str, allowed: frozenset[str]) -> bool:
+    """Whether a forked sub-agent may call a tool its parent's tool list offers.
+
+    Mirrors what a non-forked sub-agent is given: its named tools, the builtins,
+    and MCP tools, which ``tools_allowed`` never restricted.
+    """
+    from suzent.tools.names import BUILTIN_TOOL_NAMES
+    from suzent.tools.registry import get_tool_class_name
+
+    class_name = get_tool_class_name(runtime_name)
+    if class_name is None or class_name in BUILTIN_TOOL_NAMES:
+        return True
+    return class_name in allowed or runtime_name in allowed
+
 
 def is_denied(runtime_name: str, denied_names: frozenset[str], policy: dict) -> bool:
     """Whether a model-facing tool name is denied by selection or by policy.

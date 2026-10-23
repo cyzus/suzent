@@ -89,6 +89,13 @@ class AgentDeps:
     base_tool_names: frozenset = field(
         default_factory=frozenset
     )  # user-selected tools for this session
+    # A forked sub-agent keeps its parent's tool definitions so the cached
+    # prefix still matches, and is held to its own tools only when it calls
+    # one. None means no call-time restriction.
+    call_allowed_tools: Optional[frozenset[str]] = None
+    # The chat whose prompt-cache routing key this run reuses; a fork shares
+    # its parent's so both land where the parent's prefix is cached.
+    prompt_cache_chat_id: str = ""
 
     # --- A2UI canvas ---
     a2ui_queue: Optional[asyncio.Queue] = (

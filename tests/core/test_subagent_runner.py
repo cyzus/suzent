@@ -325,6 +325,36 @@ def _fake_db(chat):
     return SimpleNamespace(get_chat=lambda chat_id: chat)
 
 
+@pytest.mark.parametrize(
+    ("parent_model", "expected"),
+    [("parent/model", "parent/model"), (None, "default/model")],
+)
+@pytest.mark.asyncio
+async def test_subagent_defaults_to_parent_model(monkeypatch, parent_model, expected):
+    """Without inherit_context too: the catalog default is only a fallback."""
+    task = _make_task(f"sub_model_{expected[0]}", "queued")
+    subagent_runner._tasks[task.task_id] = task
+
+    def stop_after_model_resolution(task):
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(subagent_runner, "_parent_model_id", lambda _: parent_model)
+    monkeypatch.setattr(
+        "suzent.core.providers.get_default_chat_model", lambda: "default/model"
+    )
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
+    monkeypatch.setattr(
+        subagent_runner, "_ensure_task_chat", stop_after_model_resolution
+    )
+
+    try:
+        await subagent_runner._run_subagent(task, wakeup_parent=False)
+
+        assert task.model_override == expected
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
 def test_parent_model_id_prefers_model_history_ran_on(monkeypatch):
     chat = SimpleNamespace(agent_state=b"state", config={"model": "configured/model"})
     monkeypatch.setattr("suzent.database.get_database", lambda: _fake_db(chat))
@@ -347,3 +377,102 @@ def test_parent_model_id_is_none_without_parent(monkeypatch):
     monkeypatch.setattr("suzent.database.get_database", lambda: _fake_db(None))
 
     assert subagent_runner._parent_model_id("gone") is None
+
+
+def _fork_task(task_id: str, parent: str, **fields) -> SubAgentTask:
+    return SubAgentTask(
+        task_id=task_id,
+        parent_chat_id=parent,
+        description="look into it",
+        tools_allowed=fields.pop("tools_allowed", []),
+        chat_id=f"subagent-{task_id}",
+        inherit_context=True,
+        **fields,
+    )
+
+
+def _record_parent_turn(parent: str, config: dict) -> None:
+    from suzent.core import prompt_cache
+
+    prompt_cache.record_turn_config(parent, config)
+    prompt_cache._remember(
+        prompt_cache._LATEST_PREFIXES,
+        parent,
+        prompt_cache.PrefixSnapshot(instruction_parts=(), tool_defs=()),
+    )
+
+
+_PARENT_TURN = {
+    "_chat_id": "parent",
+    "_project_context_dir": "/p",
+    "model": "claude-opus-5-5",
+    "tools": ["WebSearchTool", "BashTool", "AgentTool"],
+    "thinking": "high",
+    "permission_mode": "default",
+    "memory_enabled": True,
+    "cwd": "/repo",
+}
+
+
+def test_fork_config_keeps_the_parents_tools_and_holds_calls_to_its_own():
+    _record_parent_turn("parent-fc", _PARENT_TURN)
+    task = _fork_task("fc", "parent-fc", tools_allowed=["WebSearchTool"])
+    base = {
+        "permission_mode": "auto",
+        "interaction_profile": "subagent",
+        "memory_enabled": False,
+        "platform": "subagent",
+        "static_instructions": "sub-agent prompt",
+        "model": "claude-opus-5-5",
+        "tools": ["WebSearchTool"],
+    }
+
+    config = subagent_runner.fork_turn_config(task, base)
+
+    assert config["tools"] == _PARENT_TURN["tools"]
+    assert config["thinking"] == "high"
+    assert "static_instructions" not in config
+    assert not any(key.startswith("_") for key in config)
+    assert config["permission_mode"] == "auto"
+    assert config["memory_enabled"] is False
+    assert "cwd" not in config
+    assert config["call_allowed_tools"] == ["WebSearchTool"]
+    assert config["prompt_cache_chat_id"] == "parent-fc"
+
+
+def test_fork_without_a_tool_list_still_cannot_spawn_agents():
+    _record_parent_turn("parent-nt", _PARENT_TURN)
+    task = _fork_task("nt", "parent-nt")
+
+    config = subagent_runner.fork_turn_config(task, {"model": "claude-opus-5-5"})
+
+    assert config["call_allowed_tools"] == ["WebSearchTool", "BashTool"]
+
+
+def test_fork_falls_back_without_a_recorded_parent_or_on_another_model():
+    _record_parent_turn("parent-fb", _PARENT_TURN)
+
+    assert (
+        subagent_runner.fork_turn_config(_fork_task("fb1", "parent-unknown"), {})
+        is None
+    )
+    assert (
+        subagent_runner.fork_turn_config(
+            _fork_task("fb2", "parent-fb"), {"model": "gpt-5.6"}
+        )
+        is None
+    )
+
+
+def test_fork_reminder_carries_role_tools_and_a_moved_cwd():
+    task = _fork_task("rm", "parent-rm", subagent_type="explore")
+    config = {"call_allowed_tools": ["GrepTool"], "cwd": "/worktree"}
+
+    reminder = subagent_runner.fork_reminder(task, config, parent_cwd="/repo")
+
+    assert "code-search sub-agent" in reminder
+    assert "GrepTool" in reminder
+    assert "/worktree" in reminder
+    assert "/worktree" not in subagent_runner.fork_reminder(
+        task, config, parent_cwd="/worktree"
+    )

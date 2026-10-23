@@ -238,6 +238,22 @@ Reply:
 """
 
 # Hidden reminder that resumes a sub-agent whose model call stalled mid-turn.
+#: Sent as a hidden reminder with a forked sub-agent's task. A fork keeps its
+#: parent's system prompt and tool list byte-for-byte so it can read the
+#: parent's cached prefix, which leaves no room for its role in the system
+#: prompt; the role arrives here instead, and outranks the inherited prompt.
+SUBAGENT_FORK_REMINDER = """\
+You are now a sub-agent forked from the conversation above. That conversation is \
+context only: do not continue it, answer its user, or redo work it already did. \
+Work only on the task in this message, then reply with your result, which goes to \
+the agent that started you rather than to the user.
+{role}
+Where the system prompt above says otherwise, this takes precedence: do not spawn \
+or message other agents, including for the Verification Contract, and do not ask \
+the user questions.
+You may call only these tools, plus built-in and MCP tools; any other call is \
+refused: {tools}"""
+
 SUBAGENT_STALL_RESUME = """\
 Your previous response was cut off because the connection to the model stalled. \
 Nothing from the unfinished step was kept. Continue the task from where it stands now; \
