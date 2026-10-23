@@ -70,12 +70,12 @@ python scripts/retire_legacy_rows.py            # report only
 python scripts/retire_legacy_rows.py --export   # save them to the daily logs
 ```
 
-**Your existing `MEMORY.md` won't be overwritten.** `MEMORY.md` now has a part
-Suzent writes and a part you write, separated by marker comments (see
-[MEMORY.md is half yours](../03-features/memory/README.md#memorymd-is-half-yours)).
-A file without markers is treated as entirely yours and is left alone. Let a
-consolidation create a new one, or add the markers yourself, to get automatic
-updates back.
+**Your existing `MEMORY.md` won't be overwritten.** `MEMORY.md` is now a short
+map of links to notebook pages (see
+[MEMORY.md is a map](../03-features/memory/README.md#memorymd-is-a-map)), and
+Suzent no longer rewrites it. To convert an older file, run
+`suzent memory cleanup`: it writes a suggested map and the other fixes next to
+your memory for you to review, and changes nothing until you apply them.
 
 **Expect a large diff in your notebook after the first few dreams.** Suzent adds
 review dates and confirmation counts to existing pages. If your notebook is in

@@ -169,6 +169,15 @@ class DreamRunner(BaseBrain):
             pass
         return state
 
+    @staticmethod
+    def _dream_ops_state(mgr) -> Optional[tuple[float, int]]:
+        """mtime and size of a non-empty dream op log, else None."""
+        try:
+            st = mgr.markdown_store.dream_ops_path.stat()
+        except Exception:
+            return None
+        return (st.st_mtime, st.st_size) if st.st_size else None
+
     def status(self) -> dict[str, Any]:
         """Return a frontend-safe snapshot of dream consolidation state."""
         running = self._lock.locked() or self._phase == "queued"
@@ -291,16 +300,25 @@ class DreamRunner(BaseBrain):
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
         if pending:
+            facts = self._count_fact_lines(mgr, pending)
+            if facts == 0:
+                # Logs with no candidates leave nothing to judge; no model call.
+                async with self._lock:
+                    await self._advance_watermark(mgr, pending[-1])
+                return
             behind = len(pending) > CONFIG.memory_consolidation_max_days
             if not behind:
-                # Steady state: back off on attempts + require enough new material.
+                # Steady state: run on enough new material or once a day, whichever
+                # comes first. A batch that already failed waits out the day.
+                batch_end = pending[: CONFIG.memory_consolidation_max_days][-1]
+                elapsed = time.time() - self._last_attempt_at
+                enough = (
+                    facts >= CONFIG.memory_consolidation_min_facts
+                    and not self._failures.get(batch_end, 0)
+                )
                 if (
-                    time.time() - self._last_attempt_at
-                ) < CONFIG.memory_consolidation_min_hours * 3600:
-                    return
-                if (
-                    self._count_fact_lines(mgr, pending)
-                    < CONFIG.memory_consolidation_min_facts
+                    not enough
+                    and elapsed < CONFIG.memory_consolidation_min_hours * 3600
                 ):
                     return
             # behind => sprint (ignore the daily/volume gate) until caught up.
@@ -442,6 +460,7 @@ class DreamRunner(BaseBrain):
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
+            ops_before = self._dream_ops_state(mgr)
             # What the agent is about to be shown, in both senses that matter when the
             # sidecar is cleared: how long the file was (conversations keep appending
             # while it runs, and none of that may be dropped) and which claims made it
@@ -479,7 +498,10 @@ class DreamRunner(BaseBrain):
             # watermark put, so the batch is re-attempted from the same start (and
             # eventually retry-skipped if it stays un-consolidatable).
             changed = self._content_pages_state(mgr) != before
-            if not (agent_ok and changed):
+            # A batch the dream judged and skipped in full changes no page but is
+            # still worked: its skips are in the op log.
+            recorded = self._dream_ops_state(mgr) not in (ops_before, None)
+            if not (agent_ok and (changed or recorded)):
                 if not queues_only:
                     self._failures[w_new] = self._failures.get(w_new, 0) + 1
                     self._save_failures(mgr)
@@ -506,6 +528,7 @@ class DreamRunner(BaseBrain):
                 self._failures.pop(w_new, None)
                 self._save_failures(mgr)
                 await self._advance_watermark(mgr, w_new)
+            await self._flush_dream_ops(mgr)
             result_summary = summary or (
                 "Worked the confirmation and revisit queues."
                 if queues_only
@@ -518,14 +541,11 @@ class DreamRunner(BaseBrain):
                     consumed_confirmations,
                     folded=[r.get("content", "") for r in shown_confirmations],
                 )
-            # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
+            # The agent maintains MEMORY.md itself; this only fills in a missing map.
             try:
-                await asyncio.wait_for(
-                    mgr.promote_memory_md(CONFIG.user_id),
-                    timeout=CONFIG.memory_consolidation_timeout_seconds,
-                )
+                await mgr.ensure_memory_map()
             except Exception as e:
-                logger.error(f"[dream] promote_memory_md failed/timed out: {e}")
+                logger.warning(f"[dream] could not draft MEMORY.md: {e}")
             logger.info(f"[dream] consolidated through {w_new}")
             result = {
                 "ran": True,
@@ -782,7 +802,7 @@ class DreamRunner(BaseBrain):
                     title="Memory consolidation (dream lint)",
                 )
                 self._phase = "running_lint"
-                summary = await self._run_lint_agent()
+                summary = await self._run_lint_agent(mgr)
                 agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] lint run failed: {e}")
@@ -809,6 +829,7 @@ class DreamRunner(BaseBrain):
                 await mgr.markdown_store.write_lint_entry(self._today_utc())
             except Exception as e:
                 logger.error(f"[dream] write_lint_entry failed: {e}")
+            await self._flush_dream_ops(mgr)
             logger.info(f"[dream] lint pass complete (changed={changed})")
             result = {
                 "ran": True,
@@ -888,6 +909,7 @@ class DreamRunner(BaseBrain):
         see which category the claim belongs to.
         """
         try:
+            from suzent.memory import memory_map
             from suzent.memory.indexer import CoreMemoryFileIndexer
 
             store_md = mgr.markdown_store
@@ -895,11 +917,10 @@ class DreamRunner(BaseBrain):
             rows: List[dict] = []
             for path in store_md.list_notebook_pages():
                 try:
-                    lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(
-                        path.read_text(encoding="utf-8", errors="replace")
-                    )
+                    text = path.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
+                lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(text)
                 stale_after = lifecycle.get("stale_after", "")[:10]
                 if lifecycle.get("status", "").lower() == "deprecated":
                     continue
@@ -907,7 +928,7 @@ class DreamRunner(BaseBrain):
                 dated = len(stale_after) == 10
                 if dated and stale_after >= today:
                     continue
-                if not dated and not rel.replace("\\", "/").startswith("3_Personal/"):
+                if not dated and memory_map.page_type(text) != memory_map.PERSONAL_TYPE:
                     # `stale_after` is a personal-claim field. A wiki or project page
                     # having none is correct, not a backlog item — only the pages the
                     # rule actually applies to are missing anything.
@@ -944,6 +965,7 @@ class DreamRunner(BaseBrain):
                 logger.warning(f"[dream] could not read confirmations: {e}")
                 confirmations = []
 
+        store = mgr.markdown_store
         roots = self._dream_roots()
         return await self._run_forked_agent(
             DREAM_CHAT_ID,
@@ -954,17 +976,46 @@ class DreamRunner(BaseBrain):
                 end=end,
                 confirmations=memory_context.format_confirmations_block(confirmations),
                 revisits=memory_context.format_revisits_block(self._due_revisits(mgr)),
+                rejected=memory_context.format_lines_block(store.read_rejected()),
+                questions=memory_context.format_lines_block(store.read_review_queue()),
+                findings=await self._lint_findings_block(mgr),
             ),
         )
 
-    async def _run_lint_agent(self) -> str:
+    async def _run_lint_agent(self, mgr) -> str:
         """Lint phase: editorial audit/repair of the existing vault. Returns the summary."""
         roots = self._dream_roots()
         return await self._run_forked_agent(
             DREAM_LINT_CHAT_ID,
             memory_context.build_lint_system_prompt(roots),
-            memory_context.build_lint_instructions(roots),
+            memory_context.build_lint_instructions(
+                roots, findings=await self._lint_findings_block(mgr)
+            ),
         )
+
+    @staticmethod
+    async def _lint_findings_block(mgr) -> str:
+        """The deterministic contract findings, rendered for a brief."""
+        from suzent.memory import memory_map
+
+        try:
+            findings = await memory_map.lint_store(
+                mgr.markdown_store, max_lines=CONFIG.memory_map_max_lines
+            )
+        except Exception as e:
+            logger.warning(f"[dream] could not lint memory files: {e}")
+            return memory_context.format_lines_block([])
+        return memory_context.format_lines_block([f.render() for f in findings])
+
+    @staticmethod
+    async def _flush_dream_ops(mgr) -> None:
+        try:
+            count = await mgr.markdown_store.flush_dream_ops()
+        except Exception as e:
+            logger.warning(f"[dream] could not move the op log into log.md: {e}")
+            return
+        if count:
+            logger.info(f"[dream] recorded {count} memory operation(s) in log.md")
 
     def _dream_roots(self) -> "memory_context.DreamRoots":
         """The vault and log directories in the vocabulary this run's tools use.

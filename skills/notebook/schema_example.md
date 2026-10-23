@@ -19,13 +19,14 @@ The vault is organized into layers by purpose:
   - `Literature/` — summaries of specific papers, articles, or sources (1 source = 1 page)
   - `Syntheses/` — comparative analyses, cross-cutting insights, overviews
   - `Entities/` — specific concrete nouns (models, datasets, tools, people)
+  - `Experience/` — what the agent learned doing work: what failed, what worked
 - `3_Personal/` — long-term personal tracking
 - `4_Assets/` — read-only binary files (PDFs, images). Never modify.
 - `5_Archives/` — completed or inactive work
 
 ---
 
-## Where to Place New Synthesized Pages
+## Where to Place New Pages
 
 | Content type | Destination |
 |---|---|
@@ -33,6 +34,8 @@ The vault is organized into layers by purpose:
 | Paper or article summary | `2_Wiki/Literature/` |
 | Comparative or cross-cutting analysis | `2_Wiki/Syntheses/` |
 | Specific model, dataset, or tool | `2_Wiki/Entities/` |
+| Fact about you (`type: personal`) | `3_Personal/` |
+| Lesson from past work (`type: experience`) | `2_Wiki/Experience/` |
 
 **Do not create a page for a topic that already has a folder or file.**
 Link to what exists instead.
@@ -41,12 +44,12 @@ Link to what exists instead.
 
 ## Page Types
 
-Every page in `2_Wiki/` must have YAML frontmatter. `type` is required; retain the other
+Every page must have YAML frontmatter. `type` is required; retain the other
 fields when they carry useful information:
 
 ```yaml
 ---
-type: concept | literature | synthesis | entity
+type: concept | literature | synthesis | entity | experience | personal
 title: Human-readable title
 description: One-sentence summary
 tags: []
@@ -70,7 +73,7 @@ Use standard Markdown links with full vault-relative paths, for example
 
 Standard sections: `## Overview`, `## Key Facts`, `## Related`, `## Sources`.
 
-### Personal pages (`3_Personal/`)
+### Personal pages (`type: personal`)
 
 These hold consolidated facts about the user, so their lifecycle matters more than their
 structure. Frontmatter:
@@ -81,6 +84,7 @@ type: personal
 title: Human-readable title
 updated: YYYY-MM-DD
 stale_after: YYYY-MM-DD
+confirmed: 12
 ---
 ```
 
@@ -95,20 +99,26 @@ stale_after: YYYY-MM-DD
 | `context` | 3 weeks |
 
 A claim the same user keeps repeating is one claim confirmed many times, not many claims.
-Record that on the bullet rather than by restating it:
+Record that as the page's `confirmed` count in frontmatter and one date on the bullet,
+rather than by restating it:
 
 ```markdown
-- Wants to be reminded to drink water hourly from 9 AM to 9 PM. (confirmed 12x, last 2026-08-20)
+- Wants to be reminded to drink water hourly from 9 AM to 9 PM. (last confirmed 2026-08-20)
 ```
 
-Rules for the marker:
+Rules for the count:
 
-- Omit it entirely the first time a claim is written. A claim with no marker is confirmed once.
-- On a repeat, increment the count and set the date. Never add a second bullet.
+- Omit it the first time a claim is written. A page with no `confirmed` key is confirmed once.
+- On a repeat, raise the count and set the bullet's date. Never add a second bullet.
 - When the repeat is *more specific*, replace the bullet text with the sharper wording and
   keep the accumulated count — the claim did not change, the phrasing got better.
 - When the repeat *contradicts* the bullet, it is a correction or a change over time, not a
-  confirmation. Reset the count and follow the correction rules above.
+  confirmation. Do not raise the count; follow the correction rules above.
+- Older pages carry the count inline as `(confirmed 12x, last YYYY-MM-DD)`. Move it into
+  frontmatter, keeping the highest.
+
+When a value changes over time, the bullet holds the current value and the old one moves to a
+`## History` section on the same page (`- until YYYY-MM-DD: old value`).
 
 `## Overview` must be a coherent synthesis paragraph — not a stub or a list.
 `## Related` links must use full vault-relative paths and explain the connection in one line.
@@ -140,8 +150,8 @@ Section headings used in `index.md`:
 
 ## Maintenance Rules
 
-1. **Contradictions** — if Source A conflicts with Source B, add `> [!warning] Conflicting claims: [description]` on the page, set `review: needs-review`, and flag it in `log.md`.
-2. **Stale pages** — honor `stale_after` first. Otherwise, a synthesis not updated in 90 days must be flagged `review: needs-review`. On personal pages, a passed `stale_after` means re-confirm the claim from recent logs or mark it `status: deprecated` — not delete it.
+1. **Contradictions** — keep the better-supported or more recent claim and move the other to `## History`. If only the user can settle it, add one question to `.state/review_queue.md`; the agent asks it in conversation.
+2. **Stale pages** — honor `stale_after` first. Otherwise, a synthesis not updated in 90 days must be flagged `review: needs-review`. On personal pages, a passed `stale_after` means re-confirm the claim from recent logs or mark it `status: deprecated`. A claim captured as `dated` is retired once its date passes.
 3. **No orphans** — every wiki page must link back to a concept page or appear in `index.md`.
 
 ---

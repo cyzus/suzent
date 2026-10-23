@@ -9,7 +9,6 @@ removed write-time similarity threshold got wrong (#34).
 
 import pytest
 
-from suzent.memory import memory_context
 from suzent.memory.manager import KNOWN_FACTS_LIMIT, MemoryManager
 
 
@@ -28,40 +27,6 @@ class _StubManager:
         if self._error:
             raise self._error
         return self._results
-
-
-# --- prompt shape ---
-
-
-def test_known_facts_absent_leaves_the_prompt_unchanged():
-    """No retrieval, no behaviour change — the old prompt exactly."""
-    assert memory_context.format_known_facts_block([]) == ""
-    assert memory_context.format_known_facts_block(None) == ""
-
-    bare = memory_context.format_fact_extraction_user_prompt("a turn")
-
-    assert "Already in memory" not in bare
-    assert "a turn" in bare
-
-
-def test_known_facts_are_rendered_and_labelled():
-    prompt = memory_context.format_fact_extraction_user_prompt(
-        "a turn", ["Prefers dark mode", "Building a VR horror game"]
-    )
-
-    assert "## Already in memory" in prompt
-    assert "- Prefers dark mode" in prompt
-    assert "- Building a VR horror game" in prompt
-    assert "a turn" in prompt
-
-
-def test_system_prompt_permits_updates():
-    """The rule must not read as a blanket 'skip anything similar'."""
-    rules = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
-
-    assert "Already-known facts" in rules
-    assert "CHANGES" in rules
-    assert "worse than storing a duplicate" in rules
 
 
 # --- recall ---
@@ -154,12 +119,12 @@ async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
             {"content": "said once in chat", "durable": False},
         ]
 
-    async def _extract(content, known_facts=None):
+    async def _extract(content, known_facts, chat_id):
         shown.append(list(known_facts or []))
         return []
 
     mgr._recall_known_facts = _recall
-    mgr._extract_facts_llm = _extract
+    mgr._capture_facts = _extract
 
     await mgr.process_conversation_for_memories(
         "USER: I use Unreal Engine 5\nASSISTANT: Noted.",
@@ -183,13 +148,13 @@ async def test_failed_log_write_is_reported_so_the_turns_are_retried():
     async def _recall(turn_text, user_id, chat_id=None):
         return []
 
-    async def _extract(content, known_facts=None):
+    async def _extract(content, known_facts, chat_id):
         from suzent.memory.models import ExtractedFact
 
         return [ExtractedFact(content="Prefers dark mode")]
 
     mgr._recall_known_facts = _recall
-    mgr._extract_facts_llm = _extract
+    mgr._capture_facts = _extract
 
     with pytest.raises(OSError):
         await mgr.process_conversation_for_memories(

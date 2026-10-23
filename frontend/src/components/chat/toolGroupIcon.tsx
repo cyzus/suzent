@@ -79,6 +79,7 @@ const EXACT_TOOL_ICONS = {
 
   // Memory & Recall
   memory_search: CpuChipIcon,
+  memory_update: CpuChipIcon,
   session_search: ChatBubbleLeftRightIcon,
 
   // Planning, Tasks & Automation

@@ -640,6 +640,7 @@ export const zhCN = {
           description: '经审批后通过已配置的社交渠道发送消息。',
         },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
+        MemoryUpdateTool: { name: '更新记忆', description: '按用户要求记住、撤回或更正一条记忆。' },
         SessionSearchTool: { name: '搜索会话', description: '搜索并读取相关的历史对话会话。' },
       },
     },
