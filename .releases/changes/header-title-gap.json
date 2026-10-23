@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The app header no longer crowds on narrow windows: it keeps a gap between a long chat title and the status marks, drops the old Chat / Memory / Skills tabs (the sidebar and the console rail already navigate there), and on the narrowest widths keeps just Regent's mark and the title."
+}
