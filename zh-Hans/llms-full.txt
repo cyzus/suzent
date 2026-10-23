@@ -402,7 +402,7 @@ python scripts/retire_legacy_rows.py            # 只报告
 python scripts/retire_legacy_rows.py --export   # 保存到每日日志
 ```
 
-**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在分为 Suzent 写的部分和你写的部分，用标记注释分隔（见 [MEMORY.md 有一半属于你](https://suzent.com/zh-Hans/docs/features/memory#memorymd-is-half-yours)）。没有标记的文件会被视为完全由你编写，不会被改动。让一次整理生成新文件，或自己加上标记，就能恢复自动更新。
+**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在是一份指向笔记本页面的简短链接地图（见 [MEMORY.md 是一张地图](https://suzent.com/zh-Hans/docs/features/memory#memorymd-is-a-map)），Suzent 不再重写它。要转换旧文件，运行 `suzent memory cleanup`：它会把建议的地图和其他修改写在记忆旁边供你查看，在你应用之前不会改动任何内容。
 
 **前几次 dream 之后笔记本会出现大量改动。** Suzent 会为已有页面添加复查日期和确认计数。如果你的笔记本在 Git 或同步文件夹中，这些改动是正常的。
 
@@ -1295,9 +1295,9 @@ user_id: default-user
 The extraction model runs every few exchanges, so a small fast model is the right choice
 here. Leave it unset to use the default chat model.
 
-These settings change *how* memory works. To change *what* Suzent remembers, edit
-the notes in `MEMORY.md` instead; see
-[MEMORY.md is half yours](https://suzent.com/docs/features/memory#memorymd-is-half-yours).
+These settings change *how* memory works. To change *what* Suzent remembers, tell
+it in a conversation or edit the notebook pages; see
+[Managing what's remembered](https://suzent.com/docs/features/memory#managing-whats-remembered).
 
 ## Consolidation
 
@@ -1314,8 +1314,14 @@ memory_consolidation_max_days: 14             # Days of logs read in one run
 memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
 memory_consolidation_timeout_seconds: 600
 memory_consolidation_model: null              # Legacy; set the Dream role in Settings → Model Roles instead
-memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
+memory_map_max_lines: 30                      # Size cap on the MEMORY.md map
 ```
+
+## How facts are picked out
+
+There is nothing to set here. Facts about you are saved only when they are in your own
+words, lessons only when the chat shows both the failure and the fix, and facts from
+files or pages only with their source.
 
 The notebook audit runs on its own, slower schedule, and only once consolidation is
 caught up:
@@ -1481,6 +1487,10 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 **对话过程中。** 每隔几轮对话，或者对话停下来大约十分钟后，Suzent 会把上次之后说过的内容读一遍，挑出值得保留的东西，比如一个偏好、一个项目细节或一件关于你的事，追加到当天的日志里。它保存的是事实，而不是整段对话。因为一次读好几轮，你中途改了主意的话，只会保存最后的结论。
 
+关于你的事实，只有你自己说过才会保留；智能体说的或猜的不算。每条保存的事实都带着它出自的原话，你能看到它为什么被保留。智能体在文件或网页里读到的事实也会保留，并附上出处。关于你的事实不从定时任务里提取，只在今天有用的事也不算。
+
+经验由另一道检查负责。当事情出了错（命令失败，或者你指出智能体做错了），而同一段对话随后又显示了怎么修好的，智能体就会记下下次该怎么做、适用在哪里（比如某个仓库或某个工具）。从没修好的失败，或者不会再发生的失败（比如登录过期），不算经验，不会保存。这道检查也覆盖定时任务。笔记本里已有的经验再次出现时，只会计数而不会重复保存；某个仓库的经验出现满三次后，dream 会问你要不要把它加进那个仓库的智能体说明里。
+
 **夜间。** 一个名为 **dream** 的后台任务会读取新的日志，把它们整理成清晰的页面：每个主题一页，合并重复，解决矛盾。白天保存依然很快，整理工作留到之后再做。
 
 记忆分为两类：
@@ -1496,7 +1506,7 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 ```text
 /shared/memory/
-  MEMORY.md              # 智能体每次都会看到的摘要
+  MEMORY.md              # 智能体每次都会看到的记忆地图
   archive/
     2026-08-24.md        # 每天一份日志
   persona.md, user.md    # 可编辑的档案笔记
@@ -1504,23 +1514,20 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 这些文件就是真正的记忆，可以用任何文本编辑器打开。搜索索引是根据它们重建的，所以你在这里删掉的内容就真的没了。
 
-<a id="memorymd-is-half-yours"></a>
+<a id="memorymd-is-a-map"></a>
 
-### MEMORY.md 有一半属于你
+### MEMORY.md 是一张地图
 
-`MEMORY.md` 是每次对话都会加载的简短摘要。一行标记注释把它分成两半：
+`MEMORY.md` 每次对话都会加载。它是一份简短的链接列表，每个笔记本页面一行，附几个字说明页面里有什么：
 
 ```markdown
-<!-- memory:generated - rewritten on consolidation -->
-...Suzent 会重写这里的所有内容...
-<!-- /memory:generated - notes below this line are kept -->
-
-你在下面写的任何内容都会被永久保留，不会被改动。
+- [[3_Personal/Preferences]] - 你喜欢的回答方式、工具和格式
+- [[2_Wiki/Experience/Release checks]] - 过去发布时出过的问题
 ```
 
-在标记下方写下你想直接告诉 Suzent 的事。这里的笔记优先于它自己推断出的任何内容，dream 也永远不会覆盖它们。
+事实本身放在这些页面里，所以地图始终很小（默认 30 行）。如果文件不存在，Suzent 会根据页面标题起草一份；之后它归你所有，dream 只负责让链接保持最新。
 
-如果你的 `MEMORY.md` 没有标记（因为它早于这项功能），Suzent 会把整个文件视为你写的，不再自动重新生成。
+`user.md` 放的是每次对话都需要的内容，比如你的名字、语言和称呼方式。日程和项目进度不属于这里，其他关于你的事实放在 `3_Personal/` 页面里。
 
 <a id="managing-whats-remembered"></a>
 
@@ -1529,7 +1536,9 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 应用中的 **记忆** 面板可以浏览、搜索和删除已保存的内容。
 
 - **想让它忘记某件事**，在面板中删除即可。它会从搜索中永久消失，重建索引后也不会回来。原始的每日日志会把这一行保留为历史记录。
-- **想纠正某件事**，直接在对话中说出正确的版本。dream 会替换旧的事实。
+- **想纠正某件事**，直接在对话中说出正确的版本。dream 会替换旧的事实；如果旧的值曾经是对的，会保留在 **History** 标题下。
+- **发现说错了**，直接说（"不对，我从没在巴塞尔住过"）。Suzent 会立刻把它从搜索中隐藏，以后也不会再记下来。
+- **dream 拿不准时**，比如两条事实互相矛盾，它会写下一个问题而不是去猜。智能体可能会在合适的时候问你，你的回答会解决它。
 
 <a id="how-memory-is-tidied"></a>
 
@@ -1537,12 +1546,12 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 大约每天一次，dream 会读取尚未处理的日志，并对每条事实做以下四件事之一：
 
-- **确认**：页面里已经有这条，就把计数加一，例如 `(confirmed 12x, last 2026-08-20)`。
+- **确认**：页面里已经有这条，就把页面的 `confirmed` 计数加一。经常重复的事实在搜索中排名更高。
 - **细化**：页面里的说法比较模糊，就改进措辞。
 - **替换**：页面里的内容已经过时，就更正它。
 - **新增**：这是新的事实，就记下来。
 
-关于你的事实会放在笔记本的 `3_Personal/` 文件夹，通用知识放在 `2_Wiki/` 下。dream 从不碰当天的日志，中途被打断的整理会重试而不是跳过。
+每个页面都会写明自己是哪一类：关于你的事实、过往工作的经验或通用知识。dream 会按笔记本 `schema.md` 的说明放置每一类；没写的话，就放在同类页面旁边，或者放进你已有的最合适的文件夹。新笔记本里，关于你的事实放在 `3_Personal/`，经验放在 `2_Wiki/Experience/`，知识放在 `2_Wiki/` 下。你的文件夹不必和默认一致：dream 从不修改 `schema.md`，也从不新建带编号的顶层文件夹。想指定位置，就在 `schema.md` 里写明每一类放哪里。dream 从不碰当天的日志，中途被打断的整理会重试而不是跳过。它改动过的内容都会列在笔记本的 `log.md` 里。
 
 **事实会温和地过期。** 每条关于你的事实都会按类型获得一个复查日期：身份信息永不过期，偏好一年，技术环境六个月，目标三个月，临时情况三周。到期后，dream 会根据最近的对话重新核对。过期从不删除任何内容，只会降低未被确认的事实在搜索中的权重。
 
@@ -1553,6 +1562,22 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 在 **设置 → 记忆系统** 中开启或关闭记忆。它使用的模型在 **设置 → 模型角色** 中设置：dream 使用 **Dream** 角色，挑选事实使用 **记忆提取** 角色，记忆搜索使用 **向量嵌入** 角色（见[模型角色](https://suzent.com/zh-Hans/docs/models/model-roles)）。
 
 dream 的运行频率、笔记本的位置等调优项，见[高级记忆设置](https://suzent.com/zh-Hans/docs/features/memory/configuration)。
+
+<a id="checking-and-tidying-your-memory-files"></a>
+
+## 检查和整理记忆文件
+
+记忆变乱时，有两个命令可以帮忙：
+
+```bash
+suzent memory lint
+```
+
+```bash
+suzent memory cleanup
+```
+
+`lint` 列出不符合上述规则的地方：`MEMORY.md` 里写的是事实而不是链接、`user.md` 过长、页面过大。`cleanup` 会把建议修改后的版本写在记忆旁边供你查看，从不改动你的文件。见[命令行](https://suzent.com/zh-Hans/docs/reference/cli#memory)。
 
 
 ---
@@ -4012,6 +4037,16 @@ A heartbeat is a regular check-in inside one conversation. See
 Each takes `--chat <id>` (or `-c`) to choose the conversation. Without it, the
 conversation your terminal is using is picked.
 
+## Memory
+
+Check your memory files and draft fixes for them. See
+[Memory](https://suzent.com/zh-Hans/docs/features/memory#checking-and-tidying-your-memory-files).
+
+| Command | What it does |
+|---|---|
+| `suzent memory lint` | List problems in `MEMORY.md`, `user.md`, `persona.md`, `heartbeat.md` and oversized notebook pages. |
+| `suzent memory cleanup` | Write suggested fixes to a dated folder under the notebook's `.state/cleanup/`, with a `README.md` and a diff to review. Your files are not changed. |
+
 ## Chat app pairing
 
 Handle requests from people asking to use your bot. See
@@ -5513,19 +5548,104 @@ whole chat.
 %%{init: {'theme':'neutral'}}%%
 flowchart TD
     A["turn text"] --> B["recall 10 nearest known facts<br/>(best-effort — failure means<br/>extraction runs as before)"]
-    B --> C["LLM extraction<br/>prompt carries 'already in memory'"]
-    C -->|nothing new| Z["stop"]
+    B --> C["typed capture + gate<br/>prompt carries 'already in memory'"]
+    C -->|nothing kept| Z["stop"]
     C --> D["append to today's log"]
     D --> E["reindex_file_now(archive, today)"]
     E --> F[("LanceDB")]
-    D --> G{"any fact important?"}
-    G -->|yes| H["refresh MEMORY.md"]
 ```
 
 There is deliberately **no write-time deduplication**. A 0.85 cosine threshold used to
 sit here and silently dropped *updates* to facts (#34). Repetition is suppressed one step
 earlier instead — the extractor is shown what memory already holds and told that a fact
 which *changes* a known one must still be emitted.
+
+## Typed capture
+
+Extraction is `memory/capture.py`: the model proposes at most `MAX_CANDIDATES` (5) candidates per
+batch, each labelled with
+
+- `kind`: `user` (about the person), `experience` (a lesson from how a task went) or
+  `world` (a fact read in a file, page or tool result);
+- `source`: `user_said`, `user_did`, `outcome`, `agent_said` or `tool_output`;
+- `horizon`: `durable`, `dated` or `ephemeral`;
+- `evidence`: the exact words behind it.
+
+A deterministic gate then drops what the labels prove is not a memory. Its drop codes:
+
+| code | dropped because |
+| --- | --- |
+| `agent_said` | the agent's own words are not evidence |
+| `ephemeral` | only matters for the current task |
+| `user_kind_wrong_source` | a User fact must come from `user_said` / `user_did` |
+| `evidence_not_in_user_line` | the evidence is not in any USER line of the new turns (≥0.8 bigram overlap) |
+| `tool_output_without_citation` | tool output that is not a World fact, or has no path or URL |
+| `outcome_not_experience` | an outcome filed as something other than Experience |
+| `experience_channel` | a lesson; only the experience step below proposes those |
+| `context_free_choice` | a pick that only makes sense inside the chat ("option 2", "the second one") |
+| `rejected` | matches `.state/rejected.jsonl` |
+| `restatement` | ≥0.9 similar to a fact already in the recall set |
+| `over_cap` | past the per-batch cap |
+
+Kept facts go to the daily log as before, with tags (`kind:` `source:`, `dated
+stale_after:<+90 days>`, `ungrounded` when a specific is not in the evidence) and a
+`> "evidence"` line under the fact, which the dream reads.
+
+Every drop, with its code and the full candidate, is appended to
+`.state/capture_dropped.jsonl` as `{"ts", "chat_id", "channel": "facts", "dropped"}`, so a
+wrongly dropped fact can be found and the gate tuned. This replaced an untyped extractor
+that wrote whatever looked like a fact; a replay of past batches showed it storing the
+agent's own words and task specs as facts about the user, so it was removed rather than
+kept as an option.
+
+Scheduled turns are filtered per turn in `extraction_queue._is_scheduled`, so a cron or
+heartbeat run inside a normal chat is not captured as user facts. `cron` is deliberately
+not in `_is_system_chat`: that list also makes a chat stateless.
+
+### Experience capture
+
+The user-fact pass reads USER lines, so it never sees the agent fail and then find what
+works. `memory/experience.py` is a second step on every batch, scheduled turns included
+(`MemoryManager.process_experience`, called from `ExtractionQueue.flush`):
+
+1. `has_signal` is a regex pre-filter: an error, failed exit code or named root cause in
+   an ASSISTANT or ACTION line, or a correction in a USER line. Without one there is no
+   model call; on the replay below about half the batches had one.
+2. The model returns `Lesson`s: situation, attempt, outcome, lesson, scope, and two
+   verbatim quotes, `evidence_fail` and `evidence_fix`. Known durable memories are listed
+   so a recurring lesson is proposed in its existing wording.
+3. `gate` drops a lesson when either quote is not in one new-turn message (lines of a
+   quote may skip lines of that message, but cannot span two messages) or both quote the
+   same words (`no_outcome`), when its scope is generic (`no_scope`), when it matches the
+   rejected list (`rejected`), or past `MAX_LESSONS` (3, `over_cap`). A lesson whose text
+   overlaps a known memory by `REPEAT_MATCH` (0.8 of bigrams) is a repeat: it is appended
+   to the confirmations sidecar instead of being written again.
+4. Kept lessons go to the daily log tagged `kind:experience source:outcome scope:<slug>`
+   with both quotes as the evidence line. Drops go to `capture_dropped.jsonl` with
+   `"channel": "experience"`.
+
+A failure here is logged and never fails the batch.
+
+A replay of 63 historical batches (2026-10-21 to 23) found a signal in 33 and kept 7
+lessons, each tied to a real failure and fix (`gh pr create --repo`, `python -X utf8`, the
+CSS-vs-canvas coordinate handedness, the `.releases/changes` declaration, among others).
+An expired login and an unresolved push failure produced none. The `.releases/changes`
+lesson came back as a repeat of an existing page.
+
+### `memory_update`, the explicit path
+
+`tools/recall/memory_tools.py` gives the main agent one tool for what the user states
+directly, routed through `MemoryManager.apply_memory_update`:
+
+- `fact` writes a candidate straight to the daily log, skipping the gate. A `kind=user`
+  fact is tagged `source:user_said explicit`; only the user can vouch for one, so other
+  kinds are never `explicit`.
+- `retract` with `retract_as=wrong` (default) appends to `.state/rejected.jsonl` and
+  tombstones matching rows; `outdated` only tombstones, since the claim was true once.
+- `fact` and `retract` together are a correction, tagged `revision`.
+- `kind=experience` requires `outcome` (it becomes the evidence, `source:outcome`);
+  `kind=world` requires `source`, a path or URL (`source:tool_output`). The tool refuses
+  either without it.
 
 ## The dream
 
@@ -5539,9 +5659,11 @@ flowchart TD
     P -->|no| L{"lint due?"}
     L -->|yes| LINT["lint pass<br/>editorial audit of the vault"]
     L -->|no| IDLE["idle"]
-    P -->|yes| B{"far behind?"}
+    P -->|yes| C{"any fact lines?"}
+    C -->|no| SKIP["advance watermark<br/>no model call"]
+    C -->|yes| B{"far behind?"}
     B -->|yes| RUN["ingest batch"]
-    B -->|no| G{"enough new facts<br/>+ enough time passed?"}
+    B -->|no| G{"enough new facts<br/>or a day passed?"}
     G -->|no| IDLE
     G -->|yes| RUN
     RUN --> AGENT["forked agent:<br/>fold logs into vault pages"]
@@ -5554,6 +5676,44 @@ flowchart TD
 
 Ingest is always preferred over lint, so an editorial audit can never starve
 consolidation of new logs.
+
+### What the dream is told
+
+The dream is a judgment agent: capture proposes, the dream decides. Its brief
+(`memory_context.build_dream_instructions`) routes by tag to a page type —
+`kind:user` to a `type: personal` page, `kind:experience` to a `type: experience`
+page (merged per situation, keeping its `scope:`; a repo-scoped lesson confirmed 3 or
+more times becomes a review-queue proposal to add it to that repo's AGENTS.md),
+`kind:world` to a knowledge page with its source;
+`dated` never lands on a personal page,
+`ungrounded` is filed only as far as its evidence goes, and `explicit` wins over what it
+contradicts. Untagged lines from before typed capture must pass the exclusion rules.
+
+For each candidate it picks a case: a duplicate raises the page's frontmatter
+`confirmed` count; a correction replaces the claim; a change over time moves the old
+value to `## History` as `- until <date>: old`; an unsettled contradiction becomes a
+question in `.state/review_queue.md`. Inline `(confirmed Nx, …)` counters are moved
+into frontmatter as pages are touched.
+
+Besides the confirmations and revisit queues, the brief carries the rejected list, the
+open review questions (not to be asked again; an answered one is applied and deleted),
+and the deterministic lint findings from `memory_map.lint_store`. The lint pass gets the
+findings too.
+
+The agent records every operation in `.state/dream_ops.md` (`- update`, `- create`,
+`- retire`, `- skip <candidate>: <reason>`). After a good ingest or lint the runner
+appends it to `log.md` under the run's entry and clears it (`flush_dream_ops`); the
+agent itself never writes `log.md`.
+
+Up to `OPEN_QUESTIONS_SHOWN` (5) review questions are rendered into the core memory
+prompt under "Open memory questions", for the main agent to ask when natural and answer
+through `memory_update`. `review_queue.md` is part of `core_memory_revision`, so an
+answered question invalidates the cached prompt.
+
+The trigger: days with no fact lines advance the watermark without a model call;
+otherwise a run starts on `memory_consolidation_min_facts` (20) or once
+`memory_consolidation_min_hours` (24) have passed, whichever comes first. A batch that
+already failed waits out the hours rather than retrying on volume.
 
 ### Why the reconcile belongs to the runner
 
@@ -5582,21 +5742,42 @@ those days on its own.
    append-only store, adding no new specifics. Anything else — a new detail, a
    contradiction, a match found only in a transcript — is written exactly as before.
    Issue #34 was this line being crossed.
-6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
-   and an agent editing it directly; everything after the `<!-- /memory:generated -->`
-   marker is copied through untouched, and a file with no marker that we cannot prove we
-   wrote is treated as entirely manual.
+6. **Nothing regenerates `MEMORY.md`.** It is a curated map; code only drafts it when
+   the file is missing or empty, and an existing file is never overwritten.
 
-### Who owns MEMORY.md
+### MEMORY.md is a map
 
-Two writers regenerate the same file. `refresh_core_memory_facts` (per turn, from the top
-archival rows) is the legacy path; `promote_memory_md` (per productive dream, from
-consolidated `3_Personal/` pages plus recall signal) is its replacement. The hand-over
-needs no flag day: the legacy path stands down as soon as the vault has any personal page,
-so as the dream fills the vault it simply stops firing.
+`MEMORY.md` is injected into every prompt, so it holds pointers, not facts: one
+`[[page]]` line each with a short description, at most `memory_map_max_lines` (30).
+`MemoryManager.ensure_memory_map` drafts it from page titles (`memory_map.draft_map`)
+only when the file is missing or empty. After that the dream keeps its links current
+and a person may edit it; the old per-turn `refresh_core_memory_facts`,
+`promote_memory_md` and the generated/manual zones are gone.
 
-Both write through the same marked zone, so an agent's or user's own notes below the
-marker survive either of them.
+`memory_map.lint_store` checks the always-injected files without a model:
+
+- `MEMORY.md`: every line one `[[page]]` pointer, no prose facts, within the line cap;
+- `user.md`: at most `USER_MD_MAX_LINES` (40), no scheduler specs or repo state, no
+  rejected claims;
+- `persona.md`: at most `PERSONA_MD_MAX_LINES` (60);
+- `heartbeat.md`: no rejected claims;
+- notebook pages: at most `PAGE_BUDGET_BYTES` (8 KB), and one `untyped` finding naming
+  pages with no frontmatter `type:`.
+
+Code never assumes a folder layout. Personal pages are found by `type: personal`
+(`memory_map.PERSONAL_TYPE`), so a user who renamed or renumbered folders loses nothing.
+Where each type lives is decided by the notebook skill's `skills/notebook/memory.md`:
+`schema.md` first, then where pages of that type already are, then the closest existing
+folder, never a new numbered top-level folder and never an edit to `schema.md`. The dream
+loads no skills, so `memory_context.filing_reference()` inlines that file into the dream
+and lint system prompts; agents that load the skill read the same file. Code never parses
+placement. `wiki_manager`'s numbered zones are only the seed for a new vault.
+
+`suzent memory lint` prints these findings. `suzent memory cleanup`
+(`memory/cleanup.py`) writes the one-time migration as drafts only, into the vault's
+`.state/cleanup/<date>/`: a map draft, `user.md` cut to its contract, page drafts without
+what `user.md` owns, a `rewrite_brief.md` of moved lines and flagged pages, a
+rejected-list seed and a `migration.diff`. Nothing live is changed; a person applies it.
 
 ### Always resolve the vault path
 
@@ -5623,10 +5804,10 @@ Producer-defined keys are explicitly permitted, so partial adoption is within it
 - `generated: {by, at}` — uniform provenance across logs, vault, and core files.
 - `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
   facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
-  worst noise source into a ranking signal. It is recorded on the bullet rather than in
-  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
-  rather than getting a document each; the marker's absence means confirmed once, so no
-  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
+  worst noise source into a ranking signal. It is the page's frontmatter `confirmed`
+  count; older pages carry it inline on the bullet (`(confirmed 12x, last 2026-08-20)`)
+  and the dream moves it up as it touches them. Ranking takes the larger of the two, so
+  a page mid-migration ranks the same, and a missing count means confirmed once. A repeat that *contradicts* the bullet is explicitly not a
   confirmation — it resets the count and takes the correction path.
 
 Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
@@ -5644,19 +5825,14 @@ The lifecycle fields the dream writes are read back by retrieval. A vault chunk'
 `status` (`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once
 passed). Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle.
 
-A person editing the `facts` block is the one claim in the system that did not come from
-extraction: it is the claim's subject stating it directly. `write_memory_manual_zone`
-stamps the manual zone of `MEMORY.md` with a `human:` actor, and retrieval reads that
-stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
+A page whose frontmatter carries `verified_by: human:<name>` is the one claim in the
+system that did not come from extraction: it is the claim's subject stating it directly.
+Retrieval reads that stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
 base score cannot dilute it. It also skips the `stale_after` decay — an expiry means
 nobody has re-confirmed the claim lately, which is exactly the question a human
 verification answers. `deprecated` still wins, because a person retiring a claim is also a
 person, and only a `human:` actor qualifies, or an agent would launder its own output into
 the strongest evidence class there is.
-
-Because the floor applies per row, `MEMORY.md` is chunked per zone rather than per file:
-paragraph merging otherwise produced a single row spanning the generated half and the
-human half, which is neither.
 
 ## Classifying a restatement
 
@@ -5670,7 +5846,7 @@ Three outcomes:
 
 | outcome | test | effect |
 | --- | --- | --- |
-| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the claim's `(confirmed Nx)` marker |
+| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the page's `confirmed` count |
 | revision | similar, or a strict superset carrying a new specific | written exactly as before, tagged `revision` |
 | new | everything else | written as before |
 
@@ -5690,13 +5866,13 @@ confirmations: vault pages past their `stale_after`, soonest first, to be re-con
 against the logs being ingested — never deleted. Both queues are runner-owned for the same
 reason the watermark is: index and lifecycle mutation stays out of the agent's hands.
 
-A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
+A `type: personal` page with no `stale_after` *at all* is queued too, after every genuinely
 expired one. Selecting strictly on the field would mean pages written before the field
 existed are never queued, so the dream never visits them, so the field is never written —
 the pages most in need of a first pass would be the only ones permanently exempt from one.
 Letting the dream backfill the field beats a script guessing it, because a wrong
 `stale_after` actively damps a good claim in the ranking above, and only the dream can see
-which category a claim belongs to. The undated branch is scoped to `3_Personal/`: a wiki
+which category a claim belongs to. The undated branch is scoped to personal pages: a wiki
 or project page having no expiry is correct, not a backlog item.
 
 ## Testing a mutating pass
@@ -5728,7 +5904,7 @@ This page describes the implementation-level structure of Suzent memory as it ex
 
 | Layer | Responsibility |
 |---|---|
-| Agent prompt and tools | `memory_search`, `block_update`, and file access. |
+| Agent prompt and tools | `memory_search`, `memory_update`, and file access. |
 | `MemoryManager` | Extraction, retrieval, and core memory formatting. |
 | `MarkdownMemoryStore` | File-backed operational memory plus notebook state helpers. |
 | `CoreMemoryFileIndexer` | Converts memory files into embedding rows in LanceDB. |
@@ -5748,6 +5924,13 @@ DATA_DIR/
     .state/
       recall_log.jsonl
       tombstones.jsonl
+      rejected.jsonl              # claims the user said are wrong
+      confirmations.jsonl         # restatements waiting for the dream
+      superseded.txt              # log lines the dream folded, for the runner to retire
+      review_queue.md             # open questions the dream could not settle
+      dream_ops.md                # the dream's op log, flushed to log.md by the runner
+      capture_dropped.jsonl       # candidates the capture gates dropped, with codes
+      cleanup/YYYY-MM-DD/         # `suzent memory cleanup` drafts
     0_Inbox/
     1_Projects/
     2_Wiki/
@@ -5809,12 +5992,9 @@ The current implementation reindexes the whole current-day archive file after a 
 
 `retrieve_relevant_memories()` first checks whether the archival index has rows. It then uses either embedding-backed hybrid search or FTS-only search. Results are formatted for prompt injection and logged best-effort to the notebook recall log for later `MEMORY.md` promotion.
 
-### MEMORY.md writers
+### MEMORY.md
 
-There are two MEMORY.md update paths:
-
-- `refresh_core_memory_facts()` summarizes high-importance archival rows. This remains as a compatibility path for high-importance per-turn extraction.
-- `promote_memory_md()` is the dream-era path. It summarizes consolidated personal notebook pages plus recall signals after successful consolidation.
+No code path regenerates MEMORY.md. `ensure_memory_map()` drafts a pointer map from notebook page titles only when the file is missing or empty; after that the dream and the user maintain it. `lint_memory_files()` returns the contract findings described in memory-architecture.md.
 
 ## CoreMemoryFileIndexer
 
@@ -7065,7 +7245,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 |------|----------|---------|-------------|
 | PlanningTool | `planning_update` | chat_id | Create and manage structured task plans |
 | MemorySearchTool | `memory_search` | MemoryManager | Semantic search over long-term memory |
-| MemoryBlockUpdateTool | `memory_block_update` | MemoryManager | Update core memory blocks (persona, user, facts, context) |
+| MemoryUpdateTool | `memory_update` | MemoryManager | Remember, correct or retract a fact the user stated |
 
 ### Canvas & UI
 
@@ -7214,12 +7394,12 @@ Creates and manages structured plans for multi-step tasks. Plans are stored in t
 
 **`action='advance'`** — Marks `current_phase_id` as `completed` and `next_phase_id` as `in_progress`. If `next_phase_id` skips phases, all intermediate phases are auto-completed.
 
-### `memory_search` / `memory_block_update`
+### `memory_search` / `memory_update`
 
 Long-term memory tools. See [Memory](https://suzent.com/zh-Hans/docs/features/memory) for the full memory architecture.
 
 - `memory_search(query, limit)`: Semantic similarity search over archived memories
-- `memory_block_update(block, operation, content)`: Update always-visible core memory blocks (`persona`, `user`, `facts`, `context`)
+- `memory_update(fact, retract, retract_as, kind, outcome, source, category, horizon)`: Record what the user states directly. `fact` writes a candidate for the dream; `retract` takes a claim back (`retract_as=wrong` also adds it to the rejected list, `outdated` only hides it); both together are a correction. `kind=experience` needs `outcome` and `kind=world` needs `source`. See [Memory Architecture](https://suzent.com/zh-Hans/docs/developing/architecture/memory-architecture#memory_update-the-explicit-path).
 
 ### `social_message`
 
@@ -9244,9 +9424,9 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/consolidate` | POST | Run consolidation now |
 | `/memory/lint` | POST | Run the notebook audit now |
 
-Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
-anything the agent worked out on its own — see
-[MEMORY.md is half yours](https://suzent.com/docs/features/memory#memorymd-is-half-yours).
+Editing a core block through `PUT /memory/core` writes its file as-is; `MEMORY.md` is
+a curated map, not a fact store — see
+[Memory Architecture](https://suzent.com/zh-Hans/docs/developing/architecture/memory-architecture#memorymd-is-a-map).
 
 
 ## Automation
