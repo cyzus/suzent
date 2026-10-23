@@ -529,11 +529,18 @@
     },
     "gemini/gemini-exp-1206": {
       "mode": "chat",
-      "max_input_tokens": 2097152,
-      "max_output_tokens": 8192,
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ],
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "gemini/gemini-gemma-2-27b-it": {
       "mode": "chat",
@@ -885,7 +892,7 @@
         "/v1/completions"
       ],
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 1048576,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
