@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks.
 - Add terminal pairing for ACP editors with local approval, private credentials, grant-owned sessions, and revocation.
 - Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards.
+- Keep suggested provider models current with reviewed catalog updates.
 - Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
 - Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
 - A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task.
