@@ -612,7 +612,10 @@ def _reported_to_focal_since(message: dict[str, Any], session_chat_id: str) -> b
     """Whether the session already sent the Focal Agent a message this turn.
 
     A session that reports with agent_send has already put its answer in front
-    of the Focal Agent, so the turn's final answer would repeat it.
+    of the Focal Agent, so the turn's final answer would repeat it. The turn
+    starts when the request is claimed, which is the last time the processing
+    row's updated_at moves; a message the session sent while the request was
+    still queued belongs to an earlier turn.
     """
     db = get_database()
     requests = [
@@ -622,7 +625,7 @@ def _reported_to_focal_since(message: dict[str, Any], session_chat_id: str) -> b
     ]
     if not requests:
         return False
-    since = datetime.fromisoformat(requests[0]["created_at"])
+    since = datetime.fromisoformat(requests[0]["updated_at"])
     return any(
         record["sender_chat_id"] == session_chat_id
         and record["kind"] == "agent_message"

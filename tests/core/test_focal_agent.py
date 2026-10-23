@@ -751,6 +751,29 @@ def test_a_report_sent_before_the_request_does_not_block_the_reply(
     assert enqueued[0]["kind"] == "session_reply_notification"
 
 
+def test_a_report_sent_while_the_request_is_queued_does_not_block_the_reply(
+    db, sandbox, enqueued
+):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat("Servers", {})
+    request = _request_from_focal(db, chat_id)
+    db.enqueue_agent_message(
+        message_id="msg-queued-report",
+        target_chat_id=FOCAL_CHAT_ID,
+        content="Unrelated report from before the request ran.",
+        sender_chat_id=chat_id,
+    )
+    db.claim_next_agent_message(worker_id="test-worker")
+
+    routed = focal_agent.route_focal_reply(
+        {**_focal_message(chat_id), "message_id": request["message_id"]},
+        "Caddy is upgraded.",
+    )
+
+    assert routed is True
+    assert enqueued[0]["kind"] == "session_reply_notification"
+
+
 def test_a_session_without_a_report_still_answers_focal(db, sandbox, enqueued):
     get_or_create_focal_chat()
     chat_id = db.create_chat("Servers", {})
