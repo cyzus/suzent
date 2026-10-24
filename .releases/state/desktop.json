@@ -89,6 +89,7 @@
     ".releases/changes/prompt-prefix-stability.json",
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/quiet-heartbeat-cleanup.json",
+    ".releases/changes/realtime-voice.json",
     ".releases/changes/regent-board.json",
     ".releases/changes/regent-breadcrumb.json",
     ".releases/changes/regent-identity.json",
