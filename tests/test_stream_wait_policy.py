@@ -239,3 +239,33 @@ async def test_slow_notice_does_not_extend_deadline(
     assert [notice.get("stage") for notice in stages] == ["waiting", "slow", None]
     assert stages[-1]["active"] is False
     assert control.model_wait is None
+
+
+async def test_compaction_does_not_count_against_the_idle_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mid-run compaction runs inside the wait for the next model event."""
+    from suzent.core import context_compressor as cc
+    from suzent.core import stream_registry
+
+    async def push(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(stream_registry, "push_custom_event", push)
+
+    async def compacting_then_event():
+        with cc._track_compaction("c-wait"):
+            await asyncio.sleep(0.3)
+        yield "after-compaction"
+
+    event = await streaming._await_model_event(
+        compacting_then_event(), 0.1, None, "c-wait"
+    )
+    assert event == "after-compaction"
+
+    async def silent():
+        await asyncio.sleep(0.3)
+        yield "late"
+
+    with pytest.raises(asyncio.TimeoutError):
+        await streaming._await_model_event(silent(), 0.1, None, "c-wait")

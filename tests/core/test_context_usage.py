@@ -9,6 +9,8 @@ from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     ModelMessagesTypeAdapter,
+    RequestUsage,
+    TextPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
@@ -18,6 +20,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import ToolDefinition
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.context_compressor import estimate_history_tokens, estimate_tokens
 from suzent.core.context_usage import (
     ContextUsageCapability,
     build_context_breakdown,
@@ -270,3 +273,92 @@ def test_tool_media_is_not_serialized_into_a_text_estimate() -> None:
     result = build_context_breakdown([message], ModelRequestParameters(), {}, 1000, 0.8)
     assert result.has_unmeasured_media
     assert result.estimated_tokens < 100
+
+
+def test_cjk_text_is_counted_near_one_token_per_character() -> None:
+    assert estimate_text("abcd" * 100) == 100
+    assert estimate_text("上下文窗口" * 100) == 500
+    assert estimate_text("café") == 2
+
+
+def test_history_estimate_does_not_quarter_chinese_text() -> None:
+    history = [ModelRequest(parts=[UserPromptPart("你好" * 2000)])]
+
+    assert estimate_history_tokens(history) == 4000
+
+
+def test_history_estimate_skips_binary_media() -> None:
+    history = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    ["look", BinaryContent(data=b"x" * 100000, media_type="image/png")]
+                )
+            ]
+        )
+    ]
+
+    assert estimate_history_tokens(history) == estimate_text("look")
+
+
+def _schema_parameters() -> ModelRequestParameters:
+    return ModelRequestParameters(
+        function_tools=[
+            ToolDefinition(
+                name="search",
+                description="d" * 4000,
+                parameters_json_schema={"type": "object"},
+            )
+        ]
+    )
+
+
+def test_breakdown_counts_schemas_until_the_provider_measures_a_request() -> None:
+    messages = [ModelRequest(parts=[UserPromptPart("x" * 400)])]
+    result = build_context_breakdown(messages, _schema_parameters(), {}, 100_000, 0.8)
+
+    assert result.overhead_estimate > 1000
+    assert result.estimated_tokens == 100 + result.overhead_estimate
+    assert result.estimated_tokens == sum(row.tokens for row in result.categories)
+
+
+def test_breakdown_matches_the_compaction_trigger_once_measured() -> None:
+    messages = [
+        ModelRequest(parts=[UserPromptPart("x" * 400)]),
+        ModelResponse(
+            parts=[TextPart("y" * 400)], usage=RequestUsage(input_tokens=9000)
+        ),
+        ModelRequest(parts=[UserPromptPart("z" * 800)]),
+    ]
+    result = build_context_breakdown(messages, _schema_parameters(), {}, 100_000, 0.8)
+
+    assert (
+        result.estimated_tokens == estimate_tokens(messages, 100_000).estimated_tokens
+    )
+    assert result.estimated_tokens == 9300
+    assert abs(sum(row.tokens for row in result.categories) - 9300) <= 3
+
+
+async def test_capability_records_overhead_for_the_next_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "suzent.core.context_compressor.emit_context_usage_event", lambda **_: None
+    )
+
+    def search(query: str) -> str:
+        """Search for things."""
+        return query
+
+    agent = Agent(
+        TestModel(custom_output_text="done"),
+        deps_type=AgentDeps,
+        instructions="system " * 200,
+        tools=[search],
+        capabilities=[ContextUsageCapability("test")],
+    )
+    deps = AgentDeps(chat_id="c")
+    await agent.run("hello", deps=deps)
+
+    assert deps.context_overhead_estimate > 0
+    assert deps.context_overhead_estimate == deps.context_breakdown["overhead_estimate"]

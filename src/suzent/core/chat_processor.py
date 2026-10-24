@@ -1128,6 +1128,7 @@ class ChatProcessor:
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
         stream_run_id = str(uuid.uuid4())
+        deps.display_run_id = stream_run_id
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
             # The constituents, not a join. build_combined_reminder has to match
@@ -1553,6 +1554,7 @@ class ChatProcessor:
                         tool_names=getattr(agent, "_tool_names", []),
                         append_display_messages=pending_trigger_rows,
                         draft_run_id=stream_run_id,
+                        streamed_message=getattr(deps, "streamed_message", None),
                     )
                     if (
                         retry_checkpoint_id is not None
@@ -1843,6 +1845,8 @@ class ChatProcessor:
                     postprocess_job_id=postprocess_job_id,
                     inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
                     file_snapshot=file_snapshot,
+                    display_run_id=getattr(deps, "display_run_id", None),
+                    streamed_message=getattr(deps, "streamed_message", None),
                 )
                 if not persisted:
                     db.finalize_postprocess_job(
@@ -2323,6 +2327,8 @@ class ChatProcessor:
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
         file_snapshot: Optional[list[dict]] = None,
+        display_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> bool:
         """Persist conversation state to database."""
 
@@ -2352,6 +2358,19 @@ class ChatProcessor:
                 if skip_messages:
                     # Heartbeat: rollback already owns message state; only save agent_state.
                     target_messages = None
+                elif display_run_id is not None:
+                    from suzent.core.display_log import merge_streamed_message
+
+                    # The stream owns the visible timeline. Compaction, retries,
+                    # and model-history sanitizers cannot recreate that timeline.
+                    target_messages = list(chat_messages)
+                    if streamed_message is not None:
+                        target_messages = merge_streamed_message(
+                            target_messages, streamed_message
+                        )
+                        target_messages = _attach_latest_file_changes(
+                            target_messages, file_snapshot
+                        )
                 else:
                     # 100% Backend Authored: rebuild the complete display log from the full agent history
                     # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
@@ -2441,14 +2460,14 @@ class ChatProcessor:
         tool_names: List[str],
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
-        """Persist only agent_state for fast-follow turn recovery.
+        """Commit model state and captured display output for fast-follow recovery.
 
         This intentionally avoids display-log rebuilding, memory extraction,
         compression, and lifecycle field updates. The one exception is
-        *append_display_messages*: rows whose provenance cannot be recovered
-        later, so they have to become durable alongside the history rather than
-        waiting for post-processing that may never run.
+        *append_display_messages* and *streamed_message* become durable with
+        the history rather than waiting for post-processing that may never run.
         """
 
         def _sync() -> Optional[int]:
@@ -2461,6 +2480,7 @@ class ChatProcessor:
                 agent_state,
                 append_display_messages=append_display_messages,
                 draft_run_id=draft_run_id,
+                **({"streamed_message": streamed_message} if streamed_message else {}),
             )
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)
@@ -2685,6 +2705,27 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
     # re-running yields the same result instead of appending duplicates.
     st_user_idx = _last_turn_boundary_index(stored)
     base = stored[:st_user_idx] if st_user_idx >= 0 else stored
+
+    # Compaction can drop the current prompt from the agent history while tool
+    # execution continues. In that case the stored prompt is the only durable
+    # turn boundary; do not replace it with an older prompt or assistant row.
+    if st_user_idx >= 0 and (
+        rb_user_idx < 0
+        or rebuilt[rb_user_idx].get("role") != stored[st_user_idx].get("role")
+        or rebuilt[rb_user_idx].get("content") != stored[st_user_idx].get("content")
+    ):
+        turn_rows = list(rebuilt[rb_user_idx + 1 :] if rb_user_idx >= 0 else rebuilt)
+        # A terminal answer from a history that no longer contains this prompt
+        # cannot be attributed to the current turn. Keep tool activity and
+        # progress, but do not present that answer as the turn's conclusion.
+        if (
+            turn_rows
+            and turn_rows[-1].get("role") == "assistant"
+            and turn_rows[-1].get("content")
+            and not turn_rows[-1].get("tool_calls")
+        ):
+            turn_rows.pop()
+        return base + [stored[st_user_idx]] + turn_rows
 
     return base + turn_rows
 
