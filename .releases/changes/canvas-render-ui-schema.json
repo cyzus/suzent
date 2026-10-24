@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Fix Canvas rendering across models: render_ui now tells every provider that a component is a JSON object, so Claude and Gemini models stop sending malformed component trees, and rejected calls report which fields to fix."
+}
