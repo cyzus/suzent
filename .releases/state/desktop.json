@@ -29,6 +29,7 @@
     ".releases/changes/chatgpt-parallel-tool-args.json",
     ".releases/changes/china-mirror-install.json",
     ".releases/changes/ci-context-sources.json",
+    ".releases/changes/compaction-history-safety.json",
     ".releases/changes/composer-message-queue.json",
     ".releases/changes/conversation-task-checklist.json",
     ".releases/changes/deny-tools.json",

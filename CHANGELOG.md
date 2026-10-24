@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task.
 - Project conversations now track whether they are waiting on you, running, idle or resolved: after each reply the Decision model notes whether the conversation needs you and writes a one-line summary of where it stands.
 - Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
+- Preserve chat history and tool activity across compaction, fail safely when summaries fail, and keep conversation forks aligned with the selected turn.
 - Add the Ember accent color scheme (#FFA64D in light mode, #FF6600 in dark mode) in Appearance settings and restore the Warm dark-mode accent to yellow (#FFE666).
 - SUZENT now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
