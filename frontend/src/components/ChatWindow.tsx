@@ -3071,6 +3071,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopInFlightRef.current = true;
 
     const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
+    // The user ended this turn themselves, so its ending is nothing to announce,
+    // whichever path the stop finishes through.
+    if (targetChatId) forgetReply(targetChatId);
     // Stopping means "not that" — firing off the queue next would carry on
     // regardless. Hand the queued text back to the composer to revise instead.
     const stoppedQueue = targetChatId ? messageQueues[targetChatId] : undefined;
