@@ -26,3 +26,37 @@ def test_emit_bus_event_ignores_non_dict_payload() -> None:
         assert q.empty()
     finally:
         unregister_bus_subscriber(q)
+
+
+def test_stream_events_carry_their_run_id() -> None:
+    from suzent.core.stream_registry import (
+        background_queues,
+        register_background_stream,
+    )
+
+    chat_id = "chat-run-id"
+    q = register_bus_subscriber()
+    try:
+        first = register_background_stream(chat_id)
+        first.put_nowait("data: one\n\n")
+        # A steer supersedes the first run while it is still draining.
+        second = register_background_stream(chat_id)
+        first.put_nowait("data: late\n\n")
+        second.put_nowait(None)
+
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+        old, new = first.replay.run_id, second.replay.run_id
+        assert old != new
+        assert [(e["event"], e.get("run_id")) for e in events] == [
+            ("stream_started", old),
+            ("chunk", old),
+            ("stream_ended", old),
+            ("stream_started", new),
+            ("chunk", old),
+            ("stream_ended", new),
+        ]
+    finally:
+        unregister_bus_subscriber(q)
+        background_queues.pop(chat_id, None)

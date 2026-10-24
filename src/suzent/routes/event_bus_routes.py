@@ -10,9 +10,9 @@ of opening a separate /chat/live connection per background chat.
 
 Event shapes (JSON in the SSE data field):
   {"event": "snapshot",      "streams": ["chat-id-1", ...]}   # sent immediately on connect
-  {"event": "stream_started","chat_id": "..."}
-  {"event": "chunk",         "chat_id": "...", "data": "<raw SSE string>"}
-  {"event": "stream_ended",  "chat_id": "..."}
+  {"event": "stream_started","chat_id": "...", "run_id": "..."}
+  {"event": "chunk",         "chat_id": "...", "run_id": "...", "data": "<raw SSE string>"}
+  {"event": "stream_ended",  "chat_id": "...", "run_id": "..."}
   {"event": "goal_tasks_changed", "project_id": "...", "chat_id": "..."}
 
 The frontend can reconstruct any background stream's content by collecting
