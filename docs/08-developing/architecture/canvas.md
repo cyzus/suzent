@@ -20,14 +20,16 @@ A surface is a named, renderable UI panel. It has:
 
 ### Component Tree
 
-Components are plain dicts with a `"type"` field. They nest recursively via `"children"` lists.
+Components are plain JSON objects with a `"type"` field. They nest recursively via `"children"` lists, whose entries are themselves component objects.
+
+`component` must be a JSON **object**. The recursive A2UI union is validated server-side by `A2UISurface`, but the tool schema sent to providers is a flat, provider-neutral object schema (`suzent.a2ui.schema.component_tool_schema()`): recursive `$defs` are rejected by some providers, and an untyped parameter made models guess (Anthropic streamed the tree as a JSON string; Gemini sent `children: [0, 1]`). A string containing a JSON *object* is still accepted for compatibility and logged as deprecated; any other string is rejected with an explanation and is never treated as HTML or text. Validation errors come back as one line per problem with the field path. When adding a field to `suzent.a2ui.models`, add it to `suzent.a2ui.schema` too; `tests/tools/test_render_ui_schema.py` fails on drift.
 
 **Container types** (have `children`):
 
 | Type | Description | Key fields |
 |------|-------------|------------|
 | `card` | Titled panel with a black header bar | `title`, `children` |
-| `stack` | Vertical or horizontal group | `children`, `gap` (`sm`/`md`/`lg`), `direction` |
+| `stack` | Vertical group | `children`, `gap` (`sm`/`md`/`lg`) |
 | `columns` | Side-by-side columns | `children`, `ratios` (list of flex weights) |
 
 **Leaf types**:
