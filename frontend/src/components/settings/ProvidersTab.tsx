@@ -715,11 +715,7 @@ export function ProvidersTab({
                 >
                   {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
                 </BrutalButton>
-                <BrutalButton
-                  onClick={() => setShowAddForm((v) => !v)}
-                  variant="light"
-                  size="sm"
-                >
+                <BrutalButton onClick={() => setShowAddForm((v) => !v)} variant="light" size="sm">
                   {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
                 </BrutalButton>
               </>
