@@ -139,6 +139,8 @@ class DatabaseMigrationMixin:
                     conn.execute(
                         text("ALTER TABLE chats ADD COLUMN state_updated_at DATETIME")
                     )
+                if "voice_log" not in columns:
+                    conn.execute(text("ALTER TABLE chats ADD COLUMN voice_log JSON"))
                 conn.commit()
 
         # Migration: Add file_snapshot columns to retry_checkpoints

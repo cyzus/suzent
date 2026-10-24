@@ -212,6 +212,34 @@ class TestMiddleware:
         assert not called
         assert sent and sent[0]["type"] == "websocket.close"
 
+    @pytest.mark.asyncio
+    async def test_voice_ws_requires_full_scope_but_other_ws_does_not(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _agent_id, agent_token = store.mint("Peer", "linux", scope="agent")
+        _full_id, full_token = store.mint("Host", "host", scope="full")
+
+        def ws_scope(path, token):
+            return _scope(
+                "websocket",
+                "100.64.0.5",
+                headers=[(b"authorization", f"Bearer {token}".encode())],
+                path=path,
+                store=store,
+            )
+
+        called, sent = await _run(ws_scope("/ws/voice", agent_token))
+        assert not called
+        assert sent[0] == {"type": "websocket.close", "code": 1008}
+        called, _ = await _run(ws_scope("/ws/voice", full_token))
+        assert called
+        called, _ = await _run(ws_scope("/ws/other", agent_token))
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_loopback_voice_ws_remains_trusted(self):
+        called, _ = await _run(_scope("websocket", "127.0.0.1", path="/ws/voice"))
+        assert called
+
 
 def test_browser_node_page_is_public_but_not_the_devices_api():
     """The /node page must be exempt by EXACT path, never as a prefix.

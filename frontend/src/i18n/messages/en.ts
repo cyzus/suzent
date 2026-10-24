@@ -1,4 +1,48 @@
 export const en = {
+  voice: {
+    micButton: 'Start voice mode',
+    stopSpeaking: 'Stop speaking',
+    end: 'End voice mode',
+    working: 'Suzent is working',
+    captionsAfterSpeech: 'Your words appear after you finish speaking',
+    transcript: {
+      you: 'You',
+      assistant: 'Suzent',
+    },
+    states: {
+      idle: 'Idle',
+      connecting: 'Connecting',
+      listening: 'Listening',
+      user_speaking: 'Hearing you',
+      thinking: 'Thinking',
+      speaking: 'Speaking',
+      error: 'Voice error',
+    },
+    errors: {
+      micDenied: 'Microphone permission was denied.',
+      micUnavailable: 'Realtime voice is not supported in this browser.',
+      no_model: 'No realtime voice model is available.',
+      no_api_key: 'Add an API key for a realtime voice provider.',
+      unsupported_provider: 'This provider does not support realtime voice.',
+      session_error: 'The voice session ended unexpectedly.',
+      busy: 'Voice is busy. Try again shortly.',
+    },
+    settings: {
+      title: 'Realtime voice',
+      description: 'Choose the model and provider voice used for live conversation.',
+      model: 'Realtime model',
+      voice: 'Provider voice',
+      auto: 'Auto',
+      noneConfigured: 'No realtime voice provider has a configured API key.',
+      captionsAfterSpeech: 'text appears after you finish speaking',
+      sensitivity: 'Speech detection sensitivity',
+      sensitivityLow: 'Low (recommended for speakers)',
+      sensitivityAuto: 'Provider default',
+      sensitivityHigh: 'High (quiet voices, headphones)',
+      sensitivityHint:
+        "Lower is less likely to mistake Suzent's own voice from your speakers for you. Gemini only.",
+    },
+  },
   workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
   desktopMenu: {
     label: 'Menu',
@@ -108,7 +152,7 @@ export const en = {
     reserve: 'Compaction reserve',
     deferred: '(not loaded)',
     estimateNote:
-      '≈ Estimated from text length, not exact tokenizer counts. Reserve is budget kept for compaction; unloaded tools are excluded.',
+      '≈ Estimated from text length and calibrated against the provider count for the last request, so not an exact tokenizer count. Reserve is budget kept for compaction; unloaded tools are excluded.',
     unmeasured:
       'Media or provider-managed content is present. Its token cost is not included in this estimate.',
     measuredInput: 'Last request input (provider reported)',
@@ -1546,7 +1590,6 @@ export const en = {
       allClear: 'All clear',
       waitingCount: '{count} waiting on you',
       runningCount: '{count} running',
-      waitingBadge: '{count} waiting on you',
     },
     sections: {
       automation: 'Automation',
@@ -1595,7 +1638,6 @@ export const en = {
       all: 'All',
     },
     labels: {
-      waiting: 'Waiting on you',
       heartbeat: 'Heartbeat',
       running: 'Running',
       unreadCount: '{count} unread',

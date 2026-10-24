@@ -1,4 +1,47 @@
 export const zhCN = {
+  voice: {
+    micButton: '开启语音模式',
+    stopSpeaking: '停止播放',
+    end: '结束语音模式',
+    working: 'Suzent 正在处理',
+    captionsAfterSpeech: '说完后才会显示文字',
+    transcript: {
+      you: '你',
+      assistant: 'Suzent',
+    },
+    states: {
+      idle: '空闲',
+      connecting: '连接中',
+      listening: '正在聆听',
+      user_speaking: '正在听你说',
+      thinking: '正在思考',
+      speaking: '正在说话',
+      error: '语音错误',
+    },
+    errors: {
+      micDenied: '麦克风权限被拒绝。',
+      micUnavailable: '此浏览器不支持实时语音。',
+      no_model: '没有可用的实时语音模型。',
+      no_api_key: '请为实时语音提供商添加 API 密钥。',
+      unsupported_provider: '此提供商不支持实时语音。',
+      session_error: '语音会话意外结束。',
+      busy: '语音服务正忙，请稍后重试。',
+    },
+    settings: {
+      title: '实时语音',
+      description: '选择实时对话使用的模型和提供商语音。',
+      model: '实时模型',
+      voice: '提供商语音',
+      auto: '自动',
+      noneConfigured: '尚未为任何实时语音提供商配置 API 密钥。',
+      captionsAfterSpeech: '说完后才显示文字',
+      sensitivity: '语音检测灵敏度',
+      sensitivityLow: '低（外放推荐）',
+      sensitivityAuto: '服务商默认',
+      sensitivityHigh: '高（声音小、戴耳机）',
+      sensitivityHint: '越低越不容易把扬声器里 Suzent 自己的声音当成你在说话。仅对 Gemini 生效。',
+    },
+  },
   workspaceView: { fullscreen: '全屏', shrink: '缩小' },
   desktopMenu: {
     label: '菜单',
@@ -101,7 +144,7 @@ export const zhCN = {
     reserve: '压缩预留空间',
     deferred: '（未加载）',
     estimateNote:
-      '≈ 根据文本长度估算，并非精确分词计数。预留空间用于自动压缩，未加载工具不计入已用量。',
+      '≈ 根据文本长度估算，并按服务商对最近一次请求的计数校准，并非精确分词计数。预留空间用于自动压缩，未加载工具不计入已用量。',
     unmeasured: '包含媒体或由模型服务管理的内容，其 token 开销未计入此估算。',
     measuredInput: '最近请求输入（服务商计数）',
     categories: {
@@ -1495,7 +1538,6 @@ export const zhCN = {
       allClear: '一切正常',
       waitingCount: '{count} 个等你',
       runningCount: '{count} 个进行中',
-      waitingBadge: '{count} 件事等你处理',
     },
     sections: {
       scheduled: '定时任务',
@@ -1543,7 +1585,6 @@ export const zhCN = {
       all: '全部',
     },
     labels: {
-      waiting: '等你处理',
       heartbeat: '心跳',
       running: '运行中',
       unreadCount: '{count} 条未读',
