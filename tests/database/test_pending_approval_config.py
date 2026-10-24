@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from suzent.core.chat_processor import _resolve_resume_approval_actions
+from suzent.database.chats import _summarize_messages
 from suzent.permissions.actions import build_approval_decision
 
 
@@ -123,3 +124,13 @@ def test_unread_count_survives_and_increments(temp_db) -> None:
 
     temp_db.mark_chat_read(chat)
     assert temp_db.get_chat(chat).config["unread_count"] == 0
+
+
+def test_sidebar_summary_skips_tool_output() -> None:
+    messages = [
+        {"role": "user", "content": "start the work"},
+        {"role": "assistant", "content": "checking the code"},
+        {"role": "tool", "content": '{"message": "private tool output"}'},
+    ]
+
+    assert _summarize_messages(messages) == (1, "checking the code")

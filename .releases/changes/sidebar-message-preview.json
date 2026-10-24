@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep sidebar previews on the latest readable message instead of showing raw tool output."
+}
