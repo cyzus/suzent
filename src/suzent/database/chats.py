@@ -961,6 +961,8 @@ class ChatOperationsMixin:
         agent_state: bytes,
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
+        expected_revision: Optional[int] = None,
     ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 
@@ -975,10 +977,22 @@ class ChatOperationsMixin:
         can no longer overwrite them.
 
         Returns:
-            The new state revision if the chat exists, otherwise None.
+            The new revision, or None if the chat is missing or the expected
+            revision no longer matches.
         """
         now = datetime.now()
         with self._session() as session:
+            if expected_revision is not None:
+                claimed = session.execute(
+                    update(ChatModel)
+                    .where(
+                        ChatModel.id == chat_id,
+                        ChatModel.state_revision == expected_revision,
+                    )
+                    .values(state_revision=ChatModel.state_revision)
+                )
+                if claimed.rowcount != 1:
+                    return None
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 _postprocess_metrics.snapshot_failed += 1
@@ -1019,6 +1033,16 @@ class ChatOperationsMixin:
                     _set_config_keys(
                         session, chat_id, _message_summary(appended_messages)
                     )
+
+            if streamed_message is not None:
+                from suzent.core.display_log import merge_streamed_message
+
+                appended_messages = merge_streamed_message(
+                    list(chat.messages or []), streamed_message
+                )
+                chat.messages = appended_messages
+                flag_modified(chat, "messages")
+                _set_config_keys(session, chat_id, _message_summary(appended_messages))
 
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state

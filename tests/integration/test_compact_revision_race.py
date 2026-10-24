@@ -110,3 +110,45 @@ async def test_manual_compact_survives_stale_finalize(db, monkeypatch):
     chat = db.get_chat(chat_id)
     survived = deserialize_state(chat.agent_state)["message_history"]
     assert len(survived) == len(compacted)
+
+
+@pytest.mark.parametrize("failure", ["empty", "timeout", "concurrent"])
+async def test_manual_compact_preserves_history_on_failure_or_concurrent_write(
+    db, monkeypatch, failure
+):
+    import asyncio
+    from suzent.config import CONFIG
+    from suzent.core.context_compressor import CompactionError
+
+    chat_id = db.create_chat(title="t", config={})
+    original = serialize_state(_full_history(), model_id="test", tool_names=[])
+    db.commit_snapshot_state(chat_id, original)
+    newer = serialize_state(
+        _full_history() + [ModelRequest(parts=[UserPromptPart(content="new request")])]
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    monkeypatch.setattr(CONFIG, "compaction_timeout_seconds", 0.01)
+
+    async def compress(self, messages, focus=None):
+        if failure == "timeout":
+            await asyncio.Event().wait()
+        if failure == "empty":
+            raise CompactionError("No summary")
+        db.commit_snapshot_state(chat_id, newer)
+        return _compacted_history()
+
+    monkeypatch.setattr(
+        "suzent.core.context_compressor.ContextCompressor._perform_compression",
+        compress,
+    )
+    events = []
+    monkeypatch.setattr("suzent.core.stream_registry.emit_bus_event", events.append)
+    result = await dispatch(
+        CommandContext(chat_id=chat_id, user_id="u", surface="manual"), "/compact"
+    )
+    assert "✓" not in result
+    assert db.get_chat(chat_id).agent_state == (
+        newer if failure == "concurrent" else original
+    )
+    assert events[-1]["stage"] in {"error", "skipped"}
+    assert not any(event.get("stage") == "complete" for event in events)

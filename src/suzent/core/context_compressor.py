@@ -7,8 +7,10 @@ important facts and persist them to the memory system.
 """
 
 import asyncio
+import contextlib
 import dataclasses
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -17,11 +19,14 @@ from pydantic_ai.messages import (
     ModelResponse,
     ToolCallPart,
     ToolReturnPart,
+    TextContent,
     TextPart,
+    UserPromptPart,
 )
 from pydantic_ai.tools import RunContext
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.context_usage import estimate_text
 from suzent.core.message_history import safe_tool_history_tail_start
 
 from suzent.config import CONFIG
@@ -31,6 +36,11 @@ from suzent.core.providers import get_effective_memory_config
 
 logger = get_logger(__name__)
 
+
+class CompactionError(RuntimeError):
+    """A summary could not safely replace the original model history."""
+
+
 SUMMARY_PROMPT_TEMPLATE = """\
 Your task is to create a detailed summary of the conversation below, paying close
 attention to the user's explicit requests and the actions taken. This summary must
@@ -38,13 +48,7 @@ be thorough enough that development work can continue without losing context.
 
 {steps_text}
 
-Before writing the summary, wrap your reasoning in <analysis> tags: go through the
-conversation chronologically and, for each part, identify the user's requests, the
-approach taken, key decisions and code patterns, specific details (file names, full
-code snippets, function signatures, edits), errors and how they were fixed, and any
-explicit user feedback. Then double-check for technical accuracy and completeness.
-
-After the analysis, write the summary inside <summary> tags using EXACTLY these
+Return only a <summary> block, without analysis or a preamble, using EXACTLY these
 numbered sections (keep the headers verbatim):
 
 ## 1. Primary Request and Intent
@@ -117,6 +121,46 @@ REQUIRED_SECTIONS = [
     "## 10. Exact Identifiers",
 ]
 
+SUMMARY_MAX_TOKENS = 8192
+
+
+def _user_prompt_text(part: UserPromptPart) -> str:
+    content = part.content
+    if isinstance(content, str):
+        return content
+    return "\n".join(
+        item if isinstance(item, str) else item.content
+        for item in content
+        if isinstance(item, (str, TextContent))
+    )
+
+
+def _latest_user_prompt(messages: list) -> str:
+    """Keep the active request explicit when a long tool run outgrows the tail."""
+    for message in reversed(messages[1:]):
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in reversed(message.parts):
+            if isinstance(part, UserPromptPart):
+                content = _user_prompt_text(part)
+                if is_compaction_summary_text(content):
+                    continue
+                from suzent.core.system_reminder import strip_system_reminders
+
+                text = strip_system_reminders(content).strip()
+                if text:
+                    return text
+    anchor = "## Active user request (verbatim)\n"
+    for message in reversed(messages):
+        if not isinstance(message, ModelResponse):
+            continue
+        for part in reversed(message.parts):
+            content = getattr(part, "content", None)
+            if isinstance(content, str) and anchor in content:
+                return content.split(anchor, 1)[1].split("\n---\n", 1)[0].strip()
+    return ""
+
+
 # Stable markers identifying the synthetic summary messages injected into the
 # LLM context after compaction. These exist only to fit the model's context
 # window and must never surface in the user-facing display log.
@@ -134,6 +178,62 @@ def is_compaction_summary_text(text: Any) -> bool:
     )
 
 
+def build_summary_pair(summary: str, messages: list) -> list:
+    """The synthetic request/response pair that stands in for compacted history.
+
+    It carries the user's current request verbatim, because the message kept
+    ahead of it is the chat's *first* request: after a long tool run the current
+    one is no longer in the tail, and the agent went back to that first request
+    as if it were still the task.
+    """
+    from suzent.core.system_reminder import (
+        make_user_prompt_part,
+        sanitize_untrusted_text,
+    )
+
+    # The summary is model output derived from tool content an attacker may
+    # control, so it can be steered into emitting literal reminder
+    # delimiters — including by reassembling them from an escaped form. It is
+    # inserted after the sanitizing history processor has run and lands in
+    # persisted history, so it is neutralized here at the point of creation.
+    body = sanitize_untrusted_text(summary)
+    active_request = _latest_user_prompt(messages)
+    if active_request:
+        # The request stays last in the section: a later pass reads it back out
+        # of this summary once the original message has been compacted away.
+        body += (
+            "\n\nThe first message of the conversation is where the chat began and "
+            "may be an earlier task that is already finished. The request below "
+            "is what the user currently wants; continue it."
+            "\n\n## Active user request (verbatim)\n"
+            + sanitize_untrusted_text(active_request)
+        )
+    return [
+        ModelRequest(
+            parts=[
+                make_user_prompt_part(
+                    f"{COMPACTION_SUMMARY_REQUEST_MARKER}\n"
+                    "The following is an authoritative summary of prior conversation history."
+                )
+            ]
+        ),
+        ModelResponse(
+            parts=[
+                TextPart(
+                    content=(
+                        f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\n"
+                        f"{body}\n"
+                        "---\n"
+                        "This summary supersedes any earlier tool outputs or conversation fragments "
+                        "that are no longer in your context window.\n"
+                        "--- END ARCHIVED CONTEXT ---"
+                    )
+                )
+            ]
+        ),
+    ]
+
+
 def _fmt_tokens(tokens: int) -> str:
     return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
 
@@ -141,10 +241,8 @@ def _fmt_tokens(tokens: int) -> str:
 def extract_summary_body(raw: str) -> str:
     """Return the compaction summary with the <analysis> scratchpad removed.
 
-    The prompt asks the model to draft in an <analysis> block (which improves the
-    summary but carries no lasting value) and then write the real summary in a
-    <summary> block. This strips the analysis and unwraps <summary>, tolerating a
-    model that omits the tags (returns the cleaned text as-is).
+    Older prompts requested an analysis block. Strip that legacy wrapper and
+    unwrap the summary, tolerating responses that omit the tags.
     """
     if not raw:
         return ""
@@ -505,29 +603,41 @@ class TokenBudget:
 MAX_PLAUSIBLE_CONTEXT_OVERHEAD_RATIO = 0.5
 
 
-def _part_chars(part: Any) -> int:
-    """Characters a single message part contributes to the prompt.
+def _part_tokens(part: Any) -> int:
+    """Tokens a single message part contributes to the prompt.
 
     Tool *arguments* count as well as content: a tool call that writes a file
     carries the whole file in ``args`` and nothing in ``content``, so counting
     only content made the largest thing an agent ever sends invisible.
     """
-    chars = len(str(getattr(part, "content", "") or ""))
+    if isinstance(part, ToolReturnPart):
+        content: Any = part.model_response_str_and_user_content()[0]
+    else:
+        content = getattr(part, "content", "") or ""
+    if isinstance(content, (list, tuple)):
+        # Images and other binary media are not text; their repr is base64-sized.
+        content = "".join(
+            item if isinstance(item, str) else item.content
+            for item in content
+            if isinstance(item, (str, TextContent))
+        )
+    tokens = estimate_text(content if isinstance(content, str) else str(content))
     args = getattr(part, "args", None)
     if args:
-        chars += len(args if isinstance(args, str) else str(args))
-    return chars
+        tokens += estimate_text(args if isinstance(args, str) else str(args))
+    return tokens
 
 
 def estimate_history_tokens(messages: list) -> int:
-    """~4 chars/token over the message history alone."""
-    total_chars = sum(
-        _part_chars(part) for msg in messages for part in getattr(msg, "parts", [])
+    """Script-aware estimate over the message history alone."""
+    return sum(
+        _part_tokens(part) for msg in messages for part in getattr(msg, "parts", [])
     )
-    return total_chars // 4
 
 
-def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
+def measured_overhead_tokens(
+    messages: list, limit: Optional[int] = None
+) -> Optional[int]:
     """Tokens the real prompt carries beyond the message history itself.
 
     The system prompt and every tool's JSON schema are sent on each request but
@@ -541,6 +651,9 @@ def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
     proportional to the history and still falls when compaction shrinks it. That
     matters — a metric that cannot drop after a compaction would re-trigger
     compaction on every subsequent request of the run.
+
+    ``None`` means there is no usable measurement, as opposed to a measured
+    overhead of zero.
     """
     for index in range(len(messages) - 1, -1, -1):
         usage = getattr(messages[index], "usage", None)
@@ -560,16 +673,30 @@ def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
                 # rewrote the history behind it, so its prompt covered messages
                 # that are no longer here. Report no offset rather than an
                 # offset that would hide the reduction compaction just made.
-                return 0
+                return None
             return max(0, overhead)
-    return 0
+    return None
 
 
-def estimate_tokens(messages: list, limit: int) -> TokenBudget:
-    """Best available size of the context window these messages represent."""
+def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
+    """Measured prompt overhead, or 0 when no usable measurement exists."""
+    return measured_overhead_tokens(messages, limit) or 0
+
+
+def estimate_tokens(
+    messages: list, limit: int, fallback_overhead: int = 0
+) -> TokenBudget:
+    """Best available size of the context window these messages represent.
+
+    This is the one estimate behind both the compaction trigger and the context
+    panel. ``fallback_overhead`` is a text estimate of the system prompt and tool
+    schemas, used only until the provider has measured a request to calibrate
+    against.
+    """
+    overhead = measured_overhead_tokens(messages, limit)
     return TokenBudget(
         estimated_tokens=estimate_history_tokens(messages)
-        + context_overhead_tokens(messages, limit),
+        + (fallback_overhead if overhead is None else overhead),
         limit=limit,
         trigger_threshold=CONFIG.context_compaction_trigger,
         soft_trim_threshold=CONFIG.context_soft_trim_threshold,
@@ -749,13 +876,8 @@ class ContextCompressor:
                 timeout=CONFIG.compaction_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            logger.warning("Compaction timed out, falling back to hard trim")
-            keep = CONFIG.compaction_keep_recent_turns * 2
-            tail_start = safe_tool_history_tail_start(
-                messages, max(1, len(messages) - keep)
-            )
-            self._history_rewritten()
-            return messages[:1] + _clear_stale_usage(messages[tail_start:])
+            logger.warning("Compaction timed out; preserving original history")
+            return messages
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
             return messages
@@ -839,7 +961,7 @@ class ContextCompressor:
         if len(messages_to_compress) > 0:
             avg_tokens = budget.estimated_tokens / len(messages)
             if avg_tokens > 2000:
-                chunk_size = chunk_size // 2
+                chunk_size = max(1, chunk_size // 2)
 
         # Chunked or single-pass summarization
         if len(messages_to_compress) > chunk_size:
@@ -850,50 +972,37 @@ class ContextCompressor:
             summary = await self._summarize_with_retry(messages_to_compress, focus)
 
         if not summary:
-            logger.warning("Failed to generate summary for compression.")
-            self._history_rewritten()
-            return messages[:1] + _clear_stale_usage(messages[end_index:])
+            raise CompactionError(
+                "Compaction failed to produce a complete summary. Original history preserved."
+            )
 
-        # Phase 6 — improved synthetic summary framing
-        from suzent.core.system_reminder import make_user_prompt_part
-
-        summary_request = ModelRequest(
-            parts=[
-                make_user_prompt_part(
-                    f"{COMPACTION_SUMMARY_REQUEST_MARKER}\n"
-                    "The following is an authoritative summary of prior conversation history."
-                )
+        # Preserve the actual active request, including images/files. A text
+        # quote in the summary alone cannot carry a multimodal user request.
+        active_request = []
+        for index in range(len(messages) - 1, 0, -1):
+            message = messages[index]
+            if not isinstance(message, ModelRequest):
+                continue
+            prompts = [
+                part
+                for part in message.parts
+                if isinstance(part, UserPromptPart)
+                and not is_compaction_summary_text(_user_prompt_text(part))
             ]
-        )
-        # The summary is model output derived from tool content an attacker may
-        # control, so it can be steered into emitting literal reminder
-        # delimiters — including by reassembling them from an escaped form. It is
-        # inserted after the sanitizing history processor has run and lands in
-        # persisted history, so it is neutralized here at the point of creation.
-        from suzent.core.system_reminder import sanitize_untrusted_text
-
-        summary = sanitize_untrusted_text(summary)
-
-        summary_response = ModelResponse(
-            parts=[
-                TextPart(
-                    content=(
-                        f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\n"
-                        f"{summary}\n"
-                        "---\n"
-                        "This summary supersedes any earlier tool outputs or conversation fragments "
-                        "that are no longer in your context window.\n"
-                        "--- END ARCHIVED CONTEXT ---"
-                    )
-                )
-            ]
-        )
+            if prompts:
+                if index < end_index:
+                    active_request = [ModelRequest(parts=prompts)]
+                break
 
         new_messages = (
             messages[:1]
-            + [summary_request, summary_response]
+            + build_summary_pair(summary, messages)
+            + active_request
             + _clear_stale_usage(messages[end_index:])
         )
+
+        if estimate_history_tokens(new_messages) >= estimate_history_tokens(messages):
+            return messages
 
         logger.info(
             f"Message history compressed: {len(messages)} → {len(new_messages)} messages"
@@ -929,6 +1038,7 @@ class ContextCompressor:
                 prompt=full_prompt,
                 system="You are an expert technical summarizer.",
                 temperature=0.3,
+                max_tokens=SUMMARY_MAX_TOKENS,
             )
             body = extract_summary_body(raw)
 
@@ -944,8 +1054,7 @@ class ContextCompressor:
             else:
                 logger.warning(f"Summary attempt {attempt + 1} returned empty result")
 
-        # Fall back to last non-empty body or empty string
-        return body or ""
+        return ""
 
     async def _chunked_summarize(
         self, messages: list, chunk_size: int, focus: Optional[str] = None
@@ -955,23 +1064,18 @@ class ContextCompressor:
             messages[i : i + chunk_size] for i in range(0, len(messages), chunk_size)
         ]
 
+        semaphore = asyncio.Semaphore(3)
+
         async def summarize_chunk(chunk: list) -> str:
-            steps_text = self._messages_to_text(chunk)
-            prompt = SUMMARY_PROMPT_TEMPLATE.format(steps_text=steps_text)
-            if focus:
-                prompt += f"\n\nAdditional focus: {focus}"
-            result = await self.llm_client.complete(
-                prompt=prompt,
-                system="You are an expert technical summarizer.",
-                temperature=0.3,
-            )
-            return extract_summary_body(result)
+            async with semaphore:
+                return await self._summarize_with_retry(chunk, focus)
 
-        partial_summaries = await asyncio.gather(*[summarize_chunk(c) for c in chunks])
-        combined = "\n\n---\n\n".join(s for s in partial_summaries if s)
-
-        if not combined:
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(summarize_chunk(chunk)) for chunk in chunks]
+        partial_summaries = [task.result() for task in tasks]
+        if not all(partial_summaries):
             return ""
+        combined = "\n\n---\n\n".join(partial_summaries)
 
         required_headers = "\n".join(REQUIRED_SECTIONS)
         merge_prompt = (
@@ -985,8 +1089,10 @@ class ContextCompressor:
             prompt=merge_prompt,
             system="You are an expert technical summarizer.",
             temperature=0.3,
+            max_tokens=SUMMARY_MAX_TOKENS,
         )
-        return extract_summary_body(merged) or combined
+        body = extract_summary_body(merged)
+        return body if all(section in body for section in REQUIRED_SECTIONS) else ""
 
     def _schedule_memory_flush(self) -> None:
         """Run the pre-compaction memory flush as a fire-and-forget background task.
@@ -1045,10 +1151,10 @@ class ContextCompressor:
         for msg in messages:
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
-                    if hasattr(part, "content") and isinstance(part.content, str):
+                    if isinstance(part, UserPromptPart):
                         # User messages are short and critical to intent — keep whole.
-                        text.append(f"User: {part.content}")
-                    if isinstance(part, ToolReturnPart):
+                        text.append(f"User: {_user_prompt_text(part)}")
+                    elif isinstance(part, ToolReturnPart):
                         output = _clip(
                             part.content,
                             MSG_TEXT_TOOL_RESULT_LIMIT,
@@ -1094,14 +1200,53 @@ def context_input_tokens(
     the next request has to observe the reduction or the processor re-fires on
     every subsequent request in the run.
 
+    It is the same estimate the context panel shows: the fallback overhead is the
+    instruction and tool-schema estimate ``ContextUsageCapability`` recorded for
+    the previous request.
+
     ``ctx.usage.input_tokens`` is deliberately NOT used: pydantic-ai's
     ``RunUsage`` *sums* input tokens across every request in the run (it is a
     monotonically increasing cumulative counter, not the last prompt's size), so
     it can never drop after a compaction and would loop the processor. The
-    char-based estimate over the incoming ``messages`` tracks the compacted list
-    directly. ``ctx`` is retained for signature stability / future use.
+    text estimate over the incoming ``messages`` tracks the compacted list
+    directly.
     """
-    return estimate_tokens(messages, resolve_context_limit(model_id)).estimated_tokens
+    return estimate_tokens(
+        messages,
+        resolve_context_limit(model_id),
+        getattr(getattr(ctx, "deps", None), "context_overhead_estimate", 0) or 0,
+    ).estimated_tokens
+
+
+# Seconds each chat has spent in mid-run compaction. The pass runs inside the
+# stream's wait for the next model event, so without this a summary that took
+# longer than the idle window was reported as the model going silent.
+_COMPACTION_ELAPSED: dict[str, float] = {}
+_COMPACTION_STARTED: dict[str, float] = {}
+
+
+def compaction_seconds(chat_id: str | None) -> float:
+    """Total time ``chat_id`` has spent compacting, including a pass in flight."""
+    if not chat_id:
+        return 0.0
+    started = _COMPACTION_STARTED.get(chat_id)
+    running = time.monotonic() - started if started is not None else 0.0
+    return _COMPACTION_ELAPSED.get(chat_id, 0.0) + running
+
+
+@contextlib.contextmanager
+def _track_compaction(chat_id: str):
+    if not chat_id:
+        yield
+        return
+    _COMPACTION_STARTED[chat_id] = time.monotonic()
+    try:
+        yield
+    finally:
+        started = _COMPACTION_STARTED.pop(chat_id)
+        _COMPACTION_ELAPSED[chat_id] = (
+            _COMPACTION_ELAPSED.get(chat_id, 0.0) + time.monotonic() - started
+        )
 
 
 # Chats where a completed compaction failed to bring the estimate back under the
@@ -1148,17 +1293,10 @@ def make_compaction_history_processor(
         chat_id = getattr(deps, "chat_id", "") or ""
         limit = resolve_context_limit(model_id)
         trigger = limit * CONFIG.context_compaction_trigger
+        # The panel is fed by ContextUsageCapability, which sees the final request
+        # and its tool schemas; reporting here too made the panel alternate
+        # between two readings of the same request.
         current_tokens = context_input_tokens(ctx, messages, model_id)
-
-        # Report the context window on every model request, not just when we are
-        # about to compact — this is what keeps the frontend panel live during a
-        # long turn instead of frozen on the previous turn's total.
-        emit_context_usage_event(
-            chat_id=chat_id,
-            context_tokens=current_tokens,
-            usage=getattr(ctx, "usage", None),
-            context_limit=limit,
-        )
 
         if current_tokens < trigger:
             return messages
@@ -1195,17 +1333,27 @@ def make_compaction_history_processor(
             chat_id=chat_id, user_id=user_id, model_id=model_id
         )
         try:
-            compressed = await asyncio.wait_for(
-                compressor._perform_compression(messages, background_flush=True),
-                timeout=CONFIG.compaction_timeout_seconds,
-            )
+            with _track_compaction(chat_id):
+                compressed = await asyncio.wait_for(
+                    compressor._perform_compression(messages, background_flush=True),
+                    timeout=CONFIG.compaction_timeout_seconds,
+                )
         except asyncio.TimeoutError:
-            logger.warning("Mid-run compaction timed out, falling back to hard trim")
-            compressor._history_rewritten()
-            tail_start = safe_tool_history_tail_start(
-                messages, max(1, len(messages) - keep_recent)
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="error",
+                source=source,
+                messages_before=messages_before,
+                tokens_before=tokens_before,
+                message="Compaction timed out. Original history preserved.",
             )
-            compressed = messages[:1] + _clear_stale_usage(messages[tail_start:])
+            # A failed summary must not silently delete the agent's task state.
+            # Pause if the request no longer fits; otherwise the run can proceed.
+            if current_tokens >= limit:
+                raise CompactionError(
+                    "Context is full and compaction timed out. History preserved."
+                )
+            return messages
         except Exception as e:
             logger.error(f"Mid-run compaction failed: {e}")
             emit_compaction_event(
@@ -1216,6 +1364,10 @@ def make_compaction_history_processor(
                 tokens_before=tokens_before,
                 message=str(e),
             )
+            if current_tokens >= limit:
+                raise CompactionError(
+                    "Context is full and compaction failed. History preserved."
+                ) from e
             return messages
 
         # pydantic-ai requires the processed history to be non-empty and to end
@@ -1235,7 +1387,8 @@ def make_compaction_history_processor(
             )
             return messages
 
-        if len(compressed) >= len(messages):
+        tokens_after = context_input_tokens(ctx, compressed, model_id)
+        if compressed is messages or tokens_after >= current_tokens:
             # No reduction (e.g. already compacted and nothing else to drop).
             # Nothing here will change until the history grows, and the pass
             # already paid for a summarization call, so stop re-running it.
@@ -1255,9 +1408,8 @@ def make_compaction_history_processor(
                 if already_compacted
                 else None,
             )
-            return compressed
+            return messages
 
-        tokens_after = estimate_tokens(compressed, limit).estimated_tokens
         if tokens_after >= trigger:
             logger.warning(
                 f"Compaction left ~{tokens_after} tokens, still at or over the "
@@ -1282,4 +1434,14 @@ def make_compaction_history_processor(
         )
         return compressed
 
-    return _processor
+    async def _capture_request_history(
+        ctx: RunContext[AgentDeps], messages: list
+    ) -> list:
+        processed = await _processor(ctx, messages)
+        # Checkpoints must start from the context actually sent to the model,
+        # including compaction and injected messages, rather than the run's
+        # original (possibly much larger) history.
+        ctx.deps.model_request_history = list(processed)
+        return processed
+
+    return _capture_request_history

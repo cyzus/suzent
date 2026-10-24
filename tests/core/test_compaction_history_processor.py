@@ -4,12 +4,14 @@ The processor runs before every model request within a run (pydantic-ai
 history_processors) and compacts context in-flight once it crosses the trigger.
 """
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
+    RequestUsage,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
@@ -89,6 +91,7 @@ async def test_compacts_when_over_trigger(monkeypatch):
 
     proc = make_compaction_history_processor()
     hist = _history(12)
+    hist[1] = ModelResponse(parts=[TextPart(content="old work " * 1000)])
     out = await proc(_ctx(), hist)
 
     assert len(out) < len(hist)
@@ -240,8 +243,52 @@ async def test_compaction_keeps_tool_call_with_tail_result(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_reports_context_usage_on_every_request(monkeypatch):
-    """The panel is fed from here, so the report must not be gated on compacting."""
+async def test_compaction_anchors_current_request_outside_recent_tail(monkeypatch):
+    monkeypatch.setattr(CONFIG, "compaction_keep_recent_turns", 1, raising=False)
+
+    async def fake_summary(self, messages, focus=None):
+        return "## 1. Primary Request and Intent\nOld topic"
+
+    monkeypatch.setattr(cc.ContextCompressor, "_summarize_with_retry", fake_summary)
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="old question")]),
+        ModelResponse(parts=[TextPart(content="old answer " * 1000)]),
+        ModelRequest(parts=[UserPromptPart(content="start the voice work")]),
+    ]
+    history.extend(
+        ModelResponse(parts=[TextPart(content=f"progress {index}")])
+        if index % 2 == 0
+        else ModelRequest(parts=[ToolReturnPart(tool_name="run", content="ok")])
+        for index in range(8)
+    )
+
+    out = await cc.ContextCompressor(llm_client=object())._perform_compression(history)
+
+    summary = out[2].parts[0].content
+    assert "## Active user request (verbatim)\nstart the voice work" in summary
+    assert cc._latest_user_prompt(out) == "start the voice work"
+
+
+@pytest.mark.asyncio
+async def test_incomplete_summary_is_rejected_after_larger_output_budget():
+    calls = []
+
+    class StubLLM:
+        async def complete(self, **kwargs):
+            calls.append(kwargs)
+            return "<summary>## 1. Primary Request and Intent\ncut off</summary>"
+
+    compressor = cc.ContextCompressor(llm_client=StubLLM())
+    summary = await compressor._summarize_with_retry(_history(4))
+
+    assert summary == ""
+    assert len(calls) == 3
+    assert all(call["max_tokens"] == cc.SUMMARY_MAX_TOKENS for call in calls)
+
+
+@pytest.mark.asyncio
+async def test_processor_leaves_usage_reporting_to_the_capability(monkeypatch):
+    """A second report per request made the panel alternate between two numbers."""
     monkeypatch.setattr(CONFIG, "max_context_tokens", 100_000, raising=False)
     monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.99, raising=False)
 
@@ -254,11 +301,30 @@ async def test_reports_context_usage_on_every_request(monkeypatch):
     hist = _history(12)
     out = await proc(_ctx(), hist)
 
-    assert out is hist  # nowhere near the trigger — nothing was compacted
-    usage_events = [e for e in seen if e["event"] == "context_usage"]
-    assert len(usage_events) == 1
-    assert usage_events[0]["chat_id"] == "c1"
-    assert usage_events[0]["usage"]["context_tokens"] > 0
+    assert out is hist
+    assert [e for e in seen if e["event"] == "context_usage"] == []
+
+
+def test_trigger_counts_recorded_schema_overhead_before_any_measurement():
+    hist = [ModelRequest(parts=[UserPromptPart(content="x" * 4000)])]
+    ctx = _ctx()
+    ctx.deps.context_overhead_estimate = 30_000
+
+    assert cc.context_input_tokens(ctx, hist) == 31_000
+
+
+def test_trigger_prefers_the_provider_measurement_over_the_recorded_overhead():
+    hist = [
+        ModelRequest(parts=[UserPromptPart(content="x" * 400)]),
+        ModelResponse(
+            parts=[TextPart(content="y" * 400)],
+            usage=RequestUsage(input_tokens=9000),
+        ),
+    ]
+    ctx = _ctx()
+    ctx.deps.context_overhead_estimate = 30_000
+
+    assert cc.context_input_tokens(ctx, hist) == 9100
 
 
 @pytest.mark.asyncio
@@ -396,13 +462,97 @@ async def test_suppression_rearms_when_history_grows(monkeypatch):
     _fake_compaction(monkeypatch)
 
     proc = make_compaction_history_processor()
-    out = await proc(_ctx(), _history(12))
+    history = _history(12)
+    history[1] = ModelResponse(parts=[TextPart(content="old work " * 1000)])
+    out = await proc(_ctx(), history)
     assert await proc(_ctx(), out) is out  # suppressed
 
-    grown = (
-        out[:-1]
-        + [ModelResponse(parts=[TextPart(content="y" * 20_000)])]
-        + [ModelRequest(parts=[UserPromptPart(content="pending")])]
-    )
+    grown = out[:1] + [ModelResponse(parts=[TextPart(content="y" * 20_000)])] + out[1:]
     regrown = await proc(_ctx(), grown)
     assert len(regrown) < len(grown)
+
+
+def _long_tool_run(request: str, rounds: int = 20) -> list:
+    """A chat whose current request has scrolled out of the recent tail."""
+    hist = [
+        ModelRequest(parts=[UserPromptPart(content="Diagnose the voice feature")]),
+        ModelResponse(parts=[TextPart(content="Diagnosis: ...")]),
+        ModelRequest(parts=[UserPromptPart(content=request)]),
+    ]
+    for i in range(rounds):
+        hist.append(
+            ModelResponse(parts=[ToolCallPart("read_file", {"p": "x" * 400}, f"t{i}")])
+        )
+        hist.append(ModelRequest(parts=[ToolReturnPart("read_file", "ok", f"t{i}")]))
+    return hist
+
+
+def _summary_text(messages: list) -> str:
+    return "\n".join(
+        part.content
+        for m in messages
+        if isinstance(m, ModelResponse)
+        for part in m.parts
+        if isinstance(part, TextPart)
+        and COMPACTION_SUMMARY_RESPONSE_MARKER in part.content
+    )
+
+
+@pytest.mark.asyncio
+async def test_timed_out_compaction_keeps_the_current_request(monkeypatch):
+    """The hard-trim fallback left only the chat's first request, and the agent
+    went back to it as if it were still the task."""
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100_000, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.0001, raising=False)
+    monkeypatch.setattr(CONFIG, "compaction_timeout_seconds", 0.01, raising=False)
+
+    async def slow(self, messages, **kwargs):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(cc.ContextCompressor, "_perform_compression", slow)
+    hist = _long_tool_run("Go ahead and implement the plan")
+
+    out = await make_compaction_history_processor()(_ctx(), hist)
+
+    assert out is hist
+    assert not _summary_text(out)
+
+
+@pytest.mark.asyncio
+async def test_turn_boundary_timeout_keeps_the_current_request(monkeypatch):
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.01, raising=False)
+    monkeypatch.setattr(CONFIG, "compaction_timeout_seconds", 0.01, raising=False)
+
+    async def slow(self, messages, **kwargs):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(cc.ContextCompressor, "_perform_compression", slow)
+    compressor = cc.ContextCompressor(chat_id="c1", user_id="u1")
+
+    history = _long_tool_run("Keep refactoring")
+    out = await compressor.compress_messages(history)
+
+    assert out is history
+
+
+def test_summary_anchor_strips_runtime_reminders():
+    from suzent.core.system_reminder import wrap_in_system_reminder
+
+    reminder = wrap_in_system_reminder("internal guidance")
+    hist = _long_tool_run(f"Fix the echo gate\n{reminder}")
+
+    summary = _summary_text(cc.build_summary_pair("Earlier work.", hist))
+
+    assert "Fix the echo gate" in summary
+    assert "internal guidance" not in summary
+
+
+@pytest.mark.asyncio
+async def test_compaction_time_is_tracked_per_chat():
+    before = cc.compaction_seconds("c-track")
+    with cc._track_compaction("c-track"):
+        await asyncio.sleep(0.05)
+        assert cc.compaction_seconds("c-track") - before >= 0.04
+    assert cc.compaction_seconds("c-track") - before >= 0.05
+    assert cc.compaction_seconds("other") == 0.0
