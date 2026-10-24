@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Preserve chat history and tool activity across compaction, fail safely when summaries fail, and keep conversation forks aligned with the selected turn."
+}

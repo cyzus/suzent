@@ -2518,6 +2518,25 @@ async def stream_agent_responses(
         # The latest checkpoint/result is authoritative even when compaction
         # made it shorter than the history with which this run started.
         try:
+            if (
+                partial_history
+                and getattr(deps, "streamed_message", None)
+                and partial_history != (message_history or [])
+            ):
+                from dataclasses import replace
+
+                # Forking needs an exact model-history boundary: a display row
+                # can contain many model responses and tool results.
+                last = partial_history[-1]
+                partial_history = partial_history[:-1] + [
+                    replace(
+                        last,
+                        metadata={
+                            **(last.metadata or {}),
+                            "suzent_display_run_id": run_id,
+                        },
+                    )
+                ]
             agent._last_messages = partial_history
             deps.last_messages = partial_history
         except Exception as e:

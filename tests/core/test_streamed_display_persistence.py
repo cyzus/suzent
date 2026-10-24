@@ -109,7 +109,9 @@ async def test_real_stream_keeps_tools_across_context_rewrite(monkeypatch, times
     import asyncio
     from suzent import streaming
 
-    monkeypatch.setattr(streaming, "_stream_idle_timeout", lambda _: 0.02)
+    monkeypatch.setattr(
+        streaming, "_stream_idle_timeout", lambda _: 0.02 if times_out else 1.0
+    )
     from pydantic_ai import Agent, RunContext
     from pydantic_ai.capabilities import ProcessHistory
     from pydantic_ai.models.function import FunctionModel, DeltaToolCall
@@ -160,6 +162,16 @@ async def test_real_stream_keeps_tools_across_context_rewrite(monkeypatch, times
             run_id="native-run",
         )
     ]
+    assert deps.last_messages[-1].metadata["suzent_display_run_id"] == "native-run"
+    from suzent.core.fork import _agent_state_at_display_point
+    from suzent.core.agent_serializer import serialize_state, deserialize_state
+
+    forked = deserialize_state(
+        _agent_state_at_display_point(
+            serialize_state(deps.last_messages), [deps.streamed_message], 1
+        )
+    )
+    assert len(forked["message_history"]) == len(deps.last_messages)
     assert requests == 2
     assert any("RUN_ERROR" in chunk for chunk in chunks) is times_out
     assert "Old answer" not in str(deps.last_messages)
