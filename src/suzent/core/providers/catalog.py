@@ -13,11 +13,11 @@ compatibility; new code should use ``PROVIDER_REGISTRY_BY_ID`` directly.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import Field, TypeAdapter
+from pydantic import Field, TypeAdapter, ValidationError
 
 from suzent.logger import get_logger
 
@@ -116,6 +116,22 @@ def load_provider_registry() -> list[ProviderSpec]:
     user_entries = _load_json_file(_CONFIG_DIR / "providers.user.json")
 
     specs: list[ProviderSpec] = [_parse_provider(e) for e in base_entries]
+    defaults_path = _CONFIG_DIR / "provider_defaults.json"
+    if defaults_path.exists():
+        try:
+            defaults = TypeAdapter(dict[str, list[dict[str, str]]]).validate_python(
+                json.loads(defaults_path.read_text(encoding="utf-8"))
+            )
+            specs = [
+                replace(spec, default_models=defaults[spec.id])
+                if spec.id in defaults
+                else spec
+                for spec in specs
+            ]
+        except (OSError, ValueError, ValidationError) as exc:
+            logger.warning(
+                "Failed to load provider defaults {}: {}", defaults_path, exc
+            )
     specs.extend(_parse_provider(e, user_defined=True) for e in user_entries)
     return specs
 

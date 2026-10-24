@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 interface Option {
   value: string;
   label: string;
+  description?: string;
 }
 
 interface BrutalMultiSelectProps {
@@ -184,8 +185,15 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                     </svg>
                   )}
                 </div>
-                <span className="min-w-0 flex-1 truncate" title={option.value}>
-                  {option.label}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate" title={option.value}>
+                    {option.label}
+                  </span>
+                  {option.description && (
+                    <span className="block mt-1 text-[10px] font-normal normal-case text-neutral-500 dark:text-neutral-400 break-all">
+                      {option.description}
+                    </span>
+                  )}
                 </span>
               </button>
             );

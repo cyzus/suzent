@@ -220,8 +220,8 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
     from suzent.tools.creative.image_generation_tool import ImageGenerationTool
     from suzent.tools.creative.image_edit_tool import ImageEditTool
-    from suzent.tools.creative.image_vision_tool import ImageVisionTool
-    from suzent.tools.recall import MemorySearchTool
+    from suzent.tools.creative.visual_analysis_tool import VisualAnalysisTool
+    from suzent.tools.recall import MemorySearchTool, MemoryUpdateTool
     from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
@@ -257,11 +257,12 @@ def _all_tool_classes() -> tuple:
         VideoStatusTool,
         ImageGenerationTool,
         ImageEditTool,
-        ImageVisionTool,
+        VisualAnalysisTool,
         SpeakTool,
         SocialMessageTool,
         SkillTool,
         MemorySearchTool,
+        MemoryUpdateTool,
         SessionSearchTool,
         AgentTool,
         AgentListTool,
@@ -303,7 +304,7 @@ CAPABILITY_DESCRIPTIONS = {
     "Orchestration": "Load skills and delegate bounded work to sub-agents.",
     "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
-    "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
+    "Memory & recall": "Search and correct durable memory, and retrieve relevant past sessions.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {

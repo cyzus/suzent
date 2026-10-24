@@ -48,22 +48,35 @@ def test_a_page_with_no_expiry_is_due_but_queues_last(store):
     """Every page written before the rule existed has no `stale_after`. Selecting
     strictly on the field would exempt exactly those pages from ever being visited,
     which is how the field would stay unwritten forever."""
-    _page(store, "3_Personal/never_set.md", "---\nstatus: active\n---\n- a claim")
+    _page(store, "3_Personal/never_set.md", "---\ntype: personal\n---\n- a claim")
     _page(store, "3_Personal/expired.md", "---\nstale_after: 2020-01-01\n---\n- old")
-    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+    _page(store, "9_Me/renamed.md", "---\ntype: personal\n---\n- a claim")
 
     rows = DreamRunner._due_revisits(_Mgr(store))
 
     assert rows[0]["page"] == "3_Personal/expired.md"
     assert {r["page"] for r in rows[1:]} == {
         "3_Personal/never_set.md",
-        "3_Personal/plain.md",
+        "9_Me/renamed.md",
     }
     assert all(r["stale_after"] == "unset" for r in rows[1:])
 
 
+def test_only_personal_pages_owe_an_expiry(store):
+    """`stale_after` is a personal-claim field, found by the page's type wherever
+    the user keeps it. Untyped pages surface as a lint finding instead."""
+    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+    _page(store, "2_Wiki/Rust.md", "---\ntype: concept\n---\n- a fact")
+
+    assert DreamRunner._due_revisits(_Mgr(store)) == []
+
+
 def test_an_undated_page_is_still_skipped_when_deprecated(store):
-    _page(store, "3_Personal/a.md", "---\nstatus: deprecated\n---\n- retired")
+    _page(
+        store,
+        "3_Personal/a.md",
+        "---\ntype: personal\nstatus: deprecated\n---\n- retired",
+    )
 
     assert DreamRunner._due_revisits(_Mgr(store)) == []
 
@@ -99,7 +112,7 @@ def test_an_unreadable_vault_yields_an_empty_queue():
 # --- prompt rendering ---
 
 
-def test_the_instructions_carry_both_queues_and_never_delete():
+def test_the_instructions_carry_both_queues():
     text = memory_context.build_dream_instructions(
         memory_context.resolve_dream_roots(sandbox_enabled=True),
         start="2026-01-01",
@@ -116,7 +129,9 @@ def test_the_instructions_carry_both_queues_and_never_delete():
     assert "3_Personal/a.md (stale_after 2020-01-01)" in text
     # An unset expiry has to be actionable in the prompt, not merely listed.
     assert "stale_after unset" in text
-    assert "Never delete here." in text
+    # Only a claim captured as dated may be retired on revisit; the rest wait for lint.
+    assert "claim past its date is retired" in text
+    assert "decides. A page listed" in text
     # A restatement that contradicts the page is a correction and never reaches the
     # confirmations list; the prompt has to say so or the agent may bump the marker.
     assert "a contradicting restatement never reaches this list" in text

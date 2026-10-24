@@ -3,8 +3,9 @@ Memory Manager - orchestrates core and archival memory operations.
 """
 
 from collections import OrderedDict
+from pathlib import Path
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
@@ -12,12 +13,10 @@ from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import CoreMemoryFileIndexer
 from .classifier import classify_fact
-from . import memory_context
+from . import capture, experience, memory_context, memory_map
 from .models import (
     ExtractedFact,
-    ConversationContext,
     MemoryExtractionResult,
-    FactExtractionResponse,
 )
 
 logger = get_logger(__name__)
@@ -28,10 +27,6 @@ if TYPE_CHECKING:
 # Memory system constants
 DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
 DEFAULT_MEMORY_SEARCH_LIMIT = 10
-IMPORTANT_MEMORY_THRESHOLD = 0.7
-
-# Heuristic extraction importance scores
-DEFAULT_IMPORTANCE = 0.5
 
 # Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
@@ -47,6 +42,11 @@ KNOWN_FACTS_QUERY_CHARS = 2000
 # the user saying something, and MEMORY.md is generated from other rows -- neither is a
 # record the write path can defer to.
 DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
+PAGE_SOURCE_TYPES = frozenset({"notebook", "core_file"})
+
+# How close a stored row must be to a retraction to be hidden with it. Looser than
+# capture's restatement check: the user describes the claim, rarely quotes it.
+RETRACT_MATCH = 0.6
 
 # Rendered core-memory prompts retained at once. Comfortably above the number of
 # chats one service handles concurrently, while keeping the ceiling explicit.
@@ -186,12 +186,7 @@ class MemoryManager:
                         # No chat_id — skip silently (context is always session-scoped)
                         logger.debug("Skipping context write: no chat_id provided")
                 elif label == "facts":
-                    # MEMORY.md — a person editing this block is the highest-quality
-                    # signal the system gets, so it goes to the zone that generators
-                    # never touch, stamped with a `human:` actor.
-                    await self.markdown_store.write_memory_manual_zone(
-                        content, actor=f"human:{user_id or 'unknown'}"
-                    )
+                    await self.markdown_store.write_memory_map(content)
                 else:
                     await self.markdown_store.write_block(label, content)
             else:
@@ -208,138 +203,26 @@ class MemoryManager:
             logger.error(f"Failed to update memory block '{label}': {e}")
             return False
 
-    async def refresh_core_memory_facts(self, user_id: str):
+    async def ensure_memory_map(self) -> bool:
+        """Draft MEMORY.md from page titles when it is missing or empty.
+
+        Returns whether a draft was written. An existing file is left alone even when
+        it is not a map yet; lint reports it and the cleanup drafts convert it.
         """
-        Refresh the 'facts' core memory block by summarizing top archival memories.
-
-        Legacy path, kept only until the vault has enough consolidated personal pages
-        for `promote_memory_md` to take over — which is why it stands down as soon as
-        those pages exist rather than racing the dream for the same file.
-        """
-        if await self._vault_owns_memory_file():
-            logger.debug("Vault has personal pages; leaving MEMORY.md to the dream")
-            return
-
-        try:
-            # 1. Fetch top important memories
-            # We use list_memories instead of search to get global top facts for user
-            memories = await self.store.list_memories(
-                user_id=user_id,
-                limit=50,  # Fetch enough to summarize
-                order_by="importance",
-                order_desc=True,
-            )
-
-            if not memories:
-                return
-
-            # The rows are already the top 50 by importance, and that is as much
-            # selectivity as the column can offer: the indexer stamps every row it
-            # writes with a constant 0.5, so an additional
-            # `>= IMPORTANT_MEMORY_THRESHOLD` cut here matched nothing except the
-            # pre-June legacy rows — quietly rebuilding MEMORY.md from data months
-            # out of date, and set to produce an empty file the moment those rows
-            # are retired. Rank, then take what we get.
-            important_facts = [
-                f"- {m['content']}" for m in memories if m.get("content", "").strip()
-            ]
-
-            if not important_facts:
-                logger.debug("No facts available for core memory refresh")
-                return
-
-            facts_list_text = "\n".join(important_facts)
-
-            # 2. Summarize with LLM
-            if self.llm_client:
-                summary = await self.llm_client.complete(
-                    prompt=memory_context.CORE_MEMORY_SUMMARIZATION_PROMPT.format(
-                        facts_list=facts_list_text
-                    ),
-                    temperature=0.3,  # Low temp for factual summary
-                    max_tokens=1000,
-                )
-
-                # 3. Write summary to MEMORY.md (file-based SSoT). The store stamps
-                #    the file itself, in UTC; this used to add a second stamp from a
-                #    naive `datetime.now()`, so every generated file carried two
-                #    timestamps an hour apart wherever local time is not UTC.
-                if summary:
-                    stats = await self.get_memory_stats(user_id)
-                    final_content = (
-                        f"{summary.strip()}\n\n_{stats['total_memories']} memories._"
-                    )
-
-                    if self.markdown_store:
-                        try:
-                            await self.markdown_store.write_memory_file(final_content)
-                        except Exception as md_err:
-                            logger.warning(f"Failed to write MEMORY.md: {md_err}")
-
-                    logger.info(
-                        f"Refreshed core memory 'facts' block for user {user_id}"
-                    )
-
-        except Exception as e:
-            logger.error(f"Failed to refresh core memory facts: {e}")
-
-    async def _vault_owns_memory_file(self) -> bool:
-        """True once `promote_memory_md` has real material to work from.
-
-        Both writers regenerate the same file, and the newer one is strictly better
-        informed — it reads consolidated pages rather than raw extractions. Handing
-        over on the first personal page means the transition needs no flag day and no
-        config: as the dream fills the vault, the legacy path simply stops firing.
-        """
-        if not self.markdown_store:
+        store = self.markdown_store
+        if not store:
             return False
-        try:
-            personal_dir = self.markdown_store.notebook_dir / "3_Personal"
-            return any(personal_dir.rglob("*.md"))
-        except Exception:
-            return False
+        draft = memory_map.draft_map(store.notebook_dir, store.list_notebook_pages())
+        return await store.write_memory_map_if_missing(draft)
 
-    async def promote_memory_md(self, user_id: str) -> None:
-        """Regenerate the always-visible MEMORY.md from the vault's personal facts +
-        recall signal. Deterministic single LLM call, run by the dream runner after a
-        productive consolidation (replaces refresh_core_memory_facts; plan C1).
-        """
-        if not self.markdown_store or not self.llm_client:
-            return
-        try:
-            from suzent.config import CONFIG
+    async def lint_memory_files(self) -> List[memory_map.Finding]:
+        """Contract findings for MEMORY.md, the always-injected files and page sizes."""
+        store = self.markdown_store
+        if not store:
+            return []
+        from suzent.config import CONFIG
 
-            personal_dir = self.markdown_store.notebook_dir / "3_Personal"
-            chunks: List[str] = []
-            if personal_dir.exists():
-                for p in sorted(personal_dir.rglob("*.md")):
-                    try:
-                        chunks.append(p.read_text(encoding="utf-8"))
-                    except Exception:
-                        continue
-            personal_facts = "\n\n".join(chunks).strip()
-            if not personal_facts:
-                return
-
-            recalls = self.markdown_store.read_recalls()
-            snippets = [r.get("snippet", "") for r in recalls if r.get("snippet")]
-            recall_summary = "\n".join(f"- {s}" for s in snippets[-30:]) or "(none)"
-
-            max_lines = getattr(CONFIG, "memory_consolidation_memory_max_lines", 200)
-            summary = await self.llm_client.complete(
-                prompt=memory_context.MEMORY_PROMOTION_PROMPT.format(
-                    personal_facts=personal_facts[:12000],
-                    recall_summary=recall_summary,
-                    max_lines=max_lines,
-                ),
-                temperature=0.3,
-                max_tokens=2000,
-            )
-            if summary:
-                await self.markdown_store.write_memory_file(summary.strip())
-                logger.info("Promoted MEMORY.md from consolidated personal facts")
-        except Exception as e:
-            logger.error(f"promote_memory_md failed: {e}")
+        return await memory_map.lint_store(store, max_lines=CONFIG.memory_map_max_lines)
 
     @staticmethod
     def _resolver_paths(sandbox_enabled: bool, path_resolver) -> tuple:
@@ -395,6 +278,9 @@ class MemoryManager:
             mount_notebook=mount_notebook,
             project_context_path=project_context_path,
             notebook_skill_available=notebook_skill_available,
+            open_questions=(
+                self.markdown_store.read_review_queue() if self.markdown_store else None
+            ),
         )
 
     async def get_core_memory_context(
@@ -468,8 +354,8 @@ class MemoryManager:
         return rendered
 
     def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:
-        """Record retrieved memories to the recall log (usage signal for MEMORY.md
-        promotion). Best-effort — never raises."""
+        """Record retrieved memories to the recall log (usage signal for the map
+        lint). Best-effort — never raises."""
         if not self.markdown_store or not memories:
             return
         try:
@@ -478,7 +364,9 @@ class MemoryManager:
                     continue
                 meta = m.get("metadata") if isinstance(m.get("metadata"), dict) else {}
                 self.markdown_store.append_recall(
-                    m.get("content", ""), (meta or {}).get("source_type", "")
+                    m.get("content", ""),
+                    meta.get("source_type", ""),
+                    meta.get("source_file", ""),
                 )
         except Exception:
             pass
@@ -657,8 +545,9 @@ class MemoryManager:
             # record it -- suppressing it there means it never reaches the append-only
             # log at all, and `_split_confirmations` cannot recover a fact the model
             # already declined to emit.
-            extracted_facts = await self._extract_facts_llm(
-                conversation_text, [k["content"] for k in known if k.get("durable")]
+            durable_known = [k["content"] for k in known if k.get("durable")]
+            extracted_facts = await self._capture_facts(
+                conversation_text, durable_known, chat_id
             )
 
             if not extracted_facts:
@@ -685,28 +574,9 @@ class MemoryManager:
             # 1. Append to the markdown daily log (append-only source of truth).
             date = await self._write_facts_to_markdown(extracted_facts, chat_id)
 
-            # 2. Index the day's log into LanceDB (the derived search index). The
-            #    indexer is the only writer to LanceDB (mutation invariant).
-            if date and self.markdown_store:
-                try:
-                    await self._core_indexer.reindex_file_now(
-                        markdown_store=self.markdown_store,
-                        lancedb_store=self.store,
-                        embedding_gen=self.embedding_gen,
-                        user_id=user_id,
-                        label="archive",
-                        filename=f"{date}.md",
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to index daily log {date}: {e}")
-
-            # 3. Keep MEMORY.md fresh from the top archival facts. Retained until the
-            #    dream's promote_memory_md replaces it (see plan, finding C1).
-            if any(f.importance >= IMPORTANT_MEMORY_THRESHOLD for f in extracted_facts):
-                try:
-                    await self.refresh_core_memory_facts(user_id)
-                except Exception as e:
-                    logger.error(f"Core memory refresh failed: {e}")
+            # 2. Index the day's log into LanceDB (the derived search index).
+            if date:
+                await self._index_daily_log(date, user_id)
 
             logger.info(
                 f"Processed conversation: extracted {len(result.extracted_facts)} facts"
@@ -720,6 +590,194 @@ class MemoryManager:
             raise
 
         return result
+
+    async def process_experience(
+        self, batch: str, chat_id: str, user_id: str
+    ) -> List[str]:
+        """Capture lessons from a batch that shows a failure and its fix.
+
+        Runs on every batch, scheduled turns included; one with no failure or
+        correction in it costs no model call. A lesson memory already holds is recorded as a confirmation, so the dream
+        raises its count instead of filing it twice. Never raises: the user-fact pass
+        for the same batch has already been written, and a retry would repeat it.
+
+        Returns the contents of the lessons written to the daily log.
+        """
+        if self.llm_client is None:
+            return []
+        if not experience.has_signal(batch):
+            return []
+        try:
+            known = [
+                k["content"]
+                for k in await self._recall_known_facts(batch, user_id, chat_id)
+                if k.get("durable")
+            ]
+            response = await self.llm_client.extract_with_schema(
+                prompt=experience.format_experience_prompt(batch, known),
+                response_model=experience.LessonResponse,
+                system=experience.EXPERIENCE_SYSTEM_PROMPT,
+                temperature=LLM_EXTRACTION_TEMPERATURE,
+            )
+            rejected = (
+                self.markdown_store.read_rejected() if self.markdown_store else []
+            )
+            result = experience.gate(
+                response.lessons, batch, rejected=rejected, known=known
+            )
+            if not self.markdown_store:
+                return []
+            self._log_dropped(
+                "experience",
+                chat_id,
+                [
+                    {"code": code, **lesson.model_dump()}
+                    for code, lesson in result.dropped
+                ],
+            )
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            for lesson, matched in result.repeated:
+                await self.markdown_store.append_confirmation(
+                    content=lesson.content, matched=matched, date=date, chat_id=chat_id
+                )
+            if not result.kept:
+                return []
+            await self._write_facts_to_markdown(
+                [
+                    ExtractedFact(
+                        content=lesson.content,
+                        category="technical",
+                        importance=lesson.importance,
+                        tags=["kind:experience", "source:outcome", lesson.scope_tag],
+                        evidence=lesson.evidence,
+                    )
+                    for lesson in result.kept
+                ],
+                chat_id,
+            )
+            await self._index_daily_log(date, user_id)
+            logger.info(f"Captured {len(result.kept)} lesson(s) from chat {chat_id}")
+            return [lesson.content for lesson in result.kept]
+        except Exception as e:
+            logger.warning(f"Experience capture for {chat_id} failed: {e}")
+            return []
+
+    async def _index_daily_log(self, date: str, user_id: str) -> None:
+        """Reindex one day's log. The indexer is the only writer to LanceDB."""
+        if not self.markdown_store:
+            return
+        try:
+            await self._core_indexer.reindex_file_now(
+                markdown_store=self.markdown_store,
+                lancedb_store=self.store,
+                embedding_gen=self.embedding_gen,
+                user_id=user_id,
+                label="archive",
+                filename=f"{date}.md",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to index daily log {date}: {e}")
+
+    async def apply_memory_update(
+        self,
+        *,
+        user_id: str,
+        chat_id: str,
+        fact: Optional[str] = None,
+        retract: Optional[str] = None,
+        retract_as: str = "wrong",
+        kind: str = "user",
+        category: str = "context",
+        horizon: str = "durable",
+        evidence: str = "",
+    ) -> Dict[str, Any]:
+        """Record what the user asked to remember, retract or correct, or what the
+        agent learned from an outcome or a source it read.
+
+        One entry point for all of them: a correction is a retraction plus the fact that
+        replaces it. *kind* sets the provenance tags the dream routes by; only a User
+        fact is marked `explicit`, since only the user can vouch for one. A retraction
+        tombstones the matching log rows so search stops returning them; a claim on a
+        notebook page is left for the dream to remove, since its chunk holds other
+        claims too. One marked *wrong* also goes on the rejected list, so capture,
+        the dream and lint keep it from coming back. *outdated* only hides it: the claim
+        was true once and the dream may still keep it as history.
+
+        Returns `{"retracted": [...], "written": str | None}`.
+        """
+        if not self.markdown_store:
+            raise RuntimeError("Memory files are not available")
+        store = self.markdown_store
+        now = datetime.now(timezone.utc)
+        date = now.strftime("%Y-%m-%d")
+        retracted: List[str] = []
+
+        if retract and retract.strip():
+            retract = " ".join(retract.split())
+            if retract_as == "wrong":
+                await store.append_rejected(retract, date)
+            key = capture.normalize(retract)
+            matches = await self.search_memories(
+                query=retract, limit=KNOWN_FACTS_LIMIT, user_id=user_id
+            )
+            archive_days: set = set()
+            for row in matches:
+                content = str(row.get("content", ""))
+                body = capture.normalize(content)
+                meta = row.get("metadata") or {}
+                # A page chunk coalesces many claims; tombstoning it would hide them
+                # all. The dream removes the claim from the page instead.
+                if meta.get("source_type") in PAGE_SOURCE_TYPES:
+                    continue
+                if not body or not (
+                    key in body or capture.similarity(key, body) >= RETRACT_MATCH
+                ):
+                    continue
+                await store.append_tombstone(content)
+                retracted.append(content)
+                source_file = meta.get("source_file")
+                if meta.get("source_type") == "archive_log" and source_file:
+                    archive_days.add(Path(source_file).stem)
+                elif row.get("id"):
+                    await self.store.delete_memory(row["id"])
+            await store.append_tombstone(retract)
+            for day in archive_days:
+                await self._index_daily_log(day, user_id)
+
+        written: Optional[str] = None
+        if fact and fact.strip():
+            written = " ".join(fact.split())
+            match kind:
+                case "experience":
+                    tags = ["kind:experience", "source:outcome"]
+                case "world":
+                    tags = ["kind:world", "source:tool_output"]
+                case _:
+                    tags = ["kind:user", "source:user_said", "explicit"]
+            if horizon == "dated":
+                stale = now + timedelta(days=capture.DATED_STALE_DAYS)
+                tags += ["dated", f"stale_after:{stale.strftime('%Y-%m-%d')}"]
+            if retract:
+                tags.append("revision")
+            await store.append_daily_log(
+                chat_id=chat_id or "memory_update",
+                facts=[
+                    {
+                        "content": written,
+                        "category": category,
+                        "tags": tags,
+                        "evidence": evidence,
+                    }
+                ],
+                date=date,
+            )
+            await self._index_daily_log(date, user_id)
+
+        logger.info(
+            f"memory_update: retracted {len(retracted)} row(s)"
+            + (", wrote one fact" if written else "")
+        )
+        return {"retracted": retracted, "written": written}
 
     async def _split_confirmations(
         self,
@@ -843,11 +901,7 @@ class MemoryManager:
                 "category": f.category or "general",
                 "importance": f.importance,
                 "tags": f.tags,
-                "context": {
-                    "user_intent": f.context_user_intent,
-                    "agent_actions_summary": f.context_agent_actions_summary,
-                    "outcome": f.context_outcome,
-                },
+                "evidence": f.evidence,
             }
             for f in facts
         ]
@@ -857,144 +911,76 @@ class MemoryManager:
         )
         return date
 
-    async def _extract_facts_llm(
-        self, content: str, known_facts: Optional[List[str]] = None
-    ) -> List[ExtractedFact]:
-        """
-        Extract facts using LLM with Pydantic schema-based structured output.
-
-        Uses LiteLLM's structured output feature to enforce the FactExtractionResponse
-        schema, ensuring validated ExtractedFact models are returned.
-
-        Args:
-            content: The formatted conversation turn.
-            known_facts: Facts already in memory, nearest-first, so the model can tell
-                a repeat from an update. Omitted when retrieval is unavailable.
-
-        Returns:
-            List of ExtractedFact models
-        """
-        system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
-        user_prompt = memory_context.format_fact_extraction_user_prompt(
-            content, known_facts
+    def _log_dropped(self, channel: str, chat_id: str, dropped: List[dict]) -> None:
+        """Keep what a gate turned away, so a wrong drop can be found later."""
+        if not dropped:
+            return
+        logger.info(
+            f"{channel} gate dropped {len(dropped)}: "
+            + ", ".join(d["code"] for d in dropped)
         )
-        # Keep one client throughout an extraction if settings change mid-request.
+        if self.markdown_store:
+            self.markdown_store.append_capture_dropped(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "chat_id": chat_id,
+                    "channel": channel,
+                    "dropped": dropped,
+                }
+            )
+
+    async def _run_capture(
+        self, content: str, known_facts: List[str]
+    ) -> Optional[capture.GateResult]:
+        """Typed capture and its gate. None when no extraction model is set."""
         client = self.llm_client
         if client is None:
+            return None
+        response = await client.extract_with_schema(
+            prompt=capture.format_capture_prompt(content, known_facts),
+            response_model=capture.CaptureResponse,
+            system=capture.CAPTURE_SYSTEM_PROMPT,
+            temperature=LLM_EXTRACTION_TEMPERATURE,
+        )
+        rejected = self.markdown_store.read_rejected() if self.markdown_store else []
+        return capture.gate(
+            response.facts, content, rejected=rejected, known=known_facts
+        )
+
+    async def _capture_facts(
+        self, content: str, known_facts: List[str], chat_id: str
+    ) -> List[ExtractedFact]:
+        """Typed capture: what the gate keeps, as facts for the daily log.
+
+        Raises when the model fails, so the extraction queue keeps the turns and
+        retries them.
+        """
+        result = await self._run_capture(content, known_facts)
+        if result is None:
             return []
-        extraction_model = self.llm_extraction_model or getattr(client, "model", None)
-        logger.debug(f"Starting LLM fact extraction with model={extraction_model!r}")
-
-        try:
-            # Use schema-based extraction with Pydantic model
-            # LiteLLM converts FactExtractionResponse to json_schema format
-            extraction_result = await client.extract_with_schema(
-                prompt=user_prompt,
-                response_model=FactExtractionResponse,
-                system=system_prompt,
-                temperature=LLM_EXTRACTION_TEMPERATURE,
-            )
-
-            facts = extraction_result.facts
-
-            # Ensure defaults for context fields if missing (should be handled by Pydantic defaults but safe to check)
-            # No action needed as Pydantic model has defaults for these fields
-
-            logger.info(f"LLM extracted {len(facts)} facts via schema")
-
-            # Debug: Show detailed extracted facts
-            for i, fact in enumerate(facts, 1):
-                logger.debug(
-                    f"Extracted Fact #{i}:\n"
-                    f"  Content: {fact.content}\n"
-                    f"  Category: {fact.category}\n"
-                    f"  Importance: {fact.importance}\n"
-                    f"  Tags: {fact.tags}\n"
-                    f"  Context: intent={fact.context_user_intent}, outcome={fact.context_outcome}"
+        self._log_dropped(
+            "facts",
+            chat_id,
+            [{"code": code, **f.model_dump()} for code, f in result.dropped],
+        )
+        stale_after = (
+            datetime.now(timezone.utc) + timedelta(days=capture.DATED_STALE_DAYS)
+        ).strftime("%Y-%m-%d")
+        facts: List[ExtractedFact] = []
+        for fact in result.kept:
+            tags = capture.fact_tags(fact, stale_after)
+            if fact.content in result.ungrounded:
+                tags.append("ungrounded")
+            facts.append(
+                ExtractedFact(
+                    content=fact.content,
+                    category=fact.category,
+                    importance=fact.importance,
+                    tags=tags,
+                    evidence=fact.evidence,
                 )
-
-            return facts
-
-        except Exception as e:
-            logger.warning(
-                f"Schema-based extraction failed for model={extraction_model!r}, "
-                f"trying fallback: {e}"
             )
-
-            # Fallback to basic JSON extraction
-            try:
-                response = await client.extract_structured(
-                    prompt=user_prompt,
-                    system=system_prompt,
-                    temperature=LLM_EXTRACTION_TEMPERATURE,
-                )
-
-                # Handle different return formats from extract_structured
-                raw_facts = []
-                if isinstance(response, list):
-                    # LLM returned a list directly
-                    raw_facts = response
-                elif isinstance(response, dict):
-                    # LLM returned a dict, look for "facts" key
-                    raw_facts = response.get("facts", [])
-                else:
-                    logger.warning(
-                        f"Unexpected response format in fallback extraction: {type(response)}"
-                    )
-
-                # Convert to Pydantic models with defaults
-                facts = []
-                for f in raw_facts:
-                    # validation: ensure f is a dict
-                    if not isinstance(f, dict):
-                        continue
-
-                    # Build conversation context if present
-                    ctx_data = f.get("conversation_context")
-                    conversation_context = None
-                    if ctx_data and isinstance(ctx_data, dict):
-                        conversation_context = ConversationContext(
-                            user_intent=ctx_data.get(
-                                "user_intent", "inferred from conversation"
-                            ),
-                            agent_actions_summary=ctx_data.get("agent_actions_summary"),
-                            outcome=ctx_data.get(
-                                "outcome", "extracted from conversation turn"
-                            ),
-                        )
-                    else:
-                        # Provide default context for new facts
-                        conversation_context = ConversationContext()
-
-                    facts.append(
-                        ExtractedFact(
-                            content=f.get("content", ""),
-                            category=f.get("category"),
-                            importance=f.get("importance", DEFAULT_IMPORTANCE),
-                            tags=f.get("tags", []),
-                            # Map flat context fields from potentially nested JSON or flat JSON
-                            context_user_intent=conversation_context.user_intent
-                            if conversation_context
-                            else "inferred from conversation",
-                            context_agent_actions_summary=conversation_context.agent_actions_summary
-                            if conversation_context
-                            else None,
-                            context_outcome=conversation_context.outcome
-                            if conversation_context
-                            else "extracted from conversation turn",
-                        )
-                    )
-
-                logger.info(f"LLM extracted {len(facts)} facts via fallback")
-                return facts
-
-            except Exception as fallback_error:
-                # Raised, not swallowed: the caller keeps the turns queued and
-                # retries them, instead of treating them as having held nothing.
-                raise RuntimeError(
-                    f"LLM fact extraction failed for model={extraction_model!r}: "
-                    f"{fallback_error}"
-                ) from fallback_error
+        return facts
 
     # ===== Utility Methods =====
 

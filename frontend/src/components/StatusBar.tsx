@@ -24,6 +24,7 @@ import { isImeComposing } from '../lib/ime';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { LiveRegentIdentity } from './regent/RegentHeader';
 import { RegentMark } from './regent/RegentMark';
+import { ResolveChatButton } from './chat/ResolveChatButton';
 import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
@@ -957,7 +958,7 @@ export function ConversationIdentity(): React.ReactElement | null {
         className="regent-back -ml-1 inline-flex items-center gap-1.5 px-1 py-0.5 text-sm font-bold text-neutral-500 transition-colors hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400 dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
       >
         <RegentMark size={14} />
-        {t('chatList.focal.name')}
+        <span className="hidden sm:inline">{t('chatList.focal.name')}</span>
       </button>
       <span aria-hidden="true" className="text-sm text-neutral-300 dark:text-zinc-600">
         /
@@ -976,10 +977,11 @@ export function ConversationIdentity(): React.ReactElement | null {
         {title}
       </span>
       {chat?.projectName && (
-        <span className="shrink-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        <span className="hidden shrink-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 sm:inline dark:text-neutral-400">
           {chat.projectName}
         </span>
       )}
+      {openedFromRegent === currentChatId && <ResolveChatButton chatId={currentChatId} />}
     </div>
   );
 }

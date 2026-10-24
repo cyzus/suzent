@@ -86,9 +86,7 @@ function DailyChart({ data, range }: { data: CostDaily[]; range: TimeRange }) {
               <div
                 className={[
                   'w-full rounded-t-sm transition-all duration-200',
-                  isToday
-                    ? 'bg-brutal-yellow dark:bg-brutal-yellow'
-                    : 'bg-neutral-400 dark:bg-neutral-500',
+                  isToday ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-neutral-500',
                   isHovered ? 'opacity-100 scale-x-110' : 'opacity-80 hover:opacity-100',
                 ].join(' ')}
                 style={{ height: `${barHeight}%`, minHeight: d.cost_usd > 0 ? '2px' : '0' }}
@@ -161,7 +159,7 @@ function ActivitySquare({
   const backgroundColor =
     level === 0
       ? undefined
-      : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`;
+      : `color-mix(in srgb, currentColor ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`;
 
   return (
     <button
@@ -533,7 +531,7 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
               backgroundColor:
                 level === 0
                   ? undefined
-                  : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`,
+                  : `color-mix(in srgb, currentColor ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`,
             }}
           />
         ))}
@@ -573,7 +571,7 @@ function ModelBreakdown({ models }: { models: CostModel[] }) {
                 title={`Input: ${m.input_tokens}`}
               />
               <div
-                className="h-full bg-brutal-yellow dark:bg-brutal-yellow transition-all duration-500"
+                className="h-full bg-brutal-black dark:bg-white transition-all duration-500"
                 style={{ width: `${(m.output_tokens / maxTokens) * 100}%` }}
                 title={`Output: ${m.output_tokens}`}
               />
@@ -672,7 +670,7 @@ export function UsageTab(): React.ReactElement {
             className={[
               'px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs brutal-btn',
               range === r
-                ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+                ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
                 : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600',
             ].join(' ')}
           >
@@ -778,7 +776,7 @@ export function UsageTab(): React.ReactElement {
                     </div>
                     <div className="h-3 bg-neutral-100 dark:bg-zinc-700 border-2 border-brutal-black">
                       <div
-                        className="h-full bg-brutal-yellow dark:bg-brutal-yellow transition-all duration-500"
+                        className="h-full bg-brutal-black dark:bg-white transition-all duration-500"
                         style={{
                           width: `${(global.total_output_tokens / Math.max(global.total_input_tokens + global.total_output_tokens, 1)) * 100}%`,
                         }}

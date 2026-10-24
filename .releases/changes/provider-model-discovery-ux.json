@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Show fetched model capabilities and explain provider catalog fallbacks."
+}

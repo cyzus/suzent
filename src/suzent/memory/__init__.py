@@ -14,10 +14,8 @@ from .models import (
     AgentAction,
     AgentStepsSummary,
     ConversationTurn,
-    ConversationContext,
     ExtractedFact,
     MemoryExtractionResult,
-    FactExtractionResponse,
 )
 from .lifecycle import (
     init_memory_system,
@@ -40,8 +38,6 @@ __all__ = [
     "AgentAction",
     "AgentStepsSummary",
     "ConversationTurn",
-    "ConversationContext",
     "ExtractedFact",
     "MemoryExtractionResult",
-    "FactExtractionResponse",
 ]

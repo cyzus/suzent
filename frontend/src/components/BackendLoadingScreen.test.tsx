@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BackendLoadingScreen } from './BackendLoadingScreen';
 
 vi.mock('../i18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
   getInitialLocale: () => 'en',
   tForLocale: (_locale: string, key: string) => key,
 }));
@@ -22,11 +23,11 @@ describe('startup recovery', () => {
     }
   );
 
-  it('keeps initialization free of retry controls and a custom title bar', () => {
+  it('keeps initialization free of retry controls and matches the application background', () => {
     vi.stubGlobal('window', { __TAURI__: { window: { getCurrentWindow: () => ({}) } } });
     const html = renderToStaticMarkup(<BackendLoadingScreen progressHint={45} />);
     expect(html).not.toContain('app.recoveryHintDesktop');
-    expect(html).not.toContain('titlebar.close');
+    expect(html).toContain('bg-neutral-50 dark:bg-zinc-900');
     expect(html).toContain('aria-valuenow="45"');
   });
 });

@@ -9,6 +9,26 @@ index of the logs: the `chats` table and its full-text search rows are what the
 sidebar, search and every `get_chat` read, and they can be rebuilt from the logs
 at any time. What is still planned is in the [roadmap](../roadmap.md#chat-storage).
 
+## Display history and model context
+
+These are separate records. The model context may be summarized or trimmed;
+the visible conversation is captured from the AG-UI stream (text, reasoning,
+tools, approvals, citations and inline surfaces). The run UUID identifies the
+assistant record, so repeating a prompt such as “continue” does not match an
+older answer. Finalization updates that run's record in place.
+
+The quick snapshot commits the captured output and model state together, before
+background post-processing. Post-processing preserves the display timeline and
+does not reconstruct it from compacted model messages. Failed and stopped runs
+retain whatever output was actually received; an earlier answer is not used as
+a substitute. Legacy history rebuilding remains available for callers without
+a captured stream identity.
+
+During a run, transient drafts still live in SQLite rather than the JSONL log.
+The completed, stopped or failed run's quick snapshot makes its captured output
+durable in JSONL. An abrupt process exit before that snapshot can therefore
+leave only a SQLite draft of the latest partial output.
+
 ## Where chats live
 
 | Path | Contents |
@@ -125,3 +145,33 @@ suzent chats show <chat_id>  # print the conversation the log holds
 suzent chats verify          # fold every log, compare it with its row, exit 1 on any difference
 suzent chats rebuild-index   # rewrite every row from its log; stop the server first
 ```
+
+## Compaction failure and concurrency
+
+Compaction rewrites the model context, while streamed display rows remain the
+conversation timeline. An empty summary, an incomplete chunk, or a timeout must
+not replace context with a placeholder or discard the unsummarized middle.
+Automatic compaction keeps the input history on failure; when the estimated
+request already fills the context window it raises an error instead of sending
+that request. Summaries that do not reduce the history's estimated token count
+are skipped. Token estimates are approximate and do not guarantee provider
+acceptance.
+
+The retained tail begins at a safe tool-call boundary. The latest real user
+prompt is also retained when it falls outside that tail, including its image or
+file parts. Summary requests distinguish user text from tool results. Chunk
+summaries are limited to three concurrent calls, and every chunk must succeed
+before a merged summary can replace context.
+
+Manual `/compact` uses the configured compaction timeout and commits against the
+revision read before summarization. If a newer snapshot has committed meanwhile,
+it reports a skipped result and preserves that newer state. Complete, skipped,
+and error events terminate the frontend's compaction indicator.
+
+[Pydantic AI Harness compaction](https://pydantic.dev/docs/ai/harness/compaction/)
+provides reusable model-context strategies, including incremental summarization,
+user-message retention and tool-pair preservation. Suzent currently uses its own
+history processor; those strategies do not replace its display log or revision
+checks. The installed Harness 0.24.0 differs from the current online API (for
+example, it lacks `compact_now`), so adopting it requires a version-specific
+integration and regression tests.

@@ -22,8 +22,8 @@ For personal pages:
 
 - `stale_after` is required, derived from the fact category per `schema.md`. It is what gives
   a revisit pass something to select on; a claim with no expiry is never re-examined.
-- The per-claim confirmation marker plays the role of OKF `sources[].usage_count`, kept inline
-  because these claims are bullets on a shared page rather than one document each. A repeated
+- The page's `confirmed` count plays the role of OKF `sources[].usage_count`; the bullet keeps
+  only its `(last confirmed YYYY-MM-DD)` date. A repeated
   fact is a ranking signal, not new knowledge.
 - A user editing a fact directly is a `human:` actor and outranks anything the extractor
   produced. Record it as `verified` only if you actually observed that edit.

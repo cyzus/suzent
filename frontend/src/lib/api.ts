@@ -4,7 +4,6 @@ import {
   ChatGPTStatusResponse,
   ConfigOptions,
   PermissionMode,
-  TaskStatus,
   ThinkingEffort,
 } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
@@ -239,18 +238,6 @@ export async function setChatPermissionMode(
   return response.json();
 }
 
-/** Set a project task's status by hand, as the board's row menus do. */
-export async function setTaskStatus(taskId: number, status: TaskStatus): Promise<void> {
-  const response = await fetch(`${getApiBase()}/project/tasks/${taskId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to update task: ${response.status}`);
-  }
-}
-
 export async function setDefaultPermissionMode(
   mode: PermissionMode
 ): Promise<{ mode: PermissionMode }> {
@@ -318,6 +305,12 @@ export interface ApiField {
 export interface Model {
   id: string;
   name: string;
+  description?: string | null;
+  context_length?: number | null;
+  mode?: string;
+  supports_vision?: boolean;
+  supports_reasoning?: boolean;
+  supports_function_calling?: boolean;
 }
 
 export interface UserConfig {
@@ -353,6 +346,8 @@ interface McpServersResponse {
 interface VerifyProviderResponse {
   success: boolean;
   models: Model[];
+  used_catalog_fallback?: boolean;
+  discovery_error?: string | null;
   message?: string;
   error?: string;
 }
@@ -1525,7 +1520,9 @@ export async function markChatRead(chatId: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-  } catch {}
+  } catch {
+    // Read status is best effort.
+  }
 }
 
 export interface FileChangeSummaryItem {

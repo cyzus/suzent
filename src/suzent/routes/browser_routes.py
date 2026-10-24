@@ -59,6 +59,39 @@ async def browser_status_endpoint(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Browser tab unavailable"}, status_code=409)
 
 
+async def browser_preview_tab_endpoint(request: Request) -> JSONResponse:
+    if (
+        not local_setup_request(request)
+        or request.headers.get("x-suzent-browser-setup") != "1"
+    ):
+        return JSONResponse({"error": "Use the local Suzent app"}, status_code=403)
+    settings = await asyncio.to_thread(BrowserSettings.load)
+    if settings.connection_mode != "extension" or bridge.socket is None:
+        return JSONResponse({"error": "Browser extension unavailable"}, status_code=409)
+    try:
+        async with extension_session.lock:
+            tabs = await bridge.request("tabs")
+            tab = next((tab for tab in tabs if tab.get("selected")), None)
+            if tab is None:
+                tab = next((tab for tab in tabs if tab.get("focused")), None)
+            if tab is None:
+                tab = next((tab for tab in tabs if tab.get("active")), None)
+            if tab is None:
+                return JSONResponse(
+                    {"error": "No browser tab available"}, status_code=409
+                )
+            if not tab.get("selected"):
+                result = await bridge.request("select", id=tab["id"])
+                tab_id = result["id"]
+            else:
+                tab_id = tab["id"]
+            await extension_session.activate_selected_tab(tab_id)
+            status = await bridge.request("status")
+        return JSONResponse({"mode": "extension", "connected": True, **status})
+    except Exception:
+        return JSONResponse({"error": "Browser tab unavailable"}, status_code=409)
+
+
 async def browser_settings_endpoint(request: Request) -> JSONResponse:
     try:
         if request.method == "POST":

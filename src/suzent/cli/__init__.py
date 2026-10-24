@@ -6,6 +6,7 @@ This package splits CLI commands into focused modules:
 - node:   list, status, describe, invoke (companion devices)
 - agent:  chat, status
 - config: show, get, set
+- memory: lint, cleanup
 """
 
 import typer
@@ -28,6 +29,7 @@ from suzent.cli.main import (
 from suzent.cli.cron import cron_app
 from suzent.cli.heartbeat import heartbeat_app
 from suzent.cli.mcp import mcp_app
+from suzent.cli.memory import memory_app
 from suzent.cli.node import node_app
 from suzent.cli.pair import pair_app
 from suzent.cli.plugin import plugin_app
@@ -88,6 +90,7 @@ app.add_typer(cron_app, name="cron")
 app.add_typer(heartbeat_app, name="heartbeat")
 app.add_typer(pair_app, name="pair")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(memory_app, name="memory")
 app.add_typer(skill_app, name="skill")
 app.add_typer(plugin_app, name="plugin")
 app.add_typer(service_app, name="service")

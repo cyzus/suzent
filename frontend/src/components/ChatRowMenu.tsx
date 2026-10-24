@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState } from 'react';
+import { ContextMenu } from './ContextMenu';
+import { itemBase, itemDefault, itemDanger } from './contextMenuStyles';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
-import { isImeComposing } from '../lib/ime';
 
 interface ChatRowMenuProps {
   /** Screen-space anchor: usually the right-click point or the dots-button rect. */
@@ -45,78 +45,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   onClose,
 }) => {
   const { t } = useI18n();
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<View>(initialView);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-
-  const anchorPoint = useMemo(() => {
-    if ('rect' in anchor) return { x: anchor.rect.right, y: anchor.rect.bottom };
-    return { x: anchor.x, y: anchor.y };
-  }, [anchor]);
-
-  // Position the menu after first render and after every view switch
-  // (so a taller move-view re-clamps inside the viewport).
-  useEffect(() => {
-    if (!menuRef.current) return;
-    const menuW = menuRef.current.offsetWidth || 220;
-    const menuH = menuRef.current.offsetHeight || 220;
-    const margin = 8;
-    const bounds = boundary ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-    const minLeft = bounds.left + margin;
-    const maxLeft = Math.max(minLeft, bounds.right - menuW - margin);
-    const minTop = Math.max(margin, bounds.top + margin);
-    const maxTop = Math.max(
-      minTop,
-      Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin)
-    );
-
-    let left = anchorPoint.x;
-    let top = anchorPoint.y;
-
-    if (left > maxLeft) left = maxLeft;
-    if (left < minLeft) left = minLeft;
-    if (top > maxTop) top = maxTop;
-    if (top < minTop) top = minTop;
-
-    setPosition({ left, top });
-  }, [anchorPoint, boundary, view]);
-
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
-    };
-    const onContextMenu = (e: MouseEvent) => {
-      if (menuRef.current?.contains(e.target as Node)) e.preventDefault();
-      else onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (isImeComposing(e)) return;
-      if (e.key === 'Escape') {
-        if (view === 'move') setView('root');
-        else onClose();
-      }
-    };
-    const onScroll = () => onClose();
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('scroll', onScroll, true);
-    document.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('scroll', onScroll, true);
-      document.removeEventListener('contextmenu', onContextMenu);
-    };
-  }, [onClose, view]);
-
-  // Brutalist styles
-  const surface =
-    'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
-  const itemBase =
-    'w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider flex items-center gap-2.5 transition-colors';
-  const itemDefault =
-    'text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black';
-  const itemDanger = 'text-brutal-red hover:bg-brutal-red hover:text-white';
 
   const isBulk = bulkCount > 1;
 
@@ -199,7 +128,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         </svg>
       </button>
 
-      <div className="h-0.5 bg-brutal-black my-0.5" />
+      <div role="separator" className="h-0.5 bg-brutal-black my-0.5" />
 
       <button
         type="button"
@@ -235,6 +164,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
       {/* Back header */}
       <button
         type="button"
+        role="menuitem"
         onClick={() => setView('root')}
         className="w-full text-left px-3 py-2 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2 border-b-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:bg-yellow-300 transition-colors"
       >
@@ -264,9 +194,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
               }}
               disabled={isCurrent}
               className={`w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider flex items-center justify-between gap-2 transition-colors ${
-                isCurrent
-                  ? 'text-neutral-400 dark:text-neutral-500 cursor-default'
-                  : 'text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black'
+                isCurrent ? 'text-neutral-400 dark:text-neutral-500 cursor-default' : itemDefault
               }`}
             >
               <span className="truncate">{p.name}</span>
@@ -283,26 +211,16 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   );
 
   const menu = (
-    <div
-      ref={menuRef}
-      role="menu"
-      style={{
-        position: 'fixed',
-        left: position?.left ?? -9999,
-        top: position?.top ?? -9999,
-        visibility: position ? 'visible' : 'hidden',
-        zIndex: 9999,
-      }}
-      className={`min-w-[220px] ${surface} py-0.5`}
-      onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
+    <ContextMenu
+      anchor={anchor}
+      onClose={onClose}
+      boundary={boundary}
+      viewKey={view}
+      onEscape={() => (view === 'move' ? setView('root') : onClose())}
     >
       {view === 'root' ? rootView : moveView}
-    </div>
+    </ContextMenu>
   );
 
-  return createPortal(menu, document.body);
+  return menu;
 };

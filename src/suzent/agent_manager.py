@@ -413,11 +413,15 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         for capability_id, selected_tools in capability_groups.items()
     )
     from suzent.core.context_usage import ContextUsageCapability
-    from suzent.core.prompt_cache import PromptCacheRoutingCapability
+    from suzent.core.prompt_cache import (
+        ForkPrefixCapability,
+        PromptCacheRoutingCapability,
+    )
 
     capabilities.append(ToolResultContextCapability())
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
+    capabilities.append(ForkPrefixCapability())
 
     agent = Agent(
         model,

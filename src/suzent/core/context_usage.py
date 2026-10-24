@@ -56,6 +56,8 @@ class ContextBreakdown(BaseModel):
     estimated_tokens: int = Field(ge=0)
     reserve_tokens: int = Field(ge=0)
     measured_input_tokens: int | None = None
+    #: Text estimate of instructions and tool schemas, used before calibration.
+    overhead_estimate: int = Field(default=0, ge=0)
     has_unmeasured_media: bool = False
 
 
@@ -75,9 +77,22 @@ def register_context_source(
     return text
 
 
+# CJK ideographs, kana, hangul and full-width forms: current tokenizers spend
+# roughly 0.7-1.3 tokens on each, so one per character sits in the middle.
+_CJK = re.compile(
+    "[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
+    "\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]"
+)
+
+
 def estimate_text(text: str) -> int:
-    # Non-ASCII scripts need more tokens than the English four-character rule.
-    return math.ceil(sum(1 if ord(char) > 127 else 0.25 for char in text))
+    """Approximate token count, weighting scripts by how densely they tokenize."""
+    if text.isascii():
+        return math.ceil(len(text) / 4)
+    cjk = len(_CJK.findall(text))
+    other = sum(1 for char in text if not char.isascii()) - cjk
+    ascii_chars = len(text) - cjk - other
+    return math.ceil(cjk + other * 0.5 + ascii_chars * 0.25)
 
 
 def _text(value: Any) -> str:
@@ -96,6 +111,8 @@ def build_context_breakdown(
     trigger: float,
     measured_input_tokens: int | None = None,
 ) -> ContextBreakdown:
+    from suzent.core.context_compressor import estimate_tokens
+
     buckets: dict[Category, dict[str, int]] = {}
     deferred: dict[Category, dict[str, int]] = {}
     has_media = False
@@ -241,6 +258,7 @@ def build_context_breakdown(
                 else:
                     has_media = True
 
+    history_rows = sum(sum(items.values()) for items in buckets.values())
     for instruction in parameters.instruction_parts or []:
         add_text(instruction.content, "system_prompt", "system_prompt", sources)
 
@@ -267,24 +285,35 @@ def build_context_breakdown(
         # Provider-owned schemas and media encoding are not exposed as text.
         has_media = True
 
-    def categories(values: dict[Category, dict[str, int]]) -> list[ContextCategory]:
-        return [
-            ContextCategory(
-                id=key,
-                tokens=sum(items.values()),
-                items=[
-                    ContextItem(name=name, tokens=tokens)
-                    for name, tokens in sorted(items.items(), key=lambda item: -item[1])
-                ],
-            )
-            for key, items in values.items()
-        ]
+    raw_total = sum(sum(items.values()) for items in buckets.values())
+    # The headline is the calibrated estimate the compaction trigger uses; the
+    # rows are scaled to it so the bar still adds up to the number shown.
+    estimated = estimate_tokens(
+        messages, limit, fallback_overhead=raw_total - history_rows
+    ).estimated_tokens
+    scale = estimated / raw_total if raw_total else 1.0
 
-    active = categories(buckets)
+    def categories(
+        values: dict[Category, dict[str, int]], factor: float = 1.0
+    ) -> list[ContextCategory]:
+        rows = []
+        for key, items in values.items():
+            scaled = [
+                ContextItem(name=name, tokens=round(tokens * factor))
+                for name, tokens in sorted(items.items(), key=lambda item: -item[1])
+            ]
+            rows.append(
+                ContextCategory(
+                    id=key, tokens=sum(item.tokens for item in scaled), items=scaled
+                )
+            )
+        return rows
+
     return ContextBreakdown(
-        categories=active,
+        categories=categories(buckets, scale),
         deferred=categories(deferred),
-        estimated_tokens=sum(row.tokens for row in active),
+        estimated_tokens=estimated,
+        overhead_estimate=raw_total - history_rows,
         reserve_tokens=round(limit * (1 - max(0, min(1, trigger)))),
         measured_input_tokens=measured_input_tokens,
         has_unmeasured_media=has_media,
@@ -332,6 +361,7 @@ class ContextUsageCapability(AbstractCapability[AgentDeps]):
                     response.usage.input_tokens if response is not None else None,
                 )
                 ctx.deps.context_breakdown = breakdown.model_dump()
+                ctx.deps.context_overhead_estimate = breakdown.overhead_estimate
                 emit_context_usage_event(
                     chat_id=ctx.deps.chat_id,
                     context_tokens=breakdown.estimated_tokens,

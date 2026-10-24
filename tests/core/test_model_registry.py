@@ -21,6 +21,7 @@ class TestModelCapabilities:
         assert caps.mode == "chat"
         assert caps.max_input_tokens == 0
         assert caps.supports_vision is False
+        assert caps.supports_video is False
         assert caps.context_window == 0
 
     def test_context_window(self):
@@ -76,6 +77,14 @@ class TestModelRegistryFromFile:
         registry = get_model_registry()
         assert registry.supports_vision("anthropic/claude-sonnet-4-6") is True
         assert registry.supports_vision("deepseek/deepseek-chat") is False
+
+    def test_supports_video_uses_curated_capabilities(self):
+        registry = get_model_registry()
+        assert registry.supports_video("gemini/gemini-2.5-flash") is True
+        assert registry.supports_video("dashscope/qwen3-vl-plus") is True
+        assert registry.supports_video("openrouter/google/gemini-3.8-flash") is True
+        assert registry.supports_video("openai/gpt-4.1") is False
+        assert registry.supports_video("nonexistent/model") is False
 
     def test_supports_reasoning_shortcut(self):
         registry = get_model_registry()
@@ -459,7 +468,9 @@ def test_image_edit_capability(entry: dict, expected: bool | None) -> None:
     assert caps.supported_endpoints == tuple(entry.get("supported_endpoints", []))
 
 
-async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -> None:
+async def test_sync_image_endpoints_video_input_and_bare_provider_ids(
+    tmp_path, monkeypatch
+) -> None:
     from unittest.mock import AsyncMock, MagicMock
     from suzent.core import model_registry as module
 
@@ -472,6 +483,20 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         "openai/edit-test": {
             "mode": "image_edit",
             "supported_endpoints": ["/v1/images/edits"],
+        },
+        "gemini/video-test": {
+            "mode": "chat",
+            "supports_video_input": True,
+        },
+        "gemini/text-test": {
+            "mode": "chat",
+            "supports_video_input": False,
+        },
+        "claude-sonnet-5-5": {
+            "litellm_provider": "anthropic",
+            "mode": "chat",
+            "max_input_tokens": 1000000,
+            "supports_function_calling": True,
         },
     }
     response = MagicMock()
@@ -490,3 +515,8 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         == raw["gpt-image-test"]["supported_endpoints"]
     )
     assert saved["openai/edit-test"]["mode"] == "image_edit"
+    gemini = json.loads((tmp_path / "local/gemini.json").read_text())["models"]
+    assert gemini["gemini/video-test"]["supports_video"] is True
+    assert gemini["gemini/text-test"]["supports_video"] is False
+    anthropic = json.loads((tmp_path / "local/anthropic.json").read_text())["models"]
+    assert anthropic["anthropic/claude-sonnet-5-5"]["max_input_tokens"] == 1000000

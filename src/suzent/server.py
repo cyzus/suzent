@@ -46,11 +46,13 @@ from suzent.routes.chat_routes import (
     get_chat_file_changes,
     get_chats,
     delete_focal_wakeup,
+    get_chat_states,
     get_focal_agent,
     get_focal_panel,
     get_permission_mode,
     live_stream,
     mark_chat_read,
+    set_chat_resolved,
     retry_chat,
     fork_chat_route,
     steer_chat,
@@ -202,8 +204,10 @@ from suzent.routes.session_routes import (
 from suzent.routes.browser_routes import (
     browser_settings_endpoint,
     browser_status_endpoint,
+    browser_preview_tab_endpoint,
     browser_websocket_endpoint,
 )
+from suzent.routes.voice_routes import voice_websocket_endpoint
 from suzent.routes.node_routes import (
     browser_node_page,
     node_websocket_endpoint,
@@ -1206,8 +1210,10 @@ app = Starlette(
         Route("/chats", create_chat, methods=["POST"]),
         Route("/focal", get_focal_agent, methods=["GET"]),
         Route("/focal/panel", get_focal_panel, methods=["GET"]),
+        Route("/focal/chats", get_chat_states, methods=["GET"]),
         Route("/focal/wakeups/{job_id:int}", delete_focal_wakeup, methods=["DELETE"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
+        Route("/chats/{chat_id}/resolved", set_chat_resolved, methods=["POST"]),
         Route(
             "/chats/{chat_id}/permission-mode",
             get_permission_mode,
@@ -1389,7 +1395,9 @@ app = Starlette(
         WebSocketRoute("/ws/browser-extension", extension_websocket),
         Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
         Route("/browser/status", browser_status_endpoint, methods=["GET", "POST"]),
+        Route("/browser/preview-tab", browser_preview_tab_endpoint, methods=["POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
+        WebSocketRoute("/ws/voice", voice_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
         # Specific paths must precede /nodes/{node_id} so they aren't captured

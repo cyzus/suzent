@@ -1703,7 +1703,7 @@ async def test_the_display_trigger_spends_from_the_same_budget(
 
 @pytest.mark.asyncio
 async def test_caller_directives_outrank_ambient_hooks(clean_hooks, monkeypatch):
-    """A peer's attribution or the analyze_image directive is specific to this
+    """A peer's attribution or the analyze_visual directive is specific to this
     turn; skill and plan content is ambient and returns next turn."""
     from suzent.core import system_reminder as sr
 

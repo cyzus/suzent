@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import {
   ApiField,
   ApiProvider,
+  Model,
   CustomProviderPayload,
   fetchChatGPTStatus,
   logoutChatGPT,
@@ -44,6 +45,20 @@ const FIELD_ACTION_PRIMARY =
   'bg-brutal-black text-white hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed';
 
 type ProviderTab = 'credentials' | 'models';
+
+function modelDetails(model: Model, t: ReturnType<typeof useI18n>['t']): string {
+  const details = [model.id];
+  if (model.context_length) {
+    details.push(
+      t('settings.providers.modelContext', { count: model.context_length.toLocaleString() })
+    );
+  }
+  if (model.supports_vision) details.push(t('settings.providers.modelVision'));
+  if (model.supports_reasoning) details.push(t('settings.providers.modelReasoning'));
+  if (model.supports_function_calling) details.push(t('settings.providers.modelTools'));
+  if (model.description) details.push(model.description);
+  return details.join(' · ');
+}
 
 function getProviderTitleClass(label: string): string {
   if (label.length > 18) return 'text-sm';
@@ -309,6 +324,7 @@ function ChatGPTProviderCard({
   onAuthChanged,
   onVerify,
   verifying,
+  verification,
 }: {
   provider: ApiProvider;
   config: UserConfig;
@@ -316,6 +332,7 @@ function ChatGPTProviderCard({
   onAuthChanged?: () => Promise<void> | void;
   onVerify: (provider: ApiProvider) => void;
   verifying: boolean;
+  verification?: { success: boolean; message: string };
 }): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<ChatGPTStatusResponse | null>(null);
@@ -393,12 +410,13 @@ function ChatGPTProviderCard({
 
   const statusKey = status?.status ?? 'not_logged_in';
   const connected = status?.connected === true;
-  const allModels = [...(provider.default_models || [])];
+  const allModels =
+    provider.models.length > 0 ? [...provider.models] : [...(provider.default_models || [])];
 
   for (const model of provider.models || []) {
-    if (!allModels.find((x) => x.id === model.id)) {
-      allModels.push(model);
-    }
+    const index = allModels.findIndex((x) => x.id === model.id);
+    if (index === -1) allModels.push(model);
+    else allModels[index] = { ...allModels[index], ...model };
   }
 
   for (const modelId of config.custom_models) {
@@ -418,7 +436,7 @@ function ChatGPTProviderCard({
     : t('settings.providers.chatgpt.signIn');
 
   return (
-    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProviderIcon provider={provider} />
@@ -443,7 +461,7 @@ function ChatGPTProviderCard({
         </div>
       </summary>
 
-      <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4">
+      <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4 dark:border-zinc-600">
         <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
           <div className="flex min-w-0 items-center gap-2" role="status">
             <span
@@ -539,13 +557,25 @@ function ChatGPTProviderCard({
               {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
             </BrutalButton>
           </div>
+          {verification && (
+            <p
+              role="status"
+              className={`border-l-4 px-3 py-2 text-xs ${verification.success ? 'border-brutal-green' : 'border-brutal-red'}`}
+            >
+              {verification.message}
+            </p>
+          )}
           <BrutalMultiSelect
             variant="list"
             value={config.enabled_models}
             onChange={(newVal) =>
               onConfigChange(provider.id, { ...config, enabled_models: newVal })
             }
-            options={allModels.map((m) => ({ value: m.id, label: m.name || m.id }))}
+            options={allModels.map((m) => ({
+              value: m.id,
+              label: m.name || m.id,
+              description: modelDetails(m, t),
+            }))}
             emptyMessage={t('settings.providers.noModelsFound')}
             dropdownClassName="max-h-56"
           />
@@ -700,18 +730,12 @@ export function ProvidersTab({
                   onClick={handleSync}
                   disabled={syncing}
                   title={t('settings.providers.syncTooltip')}
-                  variant="dark"
+                  variant="primary"
                   size="sm"
-                  className="!border-white"
                 >
                   {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
                 </BrutalButton>
-                <BrutalButton
-                  onClick={() => setShowAddForm((v) => !v)}
-                  variant="light"
-                  size="sm"
-                  className="!border-white"
-                >
+                <BrutalButton onClick={() => setShowAddForm((v) => !v)} variant="light" size="sm">
                   {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
                 </BrutalButton>
               </>
@@ -724,14 +748,14 @@ export function ProvidersTab({
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
       )}
 
-      <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+      <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
         <summary className="cursor-pointer p-3 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
           {t('settings.providers.enabledSummary', {
             models: enabledCount,
             providers: enabledGroups.length,
           })}
         </summary>
-        <div className="space-y-3 border-t-2 border-brutal-black p-3">
+        <div className="space-y-3 border-t-2 border-brutal-black p-3 dark:border-zinc-600">
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
             {t('settings.providers.enabledSummaryHint')}
           </p>
@@ -774,7 +798,7 @@ export function ProvidersTab({
         onChange={(event) => setQuery(event.target.value)}
         aria-label={t('settings.providers.searchProviders')}
         placeholder={t('settings.providers.searchProviders')}
-        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:bg-zinc-800 dark:text-white"
+        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-400"
       />
       {!providers.some((provider) =>
         `${provider.label} ${provider.id}`.toLowerCase().includes(query.trim().toLowerCase())
@@ -804,22 +828,21 @@ export function ProvidersTab({
                   onAuthChanged={onChatGPTAuthChanged}
                   onVerify={onVerify}
                   verifying={!!verifying[provider.id]}
+                  verification={verification[provider.id]}
                 />
-                {verification[provider.id] && (
-                  <p role="status" className="mt-2 text-xs dark:text-white">
-                    {verification[provider.id].message}
-                  </p>
-                )}
               </div>
             );
           }
 
-          const allModels = [...(provider.default_models || [])];
+          const allModels =
+            provider.models.length > 0
+              ? [...provider.models]
+              : [...(provider.default_models || [])];
 
           for (const model of provider.models || []) {
-            if (!allModels.find((x) => x.id === model.id)) {
-              allModels.push(model);
-            }
+            const index = allModels.findIndex((x) => x.id === model.id);
+            if (index === -1) allModels.push(model);
+            else allModels[index] = { ...allModels[index], ...model };
           }
 
           for (const modelId of conf.custom_models) {
@@ -840,7 +863,7 @@ export function ProvidersTab({
                 providerPanels.current[provider.id] = element;
               }}
               key={provider.id}
-              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white`}
+              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none`}
             >
               {/* Provider Header */}
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
@@ -872,7 +895,7 @@ export function ProvidersTab({
                   </span>
                   <span aria-hidden="true">▾</span>
                   <div
-                    className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
+                    className={`w-4 h-4 rounded-full border-2 border-brutal-black dark:border-zinc-500 ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
                   ></div>
                 </div>
               </summary>
@@ -1153,7 +1176,11 @@ export function ProvidersTab({
                             .toLowerCase()
                             .includes((modelQueries[provider.id] || '').trim().toLowerCase())
                         )
-                        .map((m) => ({ value: m.id, label: m.name || m.id }))}
+                        .map((m) => ({
+                          value: m.id,
+                          label: m.name || m.id,
+                          description: modelDetails(m, t),
+                        }))}
                       emptyMessage={t('settings.providers.noModelsFound')}
                       emptyAction={
                         !(modelQueries[provider.id] || '').trim() && (

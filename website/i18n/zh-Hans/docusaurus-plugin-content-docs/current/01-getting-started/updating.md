@@ -50,7 +50,7 @@ python scripts/retire_legacy_rows.py            # 只报告
 python scripts/retire_legacy_rows.py --export   # 保存到每日日志
 ```
 
-**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在分为 Suzent 写的部分和你写的部分，用标记注释分隔（见 [MEMORY.md 有一半属于你](../03-features/memory/README.md#memorymd-is-half-yours)）。没有标记的文件会被视为完全由你编写，不会被改动。让一次整理生成新文件，或自己加上标记，就能恢复自动更新。
+**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在是一份指向笔记本页面的简短链接地图（见 [MEMORY.md 是一张地图](../03-features/memory/README.md#memorymd-is-a-map)），Suzent 不再重写它。要转换旧文件，运行 `suzent memory cleanup`：它会把建议的地图和其他修改写在记忆旁边供你查看，在你应用之前不会改动任何内容。
 
 **前几次 dream 之后笔记本会出现大量改动。** Suzent 会为已有页面添加复查日期和确认计数。如果你的笔记本在 Git 或同步文件夹中，这些改动是正常的。
 

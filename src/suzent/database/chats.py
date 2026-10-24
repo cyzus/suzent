@@ -30,6 +30,7 @@ from .chat_log import (
 from .models import (
     ChatLogIndexModel,
     ChatModel,
+    ChatStatusModel,
     ChatSummaryModel,
     InputSuggestionModel,
     ProjectModel,
@@ -162,13 +163,20 @@ def _summarize_messages(
     """Return sidebar summary data without leaking tool detail blocks."""
     safe_messages = messages or []
     last_message = None
-    if safe_messages:
-        last_msg = safe_messages[-1]
-        content = last_msg.get("content") if isinstance(last_msg, dict) else last_msg
-        clean_content = _clean_message_preview(content)
-        last_message = clean_content[:100] if clean_content else None
-        if last_message and len(clean_content) > 100:
-            last_message += "..."
+    for message in reversed(safe_messages):
+        if not isinstance(message, dict) or message.get("role") not in {
+            "user",
+            "assistant",
+            "notice",
+            "system_triggered",
+        }:
+            continue
+        clean_content = _clean_message_preview(message.get("content"))
+        if clean_content:
+            last_message = clean_content[:100]
+            if len(clean_content) > 100:
+                last_message += "..."
+            break
 
     visible_count = sum(
         1
@@ -824,6 +832,30 @@ class ChatOperationsMixin:
             self.commit_chat_changes(session, [chat_id])
         return True
 
+    def append_voice_log(
+        self, chat_id: str, entries: List[Dict[str, Any]], limit: int = 1000
+    ) -> bool:
+        """Append realtime voice transcript rows, replacing rows with the same id."""
+        if not entries:
+            return True
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            log = [row for row in (chat.voice_log or []) if isinstance(row, dict)]
+            index = {row.get("id"): i for i, row in enumerate(log)}
+            for entry in entries:
+                position = index.get(entry.get("id"))
+                if position is None:
+                    index[entry.get("id")] = len(log)
+                    log.append(dict(entry))
+                else:
+                    log[position] = dict(entry)
+            chat.voice_log = log[-limit:]
+            session.add(chat)
+            session.commit()
+        return True
+
     def append_chat_message_once(
         self, chat_id: str, message: Dict[str, Any], client_message_id: str
     ) -> str:
@@ -936,6 +968,8 @@ class ChatOperationsMixin:
         agent_state: bytes,
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
+        expected_revision: Optional[int] = None,
     ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 
@@ -950,10 +984,22 @@ class ChatOperationsMixin:
         can no longer overwrite them.
 
         Returns:
-            The new state revision if the chat exists, otherwise None.
+            The new revision, or None if the chat is missing or the expected
+            revision no longer matches.
         """
         now = datetime.now()
         with self._session() as session:
+            if expected_revision is not None:
+                claimed = session.execute(
+                    update(ChatModel)
+                    .where(
+                        ChatModel.id == chat_id,
+                        ChatModel.state_revision == expected_revision,
+                    )
+                    .values(state_revision=ChatModel.state_revision)
+                )
+                if claimed.rowcount != 1:
+                    return None
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 _postprocess_metrics.snapshot_failed += 1
@@ -994,6 +1040,16 @@ class ChatOperationsMixin:
                     _set_config_keys(
                         session, chat_id, _message_summary(appended_messages)
                     )
+
+            if streamed_message is not None:
+                from suzent.core.display_log import merge_streamed_message
+
+                appended_messages = merge_streamed_message(
+                    list(chat.messages or []), streamed_message
+                )
+                chat.messages = appended_messages
+                flag_modified(chat, "messages")
+                _set_config_keys(session, chat_id, _message_summary(appended_messages))
 
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state
@@ -1119,7 +1175,7 @@ class ChatOperationsMixin:
         return True
 
     def _delete_chat_rows(self, session: Session, chat_ids: List[str]) -> None:
-        """Delete chats with their suggestions and search rows, uncommitted."""
+        """Delete chats with their suggestions, status and search rows, uncommitted."""
         for chat_id in chat_ids:
             chat = session.get(ChatModel, chat_id)
             if chat is not None:
@@ -1129,6 +1185,9 @@ class ChatOperationsMixin:
             delete(InputSuggestionModel).where(
                 col(InputSuggestionModel.chat_id).in_(chat_ids)
             )
+        )
+        session.exec(
+            delete(ChatStatusModel).where(col(ChatStatusModel.chat_id).in_(chat_ids))
         )
 
     def _reindex_in_session(self, session, chat_id: str, messages) -> None:

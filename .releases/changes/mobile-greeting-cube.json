@@ -1,0 +1,6 @@
+{
+  "products": {
+    "mobile": "patch"
+  },
+  "summary": "Align the empty-chat greeting cube on Android and iOS with the desktop: a true 3-D cube with a rotating sigil, soft shadow, and reactive logo eyes."
+}

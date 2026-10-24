@@ -383,7 +383,6 @@ body,
   --scrollbar-thumb: var(--brutal-yellow);
   --scrollbar-thumb-hover: var(--brutal-yellow);
   --scrollbar-edge: var(--brutal-yellow);
-  --brutal-yellow: #ff6600;
 }
 
 /* ── Cold scheme: subtly blue-tinted dark surfaces ─────────────────────── */
@@ -422,8 +421,8 @@ body,
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-.scrollbar-thin {
-  /* Firefox */
+/* Fixed navigation panes reserve space; dropdowns keep the default auto gutter. */
+.scrollbar-stable {
   scrollbar-gutter: stable;
 }
 
@@ -2655,4 +2654,55 @@ button.activity-turn-duration:focus-visible {
     animation: none;
     box-shadow: inset 4px 0 0 var(--brutal-yellow);
   }
+}
+
+/* Expanded tools occupy the workspace while their original view stays mounted. */
+.workspace-panel-host:empty {
+  display: none;
+}
+.workspace-panel-host:not(:empty) {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-panel-host:not(:empty) ~ .workspace-base-view,
+.workspace-panel-host > :not(:last-child) {
+  display: none;
+}
+
+/* File reading styles stay local so chat messages retain their own hierarchy. */
+.file-document .prose {
+  line-height: 1.75;
+}
+.file-document .prose :is(h1, h2, h3) {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+.file-document .prose h1 {
+  font-size: 1.5rem;
+  margin: 0 0 1.5rem;
+}
+.file-document .prose h2 {
+  font-size: 1.125rem;
+  margin: 2rem 0 0.75rem;
+}
+.file-document .prose h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+.file-document .prose :not(pre) > code {
+  background: #f5f5f5;
+  color: inherit;
+  border: 1px solid #e5e5e5;
+  box-shadow: none;
+  padding: 0.125rem 0.3rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.dark .file-document .prose :not(pre) > code {
+  background: #27272a;
+  border-color: #3f3f46;
 }

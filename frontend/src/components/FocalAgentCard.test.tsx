@@ -16,7 +16,6 @@ const status = (extra: Partial<FocalAgentStatus> = {}): FocalAgentStatus => ({
   chatId: 'focal-suzent',
   title: 'Regent',
   waiting: 0,
-  autoRun: 0,
   running: false,
   ...extra,
 });
@@ -33,17 +32,19 @@ describe('Regent contact card', () => {
     expect(text(html)).not.toContain('chatList.focal.role');
   });
 
-  it('spells out what is waiting, stalled and auto-running', () => {
-    const html = render(status({ waiting: 1, stalled: 2, autoRun: 3 }));
-    expect(text(html)).toContain(
-      'chatList.focal.waitingCount:1 · chatList.focal.stalledCount:2 · chatList.focal.autoRunCount:3'
+  it('spells out how many chats wait on the user and how many are running', () => {
+    const html = render(
+      status({ waiting: 1, states: { waiting: 1, running: 3, idle: 2, resolved: 0 } })
     );
-    expect(html).toContain('title="chatList.focal.waitingBadge:1"');
+    expect(text(html)).toContain('chatList.focal.waitingCount:1 · chatList.focal.runningCount:3');
+    expect(html).not.toContain('chatList.focal.waitingBadge');
   });
 
   it('shows when Regent itself is working', () => {
-    const html = render(status({ running: true, autoRun: 2 }));
-    expect(text(html)).toContain('chatList.focal.working · chatList.focal.autoRunCount:2');
+    const html = render(
+      status({ running: true, states: { waiting: 0, running: 2, idle: 0, resolved: 0 } })
+    );
+    expect(text(html)).toContain('chatList.focal.working · chatList.focal.runningCount:2');
     expect(html).toContain('data-regent-state="working"');
   });
 

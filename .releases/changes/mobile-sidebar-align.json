@@ -1,0 +1,8 @@
+{
+  "products": {
+    "mobile": "patch",
+    "desktop": "none"
+  },
+  "summary": "Align the iOS and Android sidebar with the desktop: shared border, shadow and spacing tokens, single-expand projects sorted by recent activity, scheduled tasks ordered like the automation list with heartbeat filtering and failure-handled suppression, full-height drawer rule, flat rows and an inline sub-agent control.",
+  "reason": "Only the paired-device surface changes. The endpoint in src/suzent/mobile/client_api.py serves native clients, and the desktop sidebar, layout and runtime behaviour are untouched."
+}

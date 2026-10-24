@@ -17,6 +17,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import kotlin.math.sin
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -88,12 +90,20 @@ fun SuzentTheme(content: @Composable () -> Unit) {
         bodyLarge = typography.bodyLarge.copy(fontSize = PresentationTokens.typeBody.sp),
         bodySmall = typography.bodySmall.copy(fontSize = PresentationTokens.typeCaption.sp)
     ), shapes = Shapes(
-        extraSmall = RoundedCornerShape(0.dp), small = RoundedCornerShape(0.dp), medium = RoundedCornerShape(0.dp), large = RoundedCornerShape(0.dp), extraLarge = RoundedCornerShape(0.dp)
+        extraSmall = RoundedCornerShape(PresentationTokens.radius.dp), small = RoundedCornerShape(PresentationTokens.radius.dp),
+        medium = RoundedCornerShape(PresentationTokens.radius.dp), large = RoundedCornerShape(PresentationTokens.radius.dp),
+        extraLarge = RoundedCornerShape(PresentationTokens.radius.dp)
     ), content = content)
 }
 
 val suzentShadow: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.shadow_dark else PresentationTokens.black)
+
+val suzentSelection: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.selection_dark else PresentationTokens.selection_light)
+
+val suzentRowDivider: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.selection_dark else PresentationTokens.selection_light)
 
 val suzentLink: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.link_dark else PresentationTokens.blue)
@@ -420,7 +430,7 @@ fun SuzentTextButton(
     contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
-    TextButton(onClick = onClick, modifier = modifier, enabled = enabled, contentPadding = contentPadding,
+    TextButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = RectangleShape, contentPadding = contentPadding,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .45f)), content = content)
 }
@@ -447,6 +457,71 @@ fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false,
             horizontalArrangement = Arrangement.Center, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold,
                 color = if (destructive) MaterialTheme.colorScheme.error else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/** Plain icon control: 44 target, no border or shadow, quiet pressed fill (desktop header icons). */
+@Composable
+fun SuzentIconButton(onClick: () -> Unit, label: String, modifier: Modifier = Modifier, enabled: Boolean = true,
+                     content: @Composable () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(modifier.size(PresentationTokens.controlHeight.dp).alpha(if (enabled) 1f else .45f)
+        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled,
+            role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics { contentDescription = label },
+        contentAlignment = androidx.compose.ui.Alignment.Center) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) { content() }
+    }
+}
+
+/** Plain navigation row, mirroring the desktop sidebar's New chat row: icon, label, hover fill. */
+@Composable
+fun SuzentRowButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+                    leadingIcon: Int? = null) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else .45f)
+        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled,
+            role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .heightIn(min = 40.dp)
+        .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (leadingIcon != null) Icon(painterResource(leadingIcon), null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        Text(label, fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
+
+/** Dialog frame matching the desktop BrutalDialog: 2 px rule, hard shadow, ruled header. */
+@Composable
+fun SuzentDialog(onDismissRequest: () -> Unit, title: String, content: @Composable ColumnScope.() -> Unit) {
+    val outline = MaterialTheme.colorScheme.outline
+    val shadowColor = suzentShadow
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 40.dp).drawBehind {
+            val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
+            drawRect(shadowColor, topLeft = Offset(offset, offset),
+                size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
+        }.padding(end = PresentationTokens.shadowOffsetOverlay.dp, bottom = PresentationTokens.shadowOffsetOverlay.dp)) {
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                .border(PresentationTokens.borderWidth.dp, outline)) {
+                Row(Modifier.fillMaxWidth().drawBehind {
+                    drawLine(outline, Offset(0f, size.height), Offset(size.width, size.height),
+                        PresentationTokens.borderWidth.dp.toPx())
+                }.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(title.uppercase(java.util.Locale.getDefault()), fontWeight = FontWeight.ExtraBold,
+                        fontSize = PresentationTokens.typeCaption.sp, letterSpacing = 1.sp,
+                        color = MaterialTheme.colorScheme.onSurface)
+                }
+                Column(Modifier.fillMaxWidth().padding(PresentationTokens.spacePage.dp), content = content)
+            }
         }
     }
 }
@@ -511,8 +586,10 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
     } else {
         val outline = MaterialTheme.colorScheme.outline
         val shadowColor = suzentShadow
-        Box(Modifier.padding(end = 3.dp, bottom = 3.dp).drawBehind {
-            drawRect(shadowColor, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()))
+        Box(Modifier.padding(end = PresentationTokens.shadowOffsetOverlay.dp,
+            bottom = PresentationTokens.shadowOffsetOverlay.dp).drawBehind {
+            val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
+            drawRect(shadowColor, topLeft = Offset(offset, offset))
         }.size(90.dp, 40.dp).background(MaterialTheme.colorScheme.surface)
             .border(PresentationTokens.borderWidth.dp, outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Image(painterResource(R.drawable.suzent_logo), contentDescription = "Suzent", modifier = Modifier.size(26.dp))
@@ -639,28 +716,30 @@ fun ApprovalCards(model: MobileModel) {
 
 
 @Composable
-fun GreetingCube(modifier: Modifier = Modifier) {
-    val motionEnabled = android.animation.ValueAnimator.areAnimatorsEnabled()
-    val phase = if (motionEnabled) {
-        val transition = rememberInfiniteTransition(label = "cube presence")
-        transition.animateFloat(initialValue = 0f, targetValue = (Math.PI * 2).toFloat(),
-            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "cube phase")
-    } else remember { mutableFloatStateOf(0f) }
-    Box(modifier) {
-        Canvas(Modifier.fillMaxSize()) {
-            val degrees = phase.value * 180f / Math.PI.toFloat()
-            val side = size.minDimension * 0.675f
-            val inset = Offset((size.width - side) / 2, (size.height - side) / 2)
-            rotate(degrees) { drawRect(Color.Gray.copy(alpha = 0.5f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
-            rotate(-degrees + 45f) { drawRect(Color.Gray.copy(alpha = 0.4f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
+fun GreetingCube(engaged: Boolean, modifier: Modifier = Modifier) {
+    val reduced = !android.animation.ValueAnimator.areAnimatorsEnabled()
+    val seconds = remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced) {
+        if (reduced) return@LaunchedEffect
+        var previous = 0L
+        while (true) withFrameNanos { now ->
+            if (previous != 0L) seconds.doubleValue += minOf((now - previous) / 1_000_000_000.0, .05)
+            previous = now
         }
-        Image(painterResource(R.drawable.greeting_cube), contentDescription = null,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                rotationY = sin(phase.value * 4) * 12
-                rotationX = cos(phase.value * 4) * 4
-                translationY = sin(phase.value * 4) * 4.dp.toPx()
-                cameraDistance = 12 * density
-            })
+    }
+    val ink = MaterialTheme.colorScheme.onSurface.toArgb().toLong() and 0xFFFFFFFFL
+    Canvas(modifier) {
+        val marks = GreetingCubeScene.frame(seconds.doubleValue, engaged, reduced, ink)
+        scale(size.width / 160f, size.height / 160f, pivot = Offset.Zero) {
+            marks.forEach { mark ->
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    mark.points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x.toFloat(), p.y.toFloat()) else lineTo(p.x.toFloat(), p.y.toFloat()) }
+                    if (mark.points.size > 2) close()
+                }
+                val color = Color(mark.color).copy(alpha = mark.alpha.toFloat())
+                if (mark.stroke) drawPath(path, color, style = Stroke(mark.width.toFloat())) else drawPath(path, color)
+            }
+        }
     }
 }
 
@@ -695,7 +774,8 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = Color.Transparent,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null, shape = RectangleShape) {
         Column(Modifier.fillMaxWidth().padding(16.dp).drawBehind {
-            drawRect(shadowColor, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = size)
+            val offset = PresentationTokens.shadowOffsetHeavy.dp.toPx()
+            drawRect(shadowColor, topLeft = Offset(offset, offset), size = size)
         }.background(MaterialTheme.colorScheme.surface).border(2.dp, outline)) {
             val dismissLabel = stringResource(R.string.dismiss)
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

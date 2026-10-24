@@ -58,8 +58,7 @@ export function FocalAgentCardView({
   // card shows them instead of the sidebar listing Regent's schedule as tasks.
   const unread = Math.max(0, status?.unread ?? 0);
   const waiting = Math.max(0, status?.waiting ?? 0);
-  const stalled = Math.max(0, status?.stalled ?? 0);
-  const autoRun = Math.max(0, status?.autoRun ?? 0);
+  const running = Math.max(0, status?.states?.running ?? 0);
   const working = Boolean(status?.running);
   const hasNews = unread > 0 && !active && Boolean(status?.lastMessage);
   const time = lastMessageTime(status?.lastMessageAt, locale, t('chatMessage.yesterday'));
@@ -78,8 +77,7 @@ export function FocalAgentCardView({
 
   const counts = [
     waiting > 0 ? t('chatList.focal.waitingCount', { count: waiting }) : null,
-    stalled > 0 ? t('chatList.focal.stalledCount', { count: stalled }) : null,
-    autoRun > 0 ? t('chatList.focal.autoRunCount', { count: autoRun }) : null,
+    running > 0 ? t('chatList.focal.runningCount', { count: running }) : null,
   ].filter(Boolean);
   const statusLine = hasNews
     ? status?.lastMessage
@@ -158,19 +156,10 @@ export function FocalAgentCardView({
           >
             {statusLine}
           </span>
-          {hasNews ? (
+          {hasNews && (
             <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-neutral-900 px-1 text-[9px] font-extrabold tabular-nums text-white dark:bg-neutral-100 dark:text-neutral-900">
               {unread > 99 ? '99+' : unread}
             </span>
-          ) : (
-            waiting > 0 && (
-              <span
-                className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[3px] bg-brutal-yellow px-1 text-[9px] font-extrabold tabular-nums text-brutal-black"
-                title={t('chatList.focal.waitingBadge', { count: waiting })}
-              >
-                {waiting}
-              </span>
-            )
           )}
         </span>
       </span>

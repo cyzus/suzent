@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ImageViewer } from './ImageViewer';
 
 vi.mock('../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock('./FullscreenOverlay', () => ({
-  FullscreenOverlay: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock('./WorkspacePanel', () => ({
+  WorkspacePanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 describe('image viewer navigation', () => {

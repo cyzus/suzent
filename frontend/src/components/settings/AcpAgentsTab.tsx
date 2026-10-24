@@ -556,7 +556,7 @@ function CommandChip({
         className={`shrink-0 border-l-2 border-brutal-black px-2.5 text-[10px] font-black uppercase transition-colors ${
           copied
             ? 'bg-brutal-green text-brutal-black'
-            : 'text-brutal-black dark:text-white hover:bg-brutal-yellow hover:text-brutal-black'
+            : 'text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
         }`}
       >
         {copied ? t('settings.acp.copied') : t('settings.acp.copyCommand')}

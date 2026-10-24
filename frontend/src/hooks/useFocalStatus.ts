@@ -24,6 +24,11 @@ async function refresh(): Promise<void> {
   }
 }
 
+/** Re-reads Regent's status now, e.g. once its unread count was reset. */
+export function refreshFocalStatus(): Promise<void> {
+  return refresh();
+}
+
 /** Exported for tests; components use `useFocalStatus`. */
 export function subscribeToFocalStatus(listener: () => void): () => void {
   listeners.add(listener);
@@ -31,7 +36,8 @@ export function subscribeToFocalStatus(listener: () => void): () => void {
     void refresh();
     const timer = setInterval(() => void refresh(), STATUS_POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
-      if (payload?.event === 'goal_tasks_changed') void refresh();
+      if (payload?.event === 'goal_tasks_changed' || payload?.event === 'chat_status_changed')
+        void refresh();
     });
     stop = () => {
       clearInterval(timer);

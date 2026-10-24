@@ -69,6 +69,66 @@ def _agent_state_at_display_point(
     state = deserialize_state(agent_state) if agent_state else None
     if state and selected_assistant_count:
         history = state.get("message_history") or []
+        selected = next(
+            row for row in reversed(selected_messages) if row.get("role") == "assistant"
+        )
+        run_id = selected.get("_streaming_run_id")
+        if run_id:
+            matches = [
+                index
+                for index, message in enumerate(history)
+                if (message.metadata or {}).get("suzent_display_run_id") == run_id
+            ]
+            if matches:
+                return serialize_state(
+                    history[: matches[-1] + 1],
+                    model_id=state.get("model_id"),
+                    tool_names=state.get("tool_names"),
+                )
+            # Older captured rows have no explicit boundary. Tool IDs identify
+            # their model run without relying on display/model message counts.
+            from pydantic_ai.messages import ModelRequest, ToolCallPart, UserPromptPart
+
+            from suzent.core.context_compressor import _message_has_compaction_marker
+
+            tool_ids = {
+                part.get("toolCallId")
+                for part in selected.get("parts", [])
+                if part.get("type") == "tool" and part.get("toolCallId")
+            }
+            starts = [
+                index
+                for index, message in enumerate(history)
+                if isinstance(message, ModelResponse)
+                and any(
+                    isinstance(part, ToolCallPart) and part.tool_call_id in tool_ids
+                    for part in message.parts
+                )
+            ]
+            if starts and not any(_message_has_compaction_marker(m) for m in history):
+                end = len(history)
+                for index in range(max(starts) + 1, len(history)):
+                    message = history[index]
+                    if isinstance(message, ModelRequest) and any(
+                        isinstance(part, UserPromptPart) for part in message.parts
+                    ):
+                        end = index
+                        break
+                return serialize_state(
+                    history[:end],
+                    model_id=state.get("model_id"),
+                    tool_names=state.get("tool_names"),
+                )
+            # Compaction may have removed this run entirely. A positional guess
+            # can select a later turn or leave a dangling tool call.
+            return _state_from_display_messages(selected_messages)
+
+        from suzent.core.context_compressor import _message_has_compaction_marker
+
+        if any(row.get("_streaming_run_id") for row in selected_messages) or any(
+            _message_has_compaction_marker(message) for message in history
+        ):
+            return _state_from_display_messages(selected_messages)
         assistant_count = 0
         for index, message in enumerate(history):
             if not isinstance(message, ModelResponse):

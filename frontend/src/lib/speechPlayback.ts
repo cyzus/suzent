@@ -135,7 +135,6 @@ export function createSpeechJob(metadata: Record<string, unknown>, src?: string)
       const synth = window.speechSynthesis;
       let utterance: SpeechSynthesisUtterance | null = null;
       let disposed = false;
-      let timer: ReturnType<typeof setTimeout>;
       const start = () => {
         if (disposed || utterance) return;
         const voices = synth.getVoices().filter((voice) => voice.localService);
@@ -160,7 +159,7 @@ export function createSpeechJob(metadata: Record<string, unknown>, src?: string)
         utterance.onerror = () => finish(true);
         synth.speak(utterance);
       };
-      timer = setTimeout(() => finish(true), 8000);
+      const timer = setTimeout(() => finish(true), 8000);
       synth.addEventListener('voiceschanged', start);
       try {
         start();

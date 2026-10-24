@@ -19,6 +19,7 @@ import {
   type ThinkingEffort,
 } from '../types/api';
 import { getApiBase } from '../lib/api';
+import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
@@ -398,7 +399,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   // Models we have already refetched the listing for, so an unlisted model
   // (an ACP agent, a disabled provider) costs one request, not one per load.
   const refetchedForModelsRef = useRef<Set<string>>(new Set());
-  const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
   const [activeStreamingChatId, setActiveStreamingChatId] = useState<string | null>(null);
@@ -451,7 +451,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const next = !prev;
       try {
         localStorage.setItem('suzent_hide_tool_calls', String(next));
-      } catch {}
+      } catch {
+        // Persisting this display preference is best effort.
+      }
       return next;
     });
   }, []);
@@ -1548,6 +1550,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
             // into the legacy HTML `<details>` string blocks that the UI parser expects.
             const serverMessages: any[] = chat.messages || [];
+            // Match recovery drafts before tool continuations change the response content.
+            // Keep the original array indices for forks and file-change references.
+            const visibleServerMessages = new Set(hideStreamingDrafts(serverMessages, false));
             const mappedMessages: Message[] = [];
 
             let currentAssistant: Partial<Message> | null = null;
@@ -1558,6 +1563,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             let awaitingToolContinuation = false;
 
             for (const [serverMessageIndex, msg] of serverMessages.entries()) {
+              if (!visibleServerMessages.has(msg)) continue;
               if (msg.role === 'user') {
                 // Empty user rows are tool-resume continuations (system-reminder injected
                 // by the backend, then stripped to empty). Drop them — they don't represent
@@ -1843,7 +1849,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (!cascade) return prev.filter((c) => c.id !== chatId);
         return prev.filter((c) => {
           if (c.id === chatId) return false;
-          const config = (c as any).config;
           const parentId = (c as any).parentChatId;
           return !(parentId === chatId);
         });

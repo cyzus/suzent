@@ -5,6 +5,7 @@
  * moment a run finishes; the /subagents and /chats fetches fill in the parts
  * the stream does not carry (the tool-call log, the final result text).
  */
+import { extractToolLog, type ToolLogEntry } from './subAgentToolLog';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   ArrowPathIcon,
@@ -51,12 +52,6 @@ interface SubAgentTask {
   worktree_branch?: string | null;
 }
 
-interface ToolLogEntry {
-  toolName: string;
-  args: string;
-  output?: string;
-}
-
 interface SubAgentViewProps {
   taskId: string;
   onClose?: () => void;
@@ -74,30 +69,6 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
 
 function elapsed(startedAt: string | null): string {
   return formatDuration(startedAt, null);
-}
-
-/** Parse tool call log from /chats/{chatId} messages */
-function extractToolLog(messages: any[]): ToolLogEntry[] {
-  const entries: ToolLogEntry[] = [];
-  const outputs: Record<string, string> = {};
-
-  for (const msg of messages) {
-    if (msg.role === 'tool' && msg.tool_call_id) {
-      outputs[msg.tool_call_id] = msg.content ?? '';
-    }
-  }
-  for (const msg of messages) {
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
-      for (const tc of msg.tool_calls) {
-        entries.push({
-          toolName: tc.function?.name ?? 'unknown',
-          args: tc.function?.arguments ?? '',
-          output: outputs[tc.id],
-        });
-      }
-    }
-  }
-  return entries;
 }
 
 export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) => {
@@ -222,7 +193,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
-      <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
+      <div className="flex items-start justify-between px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
           <AgentAvatar model={task?.model_override} status={task?.status} />
           <div className="min-w-0">

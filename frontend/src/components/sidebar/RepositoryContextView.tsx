@@ -1,6 +1,8 @@
+import { useSidebarExpansion } from './SidebarExpansionContext';
+import { ExpandedSurfaceCard } from '../ExpandedSurfaceCard';
+import { FullscreenButton } from '../FullscreenButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowsPointingOutIcon,
   CheckIcon,
   ChevronDownIcon,
   ClipboardDocumentIcon,
@@ -12,7 +14,7 @@ import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
-import { FullscreenOverlay } from '../FullscreenOverlay';
+import { WorkspacePanel } from '../WorkspacePanel';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { ContextUsageSummary } from './ContextUsageSummary';
 
@@ -48,6 +50,7 @@ function ContextFileCard({
   onSave,
 }: ContextFileCardProps) {
   const { t } = useI18n();
+  const sidebarExpansion = useSidebarExpansion();
   const [expanded, setExpanded] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -105,7 +108,7 @@ function ContextFileCard({
   return (
     <>
       <article className="border-2 border-brutal-black bg-white shadow-[3px_3px_0_0_#000] dark:bg-zinc-800">
-        <div className="flex items-start gap-2 px-3 py-2.5">
+        <div className="flex items-start gap-3 px-3 py-2">
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
@@ -136,13 +139,15 @@ function ContextFileCard({
             </p>
           </button>
 
-          <BrutalIconButton
-            className="shrink-0"
-            label={t('repositoryContext.enlarge')}
-            onClick={() => setEnlarged(true)}
-          >
-            <ArrowsPointingOutIcon className="h-4 w-4 stroke-2" />
-          </BrutalIconButton>
+          <FullscreenButton
+            expanded={sidebarExpansion?.expanded}
+            onClick={() => {
+              if (sidebarExpansion) {
+                setExpanded(true);
+                sidebarExpansion.toggle();
+              } else setEnlarged(true);
+            }}
+          />
         </div>
 
         {expanded && (
@@ -152,84 +157,76 @@ function ContextFileCard({
         )}
       </article>
 
-      <FullscreenOverlay open={enlarged} onClose={closeEnlarged} closeOnEscape={!editing}>
-        <header className="flex items-center gap-3 border-b-3 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate font-brutal text-base uppercase leading-none text-brutal-black dark:text-white">
-              {name}
-            </h2>
-            <p
-              className="mt-1.5 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400"
-              title={path}
-            >
-              {path}
-            </p>
-          </div>
-          {!editing && (
-            <>
-              <BrutalIconButton
-                label={copied ? t('coreMemory.copiedText') : t('common.copy')}
-                onClick={copy}
-              >
-                {copied ? (
-                  <CheckIcon className="h-4 w-4 stroke-[2.5]" />
-                ) : (
-                  <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+      <WorkspacePanel open={enlarged} onClose={closeEnlarged} closeOnEscape={!editing}>
+        <ExpandedSurfaceCard
+          title={name}
+          subtitle={path}
+          onShrink={closeEnlarged}
+          shrinkDisabled={saving}
+          actions={
+            !editing && (
+              <>
+                <BrutalIconButton
+                  label={copied ? t('coreMemory.copiedText') : t('common.copy')}
+                  onClick={copy}
+                >
+                  {copied ? (
+                    <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                  ) : (
+                    <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                  )}
+                </BrutalIconButton>
+                {editable && (
+                  <BrutalIconButton
+                    label={t('common.edit')}
+                    onClick={() => {
+                      setSaveFailed(false);
+                      setEditing(true);
+                    }}
+                  >
+                    <PencilIcon className="h-4 w-4 stroke-2" />
+                  </BrutalIconButton>
                 )}
-              </BrutalIconButton>
-              {editable && (
-                <BrutalIconButton
-                  label={t('common.edit')}
-                  onClick={() => {
-                    setSaveFailed(false);
-                    setEditing(true);
-                  }}
-                >
-                  <PencilIcon className="h-4 w-4 stroke-2" />
-                </BrutalIconButton>
-              )}
-            </>
-          )}
-          <BrutalIconButton label={t('common.close')} onClick={closeEnlarged} disabled={saving}>
-            <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
-          </BrutalIconButton>
-        </header>
-
-        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-neutral-50 dark:bg-zinc-900">
-          {editing ? (
-            <div className="flex h-full min-h-0 flex-col gap-2 p-3">
-              {saveFailed && (
-                <div
-                  role="alert"
-                  className="border-2 border-brutal-red bg-white px-2.5 py-2 font-mono text-xs text-brutal-red dark:bg-zinc-800"
-                >
-                  {t('repositoryContext.saveFailed')}
+              </>
+            )
+          }
+        >
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-neutral-50 dark:bg-zinc-900">
+            {editing ? (
+              <div className="flex h-full min-h-0 flex-col gap-2 p-3">
+                {saveFailed && (
+                  <div
+                    role="alert"
+                    className="border-2 border-brutal-red bg-white px-2.5 py-2 font-mono text-xs text-brutal-red dark:bg-zinc-800"
+                  >
+                    {t('repositoryContext.saveFailed')}
+                  </div>
+                )}
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  className="min-h-0 w-full flex-1 resize-none border-2 border-brutal-black bg-white p-3 font-mono text-xs leading-5 text-brutal-black focus:outline-none focus:ring-2 focus:ring-brutal-black dark:bg-zinc-800 dark:text-white"
+                  autoFocus
+                />
+                <div className="flex shrink-0 justify-end gap-2">
+                  <BrutalIconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
+                    <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+                  </BrutalIconButton>
+                  <BrutalIconButton
+                    label={saving ? t('common.saving') : t('common.save')}
+                    onClick={() => void save()}
+                    disabled={saving || draft === content}
+                  >
+                    <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                  </BrutalIconButton>
                 </div>
-              )}
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="min-h-0 w-full flex-1 resize-none border-2 border-brutal-black bg-white p-3 font-mono text-xs leading-5 text-brutal-black focus:outline-none focus:ring-2 focus:ring-brutal-black dark:bg-zinc-800 dark:text-white"
-                autoFocus
-              />
-              <div className="flex shrink-0 justify-end gap-2">
-                <BrutalIconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
-                  <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
-                </BrutalIconButton>
-                <BrutalIconButton
-                  label={saving ? t('common.saving') : t('common.save')}
-                  onClick={() => void save()}
-                  disabled={saving || draft === content}
-                >
-                  <CheckIcon className="h-4 w-4 stroke-[2.5]" />
-                </BrutalIconButton>
               </div>
-            </div>
-          ) : (
-            <div className="p-1">{body}</div>
-          )}
-        </div>
-      </FullscreenOverlay>
+            ) : (
+              <div className="p-1">{body}</div>
+            )}
+          </div>
+        </ExpandedSurfaceCard>
+      </WorkspacePanel>
     </>
   );
 }

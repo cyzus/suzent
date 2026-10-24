@@ -8,7 +8,7 @@ The uploads path broke this: it was hardcoded to /workspace/uploads in both
 modes. It "worked" because PathResolver resolves virtual paths in host mode
 too — but the host-mode environment section tells the agent not to use virtual
 paths, and a shell tool has no resolver, so the same path fails the moment the
-agent reaches for one instead of analyze_image.
+agent reaches for one instead of analyze_visual.
 """
 
 from pathlib import Path

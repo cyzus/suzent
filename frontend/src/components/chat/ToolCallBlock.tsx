@@ -18,7 +18,7 @@ import type {
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
-import { ImageToolRenderer } from './ImageToolRenderer';
+import { MediaToolRenderer } from './MediaToolRenderer';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -41,7 +41,8 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
   run_command: BashOutputRenderer,
   start_command: BashOutputRenderer,
   read_file: FileDiffViewer,
-  analyze_image: ImageToolRenderer,
+  analyze_image: MediaToolRenderer,
+  analyze_visual: MediaToolRenderer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
@@ -185,7 +186,6 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   isAutoApproved = false,
   onRemovePolicy,
   toolCallId,
-  onForceWebContext,
   inActivityRail = false,
 }) => {
   const [expanded, setExpanded] = useState(!defaultCollapsed);

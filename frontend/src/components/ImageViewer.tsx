@@ -1,6 +1,9 @@
-import React, { useEffect } from 'react';
+import { BrutalIconButton } from './BrutalButton';
+import { ExpandedSurfaceCard } from './ExpandedSurfaceCard';
+import React, { useEffect, useRef } from 'react';
 import { useI18n } from '../i18n';
-import { FullscreenOverlay } from './FullscreenOverlay';
+import { isImeComposing } from '../lib/ime';
+import { WorkspacePanel } from './WorkspacePanel';
 
 interface ImageViewerProps {
   src: string | null;
@@ -16,6 +19,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   onNavigate,
 }) => {
   const { t } = useI18n();
+  const image = useRef<HTMLImageElement>(null);
 
   const index = src ? images.indexOf(src) : -1;
   const canNavigate = index >= 0 && images.length > 1 && Boolean(onNavigate);
@@ -25,6 +29,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   useEffect(() => {
     if (!src || !canNavigate) return;
     const handleKey = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
+      if (!image.current?.getClientRects().length) return;
+      if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]'))
+        return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
       const offset = event.key === 'ArrowLeft' ? -1 : 1;
@@ -37,47 +45,30 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   if (!src) return null;
 
   return (
-    <FullscreenOverlay
-      open={Boolean(src)}
-      onClose={onClose}
-      zIndexClassName="z-50"
-      backdropClassName="bg-brutal-black/90 p-4 md:p-8 animate-in fade-in duration-200"
-      containerClassName="relative max-w-full max-h-full flex flex-col items-center bg-transparent border-0 shadow-none"
-    >
-      <img
-        src={src}
-        alt={t('imageViewer.fullScreenAlt')}
-        className="max-w-full max-h-[75vh] object-contain border-4 border-brutal-black shadow-brutal-xl bg-white"
-      />
-      {canNavigate && (
-        <div className="mt-3 flex items-center gap-4 text-white">
-          <button
-            type="button"
-            onClick={previous}
-            aria-label={t('imageViewer.previous')}
-            className="px-4 py-2 border border-white rounded-sm"
-          >
-            ←
-          </button>
-          <span aria-live="polite" className="text-sm tabular-nums">
-            {index + 1} / {images.length}
-          </span>
-          <button
-            type="button"
-            onClick={next}
-            aria-label={t('imageViewer.next')}
-            className="px-4 py-2 border border-white rounded-sm"
-          >
-            →
-          </button>
+    <WorkspacePanel open={Boolean(src)} className="flex-col" onClose={onClose}>
+      <ExpandedSurfaceCard title={t('imageViewer.fullScreenAlt')} onShrink={onClose}>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4 md:p-8">
+          <img
+            ref={image}
+            src={src}
+            alt={t('imageViewer.fullScreenAlt')}
+            className="min-h-0 flex-1 max-w-full object-contain"
+          />
+          {canNavigate && (
+            <div className="shrink-0 flex items-center gap-4">
+              <BrutalIconButton type="button" onClick={previous} label={t('imageViewer.previous')}>
+                ←
+              </BrutalIconButton>
+              <span aria-live="polite" className="text-sm tabular-nums">
+                {index + 1} / {images.length}
+              </span>
+              <BrutalIconButton type="button" onClick={next} label={t('imageViewer.next')}>
+                →
+              </BrutalIconButton>
+            </div>
+          )}
         </div>
-      )}
-      <button
-        onClick={onClose}
-        className="mt-4 px-6 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold text-sm uppercase shadow-[2px_2px_0_0_#000] brutal-btn"
-      >
-        {t('imageViewer.close')}
-      </button>
-    </FullscreenOverlay>
+      </ExpandedSurfaceCard>
+    </WorkspacePanel>
   );
 };

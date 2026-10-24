@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Distinguish user requests from agent delegation briefs in automatic approval context, and retain the current request during long tool runs."
+}

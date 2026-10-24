@@ -139,7 +139,7 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
-// This sidebar is the desktop modal's, and the console navigates with its own.
+// Desktop settings use the global sidebar; the web console has its own navigation.
 // The browser filter is left in as a guard rather than a feature: a desktop-only
 // category rendered there could only report failure.
 //
@@ -156,13 +156,14 @@ interface SettingsNavigationProps {
   activeCategory: SettingsCategory;
   onCategoryChange: (category: SettingsCategory) => void;
   onClose: () => void;
+  embedded?: boolean;
 }
 
 function SettingsTitle({ onClose }: { onClose: () => void }): React.ReactElement {
   const { t } = useI18n();
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b-4 border-brutal-black bg-brutal-yellow px-4 py-3 text-brutal-black">
+    <div className="flex items-center justify-between gap-3 border-b-4 border-brutal-black bg-white px-4 py-3 text-brutal-black dark:bg-zinc-900 dark:text-white">
       <div className="flex min-w-0 items-center gap-2.5">
         <Cog6ToothIcon className="h-6 w-6 shrink-0" aria-hidden="true" />
         <h1 className="truncate font-brutal text-xl font-bold uppercase tracking-tight">
@@ -187,15 +188,22 @@ export function SettingsNavigation({
   activeCategory,
   onCategoryChange,
   onClose,
+  embedded = false,
 }: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
   const groups = visibleCategoryGroups();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r-4 border-brutal-black bg-white dark:bg-zinc-800 md:flex lg:w-64">
+    <aside
+      className={
+        embedded
+          ? 'flex h-full min-h-0 flex-col bg-white dark:bg-zinc-800'
+          : 'hidden w-60 shrink-0 flex-col border-r-4 border-brutal-black bg-white dark:bg-zinc-800 md:flex lg:w-64'
+      }
+    >
       <SettingsTitle onClose={onClose} />
       <nav
-        className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin"
+        className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-stable"
         aria-label={t('settings.title')}
       >
         <div className="space-y-3">
@@ -218,7 +226,7 @@ export function SettingsNavigation({
                       aria-current={active ? 'page' : undefined}
                       className={`group flex w-full items-center gap-3 border-l-4 px-3 py-1.5 text-left text-sm font-bold transition-colors ${
                         active
-                          ? 'border-brutal-yellow bg-brutal-black text-white dark:border-brutal-yellow dark:bg-brutal-yellow/10 dark:text-zinc-100'
+                          ? 'border-brutal-black bg-brutal-yellow text-brutal-black dark:border-brutal-yellow dark:bg-brutal-yellow dark:text-brutal-black'
                           : 'border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-700'
                       }`}
                     >
@@ -240,6 +248,7 @@ export function SettingsMobileNavigation({
   activeCategory,
   onCategoryChange,
   onClose,
+  embedded = false,
 }: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
   const options = visibleCategoryGroups().flatMap((group) =>
@@ -251,7 +260,9 @@ export function SettingsMobileNavigation({
   );
 
   return (
-    <div className="border-b-4 border-brutal-black bg-white dark:bg-zinc-800 md:hidden">
+    <div
+      className={`shrink-0 border-b-4 border-brutal-black bg-white dark:bg-zinc-800 ${embedded ? '' : 'md:hidden'}`}
+    >
       <SettingsTitle onClose={onClose} />
       <div className="p-3">
         <BrutalSelect

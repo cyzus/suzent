@@ -3,6 +3,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import { remarkCurrency } from '../../lib/remarkCurrency';
 import { remarkLatexMath } from '../../lib/remarkLatexMath';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
@@ -197,7 +198,7 @@ const MarkdownCodeBlock: React.FC<{ lang: string; content: string }> = (props) =
   return <CodeBlockComponent {...props} isStreaming={isStreaming} showCursor={false} />;
 };
 
-const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkLatexMath];
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkCurrency, remarkLatexMath];
 const REHYPE_PLUGINS = [rehypeKatex];
 
 /**
@@ -395,7 +396,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           // Check if inline code contains a file path pattern
           if (isInline && handleFileClick) {
             // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
-            const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^\)]+)\)$/);
+            const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^)]+)\)$/);
             if (fileLinkMatch) {
               const [, displayName, path] = fileLinkMatch;
               return (
@@ -484,16 +485,18 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
         },
         table: (p: any) => (
           <div className="overflow-x-auto">
-            <table className="text-xs border-3 border-brutal-black">{p.children}</table>
+            <table className="text-xs border-3 border-brutal-black dark:border-zinc-500">
+              {p.children}
+            </table>
           </div>
         ),
         th: (p: any) => (
-          <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">
+          <th className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 bg-brutal-yellow text-brutal-black font-bold break-normal">
             {applyCitations(p.children, 'th')}
           </th>
         ),
         td: (p: any) => (
-          <td className="border-2 border-brutal-black px-2 py-1 align-top">
+          <td className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 align-top break-normal">
             {applyCitations(p.children, 'td')}
           </td>
         ),

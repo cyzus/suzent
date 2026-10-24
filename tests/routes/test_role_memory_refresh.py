@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from suzent.core.role_router import RoleRouter
+from suzent.memory.capture import CaptureResponse
 from suzent.memory.manager import MemoryManager
 from suzent.routes.config_routes import save_role_models
 
@@ -35,7 +36,7 @@ async def test_saving_roles_updates_live_extraction_and_inheritance(
         assert response.status_code == 200
         assert manager.llm_extraction_model == expected
         if expected:
-            await manager._extract_facts_llm("test conversation")
+            await manager._capture_facts("test conversation", [], "c1")
         else:
             assert manager.llm_client is None
     assert used == ["specific", "cheap", "main"]
@@ -56,14 +57,13 @@ async def test_extraction_keeps_original_client_during_role_change(monkeypatch) 
     manager = MemoryManager(store=Mock())
     original = AsyncMock()
 
-    async def schema(**kwargs) -> None:
+    async def schema(**kwargs) -> CaptureResponse:
         manager.set_extraction_model(None)
-        raise ValueError("schema unsupported")
+        return CaptureResponse()
 
     original.extract_with_schema.side_effect = schema
-    original.extract_structured.return_value = {"facts": []}
     manager.llm_extraction_model = "original"
     manager.llm_client = original
-    assert await manager._extract_facts_llm("conversation") == []
-    original.extract_structured.assert_awaited_once()
+    assert await manager._capture_facts("conversation", [], "c1") == []
+    original.extract_with_schema.assert_awaited_once()
     assert manager.llm_client is None

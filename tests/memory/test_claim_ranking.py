@@ -12,11 +12,6 @@ confirmed yesterday.
 import pytest
 
 from suzent.memory.indexer import CoreMemoryFileIndexer
-from suzent.memory.markdown_store import (
-    MEMORY_GENERATED_END,
-    MEMORY_GENERATED_START,
-    MarkdownMemoryStore,
-)
 
 BASE = 0.5
 strength = CoreMemoryFileIndexer._claim_strength
@@ -162,58 +157,7 @@ async def test_vault_pages_are_scored_and_logs_are_not(tmp_path):
     assert captured[0][1] == BASE
 
 
-# --- a human edit is a different kind of evidence ---
-
-
-@pytest.mark.asyncio
-async def test_a_human_edit_lands_in_the_zone_generators_cannot_touch(tmp_path):
-    store = MarkdownMemoryStore(
-        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
-    )
-    await store.write_memory_file("- generated claim")
-
-    await store.write_memory_manual_zone("- Actually I moved to Berlin", "human:u1")
-    await store.write_memory_file("- regenerated claim")
-
-    text = store.memory_file_path.read_text(encoding="utf-8")
-
-    assert "- Actually I moved to Berlin" in text
-    assert "- regenerated claim" in text
-    assert "- generated claim" not in text
-    assert "<!-- verified: human:u1 at " in text
-
-
-@pytest.mark.asyncio
-async def test_a_human_edit_does_not_copy_the_generated_half_down(tmp_path):
-    """The UI submits the whole file. Keeping the generated half as 'manual' would
-    duplicate every fact the next pass regenerates."""
-    store = MarkdownMemoryStore(
-        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
-    )
-    await store.write_memory_file("- generated claim")
-    submitted = store.memory_file_path.read_text(encoding="utf-8") + "\n- my note\n"
-
-    await store.write_memory_manual_zone(submitted, "human:u1")
-    text = store.memory_file_path.read_text(encoding="utf-8")
-
-    assert text.count("- generated claim") == 1
-    assert text.count(MEMORY_GENERATED_START) == 1
-    assert text.count(MEMORY_GENERATED_END) == 1
-    assert "- my note" in text
-
-
-@pytest.mark.asyncio
-async def test_editing_facts_before_any_generation_still_works(tmp_path):
-    store = MarkdownMemoryStore(
-        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
-    )
-
-    await store.write_memory_manual_zone("- first note", "human:u1")
-    await store.write_memory_file("- generated")
-
-    text = store.memory_file_path.read_text(encoding="utf-8")
-
-    assert "- first note" in text and "- generated" in text
+# --- a human verification is a different kind of evidence ---
 
 
 def test_a_human_verification_outranks_every_other_signal():
@@ -247,62 +191,6 @@ def test_only_a_human_actor_gets_the_floor():
     """An agent stamping itself as the verifier would launder its own output into the
     strongest evidence class there is."""
     assert strength("- a claim", {"verified_by": "agent:dream"}) == BASE
-
-
-def test_the_stamp_is_read_off_the_file():
-    parsed = CoreMemoryFileIndexer._parse_verification(
-        "<!-- verified: human:u1 at 2026-08-23T10:00:00Z -->\n- a note"
-    )
-
-    assert parsed == {"verified_by": "human:u1", "verified_at": "2026-08-23T10:00:00Z"}
-    assert CoreMemoryFileIndexer._parse_verification("- just a note") == {}
-
-
-@pytest.mark.asyncio
-async def test_indexing_memory_md_scores_the_manual_zone_and_not_the_generated_one(
-    tmp_path,
-):
-    """Everything above the end marker is rewritten by a generator on the next pass.
-    Scoring it as verified would launder machine output into the human evidence class."""
-    store = MarkdownMemoryStore(
-        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
-    )
-    await store.write_memory_file("- generated claim")
-    await store.write_memory_manual_zone("- I moved to Berlin", "human:u1")
-
-    indexer = CoreMemoryFileIndexer()
-    captured = []
-
-    class _Store:
-        async def delete_memories_by_source_file(self, f, u):
-            return True
-
-        async def delete_memories_by_source_date(self, d, u):
-            return True
-
-        async def add_memory(self, **kw):
-            captured.append((kw["content"], kw["importance"], kw["metadata"]))
-
-    class _Emb:
-        async def generate(self, text):
-            return [0.1, 0.2, 0.3]
-
-    await indexer._reindex_file(
-        "facts",
-        "MEMORY.md",
-        store.memory_file_path.read_text(encoding="utf-8"),
-        _Store(),
-        _Emb(),
-        "u1",
-    )
-
-    manual = [c for c in captured if "Berlin" in c[0]]
-    generated = [c for c in captured if "generated claim" in c[0]]
-
-    assert manual and manual[0][1] >= 0.9
-    assert manual[0][2]["verified_by"] == "human:u1"
-    assert generated and generated[0][1] == BASE
-    assert "verified_by" not in generated[0][2]
 
 
 @pytest.mark.asyncio

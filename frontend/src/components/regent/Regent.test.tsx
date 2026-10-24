@@ -18,7 +18,6 @@ const status = (extra: Partial<FocalAgentStatus> = {}): FocalAgentStatus => ({
   chatId: 'focal-suzent',
   title: 'Regent',
   waiting: 0,
-  autoRun: 0,
   running: false,
   ...extra,
 });
@@ -61,13 +60,11 @@ describe('RegentIdentity', () => {
     expect(html).not.toContain('regent-cube');
   });
 
-  it('pills working first, then what waits on the user, then what stalled', () => {
+  it('pills working first, then what waits on the user', () => {
     const pill = (value: FocalAgentStatus, state: 'idle' | 'working' | 'waiting'): string =>
       text(renderToStaticMarkup(<RegentIdentity status={value} state={state} />));
-    expect(pill(status({ waiting: 1, stalled: 2 }), 'working')).toContain('chatList.focal.working');
-    expect(pill(status({ waiting: 1, stalled: 2 }), 'waiting')).toContain(
-      'chatList.focal.waitingCount:1'
-    );
-    expect(pill(status({ stalled: 2 }), 'idle')).toContain('chatList.focal.stalledCount:2');
+    expect(pill(status({ waiting: 1 }), 'working')).toContain('chatList.focal.working');
+    expect(pill(status({ waiting: 1 }), 'waiting')).toContain('chatList.focal.waitingCount:1');
+    expect(pill(status(), 'idle')).toBe('chatList.focal.brand chatList.focal.name');
   });
 });

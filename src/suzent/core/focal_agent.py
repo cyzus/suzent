@@ -34,6 +34,7 @@ FOCAL_TOOL_NAMES = (
     "WebSearchTool",
     "WebpageTool",
     "MemorySearchTool",
+    "MemoryUpdateTool",
     "SessionSearchTool",
     "AskQuestionTool",
     "SkillTool",
@@ -385,24 +386,23 @@ def _last_activity(chat: Optional[ChatModel]) -> Optional[str]:
 
 def focal_status() -> dict[str, Any]:
     """Telemetry for the Focal Agent presence card."""
+    from suzent.core.chat_status import count_states, list_chat_states
+
     db = get_database()
     running = running_chat_ids() - {FOCAL_CHAT_ID}
-    waiting = 0
+    chat_states = list_chat_states()
     waiting_by_project: dict[str, int] = {}
     waiting_by_chat: dict[str, int] = {}
+    for row in chat_states:
+        if row["state"] == "waiting":
+            waiting_by_chat[row["chatId"]] = 1
+            waiting_by_project[row["projectId"]] = (
+                waiting_by_project.get(row["projectId"], 0) + 1
+            )
     auto_run: set[str] = set()
     by_chat: dict[str, list[Any]] = {}
     for project in db.list_projects(include_archived=False):
         for task in db.list_tasks(project_id=project.id):
-            if _needs_attention(task):
-                waiting += 1
-                waiting_by_project[project.id] = (
-                    waiting_by_project.get(project.id, 0) + 1
-                )
-                if task.chat_id:
-                    waiting_by_chat[task.chat_id] = (
-                        waiting_by_chat.get(task.chat_id, 0) + 1
-                    )
             if task.chat_id and task.chat_id in running:
                 auto_run.add(task.chat_id)
             if task.chat_id:
@@ -426,10 +426,12 @@ def focal_status() -> dict[str, Any]:
     return {
         "chatId": FOCAL_CHAT_ID,
         "title": FOCAL_TITLE,
-        "waiting": waiting,
+        "waiting": len(waiting_by_chat),
+        # Chats by where they stand for the user, as the board groups them.
+        "states": count_states(chat_states),
         "autoRun": len(auto_run),
         "stalled": stalled,
-        # The sidebar marks projects and sessions holding work that waits on the user.
+        # The sidebar marks projects and chats that wait on the user.
         "waitingByProject": waiting_by_project,
         "waitingByChat": waiting_by_chat,
         "running": FOCAL_CHAT_ID in running_chat_ids(),
@@ -607,6 +609,32 @@ def _focal_request_in_flight(chat_id: str) -> bool:
     )
 
 
+def _reported_to_focal_since(message: dict[str, Any], session_chat_id: str) -> bool:
+    """Whether the session already sent the Focal Agent a message this turn.
+
+    A session that reports with agent_send has already put its answer in front
+    of the Focal Agent, so the turn's final answer would repeat it. The turn
+    starts when the request is claimed, which is the last time the processing
+    row's updated_at moves; a message the session sent while the request was
+    still queued belongs to an earlier turn.
+    """
+    db = get_database()
+    requests = [
+        record
+        for record in db.list_agent_messages(target_chat_id=session_chat_id, limit=50)
+        if record["message_id"] == message.get("message_id")
+    ]
+    if not requests:
+        return False
+    since = datetime.fromisoformat(requests[0]["updated_at"])
+    return any(
+        record["sender_chat_id"] == session_chat_id
+        and record["kind"] == "agent_message"
+        and datetime.fromisoformat(record["created_at"]) >= since
+        for record in db.list_agent_messages(target_chat_id=FOCAL_CHAT_ID, limit=200)
+    )
+
+
 def route_focal_reply(message: dict[str, Any], reply_text: str) -> bool:
     """Send a session's answer to a Focal Agent message back to the Focal Agent.
 
@@ -625,6 +653,12 @@ def route_focal_reply(message: dict[str, Any], reply_text: str) -> bool:
     db = get_database()
     chat = db.get_chat(target_chat_id)
     if chat is None:
+        return False
+    if _reported_to_focal_since(message, target_chat_id):
+        logger.debug(
+            "Session {} already reported to Focal this turn; skipping reply",
+            target_chat_id,
+        )
         return False
     project = db.get_project(chat.project_id) if chat.project_id else None
     text = reply_text.strip()

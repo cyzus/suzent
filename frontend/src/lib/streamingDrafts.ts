@@ -1,13 +1,37 @@
 import type { AGUIPart } from '../types/agui';
 import type { Message } from '../types/api';
 
+export function splitLeadingTriggers(parts: AGUIPart[]): {
+  triggers: AGUIPart[];
+  response: AGUIPart[];
+} {
+  const responseStart = parts.findIndex(
+    (part) => part.type !== 'incoming-message' || !part.persisted
+  );
+  const boundary = responseStart === -1 ? parts.length : responseStart;
+  return { triggers: parts.slice(0, boundary), response: parts.slice(boundary) };
+}
+
 export function isStreamingDraftMessage(message: Message): boolean {
   return message.role === 'assistant' && message._streaming_draft === true;
 }
 
 export function hideStreamingDrafts(messages: Message[], shouldHide: boolean): Message[] {
-  if (!shouldHide) return messages;
-  return messages.filter((message) => !isStreamingDraftMessage(message));
+  const settledContents = new Set<string>();
+  const hidden = new Set<Message>();
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === 'user' || message.role === 'system_triggered') {
+      settledContents.clear();
+    } else if (isStreamingDraftMessage(message)) {
+      if (shouldHide || (message.content && settledContents.has(message.content))) {
+        hidden.add(message);
+      }
+    } else if (message.role === 'assistant' && message.content) {
+      settledContents.add(message.content);
+    }
+  }
+  return hidden.size ? messages.filter((message) => !hidden.has(message)) : messages;
 }
 
 /**

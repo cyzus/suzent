@@ -11,6 +11,8 @@ extension Color {
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
     static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
+    static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
     static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
@@ -238,14 +240,15 @@ private extension String {
 struct ChatRowButtonStyle: ButtonStyle {
     var selected: Bool
     var destructive = false
+    var divider = false
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.red : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.primary.opacity(0.08) : .clear)
-            .overlay(alignment: .leading) {
-                if selected { Rectangle().fill(Color.primary).frame(width: 3) }
+            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
+            .overlay(alignment: .bottom) {
+                if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
             }
             .opacity(enabled ? 1 : 0.4)
     }
@@ -275,6 +278,33 @@ struct SuzentButtonStyle: ButtonStyle {
             .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
             .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
             .padding(.bottom, quiet ? 0 : PresentationTokens.shadowOffset)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Header icon control: 44 target, no border or shadow, quiet pressed fill (desktop header icons).
+struct SuzentIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.suzentText)
+            .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Plain navigation row, mirroring the desktop sidebar's New chat row: icon, label, pressed fill.
+struct SuzentRowButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
             .opacity(enabled ? 1 : 0.45)
     }
 }
@@ -728,8 +758,8 @@ struct SuzentAssistantBadge: View {
                 SuzentLogoMark().frame(width: 26, height: 26)
                     .frame(width: 90, height: 40).background(Color.suzentSurface)
                     .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
-                    .padding(.trailing, 3).padding(.bottom, 3)
+                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
+                    .padding(.trailing, PresentationTokens.shadowOffsetOverlay).padding(.bottom, PresentationTokens.shadowOffsetOverlay)
             }
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
@@ -873,46 +903,30 @@ struct ApprovalCards: View {
 
 
 struct GreetingCube: View {
+    let engaged: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var started = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
-            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * .pi / 12
-            ZStack {
-                Canvas { context, size in
-                    context.scaleBy(x: size.width / 160, y: size.height / 160)
-                    context.translateBy(x: 80, y: 80)
-                    context.rotate(by: .radians(phase))
-                    let rect = Path(CGRect(x: -54, y: -54, width: 108, height: 108))
-                    context.stroke(rect, with: .color(.gray.opacity(0.5)), lineWidth: 1)
-                    context.rotate(by: .radians(-phase * 2 + .pi / 4))
-                    context.stroke(rect, with: .color(.gray.opacity(0.4)), lineWidth: 1)
+            Canvas { context, size in
+                context.scaleBy(x: size.width / 160, y: size.height / 160)
+                let ink: UInt32 = colorScheme == .dark ? PresentationTokens.text_dark : PresentationTokens.black
+                for mark in GreetingCubeScene.frame(seconds: timeline.date.timeIntervalSince(started), engaged: engaged, reduced: reduceMotion, inkColor: ink) {
+                    var path = Path()
+                    for (index, point) in mark.points.enumerated() {
+                        let position = CGPoint(x: point.x, y: point.y)
+                        if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
+                    }
+                    if mark.points.count > 2 { path.closeSubpath() }
+                    let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
+                    if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
+                    else { context.fill(path, with: shading) }
                 }
-                cube
-                    .rotation3DEffect(.degrees(sin(phase * 4) * 12), axis: (x: 0, y: 1, z: 0))
-                    .rotation3DEffect(.degrees(cos(phase * 4) * 4), axis: (x: 1, y: 0, z: 0))
-                    .offset(y: sin(phase * 4) * 4)
             }
         }.accessibilityHidden(true)
-    }
-
-    private var cube: some View {
-        Canvas { context, size in
-            context.scaleBy(x: size.width / 160, y: size.height / 160)
-            func polygon(_ points: [CGPoint]) -> Path {
-                Path { path in path.addLines(points); path.closeSubpath() }
-            }
-            let top = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 95, y: 27), CGPoint(x: 143, y: 45), CGPoint(x: 65, y: 57)])
-            let left = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 65, y: 57), CGPoint(x: 65, y: 141), CGPoint(x: 28, y: 109)])
-            let front = polygon([CGPoint(x: 65, y: 57), CGPoint(x: 143, y: 45), CGPoint(x: 138, y: 122), CGPoint(x: 65, y: 141)])
-            for (face, color) in [(top, Color(white: 0.18)), (left, Color(white: 0.04)), (front, Color.black)] {
-                context.fill(face, with: .color(color)); context.stroke(face, with: .color(.gray), lineWidth: 1)
-            }
-            for points in SuzentLogoGeometry.eyes {
-                context.fill(polygon(points.map { CGPoint(x: $0.0, y: $0.1) }), with: .color(.white))
-            }
-        }
     }
 }
 
@@ -964,7 +978,7 @@ struct SuzentSelectionPanel: View {
             }
         }.background(Color.suzentSurface)
             .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 4, y: 4) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetHeavy, y: PresentationTokens.shadowOffsetHeavy) }
             .padding(.trailing, 4).padding(.bottom, 4)
             .onAppear { titleFocused = true }
     }
@@ -1082,7 +1096,7 @@ struct AssemblyBadge: View {
             .background(Color.suzentSurface)
             .clipped()
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
             .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
         }
         .frame(height: expanded ? 111 : 43)

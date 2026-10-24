@@ -1,14 +1,35 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { CopyButton } from '../chat/CopyButton';
+import { parseToolResultEnvelope } from '../chat/ToolCallBlock';
+import { EmbeddedWebPage } from './EmbeddedWebPage';
+import { useI18n } from '../../i18n';
 
 interface WebPageReaderViewProps {
   markdown: string;
   title?: string;
   url?: string;
+  visible?: boolean;
 }
 
-export const WebPageReaderView: React.FC<WebPageReaderViewProps> = ({ markdown, title, url }) => {
+export const WebPageReaderView: React.FC<WebPageReaderViewProps> = ({
+  markdown,
+  title,
+  url,
+  visible = true,
+}) => {
+  const { t } = useI18n();
+  const [showReader, setShowReader] = useState(false);
+  const content = parseToolResultEnvelope(markdown)?.message ?? markdown;
+  let browserUrl: string | null = null;
+  try {
+    const parsed = new URL(url || '');
+    if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) {
+      browserUrl = parsed.href;
+    }
+  } catch {
+    // Historical tool calls may have no usable URL; their extracted text is still available.
+  }
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900 border-l border-neutral-200 dark:border-zinc-800 font-sans w-full">
       {/* Header */}
@@ -48,15 +69,28 @@ export const WebPageReaderView: React.FC<WebPageReaderViewProps> = ({ markdown, 
             </div>
           )}
         </div>
-        <CopyButton text={markdown} className="shrink-0" />
+        {browserUrl && (
+          <button
+            type="button"
+            onClick={() => setShowReader(!showReader)}
+            className="shrink-0 text-xs font-bold border border-brutal-black dark:border-neutral-400 px-2 py-1 hover:bg-brutal-yellow dark:hover:text-black"
+          >
+            {t(showReader ? 'webActivities.showPage' : 'webActivities.showReader')}
+          </button>
+        )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-thin w-full">
-        <div className="max-w-3xl mx-auto prose dark:prose-invert prose-sm md:prose-base prose-pre:bg-neutral-50 dark:prose-pre:bg-zinc-800/50 prose-pre:border prose-pre:border-neutral-200 dark:prose-pre:border-zinc-700">
-          <MarkdownRenderer content={markdown} />
+      {browserUrl && !showReader ? (
+        <div className="flex-1 min-h-0">
+          <EmbeddedWebPage url={browserUrl} visible={visible} />
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-thin w-full">
+          <div className="max-w-3xl mx-auto prose dark:prose-invert prose-sm md:prose-base prose-pre:bg-neutral-50 dark:prose-pre:bg-zinc-800/50 prose-pre:border prose-pre:border-neutral-200 dark:prose-pre:border-zinc-700">
+            <MarkdownRenderer content={content} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

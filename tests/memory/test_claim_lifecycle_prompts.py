@@ -37,8 +37,13 @@ def _read(path):
 def test_duplicates_are_confirmed_not_restated():
     text = _dream_text()
 
-    assert "confirmed 12x, last YYYY-MM-DD" in text
+    assert "`confirmed` count in frontmatter" in text
     assert "Never add a second" in text
+
+
+def test_inline_counters_move_to_frontmatter():
+    """Older pages carry the count inline; the dream folds it into frontmatter."""
+    assert "(confirmed 12x, last YYYY-MM-DD)" in _dream_text()
 
 
 def test_a_contradicting_repeat_is_not_a_confirmation():
@@ -53,18 +58,20 @@ def test_lifecycle_rules_do_not_depend_on_the_seeded_schema():
     assert "stale_after" in text
 
 
-def test_lint_never_deletes_or_unconfirms_a_stale_personal_claim():
+def test_lint_deprecates_a_stale_personal_claim_and_never_unconfirms_it():
     text = _lint_text()
 
-    assert "never delete it" in text
-    assert "never reset a claim's confirmation marker" in text
+    assert "`status: deprecated`" in text
+    assert "Never raise or reset" in text
+    assert "a `confirmed` count during lint" in text
 
 
 def test_schema_documents_the_personal_page_contract():
     schema = _read(SCHEMA)
 
     assert "type: personal" in schema
-    assert "confirmed 12x" in schema
+    assert "confirmed: 12" in schema
+    assert "## History" in schema
     for category in ("preference", "technical", "goal", "context"):
         assert category in schema
 

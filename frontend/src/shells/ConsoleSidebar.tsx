@@ -131,7 +131,9 @@ export function ConsoleSidebar({ railOnly = false }: ConsoleSidebarProps): React
         )}
       </div>
 
-      <div className={`flex-1 overflow-y-auto overflow-x-hidden ${gutter} py-2 scrollbar-thin`}>
+      <div
+        className={`flex-1 overflow-y-auto overflow-x-hidden ${gutter} py-2 scrollbar-thin scrollbar-stable`}
+      >
         {WEB_DESTINATION_GROUPS.map((group) => (
           <section key={group.labelKey || 'top'} className="mb-3 last:mb-0">
             {group.labelKey && (

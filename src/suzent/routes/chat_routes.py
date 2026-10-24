@@ -1299,6 +1299,38 @@ async def get_focal_panel(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_chat_states(request: Request) -> JSONResponse:
+    """Chats by where they stand for the user, for Regent's board."""
+    from suzent.core.chat_status import count_states, list_chat_states
+
+    try:
+        rows = list_chat_states(
+            request.query_params.get("project_id") or None,
+            request.query_params.get("chat_id") or None,
+        )
+        return JSONResponse({"chats": rows, "counts": count_states(rows)})
+    except Exception as e:
+        logger.error(f"Error in get_chat_states: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def set_chat_resolved(request: Request) -> JSONResponse:
+    """Resolve a chat for the user, or reopen it. Body: ``{"resolved": bool}``."""
+    from suzent.core.chat_status import set_resolved
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get("resolved"), bool):
+        return JSONResponse(
+            {"error": "resolved must be true or false"}, status_code=400
+        )
+    if not set_resolved(request.path_params["chat_id"], body["resolved"]):
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
 async def delete_focal_wakeup(request: Request) -> JSONResponse:
     """Cancel one of the Focal Agent's wake-ups."""
     if not cancel_focal_wakeup(int(request.path_params["job_id"])):

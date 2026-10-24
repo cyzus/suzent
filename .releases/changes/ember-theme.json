@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Add the Ember accent color scheme (#FFA64D in light mode, #FF6600 in dark mode) in Appearance settings and restore the Warm dark-mode accent to yellow (#FFE666)."
+}

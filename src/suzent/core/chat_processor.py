@@ -38,6 +38,7 @@ from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
+from suzent.core.prompt_cache import record_turn_config
 from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.streaming import (
     MODEL_STALLED_CODE,
@@ -387,28 +388,26 @@ def _cancel_unprocessed_tool_calls(
     if not pending_ids:
         return messages, set()
 
-    pending_calls: dict[str, ToolCallPart] = {}
+    denial = f"The tool call was denied because {reason}."
+    repaired: list[Any] = []
+    cancelled_ids: set[str] = set()
     for message in messages:
+        repaired.append(message)
         if not isinstance(message, ModelResponse):
             continue
-        for part in message.parts:
-            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids:
-                pending_calls[part.tool_call_id] = part
-
-    cancelled_ids = set(pending_calls)
-    if not cancelled_ids:
-        return messages, set()
-
-    denial = f"The tool call was denied because {reason}."
-    denial_parts = [
-        ToolReturnPart(
-            tool_name=pending_calls[tool_call_id].tool_name,
-            tool_call_id=tool_call_id,
-            content=ToolDenied(message=denial),
-        )
-        for tool_call_id in sorted(cancelled_ids)
-    ]
-    return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
+        denial_parts = [
+            ToolReturnPart(
+                tool_name=part.tool_name,
+                tool_call_id=part.tool_call_id,
+                content=ToolDenied(message=denial),
+            )
+            for part in message.parts
+            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids
+        ]
+        if denial_parts:
+            cancelled_ids.update(part.tool_call_id for part in denial_parts)
+            repaired.append(ModelRequest(parts=denial_parts))
+    return repaired, cancelled_ids
 
 
 def _expire_display_tool_parts(
@@ -513,11 +512,11 @@ def _is_denied_tool_return(content: Any) -> bool:
 
 # User-facing notice when image(s) were dropped because the active model lacks
 # vision. Deliberately free of tool jargon — the directive to actually call
-# analyze_image goes to the model via a hidden <system-reminder> built from
+# analyze_visual goes to the model via a hidden <system-reminder> built from
 # ``STRIPPED_IMAGE_REMINDER_TEMPLATE`` (in suzent.prompts).
 STRIPPED_IMAGE_NOTICE_TEMPLATE = """\
 The current model ({model_id}) can't read images. {count} image(s) were not \
-sent, but the assistant can still inspect them with analyze_image."""
+sent, but the assistant can still inspect them with analyze_visual."""
 
 ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
@@ -628,6 +627,15 @@ class ChatProcessor:
         except Exception as e:
             logger.warning(f"Error waiting for previous post-processing: {e}")
 
+        status_turn: Optional[int] = None
+        if not is_heartbeat:
+            from suzent.core.chat_status import begin_turn
+
+            try:
+                status_turn = begin_turn(chat_id)
+            except Exception as e:
+                logger.debug(f"[chat_status] reopen skipped for {chat_id}: {e}")
+
         # 1. Configuration
         logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
         config = {
@@ -704,6 +712,7 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
             raise
+        record_turn_config(chat_id, config, getattr(agent, "_model_id", None))
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
@@ -782,7 +791,7 @@ class ChatProcessor:
         agent_images = []
         attachment_context = ""
         # Names of images stripped because the active model lacks vision. They
-        # stay on disk and readable via analyze_image (a separate vision-role
+        # stay on disk and readable via analyze_visual (a separate vision-role
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
@@ -852,7 +861,7 @@ class ChatProcessor:
                         # Active model can't read images — don't ship raw bytes
                         # (the provider would reject them). Keep the file on disk
                         # and record the virtual path so we can tell the model, via
-                        # a hidden system reminder, to inspect it with analyze_image
+                        # a hidden system reminder, to inspect it with analyze_visual
                         # (the directive must not appear in the user's bubble).
                         name = result.get("filename") or result["agent_path"]
                         stripped_image_names.append(name)
@@ -1119,6 +1128,7 @@ class ChatProcessor:
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
         stream_run_id = str(uuid.uuid4())
+        deps.display_run_id = stream_run_id
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
             # The constituents, not a join. build_combined_reminder has to match
@@ -1130,7 +1140,7 @@ class ChatProcessor:
         # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
         # hallucinate "this scheduled task already fired, skip it" and no-op.
         # A non-vision model can't see the stripped image(s); tell it (invisibly
-        # to the user) to inspect them via analyze_image. Merge into the adhoc
+        # to the user) to inspect them via analyze_visual. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
@@ -1544,6 +1554,7 @@ class ChatProcessor:
                         tool_names=getattr(agent, "_tool_names", []),
                         append_display_messages=pending_trigger_rows,
                         draft_run_id=stream_run_id,
+                        streamed_message=getattr(deps, "streamed_message", None),
                     )
                     if (
                         retry_checkpoint_id is not None
@@ -1651,6 +1662,20 @@ class ChatProcessor:
                         )
                 except Exception as e:
                     logger.debug(f"[goal] continuation scheduling skipped: {e}")
+
+            # 11. Read where the chat now stands for the user, off the hot path.
+            was_cancelled = bool(
+                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
+            )
+            if status_turn is not None and not stream_failed and not was_cancelled:
+                try:
+                    from suzent.core.chat_status import schedule_judgement
+
+                    await schedule_judgement(
+                        chat_id, message_content, full_response, status_turn
+                    )
+                except Exception as e:
+                    logger.debug(f"[chat_status] judging skipped for {chat_id}: {e}")
 
     async def _post_process_turn(
         self,
@@ -1820,6 +1845,8 @@ class ChatProcessor:
                     postprocess_job_id=postprocess_job_id,
                     inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
                     file_snapshot=file_snapshot,
+                    display_run_id=getattr(deps, "display_run_id", None),
+                    streamed_message=getattr(deps, "streamed_message", None),
                 )
                 if not persisted:
                     db.finalize_postprocess_job(
@@ -2300,6 +2327,8 @@ class ChatProcessor:
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
         file_snapshot: Optional[list[dict]] = None,
+        display_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> bool:
         """Persist conversation state to database."""
 
@@ -2329,6 +2358,19 @@ class ChatProcessor:
                 if skip_messages:
                     # Heartbeat: rollback already owns message state; only save agent_state.
                     target_messages = None
+                elif display_run_id is not None:
+                    from suzent.core.display_log import merge_streamed_message
+
+                    # The stream owns the visible timeline. Compaction, retries,
+                    # and model-history sanitizers cannot recreate that timeline.
+                    target_messages = list(chat_messages)
+                    if streamed_message is not None:
+                        target_messages = merge_streamed_message(
+                            target_messages, streamed_message
+                        )
+                        target_messages = _attach_latest_file_changes(
+                            target_messages, file_snapshot
+                        )
                 else:
                     # 100% Backend Authored: rebuild the complete display log from the full agent history
                     # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
@@ -2418,14 +2460,14 @@ class ChatProcessor:
         tool_names: List[str],
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
-        """Persist only agent_state for fast-follow turn recovery.
+        """Commit model state and captured display output for fast-follow recovery.
 
         This intentionally avoids display-log rebuilding, memory extraction,
         compression, and lifecycle field updates. The one exception is
-        *append_display_messages*: rows whose provenance cannot be recovered
-        later, so they have to become durable alongside the history rather than
-        waiting for post-processing that may never run.
+        *append_display_messages* and *streamed_message* become durable with
+        the history rather than waiting for post-processing that may never run.
         """
 
         def _sync() -> Optional[int]:
@@ -2438,6 +2480,7 @@ class ChatProcessor:
                 agent_state,
                 append_display_messages=append_display_messages,
                 draft_run_id=draft_run_id,
+                **({"streamed_message": streamed_message} if streamed_message else {}),
             )
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)
@@ -2618,11 +2661,11 @@ def _agent_history_is_compacted(messages: list) -> bool:
     return False
 
 
-def _last_user_index(messages: list) -> int:
-    """Index of the last user-role row in ``messages`` (or -1)."""
+def _last_turn_boundary_index(messages: list) -> int:
+    """Index of the last user or system-triggered turn boundary (or -1)."""
     last = -1
     for idx, m in enumerate(messages):
-        if m.get("role") == "user":
+        if m.get("role") in {"user", "system_triggered"}:
             last = idx
     return last
 
@@ -2634,13 +2677,13 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
     history plus this turn's new output; the original earlier messages are gone
     from the LLM context but still live in the stored ``chat_messages``. We keep
     the stored rows *before* this turn as the base, then splice in the freshly
-    rebuilt current turn (from its last user message onward).
+    rebuilt current turn (from its last user or system-triggered message onward).
 
     Critically this must be idempotent: post-process can run more than once for a
     turn (retries, snapshot + finalize), and the turn's user row is pre-written to
     the display log at turn start. A naive ``stored + new_rows`` appends the
     assistant reply again on every pass, producing duplicate responses. Instead we
-    truncate the stored log at *its* last user row (this turn's pre-saved prompt)
+    truncate the stored log at *its* last turn boundary (this turn's pre-saved prompt)
     and replace everything from there with the rebuilt turn.
     """
     stored = list(chat_messages or [])
@@ -2652,16 +2695,37 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
         # least omits the synthetic summary rows.
         return rebuilt
 
-    # This turn's rows in the rebuild: from its last user message onward.
-    rb_user_idx = _last_user_index(rebuilt)
+    # This turn's rows in the rebuild: from its last user or system-triggered message onward.
+    rb_user_idx = _last_turn_boundary_index(rebuilt)
     turn_rows = rebuilt[rb_user_idx:] if rb_user_idx >= 0 else rebuilt
 
     # Base = stored rows before this turn. The turn's user prompt was pre-written
-    # to the display log, so the stored log's last user row IS this turn's prompt;
+    # to the display log, so the stored log's last turn boundary IS this turn's prompt;
     # drop it and anything after (a reply appended by an earlier persist pass) so
     # re-running yields the same result instead of appending duplicates.
-    st_user_idx = _last_user_index(stored)
+    st_user_idx = _last_turn_boundary_index(stored)
     base = stored[:st_user_idx] if st_user_idx >= 0 else stored
+
+    # Compaction can drop the current prompt from the agent history while tool
+    # execution continues. In that case the stored prompt is the only durable
+    # turn boundary; do not replace it with an older prompt or assistant row.
+    if st_user_idx >= 0 and (
+        rb_user_idx < 0
+        or rebuilt[rb_user_idx].get("role") != stored[st_user_idx].get("role")
+        or rebuilt[rb_user_idx].get("content") != stored[st_user_idx].get("content")
+    ):
+        turn_rows = list(rebuilt[rb_user_idx + 1 :] if rb_user_idx >= 0 else rebuilt)
+        # A terminal answer from a history that no longer contains this prompt
+        # cannot be attributed to the current turn. Keep tool activity and
+        # progress, but do not present that answer as the turn's conclusion.
+        if (
+            turn_rows
+            and turn_rows[-1].get("role") == "assistant"
+            and turn_rows[-1].get("content")
+            and not turn_rows[-1].get("tool_calls")
+        ):
+            turn_rows.pop()
+        return base + [stored[st_user_idx]] + turn_rows
 
     return base + turn_rows
 

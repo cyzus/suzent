@@ -3,7 +3,7 @@ import { VideoResultPlayer } from './VideoResultPlayer';
 import { SpeechPlayer } from './SpeechPlayer';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
-import { getImageToolPaths, ImageToolRenderer } from './ImageToolRenderer';
+import { getMediaToolPaths, MediaToolRenderer } from './MediaToolRenderer';
 import { parseToolResultEnvelope } from './ToolCallBlock';
 
 interface ImageResultCall {
@@ -18,7 +18,7 @@ export function getImageResultPaths(calls: ImageResultCall[]): string[] {
     const result = parseToolResultEnvelope(call.output);
     if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
       continue;
-    for (const path of getImageToolPaths({
+    for (const path of getMediaToolPaths({
       toolName: call.toolName,
       parsedArgs: null,
       metadata: result.metadata as Record<string, unknown>,
@@ -83,7 +83,7 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ cal
   return (
     <>
       {paths.length > 0 && (
-        <ImageToolRenderer
+        <MediaToolRenderer
           toolName="generate_image"
           parsedArgs={null}
           metadata={{ saved_paths: paths }}

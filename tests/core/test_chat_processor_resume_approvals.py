@@ -1,6 +1,7 @@
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
+    TextPart,
     ToolCallPart,
     ToolReturnPart,
 )
@@ -111,7 +112,7 @@ def test_cancel_unprocessed_tool_calls_adds_terminal_denials() -> None:
 
     assert cancelled_ids == {"call-pending"}
     assert len(updated) == len(history) + 1
-    cancellation = updated[-1].parts[0]
+    cancellation = updated[1].parts[0]
     assert isinstance(cancellation, ToolReturnPart)
     assert cancellation.tool_call_id == "call-pending"
     assert isinstance(cancellation.content, ToolDenied)
@@ -120,6 +121,24 @@ def test_cancel_unprocessed_tool_calls_adds_terminal_denials() -> None:
         {"message": cancellation.content.message, "kind": "tool-denied"}
     )
     assert _collect_unprocessed_tool_call_ids(updated) == set()
+
+
+def test_cancel_unprocessed_tool_calls_places_result_before_later_response() -> None:
+    history = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(tool_name="bash_execute", tool_call_id="pending", args={})
+            ]
+        ),
+        ModelResponse(parts=[TextPart(content="Later response")]),
+    ]
+
+    updated, cancelled_ids = _cancel_unprocessed_tool_calls(history, "interrupted")
+
+    assert cancelled_ids == {"pending"}
+    assert isinstance(updated[1], ModelRequest)
+    assert updated[1].parts[0].tool_call_id == "pending"
+    assert updated[2] is history[1]
 
 
 def test_deferred_denial_attaches_user_feedback_to_tool_result() -> None:

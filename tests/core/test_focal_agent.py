@@ -1,3 +1,4 @@
+import time
 from inspect import signature
 from types import SimpleNamespace
 
@@ -6,7 +7,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from suzent.core import focal_agent
+from suzent.core import chat_status, focal_agent
 from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
 from suzent.database import ChatDatabase
 from suzent.tools.agents import agent_lifecycle_tools
@@ -24,7 +25,13 @@ from suzent.tools.tasks.task_update_tool import TaskUpdateTool
 
 @pytest.fixture
 def db(temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch) -> ChatDatabase:
-    for module in (focal_agent, agent_lifecycle_tools, dispatch, task_update_tool):
+    for module in (
+        chat_status,
+        focal_agent,
+        agent_lifecycle_tools,
+        dispatch,
+        task_update_tool,
+    ):
         monkeypatch.setattr(module, "get_database", lambda: temp_db)
     monkeypatch.setattr(focal_agent, "running_chat_ids", lambda: set())
     return temp_db
@@ -691,6 +698,96 @@ def test_long_answers_are_trimmed_for_focal(db, sandbox, enqueued) -> None:
     assert "agent_read" in enqueued[0]["content"]
 
 
+def _request_from_focal(db, chat_id: str) -> dict:
+    record, _ = db.enqueue_agent_message(
+        message_id="msg-request",
+        target_chat_id=chat_id,
+        content="Upgrade Caddy",
+        sender_chat_id=FOCAL_CHAT_ID,
+    )
+    return record
+
+
+def test_a_session_that_already_reported_is_not_routed_again(db, sandbox, enqueued):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat("Servers", {})
+    request = _request_from_focal(db, chat_id)
+    db.enqueue_agent_message(
+        message_id="msg-report",
+        target_chat_id=FOCAL_CHAT_ID,
+        content="Caddy is upgraded.",
+        sender_chat_id=chat_id,
+    )
+
+    routed = focal_agent.route_focal_reply(
+        {**_focal_message(chat_id), "message_id": request["message_id"]},
+        "Caddy is upgraded.",
+    )
+
+    assert routed is False
+    assert enqueued == []
+
+
+def test_a_report_sent_before_the_request_does_not_block_the_reply(
+    db, sandbox, enqueued
+):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat("Servers", {})
+    db.enqueue_agent_message(
+        message_id="msg-old-report",
+        target_chat_id=FOCAL_CHAT_ID,
+        content="Earlier unrelated report.",
+        sender_chat_id=chat_id,
+    )
+    time.sleep(0.01)
+    request = _request_from_focal(db, chat_id)
+
+    routed = focal_agent.route_focal_reply(
+        {**_focal_message(chat_id), "message_id": request["message_id"]},
+        "Caddy is upgraded.",
+    )
+
+    assert routed is True
+    assert enqueued[0]["kind"] == "session_reply_notification"
+
+
+def test_a_report_sent_while_the_request_is_queued_does_not_block_the_reply(
+    db, sandbox, enqueued
+):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat("Servers", {})
+    request = _request_from_focal(db, chat_id)
+    db.enqueue_agent_message(
+        message_id="msg-queued-report",
+        target_chat_id=FOCAL_CHAT_ID,
+        content="Unrelated report from before the request ran.",
+        sender_chat_id=chat_id,
+    )
+    db.claim_next_agent_message(worker_id="test-worker")
+
+    routed = focal_agent.route_focal_reply(
+        {**_focal_message(chat_id), "message_id": request["message_id"]},
+        "Caddy is upgraded.",
+    )
+
+    assert routed is True
+    assert enqueued[0]["kind"] == "session_reply_notification"
+
+
+def test_a_session_without_a_report_still_answers_focal(db, sandbox, enqueued):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat("Servers", {})
+    request = _request_from_focal(db, chat_id)
+
+    routed = focal_agent.route_focal_reply(
+        {**_focal_message(chat_id), "message_id": request["message_id"]},
+        "Caddy is upgraded.",
+    )
+
+    assert routed is True
+    assert enqueued[0]["message_id"] == "focal-reply-msg-request"
+
+
 @pytest.mark.asyncio
 async def test_sending_work_makes_focal_follow_the_session(
     db, sandbox, enqueued, monkeypatch
@@ -958,7 +1055,7 @@ def test_suzents_memory_section_points_at_its_notes() -> None:
     assert "update_notes" in focal
     assert "edit_file" not in focal
     assert "edit_file" in regular and "update_notes" not in regular
-    assert "<!-- /memory:generated" in regular
+    assert "`MEMORY.md` is a map" in regular
 
 
 @pytest.mark.asyncio

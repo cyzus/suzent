@@ -95,6 +95,10 @@ class ChatModel(SQLModel, table=True):
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
     context_usage: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # What was said in realtime voice sessions, for display only. Kept apart
+    # from `messages`, which every turn rebuilds from the agent history: these
+    # rows have no counterpart there and never reach a model's context.
+    voice_log: Optional[list] = Field(default=None, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
 
     # Session lifecycle fields
@@ -130,6 +134,22 @@ class InputSuggestionModel(SQLModel, table=True):
     # guess while that reply is still the chat's last message.
     reply_key: str
     text: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ChatStatusModel(SQLModel, table=True):
+    """Where a chat stands for the user: resolved by them, or waiting on them."""
+
+    __tablename__ = "chat_status"
+
+    chat_id: str = Field(primary_key=True)
+    # Set by the user; cleared when a new turn starts or the chat needs them again.
+    resolved_at: Optional[datetime] = None
+    # The Decision model's read of the chat's latest turn.
+    waiting_on_user: bool = Field(default=False)
+    waiting_reason: Optional[str] = None
+    summary: Optional[str] = None
+    judged_at: Optional[datetime] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

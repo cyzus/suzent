@@ -68,7 +68,7 @@ export function parseSearchResults(output: string): {
       // Parse the inner JSON payload
       try {
         data = JSON.parse(parsedOutput.message);
-      } catch (e) {
+      } catch {
         // Inner message is not JSON, might be raw text
         data = { results: [] };
       }
@@ -82,7 +82,7 @@ export function parseSearchResults(output: string): {
       };
     }
     return { source: 'Web Search', results: [], isSuccess: false };
-  } catch (e) {
+  } catch {
     // Fallback for older markdown outputs
     try {
       const sourceMatch = output.match(/# Search Results \(via (.*)\)/);
@@ -103,7 +103,7 @@ export function parseSearchResults(output: string): {
       }
 
       return { source, results, isSuccess: results.length > 0 };
-    } catch (fallbackError) {
+    } catch {
       return { source: 'Web Search', results: [], isSuccess: false };
     }
   }

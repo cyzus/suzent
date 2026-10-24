@@ -13,47 +13,19 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { buildHtmlDocument, htmlContentHeight } from '../../../lib/a2uiHtml';
 import type { A2UIHtml } from '../../../types/a2ui';
 
 interface Props {
   component: A2UIHtml;
+  framed?: boolean;
   onAction: (action: string, context: Record<string, unknown>) => void;
 }
 
-// Injected into the iframe document. Reports height on load/resize so the host
-// can auto-size, and is harmless if the agent also posts its own actions.
-const BOOTSTRAP = `
-<script>
-  (function () {
-    function reportHeight() {
-      var h = Math.max(
-        document.documentElement.scrollHeight,
-        document.body ? document.body.scrollHeight : 0
-      );
-      window.parent.postMessage({ type: 'a2ui:resize', height: h }, '*');
-    }
-    window.addEventListener('load', reportHeight);
-    window.addEventListener('resize', reportHeight);
-    if (window.ResizeObserver) {
-      new ResizeObserver(reportHeight).observe(document.documentElement);
-    }
-    // Fallback for content that settles after load (fonts, images).
-    setTimeout(reportHeight, 50);
-    setTimeout(reportHeight, 300);
-  })();
-<\/script>
-`;
-
-function buildSrcDoc(html: string): string {
-  // Append the bootstrap so it runs regardless of whether the agent provided a
-  // full document or a bare fragment.
-  return `${html}\n${BOOTSTRAP}`;
-}
-
-export const A2UIHtmlComponent: React.FC<Props> = ({ component, onAction }) => {
+export const A2UIHtmlComponent: React.FC<Props> = ({ component, onAction, framed = true }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [autoHeight, setAutoHeight] = useState<number>(160);
-  const fixedHeight = typeof component.height === 'number' ? component.height : null;
+  const fixedHeight = htmlContentHeight(component.height);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -64,10 +36,10 @@ export const A2UIHtmlComponent: React.FC<Props> = ({ component, onAction }) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      if (data.type === 'a2ui:resize' && typeof data.height === 'number') {
-        if (fixedHeight === null) {
-          // Clamp to avoid a runaway/collapsed iframe.
-          setAutoHeight(Math.min(Math.max(data.height, 40), 4000));
+      if (data.type === 'a2ui:resize') {
+        const height = htmlContentHeight(data.height);
+        if (fixedHeight === null && height !== null) {
+          setAutoHeight(height);
         }
         return;
       }
@@ -92,9 +64,9 @@ export const A2UIHtmlComponent: React.FC<Props> = ({ component, onAction }) => {
       // allow-scripts WITHOUT allow-same-origin: scripts run but are sandboxed
       // away from the host origin (no cookies/storage/parent DOM access).
       sandbox="allow-scripts"
-      srcDoc={buildSrcDoc(component.html)}
-      className="w-full border-2 border-brutal-black bg-white"
-      style={{ height: fixedHeight ?? autoHeight }}
+      srcDoc={buildHtmlDocument(component.html, fixedHeight === null)}
+      className={`block w-full max-h-full bg-white ${framed ? 'border-2 border-brutal-black' : 'border-0'}`}
+      style={{ height: fixedHeight ?? autoHeight + (framed ? 4 : 0) }}
     />
   );
 };

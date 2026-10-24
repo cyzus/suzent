@@ -28,9 +28,9 @@ user_id: default-user
 The extraction model runs every few exchanges, so a small fast model is the right choice
 here. Leave it unset to use the default chat model.
 
-These settings change *how* memory works. To change *what* Suzent remembers, edit
-the notes in `MEMORY.md` instead; see
-[MEMORY.md is half yours](https://suzent.com/docs/features/memory#memorymd-is-half-yours).
+These settings change *how* memory works. To change *what* Suzent remembers, tell
+it in a conversation or edit the notebook pages; see
+[Managing what's remembered](https://suzent.com/docs/features/memory#managing-whats-remembered).
 
 ## Consolidation
 
@@ -47,8 +47,14 @@ memory_consolidation_max_days: 14             # Days of logs read in one run
 memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
 memory_consolidation_timeout_seconds: 600
 memory_consolidation_model: null              # Legacy; set the Dream role in Settings → Model Roles instead
-memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
+memory_map_max_lines: 30                      # Size cap on the MEMORY.md map
 ```
+
+## How facts are picked out
+
+There is nothing to set here. Facts about you are saved only when they are in your own
+words, lessons only when the chat shows both the failure and the fix, and facts from
+files or pages only with their source.
 
 The notebook audit runs on its own, slower schedule, and only once consolidation is
 caught up:
