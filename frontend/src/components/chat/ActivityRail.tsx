@@ -477,8 +477,11 @@ export const ActivityRail: React.FC<{
   const visible = expanded || hasPending;
   const bodyMounted = useDisclosureBody(visible, { keepMounted: hasPending });
 
+  // Deliberately no `overscroll-contain`: this capped body sits on top of the
+  // transcript, so containing overscroll traps the wheel here once it reaches
+  // the rail's own top or bottom and the chat behind it stops scrolling.
   const scrollClassName =
-    'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain';
+    'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto';
   const summary = !hasPending && summaryTools ? summarizeActivity(summaryTools, t) : undefined;
   const latestTool = summaryTools?.[summaryTools.length - 1];
   const thinking = isCurrent && isThinking;
