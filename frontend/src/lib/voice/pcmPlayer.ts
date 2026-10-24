@@ -29,7 +29,10 @@ export class PcmPlayer {
     source.connect(this.context.destination);
     const now = this.context.currentTime;
     const start = Math.max(this.nextStart, now + 0.03);
-    if (this.firstStart === null) this.firstStart = start;
+    if (this.firstStart === null) {
+      this.firstStart = start;
+      this.playedBeforeFlush = 0;
+    }
     this.nextStart = start + buffer.duration;
     this.sources.add(source);
     source.onended = () => {
@@ -37,6 +40,7 @@ export class PcmPlayer {
       if (!this.sources.size) {
         this.nextStart = 0;
         this.firstStart = null;
+        this.playedBeforeFlush = 0;
         this.onDrained?.();
       }
     };
@@ -56,7 +60,7 @@ export class PcmPlayer {
     if (this.firstStart === null) return Math.round(this.playedBeforeFlush);
     const elapsed = Math.max(0, this.context.currentTime - this.firstStart) * 1000;
     const scheduled = Math.max(0, this.nextStart - this.firstStart) * 1000;
-    return Math.round(this.playedBeforeFlush + Math.min(elapsed, scheduled));
+    return Math.round(Math.min(elapsed, scheduled));
   }
 
   flush(): void {

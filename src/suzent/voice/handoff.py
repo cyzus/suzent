@@ -123,6 +123,8 @@ class HandoffRouter:
             [str, list[str], Callable[[str], Awaitable[None]]], Awaitable[None]
         ]
         | None = None,
+        observe_turn: Callable[[Callable[[str], Awaitable[None]]], Awaitable[None]]
+        | None = None,
         inject: Callable[[str], str | None] | None = None,
         is_busy: Callable[[], bool] | None = None,
         stop: Callable[[], bool] | None = None,
@@ -140,11 +142,13 @@ class HandoffRouter:
         self._utterance_seen = asyncio.Event()
         self._delegating = False
         self._start_turn = start_turn or self._default_start_turn
+        self._observe_turn = observe_turn or self._default_observe_turn
         self._inject = inject or self._default_inject
         self._is_busy = is_busy or self._default_is_busy
         self._stop = stop or self._default_stop
         self._progress_interval = progress_interval
         self._task: asyncio.Task[Any] | None = None
+        self._observer_task: asyncio.Task[Any] | None = None
         self._closed = False
         # The request the last delegation in this call handled. The front desk
         # may call `delegate` several times for one sentence; only the first
@@ -164,11 +168,23 @@ class HandoffRouter:
 
     @property
     def working(self) -> bool:
-        return self._task is not None and not self._task.done()
+        return (self._task is not None and not self._task.done()) or (
+            self._observer_task is not None and not self._observer_task.done()
+        )
+
+    def attach_if_busy(self, *, notify_start: bool = False) -> None:
+        """Observe an externally owned turn so completion is reported to this call."""
+        if self._closed or self.working or not self._is_busy():
+            return
+        self._observer_task = asyncio.create_task(
+            self._run_observed(notify_start=notify_start)
+        )
 
     def close(self) -> None:
         """The voice session ended. The running turn keeps going, unobserved."""
         self._closed = True
+        if self._observer_task is not None and not self._observer_task.done():
+            self._observer_task.cancel()
         if self._flush_handle is not None:
             self._flush_handle.cancel()
             self._flush_handle = None
@@ -215,6 +231,8 @@ class HandoffRouter:
                 steer = f"{words}\n(Voice front desk read this as: {request})"
             if self._inject(steer) is not None:
                 self._last_request = request
+                if not self.working:
+                    self.attach_if_busy(notify_start=True)
                 return (
                     "steered: the request was added to the task Suzent is already "
                     "running. Tell the user in a few words; do not answer it yourself."
@@ -281,6 +299,27 @@ class HandoffRouter:
             await self._flush_progress()
             await self._notify_working(False)
             self._report(outcome)
+
+    async def _run_observed(self, *, notify_start: bool = False) -> None:
+        outcome = TurnOutcome()
+        if notify_start:
+            await self._notify_working(True)
+        try:
+
+            async def on_chunk(chunk: str) -> None:
+                self._observe(chunk, outcome)
+
+            await self._observe_turn(on_chunk)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Voice observed turn failed: {}", exc)
+            outcome.failure = str(exc) or type(exc).__name__
+        finally:
+            if not self._closed:
+                await self._flush_progress()
+                await self._notify_working(False)
+                self._report(outcome)
 
     def _observe(self, chunk: str, outcome: TurnOutcome) -> None:
         event = _decode_sse(chunk)
@@ -378,24 +417,54 @@ class HandoffRouter:
             bind_producer_replay,
             register_background_stream,
         )
-        from suzent.routes.chat_routes import _prewrite_user_display_message
+        from suzent.database import get_database
+        from suzent.routes.chat_routes import (
+            _prewrite_user_display_message,
+            _resolve_chat_runtime,
+            _sanitized_for_display_and_turn,
+        )
+
+        def _load_chat_config() -> tuple[dict[str, Any], str]:
+            chat = get_database().get_chat(self.chat_id)
+            cfg = (
+                dict(chat.config or {})
+                if chat and isinstance(chat.config, dict)
+                else {}
+            )
+            runtime = _resolve_chat_runtime(self.chat_id, cfg)
+            return cfg, runtime
+
+        chat_config, effective_runtime = await asyncio.to_thread(_load_chat_config)
+        config_override = build_agent_config(chat_config, require_social_tool=False)
+        sanitized = _sanitized_for_display_and_turn(content)
 
         # The same path as /chat/send: the user row is written up front through
         # the revision-safe helper, and the turn streams on the background bus,
         # where the chat window attaches on `stream_started`.
-        await asyncio.to_thread(
-            _prewrite_user_display_message, self.chat_id, content, []
+        prewritten = await asyncio.to_thread(
+            _prewrite_user_display_message, self.chat_id, sanitized, []
         )
         queue = register_background_stream(self.chat_id)
         try:
             bind_producer_replay(queue.replay)
-            generator = ChatProcessor().process_turn(
-                chat_id=self.chat_id,
-                user_id=CONFIG.user_id,
-                message_content=content,
-                config_override=build_agent_config({}, require_social_tool=False),
-                system_reminders=reminders,
-            )
+            if effective_runtime == "acp":
+                from suzent.acp.runtime import stream_acp_turn
+
+                generator = stream_acp_turn(
+                    self.chat_id,
+                    sanitized,
+                    {**chat_config, **config_override},
+                    replay=queue.replay,
+                    prewritten=bool(prewritten),
+                )
+            else:
+                generator = ChatProcessor().process_turn(
+                    chat_id=self.chat_id,
+                    user_id=CONFIG.user_id,
+                    message_content=sanitized,
+                    config_override=config_override,
+                    system_reminders=reminders,
+                )
             async for chunk in generator:
                 await queue.put(chunk)
                 await on_chunk(chunk)
@@ -410,6 +479,41 @@ class HandoffRouter:
             raise
         finally:
             await queue.put(None)
+
+    async def _default_observe_turn(
+        self,
+        on_chunk: Callable[[str], Awaitable[None]],
+    ) -> None:
+        from suzent.core.stream_registry import (
+            get_background_queue,
+            is_background_streaming,
+            register_bus_subscriber,
+            unregister_bus_subscriber,
+        )
+
+        sub = register_bus_subscriber()
+        try:
+            queue = get_background_queue(self.chat_id)
+            if queue is not None:
+                for event in queue.replay._snapshot_events():
+                    await on_chunk(f"data: {json.dumps(event)}\n\n")
+            while is_background_streaming(self.chat_id):
+                try:
+                    item = await asyncio.wait_for(sub.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                if item is None:
+                    break
+                if item.get("chat_id") != self.chat_id:
+                    continue
+                if item.get("event") == "chunk":
+                    data = item.get("data")
+                    if isinstance(data, str):
+                        await on_chunk(data)
+                elif item.get("event") == "stream_ended":
+                    break
+        finally:
+            unregister_bus_subscriber(sub)
 
     def _default_inject(self, content: str) -> str | None:
         from suzent.core.chat_processor import build_steering_text

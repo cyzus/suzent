@@ -1,4 +1,5 @@
 import { getApiBase } from '../api';
+import { withAuthQuery } from '../authToken';
 import { parseVoiceServerMessage, type VoiceServerMessage } from './types';
 
 export interface VoiceClientCallbacks {
@@ -27,7 +28,7 @@ export class VoiceClient {
     url.pathname = '/ws/voice';
     url.search = '';
     if (chatId) url.searchParams.set('chat_id', chatId);
-    const socket = new this.Socket(url.toString());
+    const socket = new this.Socket(withAuthQuery(url.toString()));
     socket.binaryType = 'arraybuffer';
     socket.onmessage = (event: MessageEvent<string | ArrayBuffer | Blob>) => {
       if (event.data instanceof ArrayBuffer) {

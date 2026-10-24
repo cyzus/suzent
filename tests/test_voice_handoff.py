@@ -36,6 +36,12 @@ class Harness:
             for chunk in self.chunks:
                 await on_chunk(chunk)
 
+        async def observe_turn(on_chunk):
+            if self.hold is not None:
+                await self.hold.wait()
+            for chunk in self.chunks:
+                await on_chunk(chunk)
+
         def take():
             lines, self.lines = self.lines, []
             return lines
@@ -55,6 +61,7 @@ class Harness:
             on_working=on_working,
             transcript_delta=take,
             start_turn=start_turn,
+            observe_turn=observe_turn,
             inject=inject,
             is_busy=lambda: self.busy,
             stop=stop,
@@ -70,6 +77,8 @@ class Harness:
 async def _settle(router):
     if router._task is not None:
         await asyncio.wait_for(router._task, 2)
+    if router._observer_task is not None:
+        await asyncio.wait_for(router._observer_task, 2)
 
 
 async def test_delegate_returns_at_once_and_records_the_users_own_words():
@@ -272,3 +281,83 @@ def test_build_delegation_escapes_and_clips():
     assert "&lt;b&gt;hi&lt;/b&gt;" in text
     assert len(text.encode()) < 4096 * 2 + 200
     assert "<transcript_delta>" not in build_delegation("x", "  ")
+
+
+async def test_steering_an_externally_owned_turn_observes_and_reports_completion():
+    hold = asyncio.Event()
+    h = Harness(
+        busy=True,
+        hold=hold,
+        chunks=[sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"external answer"}')],
+    )
+    h.say("a:1", "add a conclusion")
+    result = await h.router.delegate("add a conclusion")
+    assert result.startswith("steered")
+    assert h.router.working is True
+    hold.set()
+    await _settle(h.router)
+    assert h.working == [True, False]
+    assert len(h.spoken) == 1 and "external answer" in h.spoken[0]
+
+
+async def test_default_start_turn_preserves_chat_config_and_dispatches_acp(monkeypatch):
+    from types import SimpleNamespace
+    import suzent.acp.runtime as acp_runtime
+    import suzent.agent_manager as agent_manager
+    import suzent.database as database_mod
+    import suzent.routes.chat_routes as chat_routes
+
+    fake_chat = SimpleNamespace(
+        config={
+            "runtime": "acp",
+            "acp_agent_id": "codex",
+            "model": "custom/model",
+            "sandbox_enabled": False,
+        }
+    )
+    monkeypatch.setattr(
+        database_mod,
+        "get_database",
+        lambda: SimpleNamespace(get_chat=lambda _cid: fake_chat),
+    )
+    monkeypatch.setattr(
+        chat_routes, "_prewrite_user_display_message", lambda *_a, **_k: True
+    )
+    seen_build_cfg: list[dict] = []
+
+    def fake_build_agent_config(cfg, **_kw):
+        seen_build_cfg.append(dict(cfg))
+        return {**cfg, "built": True}
+
+    monkeypatch.setattr(agent_manager, "build_agent_config", fake_build_agent_config)
+    acp_calls: list[tuple[str, str, dict, bool]] = []
+
+    async def fake_stream_acp_turn(
+        chat_id, message, cfg, *, replay=None, prewritten=False, **_kw
+    ):
+        acp_calls.append((chat_id, message, cfg, prewritten))
+        yield sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"acp reply"}')
+
+    monkeypatch.setattr(acp_runtime, "stream_acp_turn", fake_stream_acp_turn)
+
+    spoken: list[str] = []
+
+    async def noop_context(_t: str) -> None:
+        pass
+
+    router = HandoffRouter(
+        "acp-chat",
+        send_context=noop_context,
+        enqueue_spoken=spoken.append,
+        transcript_grace=0.01,
+    )
+    assert (await router.delegate("fix the bug")).startswith("started")
+    await _settle(router)
+    assert seen_build_cfg and seen_build_cfg[0]["model"] == "custom/model"
+    assert len(acp_calls) == 1
+    assert acp_calls[0][0] == "acp-chat"
+    assert acp_calls[0][1] == "fix the bug"
+    assert acp_calls[0][2]["acp_agent_id"] == "codex"
+    assert acp_calls[0][2]["built"] is True
+    assert acp_calls[0][3] is True
+    assert spoken and "acp reply" in spoken[0]

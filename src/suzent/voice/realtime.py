@@ -497,6 +497,7 @@ class VoiceBridge:
                         "working": self.router.working or self.router._is_busy(),
                     }
                 )
+                self.router.attach_if_busy()
                 await self._set_state("listening")
                 tasks = [
                     asyncio.create_task(self._mic_loop(session)),

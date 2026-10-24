@@ -168,7 +168,12 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 # browser's `EventSource` is exactly that case — it cannot set request headers,
 # and these two endpoints are how the web UI receives everything the agent does.
 # Both are read-only GET streams.
-QUERY_TOKEN_PATHS = {"/events/stream", "/subagents/stream", "/background-tasks/stream"}
+QUERY_TOKEN_PATHS = {
+    "/events/stream",
+    "/subagents/stream",
+    "/background-tasks/stream",
+    "/ws/voice",
+}
 
 
 def extract_query_token(path: str, query_string: bytes | str) -> str:

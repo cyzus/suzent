@@ -72,7 +72,7 @@ describe('PcmPlayer', () => {
     expect(context.sources).toHaveLength(0);
   });
 
-  it('flush stops every scheduled source and keeps played time', () => {
+  it('flush stops every scheduled source and keeps played time until the next reply starts', () => {
     const { player, context } = makePlayer();
     player.enqueue(chunk(1000)); // 1 s starting at 0.03
     player.enqueue(chunk(1000));
@@ -81,7 +81,10 @@ describe('PcmPlayer', () => {
     player.flush();
     expect(context.sources.every((source) => source.stopped)).toBe(true);
     expect(player.playedMs()).toBe(500);
-    player.enqueue(chunk(100));
+    // Next reply starts fresh rather than accumulating the flushed reply's 500 ms.
+    player.enqueue(chunk(1000)); // starts at 0.56
+    context.currentTime = 0.66;
+    expect(player.playedMs()).toBe(100);
     expect(context.sources).toHaveLength(3);
   });
 

@@ -370,6 +370,22 @@ class TestRebindingGuard:
         assert called
 
     @pytest.mark.asyncio
+    async def test_voice_ws_query_token_authenticates_full_scope_only(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, full_tok = store.mint("Browser", "web", scope="full")
+        _id2, agent_tok = store.mint("Peer", "agent", scope="agent")
+        ok_scope = _scope("websocket", "100.64.0.5", path="/ws/voice", store=store)
+        ok_scope["query_string"] = f"chat_id=c1&token={full_tok}".encode()
+        called, _ = await _run(ok_scope)
+        assert called
+
+        bad_scope = _scope("websocket", "100.64.0.5", path="/ws/voice", store=store)
+        bad_scope["query_string"] = f"chat_id=c1&token={agent_tok}".encode()
+        called_bad, sent_bad = await _run(bad_scope)
+        assert not called_bad
+        assert sent_bad == [{"type": "websocket.close", "code": 1008}]
+
+    @pytest.mark.asyncio
     async def test_query_token_rejected_on_other_paths(self, tmp_path):
         store = DeviceTokenStore(path=tmp_path / "d.json")
         _id, token = store.mint("Browser", "web", scope="full")
