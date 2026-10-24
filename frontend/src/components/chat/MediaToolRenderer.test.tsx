@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { groupActivityChunks } from './ActivityRail';
 import { ImageResultGallery, getImageResultPaths } from './ImageResultGallery';
-import { getImageToolPaths, ImageToolRenderer } from './ImageToolRenderer';
+import { getMediaToolPaths, MediaToolRenderer } from './MediaToolRenderer';
 
 vi.mock('../../hooks/useChatStore', () => ({
   useChatStore: () => ({ currentChatId: 'chat-1', config: { sandbox_volumes: [] } }),
@@ -18,10 +18,10 @@ vi.mock('./MarkdownRenderer', () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
 
-describe('image tool previews', () => {
+describe('media tool previews', () => {
   it('renders all generated images through the file endpoint and preserves the result', () => {
     const html = renderToStaticMarkup(
-      <ImageToolRenderer
+      <MediaToolRenderer
         toolName="generate_image"
         parsedArgs={{ prompt: 'A landscape' }}
         metadata={{ saved_paths: ['C:\\images\\a #1.png', '/workspace/images/b.png'] }}
@@ -38,20 +38,20 @@ describe('image tool previews', () => {
   });
 
   it('prefers the resolved analysis path and falls back for older results', () => {
-    const props = { toolName: 'analyze_image', parsedArgs: { image_path: 'photo.png' } };
-    expect(getImageToolPaths(props)).toEqual(['photo.png']);
+    const props = { toolName: 'analyze_visual', parsedArgs: { visual_path: 'photo.png' } };
+    expect(getMediaToolPaths(props)).toEqual(['photo.png']);
     expect(
-      getImageToolPaths({ ...props, metadata: { image_path: '/workspace/photo.png' } })
+      getMediaToolPaths({ ...props, metadata: { visual_path: '/workspace/photo.png' } })
     ).toEqual(['/workspace/photo.png']);
-    const html = renderToStaticMarkup(<ImageToolRenderer {...props} output="A cat." />);
+    const html = renderToStaticMarkup(<MediaToolRenderer {...props} output="A cat." />);
     expect(html).toContain('<img ');
     expect(html).toContain('A cat.');
   });
 
   it('handles failed generation and malformed metadata without rendering broken images', () => {
-    expect(getImageToolPaths({ toolName: 'generate_image', parsedArgs: null })).toEqual([]);
+    expect(getMediaToolPaths({ toolName: 'generate_image', parsedArgs: null })).toEqual([]);
     expect(
-      getImageToolPaths({
+      getMediaToolPaths({
         toolName: 'generate_image',
         parsedArgs: null,
         metadata: { saved_paths: [null, 1, '', 'a.png', 'a.png'] },
@@ -62,7 +62,7 @@ describe('image tool previews', () => {
 
 it('renders edited outputs rather than source images', () => {
   expect(
-    getImageToolPaths({
+    getMediaToolPaths({
       toolName: 'edit_image',
       parsedArgs: { image_paths: ['source.png'] },
       metadata: { saved_paths: ['edited.png'] },

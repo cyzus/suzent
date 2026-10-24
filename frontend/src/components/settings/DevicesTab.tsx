@@ -12,7 +12,6 @@ import {
   revokeDevice,
   setDeviceStatus,
   discoverNodes,
-  fetchConnections,
   fetchGrants,
   approveGrant,
   denyGrant,
@@ -27,14 +26,12 @@ import {
   type ApprovedDevice,
   type NodeAuthConfig,
   type DiscoveredPeer,
-  type OutboundConnection,
   type ControlRequest,
   type ControlledPeer,
   type UnauthorizedTrigger,
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
-import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
 import { NodeInvokePanel, PeerInvokePanel } from './NodeInvokePanel';
 import { CopyButton } from './CopyButton';
@@ -128,7 +125,6 @@ export function DevicesTab(): React.ReactElement {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addrHost, setAddrHost] = useState<string | null>(null);
-  const [connections, setConnections] = useState<OutboundConnection[]>([]);
   const [grants, setGrants] = useState<ControlRequest[]>([]);
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
   const [discovered, setDiscovered] = useState<{
@@ -161,11 +157,10 @@ export function DevicesTab(): React.ReactElement {
         })
       );
     }
-    const [n, p, d, c, g, pe, ua] = await Promise.all([
+    const [n, p, d, g, pe, ua] = await Promise.all([
       fetchNodes(),
       fetchPendingNodes(),
       fetchApprovedDevices(),
-      fetchConnections(),
       fetchGrants(),
       fetchPeers(),
       fetchUnauthorizedTriggers(),
@@ -173,7 +168,6 @@ export function DevicesTab(): React.ReactElement {
     setNodes(n);
     setPending(p);
     setDevices(d);
-    setConnections(c);
     setGrants(g);
     setPeers(pe);
     setUnauthorized(ua);
@@ -248,7 +242,6 @@ export function DevicesTab(): React.ReactElement {
   const selectedAddr = addresses.find((a) => a.host === addrHost) ?? addresses[0] ?? null;
   const gatewayUrl =
     selectedAddr?.gateway_url ?? config?.gateway_url ?? 'ws://<this-machine>:25314/ws/node';
-  const hasTailscale = addresses.some((a) => a.label.startsWith('Tailscale'));
 
   // The exact command to run on the joining device.
   const hostCommand = `suzent node host --name "My Device" --url ${gatewayUrl}`;

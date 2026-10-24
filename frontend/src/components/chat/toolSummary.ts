@@ -464,6 +464,11 @@ const BUILDERS: Record<string, Builder> = {
     detail: str(args.image_path) ? basename(str(args.image_path)!) : null,
   }),
 
+  analyze_visual: (args, t) => ({
+    verb: verb(t, 'lookAtVisual'),
+    detail: str(args.visual_path) ? basename(str(args.visual_path)!) : null,
+  }),
+
   speak: (args, t) => ({
     verb: verb(t, 'say'),
     detail: str(args.text) ? quoted(str(args.text)!) : str(args.prompt),

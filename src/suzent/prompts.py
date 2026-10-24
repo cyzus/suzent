@@ -278,7 +278,7 @@ Review them and merge what you want, then remove the worktree \
 # with the display logic in chat_processor.
 STRIPPED_IMAGE_REMINDER_TEMPLATE = """\
 The user attached {count} image(s) at: {paths}. The active model cannot view \
-images directly. Use the analyze_image tool on these path(s) to inspect them \
+images directly. Use the analyze_visual tool on these path(s) to inspect them \
 when relevant."""
 
 # Hidden (model-only) directive injected as a <system-reminder> when files are

@@ -1478,7 +1478,9 @@ export async function markChatRead(chatId: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-  } catch {}
+  } catch {
+    // Read status is best effort.
+  }
 }
 
 export interface FileChangeSummaryItem {

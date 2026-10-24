@@ -396,7 +396,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           // Check if inline code contains a file path pattern
           if (isInline && handleFileClick) {
             // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
-            const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^\)]+)\)$/);
+            const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^)]+)\)$/);
             if (fileLinkMatch) {
               const [, displayName, path] = fileLinkMatch;
               return (

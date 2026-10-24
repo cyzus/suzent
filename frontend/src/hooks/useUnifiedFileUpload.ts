@@ -257,7 +257,7 @@ export function useUnifiedFileUpload() {
                 const response = JSON.parse(xhr.responseText);
                 setUploadProgress(100);
                 resolve(response.files);
-              } catch (err) {
+              } catch {
                 reject(new Error('Failed to parse upload response'));
               }
             } else {
