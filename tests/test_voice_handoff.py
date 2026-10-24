@@ -437,3 +437,89 @@ async def test_in_stream_acp_permission_clears_when_execution_resumes():
     assert "approval" in h.spoken[0]
     assert "acp finished after approval" in h.spoken[1]
     assert any("Approval resolved" in c for c in h.context)
+
+
+async def test_fast_resumed_stream_completed_before_watcher_wakes_is_observed():
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        unregister_background_stream,
+    )
+
+    spoken: list[str] = []
+
+    async def noop_context(_t: str) -> None:
+        pass
+
+    async def first_turn(_msg: str, _rem: list[str], on_chunk) -> None:
+        await on_chunk(sse('{"type":"CUSTOM","name":"tool_approval_request"}'))
+
+    router = HandoffRouter(
+        "fast-approval-chat",
+        send_context=noop_context,
+        enqueue_spoken=spoken.append,
+        start_turn=first_turn,
+        progress_interval=0,
+        transcript_grace=0.01,
+    )
+    router.start_watching()
+    await asyncio.sleep(0)
+    try:
+        assert (await router.delegate("run bash")).startswith("started")
+        await _settle(router)
+        assert len(spoken) == 1 and "approval" in spoken[0]
+
+        # Register, emit answer, and finish synchronously before yielding to the watcher.
+        queue = register_background_stream("fast-approval-chat")
+        queue.put_nowait(
+            sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"instant resumed answer"}')
+        )
+        unregister_background_stream("fast-approval-chat", queue)
+
+        await asyncio.sleep(0.02)
+        await _settle(router)
+        assert len(spoken) == 2 and "instant resumed answer" in spoken[1]
+    finally:
+        router.close()
+
+
+async def test_snapshot_replay_suppresses_already_resolved_acp_permission_prompt():
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        unregister_background_stream,
+    )
+
+    spoken: list[str] = []
+
+    async def noop_context(_t: str) -> None:
+        pass
+
+    queue = register_background_stream("acp-replay-chat")
+    try:
+        queue.put_nowait(
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1"}}'
+            )
+        )
+        queue.put_nowait(
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1","resolved":"approved"}}'
+            )
+        )
+        router = HandoffRouter(
+            "acp-replay-chat",
+            send_context=noop_context,
+            enqueue_spoken=spoken.append,
+            progress_interval=0,
+        )
+        router.attach_if_busy()
+        await asyncio.sleep(0.02)
+        assert spoken == []
+
+        queue.put_nowait(
+            sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"final acp answer"}')
+        )
+        unregister_background_stream("acp-replay-chat", queue)
+        await _settle(router)
+        assert len(spoken) == 1 and "final acp answer" in spoken[0]
+    finally:
+        unregister_background_stream("acp-replay-chat", queue)

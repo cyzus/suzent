@@ -93,6 +93,7 @@ class TurnOutcome:
     failure: str | None = None
     approval_pending: bool = False
     approval_notified: bool = False
+    deferred_acp_prompt: bool = False
     tools: list[str] = field(default_factory=list)
 
 
@@ -152,6 +153,8 @@ class HandoffRouter:
         self._observer_task: asyncio.Task[Any] | None = None
         self._watch_task: asyncio.Task[Any] | None = None
         self._awaiting_approval = False
+        self._replaying_snapshot = False
+        self._active_outcome: TurnOutcome | None = None
         self._closed = False
         # The request the last delegation in this call handled. The front desk
         # may call `delegate` several times for one sentence; only the first
@@ -175,9 +178,15 @@ class HandoffRouter:
             self._observer_task is not None and not self._observer_task.done()
         )
 
-    def attach_if_busy(self, *, notify_start: bool = False) -> None:
+    def attach_if_busy(
+        self, *, notify_start: bool = False, allow_completed: bool = False
+    ) -> None:
         """Observe an externally owned turn so completion is reported to this call."""
-        if self._closed or self.working or not self._is_busy():
+        if (
+            self._closed
+            or self.working
+            or (not allow_completed and not self._is_busy())
+        ):
             return
         self._observer_task = asyncio.create_task(
             self._run_observed(notify_start=notify_start)
@@ -211,7 +220,7 @@ class HandoffRouter:
                         self._queue_progress(
                             "[BACKEND] Approval resolved; Suzent resumed working."
                         )
-                    self.attach_if_busy(notify_start=True)
+                    self.attach_if_busy(notify_start=True, allow_completed=True)
         except asyncio.CancelledError:
             raise
         finally:
@@ -341,6 +350,7 @@ class HandoffRouter:
 
     async def _run_observed(self, *, notify_start: bool = False) -> None:
         outcome = TurnOutcome()
+        self._active_outcome = outcome
         if notify_start:
             await self._notify_working(True)
         try:
@@ -355,10 +365,22 @@ class HandoffRouter:
             logger.warning("Voice observed turn failed: {}", exc)
             outcome.failure = str(exc) or type(exc).__name__
         finally:
+            self._active_outcome = None
             if not self._closed:
                 await self._flush_progress()
                 await self._notify_working(False)
                 self._report(outcome)
+
+    def _emit_acp_approval_prompt(self, outcome: TurnOutcome) -> None:
+        outcome.approval_notified = True
+        self._queue_progress("[BACKEND] Suzent is waiting for the user's approval.")
+        try:
+            self._enqueue_spoken(
+                "<system>Suzent paused: an action needs the user's approval "
+                "in the Suzent window. Tell the user briefly.</system>"
+            )
+        except Exception as exc:
+            logger.debug("Voice approval prompt could not be queued: {}", exc)
 
     def _observe(self, chunk: str, outcome: TurnOutcome) -> None:
         event = _decode_sse(chunk)
@@ -367,25 +389,30 @@ class HandoffRouter:
             outcome.text += str(event.get("delta") or "")
             if outcome.approval_pending or self._awaiting_approval:
                 outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
                 self._awaiting_approval = False
-                self._queue_progress(
-                    "[BACKEND] Approval resolved; Suzent resumed working."
-                )
+                if not self._replaying_snapshot:
+                    self._queue_progress(
+                        "[BACKEND] Approval resolved; Suzent resumed working."
+                    )
         elif kind == "TEXT_MESSAGE_START":
             # Only the last message is the answer; earlier ones were narration
             # between tool calls.
             outcome.text = ""
             if outcome.approval_pending or self._awaiting_approval:
                 outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
                 self._awaiting_approval = False
         elif kind == "TOOL_CALL_START":
             if outcome.approval_pending or self._awaiting_approval:
                 outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
                 self._awaiting_approval = False
             name = str(event.get("toolCallName") or event.get("tool_call_name") or "")
             if name:
                 outcome.tools.append(name)
-                self._queue_progress(f"[BACKEND] Suzent is running {name}.")
+                if not self._replaying_snapshot:
+                    self._queue_progress(f"[BACKEND] Suzent is running {name}.")
         elif kind == "RUN_ERROR":
             outcome.failure = str(event.get("message") or "the task failed")
         elif kind in ("CUSTOM", "CUSTOM_EVENT"):
@@ -394,33 +421,27 @@ class HandoffRouter:
             if name == "tool_approval_request":
                 outcome.approval_pending = True
                 self._awaiting_approval = True
-                self._queue_progress(
-                    "[BACKEND] Suzent is waiting for the user's approval."
-                )
+                if not self._replaying_snapshot:
+                    self._queue_progress(
+                        "[BACKEND] Suzent is waiting for the user's approval."
+                    )
             elif name == "acp.permission_request":
                 if isinstance(value, dict) and value.get("resolved"):
                     if outcome.approval_pending or self._awaiting_approval:
                         outcome.approval_pending = False
+                        outcome.deferred_acp_prompt = False
                         self._awaiting_approval = False
-                        self._queue_progress(
-                            "[BACKEND] Approval resolved; Suzent resumed working."
-                        )
+                        if not self._replaying_snapshot:
+                            self._queue_progress(
+                                "[BACKEND] Approval resolved; Suzent resumed working."
+                            )
                 else:
                     outcome.approval_pending = True
-                    outcome.approval_notified = True
                     self._awaiting_approval = True
-                    self._queue_progress(
-                        "[BACKEND] Suzent is waiting for the user's approval."
-                    )
-                    try:
-                        self._enqueue_spoken(
-                            "<system>Suzent paused: an action needs the user's approval "
-                            "in the Suzent window. Tell the user briefly.</system>"
-                        )
-                    except Exception as exc:
-                        logger.debug(
-                            "Voice approval prompt could not be queued: {}", exc
-                        )
+                    if self._replaying_snapshot:
+                        outcome.deferred_acp_prompt = True
+                    else:
+                        self._emit_acp_approval_prompt(outcome)
             elif name in (
                 "tool_permission_resolution",
                 "tool_approval_result",
@@ -429,10 +450,12 @@ class HandoffRouter:
             ):
                 if outcome.approval_pending or self._awaiting_approval:
                     outcome.approval_pending = False
+                    outcome.deferred_acp_prompt = False
                     self._awaiting_approval = False
-                    self._queue_progress(
-                        "[BACKEND] Approval resolved; Suzent resumed working."
-                    )
+                    if not self._replaying_snapshot:
+                        self._queue_progress(
+                            "[BACKEND] Approval resolved; Suzent resumed working."
+                        )
 
     def _report(self, outcome: TurnOutcome) -> None:
         if self._closed:
@@ -593,8 +616,20 @@ class HandoffRouter:
         snapshot = list(queue.replay._snapshot_events()) if queue is not None else []
         sub = register_bus_subscriber()
         try:
-            for event in snapshot:
-                await on_chunk(f"data: {json.dumps(event)}\n\n")
+            self._replaying_snapshot = True
+            try:
+                for event in snapshot:
+                    await on_chunk(f"data: {json.dumps(event)}\n\n")
+            finally:
+                self._replaying_snapshot = False
+            outcome = self._active_outcome
+            if (
+                outcome is not None
+                and outcome.deferred_acp_prompt
+                and outcome.approval_pending
+            ):
+                outcome.deferred_acp_prompt = False
+                self._emit_acp_approval_prompt(outcome)
             while True:
                 if not sub.empty():
                     item = sub.get_nowait()
