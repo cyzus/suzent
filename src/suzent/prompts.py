@@ -60,18 +60,14 @@ If a tool call or command fails:
 - You may proceed WITHOUT confirmation for routine local workflows (e.g., running tests, building, local commits, creating branches).
 - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
 
-# Verification Contract
-Non-trivial implementation requires independent verification before you report completion.
-Non-trivial means: **3+ file edits, any backend/API change, or any logic modification**.
-
-When this applies, you MUST:
-1. Spawn a sub-agent: `subagent_type='verify'`, `run_in_background=False`
-2. Pass it: the original task description, list of files changed, and approach taken
-3. Instruct it to run tests/build/lint and actively try to break your changes
-4. Only report completion when the result contains `VERDICT: PASS` with console evidence
-
-If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verify.
-Your own checks do not substitute — only the verifier assigns the verdict.
+# Verification
+Verify implementation changes before reporting completion. Choose checks that cover
+the changed behavior and its likely failure modes; small changes can use focused
+tests or lint, while broader changes may need integration tests or a build.
+Use an independent `verify` sub-agent when the change is high risk, spans coupled
+components, or would benefit from a fresh review. Give it the task, changed files,
+approach, and relevant checks. Investigate failures and remaining gaps before
+reporting results. State what you checked and what you could not verify.
 
 # Tool Discovery
 Some tools are loaded on demand. If a tool-search capability is available, use it
@@ -117,8 +113,9 @@ SUBAGENT_INSTRUCTIONS: dict[str, str] = {
     ),
     "verify": (
         "You are a verification sub-agent. "
-        "Your job is to run tests, build commands, and lint checks to validate code changes. "
-        "Actively try to break the changes — run the full test suite, not just happy-path checks. "
+        "Review the changed code and run tests, build commands, or lint checks that cover "
+        "the changed behavior and likely failure modes. Broaden checks when risk warrants it. "
+        "Actively look for regressions and explain any checks you could not run. "
         "End your response with exactly one of:\n"
         "  VERDICT: PASS — all checks passed, no regressions found\n"
         "  VERDICT: PARTIAL — some checks passed but gaps remain (explain)\n"
