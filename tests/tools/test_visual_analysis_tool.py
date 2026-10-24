@@ -3,7 +3,78 @@ from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from suzent.tools.base import ToolErrorCode
-from suzent.tools.creative.image_vision_tool import ImageVisionTool
+from suzent.tools.creative.visual_analysis_tool import VisualAnalysisTool
+
+
+@pytest.mark.asyncio
+async def test_video_without_native_support_is_rejected(
+    tmp_path: Path, mock_ctx
+) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    resolver = MagicMock()
+    resolver.resolve.return_value = video
+    router = MagicMock()
+    router.get_model_id.return_value = "openai/gpt-4.1"
+    with (
+        patch(
+            "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
+            return_value=resolver,
+        ),
+        patch("suzent.core.role_router.get_role_router", return_value=router),
+        patch(
+            "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
+            new_callable=AsyncMock,
+        ) as completion,
+    ):
+        result = await VisualAnalysisTool().forward(mock_ctx, str(video), "Summarize")
+    assert not result.success
+    assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
+    assert "native video" in result.message
+    completion.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "expected_type"),
+    [
+        ("gemini/gemini-2.5-flash", "image_url"),
+        ("dashscope/qwen3-vl-plus", "video_url"),
+        ("openrouter/google/gemini-3.8-flash", "video_url"),
+    ],
+)
+async def test_video_uses_native_provider_format(
+    tmp_path: Path, mock_ctx, model: str, expected_type: str
+) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video with audio")
+    resolver = MagicMock()
+    resolver.resolve.return_value = video
+    router = MagicMock()
+    router.get_model_id.return_value = model
+    response = MagicMock()
+    response.choices[0].message.content = "A person speaks."
+    with (
+        patch(
+            "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
+            return_value=resolver,
+        ),
+        patch("suzent.core.role_router.get_role_router", return_value=router),
+        patch(
+            "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=response,
+        ) as completion,
+    ):
+        result = await VisualAnalysisTool().forward(
+            mock_ctx, str(video), "What happens?"
+        )
+    assert result.success
+    assert result.metadata["analysis_mode"] == "native_video"
+    parts = completion.await_args.kwargs["messages"][0]["content"]
+    assert parts[0]["type"] == expected_type
+    assert parts[0][expected_type]["url"].startswith("data:video/mp4;base64,")
+    assert parts[1] == {"type": "text", "text": "What happens?"}
 
 
 @pytest.fixture
@@ -31,10 +102,10 @@ async def test_image_vision_file_not_found(mock_ctx):
     mock_resolver.resolve.return_value = mock_path
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
-        tool = ImageVisionTool()
+        tool = VisualAnalysisTool()
         result = await tool.forward(mock_ctx, "does_not_exist.jpg", "What is this?")
         assert not result.success
         assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
@@ -42,7 +113,7 @@ async def test_image_vision_file_not_found(mock_ctx):
 
 @pytest.mark.asyncio
 @patch(
-    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
     new_callable=AsyncMock,
 )
 @patch("builtins.open", new_callable=MagicMock)
@@ -54,6 +125,7 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
     mock_path.exists.return_value = True
     mock_path.is_file.return_value = True
     mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".jpg"
     mock_path.suffix = ".png"
     mock_path.name = "test.png"
 
@@ -75,16 +147,16 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
     mock_router.get_model_id.return_value = "openai/gpt-4.1"
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
-            tool = ImageVisionTool()
+            tool = VisualAnalysisTool()
             result = await tool.forward(mock_ctx, "test.png", "Describe")
 
             assert result.success
             assert "cyber tentacle" in result.message
-            assert result.metadata["image_path"] == str(mock_path)
+            assert result.metadata["visual_path"] == str(mock_path)
 
 
 @pytest.mark.asyncio
@@ -96,6 +168,7 @@ async def test_image_vision_no_model(mock_ctx):
     mock_path.exists.return_value = True
     mock_path.is_file.return_value = True
     mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".jpg"
 
     mock_resolver = MagicMock()
     mock_resolver.resolve.return_value = mock_path
@@ -105,7 +178,7 @@ async def test_image_vision_no_model(mock_ctx):
     mock_router.get_model_id.return_value = None
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
@@ -114,7 +187,7 @@ async def test_image_vision_no_model(mock_ctx):
                 mock_file.read.return_value = b"fake_image_data"
                 mock_open.return_value.__enter__.return_value = mock_file
 
-                tool = ImageVisionTool()
+                tool = VisualAnalysisTool()
                 result = await tool.forward(mock_ctx, "huge.jpg", "Describe")
 
                 assert not result.success
@@ -131,15 +204,16 @@ async def test_image_vision_too_large(mock_ctx):
     mock_path.exists.return_value = True
     mock_path.is_file.return_value = True
     mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".jpg"
 
     mock_resolver = MagicMock()
     mock_resolver.resolve.return_value = mock_path
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
-        tool = ImageVisionTool()
+        tool = VisualAnalysisTool()
         result = await tool.forward(mock_ctx, "huge.jpg", "Describe")
 
         assert not result.success
@@ -155,6 +229,7 @@ def _staged_image(mock_open):
     mock_path.exists.return_value = True
     mock_path.is_file.return_value = True
     mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".jpg"
     mock_path.suffix = ".png"
     mock_path.name = "test.png"
 
@@ -169,7 +244,7 @@ def _staged_image(mock_open):
 
 @pytest.mark.asyncio
 @patch(
-    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
     new_callable=AsyncMock,
 )
 @patch("builtins.open", new_callable=MagicMock)
@@ -191,12 +266,12 @@ async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
     mock_router.get_model_id.return_value = "sglang/qwen3-vl"
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
             with patch(
-                "suzent.tools.creative.image_vision_tool.chat_completion_args",
+                "suzent.tools.creative.visual_analysis_tool.chat_completion_args",
                 return_value=(
                     "openai/qwen3-vl",
                     {
@@ -207,7 +282,9 @@ async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
                     },
                 ),
             ):
-                result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+                result = await VisualAnalysisTool().forward(
+                    mock_ctx, "test.png", "What?"
+                )
 
     assert result.success
     sent = mock_acompletion.call_args.kwargs
@@ -218,7 +295,7 @@ async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
 
 @pytest.mark.asyncio
 @patch(
-    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
     new_callable=AsyncMock,
 )
 @patch("builtins.open", new_callable=MagicMock)
@@ -239,11 +316,11 @@ async def test_an_empty_completion_is_an_error_not_an_empty_description(
     mock_router.get_model_id.return_value = "sglang/qwen3-vl"
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
-            result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+            result = await VisualAnalysisTool().forward(mock_ctx, "test.png", "What?")
 
     assert not result.success
     assert result.error_code == ToolErrorCode.EXECUTION_FAILED
@@ -264,7 +341,7 @@ def test_a_keyless_local_server_still_gets_a_credential():
 
 @pytest.mark.asyncio
 @patch(
-    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    "suzent.tools.creative.visual_analysis_tool.litellm.acompletion",
     new_callable=AsyncMock,
 )
 @patch("builtins.open", new_callable=MagicMock)
@@ -292,14 +369,16 @@ async def test_an_empty_completion_is_still_billed(
     tracker.log_cost = AsyncMock()
 
     with patch(
-        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.visual_analysis_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
             with patch(
                 "suzent.core.cost_tracker.get_cost_tracker", return_value=tracker
             ):
-                result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+                result = await VisualAnalysisTool().forward(
+                    mock_ctx, "test.png", "What?"
+                )
 
     assert not result.success
     tracker.log_cost.assert_awaited_once()

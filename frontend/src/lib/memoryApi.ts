@@ -5,7 +5,6 @@
 import type {
   CoreMemoryBlocks,
   CoreMemoryLabel,
-  ArchivalMemory,
   MemoryStats,
   MemorySearchResponse,
   ArchivalQueryOptions,

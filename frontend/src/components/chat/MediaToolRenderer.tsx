@@ -7,11 +7,16 @@ import { ImageViewer } from '../ImageViewer';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import type { ToolRendererProps } from './ToolCallBlock';
 
-export function getImageToolPaths({ toolName, parsedArgs, metadata }: ToolRendererProps): string[] {
+export function getMediaToolPaths({ toolName, parsedArgs, metadata }: ToolRendererProps): string[] {
   const paths =
     toolName === 'generate_image' || toolName === 'edit_image'
       ? metadata?.saved_paths
-      : [metadata?.image_path ?? parsedArgs?.image_path];
+      : [
+          metadata?.visual_path ??
+            metadata?.image_path ??
+            parsedArgs?.visual_path ??
+            parsedArgs?.image_path,
+        ];
   return Array.isArray(paths)
     ? [
         ...new Set(
@@ -51,15 +56,27 @@ const ImagePreview: React.FC<{ src: string; path: string; onOpen: (src: string) 
   );
 };
 
-export const ImageToolRenderer: React.FC<ToolRendererProps> = (props) => {
+export const MediaToolRenderer: React.FC<ToolRendererProps> = (props) => {
   const { currentChatId, config } = useChatStore();
-  const paths = getImageToolPaths(props);
+  const paths = getMediaToolPaths(props);
   const imageUrls = paths.map(
     (path) =>
       `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId || '', path, config.sandbox_volumes)}`
   );
   const gallery = useChatImages(imageUrls);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  if (
+    props.toolName === 'analyze_visual' &&
+    paths[0] &&
+    /\.(mp4|mov|webm|avi|mkv)$/i.test(paths[0])
+  ) {
+    return (
+      <div className="space-y-3 min-w-0">
+        {currentChatId && <video controls className="max-w-full max-h-80" src={imageUrls[0]} />}
+        {props.output && <MarkdownRenderer content={props.output} />}
+      </div>
+    );
+  }
   return (
     <div ref={gallery.ref} className="space-y-3 min-w-0">
       {currentChatId && paths.length > 0 && (

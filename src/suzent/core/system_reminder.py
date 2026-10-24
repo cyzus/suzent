@@ -1240,7 +1240,7 @@ async def build_combined_reminder(
                     )
 
     # Caller-supplied directives go first, so they survive truncation. They are
-    # specific to this turn — a peer's attribution, the analyze_image directive
+    # specific to this turn — a peer's attribution, the analyze_visual directive
     # for a non-vision model — while hook output is ambient and reproducible on
     # the next turn. Appending them last meant ambient content could crowd out
     # the one instruction the turn actually depended on.
