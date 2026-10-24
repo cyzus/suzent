@@ -10,6 +10,15 @@ interface UseAutoScrollOptions {
   smooth?: boolean;
 }
 
+// The stale scroll layer after a resize is a WebKit compositor bug, not a Tauri
+// one: Safari and WebKitGTK are affected too. Chromium-based UAs also say
+// "AppleWebKit", so they have to be excluded explicitly.
+function isWebKitEngine(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent ?? '';
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\/|OPR\//.test(ua);
+}
+
 export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOptions = {}) {
   const { tolerance = 50, resetKey, smooth = true } = options;
 
@@ -303,29 +312,69 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     let settleFrame = 0;
     let repaintFrame = 0;
     let repaintTimer: ReturnType<typeof setTimeout> | undefined;
+    // Undoes a repaint nudge that is mid-flight (scrollTop off by a pixel, or a
+    // temporary compositing layer). It must run if the nudge is interrupted,
+    // or the transcript would be left offset and autoscroll left suppressed.
+    let finishRepaint: (() => void) | null = null;
     let lastWidth = el.clientWidth;
     let lastScrollHeight = el.scrollHeight;
 
-    // When the transcript gets shorter (a wider column after a sidebar toggle,
-    // a collapsed tool block), layout clamps scrollTop but WKWebView's
-    // scrolling layer keeps the old offset and shows blank space past the end
-    // until the next scroll. A one-pixel round trip over two frames is a real
-    // scroll, so it resyncs the layer.
-    const repaintByScrolling = () => {
-      if (el.scrollHeight <= el.clientHeight) return;
-      const top = el.scrollTop;
-      autoScrollInProgress.current = true;
-      el.scrollTop = top > 0 ? top - 1 : top + 1;
+    const cancelPendingRepaint = () => {
+      clearTimeout(repaintTimer);
+      cancelAnimationFrame(repaintFrame);
+      const finish = finishRepaint;
+      finishRepaint = null;
+      finish?.();
+    };
+
+    // When the transcript gets shorter or wider (a sidebar toggle, a collapsed
+    // tool block), layout clamps scrollTop but WKWebView's scrolling layer
+    // keeps the old offset and shows blank space until the next scroll.
+    // Scrollable: a one-pixel round trip over two frames is a real scroll, so
+    // it resyncs the layer. Not scrollable (a short chat that now fits): there
+    // is nothing to scroll, so a throwaway compositing layer forces the repaint.
+    const forceRepaint = () => {
+      if (el.scrollHeight > el.clientHeight) {
+        const top = el.scrollTop;
+        autoScrollInProgress.current = true;
+        el.scrollTop = top > 0 ? top - 1 : top + 1;
+        finishRepaint = () => {
+          el.scrollTop = top;
+          if (autoScrollEnabledRef.current) {
+            performAutoScroll('auto');
+          } else {
+            autoScrollInProgress.current = false;
+          }
+        };
+      } else {
+        const previous = el.style.transform;
+        el.style.transform = 'translateZ(0)';
+        finishRepaint = () => {
+          el.style.transform = previous;
+        };
+      }
       repaintFrame = requestAnimationFrame(() => {
-        el.scrollTop = top;
-        if (autoScrollEnabledRef.current) {
-          performAutoScroll('auto');
-        } else {
-          autoScrollInProgress.current = false;
-        }
+        const finish = finishRepaint;
+        finishRepaint = null;
+        finish?.();
       });
     };
-    const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null;
+
+    // Repaint on the first frames after the layout change, not after a fixed
+    // delay: docked sidebars resize instantly, so waiting only prolongs the
+    // blank. The trailing pass catches anything that settles later (descendants
+    // that reflow after the notification, drags, window resizes).
+    const scheduleRepaint = (trailingDelayMs: number) => {
+      cancelPendingRepaint();
+      repaintFrame = requestAnimationFrame(() => {
+        repaintFrame = requestAnimationFrame(forceRepaint);
+      });
+      repaintTimer = setTimeout(() => {
+        cancelPendingRepaint();
+        forceRepaint();
+      }, trailingDelayMs);
+    };
+    const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null || isWebKitEngine();
 
     const resizeObserver = new ResizeObserver(() => {
       if (needsResizeRepaint) {
@@ -334,10 +383,7 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
         lastWidth = el.clientWidth;
         lastScrollHeight = el.scrollHeight;
         if (widthChanged || shrank) {
-          clearTimeout(repaintTimer);
-          cancelAnimationFrame(repaintFrame);
-          // Outlast the sidebar's 300ms slide so the repaint follows the final layout.
-          repaintTimer = setTimeout(repaintByScrolling, widthChanged ? 350 : 100);
+          scheduleRepaint(widthChanged ? 350 : 100);
         }
       }
       cancelAnimationFrame(settleFrame);
@@ -364,8 +410,7 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
 
     return () => {
       cancelAnimationFrame(settleFrame);
-      cancelAnimationFrame(repaintFrame);
-      clearTimeout(repaintTimer);
+      cancelPendingRepaint();
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };

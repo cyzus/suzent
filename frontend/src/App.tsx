@@ -44,6 +44,7 @@ import {
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
 import {
   notifyDesktop,
+  bindReplyRun,
   recordReplyChunk,
   takeReplyOutcome,
   type ReplyOutcome,
@@ -466,12 +467,17 @@ function AppInner(): React.ReactElement {
           void refreshChatListSilentRef.current();
           return;
         }
+        const runId = typeof msg.run_id === 'string' ? msg.run_id : undefined;
+        if (msg.event === 'stream_started') {
+          bindReplyRun(msg.chat_id, runId);
+          return;
+        }
         if (msg.event === 'chunk' && typeof msg.data === 'string') {
-          recordReplyChunk(msg.chat_id, msg.data);
+          recordReplyChunk(msg.chat_id, msg.data, runId);
           return;
         }
         if (msg.event !== 'stream_ended') return;
-        const reply = takeReplyOutcome(msg.chat_id);
+        const reply = takeReplyOutcome(msg.chat_id, runId);
         if (!reply || reply.outcome === 'stopped') return;
         const { outcome, preview } = reply;
         const preferences = readNotificationPreferences();

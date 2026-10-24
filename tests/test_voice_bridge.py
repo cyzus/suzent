@@ -2,9 +2,12 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from unittest.mock import Mock
 
+from pydantic_ai import Agent
 from pydantic_ai.messages import PartEndEvent, SpeechPart
 from pydantic_ai.realtime import (
+    RealtimeModel,
     RealtimeInputSpeechStartEvent,
     RealtimeResponseInterruptedEvent,
     RealtimeSessionErrorEvent,
@@ -132,6 +135,23 @@ async def run_for(bridge, ws, seconds=0.4):
     await asyncio.sleep(seconds)
     ws.stop()
     await asyncio.wait_for(task, 2)
+
+
+def test_real_session_factory_uses_supported_session_api(monkeypatch):
+    from suzent.voice import realtime
+
+    model = Mock(spec=RealtimeModel)
+    model.settings = {}
+    monkeypatch.setattr(
+        realtime, "resolve_realtime_model", lambda _settings: ("test", model)
+    )
+    monkeypatch.setattr(realtime, "build_front_desk_agent", lambda _router: Agent())
+    bridge = make_bridge(FakeWebSocket(), FakeSession())
+
+    context = bridge._real_session_factory()()
+
+    assert hasattr(context, "__aenter__")
+    assert hasattr(context, "__aexit__")
 
 
 async def test_live_and_final_transcripts_share_one_line_and_are_cleaned():
@@ -458,7 +478,7 @@ def test_realtime_session_still_tracks_the_part_indices_the_cut_relies_on():
     from pydantic_ai.realtime._session import RealtimeSession
 
     source = inspect.getsource(RealtimeSession)
-    assert "self._audio_part_index" in source
+    assert "self._active_assistant_index = 0" in source
     assert "self._active_assistant_index = self._take_part_index()" in source
 
 

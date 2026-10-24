@@ -252,6 +252,16 @@ it('limits scrolling to the inner rail', () => {
   expect(markup).toContain('tool content');
 });
 
+// The capped rail sits on top of the transcript. Containing its overscroll
+// stops the wheel dead once the rail reaches its own top or bottom, so the chat
+// behind it cannot be scrolled while the pointer is over an expanded rail.
+it('lets scrolling chain to the chat once the rail reaches its edge', () => {
+  const markup = renderRail({ defaultExpanded: true, children: <div>tool content</div> });
+  expect(markup).toContain('activity-rail-scroll');
+  expect(markup).not.toContain('overscroll-contain');
+  expect(markup).not.toContain('overscroll-none');
+});
+
 it('keeps a tool-only rail summary collapsed inside the expanded turn', () => {
   const markup = renderToStaticMarkup(
     <TurnActivity finalStart={1} isStreaming>
