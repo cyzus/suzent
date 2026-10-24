@@ -1873,6 +1873,7 @@ export const en = {
     },
   },
   chatMessage: {
+    quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
     today: 'Today',
     yesterday: 'Yesterday',

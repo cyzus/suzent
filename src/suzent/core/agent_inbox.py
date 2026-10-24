@@ -191,7 +191,7 @@ class AgentInboxDispatcher:
                 _route_reply(message, reply)
                 from suzent.core.focal_agent import announce_focal_reply
 
-                announce_focal_reply(str(message["target_chat_id"]), reply.text)
+                announce_focal_reply(message, reply.text)
             return
         if transport == "suzent_peer":
             from suzent.nodes.agent_transport import get_peer_agent_transport
