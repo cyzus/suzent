@@ -21,6 +21,8 @@ class OpenAICompatProvider(BaseProvider):
     def __init__(self, provider_id: str, config: dict, base_url: str):
         super().__init__(provider_id, config)
         self.base_url = base_url.rstrip("/")
+        self.used_catalog_fallback = False
+        self.discovery_error: str | None = None
 
     def _catalog_defaults(self) -> List[Model]:
         """Return default models from the catalog for this provider."""
@@ -41,6 +43,8 @@ class OpenAICompatProvider(BaseProvider):
         return bool(spec and spec.api_key_optional)
 
     async def list_models(self) -> List[Model]:
+        self.used_catalog_fallback = False
+        self.discovery_error = None
         api_key = resolve_api_key(self.provider_id, self.config)
         if not api_key and not self._api_key_is_optional():
             return []
@@ -67,16 +71,28 @@ class OpenAICompatProvider(BaseProvider):
                             result.append(Model(id=prefixed, name=raw_id))
                         if result:
                             return result
+                        self.discovery_error = (
+                            "The models endpoint returned an empty list"
+                        )
+                    else:
+                        self.discovery_error = (
+                            f"The models endpoint returned HTTP {resp.status}"
+                        )
 
                     logger.debug(
                         f"{self.provider_id} /models returned {resp.status}, "
                         f"falling back to catalog defaults"
                     )
-            except Exception as e:
+            except Exception as exc:
+                error_type = type(exc).__name__
+                self.discovery_error = f"The models request failed ({error_type})"
                 logger.debug(
-                    f"{self.provider_id} model discovery failed ({e}), using catalog defaults"
+                    "{} model discovery failed ({}), using catalog defaults",
+                    self.provider_id,
+                    error_type,
                 )
 
+        self.used_catalog_fallback = True
         return self._catalog_defaults()
 
     async def validate_credentials(self) -> bool:
