@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
 - Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
+- Resume voice-delegated turns after tool approval and route approval clicks to the active chat.
 
 ## [v0.17.0] - 2026-10-18
 
