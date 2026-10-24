@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
 - Show shell output while commands run and let the agent continue when a command outlives the initial wait.
 - Opening a chat from the task board or a link now opens its project in the sidebar and highlights its row; chats opened from Regent's board get a back-to-Regent tag in the header.
+- Keep sidebar previews on the latest readable message instead of showing raw tool output.
 - List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
 - Clear Regent's unread count while it is open, and show only read state in the sidebar instead of waiting-on-you counts.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.

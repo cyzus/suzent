@@ -109,6 +109,7 @@
     ".releases/changes/shell-command-yield.json",
     ".releases/changes/shell-noninteractive-stdin.json",
     ".releases/changes/sidebar-follow-chat.json",
+    ".releases/changes/sidebar-message-preview.json",
     ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",
     ".releases/changes/sidebar-unread-only.json",
