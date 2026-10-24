@@ -26,8 +26,13 @@ logger = get_logger(__name__)
 
 _SURFACE_ADAPTER = TypeAdapter(A2UISurface)
 
-# How many validation problems are spelled out in the message the model reads.
+# How many validation problems are spelled out in the message the model reads,
+# how many are kept in metadata, and the longest message kept for each. Pydantic
+# echoes an unknown discriminator value into its message, so an oversized value
+# must not turn into an oversized result.
 _MAX_REPORTED_ERRORS = 8
+_MAX_STORED_ERRORS = 20
+_MAX_ERROR_MESSAGE_CHARS = 300
 
 _STRING_SCHEMA = {"type": "string"}
 
@@ -44,6 +49,18 @@ def _as_text(value: Any) -> str:
     return value if isinstance(value, str) else str(value)
 
 
+def _clean_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bounded, input-free copies of pydantic errors for the result metadata."""
+    return [
+        {
+            "type": err.get("type"),
+            "loc": list(err.get("loc", ())),
+            "msg": str(err.get("msg", ""))[:_MAX_ERROR_MESSAGE_CHARS],
+        }
+        for err in errors[:_MAX_STORED_ERRORS]
+    ]
+
+
 def _format_errors(errors: list[dict[str, Any]]) -> str:
     """One readable line per validation problem, with the path to the bad field.
 
@@ -53,7 +70,8 @@ def _format_errors(errors: list[dict[str, Any]]) -> str:
     lines = []
     for err in errors[:_MAX_REPORTED_ERRORS]:
         path = ".".join(str(part) for part in err.get("loc", ())) or "(root)"
-        line = f"- {path}: {err.get('msg', 'invalid value')}"
+        msg = str(err.get("msg", "invalid value"))[:_MAX_ERROR_MESSAGE_CHARS]
+        line = f"- {path}: {msg}"
         if err.get("type") in ("model_type", "model_attributes_type", "dict_type"):
             line += (
                 " (expected a JSON object with a 'type', not a string, number or index)"
@@ -209,7 +227,7 @@ class RenderUITool(Tool):
                 ToolErrorCode.INVALID_ARGUMENT,
                 "Invalid A2UI surface. Fix these and call render_ui again:\n"
                 + _format_errors(errors),
-                metadata={"errors": errors},
+                metadata={"errors": _clean_errors(errors), "error_count": len(errors)},
             )
 
         payload = surface.model_dump(exclude_none=True)

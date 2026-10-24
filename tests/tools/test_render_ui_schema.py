@@ -528,6 +528,110 @@ async def test_every_simulated_provider_ends_with_a_rendered_surface(scenario):
         assert "component" in seen_errors[0]
 
 
+# ── Hardening ─────────────────────────────────────────────────────────────
+
+
+def test_schema_property_types_match_the_models():
+    props = component_tool_schema()["properties"]
+
+    assert props["value"]["type"] == "number"
+    assert props["height"]["type"] == "integer"
+    assert props["ratios"]["items"]["type"] == "number"
+    assert props["rows"]["items"]["type"] == "object"
+    assert props["context"]["type"] == "object"
+    assert props["items"]["items"]["type"] == "string"
+    for name in ("markdown", "disabled", "paged", "ordered"):
+        assert props[name]["type"] == "boolean", name
+    for name in ("content", "label", "action", "title", "html", "submit_label"):
+        assert props[name]["type"] == "string", name
+
+
+def test_schema_declares_no_defs_anywhere_inside_component():
+    component = component_tool_schema()
+
+    assert not any(
+        isinstance(n, dict) and ("$defs" in n or "definitions" in n)
+        for n in _walk(component)
+    )
+
+
+async def test_deeply_nested_json_string_never_raises_out_of_the_tool():
+    ctx, queue = _ctx()
+    nested = '{"a":' * 200_000  # json.loads raises RecursionError, not ValueError
+
+    result = await RenderUITool().forward(ctx, surface_id="s", component=nested)
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
+    assert queue.empty()
+
+
+def test_double_encoded_json_string_is_rejected():
+    with pytest.raises(ComponentArgumentError):
+        coerce_component(json.dumps(json.dumps(CARD)))
+
+
+def test_surrounding_whitespace_around_a_json_object_string_is_tolerated():
+    value, was_string = coerce_component("\n  " + json.dumps(CARD) + "  \n")
+
+    assert value == CARD
+    assert was_string is True
+
+
+def test_trailing_garbage_after_a_json_object_is_rejected():
+    with pytest.raises(ComponentArgumentError):
+        coerce_component(json.dumps(CARD) + " and then some prose")
+
+
+async def test_deprecation_log_never_contains_the_component_body():
+    ctx, _ = _ctx()
+    body = {"type": "text", "content": "TOP-SECRET-BODY"}
+    logged: list[str] = []
+    sink = logger.add(lambda m: logged.append(str(m)), level="DEBUG")
+    try:
+        result = await RenderUITool().forward(
+            ctx, surface_id="s", component=json.dumps(body)
+        )
+    finally:
+        logger.remove(sink)
+
+    assert result.success
+    assert any("deprecated" in line for line in logged)
+    assert not any("TOP-SECRET-BODY" in line for line in logged)
+
+
+async def test_error_report_is_capped_at_exactly_eight_lines():
+    ctx, _ = _ctx()
+
+    result = await RenderUITool().forward(
+        ctx, surface_id="s", component={"type": "card", "children": list(range(40))}
+    )
+
+    lines = [ln for ln in result.message.splitlines() if ln.startswith("- ")]
+    assert len(lines) == 9  # eight problems and the "... and N more" line
+    assert lines[-1].startswith("- ... and 32 more")
+    assert result.metadata["error_count"] == 40
+
+
+async def test_oversized_error_input_does_not_inflate_message_or_metadata():
+    ctx, _ = _ctx()
+    huge = "SECRET-" + "x" * 1_000_000
+
+    result = await RenderUITool().forward(ctx, surface_id="s", component={"type": huge})
+    many = await RenderUITool().forward(
+        ctx,
+        surface_id="s",
+        component={"type": "card", "children": list(range(5000))},
+    )
+
+    assert not result.success
+    assert len(result.message) < 2_000
+    assert len(json.dumps(result.metadata)) < 2_000
+    assert len(many.metadata["errors"]) <= 20
+    assert many.metadata["error_count"] == 5000
+    assert all(set(e) == {"type", "loc", "msg"} for e in many.metadata["errors"])
+
+
 # ── Documentation examples ────────────────────────────────────────────────
 
 _REFERENCE = (

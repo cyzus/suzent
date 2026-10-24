@@ -14,7 +14,7 @@ component node: an ``object`` with a ``type`` enum and every field any component
 uses, each documented with the component it belongs to. Nested children are
 declared as objects with a required ``type``, so nothing recursive reaches the
 provider. Validation is still done by ``A2UISurface`` -- this schema only tells
-the model the shape. ``tests/a2ui/test_render_ui_schema.py`` keeps it from
+the model the shape. ``tests/tools/test_render_ui_schema.py`` keeps it from
 drifting from the Pydantic models.
 """
 
