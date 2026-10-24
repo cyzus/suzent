@@ -318,15 +318,14 @@ async def sync_from_litellm() -> dict[str, int]:
         resp.raise_for_status()
         raw: dict = resp.json()
 
-    # Group entries that carry a provider prefix (e.g. "openai/gpt-4o"),
-    # restricted to providers we manage.
+    # Group entries by provider, including bare IDs labeled with a provider.
     by_provider: dict[str, dict[str, dict]] = {}
     for key, info in raw.items():
         if not isinstance(info, dict):
             continue
         if "/" not in key:
             provider_id = info.get("litellm_provider")
-            if provider_id != "openai":
+            if provider_id not in known_providers:
                 continue
             key = f"{provider_id}/{key}"
         provider_id = key.split("/", 1)[0]

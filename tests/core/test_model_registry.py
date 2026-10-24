@@ -468,7 +468,7 @@ def test_image_edit_capability(entry: dict, expected: bool | None) -> None:
     assert caps.supported_endpoints == tuple(entry.get("supported_endpoints", []))
 
 
-async def test_sync_image_endpoints_video_input_and_bare_openai_ids(
+async def test_sync_image_endpoints_video_input_and_bare_provider_ids(
     tmp_path, monkeypatch
 ) -> None:
     from unittest.mock import AsyncMock, MagicMock
@@ -492,6 +492,12 @@ async def test_sync_image_endpoints_video_input_and_bare_openai_ids(
             "mode": "chat",
             "supports_video_input": False,
         },
+        "claude-sonnet-5-5": {
+            "litellm_provider": "anthropic",
+            "mode": "chat",
+            "max_input_tokens": 1000000,
+            "supports_function_calling": True,
+        },
     }
     response = MagicMock()
     response.json.return_value = raw
@@ -512,3 +518,5 @@ async def test_sync_image_endpoints_video_input_and_bare_openai_ids(
     gemini = json.loads((tmp_path / "local/gemini.json").read_text())["models"]
     assert gemini["gemini/video-test"]["supports_video"] is True
     assert gemini["gemini/text-test"]["supports_video"] is False
+    anthropic = json.loads((tmp_path / "local/anthropic.json").read_text())["models"]
+    assert anthropic["anthropic/claude-sonnet-5-5"]["max_input_tokens"] == 1000000
