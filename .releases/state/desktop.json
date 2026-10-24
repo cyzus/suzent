@@ -82,6 +82,7 @@
     ".releases/changes/native-notifications-only.json",
     ".releases/changes/native-visual-analysis.json",
     ".releases/changes/notification-audio-resume.json",
+    ".releases/changes/notifications-skip-stop-steer.json",
     ".releases/changes/onboarding-model-roles.json",
     ".releases/changes/persist-completed-stream-response.json",
     ".releases/changes/prebuilt-webui.json",
