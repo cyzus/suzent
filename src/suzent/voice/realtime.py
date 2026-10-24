@@ -497,6 +497,7 @@ class VoiceBridge:
                         "working": self.router.working or self.router._is_busy(),
                     }
                 )
+                self.router.start_watching()
                 self.router.attach_if_busy()
                 await self._set_state("listening")
                 tasks = [
