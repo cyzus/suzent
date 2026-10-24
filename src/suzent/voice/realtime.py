@@ -465,7 +465,7 @@ class VoiceBridge:
             (getattr(model, "settings", None) or {}).get("google_vad", "default"),
         )
         agent = build_front_desk_agent(self.router)
-        return lambda: agent.realtime(model).session(handle_barge_in=True)
+        return lambda: agent.realtime(model).session()
 
     def _load_startup_messages(self) -> list[Any]:
         if self._startup_messages is not None:
