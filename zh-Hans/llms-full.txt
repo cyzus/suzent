@@ -2368,7 +2368,7 @@ its own specialist model, so assign that model first in
 |---|---|---|---|
 | Generate an image | **Image Generation** | Yes | `artifacts/images` folder |
 | Edit an image | **Image Editing** | Yes | `artifacts/images` folder |
-| Read or describe an image | **Vision** | No | Nothing saved |
+| Read an image or summarize a video | **Vision** | No | Nothing saved |
 | Create a video | **Video generation** | Yes, when it is submitted | `artifacts/videos` folder |
 | Speak text aloud | None (System) or **TTS** (API) | No | `artifacts/audio` folder (API only) |
 
@@ -2395,6 +2395,11 @@ can't, the chat shows a note that the images were not sent, and the agent looks
 at them with its image-reading tool instead. That tool uses the **Vision**
 model, which falls back to **Primary** when Primary can see images. With
 neither, the tool reports that no Vision model is set.
+
+The same tool can analyze a video when the selected **Vision** model supports
+native video input. Suzent sends the complete video without extracting frames.
+If the model cannot accept video, choose a compatible Vision model in
+**Settings → Model Roles**.
 
 ## Video
 
