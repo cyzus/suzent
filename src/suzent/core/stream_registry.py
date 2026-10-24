@@ -11,11 +11,16 @@ SSE chunks through a single multiplexed bus: register with `register_bus_subscri
 to receive every chunk from every background stream, tagged with its chat_id.
 
 Bus event shapes:
-  {"event": "stream_started", "chat_id": "..."}
-  {"event": "chunk",          "chat_id": "...", "data": "<raw SSE string>"}
-  {"event": "stream_ended",   "chat_id": "..."}
+  {"event": "stream_started", "chat_id": "...", "run_id": "..."}
+  {"event": "chunk",          "chat_id": "...", "run_id": "...", "data": "<raw SSE string>"}
+  {"event": "stream_ended",   "chat_id": "...", "run_id": "..."}
   {"event": "goal_tasks_changed", "project_id": "...", "chat_id": "..."}
   {"event": "snapshot",       "streams": ["chat-id-1", ...]}   # sent on connect
+
+`run_id` names the run a stream event belongs to. When a turn is steered the
+old run is superseded while it still drains, so its late chunks and its
+stream_ended share the chat_id with the new run and only the run_id tells
+them apart.
 """
 
 import asyncio
@@ -482,12 +487,14 @@ def emit_bus_event(payload: dict) -> None:
     _emit_to_bus(payload)
 
 
-def _fan_chunk_to_bus(chat_id: str, item) -> None:
+def _fan_chunk_to_bus(chat_id: str, run_id: str, item) -> None:
     """Forward one queue item to the event bus."""
     if item is None:
-        _emit_to_bus({"event": "stream_ended", "chat_id": chat_id})
+        _emit_to_bus({"event": "stream_ended", "chat_id": chat_id, "run_id": run_id})
     else:
-        _emit_to_bus({"event": "chunk", "chat_id": chat_id, "data": item})
+        _emit_to_bus(
+            {"event": "chunk", "chat_id": chat_id, "run_id": run_id, "data": item}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +543,7 @@ class _BusStreamQueue:
         if self._q.full():
             self._q.get_nowait()
         self._q.put_nowait(item)
-        _fan_chunk_to_bus(self.chat_id, item)
+        _fan_chunk_to_bus(self.chat_id, self.replay.run_id, item)
 
     # --- read side ---
 
@@ -591,7 +598,9 @@ def register_background_stream(chat_id: str) -> _BusStreamQueue:
             pass
     q = _BusStreamQueue(chat_id)
     background_queues[chat_id] = q
-    _emit_to_bus({"event": "stream_started", "chat_id": chat_id})
+    _emit_to_bus(
+        {"event": "stream_started", "chat_id": chat_id, "run_id": q.replay.run_id}
+    )
     return q
 
 
