@@ -42,13 +42,10 @@ at them with its image-reading tool instead. That tool uses the **Vision**
 model, which falls back to **Primary** when Primary can see images. With
 neither, the tool reports that no Vision model is set.
 
-The same visual analysis tool sends a complete video to a **Vision** model that
-supports native video input. Supported Gemini, DashScope, and OpenRouter models
-can use this path. The limit is 20 MB for Gemini and OpenRouter and 7 MB for
-DashScope, to account for the size of the encoded request. Suzent does not
-extract frames. If the selected model does not support video, choose another
-Vision model in **Settings → Model Roles**. Whether the soundtrack is understood
-depends on the model.
+The same tool can analyze a video when the selected **Vision** model supports
+native video input. Suzent sends the complete video without extracting frames.
+If the model cannot accept video, choose a compatible Vision model in
+**Settings → Model Roles**.
 
 ## Video
 

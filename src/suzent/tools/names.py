@@ -58,6 +58,7 @@ POLICY_TOOL_ALIASES = {
     "start_command": ("StartCommandTool", "ShellTool"),
     "check_command": ("CheckCommandTool",),
     "stop_command": ("StopCommandTool",),
+    "analyze_visual": ("VisualAnalysisTool", "analyze_image", "ImageVisionTool"),
 }
 
 
