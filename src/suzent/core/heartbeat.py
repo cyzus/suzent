@@ -16,7 +16,9 @@ import asyncio
 import time
 from datetime import datetime, timezone
 import dateutil.parser
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Sequence
+
+from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolSearchCallPart
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
@@ -27,6 +29,59 @@ from suzent.core.stream_registry import stream_controls
 logger = get_logger(__name__)
 
 HEARTBEAT_OK = "HEARTBEAT_OK"
+# A quiet reply may wrap the token in a short aside; anything longer is a report.
+_QUIET_ASIDE_CHARS = 300
+
+# Tools that only look things up. A quiet turn that called nothing else can be
+# dropped without the agent forgetting anything it did.
+_OBSERVING_TOOL_NAMES = frozenset(
+    {
+        "read_file",
+        "glob_search",
+        "grep_search",
+        "web_search",
+        "webpage_fetch",
+        "memory_search",
+        "session_search",
+        "agent_list",
+        "agent_read",
+        "skill_execute",
+    }
+)
+
+
+def is_quiet_reply(text: str) -> bool:
+    """Whether an answer is the agreed "nothing to report" token.
+
+    Heartbeats, quiet scheduled tasks and Regent's wake-ups all answer with the
+    same token, so one rule decides for every one of them that a reply needs
+    no notification and no unread badge.
+    """
+    text = (text or "").strip()
+    if text.startswith(HEARTBEAT_OK):
+        aside = text[len(HEARTBEAT_OK) :]
+    elif text.endswith(HEARTBEAT_OK):
+        aside = text[: -len(HEARTBEAT_OK)]
+    else:
+        return False
+    return len(aside.strip()) <= _QUIET_ASIDE_CHARS
+
+
+def turn_acted(messages: Sequence[Any]) -> bool:
+    """Whether a turn called a tool that does more than look something up.
+
+    Rolling such a turn back would erase what the agent did from its own
+    history: a check-in that nudged a session and then reported nothing would
+    nudge it again next time, with no memory of the first.
+    """
+    return any(
+        isinstance(part, ToolCallPart)
+        and not isinstance(part, ToolSearchCallPart)
+        and part.tool_name not in _OBSERVING_TOOL_NAMES
+        for message in messages
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+    )
 
 
 class ChatBusyError(RuntimeError):
@@ -383,7 +438,7 @@ class HeartbeatRunner(BaseBrain):
         )
 
         if suppress_ok:
-            if self._is_heartbeat_ok(response_text):
+            if not response_text or is_quiet_reply(response_text):
                 self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
                 return ""
             if answer_label:
@@ -503,16 +558,3 @@ class HeartbeatRunner(BaseBrain):
                 tool: "always_allow" for tool in heartbeat_allowed_tools
             }
         return build_agent_config(base, require_social_tool=False)
-
-    def _is_heartbeat_ok(self, response: str) -> bool:
-        if not response or response == HEARTBEAT_OK:
-            return True
-
-        if response.startswith(HEARTBEAT_OK):
-            remaining = response[len(HEARTBEAT_OK) :].strip()
-        elif response.endswith(HEARTBEAT_OK):
-            remaining = response[: -len(HEARTBEAT_OK)].strip()
-        else:
-            return False
-
-        return len(remaining) <= 300

@@ -1817,6 +1817,7 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
     today: '今天',
     yesterday: '昨天',

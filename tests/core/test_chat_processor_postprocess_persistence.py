@@ -218,6 +218,7 @@ async def test_persist_state_skips_stale_revision_guard(monkeypatch):
             agent_state,
             messages=None,
             update_lifecycle=True,
+            count_unread=True,
         ):
             self.finalize_calls.append((chat_id, expected_revision, messages))
             return False

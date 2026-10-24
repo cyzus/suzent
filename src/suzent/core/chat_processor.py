@@ -38,6 +38,7 @@ from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
+from suzent.core.heartbeat import is_quiet_reply
 from suzent.core.prompt_cache import record_turn_config
 from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.streaming import (
@@ -2426,6 +2427,7 @@ class ChatProcessor:
                         agent_state=agent_state,
                         messages=target_messages,
                         update_lifecycle=True,
+                        count_unread=not is_quiet_reply(agent_content),
                     )
                     if not finalized:
                         logger.info(
