@@ -76,12 +76,17 @@ suzent = "suzent.cli:app"
 
 [project.optional-dependencies]
 # Kept for backwards compatibility, but memory is now required
-social = [
+# One extra per chat app, each installed by the plugin of the same name
+# (plugins/<name>/plugin.yaml). `social` keeps installing all of them.
+telegram = [
     "python-telegram-bot>=22.6",
     "markdown>=3.6",
-    "lark-oapi>=1.5.3",
-    "slack_sdk>=3.0.0",
-    "discord.py>=2.0.0",
+]
+slack = ["slack_sdk>=3.0.0"]
+discord = ["discord.py>=2.0.0"]
+feishu = ["lark-oapi>=1.5.3"]
+social = [
+    "suzent[telegram,slack,discord,feishu]",
     "zstandard>=0.23.0",
 ]
 

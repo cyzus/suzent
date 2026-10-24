@@ -109,6 +109,18 @@ def register_plugin_command(
     return True
 
 
+def unregister_plugin_command(primary_alias: str) -> None:
+    """Remove a command a plugin registered, with all of its aliases."""
+    meta = next((m for m in _META if m.aliases[0] == primary_alias), None)
+    if meta is None:
+        return
+    _META.remove(meta)
+    names = {alias.lower() for alias in meta.aliases}
+    bot_cli.registered_commands[:] = [
+        info for info in bot_cli.registered_commands if info.name not in names
+    ]
+
+
 def _load_plugin_commands() -> None:
     from suzent.plugins import get_plugin_manager
 

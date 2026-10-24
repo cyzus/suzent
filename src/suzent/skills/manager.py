@@ -174,6 +174,11 @@ class SkillManager:
             cls._instance = SkillManager()
         return cls._instance
 
+    @classmethod
+    def reset_instance(cls):
+        """Rescan skill sources on next use, e.g. after a plugin was turned on or off."""
+        cls._instance = None
+
     def _load_enabled_state(self):
         """Load enabled skills from persistence file."""
         if self.persistence_file.exists():

@@ -256,6 +256,7 @@ def test_cli_install_and_remove(tmp_path, monkeypatch):
     _write_plugin(root, "cli-demo", "def register(ctx): pass\n", aliases="[demo]")
     manager = _manager(tmp_path, root)
     monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
+    monkeypatch.setattr("suzent.cli.plugin._via_server", lambda action, name: None)
     runner = CliRunner()
 
     assert runner.invoke(plugin_app, ["install", "demo"]).exit_code == 0
@@ -265,3 +266,102 @@ def test_cli_install_and_remove(tmp_path, monkeypatch):
     assert runner.invoke(plugin_app, ["install", "missing"]).exit_code == 1
     assert runner.invoke(plugin_app, ["remove", "cli-demo"]).exit_code == 0
     assert manager.enabled_ids() == set()
+
+
+def test_cli_hands_changes_to_a_running_server(tmp_path, monkeypatch):
+    from suzent.cli.plugin import plugin_app
+
+    root = tmp_path / "plugins"
+    _write_plugin(root, "cli-demo", "def register(ctx): pass\n")
+    manager = _manager(tmp_path, root)
+    monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
+    calls = []
+
+    class FakePlugins:
+        async def install(self, name):
+            calls.append(("install", name))
+            return {"id": name}
+
+        async def remove(self, name):
+            calls.append(("remove", name))
+            return {"id": name}
+
+    class FakeClient:
+        plugins = FakePlugins()
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr("suzent.client.get_client", lambda: FakeClient())
+    runner = CliRunner()
+
+    installed = runner.invoke(plugin_app, ["install", "cli-demo"])
+    removed = runner.invoke(plugin_app, ["remove", "cli-demo"])
+
+    assert "active in the running server" in installed.output
+    assert "unloaded it" in removed.output
+    assert calls == [("install", "cli-demo"), ("remove", "cli-demo")]
+    # The server owns the change; the CLI did not write state itself.
+    assert manager.enabled_ids() == set()
+
+
+def test_plugins_load_and_unload_without_a_restart(
+    tmp_path, monkeypatch, restore_commands
+):
+    from suzent.plugins import manager as plugin_manager
+    from suzent.tools import registry
+
+    root = tmp_path / "plugins"
+    _write_plugin(
+        root,
+        "hot",
+        _TOOL_PLUGIN
+        + textwrap.dedent(
+            """
+            _register_tool = register
+
+
+            def register(ctx):
+                _register_tool(ctx)
+
+                @ctx.register_command(["/hotcmd"], description="hot")
+                def hot_cmd():
+                    async def _impl():
+                        return "hot!"
+
+                    return _impl
+            """
+        ),
+    )
+    manager = _manager(tmp_path, root)
+    monkeypatch.setattr(plugin_manager, "_manager", manager)
+    manager.load()
+    registry.reset_tool_caches()
+
+    def runtime_names():
+        return {cls.tool_name for cls in registry._all_tool_classes()}
+
+    def run(text):
+        return asyncio.run(
+            commands_base.dispatch(
+                commands_base.CommandContext(chat_id="c", user_id="u"), text
+            )
+        )
+
+    assert "plugin_echo" not in runtime_names()
+
+    manager.set_enabled("hot", True)
+    record = manager.activate("hot")
+
+    assert record.status == "loaded", record.error
+    assert "plugin_echo" in runtime_names()
+    assert registry.get_tool_class_name("plugin_echo") == "PluginEchoTool"
+    assert run("/hotcmd") == "hot!"
+
+    manager.set_enabled("hot", False)
+    manager.deactivate("hot")
+
+    assert "plugin_echo" not in runtime_names()
+    assert run("/hotcmd") is None
+    assert not any(m.aliases == ["/hotcmd"] for m in commands_base._META)
+    registry.reset_tool_caches()

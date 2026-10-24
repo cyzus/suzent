@@ -1,5 +1,6 @@
 """Plugins that bring packages: built-in defaults, extras, installs and upgrades."""
 
+import asyncio
 import importlib
 import json
 from pathlib import Path
@@ -32,28 +33,59 @@ def _manager(tmp_path: Path, builtin: Path, user: Path | None = None) -> PluginM
         builtin_dirs=[builtin],
         deps_root=tmp_path / "deps",
         entry_point_group=None,
+        social_config_file=tmp_path / "social.json",
     )
 
 
-def test_shipped_social_plugin_is_on_by_default(tmp_path):
+def _social(tmp_path: Path, **platforms) -> None:
+    (tmp_path / "social.json").write_text(json.dumps(platforms))
+
+
+def test_shipped_chat_apps_are_separate_plugins_off_until_set_up(tmp_path):
     manager = _manager(tmp_path, REPO_PLUGINS)
 
-    social = manager.resolve("telegram")
+    records = manager.discover()
 
-    assert social is not None and social.id == "social"
-    assert social.source == "builtin"
-    assert social.enabled
-    assert not social.has_code
-    assert manager.enabled_extras() == ["social"]
-
-
-def test_removing_a_default_plugin_is_remembered(tmp_path):
-    manager = _manager(tmp_path, REPO_PLUGINS)
-
-    manager.set_enabled("social", False)
-
-    assert not manager.resolve("social").enabled
+    assert {"telegram", "slack", "discord", "feishu"} <= set(records)
+    assert "social" not in records
+    assert manager.resolve("lark").id == "feishu"
+    for plugin_id in ("telegram", "slack", "discord", "feishu"):
+        record = records[plugin_id]
+        assert record.source == "builtin" and not record.has_code
+        assert record.manifest.channel == plugin_id
+        assert record.manifest.extras == [plugin_id]
+        assert not record.enabled
     assert manager.enabled_extras() == []
+
+
+def test_a_chat_app_already_set_up_turns_its_plugin_on(tmp_path):
+    _social(
+        tmp_path,
+        telegram={"enabled": True, "token": "123:abc", "allowed_users": []},
+        slack={"enabled": True, "app_token": "", "bot_token": ""},
+        discord={"enabled": False, "token": "secret"},
+    )
+    manager = _manager(tmp_path, REPO_PLUGINS)
+
+    assert manager.enabled_ids() == {"telegram"}
+    assert manager.enabled_extras() == ["telegram"]
+    assert manager.for_channel("telegram").id == "telegram"
+
+
+def test_removing_a_chat_app_is_remembered_and_switches_it_off(tmp_path):
+    _social(tmp_path, telegram={"enabled": True, "token": "123:abc"})
+    manager = _manager(tmp_path, REPO_PLUGINS)
+
+    manager.set_enabled("telegram", False)
+
+    assert not manager.resolve("telegram").enabled
+    assert manager.enabled_extras() == []
+    social = json.loads((tmp_path / "social.json").read_text())
+    assert social["telegram"] == {"enabled": False, "token": "123:abc"}
+
+    manager.set_enabled("telegram", True)
+    social = json.loads((tmp_path / "social.json").read_text())
+    assert social["telegram"]["enabled"] is True
 
 
 def test_only_builtin_plugins_may_default_to_on(tmp_path):
@@ -103,9 +135,10 @@ def test_third_party_requirements_go_to_their_own_directory(tmp_path, monkeypatc
 
 
 def test_extra_requirements_reads_suzent_metadata():
-    names = {name.lower() for name in deps.extra_requirements("social")}
+    names = {name.lower() for name in deps.extra_requirements("telegram")}
 
-    assert {"python-telegram-bot", "slack-sdk", "lark-oapi"} <= names
+    assert names == {"python-telegram-bot", "markdown"}
+    assert {n.lower() for n in deps.extra_requirements("slack")} == {"slack-sdk"}
     assert deps.extra_requirements("no-such-extra") == []
 
 
@@ -142,7 +175,12 @@ def test_upgrade_sync_follows_enabled_plugins(tmp_path, monkeypatch):
     monkeypatch.setattr("suzent.config.paths.USER_CONFIG_DIR", tmp_path)
     root = tmp_path / "checkout"
     (root / "plugins").mkdir(parents=True)
-    _write(root / "plugins", "social", "extras: [social]\ndefault_enabled: true\n")
+    _write(root / "plugins", "telegram", "extras: [telegram]\nchannel: telegram\n")
+    _write(root / "plugins", "slack", "extras: [slack]\nchannel: slack\n")
+    (root / "config").mkdir()
+    (root / "config" / "social.json").write_text(
+        json.dumps({"telegram": {"enabled": True, "token": "123:abc"}})
+    )
     (root / ".suzent-bootstrap-complete").write_text("")
 
     assert cli_main._backend_sync_args(root) == [
@@ -150,11 +188,11 @@ def test_upgrade_sync_follows_enabled_plugins(tmp_path, monkeypatch):
         "sync",
         "--frozen",
         "--extra",
-        "social",
+        "telegram",
     ]
 
     (tmp_path / "plugins.json").write_text(
-        json.dumps({"version": 1, "plugins": {"social": {"enabled": False}}})
+        json.dumps({"version": 1, "plugins": {"telegram": {"enabled": False}}})
     )
     assert cli_main._backend_sync_args(root) == ["uv", "sync", "--frozen"]
 
@@ -179,7 +217,9 @@ def plugin_api(tmp_path, monkeypatch):
     from suzent.routes import plugin_routes
 
     builtin = tmp_path / "builtin"
-    _write(builtin, "social", "extras: [social]\naliases: [telegram]\n")
+    _write(
+        builtin, "telegram", "extras: [telegram]\nchannel: telegram\naliases: [tg]\n"
+    )
     _write(
         builtin, "tools", "description: adds tools\n", code="def register(ctx): pass\n"
     )
@@ -215,24 +255,29 @@ def plugin_api(tmp_path, monkeypatch):
 def test_api_install_by_alias_installs_packages_and_reloads_chat_apps(plugin_api):
     client, manager, installs, reloads = plugin_api
 
-    response = client.post("/plugins/telegram/install")
+    response = client.post("/plugins/tg/install")
 
     assert response.status_code == 200
     assert response.json()["enabled"] is True
     assert response.json()["restartRequired"] is False
-    assert installs == ["social"] and reloads == [True]
+    assert installs == ["telegram"] and reloads == [True]
 
 
-def test_api_code_plugin_asks_for_a_restart(plugin_api):
+def test_api_code_plugin_loads_without_a_restart(plugin_api):
     client, manager, installs, reloads = plugin_api
 
     data = client.post("/plugins/tools/install").json()
 
     assert data["enabled"] is True
-    assert data["restartRequired"] is True
+    assert data["status"] == "loaded"
+    assert data["restartRequired"] is False
     assert reloads == []
     listed = {p["id"]: p for p in client.get("/plugins").json()}
-    assert listed["tools"]["restartRequired"] is True
+    assert listed["tools"]["restartRequired"] is False
+
+    data = client.post("/plugins/tools/remove").json()
+
+    assert data["enabled"] is False and data["restartRequired"] is False
 
 
 def test_api_rejects_unknown_plugins(plugin_api):
@@ -249,18 +294,18 @@ def test_api_reports_failed_installs(plugin_api, monkeypatch):
 
     monkeypatch.setattr(manager, "install_dependencies", fail)
 
-    response = client.post("/plugins/social/install")
+    response = client.post("/plugins/telegram/install")
 
     assert response.status_code == 502
     assert response.json()["error"] == "network down"
-    assert manager.resolve("social").enabled
+    assert manager.resolve("telegram").enabled
 
 
-def test_removed_social_plugin_keeps_its_chat_apps_off(tmp_path, monkeypatch):
+def test_removed_chat_app_plugin_keeps_its_app_off(tmp_path, monkeypatch):
     from suzent.channels import manager as channel_manager
 
     manager = _manager(tmp_path, REPO_PLUGINS)
-    manager.set_enabled("social", False)
+    manager.set_enabled("telegram", False)
     monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
 
     channels = channel_manager.ChannelManager()
@@ -268,15 +313,43 @@ def test_removed_social_plugin_keeps_its_chat_apps_off(tmp_path, monkeypatch):
 
     assert channels.channels == {}
     assert channel_manager._plugin_allows("wechat")
-    manager.set_enabled("social", True)
+    manager.set_enabled("telegram", True)
     assert channel_manager._plugin_allows("telegram")
 
 
 def test_api_remove_stops_chat_apps(plugin_api):
     client, manager, installs, reloads = plugin_api
-    manager.set_enabled("social", True)
+    manager.set_enabled("telegram", True)
 
-    data = client.post("/plugins/social/remove").json()
+    data = client.post("/plugins/telegram/remove").json()
 
     assert data["enabled"] is False
     assert reloads == [True]
+
+
+def test_saving_chat_app_settings_turns_its_plugin_on(tmp_path, monkeypatch):
+    from suzent.routes import config_routes
+
+    manager = _manager(tmp_path, REPO_PLUGINS)
+    manager.set_enabled("telegram", False)
+    installs, reloads = [], []
+    monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(
+        manager, "install_dependencies", lambda record, root: installs.append(record.id)
+    )
+    monkeypatch.setattr(manager, "missing_packages", lambda record: ["sdk"])
+
+    async def fake_reload(app, config):
+        reloads.append(config)
+
+    monkeypatch.setattr("suzent.server.reload_social", fake_reload)
+    config = {
+        "telegram": {"enabled": True, "token": "123:abc"},
+        "slack": {"enabled": True, "app_token": "", "bot_token": ""},
+    }
+
+    asyncio.run(config_routes._apply_social_config(None, config))
+
+    assert manager.enabled_ids() == {"telegram"}
+    assert installs == ["telegram"]
+    assert reloads == [config]

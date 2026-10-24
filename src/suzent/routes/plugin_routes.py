@@ -2,8 +2,11 @@
 API routes for plugins.
 
 GET  /plugins                 -> [{id, name, enabled, status, missing, restartRequired, ...}]
-POST /plugins/{name}/install  -> enable a plugin (by id or alias) and install its packages
-POST /plugins/{name}/remove   -> disable a plugin
+POST /plugins/{name}/install  -> enable a plugin (by id or alias), install its packages, load it
+POST /plugins/{name}/remove   -> disable a plugin and unload it
+
+Both take effect in the running server: tools, commands and skills from the
+next message on, chat apps once the social stack has been rebuilt.
 """
 
 import asyncio
@@ -32,9 +35,14 @@ def _describe(record: PluginRecord) -> dict[str, Any]:
         data.update(status="loaded", tools=[c.name for c in live.tool_classes])
         data["commands"] = live.command_names
     data["missing"] = manager.missing_packages(record) if record.enabled else []
-    # Packages take effect at once; registered tools and commands need a restart.
+    # Install and remove apply in-process, so this only stays true after an
+    # out-of-band change, e.g. plugins.json edited by hand.
     data["restartRequired"] = record.has_code and record.enabled != running
     return data
+
+
+def _has_packages(record: PluginRecord) -> bool:
+    return bool(record.manifest.extras or record.manifest.dependencies)
 
 
 async def _reload_social(request: Request) -> None:
@@ -74,7 +82,8 @@ async def install_plugin(request: Request) -> JSONResponse:
             {"error": str(exc), "plugin": _describe(manager.resolve(record.id))},
             status_code=502,
         )
-    if record.manifest.extras or record.manifest.dependencies:
+    manager.activate(record.id)
+    if _has_packages(record):
         # Chat apps import their SDKs when the social stack starts; rebuilding
         # it lets a channel whose packages just arrived connect without a restart.
         await _reload_social(request)
@@ -88,7 +97,8 @@ async def remove_plugin(request: Request) -> JSONResponse:
     if record is None:
         return JSONResponse({"error": f"No plugin named '{name}'"}, status_code=404)
     manager.set_enabled(record.id, False)
-    if record.manifest.extras or record.manifest.dependencies:
+    manager.deactivate(record.id)
+    if _has_packages(record):
         # Stops the chat apps this plugin provided (see ChannelManager).
         await _reload_social(request)
     return JSONResponse(_describe(manager.resolve(record.id)))

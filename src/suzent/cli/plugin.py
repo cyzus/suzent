@@ -4,13 +4,13 @@ CLI subcommands for plugins.
 Usage:
     suzent plugin list
     suzent plugin install telegram     # by id or alias
-    suzent plugin remove social
+    suzent plugin remove slack
     suzent plugin status
     suzent plugin sync                 # install what enabled plugins need
 
-These work while the server is stopped. A running server picks up a plugin's
-packages after a restart; installing from Settings > Plugins applies a
-packages-only plugin such as `social` immediately.
+When the server is running, install and remove go through it, so the change
+applies at once with no restart. Otherwise they edit the plugin state and
+install packages directly, and the server loads the result when it starts.
 """
 
 import typer
@@ -44,12 +44,35 @@ def _install_dependencies(record) -> None:
 
     if not (record.manifest.extras or record.manifest.dependencies):
         return
-    typer.echo(f"  • Installing packages for '{record.id}'...")
     try:
         _manager().install_dependencies(record, _project_dir())
     except DependencyError as exc:
         typer.echo(f"❌ {exc}")
         typer.echo("   The plugin stays enabled; run `suzent plugin sync` to retry.")
+        raise typer.Exit(code=1)
+
+
+def _via_server(action: str, name: str) -> dict | None:
+    """Have a running server apply ``action``; None when no server is running."""
+    import asyncio
+
+    from suzent.client import get_client
+    from suzent.client.base import ClientError, ServerUnavailableError
+
+    async def call() -> dict:
+        client = get_client()
+        try:
+            api = client.plugins
+            return await (api.install if action == "install" else api.remove)(name)
+        finally:
+            await client.aclose()
+
+    try:
+        return asyncio.run(call())
+    except ServerUnavailableError:
+        return None
+    except ClientError as exc:
+        typer.echo(f"❌ {exc}")
         raise typer.Exit(code=1)
 
 
@@ -88,17 +111,25 @@ def install_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
         raise typer.Exit(code=1)
     if record.has_code and record.source != "builtin":
         typer.echo("  ⚠️  This plugin's code runs inside Suzent with your permissions.")
+    if record.manifest.extras or record.manifest.dependencies:
+        typer.echo(f"  • Installing packages for '{record.id}'...")
+    if _via_server("install", name) is not None:
+        typer.echo(f"Enabled '{record.id}'. It is active in the running server.")
+        return
     _manager().set_enabled(record.id, True, requested_as=name)
     _install_dependencies(record)
-    typer.echo(f"Enabled '{record.id}'. Restart Suzent for it to take effect.")
+    typer.echo(f"Enabled '{record.id}'. It loads when Suzent starts.")
 
 
 @plugin_app.command("remove")
 def remove_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
     """Disable a plugin. Its packages are removed on the next upgrade."""
     record = _resolve(name)
+    if _via_server("remove", name) is not None:
+        typer.echo(f"Disabled '{record.id}'. The running server has unloaded it.")
+        return
     _manager().set_enabled(record.id, False)
-    typer.echo(f"Disabled '{record.id}'. Restart Suzent for it to take effect.")
+    typer.echo(f"Disabled '{record.id}'.")
 
 
 @plugin_app.command("sync")
@@ -107,7 +138,9 @@ def sync_plugins():
     manager = _manager()
     enabled = [r for r in manager.discover().values() if r.enabled]
     for record in enabled:
-        _install_dependencies(record)
+        if manager.missing_packages(record):
+            typer.echo(f"  • Installing packages for '{record.id}'...")
+            _install_dependencies(record)
     typer.echo(f"Packages are in place for {len(enabled)} enabled plugin(s).")
 
 

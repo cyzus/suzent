@@ -19,8 +19,11 @@ class PluginManifest(BaseModel):
     version: str = "0.0.0"
     description: str = ""
     api_version: int = PLUGIN_API_VERSION
-    # Other names `suzent plugin install` accepts, e.g. "telegram" for social.
+    # Other names `suzent plugin install` accepts, e.g. "lark" for feishu.
     aliases: list[str] = Field(default_factory=list)
+    # The chat app this plugin provides, as named in config/social.json.
+    # Built-in chat-app plugins are on whenever that app is configured.
+    channel: str | None = None
     # Optional-dependency groups of Suzent itself (pyproject extras) this
     # plugin needs. Only built-in plugins can name them meaningfully.
     extras: list[str] = Field(default_factory=list)

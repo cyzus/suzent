@@ -12,8 +12,9 @@ A plugin is a unit the user installs and removes. It can bring packages, code,
 or both:
 
 - **Packages.** A built-in plugin names extras from Suzent's own
-  `pyproject.toml` (`social` names the `social` extra, which holds the chat app
-  SDKs). A third-party plugin lists pip requirements instead.
+  `pyproject.toml`: each chat app has its own extra and plugin (`telegram`,
+  `slack`, `discord`, `feishu`), and the `social` extra still pulls in all four
+  for scripted installs. A third-party plugin lists pip requirements instead.
 - **Code.** An `__init__.py` with `register(ctx)` adds tools, slash commands and
   skills.
 
@@ -44,12 +45,13 @@ api_version: 1         # plugin API this plugin was written against
 
 | Field | Meaning |
 |---|---|
-| `aliases` | Other names `suzent plugin install` and the API accept, e.g. `telegram` for `social`. |
+| `aliases` | Other names `suzent plugin install` and the API accept, e.g. `lark` for `feishu`. |
+| `channel` | The chat app this plugin provides, as keyed in `config/social.json`. See [Chat-app plugins](#chat-app-plugins). |
 | `extras` | Extras of Suzent's own package this plugin needs. Only meaningful for built-in plugins. |
 | `dependencies` | pip requirements of a third-party plugin. |
 | `default_enabled` | On until the user removes it. Honoured only for built-in plugins. |
 
-A plugin with no `__init__.py` only brings packages; `plugins/social/` is one.
+A plugin with no `__init__.py` only brings packages; `plugins/telegram/` is one.
 
 `__init__.py`:
 
@@ -125,19 +127,21 @@ Discovery reads only manifests and package metadata. The user's choices live in
 {
   "version": 1,
   "plugins": {
-    "social": {"enabled": true, "requested_by": ["telegram"]},
+    "feishu": {"enabled": true, "requested_by": ["lark"]},
     "dice": {"enabled": false, "requested_by": []}
   }
 }
 ```
 
-A plugin with no entry is on only if it is built-in and `default_enabled`; an
-explicit `false` is kept, so a removed default stays removed. `requested_by`
-records the names the user installed it under.
+A plugin with no entry is on only if it is built-in and either `default_enabled`
+or a chat-app plugin whose app is set up; an explicit `false` is kept, so a
+removed default stays removed. `requested_by` records the names the user
+installed it under.
 
-A plugin's code is imported only when it is enabled. Loading is lazy and
-happens once per process, the first time the tool registry, the skill manager
-or the slash-command registry is used. A plugin whose `api_version` is newer
+A plugin's code is imported only when it is enabled. The initial load is lazy,
+the first time the tool registry, the skill manager or the slash-command
+registry is used. After that, `activate()` and `deactivate()` load and unload
+single plugins in the running process (see [Hot loading](#hot-loading)). A plugin whose `api_version` is newer
 than the running Suzent supports is refused.
 
 A pip-packaged plugin declares itself in its `pyproject.toml`:
@@ -168,6 +172,8 @@ passes `--extra` for each extra an enabled plugin needs, plus `dev` in a
 development checkout. That sync is exact, so packages of plugins the user
 removed are cleaned up then. A checkout older than plugins (no `plugins/`
 folder, for instance after a rollback) gets `--extra social`, as before.
+`_plugin_extras()` reads `config/social.json` from the checkout too, so a chat
+app that is set up but has no state entry keeps its packages.
 
 `missing_packages()` compares what a plugin declares with what is installed,
 for `suzent plugin status` and the settings page.
@@ -177,16 +183,57 @@ for `suzent plugin status` and the settings page.
 | Route | What it does |
 |---|---|
 | `GET /plugins` | Every plugin with `enabled`, `status`, `missing` packages and `restartRequired`. |
-| `POST /plugins/{name}/install` | Enables a plugin by id or alias, installs its packages, and, when it brought packages, rebuilds the social stack with `reload_social()` so a chat app whose SDK just arrived connects without a restart. A failed install returns `502` with uv's output; the plugin stays enabled so a retry reinstalls. |
-| `POST /plugins/{name}/remove` | Disables a plugin, and for one that brought packages, rebuilds the social stack so its chat apps stop. |
+| `POST /plugins/{name}/install` | Enables a plugin by id or alias, installs its packages, `activate()`s it, and, when it brought packages, rebuilds the social stack with `reload_social()` so a chat app whose SDK just arrived connects. A failed install returns `502` with uv's output; the plugin stays enabled so a retry reinstalls. |
+| `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
 
-`ChannelManager` skips a configured chat app whose providing plugin (matched
-by id or alias, e.g. `telegram` → `social`) is removed. Chat apps no plugin
-claims, such as WeChat, always load.
+`suzent plugin install` and `remove` call these routes when a server answers
+(`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the
+running process too. With no server they write the state and install packages
+themselves, and the next start loads the result.
 
-Packages take effect immediately. Tools, commands and skills are registered
-once per process, so a plugin with code reports `restartRequired` until the
-backend restarts.
+`restartRequired` is true only when the running process disagrees with the
+saved state, which now happens only after an out-of-band change such as a
+hand-edited `plugins.json`.
+
+## Chat-app plugins
+
+`plugins/telegram`, `slack`, `discord` and `feishu` are packages-only
+plugins with a `channel` field. They have no `default_enabled`; instead a
+chat-app plugin with no state entry is on when its section of
+`config/social.json` is set up: `enabled` is not false and some value other
+than `enabled` and `allowed_users` is non-empty. This is evaluated on every
+`discover()`, so users who configured an app before the split keep its
+packages on upgrade without a migration step.
+
+The plugin and the app's own switch are kept in step:
+
+- Saving Settings → Social Channels (`save_social_config`) enables the plugin
+  of every app that is set up, installs missing packages in a worker thread,
+  then calls `reload_social()`.
+- `set_enabled()` on a chat-app plugin writes the same value to that app's
+  `enabled` in `social.json`, if the app has a section there.
+
+`ChannelManager` asks `for_channel()` and skips a configured app whose plugin
+is removed. Apps no plugin claims, such as WeChat, always load.
+
+## Hot loading
+
+`PluginManager.activate(id)` runs a newly enabled plugin's `register()` (or
+retries one that failed), and `deactivate(id)` takes a disabled plugin's
+commands out of the slash-command registry, drops its deps directory from
+`sys.path`, and forgets its module so the next `activate()` runs current code.
+Both then refresh what depends on the plugin set:
+
+- the tool registry caches (`reset_tool_caches()`),
+- the skill manager singleton (`SkillManager.reset_instance()`),
+- the cached agent (`agent_manager.invalidate_agent()`), so the next message
+  builds an agent with the new tool list.
+
+Only modules the process already imported are touched, so the CLI never
+imports the agent stack. A run already in progress keeps the agent it started
+with. Objects a plugin created itself (threads, open connections) are not
+torn down; a plugin that starts any should stop them when its module is
+garbage collected or provide no such state.
 
 ## Security model
 

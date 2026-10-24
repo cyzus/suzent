@@ -40,7 +40,8 @@ Planned, in order:
 ## Plugins
 
 See [Plugins](./architecture/plugins.md) for what exists today: packages,
-tools, slash commands and skills, managed from the CLI and the settings page.
+tools, slash commands and skills, managed from the CLI and the settings page,
+with one plugin per chat app and changes applied without a restart.
 
 Planned, in order:
 
@@ -48,16 +49,17 @@ Planned, in order:
    `ChannelManager`, whose `driver_map` is fixed today, so new chat apps can
    ship outside this repository. The platform lists in `prompts.py`,
    `social_message_tool.py` and `agent_lifecycle_tools.py` would read from the
-   same registry, and the built-in chat apps would register through
-   `plugins/social`.
+   same registry, and the built-in chat-app plugins (`plugins/telegram` and
+   the others, packages-only today) would register their drivers that way.
 2. **Lifecycle hooks** — `ctx.register_hook()` for session start and end,
    before and after each model call, and before and after each tool call (with
    the option to block a call). The goal-turn accounting in
    `tools/plan_hooks.py` and the skill catalog reminder in `skills/hooks.py`
    would move onto these hooks as built-in plugins.
-3. **Desktop updater** — `apps/suzent-installer` still syncs `--extra social`
-   on every update. It should read the enabled plugins' extras the way
-   `suzent upgrade` does, so a user who removed `social` keeps it removed.
+3. **Desktop updater** — `apps/suzent-installer` still syncs `--extra social`,
+   which installs every chat app's packages, on every update. It should read
+   the enabled plugins' extras the way `suzent upgrade` does, so a user who
+   removed a chat app keeps its packages removed.
 4. **Import and sync** — restoring a data archive should mark plugin packages
    as needing a sync rather than installing them during the import.
 5. **Providers as plugins** — model, image, video and speech providers.

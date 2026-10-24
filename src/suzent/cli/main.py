@@ -71,6 +71,7 @@ def _plugin_extras(root: Path) -> list[str]:
         USER_CONFIG_DIR / "plugins.json",
         builtin_dirs=[builtin_dir],
         entry_point_group=None,
+        social_config_file=root / "config" / "social.json",
     )
     return manager.enabled_extras()
 

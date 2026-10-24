@@ -19,7 +19,7 @@ def _plugin_allows(platform: str) -> bool:
     """False when the user removed the plugin that provides this chat app."""
     from suzent.plugins import get_plugin_manager
 
-    record = get_plugin_manager().resolve(platform)
+    record = get_plugin_manager().for_channel(platform)
     return record is None or record.enabled
 
 

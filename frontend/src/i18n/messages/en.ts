@@ -876,14 +876,15 @@ export const en = {
     },
     plugins: {
       title: 'Plugins',
-      subtitle: 'Add chat apps, tools and commands. Plugins keep their packages across upgrades.',
+      subtitle:
+        'Add chat apps, tools and commands. Changes apply straight away and survive upgrades.',
       listTitle: 'Installed plugins',
       listDesc: 'Plugins shipped with Suzent and any you put in the plugins folder.',
       helpTitle: 'How plugins work',
       helpPackages:
-        'Installing a plugin downloads the packages it needs. Chat apps start working straight away; upgrades keep what you installed.',
+        'Each chat app is its own plugin. Installing one downloads only the packages it needs, and setting up a chat app under Social Channels installs it for you. Upgrades keep what you installed.',
       helpCode:
-        'Plugins that add tools or commands run their code inside Suzent with your permissions and take effect after a restart. Only install plugins you trust.',
+        'Plugins that add tools or commands run their code inside Suzent with your permissions. Install and Remove take effect straight away, no restart needed. Only install plugins you trust.',
       empty: 'No plugins found',
       builtin: 'Built-in',
       statusOn: 'On',

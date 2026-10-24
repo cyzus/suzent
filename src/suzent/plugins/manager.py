@@ -27,6 +27,8 @@ logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "suzent.plugins"
 STATE_VERSION = 1
+# Keys of a chat app's section in social.json that are not credentials.
+_CHANNEL_SETTING_KEYS = {"enabled", "allowed_users"}
 
 type PluginStatus = Literal["disabled", "enabled", "loaded", "error"]
 type PluginSource = Literal["builtin", "directory", "package"]
@@ -51,7 +53,7 @@ class PluginRecord:
 
     @property
     def has_code(self) -> bool:
-        """False for a plugin that only brings packages, such as ``social``."""
+        """False for a plugin that only brings packages, such as ``telegram``."""
         if self.entry_point is not None:
             return True
         return self.path is not None and (self.path / "__init__.py").is_file()
@@ -93,8 +95,10 @@ class PluginManager:
         builtin_dirs: list[Path] | None = None,
         deps_root: Path | None = None,
         entry_point_group: str | None = ENTRY_POINT_GROUP,
+        social_config_file: Path | None = None,
     ) -> None:
         self.builtin_dirs = builtin_dirs or []
+        self.social_config_file = social_config_file
         self.plugin_dirs = plugin_dirs
         self.state_file = state_file
         self.deps_root = deps_root
@@ -141,14 +145,51 @@ class PluginManager:
         entry["requested_by"] = requested
         plugins[plugin_id] = entry
         self._write_state(plugins)
+        record = self.discover().get(plugin_id)
+        if record is not None and record.manifest.channel:
+            self._set_channel_enabled(record.manifest.channel, enabled)
+
+    def _set_channel_enabled(self, channel: str, enabled: bool) -> None:
+        """Keep the chat app's own switch in social.json in step with its plugin,
+        so Settings > Social never shows an app on whose plugin is removed."""
+        config = self._read_social_config()
+        section = config.get(channel)
+        if not isinstance(section, dict) or section.get("enabled", True) == enabled:
+            return
+        section["enabled"] = enabled
+        assert self.social_config_file is not None
+        self.social_config_file.write_text(
+            json.dumps(config, indent=4), encoding="utf-8"
+        )
+
+    def _read_social_config(self) -> dict[str, Any]:
+        if self.social_config_file is None:
+            return {}
+        try:
+            data = json.loads(self.social_config_file.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            logger.warning(f"Ignoring unreadable {self.social_config_file}: {exc}")
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def _is_enabled(
-        self, record: PluginRecord, state: dict[str, dict[str, Any]]
+        self,
+        record: PluginRecord,
+        state: dict[str, dict[str, Any]],
+        social: dict[str, Any],
     ) -> bool:
         if record.id in state:
             return bool(state[record.id].get("enabled"))
         # Only plugins shipped with Suzent may switch themselves on.
-        return record.source == "builtin" and record.manifest.default_enabled
+        if record.source != "builtin":
+            return False
+        if record.manifest.channel:
+            # A chat app the user already set up keeps working after the
+            # upgrade that split it into its own plugin.
+            return channel_configured(social.get(record.manifest.channel))
+        return record.manifest.default_enabled
 
     # -- discovery ---------------------------------------------------------
 
@@ -174,8 +215,9 @@ class PluginManager:
                 )
             records[record.id] = record
         state = self._read_state()
+        social = self._read_social_config()
         for record in records.values():
-            record.enabled = self._is_enabled(record, state)
+            record.enabled = self._is_enabled(record, state, social)
             if record.enabled and record.status == "disabled":
                 record.status = "enabled"
         return records
@@ -189,6 +231,13 @@ class PluginManager:
         if name in records:
             return records[name]
         return next((r for r in records.values() if name in r.manifest.aliases), None)
+
+    def for_channel(self, channel: str) -> PluginRecord | None:
+        """The plugin that provides the chat app ``channel``, if any."""
+        return next(
+            (r for r in self.discover().values() if r.manifest.channel == channel),
+            None,
+        )
 
     def deps_dir(self, record: PluginRecord) -> Path | None:
         if self.deps_root is None or not record.manifest.dependencies:
@@ -271,6 +320,49 @@ class PluginManager:
                 if record.enabled and record.status != "error":
                     self._load_one(record)
 
+    def activate(self, plugin_id: str) -> PluginRecord | None:
+        """Load a plugin that was just enabled into the running process.
+
+        Also retries one that failed to load. Tools, commands and skills it
+        registers are usable from the next message on.
+        """
+        with self._lock:
+            self.load()
+            current = self._records.get(plugin_id)
+            if current is not None and current.status == "loaded":
+                return current
+            record = self.discover().get(plugin_id)
+            if record is None:
+                return None
+            if record.enabled and record.status != "error":
+                self._load_one(record)
+            self._records[plugin_id] = record
+        _refresh_live_registries()
+        return record
+
+    def deactivate(self, plugin_id: str) -> None:
+        """Take a disabled plugin's tools, commands and skills out of the running process."""
+        with self._lock:
+            self.load()
+            record = self._records.get(plugin_id)
+            if record is None:
+                return
+            self._unload_one(record)
+        _refresh_live_registries()
+
+    def _unload_one(self, record: PluginRecord) -> None:
+        from suzent.core.commands.base import unregister_plugin_command
+
+        for name in record.command_names:
+            unregister_plugin_command(name)
+        record.tool_classes, record.command_names, record.skill_dirs = [], [], []
+        record.enabled, record.status, record.error = False, "disabled", None
+        target = self.deps_dir(record)
+        if target is not None and str(target) in sys.path:
+            sys.path.remove(str(target))
+        # A later activate() runs the plugin's current code, not a cached module.
+        sys.modules.pop(_module_name(record), None)
+
     def _load_one(self, record: PluginRecord) -> None:
         target = self.deps_dir(record)
         if target is not None and target.is_dir() and str(target) not in sys.path:
@@ -342,7 +434,7 @@ def _import_plugin_directory(record: PluginRecord) -> Any:
     init_file = record.path / "__init__.py"
     if not init_file.is_file():
         raise FileNotFoundError(f"{init_file} not found")
-    module_name = f"suzent_plugin_{record.id.replace('-', '_')}"
+    module_name = _module_name(record)
     spec = importlib.util.spec_from_file_location(
         module_name, init_file, submodule_search_locations=[str(record.path)]
     )
@@ -357,6 +449,36 @@ def _import_plugin_directory(record: PluginRecord) -> Any:
         sys.modules.pop(module_name, None)
         raise
     return module
+
+
+def _module_name(record: PluginRecord) -> str:
+    return f"suzent_plugin_{record.id.replace('-', '_')}"
+
+
+def channel_configured(settings: Any) -> bool:
+    """True when a chat app's section of social.json is on and has credentials."""
+    if not isinstance(settings, dict) or not settings.get("enabled", True):
+        return False
+    return any(
+        value for key, value in settings.items() if key not in _CHANNEL_SETTING_KEYS
+    )
+
+
+def _refresh_live_registries() -> None:
+    """Make the tool registry, skills and agent reflect the plugins now loaded.
+
+    Only modules this process already imported are touched, so the CLI never
+    pulls in the agent stack just to flip a plugin.
+    """
+    registry = sys.modules.get("suzent.tools.registry")
+    if registry is not None:
+        registry.reset_tool_caches()
+    skills = sys.modules.get("suzent.skills.manager")
+    if skills is not None:
+        skills.SkillManager.reset_instance()
+    agent_manager = sys.modules.get("suzent.agent_manager")
+    if agent_manager is not None:
+        agent_manager.invalidate_agent()
 
 
 def _checked_record(record: PluginRecord) -> PluginRecord:
@@ -390,6 +512,7 @@ def get_plugin_manager() -> PluginManager:
         from suzent.config.paths import (
             BUILTIN_PLUGINS_DIR,
             PLUGINS_DIR,
+            PROJECT_DIR,
             USER_CONFIG_DIR,
             get_external_plugin_dirs,
         )
@@ -399,5 +522,6 @@ def get_plugin_manager() -> PluginManager:
             USER_CONFIG_DIR / "plugins.json",
             builtin_dirs=[BUILTIN_PLUGINS_DIR],
             deps_root=PLUGINS_DIR / ".deps",
+            social_config_file=PROJECT_DIR / "config" / "social.json",
         )
     return _manager
