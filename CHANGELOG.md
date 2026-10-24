@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
 - Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
 - Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
+- Show fetched model capabilities and explain provider catalog fallbacks.
 - Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
 - Add realtime voice mode with a Liquid-Geo 3-D voxel stage, echo gate, and background delegation to the main agent.
 - Stop Regent from receiving a session's final answer twice when the session already reported it to Regent.

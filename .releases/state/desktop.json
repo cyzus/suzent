@@ -90,6 +90,7 @@
     ".releases/changes/project-library.json",
     ".releases/changes/prompt-cache-routing.json",
     ".releases/changes/prompt-prefix-stability.json",
+    ".releases/changes/provider-model-discovery-ux.json",
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/quiet-heartbeat-cleanup.json",
     ".releases/changes/realtime-voice.json",
