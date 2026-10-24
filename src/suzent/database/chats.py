@@ -163,13 +163,20 @@ def _summarize_messages(
     """Return sidebar summary data without leaking tool detail blocks."""
     safe_messages = messages or []
     last_message = None
-    if safe_messages:
-        last_msg = safe_messages[-1]
-        content = last_msg.get("content") if isinstance(last_msg, dict) else last_msg
-        clean_content = _clean_message_preview(content)
-        last_message = clean_content[:100] if clean_content else None
-        if last_message and len(clean_content) > 100:
-            last_message += "..."
+    for message in reversed(safe_messages):
+        if not isinstance(message, dict) or message.get("role") not in {
+            "user",
+            "assistant",
+            "notice",
+            "system_triggered",
+        }:
+            continue
+        clean_content = _clean_message_preview(message.get("content"))
+        if clean_content:
+            last_message = clean_content[:100]
+            if len(clean_content) > 100:
+                last_message += "..."
+            break
 
     visible_count = sum(
         1
