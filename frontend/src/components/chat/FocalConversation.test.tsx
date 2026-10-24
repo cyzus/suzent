@@ -4,10 +4,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatInputPanel } from '../ChatInputPanel';
 import { AssistantMessage } from './AssistantMessage';
 import type { ChatConfig } from '../../types/api';
+import type { VoiceSession } from '../../hooks/useVoiceSession';
 
 vi.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('../../hooks/useAcpAgents', () => ({ useAcpAgents: () => [] }));
 vi.mock('../../hooks/useSlashCommands', () => ({ useSlashCommands: () => [] }));
+
+const idleVoice: VoiceSession = {
+  status: 'idle',
+  active: false,
+  transcripts: [],
+  working: false,
+  liveCaptions: null,
+  errorKey: null,
+  supported: true,
+  micLevel: { current: 0 },
+  start: () => {},
+  stop: () => {},
+  interrupt: () => {},
+};
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +44,7 @@ const composer = (chatId: string): string => {
       backendConfig={null}
       configReady
       streamingForCurrentChat={false}
+      voice={idleVoice}
     />
   );
 };

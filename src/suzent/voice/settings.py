@@ -17,6 +17,13 @@ class VoiceSettings(BaseModel):
     language: str = Field(default="", max_length=40)
     response_format: Literal["auto", "mp3", "wav", "opus", "aac", "flac"] = "auto"
     instructions: str = Field(default="", max_length=4000)
+    realtime_model: str = Field(default="", max_length=200)
+    realtime_voice: str = Field(default="", max_length=200)
+    # BCP-47 code (e.g. "zh-CN") pinning speech recognition; empty = automatic.
+    realtime_language: str = Field(default="", max_length=40)
+    # How readily the provider's VAD hears the start of speech (Gemini only).
+    # "low" keeps Suzent's own voice leaking into the mic from cutting it off.
+    realtime_start_sensitivity: Literal["auto", "low", "high"] = "low"
 
 
 class VoiceSettingsUpdate(VoiceSettings):
