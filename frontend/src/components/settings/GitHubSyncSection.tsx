@@ -15,7 +15,6 @@ import {
   runSync,
   runSyncQuickstart,
   saveSyncAutoConfig,
-  saveSyncProfile,
   startGitHubAuth,
   syncReviewPlanFromError,
   SyncFileChange,
@@ -26,7 +25,6 @@ import {
   SyncStatus,
 } from '../../lib/dataApi';
 import { SettingsCard, SectionCardHeader, Badge, SettingsListAction } from './SettingsCard';
-import { BrutalButton } from '../BrutalButton';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
 
@@ -548,7 +546,6 @@ export function GitHubSyncSection({
   const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
   const [deviceCode, setDeviceCode] = useState('');
   const [deviceUrl, setDeviceUrl] = useState('');
-  const [deviceSessionId, setDeviceSessionId] = useState('');
   const [deviceInterval, setDeviceInterval] = useState(5);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncPlanWatcherRunning = useRef(false);
@@ -665,7 +662,6 @@ export function GitHubSyncSection({
       const result = await startGitHubAuth();
       setDeviceCode(result.user_code);
       setDeviceUrl(result.verification_uri);
-      setDeviceSessionId(result.session_id);
       setDeviceInterval(result.interval);
       setDevicePhase('polling');
       schedulePoll(result.session_id, result.interval);
@@ -750,31 +746,6 @@ export function GitHubSyncSection({
         }) + warn,
         Boolean(result.warnings.length && !result.git?.valid)
       );
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handleSave(): Promise<void> {
-    if (!repoPath.trim()) return;
-    onBusyChange(true);
-    try {
-      const profile = await saveSyncProfile({
-        ...(syncStatus?.profile || {}),
-        repo_path: repoPath.trim(),
-        branch: branch.trim() || 'main',
-        remote: remote.trim() || 'origin',
-        auto_sync_enabled: autoSync,
-        interval_hours: intervalHours,
-      });
-      applyProfile(profile);
-      if (syncStatus?.profile) {
-        await saveSyncAutoConfig(profile.id, autoSync, intervalHours);
-      }
-      await refresh();
-      onNotify(t('settings.data.githubSaved'), false);
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
