@@ -46,10 +46,10 @@ def test_shell_is_not_told_twice_to_leave_files_alone():
     }
 
 
-def test_the_verification_threshold_is_defined_once():
-    """AgentTool provides the mechanism; the contract decides when it applies.
-    Restating '3+ file edits' in both meant two places to change it."""
-    assert _layers_mentioning("3+ file edits") == {"static"}
+def test_verification_policy_is_defined_in_static_instructions():
+    """The global verification requirement belongs to the static prompt."""
+    assert _layers_mentioning("Verify implementation changes") == {"static"}
+    assert _layers_mentioning("3+ file edits") == set()
 
 
 def test_when_to_use_a_skill_is_stated_once():
