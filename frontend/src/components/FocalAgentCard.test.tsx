@@ -37,7 +37,7 @@ describe('Regent contact card', () => {
       status({ waiting: 1, states: { waiting: 1, running: 3, idle: 2, resolved: 0 } })
     );
     expect(text(html)).toContain('chatList.focal.waitingCount:1 · chatList.focal.runningCount:3');
-    expect(html).toContain('title="chatList.focal.waitingBadge:1"');
+    expect(html).not.toContain('chatList.focal.waitingBadge');
   });
 
   it('shows when Regent itself is working', () => {

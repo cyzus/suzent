@@ -32,6 +32,9 @@ jobs:
           SUZENT_DATA_DIR: ${{ runner.temp }}/suzent-data
         run: uv run python scripts/sync_model_capabilities.py --to-repo
 
+      - name: Select provider default models
+        run: uv run python scripts/sync_model_defaults.py
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -46,3 +49,4 @@ jobs:
             generated diff is reviewed and merged.
           add-paths: |
             config/capabilities/*.json
+            config/provider_defaults.json

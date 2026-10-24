@@ -72,6 +72,18 @@
       "supported_endpoints": [
         "/v1/audio/speech"
       ]
+    },
+    "minimax/MiniMax-H3": {
+      "mode": "video_generation",
+      "supported_endpoints": [
+        "/v1/videos"
+      ]
+    },
+    "minimax/MiniMax-H3-Max": {
+      "mode": "video_generation",
+      "supported_endpoints": [
+        "/v1/videos"
+      ]
     }
   }
 }

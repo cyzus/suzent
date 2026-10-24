@@ -108,6 +108,9 @@
       "supported_endpoints": [
         "/v1/chat/completions"
       ]
+    },
+    "deepseek/search": {
+      "mode": "chat"
     }
   }
 }
