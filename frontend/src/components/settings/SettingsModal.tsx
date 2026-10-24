@@ -528,10 +528,14 @@ export function SettingsModal({
       setVerification((prev) => ({
         ...prev,
         [provider.id]: {
-          success: result.success,
-          message: result.success
-            ? t('settings.providers.connectionSuccess', { count: result.models.length })
-            : result.message || result.error || t('settings.verifyFailed'),
+          success: result.success && !result.used_catalog_fallback,
+          message: result.used_catalog_fallback
+            ? t('settings.providers.catalogFallback', {
+                reason: result.discovery_error || t('settings.verifyFailed'),
+              })
+            : result.success
+              ? t('settings.providers.connectionSuccess', { count: result.models.length })
+              : result.message || result.error || t('settings.verifyFailed'),
         },
       }));
       if (result.success) {

@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import {
   ApiField,
   ApiProvider,
+  Model,
   CustomProviderPayload,
   fetchChatGPTStatus,
   logoutChatGPT,
@@ -44,6 +45,20 @@ const FIELD_ACTION_PRIMARY =
   'bg-brutal-black text-white hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed';
 
 type ProviderTab = 'credentials' | 'models';
+
+function modelDetails(model: Model, t: ReturnType<typeof useI18n>['t']): string {
+  const details = [model.id];
+  if (model.context_length) {
+    details.push(
+      t('settings.providers.modelContext', { count: model.context_length.toLocaleString() })
+    );
+  }
+  if (model.supports_vision) details.push(t('settings.providers.modelVision'));
+  if (model.supports_reasoning) details.push(t('settings.providers.modelReasoning'));
+  if (model.supports_function_calling) details.push(t('settings.providers.modelTools'));
+  if (model.description) details.push(model.description);
+  return details.join(' · ');
+}
 
 function getProviderTitleClass(label: string): string {
   if (label.length > 18) return 'text-sm';
@@ -395,12 +410,13 @@ function ChatGPTProviderCard({
 
   const statusKey = status?.status ?? 'not_logged_in';
   const connected = status?.connected === true;
-  const allModels = [...(provider.default_models || [])];
+  const allModels =
+    provider.models.length > 0 ? [...provider.models] : [...(provider.default_models || [])];
 
   for (const model of provider.models || []) {
-    if (!allModels.find((x) => x.id === model.id)) {
-      allModels.push(model);
-    }
+    const index = allModels.findIndex((x) => x.id === model.id);
+    if (index === -1) allModels.push(model);
+    else allModels[index] = { ...allModels[index], ...model };
   }
 
   for (const modelId of config.custom_models) {
@@ -555,7 +571,11 @@ function ChatGPTProviderCard({
             onChange={(newVal) =>
               onConfigChange(provider.id, { ...config, enabled_models: newVal })
             }
-            options={allModels.map((m) => ({ value: m.id, label: m.name || m.id }))}
+            options={allModels.map((m) => ({
+              value: m.id,
+              label: m.name || m.id,
+              description: modelDetails(m, t),
+            }))}
             emptyMessage={t('settings.providers.noModelsFound')}
             dropdownClassName="max-h-56"
           />
@@ -814,12 +834,15 @@ export function ProvidersTab({
             );
           }
 
-          const allModels = [...(provider.default_models || [])];
+          const allModels =
+            provider.models.length > 0
+              ? [...provider.models]
+              : [...(provider.default_models || [])];
 
           for (const model of provider.models || []) {
-            if (!allModels.find((x) => x.id === model.id)) {
-              allModels.push(model);
-            }
+            const index = allModels.findIndex((x) => x.id === model.id);
+            if (index === -1) allModels.push(model);
+            else allModels[index] = { ...allModels[index], ...model };
           }
 
           for (const modelId of conf.custom_models) {
@@ -1153,7 +1176,11 @@ export function ProvidersTab({
                             .toLowerCase()
                             .includes((modelQueries[provider.id] || '').trim().toLowerCase())
                         )
-                        .map((m) => ({ value: m.id, label: m.name || m.id }))}
+                        .map((m) => ({
+                          value: m.id,
+                          label: m.name || m.id,
+                          description: modelDetails(m, t),
+                        }))}
                       emptyMessage={t('settings.providers.noModelsFound')}
                       emptyAction={
                         !(modelQueries[provider.id] || '').trim() && (
