@@ -22,6 +22,9 @@ async def test_openai_fetches_live_model_ids(monkeypatch: pytest.MonkeyPatch) ->
             return {"data": [{"id": "gpt-6.1-sol"}, {"id": "gpt-6-luna"}]}
 
     class Session:
+        def __init__(self, *, trust_env: bool) -> None:
+            assert trust_env is True
+
         async def __aenter__(self):
             return self
 

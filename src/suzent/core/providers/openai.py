@@ -33,7 +33,7 @@ class OpenAIProvider(BaseProvider):
         base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(trust_env=True) as session:
                 async with session.get(
                     f"{base_url}/models",
                     headers={"Authorization": f"Bearer {api_key}"},
