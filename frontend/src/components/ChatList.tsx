@@ -1304,7 +1304,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           clearSelection();
           markRead(chat.id);
           pickedInSidebarRef.current = chat.id;
-          loadChat(chat.id);
+          loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
           if (switchToView) switchToView('chat');
         }}
         onMouseDown={(e) => {
@@ -1429,7 +1429,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const openChatById = (chatId: string): void => {
     pickedInSidebarRef.current = chatId;
     markRead(chatId);
-    loadChat(chatId);
+    const chat = chats.find((item) => item.id === chatId);
+    loadChat(chatId, { authoritative: !isChatRunning(chatId, chat?.isRunning) });
     if (switchToView) switchToView('chat');
   };
 

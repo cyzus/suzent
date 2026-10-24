@@ -411,6 +411,23 @@ def test_peer_chats_are_logged(temp_db) -> None:
     _assert_log_matches(db)
 
 
+def test_separate_database_instances_refresh_cached_log_before_writing(temp_db) -> None:
+    first = temp_db
+    chat_id = first.create_chat(title="Shared", config={})
+    second = ChatDatabase(str(first.db_path))
+    try:
+        second.chat_log.logged(chat_id)
+        first.append_chat_message(chat_id, {"role": "user", "content": "one"})
+        second.append_chat_message(chat_id, {"role": "assistant", "content": "two"})
+        first.append_chat_message(chat_id, {"role": "user", "content": "three"})
+
+        events = _events(first, chat_id)
+        assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
+        _assert_log_matches(first)
+    finally:
+        second.engine.dispose()
+
+
 def test_large_strings_are_stored_once_outside_the_log(temp_db) -> None:
     db = temp_db
     image = "data:image/png;base64," + "A" * MEDIA_THRESHOLD

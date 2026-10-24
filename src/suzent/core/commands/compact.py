@@ -1,4 +1,7 @@
+import asyncio
+
 import typer
+from suzent.config import CONFIG
 from suzent.core.commands.base import register_command, CommandContext
 from suzent.logger import get_logger
 
@@ -93,31 +96,59 @@ def handle_compact(
             tokens_before=tokens_before,
         )
         try:
-            compressed = await compressor._perform_compression(
-                messages, focus=focus_text
+            compressed = await asyncio.wait_for(
+                compressor._perform_compression(messages, focus=focus_text),
+                timeout=CONFIG.compaction_timeout_seconds,
             )
         except Exception as e:
+            detail = (
+                "Compaction timed out. Original history preserved."
+                if isinstance(e, TimeoutError)
+                else "Compaction failed. Original history preserved."
+            )
+            logger.warning("[/compact] {}: {}", cmd_ctx.chat_id, type(e).__name__)
             emit_compaction_event(
                 chat_id=cmd_ctx.chat_id,
                 stage="error",
                 source=event_source,
                 messages_before=messages_before,
                 tokens_before=tokens_before,
-                message=str(e),
+                message=detail,
                 persist_result=True,
             )
-            raise
+            return f"⚠ {detail}"
+
+        if compressed is messages:
+            emit_compaction_event(
+                chat_id=cmd_ctx.chat_id,
+                stage="skipped",
+                source=event_source,
+                message="Compaction did not reduce context. Original history preserved.",
+                persist_result=True,
+            )
+            return "ℹ Compaction did not reduce context. Original history preserved."
 
         agent_state_bytes = serialize_state(
             compressed, model_id=model_id, tool_names=tool_names
         )
         # Persist via commit_snapshot_state so the state_revision is bumped. A late
         # post-process finalize from a prior turn checks expected_revision and will
-        # now be rejected as stale instead of clobbering the compacted state. Falls
-        # back to a plain write only if the chat row is missing a revision counter.
-        revision = db.commit_snapshot_state(cmd_ctx.chat_id, agent_state_bytes)
+        # now be rejected as stale instead of clobbering the compacted state.
+        # Compare the revision read before summarization to protect newer writes.
+        revision = db.commit_snapshot_state(
+            cmd_ctx.chat_id,
+            agent_state_bytes,
+            expected_revision=chat.state_revision or 0,
+        )
         if revision is None:
-            db.update_chat(cmd_ctx.chat_id, agent_state=agent_state_bytes)
+            emit_compaction_event(
+                chat_id=cmd_ctx.chat_id,
+                stage="skipped",
+                source=event_source,
+                message="Conversation changed during compaction. Newer history preserved.",
+                persist_result=True,
+            )
+            return "ℹ Conversation changed during compaction. Please retry."
 
         tokens_after = estimate_tokens(compressed, context_limit).estimated_tokens
         emit_compaction_event(
