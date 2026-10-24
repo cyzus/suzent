@@ -363,10 +363,13 @@ async def sync_from_litellm() -> dict[str, int]:
                 if val is not None:
                     entry[dst] = val
 
+            # LiteLLM calls the input capability supports_video_input.
+            if isinstance(info.get("supports_video_input"), bool):
+                entry["supports_video"] = info["supports_video_input"]
+
             # Capability flags — overwrite from LiteLLM
             for flag in (
                 "supports_vision",
-                "supports_video",
                 "supports_function_calling",
                 "supports_response_schema",
                 "supports_reasoning",

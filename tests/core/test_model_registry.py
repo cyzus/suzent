@@ -468,7 +468,9 @@ def test_image_edit_capability(entry: dict, expected: bool | None) -> None:
     assert caps.supported_endpoints == tuple(entry.get("supported_endpoints", []))
 
 
-async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -> None:
+async def test_sync_image_endpoints_video_input_and_bare_openai_ids(
+    tmp_path, monkeypatch
+) -> None:
     from unittest.mock import AsyncMock, MagicMock
     from suzent.core import model_registry as module
 
@@ -481,6 +483,14 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         "openai/edit-test": {
             "mode": "image_edit",
             "supported_endpoints": ["/v1/images/edits"],
+        },
+        "gemini/video-test": {
+            "mode": "chat",
+            "supports_video_input": True,
+        },
+        "gemini/text-test": {
+            "mode": "chat",
+            "supports_video_input": False,
         },
     }
     response = MagicMock()
@@ -499,3 +509,6 @@ async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -
         == raw["gpt-image-test"]["supported_endpoints"]
     )
     assert saved["openai/edit-test"]["mode"] == "image_edit"
+    gemini = json.loads((tmp_path / "local/gemini.json").read_text())["models"]
+    assert gemini["gemini/video-test"]["supports_video"] is True
+    assert gemini["gemini/text-test"]["supports_video"] is False
