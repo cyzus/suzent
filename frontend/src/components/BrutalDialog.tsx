@@ -55,8 +55,10 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
     document.addEventListener('keydown', onKey);
     // Move focus to the first button so the user can immediately Enter / Tab.
     const t = setTimeout(() => {
-      cardRef.current?.querySelector<HTMLButtonElement>('button[data-primary="true"]')?.focus() ??
-        cardRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      const button =
+        cardRef.current?.querySelector<HTMLButtonElement>('button[data-primary="true"]') ??
+        cardRef.current?.querySelector<HTMLButtonElement>('button');
+      button?.focus();
     }, 0);
     return () => {
       document.removeEventListener('keydown', onKey);

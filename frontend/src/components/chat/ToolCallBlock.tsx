@@ -186,7 +186,6 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   isAutoApproved = false,
   onRemovePolicy,
   toolCallId,
-  onForceWebContext,
   inActivityRail = false,
 }) => {
   const [expanded, setExpanded] = useState(!defaultCollapsed);

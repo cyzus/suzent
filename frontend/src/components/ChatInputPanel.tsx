@@ -134,7 +134,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   setConfig,
   backendConfig,
   fileInputRef,
-  textareaRef,
   configReady,
   streamingForCurrentChat,
   stopStreaming,

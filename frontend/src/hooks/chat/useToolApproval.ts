@@ -151,7 +151,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
 
       const effectiveRemember = normalizeLegacyRememberScope(remember);
 
-      let allDecided = addApprovalDecision(
+      const allDecided = addApprovalDecision(
         approvalId,
         toolCallId,
         approved,
