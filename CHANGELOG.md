@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The app header no longer crowds on narrow windows: it keeps a gap between a long chat title and the status marks, drops the old Chat / Memory / Skills tabs (the sidebar and the console rail already navigate there), and on the narrowest widths keeps just Regent's mark and the title.
 - Show what woke a background turn, such as a message from a paired device, while the turn is still running.
 - Memory keeps only facts you said yourself, with the words they came from; MEMORY.md becomes a short map of notebook pages, one memory_update tool remembers and retracts, and suzent memory lint / cleanup check and draft fixes for your memory files.
+- Support native video input in visual analysis and preserve existing visual tool settings.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
 - Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
 - Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
