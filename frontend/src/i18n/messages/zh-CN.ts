@@ -628,7 +628,10 @@ export const zhCN = {
           description: '停止正在运行的本地或已配对远端智能体会话。',
         },
         ImageGenerationTool: { name: '生成图片', description: '根据文本提示生成图片。' },
-        VisualAnalysisTool: { name: '分析视觉内容', description: '使用视觉模型分析图片或原生视频。' },
+        VisualAnalysisTool: {
+          name: '分析视觉内容',
+          description: '使用视觉模型分析图片或原生视频。',
+        },
         VideoGenerationTool: {
           name: '生成视频',
           description: '使用文字或参考图片提交视频生成任务。',
