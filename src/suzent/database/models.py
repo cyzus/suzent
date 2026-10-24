@@ -95,6 +95,10 @@ class ChatModel(SQLModel, table=True):
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
     context_usage: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # What was said in realtime voice sessions, for display only. Kept apart
+    # from `messages`, which every turn rebuilds from the agent history: these
+    # rows have no counterpart there and never reach a model's context.
+    voice_log: Optional[list] = Field(default=None, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
 
     # Session lifecycle fields

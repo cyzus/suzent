@@ -18,6 +18,8 @@ constructing an ASGI scope.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from starlette.responses import JSONResponse
 
 # Hosts treated as the trusted local machine. Empty string and "testclient"
@@ -27,6 +29,7 @@ LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "", "testclient"}
 
 # Paths reachable from remote without a token (they self-authenticate).
 _WS_EXEMPT_PATHS = {"/ws/node"}
+_WS_FULL_ONLY_PATHS = {"/ws/voice"}
 
 # HTTP bootstrap paths reachable from remote without a token. These issue no
 # secret — they only queue a control request an operator must approve, and the
@@ -115,6 +118,26 @@ def host_header_is_local(host_header: str) -> bool:
     return _host_name(host_header) in LOOPBACK_HOST_NAMES
 
 
+def voice_origin_allowed(origin: str | None, host: str) -> bool:
+    """Allow desktop/dev origins and an origin matching the WebSocket Host."""
+    if not origin:
+        return True
+    if origin.lower() == "tauri://localhost":
+        return True
+    try:
+        parsed = urlsplit(origin)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        origin_host = (parsed.hostname or "").lower()
+        if origin_host == "tauri.localhost":
+            return True
+        if parsed.scheme == "http" and origin_host in {"localhost", "127.0.0.1"}:
+            return True
+        return parsed.netloc.lower() == host.strip().lower()
+    except ValueError:
+        return False
+
+
 def host_header_allowed(host_header: str) -> bool:
     """Whether a loopback client's Host header names this server legitimately.
 
@@ -145,7 +168,12 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 # browser's `EventSource` is exactly that case — it cannot set request headers,
 # and these two endpoints are how the web UI receives everything the agent does.
 # Both are read-only GET streams.
-QUERY_TOKEN_PATHS = {"/events/stream", "/subagents/stream", "/background-tasks/stream"}
+QUERY_TOKEN_PATHS = {
+    "/events/stream",
+    "/subagents/stream",
+    "/background-tasks/stream",
+    "/ws/voice",
+}
 
 
 def extract_query_token(path: str, query_string: bytes | str) -> str:
@@ -286,7 +314,12 @@ class AuthBoundaryMiddleware:
             await send({"type": "websocket.close", "code": 1008})
             return
 
-        if scope["type"] == "websocket" or scope_allows(tok_scope, path):
+        if scope["type"] == "websocket":
+            if path in _WS_FULL_ONLY_PATHS and tok_scope != "full":
+                await send({"type": "websocket.close", "code": 1008})
+                return
+            return await self.app(scope, receive, send)
+        if scope_allows(tok_scope, path):
             return await self.app(scope, receive, send)
 
         # Valid token, but its scope doesn't cover this route.

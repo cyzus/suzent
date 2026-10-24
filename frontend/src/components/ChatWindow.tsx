@@ -35,6 +35,7 @@ import { InlineSurfaceProvider } from './a2ui/InlineSurfaceContext';
 import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
+import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
@@ -1680,6 +1681,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
 
   // handleCanvasDispatch is defined after safeConfig below
+
+  // Realtime voice lives here, not in the composer: the new-chat view hands
+  // over to the conversation view mid-session, and the session must survive it.
+  // The voice session only binds a chat; delegated turns stream into the
+  // chat window over the background bus like any other turn.
+  // The chat the call belongs to: the one it started from (null for a new
+  // chat) until the server binds it, then the bound chat.
+  const voiceChatIdRef = useRef<string | null>(null);
+  const voiceSession = useVoiceSession(
+    useCallback(
+      (chatId: string) => {
+        voiceChatIdRef.current = chatId;
+        void loadChat(chatId, { force: true });
+        void refreshChatListSilently(undefined, true);
+      },
+      [loadChat, refreshChatListSilently]
+    )
+  );
+  const voice: typeof voiceSession = {
+    ...voiceSession,
+    start: (chatId: string | null) => {
+      voiceChatIdRef.current = chatId;
+      voiceSession.start(chatId);
+    },
+  };
+  // Voice is bound to one chat; leaving it ends the session, including while
+  // it is still connecting (otherwise binding would pull the user back).
+  useEffect(() => {
+    if (voice.active && (currentChatId ?? null) !== voiceChatIdRef.current) {
+      voice.stop();
+    }
+    // `voice` changes every render; only a chat switch should re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChatId]);
 
   // Custom hooks
   const {
@@ -3332,6 +3367,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onImageClick={setViewingImage}
                     currentChatId={currentChatId}
                     briefing={currentChatId === FOCAL_CHAT_ID ? <FocalBriefing /> : undefined}
+                    voice={voice}
                     onFileMentionSelected={(mention) =>
                       setFileMentions((prev) => [
                         ...prev.filter((item) => item.name !== mention.name),
@@ -3502,6 +3538,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onImageClick={setViewingImage}
                   currentChatId={currentChatId}
                   inputSuggestion={inputSuggestion}
+                  voice={voice}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),

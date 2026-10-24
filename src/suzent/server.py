@@ -206,6 +206,7 @@ from suzent.routes.browser_routes import (
     browser_preview_tab_endpoint,
     browser_websocket_endpoint,
 )
+from suzent.routes.voice_routes import voice_websocket_endpoint
 from suzent.routes.node_routes import (
     browser_node_page,
     node_websocket_endpoint,
@@ -1392,6 +1393,7 @@ app = Starlette(
         Route("/browser/status", browser_status_endpoint, methods=["GET", "POST"]),
         Route("/browser/preview-tab", browser_preview_tab_endpoint, methods=["POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
+        WebSocketRoute("/ws/voice", voice_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
         # Specific paths must precede /nodes/{node_id} so they aren't captured

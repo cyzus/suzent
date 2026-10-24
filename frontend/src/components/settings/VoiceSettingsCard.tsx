@@ -21,6 +21,17 @@ interface VoiceSettings {
   language: string;
   response_format: string;
   instructions: string;
+  realtime_model: string;
+  realtime_voice: string;
+  realtime_start_sensitivity?: 'auto' | 'low' | 'high';
+}
+
+interface RealtimeOption {
+  id: string;
+  label: string;
+  configured: boolean;
+  /** true: words stream while you speak; false: only after you finish; null: unmeasured. */
+  live_captions?: boolean | null;
 }
 
 export function VoiceSettingsCard({
@@ -39,6 +50,7 @@ export function VoiceSettingsCard({
   const { t } = useI18n();
   const voices = useSystemVoices();
   const [settings, setSettings] = useState<VoiceSettings | null>(null);
+  const [realtimeOptions, setRealtimeOptions] = useState<RealtimeOption[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -46,8 +58,13 @@ export function VoiceSettingsCard({
     void fetch(`${getApiBase()}/config/voice`)
       .then(async (response) => {
         if (!response.ok) throw new Error();
-        const { tts_models = [], ...data } = (await response.json()) as VoiceSettings & {
+        const {
+          tts_models = [],
+          realtime_options = [],
+          ...data
+        } = (await response.json()) as VoiceSettings & {
           tts_models?: string[];
+          realtime_options?: RealtimeOption[];
         };
         if (!cancelled) {
           const compatible =
@@ -61,6 +78,7 @@ export function VoiceSettingsCard({
               compatible.instructions !== data.instructions
           );
           setModels(tts_models);
+          setRealtimeOptions(realtime_options);
           setCustomVoice(
             !!data.voice && !speechModelOptions(tts_models[0] || '').voices.includes(data.voice)
           );
@@ -273,6 +291,66 @@ export function VoiceSettingsCard({
               )}
             </>
           )}
+          <div className="space-y-3 border-t-2 border-brutal-black pt-4 sm:col-span-2">
+            <h3 className="font-bold uppercase">{t('voice.settings.title')}</h3>
+            <p className="text-xs font-normal text-neutral-500 dark:text-neutral-400">
+              {t('voice.settings.description')}
+            </p>
+            <label className="block">
+              {t('voice.settings.model')}
+              <BrutalSelect
+                className="mt-1"
+                disabled={saving}
+                value={settings.realtime_model}
+                onChange={(realtime_model) => update({ realtime_model })}
+                options={[
+                  { value: '', label: t('voice.settings.auto') },
+                  ...realtimeOptions.map((option) => ({
+                    value: option.id,
+                    label:
+                      option.live_captions === false
+                        ? `${option.label} · ${t('voice.settings.captionsAfterSpeech')}`
+                        : option.label,
+                    disabled: !option.configured,
+                  })),
+                ]}
+              />
+            </label>
+            <label className="block">
+              {t('voice.settings.voice')}
+              <input
+                className={fieldClass}
+                value={settings.realtime_voice}
+                maxLength={200}
+                onChange={(event) => update({ realtime_voice: event.target.value })}
+              />
+            </label>
+            <label className="block">
+              {t('voice.settings.sensitivity')}
+              <BrutalSelect
+                className="mt-1"
+                disabled={saving}
+                value={settings.realtime_start_sensitivity ?? 'low'}
+                onChange={(value) =>
+                  update({
+                    realtime_start_sensitivity:
+                      value as VoiceSettings['realtime_start_sensitivity'],
+                  })
+                }
+                options={[
+                  { value: 'low', label: t('voice.settings.sensitivityLow') },
+                  { value: 'auto', label: t('voice.settings.sensitivityAuto') },
+                  { value: 'high', label: t('voice.settings.sensitivityHigh') },
+                ]}
+              />
+              <span className="mt-1 block text-xs font-normal text-neutral-500 dark:text-neutral-400">
+                {t('voice.settings.sensitivityHint')}
+              </span>
+            </label>
+            {!realtimeOptions.some((option) => option.configured) && (
+              <p className="text-xs text-brutal-red">{t('voice.settings.noneConfigured')}</p>
+            )}
+          </div>
           {(
             [
               ...(settings.engine === 'system' || modelOptions.speed ? ['speed'] : []),

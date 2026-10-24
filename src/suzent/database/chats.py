@@ -825,6 +825,30 @@ class ChatOperationsMixin:
             self.commit_chat_changes(session, [chat_id])
         return True
 
+    def append_voice_log(
+        self, chat_id: str, entries: List[Dict[str, Any]], limit: int = 1000
+    ) -> bool:
+        """Append realtime voice transcript rows, replacing rows with the same id."""
+        if not entries:
+            return True
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            log = [row for row in (chat.voice_log or []) if isinstance(row, dict)]
+            index = {row.get("id"): i for i, row in enumerate(log)}
+            for entry in entries:
+                position = index.get(entry.get("id"))
+                if position is None:
+                    index[entry.get("id")] = len(log)
+                    log.append(dict(entry))
+                else:
+                    log[position] = dict(entry)
+            chat.voice_log = log[-limit:]
+            session.add(chat)
+            session.commit()
+        return True
+
     def append_chat_message_once(
         self, chat_id: str, message: Dict[str, Any], client_message_id: str
     ) -> str:
