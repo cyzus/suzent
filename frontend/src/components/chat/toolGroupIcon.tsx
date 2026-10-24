@@ -97,6 +97,7 @@ const EXACT_TOOL_ICONS = {
   generate_image: PhotoIcon,
   edit_image: PaintBrushIcon,
   analyze_image: EyeIcon,
+  analyze_visual: EyeIcon,
   generate_video: FilmIcon,
   check_video_status: FilmIcon,
   speak: SpeakerWaveIcon,
@@ -183,6 +184,7 @@ export function pickToolAnimationKind(
     case 'read_file':
     case 'webpage_fetch':
     case 'analyze_image':
+    case 'analyze_visual':
     case 'agent_read':
       return 'scan';
     case 'write_file':
@@ -246,6 +248,7 @@ export function pickToolRunningSurfaceClass(toolName: string): ToolRunningSurfac
     case 'session_search':
     case 'search_tools':
     case 'analyze_image':
+    case 'analyze_visual':
     case 'list_tasks':
     case 'agent_list':
     case 'agent_read':

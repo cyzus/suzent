@@ -123,7 +123,7 @@ const translatedToolIds = [
   'AgentSendTool',
   'AgentStopTool',
   'ImageGenerationTool',
-  'ImageVisionTool',
+  'VisualAnalysisTool',
   'SpeakTool',
   'SocialMessageTool',
   'MemorySearchTool',

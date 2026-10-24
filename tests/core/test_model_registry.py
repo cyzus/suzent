@@ -21,6 +21,7 @@ class TestModelCapabilities:
         assert caps.mode == "chat"
         assert caps.max_input_tokens == 0
         assert caps.supports_vision is False
+        assert caps.supports_video is False
         assert caps.context_window == 0
 
     def test_context_window(self):
@@ -76,6 +77,14 @@ class TestModelRegistryFromFile:
         registry = get_model_registry()
         assert registry.supports_vision("anthropic/claude-sonnet-4-6") is True
         assert registry.supports_vision("deepseek/deepseek-chat") is False
+
+    def test_supports_video_uses_curated_capabilities(self):
+        registry = get_model_registry()
+        assert registry.supports_video("gemini/gemini-2.5-flash") is True
+        assert registry.supports_video("dashscope/qwen3-vl-plus") is True
+        assert registry.supports_video("openrouter/google/gemini-3.8-flash") is True
+        assert registry.supports_video("openai/gpt-4.1") is False
+        assert registry.supports_video("nonexistent/model") is False
 
     def test_supports_reasoning_shortcut(self):
         registry = get_model_registry()

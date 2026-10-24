@@ -67,13 +67,13 @@ def policy_alias_names(tool_name: str) -> List[str]:
 
 
 def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
-    """Expand legacy aggregate shell selections into independently selectable tools."""
+    """Normalize legacy tool selections to current class names."""
     migrated: list[str] = []
     for name in tool_names:
         if name in LEGACY_SHELL_TOOL_NAMES:
             migrated.extend(SHELL_TOOL_CLASS_NAMES)
         else:
-            migrated.append(name)
+            migrated.append("VisualAnalysisTool" if name == "ImageVisionTool" else name)
     return list(dict.fromkeys(migrated))
 
 

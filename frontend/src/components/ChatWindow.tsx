@@ -1353,7 +1353,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }));
       } else if (name === 'image_not_supported') {
         // Active model lacks vision; backend stripped the image(s) but kept them
-        // on disk so analyze_image can still inspect them. Surface the warning
+        // on disk so analyze_visual can still inspect them. Surface the warning
         // as an in-chat notice rather than a transient status-bar toast.
         const payload = value as { message?: string; chat_id?: string } | null;
         const msg = payload?.message || "The current model can't read images.";

@@ -14,7 +14,7 @@ its own specialist model, so assign that model first in
 |---|---|---|---|
 | Generate an image | **Image Generation** | Yes | `artifacts/images` folder |
 | Edit an image | **Image Editing** | Yes | `artifacts/images` folder |
-| Read or describe an image | **Vision** | No | Nothing saved |
+| Read an image or summarize a video | **Vision** | No | Nothing saved |
 | Create a video | **Video generation** | Yes, when it is submitted | `artifacts/videos` folder |
 | Speak text aloud | None (System) or **TTS** (API) | No | `artifacts/audio` folder (API only) |
 
@@ -41,6 +41,14 @@ can't, the chat shows a note that the images were not sent, and the agent looks
 at them with its image-reading tool instead. That tool uses the **Vision**
 model, which falls back to **Primary** when Primary can see images. With
 neither, the tool reports that no Vision model is set.
+
+The same visual analysis tool sends a complete video to a **Vision** model that
+supports native video input. Supported Gemini, DashScope, and OpenRouter models
+can use this path. The limit is 20 MB for Gemini and OpenRouter and 7 MB for
+DashScope, to account for the size of the encoded request. Suzent does not
+extract frames. If the selected model does not support video, choose another
+Vision model in **Settings → Model Roles**. Whether the soundtrack is understood
+depends on the model.
 
 ## Video
 
