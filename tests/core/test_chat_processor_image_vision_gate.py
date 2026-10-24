@@ -2,11 +2,11 @@
 
 When the active model lacks vision, attached images must be dropped from the
 LLM payload (so the provider never rejects raw bytes) while staying readable on
-disk via the analyze_image tool. Two distinct audiences result:
+disk via the analyze_visual tool. Two distinct audiences result:
 
 - The USER sees a friendly in-chat ``notice`` (no tool jargon).
 - The MODEL gets a hidden ``<system-reminder>`` directive pointing at
-  analyze_image with the VIRTUAL paths its tools can resolve.
+  analyze_visual with the VIRTUAL paths its tools can resolve.
 
 These tests pin the two derived strings produced from the strip decision. They
 guard the behavior added for non-vision models without driving the full
@@ -30,7 +30,7 @@ def test_notice_includes_model_and_count() -> None:
     assert "xiaomi_mimo/mimo-v2.5-pro" in notice
     assert "2 image(s)" in notice
     # Mentions the fallback capability so the user knows it isn't a dead end.
-    assert "analyze_image" in notice
+    assert "analyze_visual" in notice
 
 
 def test_notice_handles_unknown_model_id() -> None:
@@ -57,7 +57,7 @@ def test_reminder_lists_every_virtual_path() -> None:
     for p in paths:
         assert p in reminder
     assert "2 image(s)" in reminder
-    assert "analyze_image" in reminder
+    assert "analyze_visual" in reminder
 
 
 def test_reminder_uses_virtual_not_host_paths() -> None:
@@ -75,8 +75,8 @@ def test_notice_and_reminder_target_different_audiences() -> None:
     notice = _stripped_image_notice("m", 1)
     reminder = _stripped_image_reminder(["/workspace/uploads/x.png"])
     assert reminder is not None
-    assert "Use the analyze_image tool" in reminder
-    assert "Use the analyze_image tool" not in notice
+    assert "Use the analyze_visual tool" in reminder
+    assert "Use the analyze_visual tool" not in notice
 
 
 def test_attachment_processing_error_is_a_user_facing_notice() -> None:

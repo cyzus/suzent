@@ -512,11 +512,11 @@ def _is_denied_tool_return(content: Any) -> bool:
 
 # User-facing notice when image(s) were dropped because the active model lacks
 # vision. Deliberately free of tool jargon — the directive to actually call
-# analyze_image goes to the model via a hidden <system-reminder> built from
+# analyze_visual goes to the model via a hidden <system-reminder> built from
 # ``STRIPPED_IMAGE_REMINDER_TEMPLATE`` (in suzent.prompts).
 STRIPPED_IMAGE_NOTICE_TEMPLATE = """\
 The current model ({model_id}) can't read images. {count} image(s) were not \
-sent, but the assistant can still inspect them with analyze_image."""
+sent, but the assistant can still inspect them with analyze_visual."""
 
 ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
@@ -791,7 +791,7 @@ class ChatProcessor:
         agent_images = []
         attachment_context = ""
         # Names of images stripped because the active model lacks vision. They
-        # stay on disk and readable via analyze_image (a separate vision-role
+        # stay on disk and readable via analyze_visual (a separate vision-role
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
@@ -861,7 +861,7 @@ class ChatProcessor:
                         # Active model can't read images — don't ship raw bytes
                         # (the provider would reject them). Keep the file on disk
                         # and record the virtual path so we can tell the model, via
-                        # a hidden system reminder, to inspect it with analyze_image
+                        # a hidden system reminder, to inspect it with analyze_visual
                         # (the directive must not appear in the user's bubble).
                         name = result.get("filename") or result["agent_path"]
                         stripped_image_names.append(name)
@@ -1139,7 +1139,7 @@ class ChatProcessor:
         # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
         # hallucinate "this scheduled task already fired, skip it" and no-op.
         # A non-vision model can't see the stripped image(s); tell it (invisibly
-        # to the user) to inspect them via analyze_image. Merge into the adhoc
+        # to the user) to inspect them via analyze_visual. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)

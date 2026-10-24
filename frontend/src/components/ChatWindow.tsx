@@ -63,7 +63,6 @@ import { QueuedMessages, type QueuedMessage } from './chat/QueuedMessages';
 import { formatQuestionAnswer } from '../lib/questionAnswer';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
-import { SubAgentView } from './sidebar/SubAgentView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import {
   useEventBus,
@@ -1210,7 +1209,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           () => {
             try {
               if (activeChatIdRef.current === chatId) loadChat(chatId!, { force: true });
-            } catch {}
+            } catch {
+              // The chat may disappear before the delayed refresh.
+            }
           },
           persistence?.confirmed ? 0 : 300
         );
@@ -1294,11 +1295,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       try {
         loadCoreMemory();
         loadStats();
-      } catch {}
+      } catch {
+        // Memory refresh is optional after a tool result.
+      }
       try {
         refreshGoalTasks();
         refreshKanban();
-      } catch {}
+      } catch {
+        // Task refresh is optional after a tool result.
+      }
     },
     onMarkDeferred: (surfaceId) => {
       canvas.markDeferred(surfaceId);
@@ -1354,7 +1359,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }));
       } else if (name === 'image_not_supported') {
         // Active model lacks vision; backend stripped the image(s) but kept them
-        // on disk so analyze_image can still inspect them. Surface the warning
+        // on disk so analyze_visual can still inspect them. Surface the warning
         // as an in-chat notice rather than a transient status-bar toast.
         const payload = value as { message?: string; chat_id?: string } | null;
         const msg = payload?.message || "The current model can't read images.";
@@ -3043,7 +3048,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setTimeout(() => {
           try {
             loadChat(targetChatId, { force: true });
-          } catch {}
+          } catch {
+            // The chat may disappear before the delayed refresh.
+          }
         }, 500);
       }
     },
@@ -3232,7 +3239,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             onRightSidebarToggle(true);
           }
         }
-      } catch (error) {
+      } catch {
         // Error checking file - do nothing (animation already played)
       }
     },

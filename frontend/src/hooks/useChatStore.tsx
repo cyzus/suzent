@@ -399,7 +399,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   // Models we have already refetched the listing for, so an unlisted model
   // (an ACP agent, a disabled provider) costs one request, not one per load.
   const refetchedForModelsRef = useRef<Set<string>>(new Set());
-  const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
   const [activeStreamingChatId, setActiveStreamingChatId] = useState<string | null>(null);
@@ -452,7 +451,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const next = !prev;
       try {
         localStorage.setItem('suzent_hide_tool_calls', String(next));
-      } catch {}
+      } catch {
+        // Persisting this display preference is best effort.
+      }
       return next;
     });
   }, []);
@@ -1848,7 +1849,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (!cascade) return prev.filter((c) => c.id !== chatId);
         return prev.filter((c) => {
           if (c.id === chatId) return false;
-          const config = (c as any).config;
           const parentId = (c as any).parentChatId;
           return !(parentId === chatId);
         });

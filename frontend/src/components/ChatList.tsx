@@ -158,7 +158,6 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const {
     projects,
-    currentProjectId,
     setCurrentProjectId,
     createProject,
     renameProject,

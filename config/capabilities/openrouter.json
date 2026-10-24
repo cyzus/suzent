@@ -1085,6 +1085,7 @@
       "max_input_tokens": 1048576,
       "max_output_tokens": 65536,
       "supports_vision": true,
+      "supports_video": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,

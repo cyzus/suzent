@@ -209,6 +209,7 @@
       "max_input_tokens": 260096,
       "max_output_tokens": 32768,
       "supports_vision": true,
+      "supports_video": true,
       "supports_function_calling": true,
       "supports_reasoning": true
     },
@@ -384,7 +385,9 @@
       "mode": "chat"
     },
     "dashscope/qwen3.5-flash": {
-      "mode": "chat"
+      "mode": "chat",
+      "supports_vision": true,
+      "supports_video": true
     },
     "dashscope/qwen3.5-122b-a10b": {
       "mode": "chat"
@@ -561,7 +564,9 @@
       "mode": "chat"
     },
     "dashscope/qwen3-vl-flash": {
-      "mode": "chat"
+      "mode": "chat",
+      "supports_vision": true,
+      "supports_video": true
     },
     "dashscope/qwen3-vl-flash-2025-10-15": {
       "mode": "chat"
@@ -826,6 +831,7 @@
       "max_input_tokens": 991808,
       "max_output_tokens": 65536,
       "supports_vision": true,
+      "supports_video": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
@@ -934,6 +940,7 @@
       "max_input_tokens": 991808,
       "max_output_tokens": 131072,
       "supports_vision": true,
+      "supports_video": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
@@ -944,6 +951,7 @@
       "max_input_tokens": 991808,
       "max_output_tokens": 131072,
       "supports_vision": true,
+      "supports_video": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,

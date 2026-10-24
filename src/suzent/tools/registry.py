@@ -220,7 +220,7 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
     from suzent.tools.creative.image_generation_tool import ImageGenerationTool
     from suzent.tools.creative.image_edit_tool import ImageEditTool
-    from suzent.tools.creative.image_vision_tool import ImageVisionTool
+    from suzent.tools.creative.visual_analysis_tool import VisualAnalysisTool
     from suzent.tools.recall import MemorySearchTool, MemoryUpdateTool
     from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
@@ -257,7 +257,7 @@ def _all_tool_classes() -> tuple:
         VideoStatusTool,
         ImageGenerationTool,
         ImageEditTool,
-        ImageVisionTool,
+        VisualAnalysisTool,
         SpeakTool,
         SocialMessageTool,
         SkillTool,

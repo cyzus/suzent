@@ -223,7 +223,7 @@ function nodeBeforeCollapsedCaret(root: HTMLElement): Node | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
   const range = sel.getRangeAt(0);
-  let { startContainer, startOffset } = range;
+  const { startContainer, startOffset } = range;
   if (!root.contains(startContainer)) return null;
 
   if (startContainer.nodeType === Node.TEXT_NODE) {
