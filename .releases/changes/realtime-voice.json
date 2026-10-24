@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Add realtime voice mode with a Liquid-Geo 3-D voxel stage, echo gate, and background delegation to the main agent."
+}

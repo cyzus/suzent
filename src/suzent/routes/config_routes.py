@@ -1193,6 +1193,7 @@ async def delete_custom_provider(request: Request) -> JSONResponse:
 
 async def voice_settings(request: Request) -> JSONResponse:
     """Speech defaults and the existing TTS role are edited together."""
+    from suzent.voice.realtime import list_realtime_options
     from suzent.voice.settings import VoiceSettingsUpdate, get_voice_settings
     from suzent.core.role_router import get_role_router
 
@@ -1202,6 +1203,7 @@ async def voice_settings(request: Request) -> JSONResponse:
             {
                 **get_voice_settings().model_dump(),
                 "tts_models": router.get_model_ids("tts"),
+                "realtime_options": list_realtime_options(),
             }
         )
     try:
@@ -1218,6 +1220,12 @@ async def voice_settings(request: Request) -> JSONResponse:
         if update.tts_models is not None:
             router.set_role("tts", update.tts_models)
             router.save_to_db()
-        return JSONResponse({**settings, "tts_models": router.get_model_ids("tts")})
+        return JSONResponse(
+            {
+                **settings,
+                "tts_models": router.get_model_ids("tts"),
+                "realtime_options": list_realtime_options(),
+            }
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)

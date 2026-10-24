@@ -7,6 +7,7 @@ import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
 import { isImeComposing } from '../lib/ime';
+import type { VoiceSession } from '../hooks/useVoiceSession';
 
 interface NewChatViewProps {
   input: string;
@@ -29,31 +30,34 @@ interface NewChatViewProps {
   onImageClick?: (src: string) => void;
   currentChatId?: string | null;
   onFileMentionSelected?: (mention: FileMentionSelection) => void;
+  voice: VoiceSession;
   /** Replaces the greeting and project picker, for chats that already have a home. */
   briefing?: React.ReactNode;
 }
 
-const GreetingPresence: React.FC<{ engaged: boolean }> = React.memo(({ engaged }) => {
-  const { t } = useI18n();
+const GreetingPresence: React.FC<{ engaged: boolean; hideCube?: boolean }> = React.memo(
+  ({ engaged, hideCube = false }) => {
+    const { t } = useI18n();
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 5) return t('newChat.greetings.nightOwl').toUpperCase();
-    if (hour < 12) return t('newChat.greetings.goodMorning').toUpperCase();
-    if (hour < 17) return t('newChat.greetings.keepBuilding').toUpperCase();
-    if (hour < 21) return t('newChat.greetings.goodEvening').toUpperCase();
-    return t('newChat.greetings.bedTime').toUpperCase();
-  };
+    const getGreeting = () => {
+      const hour = new Date().getHours();
+      if (hour < 5) return t('newChat.greetings.nightOwl').toUpperCase();
+      if (hour < 12) return t('newChat.greetings.goodMorning').toUpperCase();
+      if (hour < 17) return t('newChat.greetings.keepBuilding').toUpperCase();
+      if (hour < 21) return t('newChat.greetings.goodEvening').toUpperCase();
+      return t('newChat.greetings.bedTime').toUpperCase();
+    };
 
-  return (
-    <div className="new-chat-greeting mb-8 flex flex-col items-center gap-5">
-      <GreetingCube engaged={engaged} />
-      <h2 className="new-chat-title text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
-        {getGreeting()}
-      </h2>
-    </div>
-  );
-});
+    return (
+      <div className="new-chat-greeting mb-6 flex flex-col items-center gap-5">
+        {!hideCube && <GreetingCube engaged={engaged} />}
+        <h2 className="new-chat-title text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
+          {getGreeting()}
+        </h2>
+      </div>
+    );
+  }
+);
 
 GreetingPresence.displayName = 'GreetingPresence';
 
@@ -290,15 +294,15 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
   onImageClick,
   currentChatId,
   onFileMentionSelected,
+  voice,
   briefing,
 }) => {
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const { t } = useI18n();
   const isInputEngaged = isInputHovered || isInputFocused;
   return (
     <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">
-      {briefing ?? <GreetingPresence engaged={isInputEngaged} />}
+      {briefing ?? <GreetingPresence engaged={isInputEngaged} hideCube={voice.status !== 'idle'} />}
 
       <div className="w-full max-w-2xl">
         {!briefing && <ProjectPicker />}
@@ -334,6 +338,7 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
             onImageClick={onImageClick}
             currentChatId={currentChatId}
             onFileMentionSelected={onFileMentionSelected}
+            voice={voice}
           />
         </div>
       </div>

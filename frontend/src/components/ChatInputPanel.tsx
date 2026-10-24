@@ -12,6 +12,7 @@ import {
 import { FileIcon } from './FileIcon';
 import {
   PaperClipIcon,
+  MicrophoneIcon,
   ArrowUpIcon,
   ArrowUturnRightIcon,
   StopIcon,
@@ -37,6 +38,8 @@ import {
   type MentionCategory,
 } from '../lib/mentionGroups';
 import { isImeComposing } from '../lib/ime';
+import type { VoiceSession } from '../hooks/useVoiceSession';
+import { VoiceBar } from './chat/VoiceBar';
 
 interface ChatInputPanelProps {
   input: string;
@@ -68,6 +71,8 @@ interface ChatInputPanelProps {
   onFileMentionSelected?: (mention: FileMentionSelection) => void;
   /** Predicted next message, shown as ghost text the user can accept. */
   inputSuggestion?: string | null;
+  /** Realtime voice session, owned by ChatWindow so it outlives view swaps. */
+  voice: VoiceSession;
 }
 
 export interface FileMentionSelection {
@@ -147,6 +152,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   currentChatId,
   onFileMentionSelected,
   inputSuggestion = null,
+  voice,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
   // --- Volume Mounting Logic ---
@@ -643,6 +649,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           </div>
         )}
 
+        {/* Outside the editor's box: its placeholder and ghost overlays cover
+            that box with `absolute inset-0` and would paint over the bar. */}
+        <VoiceBar voice={voice} />
         <div className="relative">
           {!input && !ghost && configReady && streamingForCurrentChat && (
             <div
@@ -898,6 +907,21 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           >
             <PaperClipIcon className="w-5 h-5" />
           </button>
+          {/* Starts a call only. While one is live, the voice bar's ✕ is the
+              single way to end it; a second "stop" here sat next to the
+              agent's stop button and the two were easy to confuse. */}
+          {!voice.active && (
+            <button
+              type="button"
+              onClick={() => voice.start(currentChatId ?? null)}
+              className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              title={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              disabled={!configReady || !voice.supported}
+            >
+              <MicrophoneIcon className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Spacer */}
           <div className="flex-1" />
