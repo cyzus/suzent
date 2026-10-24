@@ -13,7 +13,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from suzent.core.system_reminder import strip_system_reminders
+from suzent.core.system_reminder import iter_reminder_fragments, strip_system_reminders
 
 
 MAX_TRANSCRIPT_CHARS = 12_000
@@ -30,13 +30,27 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
 
 
-def _user_text(part: UserPromptPart) -> str:
+def _prompt_text(part: UserPromptPart) -> str:
     content = part.content
     if isinstance(content, str):
         text = content
     else:
         text = "".join(item for item in content if isinstance(item, str))
-    return strip_system_reminders(text).strip()
+    return text
+
+
+def _user_text(part: UserPromptPart) -> str:
+    return strip_system_reminders(_prompt_text(part)).strip()
+
+
+def _runtime_text(part: UserPromptPart) -> str:
+    return "\n\n".join(
+        fragment.strip()
+        for block in iter_reminder_fragments(
+            _prompt_text(part), authenticated_only=True
+        )
+        for fragment in block
+    )
 
 
 def _is_summary(text: str) -> bool:
@@ -85,7 +99,11 @@ def _inline(text: str) -> str:
 def _render_message(message: Any) -> str:
     if not isinstance(message, (ModelRequest, ModelResponse)):
         return "UNATTRIBUTED CONTEXT: " + _inline(str(message))
-    lines = (_render_part(part) for part in message.parts)
+    lines = []
+    for part in message.parts:
+        lines.append(_render_part(part))
+        if isinstance(part, UserPromptPart) and (runtime := _runtime_text(part)):
+            lines.append(f"RUNTIME CONTEXT: {runtime}")
     return "\n".join(_clip(_inline(line), MAX_LINE_CHARS) for line in lines if line)
 
 
@@ -102,6 +120,22 @@ def latest_user_request(messages: list[Any]) -> str:
     return ""
 
 
+def _latest_runtime_context(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in reversed(message.parts):
+            if not isinstance(part, UserPromptPart):
+                continue
+            user = _user_text(part)
+            if _is_summary(user):
+                continue
+            runtime = _runtime_text(part)
+            if user or runtime:
+                return runtime
+    return ""
+
+
 def compact_transcript(messages: list[Any]) -> str:
     """Project recent conversation context into a bounded classifier transcript.
 
@@ -115,6 +149,12 @@ def compact_transcript(messages: list[Any]) -> str:
         if request
         else ""
     )
+    runtime = _latest_runtime_context(messages)
+    if runtime:
+        runtime_header = (
+            f"CURRENT RUNTIME CONTEXT: {_clip(_inline(runtime), MAX_REQUEST_CHARS)}"
+        )
+        header = f"{header}\n\n{runtime_header}" if header else runtime_header
     remaining = MAX_TRANSCRIPT_CHARS - len(header)
     parts: list[str] = []
     for message in reversed(messages[-20:]):
