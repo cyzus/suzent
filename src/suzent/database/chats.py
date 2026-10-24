@@ -1102,8 +1102,12 @@ class ChatOperationsMixin:
         agent_state: bytes,
         messages: Optional[List[Dict[str, Any]]] = None,
         update_lifecycle: bool = True,
+        count_unread: bool = True,
     ) -> bool:
         """Finalize chat state only when revision matches expected value.
+
+        ``count_unread`` is False for a turn that reported nothing, which must
+        not light up the unread badge.
 
         Returns:
             True when finalized commit succeeds, False when stale/not found.
@@ -1142,6 +1146,7 @@ class ChatOperationsMixin:
             if update_lifecycle:
                 chat.last_active_at = now
                 chat.turn_count = (chat.turn_count or 0) + 1
+            if update_lifecycle and count_unread:
                 session.execute(
                     text(
                         "UPDATE chats SET config = json_set("

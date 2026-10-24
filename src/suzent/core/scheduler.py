@@ -25,6 +25,7 @@ from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.core.heartbeat import HEARTBEAT_OK, ChatBusyError
 from suzent.database import get_database
+from suzent.database.cron import normalize_delivery_mode
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
     stream_controls,
@@ -320,7 +321,7 @@ def ensure_cron_presets(db, activate_existing: bool = False) -> dict:
       name          (str, required)  — unique job name
       cron_expr     (str, required)  — standard cron expression
       prompt        (str, required)  — message sent to the agent
-      delivery_mode (str)            — "announce" | "silent" (default: "silent")
+      delivery_mode (str)            — "announce" | "none" (default: "none")
       model_override (str|None)      — optional model override
       enabled       (bool)           — hard-disable this preset (default: True)
       requires      (str)            — CONFIG field name that must be truthy
@@ -357,7 +358,7 @@ def ensure_cron_presets(db, activate_existing: bool = False) -> dict:
 
         cron_expr = spec.get("cron_expr")
         prompt = spec.get("prompt", "")
-        delivery_mode = spec.get("delivery_mode", "silent")
+        delivery_mode = normalize_delivery_mode(spec.get("delivery_mode"))
         model_override = spec.get("model_override") or None
 
         if not cron_expr:
@@ -478,19 +479,23 @@ class SchedulerBrain(BaseBrain):
         return notifications
 
     def add_notification(
-        self, source: str, result: str, title: Optional[str] = None
+        self,
+        source: str,
+        result: str,
+        title: Optional[str] = None,
+        job_id: Optional[int] = None,
     ) -> None:
-        """Persist a notification from a non-cron source (e.g. goal mode)."""
+        """Persist a notification, keeping it in memory if the database fails."""
         title = title or source
         try:
             get_database().create_background_notification(
-                source=source, title=title, result=result
+                source=source, title=title, result=result, job_id=job_id
             )
         except Exception as exc:
             logger.warning(f"Failed to persist background notification: {exc}")
             self._pending_notifications.append(
                 {
-                    "job_id": None,
+                    "job_id": job_id,
                     "job_name": title,
                     "result": result[:500],
                     "source": source,
@@ -726,24 +731,9 @@ class SchedulerBrain(BaseBrain):
                 job.delivery_mode == "announce" or speaks_only_by_exception
             )
             if should_announce and response_text:
-                try:
-                    db.create_background_notification(
-                        source="cron",
-                        title=job.name,
-                        result=response_text,
-                        job_id=job.id,
-                    )
-                except Exception as exc:
-                    logger.warning(f"Failed to persist cron notification: {exc}")
-                    self._pending_notifications.append(
-                        {
-                            "job_id": job.id,
-                            "job_name": job.name,
-                            "result": response_text[:500],
-                            "source": "cron",
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                self.add_notification(
+                    "cron", response_text, title=job.name, job_id=job.id
+                )
 
         except ChatBusyError:
             # The chat started a run between dispatch and this turn. Like the

@@ -120,7 +120,9 @@ that session's project and briefly highlights it, and the header reads
 Regent has a [heartbeat](../03-features/automation.md#heartbeat) that is on from
 the start and runs every 30 minutes. A check-in looks for sessions that have
 stalled and for questions you haven't answered in a while. When everything is
-fine, it stays quiet and nothing is added to the chat.
+fine, it stays quiet and nothing is added to the chat. If it nudged a stalled
+session along the way, the check-in stays in the chat so Regent remembers it,
+but you aren't notified.
 
 To change what it looks for, edit its `heartbeat.md` checklist from Regent's
 **Config** tab. You can also change how often it runs, or turn it off; turning
@@ -140,6 +142,11 @@ Regent's **Tools** tab, where you can cancel them.
 
 When Regent says something while you are elsewhere, its card shows the new
 message and you get a desktop notification.
+
+Regent keeps its replies short and only brings you what needs you. When a
+session reports back or finishes and there is nothing for you to do, Regent
+notes it in the chat as **Nothing needed from you**, without a notification or
+an unread badge. Work that is blocked on you always notifies you.
 
 ## What it remembers about working with you
 
