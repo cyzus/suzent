@@ -2069,15 +2069,27 @@ async def stream_agent_responses(
                     # Agent finished (or was cancelled) — exit loop
                     break
 
-            # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
+            # A heartbeat that reported nothing is rolled back, unless it acted:
+            # dropping that turn would make the agent forget what it did.
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
                 from suzent.core.focal_agent import record_focal_heartbeat_done
 
                 record_focal_heartbeat_done(chat_id)
-                from suzent.core.heartbeat import get_active_heartbeat
+                from suzent.core.heartbeat import (
+                    get_active_heartbeat,
+                    is_quiet_reply,
+                    turn_acted,
+                )
 
-                runner = get_active_heartbeat()
-                if runner and runner._is_heartbeat_ok(final_response_text):
+                turn_start = getattr(deps, "turn_start_index", None)
+                this_turn = list(partial_history)[
+                    original_count if turn_start is None else turn_start :
+                ]
+                if (
+                    get_active_heartbeat()
+                    and (not final_response_text or is_quiet_reply(final_response_text))
+                    and not turn_acted(this_turn)
+                ):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
                     partial_history = roll_back_heartbeat(
                         partial_history, original_count, deps

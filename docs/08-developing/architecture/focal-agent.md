@@ -159,6 +159,17 @@ not opened Regent, except for sessions Focal started.
 When a woken Focal turn replies, `announce_focal_reply()` also queues a
 desktop notification, since the user may not have the chat open.
 
+The global context tells Regent to filter rather than relay: blockers first,
+one line each, no restated reports, and the quiet token (`HEARTBEAT_OK`) when a
+session's reply or finish needs nothing from the user. A quiet reply is not
+rolled back: the event and the reply stay in Regent's history, so it can still
+answer what happened. It only reaches nobody: `announce_focal_reply()` skips
+the notification, and `_persist_state` finalizes with `count_unread=False`, so
+the unread badge stays put. The one exception is `task_blocked_notification`:
+if Regent goes quiet on a blocker anyway, the notification carries the blocker
+text itself. The desktop renders a quiet reply as "Nothing needed from you"
+(`lib/quietReply.ts`, mirroring `is_quiet_reply()`).
+
 ## Heartbeat
 
 The first `get_or_create_focal_chat()` enables the heartbeat at 30 minutes
@@ -183,6 +194,12 @@ before any model call:
 The signature is written by `record_focal_heartbeat_done()` only after a
 check-in turn succeeds, so a failed or preempted check-in raises the same
 findings next time.
+
+A quiet check-in is rolled back only if it did nothing. `turn_acted()` looks
+for any tool call outside the look-up tools (`_OBSERVING_TOOL_NAMES`): a
+check-in that dispatched a nudge and then answered `HEARTBEAT_OK` stays in
+history, unannounced, so Regent doesn't forget the nudge and send it again.
+This holds for every chat's heartbeat, not only Regent's.
 
 ## Wake-ups
 

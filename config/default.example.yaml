@@ -68,7 +68,7 @@ MEMORY_ENABLED: true
 EMBEDDING_MODEL: gemini/gemini-embedding-001
 EMBEDDING_DIMENSION: 3072
 # Declarative cron job presets — created/updated idempotently on startup.
-# Fields: name, cron_expr, prompt, delivery_mode (announce|silent), model_override, enabled, requires
+# Fields: name, cron_expr, prompt, delivery_mode (announce|none), model_override, enabled, requires
 # `requires`: name of a CONFIG field that must be truthy for this job to be active.
 # Add new presets here without touching any Python code.
 # NOTE: the notebook ingest + lint cron presets were removed — the autonomous
