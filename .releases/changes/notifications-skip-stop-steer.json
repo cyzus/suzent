@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Stop desktop notifications from firing when you stop or steer a reply, and announce the steered reply when it finishes."
+}

@@ -14,6 +14,9 @@ let permission: Promise<boolean> | null = null;
 export type ReplyOutcome = 'ready' | 'approval' | 'failed' | 'stopped';
 
 interface WatchedReply {
+  // The run this turn streams as, learned from the first stream_started after
+  // the turn was sent. Until then any stream events belong to an older run.
+  runId?: string;
   preview: string;
   failed: boolean;
   stopped: boolean;
@@ -53,13 +56,12 @@ export async function notifyDesktop(title: string, body: string): Promise<void> 
   }
 }
 
+function freshReply(): WatchedReply {
+  return { preview: '', failed: false, stopped: false, pendingApprovals: new Set() };
+}
+
 export function watchForReply(chatId: string): void {
-  awaitingReply.set(chatId, {
-    preview: '',
-    failed: false,
-    stopped: false,
-    pendingApprovals: new Set(),
-  });
+  awaitingReply.set(chatId, freshReply());
 }
 
 export function forgetReply(chatId: string): void {
@@ -67,13 +69,30 @@ export function forgetReply(chatId: string): void {
 }
 
 /**
+ * Tie a watched turn to the run that streams it. A steer starts a new run
+ * while the one it replaces is still draining, so without this the old run's
+ * end would be announced as the new reply.
+ */
+export function bindReplyRun(chatId: string, runId: string | undefined): void {
+  const watched = awaitingReply.get(chatId);
+  if (!watched || watched.runId || !runId) return;
+  // Anything recorded so far came from the run being replaced.
+  awaitingReply.set(chatId, { ...freshReply(), runId });
+}
+
+// Events without a run id come from an older server; take them as before.
+function belongsToReply(watched: WatchedReply, runId: string | undefined): boolean {
+  return !runId || watched.runId === runId;
+}
+
+/**
  * Note how a watched turn is going from a raw SSE chunk off the event bus.
  * A stream also ends when it pauses for approval, fails, or is stopped, and
  * each of those deserves a different message, or none.
  */
-export function recordReplyChunk(chatId: string, rawData: string): void {
+export function recordReplyChunk(chatId: string, rawData: string, runId?: string): void {
   const watched = awaitingReply.get(chatId);
-  if (!watched) return;
+  if (!watched || !belongsToReply(watched, runId)) return;
   for (const line of rawData.split('\n')) {
     if (!line.startsWith('data:')) continue;
     let frame: {
@@ -111,10 +130,11 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
 
 /** The watched turn's outcome, once: the caller owns announcing it. */
 export function takeReplyOutcome(
-  chatId: string
+  chatId: string,
+  runId?: string
 ): { outcome: ReplyOutcome; preview: string } | null {
   const watched = awaitingReply.get(chatId);
-  if (!watched) return null;
+  if (!watched || !belongsToReply(watched, runId)) return null;
   awaitingReply.delete(chatId);
   const outcome: ReplyOutcome = watched.stopped
     ? 'stopped'
