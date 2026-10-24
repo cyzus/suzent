@@ -305,6 +305,12 @@ export interface ApiField {
 export interface Model {
   id: string;
   name: string;
+  description?: string | null;
+  context_length?: number | null;
+  mode?: string;
+  supports_vision?: boolean;
+  supports_reasoning?: boolean;
+  supports_function_calling?: boolean;
 }
 
 export interface UserConfig {
@@ -340,6 +346,8 @@ interface McpServersResponse {
 interface VerifyProviderResponse {
   success: boolean;
   models: Model[];
+  used_catalog_fallback?: boolean;
+  discovery_error?: string | null;
   message?: string;
   error?: string;
 }

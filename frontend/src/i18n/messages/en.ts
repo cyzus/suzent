@@ -784,6 +784,8 @@ export const en = {
         'Save your credentials, then test the connection and choose which models to enable.',
       connectionSuccess:
         'Connection successful. Found {count} models. Select the models you want to use.',
+      catalogFallback:
+        'Could not fetch the provider model list: {reason}. Showing preset models instead.',
       unsavedCredentials: 'Save or cancel your credential edits before testing the connection.',
       enabledSummary: '{models} enabled models · {providers} providers',
       enabledSummaryHint:
@@ -799,6 +801,10 @@ export const en = {
       noModelsFound: 'No models found',
       fetchModels: 'Fetch models',
       modelsAvailable: '{count} available',
+      modelContext: '{count} token context',
+      modelVision: 'Vision',
+      modelReasoning: 'Reasoning',
+      modelTools: 'Tools',
       noCredentials: 'No credential fields — configure via environment variables.',
       getKey: 'Get a {provider} API key →',
       changeKey: 'Change',
