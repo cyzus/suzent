@@ -114,11 +114,14 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
       actionId?: string,
       feedback?: string
     ) => {
+      // Approval buttons are rendered inside the currently viewed chat; a
+      // previously suspended chat may still have left streamingChatIdRef pinned
+      // to itself, so prefer the active chat first.
       const targetChatId =
-        streamingChatIdRef.current ||
-        activeStreamingChatId ||
         activeChatIdRef.current ||
-        currentChatId;
+        currentChatId ||
+        streamingChatIdRef.current ||
+        activeStreamingChatId;
 
       if (!targetChatId) return;
 
@@ -151,7 +154,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
 
       const effectiveRemember = normalizeLegacyRememberScope(remember);
 
-      let allDecided = addApprovalDecision(
+      const allDecided = addApprovalDecision(
         approvalId,
         toolCallId,
         approved,

@@ -92,6 +92,8 @@ class TurnOutcome:
     text: str = ""
     failure: str | None = None
     approval_pending: bool = False
+    approval_notified: bool = False
+    deferred_acp_prompt: bool = False
     tools: list[str] = field(default_factory=list)
 
 
@@ -149,6 +151,10 @@ class HandoffRouter:
         self._progress_interval = progress_interval
         self._task: asyncio.Task[Any] | None = None
         self._observer_task: asyncio.Task[Any] | None = None
+        self._watch_task: asyncio.Task[Any] | None = None
+        self._awaiting_approval = False
+        self._replaying_snapshot = False
+        self._active_outcome: TurnOutcome | None = None
         self._closed = False
         # The request the last delegation in this call handled. The front desk
         # may call `delegate` several times for one sentence; only the first
@@ -172,19 +178,61 @@ class HandoffRouter:
             self._observer_task is not None and not self._observer_task.done()
         )
 
-    def attach_if_busy(self, *, notify_start: bool = False) -> None:
+    def attach_if_busy(
+        self, *, notify_start: bool = False, allow_completed: bool = False
+    ) -> None:
         """Observe an externally owned turn so completion is reported to this call."""
-        if self._closed or self.working or not self._is_busy():
+        if (
+            self._closed
+            or self.working
+            or (not allow_completed and not self._is_busy())
+        ):
             return
         self._observer_task = asyncio.create_task(
             self._run_observed(notify_start=notify_start)
         )
+
+    def start_watching(self) -> None:
+        """Watch the background event bus for resumed tool-approval or external turns."""
+        if self._closed or (
+            self._watch_task is not None and not self._watch_task.done()
+        ):
+            return
+        self._watch_task = asyncio.create_task(self._watch_bus_loop())
+
+    async def _watch_bus_loop(self) -> None:
+        from suzent.core.stream_registry import (
+            register_bus_subscriber,
+            unregister_bus_subscriber,
+        )
+
+        sub = register_bus_subscriber()
+        try:
+            while not self._closed:
+                item = await sub.get()
+                if item is None:
+                    break
+                if item.get("chat_id") != self.chat_id:
+                    continue
+                if item.get("event") == "stream_started" and not self.working:
+                    if self._awaiting_approval:
+                        self._awaiting_approval = False
+                        self._queue_progress(
+                            "[BACKEND] Approval resolved; Suzent resumed working."
+                        )
+                    self.attach_if_busy(notify_start=True, allow_completed=True)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            unregister_bus_subscriber(sub)
 
     def close(self) -> None:
         """The voice session ended. The running turn keeps going, unobserved."""
         self._closed = True
         if self._observer_task is not None and not self._observer_task.done():
             self._observer_task.cancel()
+        if self._watch_task is not None and not self._watch_task.done():
+            self._watch_task.cancel()
         if self._flush_handle is not None:
             self._flush_handle.cancel()
             self._flush_handle = None
@@ -302,6 +350,7 @@ class HandoffRouter:
 
     async def _run_observed(self, *, notify_start: bool = False) -> None:
         outcome = TurnOutcome()
+        self._active_outcome = outcome
         if notify_start:
             await self._notify_working(True)
         try:
@@ -316,45 +365,117 @@ class HandoffRouter:
             logger.warning("Voice observed turn failed: {}", exc)
             outcome.failure = str(exc) or type(exc).__name__
         finally:
+            self._active_outcome = None
             if not self._closed:
                 await self._flush_progress()
                 await self._notify_working(False)
                 self._report(outcome)
+
+    def _emit_acp_approval_prompt(self, outcome: TurnOutcome) -> None:
+        outcome.approval_notified = True
+        self._queue_progress("[BACKEND] Suzent is waiting for the user's approval.")
+        try:
+            self._enqueue_spoken(
+                "<system>Suzent paused: an action needs the user's approval "
+                "in the Suzent window. Tell the user briefly.</system>"
+            )
+        except Exception as exc:
+            logger.debug("Voice approval prompt could not be queued: {}", exc)
 
     def _observe(self, chunk: str, outcome: TurnOutcome) -> None:
         event = _decode_sse(chunk)
         kind = event.get("type")
         if kind == "TEXT_MESSAGE_CONTENT":
             outcome.text += str(event.get("delta") or "")
+            if outcome.approval_pending or self._awaiting_approval:
+                outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
+                self._awaiting_approval = False
+                if not self._replaying_snapshot:
+                    self._queue_progress(
+                        "[BACKEND] Approval resolved; Suzent resumed working."
+                    )
         elif kind == "TEXT_MESSAGE_START":
             # Only the last message is the answer; earlier ones were narration
             # between tool calls.
             outcome.text = ""
+            if outcome.approval_pending or self._awaiting_approval:
+                outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
+                self._awaiting_approval = False
         elif kind == "TOOL_CALL_START":
+            if outcome.approval_pending or self._awaiting_approval:
+                outcome.approval_pending = False
+                outcome.deferred_acp_prompt = False
+                self._awaiting_approval = False
             name = str(event.get("toolCallName") or event.get("tool_call_name") or "")
             if name:
                 outcome.tools.append(name)
-                self._queue_progress(f"[BACKEND] Suzent is running {name}.")
+                if not self._replaying_snapshot:
+                    self._queue_progress(f"[BACKEND] Suzent is running {name}.")
         elif kind == "RUN_ERROR":
             outcome.failure = str(event.get("message") or "the task failed")
-        elif kind == "CUSTOM" and event.get("name") == "tool_approval_request":
-            outcome.approval_pending = True
-            self._queue_progress("[BACKEND] Suzent is waiting for the user's approval.")
+        elif kind in ("CUSTOM", "CUSTOM_EVENT"):
+            name = event.get("name")
+            value = event.get("value")
+            if name == "tool_approval_request":
+                outcome.approval_pending = True
+                self._awaiting_approval = True
+                if not self._replaying_snapshot:
+                    self._queue_progress(
+                        "[BACKEND] Suzent is waiting for the user's approval."
+                    )
+            elif name == "acp.permission_request":
+                if isinstance(value, dict) and value.get("resolved"):
+                    if outcome.approval_pending or self._awaiting_approval:
+                        outcome.approval_pending = False
+                        outcome.deferred_acp_prompt = False
+                        self._awaiting_approval = False
+                        if not self._replaying_snapshot:
+                            self._queue_progress(
+                                "[BACKEND] Approval resolved; Suzent resumed working."
+                            )
+                else:
+                    outcome.approval_pending = True
+                    self._awaiting_approval = True
+                    if self._replaying_snapshot:
+                        outcome.deferred_acp_prompt = True
+                    else:
+                        self._emit_acp_approval_prompt(outcome)
+            elif name in (
+                "tool_permission_resolution",
+                "tool_approval_result",
+                "acp.permission_resolved",
+                "acp.session_update",
+            ):
+                if outcome.approval_pending or self._awaiting_approval:
+                    outcome.approval_pending = False
+                    outcome.deferred_acp_prompt = False
+                    self._awaiting_approval = False
+                    if not self._replaying_snapshot:
+                        self._queue_progress(
+                            "[BACKEND] Approval resolved; Suzent resumed working."
+                        )
 
     def _report(self, outcome: TurnOutcome) -> None:
         if self._closed:
             return
         if outcome.approval_pending:
+            self._awaiting_approval = True
+            if outcome.approval_notified:
+                return
             message = (
                 "Suzent paused: an action needs the user's approval in the Suzent "
                 "window. Tell the user briefly."
             )
         elif outcome.failure:
+            self._awaiting_approval = False
             message = (
                 f"Suzent could not finish: {_clip(outcome.failure, 600)}. "
                 "Tell the user briefly."
             )
         else:
+            self._awaiting_approval = False
             text = outcome.text.strip() or "(no text answer; see the chat window)"
             message = (
                 "Suzent finished. Its answer, shown in full in the chat window:\n"
@@ -491,17 +612,34 @@ class HandoffRouter:
             unregister_bus_subscriber,
         )
 
+        queue = get_background_queue(self.chat_id)
+        snapshot = list(queue.replay._snapshot_events()) if queue is not None else []
         sub = register_bus_subscriber()
         try:
-            queue = get_background_queue(self.chat_id)
-            if queue is not None:
-                for event in queue.replay._snapshot_events():
+            self._replaying_snapshot = True
+            try:
+                for event in snapshot:
                     await on_chunk(f"data: {json.dumps(event)}\n\n")
-            while is_background_streaming(self.chat_id):
-                try:
-                    item = await asyncio.wait_for(sub.get(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    continue
+            finally:
+                self._replaying_snapshot = False
+            outcome = self._active_outcome
+            if (
+                outcome is not None
+                and outcome.deferred_acp_prompt
+                and outcome.approval_pending
+            ):
+                outcome.deferred_acp_prompt = False
+                self._emit_acp_approval_prompt(outcome)
+            while True:
+                if not sub.empty():
+                    item = sub.get_nowait()
+                elif not is_background_streaming(self.chat_id):
+                    break
+                else:
+                    try:
+                        item = await asyncio.wait_for(sub.get(), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        continue
                 if item is None:
                     break
                 if item.get("chat_id") != self.chat_id:

@@ -361,3 +361,165 @@ async def test_default_start_turn_preserves_chat_config_and_dispatches_acp(monke
     assert acp_calls[0][2]["built"] is True
     assert acp_calls[0][3] is True
     assert spoken and "acp reply" in spoken[0]
+
+
+async def test_resumed_approval_stream_on_bus_clears_approval_and_speaks_result():
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        unregister_background_stream,
+    )
+
+    context: list[str] = []
+    spoken: list[str] = []
+    working: list[bool] = []
+
+    async def send_context(text: str) -> None:
+        context.append(text)
+
+    async def on_working(active: bool) -> None:
+        working.append(active)
+
+    async def first_turn(_msg: str, _rem: list[str], on_chunk) -> None:
+        await on_chunk(sse('{"type":"CUSTOM","name":"tool_approval_request"}'))
+
+    router = HandoffRouter(
+        "approval-chat",
+        send_context=send_context,
+        enqueue_spoken=spoken.append,
+        on_working=on_working,
+        start_turn=first_turn,
+        progress_interval=0,
+        transcript_grace=0.01,
+    )
+    router.start_watching()
+    try:
+        assert (await router.delegate("run bash")).startswith("started")
+        await _settle(router)
+        assert len(spoken) == 1 and "approval" in spoken[0]
+
+        # Simulate the user clicking Approve in the UI (/chat/send with resume_approvals).
+        queue = register_background_stream("approval-chat")
+        await asyncio.sleep(0.02)
+        await queue.put(
+            sse('{"type":"CUSTOM","name":"tool_permission_resolution","value":{}}')
+        )
+        await queue.put(
+            sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"approved and finished"}')
+        )
+        unregister_background_stream("approval-chat", queue)
+        await _settle(router)
+
+        assert any("Approval resolved" in c for c in context)
+        assert len(spoken) == 2 and "approved and finished" in spoken[1]
+        assert working == [True, False, True, False]
+    finally:
+        router.close()
+
+
+async def test_in_stream_acp_permission_clears_when_execution_resumes():
+    h = Harness(
+        chunks=[
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1"}}'
+            ),
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1","resolved":"approved"}}'
+            ),
+            sse(
+                '{"type":"TEXT_MESSAGE_CONTENT","delta":"acp finished after approval"}'
+            ),
+        ]
+    )
+    h.say("u1", "edit file")
+    await h.router.delegate("edit file")
+    await _settle(h.router)
+    assert len(h.spoken) == 2
+    assert "approval" in h.spoken[0]
+    assert "acp finished after approval" in h.spoken[1]
+    assert any("Approval resolved" in c for c in h.context)
+
+
+async def test_fast_resumed_stream_completed_before_watcher_wakes_is_observed():
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        unregister_background_stream,
+    )
+
+    spoken: list[str] = []
+
+    async def noop_context(_t: str) -> None:
+        pass
+
+    async def first_turn(_msg: str, _rem: list[str], on_chunk) -> None:
+        await on_chunk(sse('{"type":"CUSTOM","name":"tool_approval_request"}'))
+
+    router = HandoffRouter(
+        "fast-approval-chat",
+        send_context=noop_context,
+        enqueue_spoken=spoken.append,
+        start_turn=first_turn,
+        progress_interval=0,
+        transcript_grace=0.01,
+    )
+    router.start_watching()
+    await asyncio.sleep(0)
+    try:
+        assert (await router.delegate("run bash")).startswith("started")
+        await _settle(router)
+        assert len(spoken) == 1 and "approval" in spoken[0]
+
+        # Register, emit answer, and finish synchronously before yielding to the watcher.
+        queue = register_background_stream("fast-approval-chat")
+        queue.put_nowait(
+            sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"instant resumed answer"}')
+        )
+        unregister_background_stream("fast-approval-chat", queue)
+
+        await asyncio.sleep(0.02)
+        await _settle(router)
+        assert len(spoken) == 2 and "instant resumed answer" in spoken[1]
+    finally:
+        router.close()
+
+
+async def test_snapshot_replay_suppresses_already_resolved_acp_permission_prompt():
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        unregister_background_stream,
+    )
+
+    spoken: list[str] = []
+
+    async def noop_context(_t: str) -> None:
+        pass
+
+    queue = register_background_stream("acp-replay-chat")
+    try:
+        queue.put_nowait(
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1"}}'
+            )
+        )
+        queue.put_nowait(
+            sse(
+                '{"type":"CUSTOM","name":"acp.permission_request","value":{"requestId":"p1","resolved":"approved"}}'
+            )
+        )
+        router = HandoffRouter(
+            "acp-replay-chat",
+            send_context=noop_context,
+            enqueue_spoken=spoken.append,
+            progress_interval=0,
+        )
+        router.attach_if_busy()
+        await asyncio.sleep(0.02)
+        assert spoken == []
+
+        queue.put_nowait(
+            sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"final acp answer"}')
+        )
+        unregister_background_stream("acp-replay-chat", queue)
+        await _settle(router)
+        assert len(spoken) == 1 and "final acp answer" in spoken[0]
+    finally:
+        unregister_background_stream("acp-replay-chat", queue)
