@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.18.0] - 2026-10-24
+
+### Release notes
+- Add ACP sign-in from settings, preserve sessions across authentication failures, and improve streaming responsiveness and overflow handling.
+- Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks.
+- Add terminal pairing for ACP editors with local approval, private credentials, grant-owned sessions, and revocation.
+- Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards.
+- Keep suggested provider models current with reviewed catalog updates.
+- Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
+- Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
+- A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task.
+- Project conversations now track whether they are waiting on you, running, idle or resolved: after each reply the Decision model notes whether the conversation needs you and writes a one-line summary of where it stands.
+- Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
+- Add the Ember accent color scheme (#FFA64D in light mode, #FF6600 in dark mode) in Appearance settings and restore the Warm dark-mode accent to yellow (#FFE666).
+- SUZENT now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
+- A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
+- The app header no longer crowds on narrow windows: it keeps a gap between a long chat title and the status marks, drops the old Chat / Memory / Skills tabs (the sidebar and the console rail already navigate there), and on the narrowest widths keeps just Regent's mark and the title.
+- Show what woke a background turn, such as a message from a paired device, while the turn is still running.
+- Memory keeps only facts you said yourself, with the words they came from; MEMORY.md becomes a short map of notebook pages, one memory_update tool remembers and retracts, and suzent memory lint / cleanup check and draft fixes for your memory files.
+- Add standalone two-step model setup with optional connection checks and explicit role recommendations.
+- Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
+- Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
+- Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
+- Add realtime voice mode with a Liquid-Geo 3-D voxel stage, echo gate, and background delegation to the main agent.
+- Stop Regent from receiving a session's final answer twice when the session already reported it to Regent.
+- The ✓ that marks a chat resolved now shows only on chats opened from Regent's board, so project chats opened directly keep their usual header.
+- Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
+- Show shell output while commands run and let the agent continue when a command outlives the initial wait.
+- Opening a chat from the task board or a link now opens its project in the sidebar and highlights its row; chats opened from Regent's board get a back-to-Regent tag in the header.
+- List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
+- Clear Regent's unread count while it is open, and show only read state in the sidebar instead of waiting-on-you counts.
+- The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
+- Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
+- A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
+
 ## [v0.17.0] - 2026-10-18
 
 <!-- highlights -->
