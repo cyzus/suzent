@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Resume voice-delegated turns after tool approval and route approval clicks to the active chat."
+}
