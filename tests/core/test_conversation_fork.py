@@ -166,3 +166,66 @@ def test_fork_chat_uses_raw_boundary_for_merged_tool_activity(
     assert branch is not None
     assert branch.messages == messages[:4]
     assert branch.config["forked_from_message_index"] == 4
+
+
+@pytest.mark.parametrize("tagged", [False, True])
+def test_run_display_fork_keeps_tool_result_and_final_answer(tagged: bool) -> None:
+    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="question")]),
+        ModelResponse(parts=[ToolCallPart("read_file", {}, "call-1")]),
+        ModelRequest(parts=[ToolReturnPart("read_file", "file contents", "call-1")]),
+        ModelResponse(
+            parts=[TextPart(content="final answer")],
+            metadata={"suzent_display_run_id": "run-1"} if tagged else None,
+        ),
+        ModelRequest(parts=[UserPromptPart(content="later question")]),
+        ModelResponse(parts=[TextPart(content="later answer")]),
+    ]
+    rows = [
+        {"role": "user", "content": "question"},
+        {
+            "role": "assistant",
+            "content": "final answer",
+            "_streaming_run_id": "run-1",
+            "parts": [
+                {"type": "tool", "toolCallId": "call-1"},
+                {"type": "text", "text": "final answer"},
+            ],
+        },
+        {"role": "user", "content": "later question"},
+        {"role": "assistant", "content": "later answer", "_streaming_run_id": "run-2"},
+    ]
+    state = deserialize_state(
+        _agent_state_at_display_point(
+            serialize_state(history, model_id="test"), rows, 2
+        )
+    )
+    assert state["model_id"] == "test"
+    restored = state["message_history"]
+    assert len(restored) == 4
+    assert restored[2].parts[0].content == "file contents"
+    assert restored[-1].parts[0].content == "final answer"
+
+
+def test_fork_at_removed_run_does_not_take_later_compacted_context() -> None:
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="later question")]),
+        ModelResponse(
+            parts=[TextPart(content="later answer")],
+            metadata={"suzent_display_run_id": "run-2"},
+        ),
+    ]
+    rows = [
+        {"role": "user", "content": "original question"},
+        {
+            "role": "assistant",
+            "content": "original answer",
+            "_streaming_run_id": "run-1",
+        },
+    ]
+    state = deserialize_state(
+        _agent_state_at_display_point(serialize_state(history), rows, 2)
+    )
+    assert state["message_history"][-1].parts[0].content == "original answer"

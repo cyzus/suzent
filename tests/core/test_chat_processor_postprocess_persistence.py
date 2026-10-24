@@ -132,6 +132,7 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         tool_names,
         append_display_messages=None,
         draft_run_id=None,
+        streamed_message=None,
     ):
         called["snapshot"] += 1
         from pydantic_ai.messages import ModelResponse, TextPart

@@ -13,6 +13,7 @@ using Server-Sent Events (SSE), including:
 """
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime
 import json
 import math
@@ -42,6 +43,7 @@ from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.display_log import merge_streamed_message
 from suzent.core.citation_manager import CitationManager
 from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
@@ -456,9 +458,27 @@ class _DraftDisplayAccumulator:
         self._tool_index: dict[str, dict[str, Any]] = {}
         self.last_persisted_at = 0.0
         self.dirty = False
+        self.timestamp = datetime.now().astimezone().isoformat()
         # The draft write runs off the token loop, one at a time. Kept here so
         # the final forced persist can wait for it instead of racing it.
         self._persist_task: Optional["asyncio.Task[None]"] = None
+
+    def snapshot(self, model_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+        if not self.parts:
+            return None
+        return {
+            "role": "assistant",
+            "content": "\n\n".join(
+                str(part.get("text") or "")
+                for part in self.parts
+                if part.get("type") == "text" and part.get("text")
+            ),
+            "parts": deepcopy(self.parts),
+            "_streaming_run_id": self.run_id,
+            "id": self.run_id,
+            "timestamp": self.timestamp,
+            "model": model_id,
+        }
 
     def apply(self, event: Any) -> None:
         event_type = _event_type_value(event)
@@ -797,19 +817,7 @@ def _persist_draft_display_message(
         "_streaming_run_id": run_id,
     }
 
-    if messages:
-        last = messages[-1]
-        if (
-            isinstance(last, dict)
-            and last.get("role") == "assistant"
-            and last.get("_streaming_draft")
-            and last.get("_streaming_run_id") == run_id
-        ):
-            messages[-1] = draft
-        else:
-            messages.append(draft)
-    else:
-        messages.append(draft)
+    messages = merge_streamed_message(messages, draft)
 
     # The draft is transient: every 0.75s it is overwritten, and the turn's real
     # write reindexes it when it lands. Reindexing here re-wrote every FTS row of
@@ -989,6 +997,15 @@ async def _await_model_event(
         control.model_wait = wait
     stage: str | None = None
     started = time.monotonic()
+    from suzent.core.context_compressor import compaction_seconds
+
+    compacted_before = compaction_seconds(chat_id)
+
+    def elapsed() -> float:
+        # Compaction runs before the model request this wait is for, and
+        # reports its own progress, so its time is not the model being silent.
+        compacting = compaction_seconds(chat_id) - compacted_before
+        return time.monotonic() - started - compacting
 
     async def publish(new_stage: str) -> None:
         nonlocal stage
@@ -1011,7 +1028,7 @@ async def _await_model_event(
         previous = await probe() if probe is not None else None
         probing = previous is not None
         while True:
-            waited = time.monotonic() - started
+            waited = elapsed()
             if wait.extended.is_set() and stage != "extended":
                 deadline = wait.timeout_seconds
                 await publish("extended")
@@ -1046,7 +1063,7 @@ async def _await_model_event(
                 return task.result()
             if extension_task in done:
                 continue
-            waited = time.monotonic() - started
+            waited = elapsed()
             if not probing:
                 if waited >= deadline:
                     raise asyncio.TimeoutError
@@ -1129,8 +1146,9 @@ async def _iter_stream_events_with_timeout(
                     break
                 except asyncio.TimeoutError as exc:
                     logger.warning(
-                        "[Streaming] Event wait timed out: model={} phase={} "
+                        "[Streaming] Event wait timed out: chat={} model={} phase={} "
                         "timeout_s={} last_event={}",
+                        chat_id,
                         _model_id,
                         phase,
                         timeout,
@@ -1495,12 +1513,31 @@ async def stream_agent_responses(
 
     # History tracker for cancellation recovery
     partial_history = list(message_history) if message_history else []
+    deps.model_request_history = None
+    last_request_history: Optional[list] = None
+
+    def capture_request_history() -> bool:
+        nonlocal partial_history, last_request_history
+        request_history = getattr(deps, "model_request_history", None)
+        if request_history is None or request_history is last_request_history:
+            return False
+        last_request_history = request_history
+        partial_history = list(request_history)
+        return True
 
     out_queue: asyncio.Queue = asyncio.Queue()
     if chat_id:
         register_active_stream(chat_id, out_queue)
 
     # --- Mid-run checkpoint helper ---
+    checkpoint_tasks: set[asyncio.Task[None]] = set()
+    checkpoint_lock = asyncio.Lock()
+
+    def schedule_checkpoint(messages: list) -> None:
+        task = asyncio.create_task(_save_mid_run_checkpoint(messages))
+        checkpoint_tasks.add(task)
+        task.add_done_callback(checkpoint_tasks.discard)
+
     async def _save_mid_run_checkpoint(messages: list) -> None:
         """Persist a partial agent state snapshot after each completed tool batch.
 
@@ -1524,7 +1561,8 @@ async def stream_agent_responses(
                 )
                 get_database().update_chat(chat_id, agent_state=_st)
 
-            await asyncio.to_thread(_sync_save)
+            async with checkpoint_lock:
+                await asyncio.to_thread(_sync_save)
             # Anything already delivered into this history is now on disk, so a
             # sender waiting to ack its inbox row can safely stop waiting.
             control.mark_history_persisted()
@@ -1665,6 +1703,10 @@ async def stream_agent_responses(
                             )
 
                             # ── Mid-run checkpoint tracking ──────────────────
+                            if capture_request_history():
+                                _chk_base = list(partial_history)
+                                _chk_resp_parts = {}
+                                _chk_tool_returns = []
                             _event_kind = getattr(event, "event_kind", "")
                             if _event_kind == "enqueued_messages":
                                 for _incoming in _incoming_message_texts(event):
@@ -1758,9 +1800,7 @@ async def stream_agent_responses(
                                         _MResp(parts=_resp_parts),
                                         _MReq(parts=list(_chk_tool_returns)),
                                     ]
-                                    asyncio.create_task(
-                                        _save_mid_run_checkpoint(_checkpoint)
-                                    )
+                                    schedule_checkpoint(_checkpoint)
                                     # Also update partial_history so the finally
                                     # block has the latest state on crash/cancel.
                                     partial_history = _checkpoint
@@ -1909,7 +1949,7 @@ async def stream_agent_responses(
                         ]
                         partial_history = continuation
                         deps.last_messages = continuation
-                        asyncio.create_task(_save_mid_run_checkpoint(continuation))
+                        schedule_checkpoint(continuation)
                         logger.warning(
                             "[Streaming] {} in-flight tool call(s) timed out; "
                             "resuming agent with failed tool result(s).",
@@ -2046,6 +2086,7 @@ async def stream_agent_responses(
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
+            capture_request_history()
             logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
             # A check-in that failed reported nothing either. Without this its
             # internal prompt stayed in the saved history and later showed up
@@ -2056,6 +2097,8 @@ async def stream_agent_responses(
                 )
             await sse_queue.put(("error", e))
         finally:
+            if not getattr(deps, "heartbeat_rolled_back", False):
+                capture_request_history()
             await sse_queue.put(("done", None))
 
     agent_task = asyncio.create_task(_agent_runner())
@@ -2393,6 +2436,15 @@ async def stream_agent_responses(
                     await draft_accumulator.maybe_persist(force=True)
                 except Exception as exc:
                     logger.debug(f"[Streaming] Failed to persist final draft: {exc}")
+                # The fast snapshot commits this even if a draft write failed.
+                # Model history may have been compacted several times by now.
+                deps.streamed_message = draft_accumulator.snapshot(
+                    getattr(agent, "_model_id", None)
+                )
+                if deps.streamed_message is not None and deferred_tool_results:
+                    deps.streamed_message["_resumed_tool_call_ids"] = list(
+                        deferred_tool_results.approvals
+                    )
             await out_queue.put(("done", None))
 
     encode_task = asyncio.create_task(encode_worker())
@@ -2458,24 +2510,37 @@ async def stream_agent_responses(
                 except (asyncio.CancelledError, Exception):
                     pass
 
-        # Ensure memory is saved even on early termination (cancellation, tool error, etc.)
-        #
-        # `is None` was not enough: `process_turn` seeds `deps.last_messages`
-        # with the restored history before the run starts, so on this path it is
-        # never None and the branch never fired. A stopped turn then persisted
-        # the history it began with, throwing away everything the run had
-        # already checkpointed -- the user pressed stop and watched the whole
-        # turn disappear, tool calls included. `partial_history` tracks the last
-        # mid-run checkpoint, so prefer it whenever it is ahead. A run that
-        # finished normally has set `last_messages` to the full result, which is
-        # never shorter, so this cannot walk a completed turn backwards.
-        _persisted = getattr(deps, "last_messages", None)
-        if _persisted is None or len(partial_history or []) > len(_persisted):
-            try:
-                agent._last_messages = partial_history
-                deps.last_messages = partial_history
-            except Exception as e:
-                logger.error(f"Failed to reconstruct partial history: {e}")
+        # Old background checkpoints must land before the caller commits its
+        # final snapshot. Otherwise an older, larger context can undo compaction.
+        if checkpoint_tasks:
+            await asyncio.gather(*checkpoint_tasks, return_exceptions=True)
+
+        # The latest checkpoint/result is authoritative even when compaction
+        # made it shorter than the history with which this run started.
+        try:
+            if (
+                partial_history
+                and getattr(deps, "streamed_message", None)
+                and partial_history != (message_history or [])
+            ):
+                from dataclasses import replace
+
+                # Forking needs an exact model-history boundary: a display row
+                # can contain many model responses and tool results.
+                last = partial_history[-1]
+                partial_history = partial_history[:-1] + [
+                    replace(
+                        last,
+                        metadata={
+                            **(last.metadata or {}),
+                            "suzent_display_run_id": run_id,
+                        },
+                    )
+                ]
+            agent._last_messages = partial_history
+            deps.last_messages = partial_history
+        except Exception as e:
+            logger.error(f"Failed to reconstruct partial history: {e}")
 
         if chat_id:
             if not getattr(deps, "is_suspended", False):

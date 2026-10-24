@@ -221,7 +221,7 @@ class ConfigModel(BaseModel):
     context_hard_trim_threshold: float = 0.80
     compaction_keep_recent_turns: int = 3
     compaction_chunk_size: int = 20
-    compaction_timeout_seconds: int = 60
+    compaction_timeout_seconds: int = 180
 
     stream_idle_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     stream_wait_notice_seconds: float = Field(default=15.0, gt=0, allow_inf_nan=False)

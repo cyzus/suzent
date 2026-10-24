@@ -397,7 +397,9 @@ class ChatEventLog:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.media_root = self.root / ".media"
-        self._cache: OrderedDict[str, tuple[Optional[Projection], int]] = OrderedDict()
+        self._cache: OrderedDict[
+            str, tuple[Optional[Projection], int, Optional[tuple[int, int]]]
+        ] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._chat_locks: dict[str, threading.Lock] = {}
 
@@ -527,10 +529,12 @@ class ChatEventLog:
         Hold :meth:`lock` while using the result: the cached projection is
         shared and is replaced by the next write.
         """
+        file_stat = self.stat(chat_id)
         with self._cache_lock:
-            if chat_id in self._cache:
+            cached = self._cache.get(chat_id)
+            if cached is not None and cached[2] == file_stat:
                 self._cache.move_to_end(chat_id)
-                return self._cache[chat_id]
+                return cached[0], cached[1]
         path = self.path(chat_id)
         self._drop_torn_tail(path)
         try:
@@ -541,14 +545,18 @@ class ChatEventLog:
             kept = self._move_aside(path, ".corrupt")
             logger.warning("Chat log {} is unreadable, kept as {}: {}", path, kept, exc)
             projection, seq = None, 0
-        self._remember(chat_id, projection, seq)
+        self._remember(chat_id, projection, seq, self.stat(chat_id))
         return projection, seq
 
     def _remember(
-        self, chat_id: str, projection: Optional[Projection], seq: int
+        self,
+        chat_id: str,
+        projection: Optional[Projection],
+        seq: int,
+        file_stat: Optional[tuple[int, int]],
     ) -> None:
         with self._cache_lock:
-            self._cache[chat_id] = (projection, seq)
+            self._cache[chat_id] = (projection, seq, file_stat)
             self._cache.move_to_end(chat_id)
             while len(self._cache) > self.CACHE_SIZE:
                 self._cache.popitem(last=False)
@@ -657,7 +665,12 @@ class ChatEventLog:
         if pending.projection is None:
             self.retire(pending.chat_id)
             return
-        self._remember(pending.chat_id, pending.projection, pending.seq)
+        self._remember(
+            pending.chat_id,
+            pending.projection,
+            pending.seq,
+            (pending.size, pending.mtime_ns),
+        )
 
     def undo(self, pending: PendingAppend) -> None:
         """SQLite did not commit: take the appended events back out."""
@@ -677,7 +690,7 @@ class ChatEventLog:
         path = self.path(chat_id)
         if path.exists():
             self._move_aside(path, ".trash")
-        self._remember(chat_id, None, 0)
+        self._remember(chat_id, None, 0, None)
 
     def _move_aside(self, path: Path, folder: str) -> Path:
         target_dir = self.root / folder
