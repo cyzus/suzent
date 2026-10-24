@@ -627,6 +627,23 @@ async def save_api_keys(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _model_details(model: Any) -> dict[str, Any]:
+    """Add known capabilities to a discovered model without guessing missing data."""
+    from suzent.core.model_registry import get_model_registry
+
+    details: dict[str, Any] = model.model_dump()
+    caps = get_model_registry().get_capabilities(model.id)
+    if caps is None or caps.is_stub:
+        return details
+    if caps.context_window:
+        details["context_length"] = caps.context_window
+    details["mode"] = caps.mode
+    details["supports_vision"] = caps.supports_vision
+    details["supports_reasoning"] = caps.supports_reasoning
+    details["supports_function_calling"] = caps.supports_function_calling
+    return details
+
+
 async def verify_provider(request: Request) -> JSONResponse:
     """Verify provider credentials and fetch available models."""
     try:
@@ -662,7 +679,7 @@ async def verify_provider(request: Request) -> JSONResponse:
             return JSONResponse(
                 {
                     "success": True,
-                    "models": [m.model_dump() for m in models],
+                    "models": [_model_details(m) for m in models],
                 }
             )
 
@@ -676,7 +693,7 @@ async def verify_provider(request: Request) -> JSONResponse:
 
         models = await provider.list_models()
 
-        if models:
+        if models and not getattr(provider, "used_catalog_fallback", False):
             from suzent.core.model_registry import (
                 save_discovered_models,
                 prune_stale_models,
@@ -691,7 +708,11 @@ async def verify_provider(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "success": len(models) > 0,
-                "models": [m.model_dump() for m in models],
+                "models": [_model_details(m) for m in models],
+                "used_catalog_fallback": getattr(
+                    provider, "used_catalog_fallback", False
+                ),
+                "discovery_error": getattr(provider, "discovery_error", None),
             }
         )
     except Exception as e:

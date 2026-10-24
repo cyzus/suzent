@@ -54,6 +54,28 @@ async def test_keyless_local_provider_discovers_models(
     assert session.last_headers == {}
 
 
+@pytest.mark.asyncio
+async def test_model_discovery_reports_catalog_fallback(monkeypatch) -> None:
+    class UnauthorizedResponse(_FakeResponse):
+        status = 401
+
+    class UnauthorizedSession(_FakeSession):
+        def get(
+            self, _url: str, *, headers: dict[str, str], timeout: Any
+        ) -> UnauthorizedResponse:
+            return UnauthorizedResponse()
+
+    monkeypatch.setattr(openai_compat, "resolve_api_key", lambda *_args: "test-key")
+    monkeypatch.setattr(openai_compat.aiohttp, "ClientSession", UnauthorizedSession)
+    provider = OpenAICompatProvider("xiaomi_mimo", {}, "https://api.xiaomimimo.com/v1")
+
+    models = await provider.list_models()
+
+    assert models
+    assert provider.used_catalog_fallback is True
+    assert provider.discovery_error == "The models endpoint returned HTTP 401"
+
+
 def test_keyless_local_provider_creates_pydantic_model(monkeypatch) -> None:
     captured: dict[str, Any] = {}
 
