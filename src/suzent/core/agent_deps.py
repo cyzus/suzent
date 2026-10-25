@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+from suzent.core.run_clock import RunClock
 
 
 @dataclass
@@ -80,6 +81,7 @@ class AgentDeps:
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
     display_run_id: Optional[str] = None
+    run_clock: RunClock | None = None
     streamed_message: Optional[dict[str, Any]] = None
     model_request_history: Optional[list] = None
     # History length before this turn's own request was appended, so a quiet
