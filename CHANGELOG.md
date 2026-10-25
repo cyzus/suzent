@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
 - Resume voice-delegated turns after tool approval and route approval clicks to the active chat.
+- Fix realtime voice: show the front desk's clear reading as the user message instead of raw ASR, start a delegated request after a greeting the front desk answered itself, and seed the permission mode so voice chats use the auto tool classifier.
 
 ## [v0.17.0] - 2026-10-18
 
