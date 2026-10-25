@@ -682,6 +682,14 @@ async def startup():
             _monitor_service_resources(), name="service_resource_guard"
         )
 
+    from suzent.config.paths import PROJECT_DIR
+    from suzent.service.auto_update import run_auto_update
+
+    app.state.auto_updater = asyncio.create_task(
+        run_auto_update(PROJECT_DIR, service=os.getenv("SUZENT_RUN_MODE") == "service"),
+        name="auto_updater",
+    )
+
     try:
         from genai_prices import UpdatePrices
 
@@ -1003,7 +1011,7 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
-    for task_name in ("service_resource_guard", "overflow_sweeper"):
+    for task_name in ("service_resource_guard", "overflow_sweeper", "auto_updater"):
         task = getattr(app.state, task_name, None)
         if task is not None and not task.done():
             task.cancel()

@@ -579,6 +579,11 @@ export const en = {
     latestVersion: 'latest version',
     confirmRestart: 'Suzent will close, update to {version}, and restart automatically. Continue?',
     startFailed: 'Failed to start update: {error}',
+    autoUpdate: 'Update automatically',
+    autoUpdateDescription:
+      'Download new versions in the background and install them the next time Suzent restarts.',
+    autoUpdateFailed: 'Could not change automatic updates: {error}',
+    updatedTo: 'Suzent was updated to {version}.',
   },
   config: {
     loading: 'Loading config...',

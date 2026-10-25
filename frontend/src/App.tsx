@@ -39,6 +39,7 @@ import {
 import {
   checkDesktopUpdate,
   startDesktopUpdateAndRestart,
+  takeUpdatedVersion,
   type UpdateStatus,
 } from './lib/desktopUpdates';
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
@@ -273,6 +274,10 @@ function UpdateButton(): React.ReactElement | null {
       .then((status) => {
         if (cancelled) return;
         setUpdateStatus(status);
+        const updated = takeUpdatedVersion(status.current_version);
+        if (updated) {
+          notify(t('updates.updatedTo', { version: updated.replace(/^v?/, 'v') }));
+        }
       })
       .catch(() => {
         if (!cancelled) setUpdateStatus(null);
