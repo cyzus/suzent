@@ -645,19 +645,26 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     val failed = parts.any { it.state in listOf("error", "denied") }
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
-    val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
+    val latest = parts.lastOrNull()
+    val status = when {
+        waiting -> stringResource(R.string.approval_required)
+        failed -> stringResource(R.string.activity_failed)
+        latest?.type == "reasoning" -> stringResource(R.string.reasoning)
+        !latest?.toolName.isNullOrBlank() -> latest!!.toolName.replace('_', ' ')
+        else -> stringResource(R.string.activity_completed)
+    }
     Column(Modifier.fillMaxWidth()) {
         SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
-            Text(status.uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+            Text(status.uppercase(), modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                 color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
             if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
             Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
-            Text(stringResource(R.string.activity_steps, parts.size).uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+            Text(stringResource(R.string.activity_steps, parts.size).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(if (expanded) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (expanded || waiting) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
         }
-        if (expanded) {
+        if (expanded || waiting) {
             HorizontalDivider(color = ink.copy(alpha = 0.12f))
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 parts.forEachIndexed { index, part ->
@@ -680,9 +687,9 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
     val pending = part.state == "approval-requested"
     val color = if (error) MaterialTheme.colorScheme.error else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 14.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-            Box(Modifier.size(16.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 10.sp, lineHeight = 12.sp, color = if (pending) Color.Black else color)
+        Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 17.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+            Box(Modifier.size(10.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 7.sp, lineHeight = 9.sp, color = if (pending) Color.Black else color)
             }
             Box(Modifier.width(1.dp).weight(1f).background(if (last) Color.Transparent else ink.copy(alpha = 0.12f)))
         }

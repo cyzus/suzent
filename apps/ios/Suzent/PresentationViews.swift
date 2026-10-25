@@ -788,22 +788,29 @@ struct ActivityRail: View {
     private var running: Bool { live && parts.contains { $0.state == "running" } }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
     private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
+    private var summary: String {
+        if waiting { return String(localized: "Approval required") }
+        if failed { return String(localized: "Failed") }
+        guard let part = parts.last else { return String(localized: "Completed") }
+        if part.type == "reasoning" { return String(localized: "Reasoning") }
+        return part.toolName?.replacingOccurrences(of: "_", with: " ") ?? String(localized: "Tool activity")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
                 HStack(spacing: 10) {
-                    Text(waiting ? String(localized: "Approval required") : running ? String(localized: "Running") : failed ? String(localized: "Failed") : String(localized: "Completed"))
+                    Text(summary).lineLimit(1).truncationMode(.tail)
                         .foregroundStyle(waiting || failed ? accent : .secondary)
                     if running { StreamingPulse() }
                     Text("|").foregroundStyle(.tertiary)
-                    Text("\(parts.count) steps")
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
+                    Text("\(parts.count) steps").fixedSize()
+                    Image(systemName: expanded || waiting ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
                     Spacer(minLength: 0)
-                }.font(.system(size: 12, weight: .bold, design: .monospaced))
+                }.font(.system(size: 11, weight: .bold, design: .monospaced))
                     .textCase(.uppercase).foregroundStyle(Color.suzentMuted)
                     .padding(.vertical, 12).padding(.horizontal, 4).contentShape(Rectangle())
             }.buttonStyle(.plain)
-            if expanded {
+            if expanded || waiting {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
                 VStack(spacing: 0) {
                     ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
@@ -812,7 +819,7 @@ struct ActivityRail: View {
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 2) }
     }
 }
 
@@ -828,11 +835,11 @@ struct ToolActivityBlock: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(spacing: 0) {
                 Text(part.state == "approval-requested" ? "!" : failed ? "×" : running ? "·" : "✓")
-                    .font(.system(size: 10, weight: .bold)).frame(width: 16, height: 16)
+                    .font(.system(size: 7, weight: .bold)).frame(width: 10, height: 10)
                     .foregroundStyle(part.state == "approval-requested" ? .black : color)
                     .background(part.state == "approval-requested" ? Color(presentation: PresentationTokens.yellow) : color.opacity(0.08))
                 Rectangle().fill(last ? Color.clear : Color.primary.opacity(0.12)).frame(width: 1)
-            }.padding(.top, 14)
+            }.frame(width: 16).padding(.top, 17)
             VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 8) {

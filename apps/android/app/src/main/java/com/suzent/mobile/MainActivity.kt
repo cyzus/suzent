@@ -588,20 +588,24 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        if (model.attachmentsSupported && model.device?.permissions?.send == true)
-            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
-            modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
+            modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = 6,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat)
         }
-        if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            if (model.attachmentsSupported && model.device?.permissions?.send == true)
+                AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
             Box(Modifier.weight(1f)) {
-                SuzentSelectionTrigger(model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model),
-                    { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() }, enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true)
+                SuzentTextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() },
+                    enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
+                    Text(model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model),
+                        modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis,
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(" ⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
 
             }
             SendAction(model, chat)
@@ -618,9 +622,25 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 
 @Composable
 private fun SendAction(model: MobileModel, chat: Chat) {
-            if (model.streaming || chat.running) SuzentAction(stringResource(R.string.stop), model::stop, prominent = true, enabled = model.device?.permissions?.stop == true, compact = true)
-            else SuzentAction(stringResource(R.string.send), model::send, prominent = true,
-                enabled = !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true, compact = true)
+    val stopping = model.streaming || chat.running
+    val enabled = if (stopping) model.device?.permissions?.stop == true else
+        !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true
+    SuzentIconButton(onClick = { if (stopping) model.stop() else model.send() },
+        label = stringResource(if (stopping) R.string.stop else R.string.send), enabled = enabled) {
+        Box(Modifier.size(36.dp).background(if (stopping) MaterialTheme.colorScheme.error else suzentLink)
+            .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+                if (stopping) drawRect(Color.White, topLeft = Offset(size.width * .25f, size.height * .25f), size = Size(size.width * .5f, size.height * .5f))
+                else {
+                    val path = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(size.width * .5f, size.height * .85f); lineTo(size.width * .5f, size.height * .15f)
+                        moveTo(size.width * .2f, size.height * .45f); lineTo(size.width * .5f, size.height * .15f); lineTo(size.width * .8f, size.height * .45f)
+                    }
+                    drawPath(path, Color.White, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()))
+                }
+            }
+        }
+    }
 }
 
 @Composable

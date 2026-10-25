@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Align the mobile composer with the desktop layout using a persistent attachment and model toolbar, square send and stop controls, and compact activity summaries and timeline nodes."
+}

@@ -122,7 +122,7 @@ struct AttachMenu: View {
 
     var body: some View {
         Button { showMenu = true } label: {
-            Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).frame(width: 36, height: 44)
+            Image(systemName: "paperclip").font(.system(size: 18, weight: .semibold)).frame(width: 36, height: 44)
         }
         .buttonStyle(.plain)
         .tint(Color.suzentText)

@@ -666,19 +666,24 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
-                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
-                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
+                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(1...6).focused($composing)
                         .tint(Color.suzentLink)
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                    if !keyboardVisible { sendAction(chat) }
                 }
-                if keyboardVisible { HStack {
-                    SuzentSelectionTrigger(value: model.selectedModel ?? chat.model ?? String(localized: "Desktop model")) {
+                HStack(spacing: 8) {
+                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
+                    Button {
                         composing = false; showModelPicker = true
-                    }.disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1).truncationMode(.middle)
+                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                        }.font(.system(size: 12, weight: .medium)).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                    }.buttonStyle(.plain)
+                    .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                     Spacer(minLength: 8)
                     sendAction(chat)
-                } }
+                }
             }.padding(10).background(Color.suzentSurface)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
@@ -707,15 +712,22 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 
-    @ViewBuilder private func sendAction(_ chat: Chat) -> some View {
-        Group {
-            if model.streaming || chat.isRunning == true {
-                Button("Stop") { Task { await model.stop() } }.disabled(model.device?.permissions.stop != true)
-            } else {
-                Button("Send") { Task { await model.send() } }
-                    .disabled(model.busy || model.device?.permissions.send != true || (model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.attachments.isEmpty))
-            }
-        }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
+    private func sendAction(_ chat: Chat) -> some View {
+        let stopping = model.streaming || chat.isRunning == true
+        let enabled = stopping ? model.device?.permissions.stop == true :
+            !model.busy && model.device?.permissions.send == true &&
+            (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
+        return Button {
+            Task { if stopping { await model.stop() } else { await model.send() } }
+        } label: {
+            Image(systemName: stopping ? "stop.fill" : "arrow.up")
+                .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(stopping ? Color.red : Color.suzentLink)
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
+                .padding(4).contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : 0.45)
+            .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
     }
 
 }
