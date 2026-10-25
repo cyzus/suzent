@@ -18,15 +18,43 @@ fn bundle_dir(root: &Path) -> PathBuf {
 /// Downloads the release's web UI bundle, checked against its SHA256SUMS, and
 /// installs it into `root`. Returns the number of files installed.
 pub fn install(root: &Path, bases: &[String]) -> Result<usize, String> {
+    install_prefetched(root, bases, None)
+}
+
+/// Like [`install`], but unpacks `prefetched` instead of downloading when that
+/// archive still matches the release checksum.
+pub fn install_prefetched(
+    root: &Path,
+    bases: &[String],
+    prefetched: Option<&Path>,
+) -> Result<usize, String> {
+    let bytes = download(bases, prefetched)?;
+    extract(&bytes, &bundle_dir(root))
+}
+
+/// Downloads the release's web UI bundle to `archive` without installing it,
+/// so a later update can unpack it without waiting on the network.
+pub fn prefetch(bases: &[String], archive: &Path) -> Result<(), String> {
+    let bytes = download(bases, Some(archive))?;
+    let partial = archive.with_extension("download");
+    fs::write(&partial, &bytes)
+        .and_then(|()| fs::rename(&partial, archive))
+        .map_err(|error| format!("failed to save {}: {error}", archive.display()))
+}
+
+fn download(bases: &[String], prefetched: Option<&Path>) -> Result<Vec<u8>, String> {
     let sums = network::fetch_release_file(bases, "SHA256SUMS")
         .map_err(|error| format!("failed to download release checksums: {error}"))?;
     let expected = updater::parse_release_checksum(&String::from_utf8_lossy(&sums), ASSET)?;
+    if let Some(bytes) = prefetched.and_then(|path| fs::read(path).ok()) {
+        if network::sha256_hex(&bytes) == expected {
+            return Ok(bytes);
+        }
+    }
     let mut errors = Vec::new();
     for base in bases {
         match network::fetch_release_file(std::slice::from_ref(base), ASSET) {
-            Ok(bytes) if network::sha256_hex(&bytes) == expected => {
-                return extract(&bytes, &bundle_dir(root));
-            }
+            Ok(bytes) if network::sha256_hex(&bytes) == expected => return Ok(bytes),
             Ok(_) => errors.push(format!("{base}/{ASSET}: checksum mismatch")),
             Err(error) => errors.push(error),
         }
