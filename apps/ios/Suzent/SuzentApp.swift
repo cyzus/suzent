@@ -666,11 +666,13 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
-                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(1...6).focused($composing)
+                    if !composing && model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
+                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                         .tint(Color.suzentLink)
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
+                    if !composing { sendAction(chat) }
                 }
-                HStack(spacing: 8) {
+                if composing { HStack(spacing: 8) {
                     if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
                     Button {
                         composing = false; showModelPicker = true
@@ -683,7 +685,7 @@ struct ContentView: View {
                     .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                     Spacer(minLength: 8)
                     sendAction(chat)
-                }
+                } }
             }.padding(10).background(Color.suzentSurface)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }

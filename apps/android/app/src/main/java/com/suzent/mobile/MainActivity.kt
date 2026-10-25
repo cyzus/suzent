@@ -588,14 +588,17 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (!expanded && model.attachmentsSupported && model.device?.permissions?.send == true)
+            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
-            modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = 6,
+            modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
+        if (!expanded) SendAction(model, chat)
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             if (model.attachmentsSupported && model.device?.permissions?.send == true)
                 AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
             Box(Modifier.weight(1f)) {
