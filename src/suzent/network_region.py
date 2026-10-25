@@ -20,6 +20,8 @@ import sys
 import tarfile
 import urllib.error
 import urllib.request
+import zlib
+from http.client import HTTPException
 from pathlib import Path
 
 REPO = "cyzus/suzent"
@@ -164,6 +166,9 @@ def npm_tarball_url(npm_platform: str, version: str) -> str:
     return f"{NPM_MIRROR_REGISTRY}/@suzent/{name}/-/{name}-{version.lstrip('v')}.tgz"
 
 
+_SAFE_PACKAGE_FILE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
+
+
 def unpack_npm_package(tarball: bytes, target: Path) -> None:
     """Writes the top-level files of an npm tarball (``package/<name>``) into
     ``target``, ignoring anything nested or that is not a regular file."""
@@ -171,12 +176,12 @@ def unpack_npm_package(tarball: bytes, target: Path) -> None:
     with tarfile.open(fileobj=io.BytesIO(gzip.decompress(tarball))) as archive:
         for member in archive.getmembers():
             name = member.name.removeprefix("package/")
+            # A plain file name only: no separators of any platform, drive
+            # letters or dot names, so nothing can land outside ``target``.
             if (
                 not member.isfile()
                 or name == member.name
-                or not name
-                or "/" in name
-                or name in {".", ".."}
+                or not _SAFE_PACKAGE_FILE.fullmatch(name)
             ):
                 continue
             source = archive.extractfile(member)
@@ -208,7 +213,7 @@ def _npm_release_dir(npm_platform: str, version: str) -> Path | None:
                 if old != staging:
                     shutil.rmtree(old, ignore_errors=True)
             staging.replace(target)
-        except (OSError, EOFError, tarfile.TarError):
+        except (OSError, EOFError, HTTPException, zlib.error, tarfile.TarError):
             result = None
     _npm_packages[url] = result
     return result

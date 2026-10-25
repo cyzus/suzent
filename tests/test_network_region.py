@@ -161,6 +161,8 @@ def test_unpack_npm_package_keeps_only_top_level_files(tmp_path):
             "package/SHA256SUMS": b"sums",
             "package/nested/file": b"skip",
             "package/../escape": b"skip",
+            "package/..\\..\\escape": b"skip",
+            "package/C:escape": b"skip",
             "other/file": b"skip",
         }
     )
@@ -211,5 +213,27 @@ def test_unavailable_npm_package_falls_through(state, monkeypatch):
 
     monkeypatch.setattr(network_region, "_npm_packages", {})
     monkeypatch.setattr(network_region.urllib.request, "urlopen", urlopen)
+    urls = network_region.release_asset_urls("suzent-linux-x86_64", "v1.2.3")
+    assert all(url.startswith("https://") for url in urls)
+
+
+def test_damaged_npm_package_falls_through(state, monkeypatch):
+    (state / "network-region").write_text("china\n", encoding="utf-8")
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(network_region, "_npm_packages", {})
+    monkeypatch.setattr(
+        network_region.urllib.request,
+        "urlopen",
+        lambda request, timeout: Response(
+            b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff"
+        ),
+    )
     urls = network_region.release_asset_urls("suzent-linux-x86_64", "v1.2.3")
     assert all(url.startswith("https://") for url in urls)
