@@ -182,6 +182,7 @@ private struct ChatSidebarRow: View {
 struct ContentView: View {
     @Bindable var model: MobileModel
     @State private var showSidebar = false
+    @State private var transcriptCache = ChatPresentationCache()
     @State private var showSettings = false
     @State private var repairScanner = false
     @State private var showConnectionHelp = false
@@ -191,6 +192,7 @@ struct ContentView: View {
     @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
+    @State private var attachmentsExpanded = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -266,6 +268,14 @@ struct ContentView: View {
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
+                        if model.isDemo {
+                            HStack {
+                                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
+                                Spacer()
+                                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).disabled(model.busy)
+                            }.padding(.horizontal, 16).padding(.vertical, 8)
+                                .background(Color(presentation: PresentationTokens.yellow)).foregroundStyle(.black)
+                        }
                         if let error = model.error {
                             SuzentNotice(message: error) { model.error = nil }
                         }
@@ -347,6 +357,9 @@ struct ContentView: View {
         .accessibilityHidden(showModelPicker || showProjectPicker)
         .overlay { selectionOverlay }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showModelPicker || showProjectPicker)
+        .onChange(of: model.isDemo) { _, _ in
+            showSettings = false; showSidebar = false; showModelPicker = false; showProjectPicker = false; composing = false
+        }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
     }
@@ -594,28 +607,44 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Settings").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                SuzentDisclosure(title: "Desktop access") {
-                    if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
+                if model.isDemo {
+                    Text("Explore with sample data. No desktop, API key, or internet required.")
+                    Text("Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.")
+                        .font(.footnote).foregroundStyle(Color.suzentMuted)
+                    Button("Reset demo") { Task { await model.resetDemo() } }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
+                    Button("Exit demo") { model.exitDemo() }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
+                } else {
+                    SuzentDisclosure(title: "Desktop access") {
+                        if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
+                        Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
+                        Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
+                    }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                    Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
+                    Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
+                    SuzentDisclosure(title: "About") {
+                        Button("Try offline demo") { Task { await model.startDemo() } }
+                            .font(.system(size: PresentationTokens.typeCaption))
+                            .foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                            .buttonStyle(.plain).disabled(model.busy || model.streaming)
+                    }
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
-                    Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
-                }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
             }.padding(PresentationTokens.spacePage)
         }
     }
 
     private func conversation(_ chat: Chat) -> some View {
+        GeometryReader { viewport in
+        ZStack(alignment: .bottom) {
         VStack(spacing: 0) {
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
-                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
+                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
-                        let messages = presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
+                        let messages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
                         let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
                         let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
@@ -640,25 +669,51 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
-                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
-                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
+                    if model.attachmentsSupported && model.device?.permissions.send == true {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                                attachmentsExpanded.toggle()
+                                if attachmentsExpanded { composing = false }
+                            }
+                        } label: {
+                            Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Attach")
+                            .disabled(model.busy || model.attachments.count >= maxAttachments)
+                    }
+                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                         .tint(Color.suzentLink)
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                    if !keyboardVisible { sendAction(chat) }
+                    if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
                 }
-                if keyboardVisible { HStack {
-                    SuzentSelectionTrigger(value: model.selectedModel ?? chat.model ?? String(localized: "Desktop model")) {
+                if composing { HStack(spacing: 8) {
+                    Button {
                         composing = false; showModelPicker = true
-                    }.disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1).truncationMode(.middle)
+                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                        }.font(.system(size: 12, weight: .medium)).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                    }.buttonStyle(.plain)
+                    .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                     Spacer(minLength: 8)
                     sendAction(chat)
                 } }
             }.padding(10).background(Color.suzentSurface)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
                 .padding(.trailing, 2).padding(.bottom, 2)
                 .padding(.horizontal, 12).padding(.bottom, 8)
-        }.task(id: chat.id) { await model.watchApprovals(chat.id) }
+        }.frame(width: viewport.size.width, height: viewport.size.height)
+            .offset(y: attachmentsExpanded ? -200 : 0)
+        AttachmentPanel(model: model, expanded: $attachmentsExpanded)
+            .frame(height: 200).offset(y: attachmentsExpanded ? 0 : 200)
+            .allowsHitTesting(attachmentsExpanded).accessibilityHidden(!attachmentsExpanded)
+        }.clipped()
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
+        }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
+            .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
+            .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
     }
     private func startPage(_ chat: Chat) -> some View {
         VStack(spacing: 28) {
@@ -672,18 +727,31 @@ struct ContentView: View {
             SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
                 composing = false; showProjectPicker = true
             }.disabled(model.busy || model.projects.isEmpty)
+            if model.isDemo {
+                ForEach(model.demoPrompts, id: \.self) { prompt in
+                    Button(prompt) { model.draft = prompt; Task { await model.send() } }
+                        .buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                }
+            }
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 
-    @ViewBuilder private func sendAction(_ chat: Chat) -> some View {
-        Group {
-            if model.streaming || chat.isRunning == true {
-                Button("Stop") { Task { await model.stop() } }.disabled(model.device?.permissions.stop != true)
-            } else {
-                Button("Send") { Task { await model.send() } }
-                    .disabled(model.busy || model.device?.permissions.send != true || (model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.attachments.isEmpty))
-            }
-        }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
+    private func sendAction(_ chat: Chat) -> some View {
+        let stopping = model.streaming || chat.isRunning == true
+        let enabled = stopping ? model.device?.permissions.stop == true :
+            !model.busy && model.device?.permissions.send == true &&
+            (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
+        return Button {
+            Task { if stopping { await model.stop() } else { await model.send() } }
+        } label: {
+            Image(systemName: stopping ? "stop.fill" : "arrow.up")
+                .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(stopping ? Color.red : Color.suzentLink)
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
+                .padding(4).contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : 0.45)
+            .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
     }
 
 }

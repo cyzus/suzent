@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "SuzentCore", targets: ["SuzentCore"])],
     targets: [
-        .target(name: "SuzentCore"),
+        .target(name: "SuzentCore", resources: [.process("Resources")]),
         .testTarget(name: "SuzentCoreTests", dependencies: ["SuzentCore"])
     ]
 )

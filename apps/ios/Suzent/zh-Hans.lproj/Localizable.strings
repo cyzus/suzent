@@ -194,3 +194,21 @@
 "Connecting to Suzent" = "正在连接 Suzent";
 "Connection help" = "连接帮助";
 "Check that Suzent is running on your desktop and both devices are online." = "请确认桌面端 Suzent 正在运行，并检查两端的网络连接。";
+
+// Offline demonstration
+"Try offline demo" = "体验离线演示";
+"Explore with sample data. No desktop, API key, or internet required." = "使用示例数据体验，无需电脑、API Key 或网络。";
+"Offline demo · Scripted replies, no AI calls" = "离线演示 · 预设回复，不调用 AI";
+"Exit demo" = "退出演示";
+"Reset demo" = "重置演示";
+"Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed." = "配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。";
+"Could not open the demo workspace." = "无法打开演示工作区。";
+"About" = "关于";
+
+"In progress: %d" = "%d 项进行中";
+"Commands run: %d" = "执行了 %d 条命令";
+"Files read: %d" = "读取了 %d 个文件";
+"Files modified: %d" = "修改了 %d 个文件";
+"Searches: %d" = "搜索了 %d 次";
+"Other tool calls: %d" = "调用了 %d 次其他工具";
+"Failed calls: %d" = "%d 次调用失败";
