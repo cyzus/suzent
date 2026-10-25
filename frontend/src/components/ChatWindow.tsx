@@ -38,7 +38,11 @@ import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
-import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
+import {
+  permissionApprovalsToParts,
+  resolvedApprovalToolCallIds,
+  useApprovalRestore,
+} from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
@@ -2476,19 +2480,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!currentChatId) return;
     if (streamingChatIdRef.current !== currentChatId) return;
 
-    const resolvedToolCallIds = new Set<string>();
-    for (const m of messages) {
-      if (m.role !== 'assistant' || !Array.isArray(m.parts)) continue;
-      for (const p of m.parts) {
-        if (
-          p.type === 'tool' &&
-          p.toolCallId &&
-          (p.output != null || p.state !== 'approval-requested')
-        ) {
-          resolvedToolCallIds.add(p.toolCallId);
-        }
-      }
-    }
+    const resolvedToolCallIds = resolvedApprovalToolCallIds(messages);
 
     clearIfResolved(currentChatId, getStreamingParts(), resolvedToolCallIds);
   }, [currentChatId, messages, clearIfResolved, getStreamingParts, streamingChatIdRef]);

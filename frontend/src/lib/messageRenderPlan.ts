@@ -1,5 +1,6 @@
 import presentation from '../../../packages/presentation/tokens.json';
 import type { Message } from '../types/api';
+import { collectRunTimings, recordedWorkedSeconds } from './runTiming';
 import {
   isIntermediateStepContent,
   splitAssistantContent,
@@ -56,8 +57,8 @@ function parseTimestamp(value?: string): number | undefined {
 }
 
 /**
- * Wall-clock span of a turn: from the user message that opened it to the last
- * thing it produced.
+ * Sum recorded runs, excluding waits between resumptions. Older records fall
+ * back to the wall-clock span from the opening user message to the last activity.
  *
  * Both ends need care. The start is the turn boundary, not the previous row --
  * inside a turn the previous row is a tool result or a tool-resume stub. The
@@ -73,6 +74,9 @@ function computeTurnWorkedSeconds(
   turnStart: number,
   turnEnd: number
 ): number | undefined {
+  const recorded = recordedWorkedSeconds(messages.slice(turnStart, turnEnd));
+  if (recorded !== undefined) return recorded;
+
   // Without a boundary the turn's start is unknown -- which happens when the
   // opening user row sits outside the slice being rendered. Falling back to the
   // first assistant row would report a near-zero span that silently changes as
@@ -83,13 +87,21 @@ function computeTurnWorkedSeconds(
 
   let endedAt: number | undefined;
   for (let idx = turnStart; idx < turnEnd; idx += 1) {
+    const message = messages[idx];
+    const timestamp = parseTimestamp(message.timestamp);
+    const lastActivity = parseTimestamp(message.turn_last_activity_at);
+    // Legacy streamed rows contain the entire run but only stamp its start.
+    // Reusing that stamp as an end reports trigger-to-start latency as work.
+    if (message._streaming_run_id && !message.run_finished_at) {
+      if (lastActivity !== undefined && timestamp !== undefined && lastActivity > timestamp) {
+        endedAt = endedAt === undefined ? lastActivity : Math.max(endedAt, lastActivity);
+      }
+      continue;
+    }
     // `turn_last_activity_at` carries the rows the store folded into a
     // coalesced assistant bubble; `timestamp` alone is when that bubble's first
     // model response began.
-    for (const stamp of [
-      parseTimestamp(messages[idx].timestamp),
-      parseTimestamp(messages[idx].turn_last_activity_at),
-    ]) {
+    for (const stamp of [timestamp, lastActivity]) {
       if (stamp !== undefined && (endedAt === undefined || stamp > endedAt)) {
         endedAt = stamp;
       }
@@ -139,12 +151,14 @@ export function buildTurnWorkedSeconds(messages: Message[]): Map<number, number>
       }
     }
 
-    const workedSeconds = computeTurnWorkedSeconds(messages, boundaryIndex, i, turnEnd);
-    if (workedSeconds !== undefined) {
-      for (let idx = i; idx < turnEnd; idx += 1) {
-        if (messages[idx].role === 'assistant') {
-          workedSecondsByMessageIndex.set(idx, workedSeconds);
-        }
+    const hasRecordedRuns = collectRunTimings(messages.slice(i, turnEnd)).length > 0;
+    const workedSeconds = hasRecordedRuns
+      ? undefined
+      : computeTurnWorkedSeconds(messages, boundaryIndex, i, turnEnd);
+    for (let idx = i; idx < turnEnd; idx += 1) {
+      if (messages[idx].role === 'assistant') {
+        const seconds = hasRecordedRuns ? recordedWorkedSeconds([messages[idx]]) : workedSeconds;
+        if (seconds !== undefined) workedSecondsByMessageIndex.set(idx, seconds);
       }
     }
 

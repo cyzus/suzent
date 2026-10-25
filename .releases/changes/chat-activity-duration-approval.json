@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Fix chat activity durations across tool resumptions, exclude time waiting for answers, recover historical timings, group structured tool continuations, and keep pending approval controls visible after refresh."
+}
