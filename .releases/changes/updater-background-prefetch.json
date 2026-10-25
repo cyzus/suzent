@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Let the standalone updater prefetch a release (desktop binary, source tag, Python packages and web UI) in the background, so applying it later takes seconds."
+}

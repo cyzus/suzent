@@ -257,6 +257,9 @@ async fn save_diagnostics(app: tauri::AppHandle, content: String) -> Result<bool
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if has_flag(&args, "--prefetch") {
+        std::process::exit(updater::run_prefetch(&args));
+    }
     if has_flag(&args, "--update") || has_flag(&args, "--repair") {
         let repair = has_flag(&args, "--repair");
         if has_flag(&args, "--headless") {
