@@ -772,7 +772,7 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
 
   const title =
     error ||
-    status?.reason ||
+    (status?.active && status.reason) ||
     (status?.watermark
       ? t('settings.memoryConfig.statusBarWatermark', { watermark: status?.watermark })
       : t('settings.memoryConfig.dreamTitle'));
@@ -809,13 +809,15 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
           <div className="font-bold" role="status">
             {label}
           </div>
-          <div>{t('settings.memoryConfig.statusBarPending', { count: String(pending) })}</div>
-          {status?.watermark && (
+          {status?.active && (
+            <div>{t('settings.memoryConfig.statusBarPending', { count: String(pending) })}</div>
+          )}
+          {status?.active && status.watermark && (
             <div>
-              {t('settings.memoryConfig.statusBarWatermark', { watermark: status?.watermark })}
+              {t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })}
             </div>
           )}
-          {(error || status?.reason) && (
+          {(error || (status?.active && status.reason)) && (
             <div role={error ? 'alert' : undefined} className="break-words">
               {error || status?.reason}
             </div>

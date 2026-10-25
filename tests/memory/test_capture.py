@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from suzent.database.chat_log import ChatEventLog
 from suzent.memory import capture
 from suzent.memory.capture import CapturedFact, CaptureResponse
 from suzent.memory.extraction_queue import CURSORS_FILE, ExtractionQueue
 from suzent.memory.markdown_store import MarkdownMemoryStore
-from suzent.session.transcript import TranscriptManager
 
 BATCH = """## Earlier context (already processed; do not extract)
 
@@ -183,30 +183,50 @@ def recorder(monkeypatch):
     return rec
 
 
-async def _turn(tmp_path, user: str, reply: str = "ok") -> None:
-    transcript = TranscriptManager(str(tmp_path))
-    await transcript.append_turn("c1", "user", user)
-    await transcript.append_turn("c1", "assistant", reply)
+def _append(log: ChatEventLog, message: dict) -> None:
+    path = log.path("c1")
+    seq = len(path.read_text().splitlines()) + 1 if path.exists() else 1
+    events = [] if seq > 1 else [("chat.created", {"config": {}, "messages": []})]
+    events.append(("message.append", message))
+    with path.open("a", encoding="utf-8") as f:
+        for offset, (kind, data) in enumerate(events):
+            event = {"v": 1, "seq": seq + offset, "ts": "2026-10-25T09:00:00+00:00"}
+            f.write(json.dumps({**event, "type": kind, "data": data}) + "\n")
 
 
-async def test_a_scheduled_only_batch_is_skipped_but_consumed(tmp_path, recorder):
-    queue = ExtractionQueue(tmp_path)
+def _turn(log: ChatEventLog, user: str, reply: str = "ok") -> None:
+    _append(log, {"role": "user", "content": user})
+    _append(log, {"role": "assistant", "content": reply})
+
+
+def _scheduled(log: ChatEventLog, prompt: str, reply: str = "ok") -> None:
+    _append(log, {"role": "system_triggered", "content": prompt})
+    _append(log, {"role": "assistant", "content": reply})
+
+
+@pytest.fixture
+def log(tmp_path, monkeypatch) -> ChatEventLog:
+    monkeypatch.setattr("suzent.config.DATA_DIR", tmp_path / "data")
+    return ChatEventLog(tmp_path)
+
+
+async def test_a_scheduled_only_batch_is_skipped_but_consumed(log, recorder):
+    queue = ExtractionQueue(log)
     await queue.catch_up("u1")
-    await _turn(tmp_path, "**Scheduled Task: morning news**\nSend the news at 9")
-    await _turn(tmp_path, "", "Here is today's news")
+    _scheduled(log, "**Scheduled Task: morning news**\nSend the news at 9")
 
     await queue.flush("c1", "u1")
 
     assert recorder.batches == []
-    cursors = json.loads((tmp_path / CURSORS_FILE).read_text())
-    assert cursors["c1"] == 4
+    cursors = json.loads((log.root / CURSORS_FILE).read_text())
+    assert cursors["c1"][0] == 3
 
 
-async def test_scheduled_turns_are_left_out_of_a_mixed_batch(tmp_path, recorder):
-    queue = ExtractionQueue(tmp_path)
+async def test_scheduled_turns_are_left_out_of_a_mixed_batch(log, recorder):
+    queue = ExtractionQueue(log)
     await queue.catch_up("u1")
-    await _turn(tmp_path, "**Scheduled Task: morning news**\nSend the news at 9")
-    await _turn(tmp_path, "I moved to Lisbon")
+    _scheduled(log, "**Scheduled Task: morning news**\nSend the news at 9")
+    _turn(log, "I moved to Lisbon")
 
     await queue.flush("c1", "u1")
 

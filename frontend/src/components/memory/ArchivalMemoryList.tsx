@@ -7,29 +7,41 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useI18n } from '../../i18n';
 import { useMemory } from '../../hooks/useMemory';
 import { MemoryCard } from './MemoryCard';
+import { RecentChanges } from './RecentChanges';
 import { BrutalButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
-import type { ArchivalMemory, ArchivalQueryOptions, MemoryFacets } from '../../types/memory';
+import type { ArchivalMemory, ArchivalQueryOptions, MemoryKind } from '../../types/memory';
 
 type SortOption =
   'date-desc' | 'date-asc' | 'importance-desc' | 'importance-asc' | 'relevance' | 'access-desc';
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low';
-type SourceTab = 'facts' | 'notebook' | 'profile' | 'all';
+type ShelfTab = 'all' | 'user' | 'experience' | 'world' | 'notebook';
 
 /**
- * Notebook pages are indexed in page-sized chunks, so left in the main feed they
- * bury the one-line facts that make the list worth scrolling. They get their own
- * tab instead of being dropped: still there, just not in the way.
- *
  * `unknown` covers rows written before `source_type` existed — extracted facts by
  * shape, so they belong with the facts.
  */
-const SOURCE_TABS: { value: SourceTab; sourceTypes?: string[] }[] = [
-  { value: 'facts', sourceTypes: ['archive_log', 'unknown'] },
+const FACT_SOURCES = ['archive_log', 'unknown'];
+const CURATED_KINDS: MemoryKind[] = ['user', 'experience', 'world'];
+
+/**
+ * Notebook pages are indexed in page-sized chunks, so mixed into the facts they
+ * bury the one-line memories that make the list worth scrolling. They get their
+ * own tab instead of being dropped: still there, just not in the way.
+ */
+const SHELF_TABS: { value: ShelfTab; sourceTypes: string[]; kinds?: MemoryKind[] }[] = [
+  { value: 'all', sourceTypes: FACT_SOURCES, kinds: CURATED_KINDS },
+  { value: 'user', sourceTypes: FACT_SOURCES, kinds: ['user'] },
+  { value: 'experience', sourceTypes: FACT_SOURCES, kinds: ['experience'] },
+  { value: 'world', sourceTypes: FACT_SOURCES, kinds: ['world'] },
   { value: 'notebook', sourceTypes: ['notebook'] },
-  { value: 'profile', sourceTypes: ['core_file'] },
-  { value: 'all', sourceTypes: undefined },
 ];
+
+/** Records captured before memories had a kind: kept, but out of the curated view. */
+const RAW_SHELF = { sourceTypes: FACT_SOURCES, kinds: ['untyped'] as MemoryKind[] };
+
+/** Past this many the topic row collapses the rest behind "More". */
+const VISIBLE_TOPICS = 6;
 
 /**
  * Sorting and filtering happen in the database, not over the loaded pages —
@@ -66,7 +78,12 @@ interface MemoryGroup {
   memories: ArchivalMemory[];
 }
 
-export const ArchivalMemoryList: React.FC = () => {
+interface ArchivalMemoryListProps {
+  /** `curated` is the typed memory page; `raw` lists the early, untyped records. */
+  mode?: 'curated' | 'raw';
+}
+
+export const ArchivalMemoryList: React.FC<ArchivalMemoryListProps> = ({ mode = 'curated' }) => {
   const { t } = useI18n();
   const {
     archivalMemories,
@@ -78,16 +95,19 @@ export const ArchivalMemoryList: React.FC = () => {
     loadArchivalMemories,
     deleteArchivalMemory,
   } = useMemory();
+  const isRaw = mode === 'raw';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [isCompact, setIsCompact] = useState(false);
-  const [sourceTab, setSourceTab] = useState<SourceTab>('facts');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isCompact, setIsCompact] = useState(isRaw);
+  const [shelf, setShelf] = useState<ShelfTab>('all');
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [showAllTopics, setShowAllTopics] = useState(false);
+  // Kind counts come from the facts shelf; kept so the notebook tab does not blank them.
+  const [kindCounts, setKindCounts] = useState<Record<string, number>>({});
 
   // Debounce search query
   useEffect(() => {
@@ -105,58 +125,55 @@ export const ArchivalMemoryList: React.FC = () => {
     }
   }, [debouncedQuery, sortBy]);
 
+  // Topics belong to a shelf; one picked on another tab would silently empty this one.
+  useEffect(() => {
+    setSelectedTopics([]);
+    setShowAllTopics(false);
+  }, [shelf]);
+
+  useEffect(() => {
+    if (!isRaw && shelf !== 'notebook' && archivalFacets?.kinds) {
+      setKindCounts(archivalFacets.kinds);
+    }
+  }, [archivalFacets, isRaw, shelf]);
+
   // Joined so the effect below re-runs on content change, not array identity.
-  const categoryKey = selectedCategories.join(',');
-  const tagKey = selectedTags.join(',');
+  const topicKey = selectedTopics.join(',');
 
   const queryOptions = useMemo<ArchivalQueryOptions>(() => {
     const sort = sortBy === 'relevance' ? undefined : SORT_PARAMS[sortBy];
     const band = importanceFilter === 'all' ? undefined : IMPORTANCE_BANDS[importanceFilter];
-    const tab = SOURCE_TABS.find((entry) => entry.value === sourceTab);
+    const tab = isRaw ? RAW_SHELF : SHELF_TABS.find((entry) => entry.value === shelf);
     return {
       ...sort,
       ...band,
       sourceTypes: tab?.sourceTypes,
-      categories: categoryKey ? categoryKey.split(',') : undefined,
-      tags: tagKey ? tagKey.split(',') : undefined,
+      kinds: tab?.kinds,
+      topics: topicKey ? topicKey.split(',') : undefined,
     };
-  }, [sortBy, importanceFilter, sourceTab, categoryKey, tagKey]);
+  }, [sortBy, importanceFilter, shelf, topicKey, isRaw]);
 
-  /** Facet counts, restricted to what the current tab can actually show. */
-  const visibleFacets = useMemo(() => {
-    const facets: MemoryFacets | null = archivalFacets;
-    if (!facets) return { categories: [] as [string, number][], tags: [] as [string, number][] };
-    return {
-      categories: Object.entries(facets.categories ?? {}),
-      tags: Object.entries(facets.tags ?? {}).slice(0, 12),
-    };
-  }, [archivalFacets]);
+  const topics = useMemo<[string, number][]>(
+    () => (isRaw ? [] : Object.entries(archivalFacets?.topics ?? {})),
+    [archivalFacets, isRaw]
+  );
+  const visibleTopics = showAllTopics ? topics : topics.slice(0, VISIBLE_TOPICS);
 
-  const sourceCounts = useMemo(() => {
-    const counts = archivalFacets?.source_types ?? {};
-    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-    return SOURCE_TABS.reduce<Record<SourceTab, number>>(
-      (acc, tab) => {
-        acc[tab.value] = tab.sourceTypes
-          ? tab.sourceTypes.reduce((sum, key) => sum + (counts[key] ?? 0), 0)
-          : total;
-        return acc;
-      },
-      {} as Record<SourceTab, number>
+  const shelfCounts = useMemo<Record<ShelfTab, number>>(
+    () => ({
+      all: CURATED_KINDS.reduce((sum, kind) => sum + (kindCounts[kind] ?? 0), 0),
+      user: kindCounts.user ?? 0,
+      experience: kindCounts.experience ?? 0,
+      world: kindCounts.world ?? 0,
+      notebook: archivalFacets?.source_types?.notebook ?? 0,
+    }),
+    [kindCounts, archivalFacets]
+  );
+
+  const toggleTopic = (topic: string) => {
+    setSelectedTopics((current) =>
+      current.includes(topic) ? current.filter((v) => v !== topic) : [...current, topic]
     );
-  }, [archivalFacets]);
-
-  /** A category or tag name with no translation falls back to the raw value. */
-  const labelFor = (prefix: string, value: string) => {
-    const translated = t(`${prefix}.${value}`);
-    return translated === `${prefix}.${value}` ? value.replace(/_/g, ' ') : translated;
-  };
-
-  const toggle = (list: string[], value: string) =>
-    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-
-  const handleTagClick = (tag: string) => {
-    setSelectedTags((current) => toggle(current, tag));
   };
 
   // Refetch from the top whenever the query, the ordering, or the band changes —
@@ -230,26 +247,38 @@ export const ArchivalMemoryList: React.FC = () => {
     });
   }
 
-  const activeFiltersCount =
-    (importanceFilter !== 'all' ? 1 : 0) + selectedCategories.length + selectedTags.length;
+  const activeFiltersCount = (importanceFilter !== 'all' ? 1 : 0) + selectedTopics.length;
 
   const clearAll = () => {
     setImportanceFilter('all');
-    setSelectedCategories([]);
-    setSelectedTags([]);
+    setSelectedTopics([]);
   };
+
+  const renderCard = (memory: ArchivalMemory) => (
+    <MemoryCard
+      key={memory.id}
+      memory={memory}
+      onDelete={deleteArchivalMemory}
+      searchQuery={debouncedQuery}
+      compact={isCompact}
+      onTopicClick={isRaw ? undefined : toggleTopic}
+      activeTopics={selectedTopics}
+    />
+  );
 
   return (
     <div className="space-y-4">
+      {!isRaw && <RecentChanges />}
+
       {/* Search and Filters Header */}
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <h3 className="font-brutal text-lg uppercase tracking-tight leading-none text-brutal-black dark:text-white">
-              {t('archival.title')}
+              {isRaw ? t('archival.rawTitle') : t('archival.title')}
             </h3>
             <p className="text-[11px] text-neutral-600 dark:text-neutral-400 font-mono">
-              {t('memoryView.archivalDesc')}
+              {isRaw ? t('archival.rawDesc') : t('memoryView.archivalDesc')}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -268,27 +297,29 @@ export const ArchivalMemoryList: React.FC = () => {
               aria-expanded={showFilters}
             >
               {t('archival.filters')}
-              {activeFiltersCount > 0 && ` (${activeFiltersCount})`}
+              {importanceFilter !== 'all' && ' (1)'}
             </BrutalButton>
           </div>
         </div>
 
-        {/* Source tabs — which shelf of memory you are reading */}
-        <div className="mb-3 flex flex-wrap gap-2">
-          {SOURCE_TABS.map((tab) => (
-            <BrutalButton
-              key={tab.value}
-              onClick={() => setSourceTab(tab.value)}
-              size="xs"
-              isActive={sourceTab === tab.value}
-            >
-              {t(`archival.source.${tab.value}`)}
-              {sourceCounts[tab.value] > 0 && (
-                <span className="ml-1.5 font-mono opacity-60">{sourceCounts[tab.value]}</span>
-              )}
-            </BrutalButton>
-          ))}
-        </div>
+        {/* Shelf tabs — what kind of memory you are reading */}
+        {!isRaw && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {SHELF_TABS.map((tab) => (
+              <BrutalButton
+                key={tab.value}
+                onClick={() => setShelf(tab.value)}
+                size="xs"
+                isActive={shelf === tab.value}
+              >
+                {t(`archival.shelf.${tab.value}`)}
+                {shelfCounts[tab.value] > 0 && (
+                  <span className="ml-1.5 font-mono opacity-60">{shelfCounts[tab.value]}</span>
+                )}
+              </BrutalButton>
+            ))}
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="relative mb-3">
@@ -309,8 +340,43 @@ export const ArchivalMemoryList: React.FC = () => {
           )}
         </div>
 
+        {/* Topics — one row, the commonest first */}
+        {topics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">
+              {t('archival.topicsLabel')}
+            </span>
+            {visibleTopics.map(([topic, count]) => (
+              <button
+                key={topic}
+                onClick={() => toggleTopic(topic)}
+                aria-pressed={selectedTopics.includes(topic)}
+                className={`border-2 border-brutal-black px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                  selectedTopics.includes(topic)
+                    ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                    : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-700 dark:text-white dark:hover:bg-zinc-600'
+                }`}
+              >
+                {topic}
+                <span className="ml-1 opacity-60">{count}</span>
+              </button>
+            ))}
+            {topics.length > VISIBLE_TOPICS && (
+              <button
+                onClick={() => setShowAllTopics(!showAllTopics)}
+                aria-expanded={showAllTopics}
+                className="px-1 text-[10px] font-bold text-neutral-600 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white"
+              >
+                {showAllTopics
+                  ? t('archival.topicsLess')
+                  : t('archival.topicsMore', { count: String(topics.length - VISIBLE_TOPICS) })}
+              </button>
+            )}
+          </div>
+        )}
+
         {searchQuery !== debouncedQuery && (
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
+          <div className="mt-3 flex items-center gap-2 text-xs text-neutral-500">
             <div className="w-3 h-3 border-2 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
             <span>{t('archival.searching')}</span>
           </div>
@@ -370,53 +436,6 @@ export const ArchivalMemoryList: React.FC = () => {
               </div>
             </div>
 
-            {/* Category pills */}
-            {visibleFacets.categories.length > 0 && (
-              <div className="flex items-start gap-3">
-                <label className="w-24 shrink-0 pt-1 text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">
-                  {t('archival.categoryLabel')}
-                </label>
-                <div className="flex flex-1 flex-wrap gap-2">
-                  {visibleFacets.categories.map(([name, count]) => (
-                    <BrutalButton
-                      key={name}
-                      onClick={() => setSelectedCategories((current) => toggle(current, name))}
-                      size="xs"
-                      isActive={selectedCategories.includes(name)}
-                    >
-                      {labelFor('archival.category', name)}
-                      <span className="ml-1.5 font-mono opacity-60">{count}</span>
-                    </BrutalButton>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Tag chips */}
-            {visibleFacets.tags.length > 0 && (
-              <div className="flex items-start gap-3">
-                <label className="w-24 shrink-0 pt-1 text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">
-                  {t('archival.tagLabel')}
-                </label>
-                <div className="flex flex-1 flex-wrap gap-1.5">
-                  {visibleFacets.tags.map(([tag, count]) => (
-                    <button
-                      key={tag}
-                      onClick={() => handleTagClick(tag)}
-                      className={`border-2 border-brutal-black px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                        selectedTags.includes(tag)
-                          ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
-                          : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-700 dark:text-white dark:hover:bg-zinc-600'
-                      }`}
-                    >
-                      #{tag}
-                      <span className="ml-1 opacity-60">{count}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Clear Filters */}
             {activeFiltersCount > 0 && (
               <BrutalButton
@@ -446,7 +465,7 @@ export const ArchivalMemoryList: React.FC = () => {
                 })}
             {importanceFilter !== 'all' &&
               ` (${t('archival.filteredBy', { importance: importanceFilter })})`}
-            {selectedTags.length > 0 && ` (${selectedTags.map((tag) => `#${tag}`).join(' ')})`}
+            {selectedTopics.length > 0 && ` (${selectedTopics.join(', ')})`}
           </span>
           {/* Only a relevance search still sorts over the loaded pages. */}
           {archivalHasMore && debouncedQuery && sortBy !== 'relevance' && (
@@ -478,14 +497,18 @@ export const ArchivalMemoryList: React.FC = () => {
           <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
             {debouncedQuery || activeFiltersCount > 0
               ? t('archival.empty.noMatchesTitle')
-              : t('archival.empty.noMemoriesTitle')}
+              : isRaw
+                ? t('archival.empty.noRawTitle')
+                : t('archival.empty.noMemoriesTitle')}
           </h4>
           <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {debouncedQuery
               ? t('archival.empty.noMatchesDesc')
               : importanceFilter !== 'all'
                 ? t('archival.empty.noImportanceDesc', { importance: importanceFilter })
-                : t('archival.empty.noMemoriesDesc')}
+                : isRaw
+                  ? t('archival.empty.noRawDesc')
+                  : t('archival.empty.noMemoriesDesc')}
           </p>
           {(debouncedQuery || activeFiltersCount > 0) && (
             <button
@@ -516,34 +539,14 @@ export const ArchivalMemoryList: React.FC = () => {
                 </span>
               </div>
               <div className={isCompact ? 'space-y-2' : 'space-y-3'}>
-                {group.memories.map((memory) => (
-                  <MemoryCard
-                    key={memory.id}
-                    memory={memory}
-                    onDelete={deleteArchivalMemory}
-                    searchQuery={debouncedQuery}
-                    compact={isCompact}
-                    onTagClick={handleTagClick}
-                    activeTags={selectedTags}
-                  />
-                ))}
+                {group.memories.map(renderCard)}
               </div>
             </section>
           ))}
         </div>
       ) : (
         <div className={isCompact ? 'space-y-2' : 'space-y-3'}>
-          {processedMemories.map((memory) => (
-            <MemoryCard
-              key={memory.id}
-              memory={memory}
-              onDelete={deleteArchivalMemory}
-              searchQuery={debouncedQuery}
-              compact={isCompact}
-              onTagClick={handleTagClick}
-              activeTags={selectedTags}
-            />
-          ))}
+          {processedMemories.map(renderCard)}
         </div>
       )}
 

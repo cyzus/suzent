@@ -628,6 +628,32 @@ class MarkdownMemoryStore:
             return None
         return _read_text(path)
 
+    def find_fact_origin(self, filename: str, content: str) -> Optional[dict]:
+        """Where a daily-log fact was captured: `{"date", "time", "chat_prefix"}`.
+
+        Each capture is appended under a `## HH:MM — <chat id prefix>` heading, so
+        the nearest heading above the fact names the conversation it came from.
+        """
+        path = self.archive_dir / filename
+        wanted = self._normalize(content)
+        if not wanted or not path.exists():
+            return None
+        heading: Optional[re.Match] = None
+        for line in _read_text(path).splitlines():
+            if m := re.match(r"^##\s+(\d{2}:\d{2})\s+—\s+(\S+)\s*$", line):
+                heading = m
+            elif (
+                heading
+                and line.lstrip().startswith("- [")
+                and (wanted in self._normalize(line))
+            ):
+                return {
+                    "date": path.stem,
+                    "time": heading.group(1),
+                    "chat_prefix": heading.group(2),
+                }
+        return None
+
     async def get_recent_logs(self, days: int = 2) -> str:
         """
         Read recent daily logs (today and yesterday by default).

@@ -99,7 +99,7 @@ class PostprocessOperationsMixin:
 
         Args:
             job_id: Job identifier
-            step: Step name (B1_transcript, B2_memory, etc.)
+            step: Step name (B2_memory, B5_persist, etc.)
             status: Step status (pending, running, success, failed)
             error: Error message if failed
             duration_ms: Duration of the step in milliseconds

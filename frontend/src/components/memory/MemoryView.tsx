@@ -1,6 +1,7 @@
 /**
  * Main Memory View Component
- * Displays core memory blocks, archival memories, daily logs, MEMORY.md, and transcripts
+ * Memory (core blocks + curated facts), Organize (background tidy-up), and Raw
+ * records (daily logs and the early untyped facts).
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -11,22 +12,26 @@ import { CoreMemoryBlock } from './CoreMemoryBlock';
 import { ArchivalMemoryList } from './ArchivalMemoryList';
 import { MemoryStatsComponent } from './MemoryStats';
 import { DailyLogsPanel } from './DailyLogsPanel';
-import { TranscriptPanel } from './TranscriptPanel';
-import { DreamingPanel } from './DreamingPanel';
+import { OrganizePanel } from './OrganizePanel';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { BrutalIconButton } from '../BrutalButton';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { CoreMemoryLabel } from '../../types/memory';
 
-// MEMORY.md is shown in Overview as the editable 'facts' core-memory block, so it
+// MEMORY.md is shown in Memory as the editable 'facts' core-memory block, so it
 // has no standalone tab here.
-type MemoryTab = 'overview' | 'dreaming' | 'daily-logs' | 'transcripts';
+export type MemoryTab = 'overview' | 'organize' | 'raw';
+type RawSection = 'daily-logs' | 'early';
 
 const TABS: { id: MemoryTab; labelKey: string }[] = [
-  { id: 'overview', labelKey: 'memoryView.tabs.overview' },
-  { id: 'dreaming', labelKey: 'memoryView.tabs.dreaming' },
-  { id: 'daily-logs', labelKey: 'memoryView.tabs.dailyLogs' },
-  { id: 'transcripts', labelKey: 'memoryView.tabs.transcripts' },
+  { id: 'overview', labelKey: 'memoryView.tabs.memory' },
+  { id: 'organize', labelKey: 'memoryView.tabs.organize' },
+  { id: 'raw', labelKey: 'memoryView.tabs.raw' },
+];
+
+const RAW_SECTIONS: { id: RawSection; labelKey: string }[] = [
+  { id: 'daily-logs', labelKey: 'memoryView.raw.dailyLogs' },
+  { id: 'early', labelKey: 'memoryView.raw.early' },
 ];
 
 export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab }) => {
@@ -49,6 +54,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
   const prevStreamingRef = useRef(isStreaming);
 
   const [activeTab, setActiveTab] = useState<MemoryTab>(initialTab ?? 'overview');
+  const [rawSection, setRawSection] = useState<RawSection>('daily-logs');
   const [showCoreMemory, setShowCoreMemory] = useState(true);
   const visibleProjectContexts = projectContexts.filter(
     (project) => project.content.trim().length > 0
@@ -210,21 +216,22 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
         </div>
       )}
 
-      {activeTab === 'dreaming' && (
+      {activeTab === 'organize' && (
         <div className="animate-view-fade">
-          <DreamingPanel />
+          <OrganizePanel />
         </div>
       )}
 
-      {activeTab === 'daily-logs' && (
-        <div className="animate-view-fade">
-          <DailyLogsPanel />
-        </div>
-      )}
-
-      {activeTab === 'transcripts' && (
-        <div className="animate-view-fade">
-          <TranscriptPanel />
+      {activeTab === 'raw' && (
+        <div className="space-y-4 animate-view-fade">
+          <BrutalSegmentedTabs
+            tabs={RAW_SECTIONS.map((section) => ({ id: section.id, label: t(section.labelKey) }))}
+            value={rawSection}
+            onChange={setRawSection}
+            containerClassName="inline-flex border-2 border-brutal-black bg-white dark:bg-zinc-800"
+            tabClassName="px-3 py-1.5 font-bold text-xs"
+          />
+          {rawSection === 'daily-logs' ? <DailyLogsPanel /> : <ArchivalMemoryList mode="raw" />}
         </div>
       )}
     </div>
