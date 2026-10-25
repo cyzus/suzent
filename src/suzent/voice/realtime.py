@@ -392,6 +392,10 @@ class VoiceBridge:
         lines, self._delta_lines = self._delta_lines, []
         return lines
 
+    def _delta_snapshot(self) -> list[tuple[str, str]]:
+        """The delta as it stands, without consuming it (for a turn-end signal)."""
+        return list(self._delta_lines)
+
     async def _on_transcript(
         self, index: int, speaker: str, raw: str, final: bool
     ) -> None:
@@ -648,10 +652,12 @@ class VoiceBridge:
             elif isinstance(
                 event, (RealtimeOutputSpeechEndEvent, RealtimeTurnCompleteEvent)
             ):
+                self.router.note_front_desk_turn_end(self._delta_snapshot())
                 self._muted = self._replying = False
                 await self._set_state("listening")
             elif isinstance(event, RealtimeResponseInterruptedEvent):
                 logger.info("Voice {} reply interrupted by provider VAD", self._key)
+                self.router.note_front_desk_turn_end(self._delta_snapshot())
                 self._muted = self._replying = False
                 await self._send_json({"type": "interrupted"})
                 await self._set_state("listening")

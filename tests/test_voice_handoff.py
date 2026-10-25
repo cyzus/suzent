@@ -81,7 +81,7 @@ async def _settle(router):
         await asyncio.wait_for(router._observer_task, 2)
 
 
-async def test_delegate_returns_at_once_and_records_the_users_own_words():
+async def test_delegate_returns_at_once_and_records_the_front_desks_reading():
     h = Harness(chunks=[sse('{"type":"TEXT_MESSAGE_CONTENT","delta":"晴天"}')])
     h.say("a:1", "今天伦敦天气怎么样")
     result = await h.router.delegate("Check London weather today")
@@ -89,8 +89,9 @@ async def test_delegate_returns_at_once_and_records_the_users_own_words():
     await _settle(h.router)
 
     message, reminders = h.turns[0]
-    # The chat row is what the user said, not the front desk's paraphrase.
-    assert message == "今天伦敦天气怎么样"
+    # The chat row is the front desk's clear reading, not the raw transcript:
+    # ASR output is full of scaffolding that is never a clean user message.
+    assert message == "Check London weather today"
     assert reminders[0] == VOICE_TURN_REMINDER
     assert "<input>Check London weather today</input>" in reminders[1]
     assert "user: 今天伦敦天气怎么样" in reminders[1]
@@ -117,7 +118,7 @@ async def test_delegate_waits_briefly_for_a_late_user_transcript():
     asyncio.create_task(late())
     await h.router.delegate("paraphrase")
     await _settle(h.router)
-    assert h.turns[0][0] == "late words"
+    assert h.turns[0][0] == "paraphrase"
 
 
 async def test_repeat_delegation_for_one_utterance_starts_one_turn():
@@ -200,6 +201,39 @@ async def test_busy_chat_that_cannot_take_input_says_busy():
     h = Harness(busy=True, inject_result=None)
     assert (await h.router.delegate("x")).startswith("busy")
     assert h.turns == []
+
+
+async def test_request_after_a_greeting_the_front_desk_answered_starts_a_turn():
+    # "你好吗？" then "今天天气如何呀？": the front desk answers the greeting
+    # itself, so the greeting is still unread when the real request arrives.
+    # Counting it as new words made the request a steer of a finished turn.
+    h = Harness()
+    h.say("a:1", "你好吗？")
+    await asyncio.sleep(0)
+    h.router.note_front_desk_turn_end(h.lines)
+
+    h.say("a:2", "今天天气如何呀？")
+    result = await h.router.delegate("查询今天的天气")
+    assert result.startswith("started")
+    assert h.injected == []
+    await _settle(h.router)
+    assert [message for message, _ in h.turns] == ["查询今天的天气"]
+
+
+async def test_late_transcript_after_a_delegating_turn_end_is_not_swallowed():
+    # Turn completion also fires for a turn that delegated, and a provider may
+    # finalize the user's words after it. Those words are a new request.
+    hold = asyncio.Event()
+    h = Harness(hold=hold)
+    h.say("a:1", "write a report")
+    await h.router.delegate("write a report")
+    h.router.note_front_desk_turn_end([])
+
+    h.say("a:2", "check the weather")
+    assert (await h.router.delegate("check the weather")).startswith("steered")
+    hold.set()
+    await _settle(h.router)
+    assert h.injected[0].startswith("check the weather")
 
 
 async def test_cancel_task():

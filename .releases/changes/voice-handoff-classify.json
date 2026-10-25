@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Fix realtime voice: show the front desk's clear reading as the user message instead of raw ASR, start a delegated request after a greeting the front desk answered itself, and seed the permission mode so voice chats use the auto tool classifier."
+}

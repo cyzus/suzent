@@ -61,6 +61,11 @@ def _clip(text: str, limit: int = _SECTION_LIMIT) -> str:
     return "…" + data[-limit:].decode("utf-8", errors="ignore")
 
 
+def normalize_user_text(text: str) -> str:
+    """The form `_utterance_lines` and the turn-end hold compare lines in."""
+    return text.strip()
+
+
 def build_delegation(request: str, transcript_delta: str) -> str:
     """Render the main agent's input in the Codex ``<realtime_delegation>`` shape."""
     parts = [
@@ -161,6 +166,13 @@ class HandoffRouter:
         # one starts work.
         self._last_request: str | None = None
         self._current_utterance: str | None = None
+        # How the hold looked before the last held-back turn ended (see
+        # `note_front_desk_turn_end`).
+        self._held_before: list[str] = []
+        # Finalized user lines the front desk answered itself, in a turn that
+        # never delegated. They belong to that turn: the next delegation must
+        # not count them as new words and steer the previous, finished request.
+        self._unspoken_lines: list[str] = []
         self._pending_progress: list[str] = []
         self._last_flush = 0.0
         self._flush_handle: asyncio.TimerHandle | None = None
@@ -171,6 +183,38 @@ class HandoffRouter:
         """A user utterance was finalized: later delegations belong to it."""
         self._current_utterance = utterance_id
         self._utterance_seen.set()
+
+    def note_front_desk_turn_end(self, heard: list[tuple[str, str]]) -> None:
+        """The front desk finished a turn, possibly by delegating it.
+
+        Turn completion is synthesized once no tool call is still running, so a
+        turn that delegated also triggers it. Only the lines this turn answered
+        itself are held back, so the next delegation does not mistake them for
+        new words and steer the previous, finished request. The words of a
+        delegated request are dropped from the hold by `_delegate` as they are
+        taken, so this cannot put them back.
+
+        The bridge hands over the delta as it stood when the turn ended: a late
+        transcript finalizes after this event and belongs to the next turn.
+        """
+        turn_lines = [
+            normalize_user_text(text) for speaker, text in heard if speaker == "user"
+        ]
+        answered = self._turn_answered_lines(turn_lines)
+        self._held_before = list(self._unspoken_lines)
+        self._unspoken_lines = answered
+
+    def _turn_answered_lines(self, turn_lines: list[str]) -> list[str]:
+        """Which of the turn's lines it answered itself, rather than delegated.
+
+        A delegation takes its words out of `_held_before` (see `_clear_hold`),
+        and a line that arrived after this turn started was never in it; both
+        are new requests, not lines the front desk answered.
+        """
+        delegated = set(self._held_before) - set(self._unspoken_lines)
+        fresh = set(turn_lines) - set(self._held_before) - delegated
+        hold = [line for line in self._unspoken_lines if line in turn_lines]
+        return hold + [line for line in turn_lines if line in fresh]
 
     @property
     def working(self) -> bool:
@@ -252,7 +296,8 @@ class HandoffRouter:
             # tool call would otherwise make a new request look like a repeat
             # of the previous utterance, and it would be dropped, not steered.
             lines = await self._take_lines()
-            new_words = any(speaker == "user" for speaker, _ in lines)
+            own_lines = self._utterance_lines(lines)
+            new_words = bool(own_lines)
             # No new words after an earlier delegation in this call: a repeat
             # if something is still running (ours, or a turn that outlived an
             # earlier call) or if it asks for the same thing again.
@@ -261,17 +306,61 @@ class HandoffRouter:
                 and self._last_request is not None
                 and (self.working or self._is_busy() or request == self._last_request)
             ):
+                self._hold_back_answered(lines)
                 return _ALREADY_DELEGATED
-            return await self._delegate(request, lines)
+            return await self._delegate(request, lines, own_lines)
         finally:
             self._delegating = False
 
-    async def _delegate(self, request: str, lines: list[tuple[str, str]]) -> str:
-        # The chat shows what the user actually said; the front desk's reading
-        # of it travels as a hidden reminder. Typed-in-voice and spoken lines
-        # are both "user" lines.
-        words = " ".join(text for speaker, text in lines if speaker == "user").strip()
-        message = words or request
+    def _hold_back_answered(self, lines: list[tuple[str, str]]) -> None:
+        """Keep the front desk's own-side lines for the turn that is still running."""
+        self._unspoken_lines.extend(
+            normalize_user_text(text) for speaker, text in lines if speaker == "user"
+        )
+        self._held_before = list(self._unspoken_lines)
+
+    def _clear_hold(self) -> None:
+        """This delegation took the turn's words: nothing of it stays held back.
+
+        `_held_before` moves with the hold, so a turn-end that arrives later
+        cannot put the request this delegation just took back into it.
+        """
+        self._unspoken_lines = []
+        self._held_before = []
+
+    def _utterance_lines(self, lines: list[tuple[str, str]]) -> list[str]:
+        """User lines belonging to the utterance this delegation is for.
+
+        Lines the front desk already answered itself (a greeting before the
+        real request) are not part of it: counting them as new words would turn
+        the request into a steer of the previous, already finished turn, which
+        is then dropped and never runs.
+        """
+        said = [
+            normalize_user_text(text) for speaker, text in lines if speaker == "user"
+        ]
+        said = [text for text in said if text]
+        if not said:
+            return []
+        answered = set(self._unspoken_lines)
+        own = [text for text in said if text not in answered]
+        if own:
+            return own
+        # Every line was already answered by the front desk: the last one is
+        # the utterance this delegation is for (a provider that finalizes the
+        # transcript only after the tool call leaves us nothing newer).
+        return said[-1:]
+
+    async def _delegate(
+        self, request: str, lines: list[tuple[str, str]], own_lines: list[str]
+    ) -> str:
+        # The chat shows what the front desk understood, not the raw utterance:
+        # voice transcripts carry ASR scaffolding ("う…どうすれば") that is
+        # never a clean user message, and the front desk has already restated it
+        # clearly as `request`. The raw line travels in `<transcript_delta>` as
+        # hidden context for the agent instead.
+        words = " ".join(own_lines).strip()
+        message = request or words
         delta = "\n".join(f"{speaker}: {text}" for speaker, text in lines)
         if self.working or self._is_busy():
             steer = message
@@ -279,6 +368,7 @@ class HandoffRouter:
                 steer = f"{words}\n(Voice front desk read this as: {request})"
             if self._inject(steer) is not None:
                 self._last_request = request
+                self._clear_hold()
                 if not self.working:
                     self.attach_if_busy(notify_start=True)
                 return (
@@ -290,6 +380,7 @@ class HandoffRouter:
                 "take this request yet. Ask the user to try again in a moment."
             )
         self._last_request = request
+        self._clear_hold()
         reminders = [VOICE_TURN_REMINDER, build_delegation(request, delta)]
         self._task = asyncio.create_task(self._run(message, reminders))
         _running_turns.add(self._task)
