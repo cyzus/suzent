@@ -38,6 +38,39 @@ class PermissionContext:
         )
 
 
+def seed_default_permission_mode(config: dict[str, Any]) -> None:
+    """Fill ``config["permission_mode"]`` from the user's default if unset.
+
+    A chat created outside the normal send path — a realtime voice conversation
+    that starts the chat from the WebSocket — has an empty config, so its turns
+    would fall back to ``DEFAULT`` (ask) and skip the auto classifier the user
+    chose. Seeding the default here keeps every chat's classifier behaviour
+    consistent with typed turns, which seed the same way in ``chat_routes``.
+    """
+    requested = str(config.get("permission_mode") or "").strip().lower()
+    if requested not in ("", "default"):
+        return
+    from suzent.config import CONFIG
+
+    try:
+        default_mode = str(
+            getattr(CONFIG, "default_permission_mode", "default") or "default"
+        )
+    except Exception:
+        default_mode = "default"
+    # The same public set chat creation used to seed with (see chat_routes):
+    # only a mode that parses to a real, non-legacy behaviour is written out.
+    if default_mode in {
+        "default",
+        "auto",
+        "full_access",
+        "accept_edits",
+        "plan",
+        "strict_readonly",
+    }:
+        config["permission_mode"] = default_mode
+
+
 def parse_permission_mode(value: Any) -> PermissionMode:
     normalized = str(value or "").strip().lower()
     aliases = {
