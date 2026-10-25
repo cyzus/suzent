@@ -30,6 +30,14 @@ export interface MessageFileChange {
   deletions: number;
 }
 
+export interface RunTiming {
+  run_id: string;
+  started_at: string;
+  finished_at: string;
+  active_seconds?: number;
+  unknown_wait?: boolean;
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'system_triggered';
   content: string;
@@ -49,6 +57,10 @@ export interface Message {
   // merged follow-up responses). `timestamp` marks when the turn's first model
   // response *began*, so it alone cannot measure how long the turn worked.
   turn_last_activity_at?: string;
+  run_started_at?: string;
+  run_finished_at?: string;
+  run_active_seconds?: number;
+  run_timings?: RunTiming[];
 }
 export interface ChatConfig {
   model: string;

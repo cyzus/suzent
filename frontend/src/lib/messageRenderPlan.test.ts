@@ -10,6 +10,91 @@ function user(content: string): Message {
   return { role: 'user', content };
 }
 
+describe('recorded run duration', () => {
+  it('does not fall back to an overnight wall-clock span when human waiting is unknown', () => {
+    const message: Message = {
+      ...assistant('question and command results'),
+      _streaming_run_id: 'overnight',
+      timestamp: '2026-10-25T02:28:18Z',
+      run_started_at: '2026-10-25T02:28:18Z',
+      run_finished_at: '2026-10-25T11:13:55Z',
+      parts: [{ type: 'tool', toolName: 'ask_question', state: 'completed' }],
+    };
+    expect(buildTurnWorkedSeconds([user('try again'), message]).has(1)).toBe(false);
+    message.run_active_seconds = 20;
+    expect(buildTurnWorkedSeconds([user('try again'), message]).get(1)).toBe(20);
+  });
+  it('does not mistake a legacy streamed wakeup start for its completion', () => {
+    const messages: Message[] = [
+      { role: 'system_triggered', content: 'follow up', timestamp: '2026-10-24T21:04:40.083618Z' },
+      {
+        ...assistant('commands and test results'),
+        _streaming_run_id: '97fb2eb6-c30a-42bf-bfa1-1fa3ba07da07',
+        timestamp: '2026-10-24T22:04:40.583022+01:00',
+        turn_last_activity_at: '2026-10-24T22:04:40.583022+01:00',
+      },
+    ];
+    expect(buildTurnWorkedSeconds(messages).has(1)).toBe(false);
+    messages[1].run_started_at = messages[1].timestamp;
+    messages[1].run_finished_at = '2026-10-24T22:08:39.038218+01:00';
+    expect(buildTurnWorkedSeconds(messages).get(1)).toBe(238);
+  });
+
+  it('keeps separate interaction durations and sums resumed runs without waiting time', () => {
+    const first: Message = {
+      ...assistant('first'),
+      _streaming_run_id: 'first',
+      run_started_at: '2026-10-24T10:00:00Z',
+      run_finished_at: '2026-10-24T10:00:30Z',
+    };
+    const second: Message = {
+      ...assistant('second'),
+      _streaming_run_id: 'second',
+      run_started_at: '2026-10-24T10:10:30Z',
+      run_finished_at: '2026-10-24T10:10:50Z',
+    };
+    const separate = buildTurnWorkedSeconds([user('one'), first, user('two'), second]);
+    expect(separate.get(1)).toBe(30);
+    expect(separate.get(3)).toBe(20);
+    const resumed = buildTurnWorkedSeconds([user('one'), first, second, first]);
+    expect([...resumed.values()]).toEqual([30, 20, 30]);
+    const wakeup = buildTurnWorkedSeconds([
+      user('one'),
+      first,
+      { role: 'system_triggered', content: 'wake up' },
+      second,
+    ]);
+    expect(wakeup.get(1)).toBe(30);
+    expect(wakeup.get(3)).toBe(20);
+  });
+
+  it('uses actual run bounds even without an opening user row', () => {
+    const message: Message = {
+      ...assistant('done'),
+      timestamp: '2026-10-24T10:00:00Z',
+      run_started_at: '2026-10-24T10:00:00Z',
+      run_finished_at: '2026-10-24T10:01:05Z',
+    };
+    expect(buildTurnWorkedSeconds([message]).get(0)).toBe(65);
+    expect(buildTurnWorkedSeconds([user('start'), message]).get(1)).toBe(65);
+  });
+
+  it('falls back to historical timestamps when run bounds are invalid', () => {
+    expect(
+      buildTurnWorkedSeconds([
+        { ...user('start'), timestamp: '2026-10-24T10:00:00Z' },
+        {
+          ...assistant('done'),
+          timestamp: '2026-10-24T10:00:12Z',
+          run_started_at: '2026-10-24T10:01:00Z',
+          run_finished_at: '2026-10-24T10:00:00Z',
+        },
+      ]).get(1)
+    ).toBe(12);
+    expect(buildTurnWorkedSeconds([assistant('unknown')]).size).toBe(0);
+  });
+});
+
 describe('buildMessageRenderPlan', () => {
   it('groups consecutive tool-only assistant messages and marks non-representative indices as skipped', () => {
     const messages: Message[] = [

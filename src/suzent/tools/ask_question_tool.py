@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 import time
+from contextlib import nullcontext
 from typing import Any, Annotated
 
 from pydantic import BaseModel, Field
@@ -116,7 +117,8 @@ class AskQuestionTool(Tool):
                     "deferred": True,
                 }
             )
-            answer = await asyncio.shield(future)
+            with ctx.deps.run_clock.paused() if ctx.deps.run_clock else nullcontext():
+                answer = await asyncio.shield(future)
             return ToolResult.success_result(
                 f"User answered: {json.dumps(answer, ensure_ascii=False)}",
                 metadata={

@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { permissionApprovalsToParts } from './useApprovalRestore';
+import { permissionApprovalsToParts, resolvedApprovalToolCallIds } from './useApprovalRestore';
+import type { AGUIPart } from '../../types/agui';
+
+describe('restored approval resolution', () => {
+  const resolved = (part: Partial<AGUIPart>): boolean =>
+    resolvedApprovalToolCallIds([
+      {
+        role: 'assistant',
+        content: '',
+        parts: [{ type: 'tool', toolCallId: 'pending-call', ...part }],
+      },
+    ]).has('pending-call');
+
+  it('keeps restored approvals when snapshots are running or incomplete', () => {
+    expect(resolved({ state: 'running' })).toBe(false);
+    expect(resolved({ state: 'running', output: 'partial shell output' })).toBe(false);
+    expect(resolved({})).toBe(false);
+    expect(resolved({ state: 'approval-requested', approvalId: 'approval' })).toBe(false);
+  });
+
+  it('clears restored approvals only on terminal evidence', () => {
+    expect(resolved({ state: 'completed', output: '' })).toBe(true);
+    expect(resolved({ state: 'error' })).toBe(true);
+    expect(resolved({ output: 'legacy result' })).toBe(true);
+  });
+});
 
 describe('permissionApprovalsToParts', () => {
   it('reconstructs an actionable approval from backend state', () => {
