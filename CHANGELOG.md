@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.18.0] - 2026-10-25
 
+<!-- highlights -->
+### Highlights
+
+- **Talk to it.** Realtime voice mode with a Liquid-Geo 3-D voxel stage, an echo gate, and background delegation to the main agent. Approvals you give by voice resume the delegated turn, and your message shows what Suzent understood rather than the raw transcription.
+- **SUZENT sits at the top of your sidebar.** It watches every project, starts and follows up with project sessions, wakes itself to remind you or check on work, and keeps a board that lists chats by where they stand for you: waiting on you, running, idle or resolved. Quiet replies no longer interrupt you.
+- **Memory that keeps what you actually said.** Only facts you stated yourself are remembered, with the words they came from. MEMORY.md becomes a short map of notebook pages, one tool handles remembering and retracting, and `suzent memory lint` checks the files.
+- **Your conversations are plain files.** Every chat is a JSONL file in `~/.suzent/chats/`, written before the database, so a crash or a lost `chats.db` no longer takes your history with it. Back it up by copying one folder; `suzent chats verify` and `suzent chats rebuild-index` repair it.
+- **Sees video, renders surfaces, types nothing twice.** Visual analysis now accepts native video. Canvas surfaces stay visible when activity collapses and survive a refresh. A next-message suggestion appears as grey text after each answer, and ⌘/Ctrl+Enter queues a message while the agent is still working.
+- **Works for you wherever you are.** Install and update from mainland China with automatic mirrors, and run Suzent on a headless server with `suzent web` — no Node required, since each release ships a prebuilt web UI. macOS installs as a notarized disk image.
+
+**Reach for the keyboard.** After each answer, press Tab to accept the suggested next message, or ⌘/Ctrl+Enter to queue one.
+<!-- /highlights -->
+
 ### Release notes
 - Add ACP sign-in from settings, preserve sessions across authentication failures, and improve streaming responsiveness and overflow handling.
 - Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks.
