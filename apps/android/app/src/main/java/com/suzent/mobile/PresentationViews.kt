@@ -631,7 +631,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
-                else ActivityRail(chunk, live)
+                else ActivityRail(chunk, live && index == chunks.lastIndex)
             }
         }
     }
@@ -640,17 +640,29 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
 @Composable
 private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     var expanded by remember { mutableStateOf(false) }
-    val waiting = parts.any { it.state == "approval-requested" }
-    val running = live && parts.any { it.state == "running" }
+    val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
+    val running = live && (parts.lastOrNull()?.type == "reasoning" || parts.any { it.state == "running" })
     val failed = parts.any { it.state in listOf("error", "denied") }
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
+    val totals = activitySummary(parts, live).map { (kind, count) ->
+        stringResource(when (kind) {
+            "running" -> R.string.rail_summary_running
+            "commands" -> R.string.rail_summary_commands
+            "read" -> R.string.rail_summary_read
+            "changed" -> R.string.rail_summary_changed
+            "searches" -> R.string.rail_summary_searches
+            "other" -> R.string.rail_summary_other
+            "failed" -> R.string.rail_summary_failed
+            else -> R.string.rail_summary_other
+        }, count)
+    }.joinToString(" · ")
     val latest = parts.lastOrNull()
     val status = when {
         waiting -> stringResource(R.string.approval_required)
-        failed -> stringResource(R.string.activity_failed)
-        latest?.type == "reasoning" -> stringResource(R.string.reasoning)
-        !latest?.toolName.isNullOrBlank() -> latest!!.toolName.replace('_', ' ')
+        (!live || expanded) && totals.isNotEmpty() -> totals
+        latest?.type == "reasoning" -> stringResource(R.string.reasoning) + ": " + latest.text.lineSequence().firstOrNull().orEmpty().take(80)
+        latest != null -> activityToolLabel(latest)
         else -> stringResource(R.string.activity_completed)
     }
     Column(Modifier.fillMaxWidth()) {
@@ -658,9 +670,11 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
             Text(status.uppercase(), modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                 color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
             if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
-            Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
-            Text(stringResource(R.string.activity_steps, parts.size).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (totals.isEmpty() || (live && !expanded) || waiting) {
+                Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
+                Text(stringResource(R.string.activity_steps, activityStepCount(parts)).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text(if (expanded || waiting) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
         }
@@ -695,14 +709,14 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
         }
         Column(Modifier.weight(1f)) {
             SuzentTextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
-                Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
+                Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") activityToolLabel(part).ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
                     color = ink, fontSize = 13.sp, maxLines = 2, fontWeight = FontWeight.Medium,
                     fontFamily = if (part.type == "tool") FontFamily.Monospace else FontFamily.Default, modifier = Modifier.weight(1f))
                 if (active) StreamingPulse()
                 Text(if (details) "⌄" else "›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
-            val preview = if (error) part.output else part.args
-            if (!details && part.type == "tool" && preview.isNotEmpty()) {
+            val preview = part.output
+            if (!details && error && preview.isNotEmpty()) {
                 Text(preview, modifier = Modifier.padding(bottom = 10.dp), fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)

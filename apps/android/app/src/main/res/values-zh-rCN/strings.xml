@@ -179,4 +179,11 @@
     <string name="demo_limits">配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。</string>
     <string name="demo_load_error">无法打开演示工作区。</string>
     <string name="about">关于</string>
+    <string name="rail_summary_running">%1$d 项进行中</string>
+    <string name="rail_summary_commands">执行了 %1$d 条命令</string>
+    <string name="rail_summary_read">读取了 %1$d 个文件</string>
+    <string name="rail_summary_changed">修改了 %1$d 个文件</string>
+    <string name="rail_summary_searches">搜索了 %1$d 次</string>
+    <string name="rail_summary_other">调用了 %1$d 次其他工具</string>
+    <string name="rail_summary_failed">%1$d 次调用失败</string>
 </resources>

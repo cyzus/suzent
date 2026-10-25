@@ -173,3 +173,24 @@ import Testing
     #expect(cache.content(changed).last?.model == "model-b")
     #expect(cache.content([]).isEmpty)
 }
+
+@Test func railSummaryMatchesDesktopCategoriesAndDeduplicatesFiles() {
+    let parts = [
+        MessagePart(type: "tool", toolName: "Read", args: #"{"file_path":"./src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "read_file", args: #"{"path":"src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "Edit", args: #"{"path":"src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "Bash"),
+        MessagePart(type: "tool", toolName: "mcp__server__web_search"),
+        MessagePart(type: "tool", toolName: "read_file", state: "running"),
+        MessagePart(type: "tool", toolName: "write_file", state: "error")]
+    let summary = activitySummary(parts, live: true)
+    #expect(summary.map(\.kind) == ["read", "changed", "commands", "searches", "running", "failed"])
+    #expect(summary.map(\.count) == [1, 1, 1, 1, 1, 1])
+    #expect(activitySummary(parts, live: false)[4].kind == "other")
+    #expect(canonicalActivityTool("ReadFile") == "read_file")
+    #expect(activityToolLabel(parts[0]) == "read file: ./src/main.py")
+    #expect(activityToolLabel(MessagePart(type: "tool", toolName: "Read", args: "{")) == "read file")
+    let reasoning = [MessagePart(type: "reasoning", text: "One"), MessagePart(type: "text", text: " "), MessagePart(type: "reasoning", text: "Two")]
+    #expect(activityChunks(reasoning).count == 1)
+    #expect(activityStepCount(activityChunks(reasoning)[0]) == 1)
+}

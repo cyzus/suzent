@@ -134,10 +134,63 @@ public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {
 public func activityChunks(_ parts: [MessagePart]) -> [[MessagePart]] {
     var chunks: [[MessagePart]] = []
     for part in parts {
+        if part.type == "citation-sources" || (["text", "reasoning"].contains(part.type) && (part.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { continue }
         if part.type == "text" || chunks.isEmpty || chunks.last?.last?.type == "text" { chunks.append([part]) }
         else { chunks[chunks.count - 1].append(part) }
     }
     return chunks
+}
+
+public func activityToolLabel(_ part: MessagePart) -> String {
+    let name = canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " ")
+    let args = (part.args?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    let detail = ["description", "file_path", "path", "filePath", "filename", "query", "pattern", "command", "url"]
+        .compactMap { args[$0] as? String }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+    guard let detail else { return name }
+    return name + ": " + String((detail.split(separator: "\n").first ?? "").prefix(80))
+}
+
+public func activityStepCount(_ parts: [MessagePart]) -> Int {
+    parts.enumerated().filter { index, part in
+        part.type == "tool" || (part.type == "reasoning" && (index == 0 || parts[index - 1].type != "reasoning"))
+    }.count
+}
+
+public func activitySummary(_ parts: [MessagePart], live: Bool) -> [(kind: String, count: Int)] {
+    var counts: [String: Int] = [:]
+    var order: [String] = []
+    var files: [String: Set<String>] = ["read": [], "changed": []]
+    for part in parts where part.type == "tool" {
+        let name = canonicalActivityTool(part.toolName ?? "")
+        var category = "other"
+        if ["error", "denied", "rejected"].contains(part.state ?? "") { category = "failed" }
+        else if live && part.state == "running" { category = "running" }
+        else if ["run_command", "start_command"].contains(name) { category = "commands" }
+        else if ["web_search", "glob_search", "grep_search", "memory_search", "session_search"].contains(name) { category = "searches" }
+        else if ["read_file", "write_file", "edit_file"].contains(name) {
+            let args = (part.args?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            if let path = ["file_path", "path", "filePath", "filename"].compactMap({ args[$0] as? String })
+                .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }).first(where: { !$0.isEmpty }) {
+                category = name == "read_file" ? "read" : "changed"
+                var normalized = path.replacingOccurrences(of: "\\", with: "/")
+                if normalized.hasPrefix("./") { normalized.removeFirst(2) }
+                if files[category, default: []].contains(normalized) { continue }
+                files[category, default: []].insert(normalized)
+            }
+        }
+        if counts[category] == nil { order.append(category) }
+        counts[category, default: 0] += 1
+    }
+    return order.map { ($0, counts[$0] ?? 0) }
+}
+
+public func canonicalActivityTool(_ tool: String) -> String {
+    let name = (tool.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "__").last ?? tool)
+        .replacingOccurrences(of: "([a-z0-9])([A-Z])", with: "$1_$2", options: .regularExpression)
+        .replacingOccurrences(of: "[\\s-]+", with: "_", options: .regularExpression).lowercased()
+    let aliases = ["read": "read_file", "write": "write_file", "edit": "edit_file", "multiedit": "edit_file", "notebookedit": "edit_file",
+                   "bash": "run_command", "bash_execute": "run_command", "shell": "run_command", "glob": "glob_search", "grep": "grep_search", "websearch": "web_search"]
+    return aliases[name] ?? name
 }
 
 public struct LiveActivityBuffer: Sendable {

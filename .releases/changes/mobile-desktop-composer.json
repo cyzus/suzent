@@ -1,4 +1,4 @@
 {
   "products": {"mobile": "patch"},
-  "summary": "Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, a matching attachment panel that moves the transcript and composer together when opened with the plus button, square send and stop controls, and compact activity summaries and timeline nodes."
+  "summary": "Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, a matching attachment panel that moves the transcript and composer together when opened with the plus button, square send and stop controls, and desktop-style activity summaries, file counts, current-rail state, and timeline nodes."
 }

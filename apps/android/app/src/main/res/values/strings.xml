@@ -180,4 +180,11 @@
     <string name="demo_limits">Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.</string>
     <string name="demo_load_error">Could not open the demo workspace.</string>
     <string name="about">About</string>
+    <string name="rail_summary_running">In progress: %1$d</string>
+    <string name="rail_summary_commands">Commands run: %1$d</string>
+    <string name="rail_summary_read">Files read: %1$d</string>
+    <string name="rail_summary_changed">Files modified: %1$d</string>
+    <string name="rail_summary_searches">Searches: %1$d</string>
+    <string name="rail_summary_other">Other tool calls: %1$d</string>
+    <string name="rail_summary_failed">Failed calls: %1$d</string>
 </resources>

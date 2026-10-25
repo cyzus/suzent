@@ -204,3 +204,11 @@
 "Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed." = "配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。";
 "Could not open the demo workspace." = "无法打开演示工作区。";
 "About" = "关于";
+
+"In progress: %d" = "%d 项进行中";
+"Commands run: %d" = "执行了 %d 条命令";
+"Files read: %d" = "读取了 %d 个文件";
+"Files modified: %d" = "修改了 %d 个文件";
+"Searches: %d" = "搜索了 %d 次";
+"Other tool calls: %d" = "调用了 %d 次其他工具";
+"Failed calls: %d" = "%d 次调用失败";

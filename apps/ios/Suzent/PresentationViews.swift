@@ -769,9 +769,9 @@ struct ActivityContent: View {
     var body: some View {
         let chunks = activityChunks(parts)
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
+            ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
                 if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
-                else { ActivityRail(parts: chunk, live: live) }
+                else { ActivityRail(parts: chunk, live: live && index == chunks.count - 1) }
             }
         }
     }
@@ -784,16 +784,35 @@ struct ActivityRail: View {
     init(parts: [MessagePart], live: Bool) {
         self.parts = parts; self.live = live; _expanded = State(initialValue: false)
     }
-    private var waiting: Bool { parts.contains { $0.state == "approval-requested" } }
-    private var running: Bool { live && parts.contains { $0.state == "running" } }
+    private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
+    private var running: Bool { live && (parts.last?.type == "reasoning" || parts.contains { $0.state == "running" }) }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
     private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
+    private var totals: String {
+        activitySummary(parts, live: live).map { entry in
+            let format: String
+            switch entry.kind {
+            case "running": format = String(localized: "In progress: %d")
+            case "commands": format = String(localized: "Commands run: %d")
+            case "read": format = String(localized: "Files read: %d")
+            case "changed": format = String(localized: "Files modified: %d")
+            case "searches": format = String(localized: "Searches: %d")
+            case "other": format = String(localized: "Other tool calls: %d")
+            case "failed": format = String(localized: "Failed calls: %d")
+            default: format = String(localized: "Other tool calls: %d")
+            }
+            return String(format: format, entry.count)
+        }.joined(separator: " · ")
+    }
     private var summary: String {
         if waiting { return String(localized: "Approval required") }
-        if failed { return String(localized: "Failed") }
+        if (!live || expanded) && !totals.isEmpty { return totals }
         guard let part = parts.last else { return String(localized: "Completed") }
-        if part.type == "reasoning" { return String(localized: "Reasoning") }
-        return part.toolName?.replacingOccurrences(of: "_", with: " ") ?? String(localized: "Tool activity")
+        if part.type == "reasoning" {
+            let firstLine = (part.text ?? "").split(separator: "\n").first.map(String.init) ?? ""
+            return String(localized: "Reasoning") + ": " + String(firstLine.prefix(80))
+        }
+        return activityToolLabel(part)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -802,8 +821,10 @@ struct ActivityRail: View {
                     Text(summary).lineLimit(1).truncationMode(.tail)
                         .foregroundStyle(waiting || failed ? accent : .secondary)
                     if running { StreamingPulse() }
-                    Text("|").foregroundStyle(.tertiary)
-                    Text("\(parts.count) steps").fixedSize()
+                    if totals.isEmpty || (live && !expanded) || waiting {
+                        Text("|").foregroundStyle(.tertiary)
+                        Text("\(activityStepCount(parts)) steps").fixedSize()
+                    }
                     Image(systemName: expanded || waiting ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
                     Spacer(minLength: 0)
                 }.font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -843,14 +864,14 @@ struct ToolActivityBlock: View {
             VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 8) {
-                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? part.toolName?.nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
+                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? activityToolLabel(part).nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
                             .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
                         Spacer(minLength: 4)
                         if running { StreamingPulse() }
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.suzentMuted)
                     }.frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain)
-                if !expanded, part.type == "tool", let preview = (failed ? part.output?.nonEmpty : part.args?.nonEmpty) {
+                if !expanded, failed, let preview = part.output?.nonEmpty {
                     Text(preview).font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.bottom, 10)
                 }

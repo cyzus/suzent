@@ -6,6 +6,25 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatPresentationTest {
+    @Test fun railSummaryMatchesDesktopCategoriesAndDeduplicatesFiles() {
+        val parts = listOf(
+            MessagePart("tool", toolName = "Read", args = """{"file_path":"./src/main.py"}"""),
+            MessagePart("tool", toolName = "read_file", args = """{"path":"src/main.py"}"""),
+            MessagePart("tool", toolName = "Edit", args = """{"path":"src/main.py"}"""),
+            MessagePart("tool", toolName = "Bash"),
+            MessagePart("tool", toolName = "mcp__server__web_search"),
+            MessagePart("tool", toolName = "read_file", state = "running"),
+            MessagePart("tool", toolName = "write_file", state = "error"))
+        assertEquals(listOf("read" to 1, "changed" to 1, "commands" to 1, "searches" to 1, "running" to 1, "failed" to 1), activitySummary(parts, true))
+        assertEquals("other" to 1, activitySummary(parts, false)[4])
+        assertEquals("read_file", canonicalActivityTool("ReadFile"))
+        assertEquals("read file: ./src/main.py", activityToolLabel(parts.first()))
+        assertEquals("read file", activityToolLabel(MessagePart("tool", toolName = "Read", args = "{")))
+        val reasoning = listOf(MessagePart("reasoning", text = "One"), MessagePart("text", text = " "), MessagePart("reasoning", text = "Two"))
+        assertEquals(1, activityChunks(reasoning).size)
+        assertEquals(1, activityStepCount(activityChunks(reasoning).first()))
+    }
+
     @Test fun activityAndFinalAnswerShareOneMessageWithFinalMetadata() {
         val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
             {"role":"user","content":"Question"},
