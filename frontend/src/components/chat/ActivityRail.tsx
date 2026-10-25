@@ -381,7 +381,15 @@ export const TurnActivity: React.FC<{
   isStreaming: boolean;
   durationSeconds?: number;
   startedAtMs?: number;
-}> = ({ children, finalStart, isStreaming, durationSeconds, startedAtMs }) => {
+  persistentIndices?: number[];
+}> = ({
+  children,
+  finalStart,
+  isStreaming,
+  durationSeconds,
+  startedAtMs,
+  persistentIndices = [],
+}) => {
   const { t } = useI18n();
   const bodyId = React.useId();
   const [expanded, setExpanded] = useState(false);
@@ -391,6 +399,12 @@ export const TurnActivity: React.FC<{
     wasStreaming.current = isStreaming;
   }, [isStreaming]);
   const mounted = useDisclosureBody(expanded);
+  const work = children
+    .slice(0, finalStart)
+    .filter((_, index) => !persistentIndices.includes(index));
+  const surfaces = children
+    .slice(0, finalStart)
+    .filter((_, index) => persistentIndices.includes(index));
   if (isStreaming)
     return (
       <>
@@ -434,12 +448,13 @@ export const TurnActivity: React.FC<{
           >
             <div className="min-h-0 overflow-hidden">
               <div className="activity-turn-history space-y-2 py-1">
-                {expanded || mounted ? children.slice(0, finalStart) : null}
+                {expanded || mounted ? work : null}
               </div>
             </div>
           </div>
         </div>
       )}
+      {surfaces}
       {children.slice(finalStart)}
     </>
   );

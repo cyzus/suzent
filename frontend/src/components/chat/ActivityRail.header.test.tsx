@@ -143,6 +143,22 @@ it('keeps approvals outside repeated groups', () => {
 });
 
 describe('TurnActivity', () => {
+  it('keeps a canvas visible when more tool work follows it', () => {
+    const markup = renderToStaticMarkup(
+      <TurnActivity finalStart={3} isStreaming={false} durationSeconds={5} persistentIndices={[1]}>
+        {[
+          <div key="tool1">hidden earlier tool</div>,
+          <div key="canvas">persistent canvas content</div>,
+          <div key="tool2">hidden later tool</div>,
+          <div key="answer">final answer</div>,
+        ]}
+      </TurnActivity>
+    );
+    expect(markup).toContain('persistent canvas content');
+    expect(markup).toContain('final answer');
+    expect(markup).not.toContain('hidden earlier tool');
+    expect(markup).not.toContain('hidden later tool');
+  });
   const children = [
     <div key="work">intermediate commentary</div>,
     <div key="tool">tool details</div>,

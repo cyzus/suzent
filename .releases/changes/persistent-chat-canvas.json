@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep inline canvas surfaces visible when chat activity collapses and persist streamed inline and side-panel surfaces so they survive refreshes."
+}

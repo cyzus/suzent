@@ -764,8 +764,22 @@ class _DraftDisplayAccumulator:
             # on them and the frontend drops them the moment the user answers.
             # Persisting one into the draft makes the answered question render a
             # second time when the finished turn is reloaded from the backend.
-            if value.get("target") == "inline" and not value.get("deferred"):
-                self.parts.append({"type": "a2ui", "surface": value})
+            if value.get("target", "inline") in {"inline", "canvas"} and not value.get(
+                "deferred"
+            ):
+                existing = next(
+                    (
+                        part
+                        for part in self.parts
+                        if part.get("type") == "a2ui"
+                        and part.get("surface", {}).get("id") == value.get("id")
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    existing["surface"] = deepcopy(value)
+                else:
+                    self.parts.append({"type": "a2ui", "surface": deepcopy(value)})
                 self.dirty = True
         elif name == "citation_sources" and isinstance(value, dict):
             self._merge_citation_sources(value.get("sources"))
@@ -2128,6 +2142,7 @@ async def stream_agent_responses(
             await sse_queue.put(("done", None))
 
     agent_task = asyncio.create_task(_agent_runner())
+    draft_accumulator: Optional[_DraftDisplayAccumulator] = None
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
@@ -2155,23 +2170,20 @@ async def stream_agent_responses(
                             logger.debug(
                                 "[Streaming] Failed to cache inline A2UI surface"
                             )
-                    await out_queue.put(
-                        (
-                            "chunk",
-                            _encode_custom(
-                                ev["event"],
-                                {
-                                    "id": ev["id"],
-                                    "title": ev.get("title", ""),
-                                    "component": ev["component"],
-                                    "target": ev.get("target", "inline"),
-                                    "deferred": ev.get("deferred", False),
-                                    "chatId": chat_id,
-                                    **({"rev": ev["rev"]} if "rev" in ev else {}),
-                                },
-                            ),
-                        )
-                    )
+                    value = {
+                        "id": ev["id"],
+                        "title": ev.get("title", ""),
+                        "component": ev["component"],
+                        "target": ev.get("target", "inline"),
+                        "deferred": ev.get("deferred", False),
+                        "chatId": chat_id,
+                        **({"rev": ev["rev"]} if "rev" in ev else {}),
+                    }
+                    event = CustomEvent(name=ev["event"], value=value)
+                    if draft_accumulator is not None:
+                        draft_accumulator.apply(event)
+                        await draft_accumulator.maybe_persist()
+                    await out_queue.put(("chunk", _encoder.encode(event)))
                 except asyncio.QueueEmpty:
                     break
 
@@ -2420,7 +2432,7 @@ async def stream_agent_responses(
 
     # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker() -> None:
-        draft_accumulator: Optional[_DraftDisplayAccumulator] = None
+        nonlocal draft_accumulator
         try:
             if not is_heartbeat:
                 draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
