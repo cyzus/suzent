@@ -59,6 +59,11 @@ struct PairingView: View {
                         Button("Reconnect to desktop") { Task { await model.connect() } }
                             .buttonStyle(SuzentButtonStyle()).disabled(model.busy)
                     }
+                    if !model.canReconnect {
+                        Button("Try offline demo") { Task { await model.startDemo() } }
+                            .font(.footnote).foregroundStyle(Color.suzentMuted)
+                            .frame(minHeight: 44).buttonStyle(.plain)
+                    }
                 }
             }.padding(PresentationTokens.spacePage)
         }

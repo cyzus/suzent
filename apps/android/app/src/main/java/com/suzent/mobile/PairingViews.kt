@@ -82,6 +82,12 @@ fun PairingView(model: MobileModel) {
                 Text(model.origin, style = MaterialTheme.typography.bodySmall)
                 SuzentAction(stringResource(R.string.reconnect), model::connect, enabled = !model.busy)
             }
+            if (!model.canReconnect) {
+                SuzentTextButton(onClick = model::startDemo) {
+                    Text(stringResource(R.string.demo_enter), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         Spacer(Modifier.height(PresentationTokens.spaceLarge.dp))
     }

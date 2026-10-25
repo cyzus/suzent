@@ -123,10 +123,66 @@ fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
 fun activityChunks(parts: List<MessagePart>): List<List<MessagePart>> {
     val chunks = mutableListOf<MutableList<MessagePart>>()
     parts.forEach { part ->
+        if (part.type == "citation-sources" || (part.type in listOf("text", "reasoning") && part.text.isBlank())) return@forEach
         if (part.type == "text" || chunks.isEmpty() || chunks.last().last().type == "text") chunks.add(mutableListOf(part))
         else chunks.last().add(part)
     }
     return chunks
+}
+
+fun activityToolLabel(part: MessagePart): String {
+    val name = canonicalActivityTool(part.toolName).replace('_', ' ')
+    val args = runCatching { org.json.JSONObject(part.args) }.getOrNull()
+    val detail = listOf("description", "file_path", "path", "filePath", "filename", "query", "pattern", "command", "url")
+        .firstNotNullOfOrNull { (args?.opt(it) as? String)?.trim()?.takeIf(String::isNotEmpty) }
+    return if (detail == null) name else "$name: ${detail.lineSequence().first().take(80)}"
+}
+
+fun activityStepCount(parts: List<MessagePart>): Int = parts.withIndex().count { (index, part) ->
+    part.type == "tool" || (part.type == "reasoning" && (index == 0 || parts[index - 1].type != "reasoning"))
+}
+
+fun activitySummary(parts: List<MessagePart>, live: Boolean): List<Pair<String, Int>> {
+    val counts = linkedMapOf<String, Int>()
+    val files = mutableMapOf("read" to mutableSetOf<String>(), "changed" to mutableSetOf<String>())
+    for (part in parts.filter { it.type == "tool" }) {
+        val name = canonicalActivityTool(part.toolName)
+        val category = when {
+            part.state in listOf("error", "denied", "rejected") -> "failed"
+            live && part.state == "running" -> "running"
+            name in listOf("run_command", "start_command") -> "commands"
+            name in listOf("web_search", "glob_search", "grep_search", "memory_search", "session_search") -> "searches"
+            name in listOf("read_file", "write_file", "edit_file") -> {
+                val args = runCatching { org.json.JSONObject(part.args) }.getOrNull()
+                val path = listOf("file_path", "path", "filePath", "filename").firstNotNullOfOrNull {
+                    (args?.opt(it) as? String)?.trim()?.takeIf(String::isNotEmpty)
+                }
+                if (path == null) "other" else {
+                    val kind = if (name == "read_file") "read" else "changed"
+                    if (!files.getValue(kind).add(path.replace('\\', '/').removePrefix("./"))) continue
+                    kind
+                }
+            }
+            else -> "other"
+        }
+        counts[category] = (counts[category] ?: 0) + 1
+    }
+    return counts.toList()
+}
+
+fun canonicalActivityTool(tool: String): String {
+    val name = tool.trim().substringAfterLast("__").replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+        .replace(Regex("[\\s-]+"), "_").lowercase()
+    return when (name) {
+        "read" -> "read_file"
+        "write" -> "write_file"
+        "edit", "multiedit", "notebookedit" -> "edit_file"
+        "bash", "bash_execute", "shell" -> "run_command"
+        "glob" -> "glob_search"
+        "grep" -> "grep_search"
+        "websearch" -> "web_search"
+        else -> name
+    }
 }
 
 class LiveActivityBuffer {
@@ -135,8 +191,8 @@ class LiveActivityBuffer {
     private var reasonIndex = -1
     private val startedArgs = mutableSetOf<String>()
     private var dirty = false
-    fun drain(): List<MessagePart>? = if (!dirty) null else normalizeParts(parts).also { dirty = false }
-    fun consume(event: org.json.JSONObject) {
+    @Synchronized fun drain(): List<MessagePart>? = if (!dirty) null else normalizeParts(parts).also { dirty = false }
+    @Synchronized fun consume(event: org.json.JSONObject) {
         val type = event.optString("type")
         val id = event.optString("toolCallId")
         val delta = event.optString("delta")
@@ -188,13 +244,6 @@ class LiveActivityBuffer {
         }
         dirty = true
     }
-}
-
-fun streamingMarkdown(text: String, active: Boolean): String {
-    if (!active || text.isBlank()) return text
-    val lastLine = text.substringAfterLast('\n').trim()
-    val blockEnding = lastLine.startsWith("```") || lastLine.startsWith("~~~") || lastLine.contains('|')
-    return text + if (blockEnding) "\n\n▍" else " ▍"
 }
 
 fun showAssemblyBadge(parts: List<MessagePart>, streaming: Boolean): Boolean =

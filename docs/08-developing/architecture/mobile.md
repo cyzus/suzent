@@ -104,8 +104,16 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
-Android parses Markdown off the UI thread and memoizes the saved transcript's
-presentation. The scoped title index does not load transcripts/checkpoints;
+Network events accumulate away from the UI thread; only display batches reach the
+native views. Android finishes each off-thread Markdown parse before rendering the
+latest pending text, so frequent deltas cannot keep cancelling a long parse. Both
+clients memoize saved transcript presentation. Live growth follows the bottom
+without restarting a layout/scroll animation on every batch. Streamed prose uses
+the same opaque Markdown renderer as saved messages, without per-fragment fades
+or a synthetic cursor inserted into the document. Android skips rebinding a
+native text view when its rendered content and styling are unchanged. Android tables retain the original Markwon table theme and row spans. A native
+text view prepares table row measurements before visible layout, rather than
+showing unmeasured rows and correcting their heights on the next frame. The scoped title index does not load transcripts/checkpoints;
 mobile detail reads omit desktop context-budget computation and return current
 `isRunning` state. Completion reconciles that state in both the selected chat and
 list so the stop control cannot retain a stale list flag.
@@ -448,3 +456,40 @@ clients and changes only `manage_chats`.
 
 The desktop editor keeps a local draft until Save. Cancel discards the draft;
 failed saves leave it available to retry.
+
+## Offline demonstration
+
+Both native apps expose **Try offline demo** as a quiet text button at the bottom
+of the unpaired connection screen. Once paired, the entry is under **Settings →
+About**; it is absent from connection help and the regular chat surface. It is
+available in release builds to everyone. A persistent
+banner identifies scripted responses; Settings provides **Reset demo** and **Exit
+demo**. Existing desktop pairing credentials are retained when entering or leaving
+the demo, and demo operations never use them.
+
+The regular conversation UI consumes a `MobileClient` interface. `SuzentClient`
+(iOS) and `BackendClient` (Android) implement the real transport; `DemoClient`
+implements a local workspace with no network transport. Both platforms bundle the
+same English/Chinese fixtures from
+`packages/SuzentCore/Sources/SuzentCore/Resources/demo.json`. Android includes that
+directory as an asset source; SwiftPM processes it as a package resource.
+
+The demo supports scripted streaming, stop, tool approval/rejection, project/model
+selection, new conversations, pin/rename/move/delete, branching, editing and retry.
+Trip and tool-approval prompts are offered on the start page; arbitrary input gets
+a clearly labelled example response. Attachment selection uses the real native
+pickers, but the local client records only names and MIME types. It neither reads
+attachment bytes nor uploads or analyses them. No model API key is needed.
+
+Conversation changes are persisted in a separate versioned demo JSON file in app
+storage. Running turns progress independently of a stream observer while the app
+is alive, and reconcile on foreground return. An unfinished turn from a terminated
+process is marked interrupted on reopening. Reset restores the bundled examples.
+Pairing and foreground Node controls remain real-desktop features and are explained
+in demo Settings. Example citations have no remotely fetched favicons; opening a
+source website is an explicit user action requiring internet access.
+
+For review, provide the exact demo entry and scenario steps, disclose all simulated
+behaviour, and include a physical-device video of real desktop pairing and
+interaction. This mode provides an accessible demonstration, not a guarantee that
+stores will waive access to the real connection flow.

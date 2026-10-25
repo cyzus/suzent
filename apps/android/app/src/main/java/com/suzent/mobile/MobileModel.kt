@@ -58,12 +58,16 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     var streaming by mutableStateOf(false)
+    var isDemo by mutableStateOf(false)
+        private set
+    var demoPrompts by mutableStateOf<List<String>>(emptyList())
+        private set
     var connected by mutableStateOf(false)
     var nodeEnabled by mutableStateOf(false)
     var nodeStatus by mutableStateOf(text(R.string.node_off))
     private val store = CredentialStore(application)
     private var connection: Connection? = null
-    private var client: BackendClient? = null
+    private var client: MobileClient? = null
     private var streamJob: Job? = null
     private var socket: WebSocket? = null
     private var foreground = false
@@ -78,6 +82,65 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             origin = connection?.origin.orEmpty()
             canReconnect = connection?.clientProtocol == 1
         } catch (_: Exception) { error = text(R.string.secure_error) }
+    }
+
+    fun startDemo() {
+        if (busy || streaming) return
+        busy = true
+        viewModelScope.launch {
+            try {
+                val app = getApplication<Application>()
+                val demo = withContext(Dispatchers.IO) {
+                    DemoClient(app.assets.open("demo.json").bufferedReader().use { it.readText() },
+                        java.io.File(app.filesDir, "offline-demo/workspace.json"))
+                }
+                val session = demo.session()
+                val listing = demo.chats()
+                val projectList = demo.projects()
+                val taskList = demo.scheduledTasks()
+                val composer = demo.composer()
+                clearSession(removeCredentials = false)
+                error = null
+                client = demo
+                isDemo = true
+                demoPrompts = demo.prompts
+                origin = "demo://offline"
+                canReconnect = false
+                device = session
+                attachmentsSupported = true
+                chats = listing; projects = projectList; scheduledTasks = taskList
+                selected = composer
+                connected = true
+                openedVersion++
+            } catch (failure: CancellationException) { throw failure }
+            catch (_: Exception) { error = text(R.string.demo_load_error) }
+            finally { busy = false }
+        }
+    }
+
+    fun resetDemo() {
+        val demo = client as? DemoClient ?: return
+        if (busy) return
+        generation++
+        streamJob?.cancel(); streaming = false; liveParts = emptyList()
+        pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false; drafts.clear(); draft = ""; error = null
+        discardAttachments()
+        viewModelScope.launch {
+            try {
+                demo.reset()
+                selected = demo.composer()
+                selectedModel = null
+                refreshNow()
+                openedVersion++
+            } catch (failure: CancellationException) { throw failure }
+            catch (_: Exception) { error = text(R.string.demo_load_error) }
+        }
+    }
+
+    fun exitDemo() {
+        if (!isDemo || busy) return
+        clearSession(removeCredentials = false)
+        isDemo = false; demoPrompts = emptyList(); error = null
     }
 
     fun stageInvitation(value: String) {
@@ -233,6 +296,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun connect() {
+        if (isDemo) return
         val saved = connection ?: return
         if (busy || !canReconnect) return
         busy = true
@@ -511,11 +575,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             try {
-                api.observe(id) { event ->
-                    withContext(Dispatchers.Main) {
-                        if (current == generation && foreground) {
-                            buffer.consume(event)
-                            if (event.optString("type") == "RUN_ERROR") error = text(R.string.task_error)
+                // The local demo owns main-thread state; the network client can collect
+                // into the synchronized buffer without a UI-thread hop for every token.
+                withContext(if (api is DemoClient) Dispatchers.Main.immediate else Dispatchers.Default) {
+                    api.observe(id) { event ->
+                        buffer.consume(event)
+                        if (event.optString("type") == "RUN_ERROR") withContext(Dispatchers.Main) {
+                            if (current == generation && foreground) error = text(R.string.task_error)
                         }
                     }
                 }
@@ -624,19 +690,21 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleNode(enabled: Boolean) {
+        if (isDemo) return
         nodeEnabled = enabled
         if (enabled && foreground) startNode() else disconnectNode()
     }
 
     private fun disconnectNode() {
-        socket?.let { client?.cancelNode(it) }
+        socket?.let { (client as? BackendClient)?.cancelNode(it) }
         socket = null
         nodeStatus = text(if (nodeEnabled) R.string.node_offline else R.string.node_off)
     }
 
     private fun startNode() {
+        if (isDemo) return
         disconnectNode()
-        val api = client ?: return
+        val api = client as? BackendClient ?: return
         val saved = connection ?: return
         nodeStatus = text(R.string.node_connecting)
         socket = api.node(object : WebSocketListener() {
@@ -683,28 +751,36 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun forget() {
+        if (isDemo) { exitDemo(); return }
+        clearSession(removeCredentials = true)
+    }
+
+    private fun clearSession(removeCredentials: Boolean) {
         scheduledTasks = emptyList()
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
         pairingJob?.cancel()
+        reconnectJob?.cancel()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
-        try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }
+        if (removeCredentials) {
+            try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }
+        }
         generation++
         nodeEnabled = false
         disconnectNode()
         streamJob?.cancel()
         client?.close()
         client = null
-        connection = null
+        if (removeCredentials) connection = null
         connected = false
         busy = false
         selected = null
         chats = emptyList()
-        canReconnect = false
+        canReconnect = connection?.clientProtocol == 1
         device = null
         pairingInvitation = null
         pairingCode = null
         invitationText = ""
-        origin = ""
+        origin = connection?.origin.orEmpty()
         draft = ""
         streaming = false
         liveParts = emptyList()
