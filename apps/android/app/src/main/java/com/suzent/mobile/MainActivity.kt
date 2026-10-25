@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
@@ -539,7 +540,11 @@ private fun SettingsView(model: MobileModel) {
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
     val chat = model.selected ?: return
-    val expanded = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val expanded = keyboardVisible && !attachmentsExpanded
+    LaunchedEffect(keyboardVisible) { if (keyboardVisible) attachmentsExpanded = false }
+    androidx.activity.compose.BackHandler(enabled = attachmentsExpanded) { attachmentsExpanded = false }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
@@ -548,14 +553,14 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
         if (model.sentVersion > 0) {
-            keyboard?.hide(); focus.clearFocus()
+            attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus()
             scroll.animateScrollToItem(0)
         }
     }
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
-        detectTapGestures(onTap = { keyboard?.hide(); focus.clearFocus() })
+        detectTapGestures(onTap = { attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus() })
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item(key = "approvals") { ApprovalCards(model) }
         if (model.streaming || model.liveParts.isNotEmpty()) item(key = "live") {
@@ -585,22 +590,26 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         drawRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-        .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .border(PresentationTokens.borderWidth.dp, composerOutline)
+        .animateContentSize(animationSpec = androidx.compose.animation.core.tween(180)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        if (!expanded && model.attachmentsSupported && model.device?.permissions?.send == true)
-            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
+        if (model.attachmentsSupported && model.device?.permissions?.send == true)
+            SuzentIconButton(onClick = {
+                attachmentsExpanded = !attachmentsExpanded
+                if (attachmentsExpanded) { focus.clearFocus(); keyboard?.hide() }
+            }, label = stringResource(R.string.attach), enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS) {
+                Icon(painterResource(R.drawable.ic_attach), null)
+            }
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
             modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat)
+        if (!expanded) SendAction(model, chat) else Spacer(Modifier.width(44.dp))
         }
         if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            if (model.attachmentsSupported && model.device?.permissions?.send == true)
-                AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
             Box(Modifier.weight(1f)) {
                 SuzentTextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() },
                     enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
@@ -615,6 +624,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         }
     }
     }
+    AttachmentPanel(model, visible = attachmentsExpanded, close = { attachmentsExpanded = false })
     if (modelsExpanded) SuzentSelectionPanel(
         title = stringResource(R.string.desktop_model),
         options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().sorted().map { it to it },

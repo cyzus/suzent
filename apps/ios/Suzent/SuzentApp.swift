@@ -192,6 +192,7 @@ struct ContentView: View {
     @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
+    @State private var attachmentsExpanded = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -638,7 +639,7 @@ struct ContentView: View {
     private func conversation(_ chat: Chat) -> some View {
         VStack(spacing: 0) {
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
-                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
+                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
                         let messages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
@@ -666,14 +667,23 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
-                    if !composing && model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
+                    if model.attachmentsSupported && model.device?.permissions.send == true {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                                attachmentsExpanded.toggle()
+                                if attachmentsExpanded { composing = false }
+                            }
+                        } label: {
+                            Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Attach")
+                            .disabled(model.busy || model.attachments.count >= maxAttachments)
+                    }
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                         .tint(Color.suzentLink)
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                    if !composing { sendAction(chat) }
+                    if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
                 }
                 if composing { HStack(spacing: 8) {
-                    if model.attachmentsSupported && model.device?.permissions.send == true { AttachMenu(model: model) }
                     Button {
                         composing = false; showModelPicker = true
                     } label: {
@@ -687,11 +697,16 @@ struct ContentView: View {
                     sendAction(chat)
                 } }
             }.padding(10).background(Color.suzentSurface)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
                 .padding(.trailing, 2).padding(.bottom, 2)
                 .padding(.horizontal, 12).padding(.bottom, 8)
-        }.task(id: chat.id) { await model.watchApprovals(chat.id) }
+            AttachmentPanel(model: model, expanded: $attachmentsExpanded)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: attachmentsExpanded)
+        }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
+            .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
+            .task(id: chat.id) { await model.watchApprovals(chat.id) }
     }
     private func startPage(_ chat: Chat) -> some View {
         VStack(spacing: 28) {

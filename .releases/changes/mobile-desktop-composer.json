@@ -1,4 +1,4 @@
 {
   "products": {"mobile": "patch"},
-  "summary": "Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, square send and stop controls, and compact activity summaries and timeline nodes."
+  "summary": "Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, an inline attachment panel opened with the plus button, square send and stop controls, and compact activity summaries and timeline nodes."
 }

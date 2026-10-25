@@ -110,10 +110,9 @@ struct CameraPicker: UIViewControllerRepresentable {
     }
 }
 
-struct AttachMenu: View {
+struct AttachmentPanel: View {
     var model: MobileModel
-    @State private var showMenu = false
-    @State private var pendingSource: Source?
+    @Binding var expanded: Bool
     private enum Source { case camera, photos, files }
     @State private var showCamera = false
     @State private var showPhotos = false
@@ -121,47 +120,19 @@ struct AttachMenu: View {
     @State private var photoItems: [PhotosPickerItem] = []
 
     var body: some View {
-        Button { showMenu = true } label: {
-            Image(systemName: "paperclip").font(.system(size: 18, weight: .semibold)).frame(width: 36, height: 44)
-        }
-        .buttonStyle(.plain)
-        .tint(Color.suzentText)
-        .accessibilityLabel(String(localized: "Attach"))
-        .disabled(model.busy || model.attachments.count >= maxAttachments)
-        .sheet(isPresented: $showMenu, onDismiss: {
-            let source = pendingSource
-            pendingSource = nil
-            switch source {
-            case .camera: showCamera = true
-            case .photos: showPhotos = true
-            case .files: showFiles = true
-            case nil: break
-            }
-        }) {
-            VStack(spacing: PresentationTokens.spaceMedium) {
-                HStack {
-                    Text("Attach").font(.headline)
-                    Spacer()
-                    Button { showMenu = false } label: {
-                        Image(systemName: "xmark").frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel("Dismiss")
-                }
-                HStack(alignment: .top, spacing: PresentationTokens.spaceMedium) {
+        VStack(spacing: 0) {
+            if expanded {
+                HStack(alignment: .top, spacing: 16) {
+                    attachmentOption("Photos and videos", icon: "photo", source: .photos)
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
                         attachmentOption("Camera", icon: "camera", source: .camera)
                     }
-                    attachmentOption("Photos and videos", icon: "photo", source: .photos)
                     attachmentOption("Files", icon: "doc", source: .files)
-                }
+                }.padding(.horizontal, 20).padding(.vertical, 24)
+                    .background(Color.suzentText.opacity(0.04))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(PresentationTokens.spacePage)
-            .background(Color.suzentSurface)
-            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .padding(PresentationTokens.spacePage)
-            .presentationDetents([.height(220)])
-            .presentationDragIndicator(.hidden)
-            .presentationCornerRadius(0)
-        }
+        }.clipped()
         .photosPicker(isPresented: $showPhotos, selection: $photoItems,
                       maxSelectionCount: max(1, maxAttachments - model.attachments.count),
                       matching: .any(of: [.images, .videos]))
@@ -184,15 +155,21 @@ struct AttachMenu: View {
 
     private func attachmentOption(_ label: LocalizedStringKey, icon: String, source: Source) -> some View {
         Button {
-            pendingSource = source
-            showMenu = false
+            expanded = false
+            switch source {
+            case .camera: showCamera = true
+            case .photos: showPhotos = true
+            case .files: showFiles = true
+            }
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: icon).font(.system(size: 28, weight: .regular))
+                    .frame(width: 60, height: 60).background(Color.suzentSurface)
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline.opacity(0.2), lineWidth: 1))
                 Text(label).font(.system(size: PresentationTokens.typeCaption)).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, minHeight: 80)
         }
-        .buttonStyle(SuzentButtonStyle())
+        .buttonStyle(.plain).foregroundStyle(Color.suzentText)
         .frame(maxWidth: .infinity)
     }
 
