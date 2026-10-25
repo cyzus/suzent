@@ -151,6 +151,20 @@ computer. Nothing runs on the phone itself, so your memory and keys stay home.
 See [Pair your phone](https://suzent.com/docs/features/nodes#pair-your-phone) for the details
 and how to revoke access.
 
+### Try it without a desktop
+
+Choose **Try offline demo** at the bottom of the phone's connection screen to
+explore with sample data. If already paired, use **Settings → About → Try offline
+demo**. No computer, API key, account, or internet connection is required. You can
+send messages, try a trip-planning example, approve or reject a simulated tool,
+attach files, and manage conversations.
+
+Replies are scripted, tools are simulated, and attachments stay on your phone
+without being uploaded or analysed. The banner always identifies the demo.
+**Settings → Reset demo** restores the examples; **Exit demo** returns to the
+connection screen. Existing desktop pairing is retained. To use your own agent,
+exit the demo and pair with your computer.
+
 ## Browser
 
 Run this on the computer where Suzent is installed:
@@ -6454,8 +6468,16 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
-Android parses Markdown off the UI thread and memoizes the saved transcript's
-presentation. The scoped title index does not load transcripts/checkpoints;
+Network events accumulate away from the UI thread; only display batches reach the
+native views. Android finishes each off-thread Markdown parse before rendering the
+latest pending text, so frequent deltas cannot keep cancelling a long parse. Both
+clients memoize saved transcript presentation. Live growth follows the bottom
+without restarting a layout/scroll animation on every batch. Streamed prose uses
+the same opaque Markdown renderer as saved messages, without per-fragment fades
+or a synthetic cursor inserted into the document. Android skips rebinding a
+native text view when its rendered content and styling are unchanged. Android tables retain the original Markwon table theme and row spans. A native
+text view prepares table row measurements before visible layout, rather than
+showing unmeasured rows and correcting their heights on the next frame. The scoped title index does not load transcripts/checkpoints;
 mobile detail reads omit desktop context-budget computation and return current
 `isRunning` state. Completion reconciles that state in both the selected chat and
 list so the stop control cannot retain a stale list flag.
@@ -6798,6 +6820,43 @@ clients and changes only `manage_chats`.
 
 The desktop editor keeps a local draft until Save. Cancel discards the draft;
 failed saves leave it available to retry.
+
+## Offline demonstration
+
+Both native apps expose **Try offline demo** as a quiet text button at the bottom
+of the unpaired connection screen. Once paired, the entry is under **Settings →
+About**; it is absent from connection help and the regular chat surface. It is
+available in release builds to everyone. A persistent
+banner identifies scripted responses; Settings provides **Reset demo** and **Exit
+demo**. Existing desktop pairing credentials are retained when entering or leaving
+the demo, and demo operations never use them.
+
+The regular conversation UI consumes a `MobileClient` interface. `SuzentClient`
+(iOS) and `BackendClient` (Android) implement the real transport; `DemoClient`
+implements a local workspace with no network transport. Both platforms bundle the
+same English/Chinese fixtures from
+`packages/SuzentCore/Sources/SuzentCore/Resources/demo.json`. Android includes that
+directory as an asset source; SwiftPM processes it as a package resource.
+
+The demo supports scripted streaming, stop, tool approval/rejection, project/model
+selection, new conversations, pin/rename/move/delete, branching, editing and retry.
+Trip and tool-approval prompts are offered on the start page; arbitrary input gets
+a clearly labelled example response. Attachment selection uses the real native
+pickers, but the local client records only names and MIME types. It neither reads
+attachment bytes nor uploads or analyses them. No model API key is needed.
+
+Conversation changes are persisted in a separate versioned demo JSON file in app
+storage. Running turns progress independently of a stream observer while the app
+is alive, and reconcile on foreground return. An unfinished turn from a terminated
+process is marked interrupted on reopening. Reset restores the bundled examples.
+Pairing and foreground Node controls remain real-desktop features and are explained
+in demo Settings. Example citations have no remotely fetched favicons; opening a
+source website is an explicit user action requiring internet access.
+
+For review, provide the exact demo entry and scenario steps, disclose all simulated
+behaviour, and include a physical-device video of real desktop pairing and
+interaction. This mode provides an accessible demonstration, not a guarantee that
+stores will waive access to the real connection flow.
 
 
 ---
@@ -8693,6 +8752,37 @@ The automation can be tested without production credentials using a throwaway
 Android signing key. Such APKs must never be installed over or distributed as a
 production release. Apple distribution must still be validated with the configured
 team and App Store Connect account.
+
+
+## Store review demonstration
+
+The submitted release binary includes a quiet **Try offline demo** text button
+at the bottom of the unpaired connection screen. On paired installations, expand
+**Settings → About** to find it. No special reviewer detection, credentials,
+server, or model API key is needed.
+
+Suggested English review notes (include your real pairing video link separately):
+
+> Suzent is a companion client for a user's self-hosted Suzent backend. To explore
+> the app without setting up a backend, launch the app and select "Try offline
+> demo" at the bottom of the connection screen. If already paired, open Settings,
+> expand About, and select "Try offline demo". The visible demo banner identifies
+> scripted, on-device sample data.
+> On the start page, select the trip prompt to see a streamed example response,
+> or the tool-approval prompt to allow or reject a simulated note-writing action.
+> You can also enter arbitrary text, stop a response, select attachments, and use
+> message copy, edit, retry, and branch actions. Long-press a conversation in the
+> sidebar to pin, rename, move, or delete it. Open Settings to reset the sample
+> data or exit the demo. Attachments are not uploaded or analysed in this mode.
+> Real desktop pairing and Node connections are demonstrated in the accompanying
+> physical-device video; those operations require a running Suzent backend.
+
+Before submitting, test these steps on fresh signed Android and TestFlight
+installations in airplane mode, plus a paired installation to verify that leaving
+or resetting the demo preserves its real pairing. Check both English and Chinese,
+background/foreground during streaming and pending approval, process termination,
+and subsequent reopening of the saved demo workspace. A store may still request
+access to the real backend; the offline demo does not guarantee review acceptance.
 
 
 ---
