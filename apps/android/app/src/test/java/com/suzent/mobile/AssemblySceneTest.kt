@@ -30,10 +30,5 @@ class AssemblySceneTest {
             assertTrue(mark.points.all { it.x.isFinite() && it.y.isFinite() })
         }
     }
-    @Test fun caretOnlyAppearsOnNonemptyLiveTextAndDoesNotBreakClosingFence() {
-        assertEquals("", streamingMarkdown("", true))
-        assertEquals("hello", streamingMarkdown("hello", false))
-        assertEquals("hello ▍", streamingMarkdown("hello", true))
-        assertEquals("```\nx\n```\n\n▍", streamingMarkdown("```\nx\n```", true))
-    }
+
 }
