@@ -553,7 +553,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(model.openedVersion) { scroll.scrollToItem(0) }
     var modelsExpanded by remember(chat.id) { mutableStateOf(false) }
-    LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
+    LaunchedEffect(chat.id, model.openedVersion) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
         if (model.sentVersion > 0) {
             attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus()

@@ -114,3 +114,21 @@ import Testing
     try restored.reset()
     #expect(try await restored.chats().count == 3)
 }
+
+@Test @MainActor func demoRetryAfterApprovalRequestsAFreshDecision() async throws {
+    let client = try DemoClient(language: "en", streamDuration: 0.01)
+    let chat = try await client.createChat(title: "Approval retry")
+    try await client.send("tool", chatID: chat.id, model: nil, attachments: [])
+    var previous = ""
+    for (index, decision) in ["allow", "reject", "allow"].enumerated() {
+        let state = try await client.approvals(chat.id)
+        let request = try #require(state.pending.first)
+        #expect(request.id != previous)
+        previous = request.id
+        try await client.decideApprovals(chat.id, pending: state.pending, choices: [request.id: decision])
+        try await client.observe(chat.id) { _ in }
+        #expect(try await client.chat(chat.id).isRunning == false)
+        #expect(try await client.approvals(chat.id).pending.isEmpty)
+        if index < 2 { _ = try await client.messageAction(chat.id, index: 1, action: "retry") }
+    }
+}

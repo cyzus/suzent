@@ -713,7 +713,7 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
-            .task(id: chat.id) { await model.watchApprovals(chat.id) }
+            .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
     }
     private func startPage(_ chat: Chat) -> some View {
         VStack(spacing: 28) {

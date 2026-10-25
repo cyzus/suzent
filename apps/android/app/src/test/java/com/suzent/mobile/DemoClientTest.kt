@@ -49,6 +49,26 @@ class DemoClientTest {
         assertTrue(demo.approvals(chat.id).pending.isEmpty())
     }
 
+    @Test fun retryAfterApprovalRequestsAFreshDecision() = runBlocking {
+        val demo = client()
+        val chat = demo.create("Approval retry")
+        demo.send(chat.id, "tool")
+        var previous = ""
+        for ((index, decision) in listOf("allow", "reject", "allow").withIndex()) {
+            val state = demo.approvals(chat.id)
+            val request = state.pending.single()
+            assertNotEquals(previous, request.id)
+            previous = request.id
+            demo.decideApprovals(chat.id, state.pending, mapOf(request.id to decision))
+            kotlinx.coroutines.withTimeout(5000) { demo.observe(chat.id) {} }
+            assertFalse(demo.chat(chat.id).running)
+            assertTrue(demo.approvals(chat.id).pending.isEmpty())
+            if (index < 2) {
+                demo.messageAction(chat.id, 1, "retry")
+            }
+        }
+    }
+
     @Test fun managementReplayAndResetStayLocal() = runBlocking {
         val demo = client()
         val chat = demo.create("Original")
