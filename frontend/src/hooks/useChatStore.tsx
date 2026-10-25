@@ -20,6 +20,8 @@ import {
 } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { collectRunTimings } from '../lib/runTiming';
+import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
@@ -41,7 +43,8 @@ function escapeHtml(s: string): string {
  * every tool result and follow-up response it led to is later. Without this,
  * nothing downstream can tell how long the turn actually worked.
  */
-function noteTurnActivity(bubble: Partial<Message>, timestamp?: string): void {
+function noteTurnActivity(bubble: Partial<Message>, timestamp?: string, source?: Message): void {
+  bubble.run_timings = collectRunTimings([bubble, ...(source ? [source] : [])]);
   if (!timestamp) return;
   const current = bubble.turn_last_activity_at;
   if (!current || new Date(timestamp).getTime() > new Date(current).getTime()) {
@@ -1638,7 +1641,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                   };
                   awaitingToolContinuation = false;
                 }
-                noteTurnActivity(currentAssistant!, msg.timestamp);
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
+                awaitingToolContinuation = hasToolContinuation(msg);
                 if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                   msg.tool_calls.forEach((tc: any) => {
                     const args = escapeHtml(
@@ -1663,7 +1667,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 }
                 currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
                 currentAssistant.raw_message_end_index = serverMessageIndex + 1;
-                noteTurnActivity(currentAssistant!, msg.timestamp);
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
                 awaitingToolContinuation = true;
               } else {
                 if (currentAssistant) {

@@ -64,6 +64,14 @@ it('keeps the delegated agent avatar animated after the spawn call returns', () 
 // group. Every rail used to claim the turn's worked-for time and to animate as
 // if it were live, so a long turn showed several identical running headers.
 describe('ActivityRail header', () => {
+  it('hides unknown or invalid completed durations while preserving real zero', () => {
+    expect(renderToStaticMarkup(<WorkedDuration />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration startedAtMs={Date.now() - 60000} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={NaN} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={-1} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={0} />)).toContain('Worked for 0s');
+  });
+
   it('reports the worked time on the first rail of a turn only', () => {
     expect(renderToStaticMarkup(<WorkedDuration durationSeconds={65} />)).toContain(
       'Worked for 1m 5s'
@@ -140,6 +148,20 @@ describe('TurnActivity', () => {
     <div key="tool">tool details</div>,
     <div key="final">final answer</div>,
   ];
+  it.each([undefined, NaN, -1])('keeps a labeled disclosure when duration is %s', (duration) => {
+    const markup = renderToStaticMarkup(
+      <TurnActivity finalStart={2} isStreaming={false} durationSeconds={duration}>
+        {children}
+      </TurnActivity>
+    );
+    expect(markup).toMatch(
+      /<button[^>]*aria-expanded="false"[^>]*>[\s\S]*?Activity[\s\S]*?<\/button>/
+    );
+    expect(markup).not.toContain('Worked for');
+    expect(markup).toContain('final answer');
+    expect(markup).not.toContain('intermediate commentary');
+  });
+
   it('collapses all work under the duration and leaves the final answer visible', () => {
     const markup = renderToStaticMarkup(
       <TurnActivity finalStart={2} isStreaming={false} durationSeconds={68}>

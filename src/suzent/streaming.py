@@ -463,7 +463,9 @@ class _DraftDisplayAccumulator:
         # the final forced persist can wait for it instead of racing it.
         self._persist_task: Optional["asyncio.Task[None]"] = None
 
-    def snapshot(self, model_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+    def snapshot(
+        self, model_id: Optional[str] = None, *, finished_at: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         if not self.parts:
             return None
         return {
@@ -477,6 +479,8 @@ class _DraftDisplayAccumulator:
             "_streaming_run_id": self.run_id,
             "id": self.run_id,
             "timestamp": self.timestamp,
+            "run_started_at": self.timestamp,
+            **({"run_finished_at": finished_at} if finished_at else {}),
             "model": model_id,
         }
 
@@ -635,6 +639,7 @@ class _DraftDisplayAccumulator:
             self.run_id,
             snapshot,
             content,
+            started_at=self.timestamp,
         )
         if force:
             # The last write of a turn has to land before the stream reports
@@ -799,7 +804,12 @@ class _DraftDisplayAccumulator:
 
 
 def _persist_draft_display_message(
-    chat_id: str, run_id: str, parts: list[dict[str, Any]], content: str
+    chat_id: str,
+    run_id: str,
+    parts: list[dict[str, Any]],
+    content: str,
+    *,
+    started_at: Optional[str] = None,
 ) -> None:
     from suzent.database import get_database
 
@@ -815,6 +825,7 @@ def _persist_draft_display_message(
         "parts": parts,
         "_streaming_draft": True,
         "_streaming_run_id": run_id,
+        **({"run_started_at": started_at} if started_at else {}),
     }
 
     messages = merge_streamed_message(messages, draft)
@@ -1388,6 +1399,9 @@ async def stream_agent_responses(
     # Callers may supply this so they can recognise the draft row this run
     # wrote; see the trigger-row placement in chat_processor.
     run_id = run_id or str(uuid.uuid4())
+    from suzent.core.run_clock import RunClock
+
+    deps.run_clock = RunClock()
     if chat_id:
         claim_stream_control(chat_id, control)
     # Indicates whether the stream paused waiting for user approvals.
@@ -2441,6 +2455,8 @@ async def stream_agent_responses(
             await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
             if draft_accumulator is not None:
+                finished_at = datetime.now().astimezone().isoformat()
+                active_seconds = deps.run_clock.elapsed()
                 try:
                     final_sources = citation_mgr.to_event_payload()
                     if final_sources:
@@ -2451,8 +2467,11 @@ async def stream_agent_responses(
                 # The fast snapshot commits this even if a draft write failed.
                 # Model history may have been compacted several times by now.
                 deps.streamed_message = draft_accumulator.snapshot(
-                    getattr(agent, "_model_id", None)
+                    getattr(agent, "_model_id", None),
+                    finished_at=finished_at,
                 )
+                if deps.streamed_message is not None:
+                    deps.streamed_message["run_active_seconds"] = active_seconds
                 if deps.streamed_message is not None and deferred_tool_results:
                     deps.streamed_message["_resumed_tool_call_ids"] = list(
                         deferred_tool_results.approvals

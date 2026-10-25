@@ -347,12 +347,17 @@ export const WorkedDuration: React.FC<{
     return () => window.clearInterval(timer);
   }, [isActive]);
 
+  if (
+    !isActive &&
+    (durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds < 0)
+  ) {
+    return null;
+  }
+
   return (
     <span className="shrink-0 whitespace-nowrap py-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">
       {t('activityRail.workedFor', {
-        duration: formatActivityDuration(
-          isActive ? elapsedSeconds : (durationSeconds ?? elapsedSeconds)
-        ),
+        duration: formatActivityDuration(isActive ? elapsedSeconds : durationSeconds!),
       })}
     </span>
   );
@@ -377,6 +382,7 @@ export const TurnActivity: React.FC<{
   durationSeconds?: number;
   startedAtMs?: number;
 }> = ({ children, finalStart, isStreaming, durationSeconds, startedAtMs }) => {
+  const { t } = useI18n();
   const bodyId = React.useId();
   const [expanded, setExpanded] = useState(false);
   const wasStreaming = React.useRef(isStreaming);
@@ -406,7 +412,15 @@ export const TurnActivity: React.FC<{
             onClick={() => setExpanded(!expanded)}
             className="activity-rail-header activity-turn-duration"
           >
-            <WorkedDuration durationSeconds={durationSeconds} startedAtMs={startedAtMs} />
+            {durationSeconds !== undefined &&
+            Number.isFinite(durationSeconds) &&
+            durationSeconds >= 0 ? (
+              <WorkedDuration durationSeconds={durationSeconds} startedAtMs={startedAtMs} />
+            ) : (
+              <span className="shrink-0 whitespace-nowrap py-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                {t('activityRail.activity')}
+              </span>
+            )}
             <DisclosureChevron
               expanded={expanded}
               className="w-3 h-3 shrink-0 text-neutral-400 transition-transform duration-200"

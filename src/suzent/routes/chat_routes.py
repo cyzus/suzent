@@ -1200,6 +1200,15 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         )
         response_chat["projectId"] = db.get_chat_project_id(chat_id)
         if isinstance(response_chat.get("messages"), list):
+            from suzent.core.display_log import recover_logged_run_timing
+
+            chat_log = getattr(db, "chat_log", None)
+            if chat_log is not None:
+                response_chat["messages"] = await asyncio.to_thread(
+                    recover_logged_run_timing,
+                    response_chat["messages"],
+                    chat_log.events(chat_id),
+                )
             from suzent.core.chat_processor import (
                 _attach_latest_file_changes,
                 _preserve_citation_sources,

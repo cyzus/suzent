@@ -14,6 +14,8 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
+import { collectRunTimings, recordedWorkedSeconds } from '../../lib/runTiming';
+import type { Message } from '../../types/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
 import { AgentAvatar } from './subAgentDisplay';
@@ -62,7 +64,10 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
   const ms = end - new Date(startedAt).getTime();
   if (ms < 0) return '';
-  const s = Math.floor(ms / 1000);
+  return formatSeconds(Math.floor(ms / 1000));
+}
+
+function formatSeconds(s: number): string {
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -76,6 +81,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   const { taskStates } = useSubAgentStatus();
   const [fetchedTask, setFetchedTask] = useState<SubAgentTask | null>(null);
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
+  const [workedSeconds, setWorkedSeconds] = useState<number>();
+  const [hasRecordedTiming, setHasRecordedTiming] = useState(false);
+  const chatMessagesRef = useRef<Message[]>([]);
   const [elapsedTime, setElapsedTime] = useState('');
   const [stopping, setStopping] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -101,6 +109,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       const res = await fetch(`${getApiBase()}/chats/${chatId}`);
       if (!res.ok) return;
       const data = await res.json();
+      chatMessagesRef.current = data.messages ?? [];
+      setHasRecordedTiming(collectRunTimings(chatMessagesRef.current).length > 0);
+      setWorkedSeconds(recordedWorkedSeconds(data.messages ?? []));
       const entries = extractToolLog(data.messages ?? []);
       if (entries.length > 0) setToolLog(entries);
     } catch {
@@ -137,6 +148,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   useEffect(() => {
     setFetchedTask(null);
     setToolLog([]);
+    setWorkedSeconds(undefined);
+    setHasRecordedTiming(false);
+    chatMessagesRef.current = [];
     taskRef.current = null;
 
     fetchTask();
@@ -155,7 +169,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
     elapsedRef.current = setInterval(() => {
       const current = taskRef.current;
       if (current?.started_at && isSubAgentActive(current.status)) {
-        setElapsedTime(elapsed(current.started_at));
+        const seconds = recordedWorkedSeconds(chatMessagesRef.current, Date.now());
+        setElapsedTime(
+          seconds !== undefined
+            ? formatSeconds(seconds)
+            : collectRunTimings(chatMessagesRef.current).length
+              ? ''
+              : elapsed(current.started_at)
+        );
       }
     }, 1000);
 
@@ -178,7 +199,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       intervalRef.current = null;
     }
     if (task?.started_at) {
-      setElapsedTime(elapsed(task.started_at));
+      const seconds = recordedWorkedSeconds(chatMessagesRef.current, Date.now());
+      setElapsedTime(
+        seconds !== undefined
+          ? formatSeconds(seconds)
+          : collectRunTimings(chatMessagesRef.current).length
+            ? ''
+            : elapsed(task.started_at)
+      );
     }
   }, [task?.status]);
 
@@ -187,7 +215,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   // child's bus subscription open so a redirect sent from this panel still
   // learns when the run picked it up.
   useSubAgentActivity(task?.chat_id, isRunning);
-  const duration = task ? formatDuration(task.started_at, task.finished_at) : '';
+  const duration =
+    workedSeconds !== undefined
+      ? formatSeconds(workedSeconds)
+      : hasRecordedTiming
+        ? ''
+        : task
+          ? formatDuration(task.started_at, task.finished_at)
+          : '';
   const outcomeText = task?.status === 'completed' ? task.result_summary : task?.error;
 
   return (
