@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
@@ -566,7 +568,13 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(attachmentsExpanded) {
+        if (attachmentsExpanded) awaitEachGesture {
+            // Observe before selectable text and message controls consume the touch.
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            attachmentsExpanded = false
+        }
+    }.pointerInput(Unit) {
         detectTapGestures(onTap = { attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus() })
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item(key = "approvals") { ApprovalCards(model) }
