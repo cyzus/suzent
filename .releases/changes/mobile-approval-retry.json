@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Restart approval monitoring after retrying or reopening the same conversation so new tool approvals remain actionable."
+}

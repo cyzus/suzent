@@ -24,6 +24,7 @@ import kotlin.math.sin
 import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.conflate
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -110,7 +111,7 @@ val suzentLink: Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false, textSize: Float = PresentationTokens.typeChat.toFloat()) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat()) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -127,6 +128,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     val codeForeground = Color(if (dark) PresentationTokens.text_dark else PresentationTokens.code_text)
     val codeHeader = Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.black)
     val link = suzentLink.toArgb()
+    val tablePlugin = remember(context) { TablePlugin.create(context) }
     val renderer = remember(context, dark) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
@@ -143,20 +145,27 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     .codeBlockTextColor(codeForeground.toArgb())
                     .linkColor(link)
             }
-        }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
+        }).usePlugin(tablePlugin).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
-    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, renderedText) {
-        value = withContext(Dispatchers.Default) {
-            synchronized(renderer) {
-                markdownSections(renderer.parse(renderedText)).map { section ->
-                    when (section) {
-                        is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
-                        is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+    val latestText by rememberUpdatedState(renderedText)
+    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer) {
+        // Finish the current parse, then render the newest pending text. Cancelling on
+        // every token can starve publication when a long document takes >50 ms to parse.
+        snapshotFlow { latestText }.conflate().collect { markdown ->
+            value = withContext(Dispatchers.Default) {
+                synchronized(renderer) {
+                    markdownSections(renderer.parse(markdown)).map { section ->
+                        when (section) {
+                            is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
+                            is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+                        }
                     }
                 }
             }
         }
     }
+    fun binding(body: CharSequence) =
+        MarkdownBinding(body, textSize, foreground, link, dark, pendingLink, icons, citationSources)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             if (block.language != null) {
@@ -172,28 +181,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     }
                 }
             } else {
-                AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    SoftStreamTextView(ctx).apply { this.textSize = textSize; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
-                }, update = { view ->
-                    view.textSize = textSize
-                    view.setTextColor(foreground); view.setLinkTextColor(link)
-                    val styled = android.text.SpannableString(block.body)
-                    styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
-                        val start = styled.getSpanStart(span)
-                        val end = styled.getSpanEnd(span)
-                        if (styled.subSequence(start, end).startsWith("↗  ")) {
-                            val target = (span as? android.text.style.URLSpan)?.url
-                            val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
-                            val icon = citationSources.firstOrNull { it.id == sourceId }?.favicon?.let(icons::get)
-                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        }
-                    }
-                    renderer.setParsedMarkdown(view, view.prepare(styled, softStreaming))
-                    // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
-                    // from installing its link handler automatically.
-                    view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
-                    view.highlightColor = android.graphics.Color.TRANSPARENT
-                })
+                MarkdownProse(binding(block.body), renderer, tablePlugin, Modifier.fillMaxWidth())
             }
         }
     }
@@ -232,6 +220,34 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
             }
         }
     }
+}
+
+
+@Composable
+private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier) {
+    AndroidView(modifier = modifier, factory = { ctx ->
+        StableTableTextView(ctx).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+    }, update = update@ { view ->
+        if (view.tag == binding) return@update
+        view.tag = binding
+        view.textSize = binding.textSize
+        view.tablePlugin = tablePlugin
+        view.setTextColor(binding.foreground); view.setLinkTextColor(binding.link)
+        val styled = android.text.SpannableString(binding.body)
+        styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
+            val start = styled.getSpanStart(span)
+            val end = styled.getSpanEnd(span)
+            if (styled.subSequence(start, end).startsWith("↗  ")) {
+                val target = (span as? android.text.style.URLSpan)?.url
+                val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
+                val icon = binding.sources.firstOrNull { it.id == sourceId }?.favicon?.let(binding.icons::get)
+                styled.setSpan(CitationBadgeSpan(binding.dark, target == binding.selectedLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        renderer.setParsedMarkdown(view, view.prepareMarkdown(styled))
+        view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.create()
+        view.highlightColor = android.graphics.Color.TRANSPARENT
+    })
 }
 
 private object CitationIcons {
@@ -295,6 +311,17 @@ private class CitationBadgeSpan(private val dark: Boolean, private val selected:
 }
 
 private data class MarkdownBlock(val body: CharSequence, val language: String? = null)
+
+private data class MarkdownBinding(
+    val body: CharSequence,
+    val textSize: Float,
+    val foreground: Int,
+    val link: Int,
+    val dark: Boolean,
+    val selectedLink: String?,
+    val icons: Map<String, android.graphics.Bitmap>,
+    val sources: List<CitationSource>,
+)
 
 @Composable
 fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackModel: String? = null,
@@ -603,8 +630,8 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") StreamingMarkdown(chunk.first().text, live && index == chunks.lastIndex, citationSources)
-                else ActivityRail(chunk, live)
+                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
+                else ActivityRail(chunk, live && index == chunks.lastIndex)
             }
         }
     }
@@ -613,24 +640,45 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
 @Composable
 private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     var expanded by remember { mutableStateOf(false) }
-    val waiting = parts.any { it.state == "approval-requested" }
-    val running = live && parts.any { it.state == "running" }
+    val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
+    val running = live && (parts.lastOrNull()?.type == "reasoning" || parts.any { it.state == "running" })
     val failed = parts.any { it.state in listOf("error", "denied") }
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
-    val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
+    val totals = activitySummary(parts, live).map { (kind, count) ->
+        stringResource(when (kind) {
+            "running" -> R.string.rail_summary_running
+            "commands" -> R.string.rail_summary_commands
+            "read" -> R.string.rail_summary_read
+            "changed" -> R.string.rail_summary_changed
+            "searches" -> R.string.rail_summary_searches
+            "other" -> R.string.rail_summary_other
+            "failed" -> R.string.rail_summary_failed
+            else -> R.string.rail_summary_other
+        }, count)
+    }.joinToString(" · ")
+    val latest = parts.lastOrNull()
+    val status = when {
+        waiting -> stringResource(R.string.approval_required)
+        (!live || expanded) && totals.isNotEmpty() -> totals
+        latest?.type == "reasoning" -> stringResource(R.string.reasoning) + ": " + latest.text.lineSequence().firstOrNull().orEmpty().take(80)
+        latest != null -> activityToolLabel(latest)
+        else -> stringResource(R.string.activity_completed)
+    }
     Column(Modifier.fillMaxWidth()) {
         SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
-            Text(status.uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+            Text(status.uppercase(), modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                 color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
             if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
-            Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
-            Text(stringResource(R.string.activity_steps, parts.size).uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(if (expanded) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (totals.isEmpty() || (live && !expanded) || waiting) {
+                Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
+                Text(stringResource(R.string.activity_steps, activityStepCount(parts)).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(if (expanded || waiting) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
         }
-        if (expanded) {
+        if (expanded || waiting) {
             HorizontalDivider(color = ink.copy(alpha = 0.12f))
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 parts.forEachIndexed { index, part ->
@@ -653,22 +701,22 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
     val pending = part.state == "approval-requested"
     val color = if (error) MaterialTheme.colorScheme.error else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 14.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-            Box(Modifier.size(16.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 10.sp, lineHeight = 12.sp, color = if (pending) Color.Black else color)
+        Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 17.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+            Box(Modifier.size(10.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 7.sp, lineHeight = 9.sp, color = if (pending) Color.Black else color)
             }
             Box(Modifier.width(1.dp).weight(1f).background(if (last) Color.Transparent else ink.copy(alpha = 0.12f)))
         }
         Column(Modifier.weight(1f)) {
             SuzentTextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
-                Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
+                Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") activityToolLabel(part).ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
                     color = ink, fontSize = 13.sp, maxLines = 2, fontWeight = FontWeight.Medium,
                     fontFamily = if (part.type == "tool") FontFamily.Monospace else FontFamily.Default, modifier = Modifier.weight(1f))
                 if (active) StreamingPulse()
                 Text(if (details) "⌄" else "›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
-            val preview = if (error) part.output else part.args
-            if (!details && part.type == "tool" && preview.isNotEmpty()) {
+            val preview = part.output
+            if (!details && error && preview.isNotEmpty()) {
                 Text(preview, modifier = Modifier.padding(bottom = 10.dp), fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)

@@ -130,3 +130,67 @@ import Testing
     #expect(rows[0].text == "<!-- suzent-agent-inbox:literal -->")
     #expect(rows[1].text == "**Agent done**\nResult")
 }
+
+@Test func backgroundActivityBatchesKeepEveryDeltaAndReset() async {
+    let accumulator = LiveActivityAccumulator()
+    let producer = Task {
+        for _ in 0..<2_000 {
+            await accumulator.consume(StreamEvent(type: "TEXT_MESSAGE_CONTENT", delta: "块😀", message: nil))
+        }
+    }
+    var latest = ""
+    for _ in 0..<500 {
+        if let parts = await accumulator.drain() {
+            let text = parts.first?.text ?? ""
+            #expect(text.hasPrefix(latest))
+            latest = text
+        }
+        await Task.yield()
+    }
+    await producer.value
+    if let parts = await accumulator.drain() { latest = parts.first?.text ?? "" }
+    #expect(latest == String(repeating: "块😀", count: 2_000))
+    await accumulator.consume(StreamEvent(type: "STREAM_RESET", delta: nil, message: nil))
+    await accumulator.consume(StreamEvent(type: "TEXT_MESSAGE_CONTENT", delta: "尾", message: nil))
+    let reset = await accumulator.drain()
+    #expect(reset?.first?.text == "尾")
+}
+
+@Test @MainActor func savedPresentationCacheInvalidatesForMessagesAndLiveTools() throws {
+    let cache = ChatPresentationCache()
+    let source = """
+    [{"role":"user","content":"Question"},
+     {"role":"tool","name":"read_file","tool_call_id":"one","content":"Result"},
+     {"role":"assistant","content":"Answer","model":"model-a","timestamp":"2026-01-01T00:00:00Z"}]
+    """
+    let messages = try JSONDecoder().decode([ChatMessage].self, from: Data(source.utf8))
+    let initial = cache.content(messages)
+    #expect(initial.flatMap(\.parts).contains { $0.type == "tool" })
+    #expect(cache.content(messages).map(\.text) == initial.map(\.text))
+    #expect(!cache.content(messages, liveToolIDs: ["one"]).flatMap(\.parts).contains { $0.type == "tool" })
+    #expect(cache.content(messages).flatMap(\.parts).contains { $0.type == "tool" })
+    let changed = try JSONDecoder().decode([ChatMessage].self, from: Data(source.replacingOccurrences(of: "model-a", with: "model-b").utf8))
+    #expect(cache.content(changed).last?.model == "model-b")
+    #expect(cache.content([]).isEmpty)
+}
+
+@Test func railSummaryMatchesDesktopCategoriesAndDeduplicatesFiles() {
+    let parts = [
+        MessagePart(type: "tool", toolName: "Read", args: #"{"file_path":"./src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "read_file", args: #"{"path":"src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "Edit", args: #"{"path":"src/main.py"}"#),
+        MessagePart(type: "tool", toolName: "Bash"),
+        MessagePart(type: "tool", toolName: "mcp__server__web_search"),
+        MessagePart(type: "tool", toolName: "read_file", state: "running"),
+        MessagePart(type: "tool", toolName: "write_file", state: "error")]
+    let summary = activitySummary(parts, live: true)
+    #expect(summary.map(\.kind) == ["read", "changed", "commands", "searches", "running", "failed"])
+    #expect(summary.map(\.count) == [1, 1, 1, 1, 1, 1])
+    #expect(activitySummary(parts, live: false)[4].kind == "other")
+    #expect(canonicalActivityTool("ReadFile") == "read_file")
+    #expect(activityToolLabel(parts[0]) == "read file: ./src/main.py")
+    #expect(activityToolLabel(MessagePart(type: "tool", toolName: "Read", args: "{")) == "read file")
+    let reasoning = [MessagePart(type: "reasoning", text: "One"), MessagePart(type: "text", text: " "), MessagePart(type: "reasoning", text: "Two")]
+    #expect(activityChunks(reasoning).count == 1)
+    #expect(activityStepCount(activityChunks(reasoning)[0]) == 1)
+}

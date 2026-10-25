@@ -1,14 +1,13 @@
 package com.suzent.mobile
 
 import android.os.Bundle
-import android.animation.ValueAnimator
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
@@ -38,6 +37,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -72,7 +72,8 @@ private fun MobileScreen(model: MobileModel) {
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     LaunchedEffect(Unit) { if (model.canReconnect && !model.connected) model.connect() }
-    LaunchedEffect(model.connected) {
+    LaunchedEffect(model.connected, model.isDemo) {
+        showSettings = false
         if (model.connected) { drawer.close(); model.watchNavigation() }
         else { showSettings = false; drawer.close() }
     }
@@ -129,6 +130,14 @@ private fun MobileScreen(model: MobileModel) {
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+                if (model.isDemo) {
+                    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(horizontal = 16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(stringResource(R.string.demo_banner), modifier = Modifier.weight(1f), color = Color.Black,
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = model::exitDemo, enabled = !model.busy) { Text(stringResource(R.string.demo_exit), color = Color.Black) }
+                    }
+                }
                 model.error?.let { message ->
                     SuzentNotice(message) { model.error = null }
                 }
@@ -489,23 +498,44 @@ private fun SettingsView(model: MobileModel) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
+    var aboutExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PresentationTokens.spacePage.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(stringResource(R.string.settings), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
-        Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
-            Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { accessExpanded = !accessExpanded }.heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(stringResource(R.string.access), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (accessExpanded) "−" else "+")
+        if (model.isDemo) {
+            Text(stringResource(R.string.demo_intro))
+            Text(stringResource(R.string.demo_limits), style = MaterialTheme.typography.bodySmall)
+            SuzentAction(stringResource(R.string.demo_reset), model::resetDemo, enabled = !model.busy)
+            SuzentAction(stringResource(R.string.demo_exit), model::exitDemo, enabled = !model.busy)
+        } else {
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
+                Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { accessExpanded = !accessExpanded }.heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(stringResource(R.string.access), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (accessExpanded) "−" else "+")
+                }
+                if (accessExpanded) model.device?.let { Box(Modifier.padding(top = PresentationTokens.spaceMedium.dp)) { ClientPermissionsView(it, model.origin) } }
             }
-            if (accessExpanded) model.device?.let { Box(Modifier.padding(top = PresentationTokens.spaceMedium.dp)) { ClientPermissionsView(it, model.origin) } }
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
+                SuzentToggle(stringResource(R.string.enable_node), model.nodeEnabled, model::toggleNode)
+                Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
+            SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
+            Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
+                Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { aboutExpanded = !aboutExpanded }
+                    .heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(stringResource(R.string.about), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (aboutExpanded) "−" else "+")
+                }
+                if (aboutExpanded) {
+                    SuzentTextButton(onClick = model::startDemo, enabled = !model.busy && !model.streaming) {
+                        Text(stringResource(R.string.demo_enter), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
-        Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
-            SuzentToggle(stringResource(R.string.enable_node), model.nodeEnabled, model::toggleNode)
-            Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
-        SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
-        Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -513,36 +543,45 @@ private fun SettingsView(model: MobileModel) {
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
     val chat = model.selected ?: return
-    val expanded = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val expanded = keyboardVisible && !attachmentsExpanded
+    LaunchedEffect(keyboardVisible) { if (keyboardVisible) attachmentsExpanded = false }
+    androidx.activity.compose.BackHandler(enabled = attachmentsExpanded) { attachmentsExpanded = false }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(model.openedVersion) { scroll.scrollToItem(0) }
-    val followLiveGrowth by remember(scroll) {
-        derivedStateOf { !scroll.canScrollBackward && !scroll.isScrollInProgress }
-    }
     var modelsExpanded by remember(chat.id) { mutableStateOf(false) }
-    LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
+    LaunchedEffect(chat.id, model.openedVersion) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
         if (model.sentVersion > 0) {
-            keyboard?.hide(); focus.clearFocus()
+            attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus()
             scroll.animateScrollToItem(0)
         }
     }
+    val trayHeight by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (attachmentsExpanded) 200.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(220), label = "attachment tray")
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+    val viewportHeight = maxHeight
+    Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
-        detectTapGestures(onTap = { keyboard?.hide(); focus.clearFocus() })
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(attachmentsExpanded) {
+        if (attachmentsExpanded) awaitEachGesture {
+            // Observe before selectable text and message controls consume the touch.
+            awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            attachmentsExpanded = false
+        }
+    }.pointerInput(Unit) {
+        detectTapGestures(onTap = { attachmentsExpanded = false; keyboard?.hide(); focus.clearFocus() })
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item(key = "approvals") { ApprovalCards(model) }
         if (model.streaming || model.liveParts.isNotEmpty()) item(key = "live") {
-            // The reversed list pins the bottom; smooth line-height changes instead of
-            // starting a new scroll animation for every streamed text update.
-            val growthModifier = if (model.streaming && model.liveParts.any { it.type == "text" && it.text.isNotBlank() }
-                && followLiveGrowth && ValueAnimator.areAnimatorsEnabled()) {
-                Modifier.animateContentSize(animationSpec = tween(120, easing = LinearOutSlowInEasing))
-            } else Modifier
-            Column(modifier = growthModifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // The reversed list follows growth directly; restarting a height tween on
+            // each batch keeps clipping the newest line while text is still arriving.
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AssemblyBadge(thinking = showAssemblyBadge(model.liveParts, model.streaming))
                 if (model.liveParts.isNotEmpty()) ActivityContent(model.liveParts, live = model.streaming)
             }
@@ -566,26 +605,44 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         drawRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-        .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .border(PresentationTokens.borderWidth.dp, composerOutline)
+        .animateContentSize(animationSpec = androidx.compose.animation.core.tween(180)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (model.attachmentsSupported && model.device?.permissions?.send == true)
-            AttachButton(model, enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS)
+            SuzentIconButton(onClick = {
+                attachmentsExpanded = !attachmentsExpanded
+                if (attachmentsExpanded) { focus.clearFocus(); keyboard?.hide() }
+            }, label = stringResource(R.string.attach), enabled = !model.busy && model.attachments.size < MAX_ATTACHMENTS) {
+                Icon(painterResource(R.drawable.ic_attach), null)
+            }
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
             modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat)
+        if (!expanded) SendAction(model, chat) else Spacer(Modifier.width(44.dp))
         }
         if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                SuzentSelectionTrigger(model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model),
-                    { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() }, enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true)
+                SuzentTextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() },
+                    enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
+                    Text(model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model),
+                        modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis,
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(" ⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
 
             }
             SendAction(model, chat)
+        }
+    }
+    }
+    }
+    Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).fillMaxWidth().height(trayHeight).clipToBounds()) {
+        Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).fillMaxWidth().requiredHeight(200.dp)) {
+            AttachmentPanel(model, close = { attachmentsExpanded = false })
         }
     }
     }
@@ -599,9 +656,25 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 
 @Composable
 private fun SendAction(model: MobileModel, chat: Chat) {
-            if (model.streaming || chat.running) SuzentAction(stringResource(R.string.stop), model::stop, prominent = true, enabled = model.device?.permissions?.stop == true, compact = true)
-            else SuzentAction(stringResource(R.string.send), model::send, prominent = true,
-                enabled = !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true, compact = true)
+    val stopping = model.streaming || chat.running
+    val enabled = if (stopping) model.device?.permissions?.stop == true else
+        !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true
+    SuzentIconButton(onClick = { if (stopping) model.stop() else model.send() },
+        label = stringResource(if (stopping) R.string.stop else R.string.send), enabled = enabled) {
+        Box(Modifier.size(36.dp).background(if (stopping) MaterialTheme.colorScheme.error else suzentLink)
+            .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+                if (stopping) drawRect(Color.White, topLeft = Offset(size.width * .25f, size.height * .25f), size = Size(size.width * .5f, size.height * .5f))
+                else {
+                    val path = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(size.width * .5f, size.height * .85f); lineTo(size.width * .5f, size.height * .15f)
+                        moveTo(size.width * .2f, size.height * .45f); lineTo(size.width * .5f, size.height * .15f); lineTo(size.width * .8f, size.height * .45f)
+                    }
+                    drawPath(path, Color.White, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()))
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -625,6 +698,9 @@ private fun StartPage(model: MobileModel, chat: Chat, keyboardVisible: Boolean) 
                 model.selected = model.selected?.copy(projectId = id, projectName = model.projects.first { it.id == id }.name)
                 projectsExpanded = false
             }
+        }
+        if (model.isDemo) model.demoPrompts.forEach { prompt ->
+            SuzentAction(prompt, { model.draft = prompt; model.send() }, enabled = !model.busy && !model.streaming)
         }
     }
 }

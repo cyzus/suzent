@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Keep the original Android table appearance while preparing Markwon row measurements before display to avoid repeated collapsed-height frames during streaming."
+}
