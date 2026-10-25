@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support native video input in visual analysis and preserve existing visual tool settings.
 - Stop desktop notifications from firing when you stop or steer a reply, and announce the steered reply when it finishes.
 - Add standalone two-step model setup with optional connection checks and explicit role recommendations.
+- Keep inline canvas surfaces visible when chat activity collapses and persist streamed inline and side-panel surfaces so they survive refreshes.
 - Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
 - Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
 - Show fetched model capabilities and explain provider catalog fallbacks.
