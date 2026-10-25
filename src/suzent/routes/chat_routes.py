@@ -1356,13 +1356,9 @@ async def create_chat(request: Request) -> JSONResponse:
         # explicit non-default mode. The frontend store always sends "default",
         # so treat that as "unset" and upgrade it to the user's preference.
         if isinstance(config, dict):
-            requested_mode = str(config.get("permission_mode") or "").strip().lower()
-            if requested_mode in ("", "default"):
-                default_mode = str(
-                    getattr(CONFIG, "default_permission_mode", "default") or "default"
-                )
-                if default_mode in _PERMISSION_MODES:
-                    config["permission_mode"] = default_mode
+            from suzent.permissions.context import seed_default_permission_mode
+
+            seed_default_permission_mode(config)
 
         db = get_database()
         chat_id = db.create_chat(title, config, messages, project_id=project_id)

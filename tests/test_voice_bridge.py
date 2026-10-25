@@ -357,8 +357,8 @@ async def test_stream_failure_leaks_no_tasks():
 
 
 async def test_delegation_end_to_end_through_the_bridge():
-    """A spoken request reaches the main agent as the user's own words, and the
-    answer is queued for the front desk to speak once it is idle."""
+    """A spoken request reaches the main agent as the front desk's reading, and
+    the answer is queued for the front desk to speak once it is idle."""
     ws = FakeWebSocket()
     session = FakeSession(
         events=[
@@ -382,7 +382,8 @@ async def test_delegation_end_to_end_through_the_bridge():
     ws.stop()
     await asyncio.wait_for(task, 2)
 
-    assert turns == ["帮我查天气"]
+    # The turn's message is the front desk's request, not the raw transcript.
+    assert turns == ["check weather"]
     assert [m["active"] for m in ws.json("working")] == [True, False]
     ((content, priority),) = session.queued
     assert "晴" in content[0] and priority == "when_idle"

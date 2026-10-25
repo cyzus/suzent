@@ -26,7 +26,11 @@ async def voice_websocket_endpoint(websocket: WebSocket) -> None:
         else uuid.uuid4().hex
     )
     if db.get_chat(chat_id) is None:
-        db.create_chat(title="Voice conversation", config={}, chat_id=chat_id)
+        from suzent.permissions.context import seed_default_permission_mode
+
+        config: dict = {}
+        seed_default_permission_mode(config)
+        db.create_chat(title="Voice conversation", config=config, chat_id=chat_id)
 
     await websocket.accept()
     bridge_factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)
