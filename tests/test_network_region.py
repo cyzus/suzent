@@ -1,4 +1,7 @@
+import gzip
+import io
 import json
+import tarfile
 
 import pytest
 
@@ -84,12 +87,17 @@ def test_china_mode_asks_the_mirror_first(state, monkeypatch):
 
         return fetch
 
+    def npm_unpublished(timeout):
+        calls.append("npm")
+        raise ValueError("npm mirror has no stable release")
+
+    monkeypatch.setattr(network_region, "_latest_from_npm", npm_unpublished)
     monkeypatch.setattr(
         network_region, "_latest_from_mirror", source("mirror", "v1.2.2")
     )
     monkeypatch.setattr(network_region, "_latest_from_api", source("api", "v1.2.3"))
     assert network_region.fetch_latest_release()["tag_name"] == "v1.2.2"
-    assert calls == ["mirror"]
+    assert calls == ["npm", "mirror"]
 
 
 def test_all_sources_failing_raises(state, monkeypatch):
@@ -115,3 +123,93 @@ def test_repo_sources_add_gitee_only_in_china(state):
     assert network_region.repo_sources() == []
     (state / "network-region").write_text("china\n", encoding="utf-8")
     assert network_region.repo_sources()[0].startswith("https://gitee.com/")
+
+
+def _npm_tarball(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        for name, contents in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(contents)
+            archive.addfile(info, io.BytesIO(contents))
+    return gzip.compress(buffer.getvalue())
+
+
+def test_npm_packages_follow_the_release_file_platform():
+    assert network_region.npm_platform_for("suzent-windows-x86_64.exe") == "win32-x64"
+    assert (
+        network_region.npm_platform_for("suzent-installer-macos-aarch64.dmg")
+        == "darwin-arm64"
+    )
+    assert network_region.npm_platform_for("suzent-linux-x86_64") == "linux-x64"
+    assert network_region.npm_tarball_url("darwin-x64", "v1.2.3") == (
+        "https://registry.npmmirror.com/@suzent/desktop-darwin-x64/-/"
+        "desktop-darwin-x64-1.2.3.tgz"
+    )
+
+
+def test_npm_dist_tags_skip_the_placeholder():
+    assert network_region.tag_from_npm_dist_tags('{"latest": "1.2.3"}') == "v1.2.3"
+    assert network_region.tag_from_npm_dist_tags('{"latest": "0.0.0"}') == ""
+    assert network_region.tag_from_npm_dist_tags('{"latest": "1.2.3-rc.1"}') == ""
+    assert network_region.tag_from_npm_dist_tags("[]") == ""
+
+
+def test_unpack_npm_package_keeps_only_top_level_files(tmp_path):
+    tarball = _npm_tarball(
+        {
+            "package/SHA256SUMS": b"sums",
+            "package/nested/file": b"skip",
+            "package/../escape": b"skip",
+            "other/file": b"skip",
+        }
+    )
+    network_region.unpack_npm_package(tarball, tmp_path / "out")
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["SHA256SUMS"]
+    assert not (tmp_path / "escape").exists()
+
+
+def test_china_release_urls_serve_the_npm_package_first(state, monkeypatch):
+    (state / "network-region").write_text("china\n", encoding="utf-8")
+    tarball = _npm_tarball(
+        {"package/SHA256SUMS": b"sums", "package/suzent-linux-x86_64": b"app"}
+    )
+    requested = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(request, timeout):
+        requested.append(request.full_url)
+        return Response(tarball)
+
+    monkeypatch.setattr(network_region, "_npm_packages", {})
+    monkeypatch.setattr(network_region.urllib.request, "urlopen", urlopen)
+    urls = network_region.release_asset_urls("suzent-linux-x86_64", "v1.2.3")
+    assert urls[0].startswith("file://")
+    assert urls[1:] == [
+        "https://registry.npmmirror.com/-/binary/suzent/v1.2.3/suzent-linux-x86_64",
+        "https://github.com/cyzus/suzent/releases/download/v1.2.3/suzent-linux-x86_64",
+    ]
+    assert requested == [network_region.npm_tarball_url("linux-x64", "v1.2.3")]
+    cached = state / "cache" / "npm" / "desktop-linux-x64" / "v1.2.3"
+    assert (cached / "suzent-linux-x86_64").read_bytes() == b"app"
+    # Unpacked once per process, then read from the cache.
+    network_region.release_asset_urls("suzent-installer-linux-x86_64", "v1.2.3")
+    assert len(requested) == 1
+
+
+def test_unavailable_npm_package_falls_through(state, monkeypatch):
+    (state / "network-region").write_text("china\n", encoding="utf-8")
+
+    def urlopen(request, timeout):
+        raise OSError("404")
+
+    monkeypatch.setattr(network_region, "_npm_packages", {})
+    monkeypatch.setattr(network_region.urllib.request, "urlopen", urlopen)
+    urls = network_region.release_asset_urls("suzent-linux-x86_64", "v1.2.3")
+    assert all(url.startswith("https://") for url in urls)

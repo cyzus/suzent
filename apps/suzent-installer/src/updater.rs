@@ -730,6 +730,16 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, Strin
     prepare_ui(paths, &expected, || {
         let mut errors = Vec::new();
         for base in &bases {
+            if network::is_npm_base(base) {
+                // Already in memory: the checksums came from the same package.
+                match network::fetch_release_file(std::slice::from_ref(base), ui_asset_name())
+                    .and_then(|bytes| write_staged_file(&paths.staged_ui(), &bytes))
+                {
+                    Ok(()) => return Ok(()),
+                    Err(error) => errors.push(error),
+                }
+                continue;
+            }
             let url = format!("{}/{}", base.trim_end_matches('/'), ui_asset_name());
             match download_file(&url, &paths.staged_ui(), paths, target_tag) {
                 Ok(()) => return Ok(()),
@@ -1404,6 +1414,17 @@ fn ui_asset_name() -> &'static str {
     } else {
         "suzent-linux-x86_64"
     }
+}
+
+fn write_staged_file(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+    let temporary = destination.with_extension("download");
+    let result = fs::write(&temporary, bytes)
+        .map_err(display_io("write downloaded asset"))
+        .and_then(|()| rename_with_retry(&temporary, destination, "finish downloaded asset"));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn download_file(

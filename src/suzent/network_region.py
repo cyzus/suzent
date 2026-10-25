@@ -9,11 +9,15 @@ module only reads those files; it never probes, so importing it is free.
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
 import os
 import platform
 import re
+import shutil
 import sys
+import tarfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,6 +25,9 @@ from pathlib import Path
 REPO = "cyzus/suzent"
 MIRROR_RELEASE_BASE = "https://registry.npmmirror.com/-/binary/suzent"
 GITHUB_RELEASE_BASE = f"https://github.com/{REPO}/releases/download"
+# Release CI also publishes each platform's release files as the npm package
+# ``@suzent/desktop-<platform>``, which npmmirror copies without review.
+NPM_MIRROR_REGISTRY = "https://registry.npmmirror.com"
 GITHUB_REPO_URL = f"https://github.com/{REPO}.git"
 # Gitee pull-mirrors the GitHub repository, tags and branches included.
 GITEE_REPO_URL = "https://gitee.com/cyzus/suzent.git"
@@ -113,7 +120,98 @@ def release_bases(version: str) -> list[str]:
 
 
 def release_asset_urls(asset_name: str, version: str) -> list[str]:
-    return [f"{base}/{asset_name}" for base in release_bases(version)]
+    """URLs to try in order for one release file.
+
+    In China mode the npm package for the file's platform comes first: it is
+    downloaded and unpacked once, then served as a ``file://`` URL.
+    """
+    urls = [f"{base}/{asset_name}" for base in release_bases(version)]
+    if (
+        china_mode()
+        and _RELEASE_TAG.match(version)
+        and not os.environ.get("SUZENT_RELEASE_BASE_URL", "").strip()
+    ):
+        package = _npm_release_dir(npm_platform_for(asset_name), version)
+        if package is not None and (package / asset_name).is_file():
+            urls.insert(0, (package / asset_name).as_uri())
+    return urls
+
+
+_NPM_PLATFORMS = {
+    "windows-x86_64": "win32-x64",
+    "macos-aarch64": "darwin-arm64",
+    "macos-x86_64": "darwin-x64",
+    "linux-x86_64": "linux-x64",
+}
+
+
+def npm_platform_for(asset_name: str) -> str:
+    """npm platform of the package carrying ``asset_name``. Files every package
+    carries, such as SHA256SUMS, come from this machine's."""
+    for suffix, npm_platform in _NPM_PLATFORMS.items():
+        if suffix in asset_name:
+            return npm_platform
+    if sys.platform == "win32":
+        return "win32-x64"
+    if sys.platform == "darwin":
+        arm = platform.machine().lower() in {"arm64", "aarch64"}
+        return "darwin-arm64" if arm else "darwin-x64"
+    return "linux-x64"
+
+
+def npm_tarball_url(npm_platform: str, version: str) -> str:
+    name = f"desktop-{npm_platform}"
+    return f"{NPM_MIRROR_REGISTRY}/@suzent/{name}/-/{name}-{version.lstrip('v')}.tgz"
+
+
+def unpack_npm_package(tarball: bytes, target: Path) -> None:
+    """Writes the top-level files of an npm tarball (``package/<name>``) into
+    ``target``, ignoring anything nested or that is not a regular file."""
+    target.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(tarball))) as archive:
+        for member in archive.getmembers():
+            name = member.name.removeprefix("package/")
+            if (
+                not member.isfile()
+                or name == member.name
+                or not name
+                or "/" in name
+                or name in {".", ".."}
+            ):
+                continue
+            source = archive.extractfile(member)
+            if source is not None:
+                (target / name).write_bytes(source.read())
+
+
+_npm_packages: dict[str, Path | None] = {}
+
+
+def _npm_release_dir(npm_platform: str, version: str) -> Path | None:
+    """The unpacked npm package for ``version``, downloaded at most once per
+    process and cached under ``~/.suzent/cache``; ``None`` when unavailable."""
+    url = npm_tarball_url(npm_platform, version)
+    if url in _npm_packages:
+        return _npm_packages[url]
+    target = _state_dir() / "cache" / "npm" / f"desktop-{npm_platform}" / version
+    result: Path | None = target
+    if not (target / "SHA256SUMS").is_file():
+        try:
+            request = urllib.request.Request(url, headers=_USER_AGENT)
+            with urllib.request.urlopen(request, timeout=300) as response:
+                tarball = response.read()
+            staging = target.with_name(f"{version}.partial")
+            shutil.rmtree(staging, ignore_errors=True)
+            unpack_npm_package(tarball, staging)
+            # Only the newest release is worth keeping; each is tens of MB.
+            for old in target.parent.iterdir():
+                if old != staging:
+                    shutil.rmtree(old, ignore_errors=True)
+            staging.replace(target)
+        except (OSError, EOFError, tarfile.TarError):
+            result = None
+    _npm_packages[url] = result
+    return result
 
 
 def latest_tag_in_listing(listing: str) -> str:
@@ -149,6 +247,30 @@ def _latest_from_mirror(timeout: float) -> str:
     return tag
 
 
+def tag_from_npm_dist_tags(body: str) -> str:
+    """``vX.Y.Z`` from npm ``dist-tags``, or ``""``. The 0.0.0 placeholder that
+    only exists so Trusted Publishing could be set up does not count."""
+    try:
+        latest = json.loads(body).get("latest", "")
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+    tag = f"v{latest}"
+    return tag if _RELEASE_TAG.match(tag) and tag != "v0.0.0" else ""
+
+
+def _latest_from_npm(timeout: float) -> str:
+    url = (
+        f"{NPM_MIRROR_REGISTRY}/-/package/@suzent/"
+        f"desktop-{npm_platform_for('')}/dist-tags"
+    )
+    request = urllib.request.Request(url, headers=_USER_AGENT)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        tag = tag_from_npm_dist_tags(response.read().decode("utf-8"))
+    if not tag:
+        raise ValueError("npm mirror has no stable release")
+    return tag
+
+
 def _latest_from_api(timeout: float) -> str:
     request = urllib.request.Request(_LATEST_RELEASE_API, headers=_USER_AGENT)
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -178,7 +300,7 @@ def fetch_latest_release(timeout: float = 10.0) -> dict:
     """
     sources = [_latest_from_api, _latest_from_redirect]
     if china_mode():
-        sources.insert(0, _latest_from_mirror)
+        sources[:0] = [_latest_from_npm, _latest_from_mirror]
     errors = []
     for source in sources:
         try:
