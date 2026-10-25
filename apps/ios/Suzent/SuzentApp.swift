@@ -637,6 +637,8 @@ struct ContentView: View {
     }
 
     private func conversation(_ chat: Chat) -> some View {
+        GeometryReader { viewport in
+        ZStack(alignment: .bottom) {
         VStack(spacing: 0) {
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
                                    startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
@@ -702,8 +704,13 @@ struct ContentView: View {
                 .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
                 .padding(.trailing, 2).padding(.bottom, 2)
                 .padding(.horizontal, 12).padding(.bottom, 8)
-            AttachmentPanel(model: model, expanded: $attachmentsExpanded)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: attachmentsExpanded)
+        }.frame(width: viewport.size.width, height: viewport.size.height)
+            .offset(y: attachmentsExpanded ? -200 : 0)
+        AttachmentPanel(model: model, expanded: $attachmentsExpanded)
+            .frame(height: 200).offset(y: attachmentsExpanded ? 0 : 200)
+            .allowsHitTesting(attachmentsExpanded).accessibilityHidden(!attachmentsExpanded)
+        }.clipped()
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: chat.id) { await model.watchApprovals(chat.id) }

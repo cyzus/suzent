@@ -29,7 +29,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AttachmentPanel(model: MobileModel, visible: Boolean, close: () -> Unit) {
+fun AttachmentPanel(model: MobileModel, close: () -> Unit) {
     val context = LocalContext.current
     // Survives the activity being recreated while the camera app is in front.
     var capturePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -62,11 +62,10 @@ fun AttachmentPanel(model: MobileModel, visible: Boolean, close: () -> Unit) {
         else { pendingCamera = extension; permission.launch(Manifest.permission.CAMERA) }
     }
 
-    androidx.compose.animation.AnimatedVisibility(visible = visible,
-        enter = androidx.compose.animation.expandVertically(expandFrom = Alignment.Bottom),
-        exit = androidx.compose.animation.shrinkVertically(shrinkTowards = Alignment.Bottom)) {
-        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 20.dp, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+        Row(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             AttachmentOption(R.drawable.ic_attach_media, stringResource(R.string.attach_media), Modifier.weight(1f)) {
                 close(); media.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             }
@@ -86,10 +85,10 @@ private fun AttachmentOption(icon: Int, label: String, modifier: Modifier, onCli
         .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(60.dp).background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+            .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(28.dp))
         }
-        Text(label, fontSize = PresentationTokens.typeCaption.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = PresentationTokens.typeCaption.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -557,6 +558,12 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             scroll.animateScrollToItem(0)
         }
     }
+    val trayHeight by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (attachmentsExpanded) 200.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(220), label = "attachment tray")
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+    val viewportHeight = maxHeight
+    Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
     val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
@@ -624,7 +631,13 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         }
     }
     }
-    AttachmentPanel(model, visible = attachmentsExpanded, close = { attachmentsExpanded = false })
+    }
+    Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).fillMaxWidth().height(trayHeight).clipToBounds()) {
+        Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).fillMaxWidth().requiredHeight(200.dp)) {
+            AttachmentPanel(model, close = { attachmentsExpanded = false })
+        }
+    }
+    }
     if (modelsExpanded) SuzentSelectionPanel(
         title = stringResource(R.string.desktop_model),
         options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().sorted().map { it to it },

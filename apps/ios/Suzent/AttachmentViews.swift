@@ -121,18 +121,15 @@ struct AttachmentPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if expanded {
+            Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
                 HStack(alignment: .top, spacing: 16) {
                     attachmentOption("Photos and videos", icon: "photo", source: .photos)
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
                         attachmentOption("Camera", icon: "camera", source: .camera)
                     }
                     attachmentOption("Files", icon: "doc", source: .files)
-                }.padding(.horizontal, 20).padding(.vertical, 24)
-                    .background(Color.suzentText.opacity(0.04))
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }.clipped()
+                }.padding(.horizontal, 20).frame(maxHeight: .infinity)
+        }.background(Color.suzentSurface).clipped()
         .photosPicker(isPresented: $showPhotos, selection: $photoItems,
                       maxSelectionCount: max(1, maxAttachments - model.attachments.count),
                       matching: .any(of: [.images, .videos]))
@@ -165,7 +162,7 @@ struct AttachmentPanel: View {
             VStack(spacing: 8) {
                 Image(systemName: icon).font(.system(size: 28, weight: .regular))
                     .frame(width: 60, height: 60).background(Color.suzentSurface)
-                    .overlay(Rectangle().strokeBorder(Color.suzentOutline.opacity(0.2), lineWidth: 1))
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 Text(label).font(.system(size: PresentationTokens.typeCaption)).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, minHeight: 80)
         }
