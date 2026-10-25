@@ -243,6 +243,9 @@ const AGUIPartsContent: React.FC<{
   return (
     <TurnActivity
       finalStart={getFinalContentStart(renderGroups)}
+      persistentIndices={renderGroups.flatMap((group, index) =>
+        group.type === 'single' && group.chunk.type === 'a2ui' ? [index] : []
+      )}
       isStreaming={Boolean(isStreaming)}
       durationSeconds={workedDurationSeconds}
       startedAtMs={streamStartedAtMs}
@@ -1187,6 +1190,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           >
             <TurnActivity
               finalStart={getFinalContentStart(legacyRenderGroups)}
+              persistentIndices={legacyRenderGroups.flatMap((group, index) =>
+                group.type === 'single' && group.chunk.type === 'a2ui' ? [index] : []
+              )}
               isStreaming={isStreamingThis}
               durationSeconds={workedDurationSeconds}
               startedAtMs={streamStartedAtMs}
