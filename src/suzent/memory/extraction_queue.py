@@ -180,7 +180,10 @@ def to_entry(message: Any, position: Position, ts: Optional[str]) -> Optional[En
 def _message_key(message: Any) -> str:
     if not isinstance(message, dict):
         return repr(message)
-    return f"{message.get('role')}\0{message.get('content')}"
+    # A resumed tool approval fills in tool output without touching content.
+    return json.dumps(
+        [message.get("role"), message.get("content"), _actions(message)], default=str
+    )
 
 
 def _legacy_pending_turns() -> dict[str, int]:

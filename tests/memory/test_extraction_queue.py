@@ -346,6 +346,31 @@ async def test_retried_reply_is_extracted(log, queue, memory):
     assert "retry" in memory.batches[1].split("## New turns")[1]
 
 
+async def test_resumed_tool_result_is_extracted(log, queue, memory):
+    tool = {"type": "tool", "toolName": "deploy", "args": {}}
+    log.say("c1", "Deploy the site")
+    log.event("c1", "message.append", {"role": "assistant", "parts": [tool]})
+    await queue.flush("c1", "u1")
+    log.event(
+        "c1",
+        "messages.splice",
+        {
+            "start": 1,
+            "delete": 1,
+            "insert": [
+                {
+                    "role": "assistant",
+                    "parts": [{**tool, "output": "failed: disk full"}],
+                }
+            ],
+        },
+    )
+
+    await queue.flush("c1", "u1")
+
+    assert "disk full" in memory.batches[1].split("## New turns")[1]
+
+
 async def test_system_chats_are_never_extracted(log, queue, memory):
     log.event("dream", "config.merge", {"set": {"platform": "dream"}, "unset": []})
     log.say("dream", "Consolidate the logs")
