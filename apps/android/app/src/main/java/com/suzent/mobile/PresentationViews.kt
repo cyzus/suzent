@@ -24,6 +24,7 @@ import kotlin.math.sin
 import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.conflate
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -110,7 +111,7 @@ val suzentLink: Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), softStreaming: Boolean = false, textSize: Float = PresentationTokens.typeChat.toFloat()) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat()) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -127,6 +128,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     val codeForeground = Color(if (dark) PresentationTokens.text_dark else PresentationTokens.code_text)
     val codeHeader = Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.black)
     val link = suzentLink.toArgb()
+    val tablePlugin = remember(context) { TablePlugin.create(context) }
     val renderer = remember(context, dark) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
@@ -143,20 +145,27 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     .codeBlockTextColor(codeForeground.toArgb())
                     .linkColor(link)
             }
-        }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
+        }).usePlugin(tablePlugin).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
-    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, renderedText) {
-        value = withContext(Dispatchers.Default) {
-            synchronized(renderer) {
-                markdownSections(renderer.parse(renderedText)).map { section ->
-                    when (section) {
-                        is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
-                        is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+    val latestText by rememberUpdatedState(renderedText)
+    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer) {
+        // Finish the current parse, then render the newest pending text. Cancelling on
+        // every token can starve publication when a long document takes >50 ms to parse.
+        snapshotFlow { latestText }.conflate().collect { markdown ->
+            value = withContext(Dispatchers.Default) {
+                synchronized(renderer) {
+                    markdownSections(renderer.parse(markdown)).map { section ->
+                        when (section) {
+                            is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
+                            is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+                        }
                     }
                 }
             }
         }
     }
+    fun binding(body: CharSequence) =
+        MarkdownBinding(body, textSize, foreground, link, dark, pendingLink, icons, citationSources)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             if (block.language != null) {
@@ -172,28 +181,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     }
                 }
             } else {
-                AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    SoftStreamTextView(ctx).apply { this.textSize = textSize; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
-                }, update = { view ->
-                    view.textSize = textSize
-                    view.setTextColor(foreground); view.setLinkTextColor(link)
-                    val styled = android.text.SpannableString(block.body)
-                    styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
-                        val start = styled.getSpanStart(span)
-                        val end = styled.getSpanEnd(span)
-                        if (styled.subSequence(start, end).startsWith("↗  ")) {
-                            val target = (span as? android.text.style.URLSpan)?.url
-                            val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
-                            val icon = citationSources.firstOrNull { it.id == sourceId }?.favicon?.let(icons::get)
-                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        }
-                    }
-                    renderer.setParsedMarkdown(view, view.prepare(styled, softStreaming))
-                    // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
-                    // from installing its link handler automatically.
-                    view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
-                    view.highlightColor = android.graphics.Color.TRANSPARENT
-                })
+                MarkdownProse(binding(block.body), renderer, tablePlugin, Modifier.fillMaxWidth())
             }
         }
     }
@@ -232,6 +220,34 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
             }
         }
     }
+}
+
+
+@Composable
+private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier) {
+    AndroidView(modifier = modifier, factory = { ctx ->
+        StableTableTextView(ctx).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+    }, update = update@ { view ->
+        if (view.tag == binding) return@update
+        view.tag = binding
+        view.textSize = binding.textSize
+        view.tablePlugin = tablePlugin
+        view.setTextColor(binding.foreground); view.setLinkTextColor(binding.link)
+        val styled = android.text.SpannableString(binding.body)
+        styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
+            val start = styled.getSpanStart(span)
+            val end = styled.getSpanEnd(span)
+            if (styled.subSequence(start, end).startsWith("↗  ")) {
+                val target = (span as? android.text.style.URLSpan)?.url
+                val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
+                val icon = binding.sources.firstOrNull { it.id == sourceId }?.favicon?.let(binding.icons::get)
+                styled.setSpan(CitationBadgeSpan(binding.dark, target == binding.selectedLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        renderer.setParsedMarkdown(view, view.prepareMarkdown(styled))
+        view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.create()
+        view.highlightColor = android.graphics.Color.TRANSPARENT
+    })
 }
 
 private object CitationIcons {
@@ -295,6 +311,17 @@ private class CitationBadgeSpan(private val dark: Boolean, private val selected:
 }
 
 private data class MarkdownBlock(val body: CharSequence, val language: String? = null)
+
+private data class MarkdownBinding(
+    val body: CharSequence,
+    val textSize: Float,
+    val foreground: Int,
+    val link: Int,
+    val dark: Boolean,
+    val selectedLink: String?,
+    val icons: Map<String, android.graphics.Bitmap>,
+    val sources: List<CitationSource>,
+)
 
 @Composable
 fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackModel: String? = null,
@@ -603,7 +630,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") StreamingMarkdown(chunk.first().text, live && index == chunks.lastIndex, citationSources)
+                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
                 else ActivityRail(chunk, live)
             }
         }

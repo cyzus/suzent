@@ -93,7 +93,7 @@ public struct FileAttachment: Decodable, Sendable, Equatable {
     }
 }
 
-public struct ChatMessage: Decodable, Sendable {
+public struct ChatMessage: Decodable, Sendable, Equatable {
     public let role: String
     public let content: String
 

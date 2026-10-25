@@ -1,10 +1,6 @@
 package com.suzent.mobile
 
 import android.os.Bundle
-import android.animation.ValueAnimator
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -72,7 +68,8 @@ private fun MobileScreen(model: MobileModel) {
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     LaunchedEffect(Unit) { if (model.canReconnect && !model.connected) model.connect() }
-    LaunchedEffect(model.connected) {
+    LaunchedEffect(model.connected, model.isDemo) {
+        showSettings = false
         if (model.connected) { drawer.close(); model.watchNavigation() }
         else { showSettings = false; drawer.close() }
     }
@@ -129,6 +126,14 @@ private fun MobileScreen(model: MobileModel) {
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+                if (model.isDemo) {
+                    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(horizontal = 16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(stringResource(R.string.demo_banner), modifier = Modifier.weight(1f), color = Color.Black,
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = model::exitDemo, enabled = !model.busy) { Text(stringResource(R.string.demo_exit), color = Color.Black) }
+                    }
+                }
                 model.error?.let { message ->
                     SuzentNotice(message) { model.error = null }
                 }
@@ -489,23 +494,44 @@ private fun SettingsView(model: MobileModel) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
+    var aboutExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PresentationTokens.spacePage.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(stringResource(R.string.settings), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
-        Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
-            Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { accessExpanded = !accessExpanded }.heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(stringResource(R.string.access), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (accessExpanded) "−" else "+")
+        if (model.isDemo) {
+            Text(stringResource(R.string.demo_intro))
+            Text(stringResource(R.string.demo_limits), style = MaterialTheme.typography.bodySmall)
+            SuzentAction(stringResource(R.string.demo_reset), model::resetDemo, enabled = !model.busy)
+            SuzentAction(stringResource(R.string.demo_exit), model::exitDemo, enabled = !model.busy)
+        } else {
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
+                Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { accessExpanded = !accessExpanded }.heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(stringResource(R.string.access), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (accessExpanded) "−" else "+")
+                }
+                if (accessExpanded) model.device?.let { Box(Modifier.padding(top = PresentationTokens.spaceMedium.dp)) { ClientPermissionsView(it, model.origin) } }
             }
-            if (accessExpanded) model.device?.let { Box(Modifier.padding(top = PresentationTokens.spaceMedium.dp)) { ClientPermissionsView(it, model.origin) } }
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
+                SuzentToggle(stringResource(R.string.enable_node), model.nodeEnabled, model::toggleNode)
+                Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
+            SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
+            Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
+                Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { aboutExpanded = !aboutExpanded }
+                    .heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(stringResource(R.string.about), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (aboutExpanded) "−" else "+")
+                }
+                if (aboutExpanded) {
+                    SuzentTextButton(onClick = model::startDemo, enabled = !model.busy && !model.streaming) {
+                        Text(stringResource(R.string.demo_enter), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
-        Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
-            SuzentToggle(stringResource(R.string.enable_node), model.nodeEnabled, model::toggleNode)
-            Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
-        SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
-        Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -518,9 +544,6 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val focus = LocalFocusManager.current
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(model.openedVersion) { scroll.scrollToItem(0) }
-    val followLiveGrowth by remember(scroll) {
-        derivedStateOf { !scroll.canScrollBackward && !scroll.isScrollInProgress }
-    }
     var modelsExpanded by remember(chat.id) { mutableStateOf(false) }
     LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
@@ -536,13 +559,9 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item(key = "approvals") { ApprovalCards(model) }
         if (model.streaming || model.liveParts.isNotEmpty()) item(key = "live") {
-            // The reversed list pins the bottom; smooth line-height changes instead of
-            // starting a new scroll animation for every streamed text update.
-            val growthModifier = if (model.streaming && model.liveParts.any { it.type == "text" && it.text.isNotBlank() }
-                && followLiveGrowth && ValueAnimator.areAnimatorsEnabled()) {
-                Modifier.animateContentSize(animationSpec = tween(120, easing = LinearOutSlowInEasing))
-            } else Modifier
-            Column(modifier = growthModifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // The reversed list follows growth directly; restarting a height tween on
+            // each batch keeps clipping the newest line while text is still arriving.
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AssemblyBadge(thinking = showAssemblyBadge(model.liveParts, model.streaming))
                 if (model.liveParts.isNotEmpty()) ActivityContent(model.liveParts, live = model.streaming)
             }
@@ -625,6 +644,9 @@ private fun StartPage(model: MobileModel, chat: Chat, keyboardVisible: Boolean) 
                 model.selected = model.selected?.copy(projectId = id, projectName = model.projects.first { it.id == id }.name)
                 projectsExpanded = false
             }
+        }
+        if (model.isDemo) model.demoPrompts.forEach { prompt ->
+            SuzentAction(prompt, { model.draft = prompt; model.send() }, enabled = !model.busy && !model.streaming)
         }
     }
 }

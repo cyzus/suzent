@@ -1,0 +1,6 @@
+{
+  "products": {
+    "mobile": "patch"
+  },
+  "summary": "Stabilize mobile streamed replies with background event batching, coalesced Markdown rendering, cached history presentation, and direct bottom following; remove fragment opacity fades and inline cursors that caused flashing and repeated reflow."
+}

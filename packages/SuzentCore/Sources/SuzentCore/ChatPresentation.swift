@@ -200,15 +200,32 @@ public struct LiveActivityBuffer: Sendable {
     }
 }
 
-public func streamingMarkdown(_ text: String, active: Bool) -> String {
-    guard active, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return text }
-    let lastLine = text.split(separator: "\n", omittingEmptySubsequences: false).last?.trimmingCharacters(in: .whitespaces) ?? ""
-    let blockEnding = lastLine.hasPrefix("```") || lastLine.hasPrefix("~~~") || lastLine.contains("|")
-    return text + (blockEnding ? "\n\n▍" : " ▍")
-}
-
 public func showAssemblyBadge(_ parts: [MessagePart], streaming: Bool) -> Bool {
     streaming && !parts.contains {
         $0.type != "text" || !($0.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// Accumulates wire events off the main actor; only display batches reach the UI.
+public actor LiveActivityAccumulator {
+    private var buffer = LiveActivityBuffer()
+    public init() {}
+    public func consume(_ event: StreamEvent) { buffer.consume(event) }
+    public func drain() -> [MessagePart]? { buffer.drain() }
+}
+
+/// Saved rows do not change when a new token arrives in the live reply.
+@MainActor public final class ChatPresentationCache {
+    private var messages: [ChatMessage] = []
+    private var toolIDs: Set<String> = []
+    private var rows: [DisplayMessage] = []
+    public init() {}
+
+    public func content(_ messages: [ChatMessage], liveToolIDs: Set<String> = []) -> [DisplayMessage] {
+        guard self.messages != messages || toolIDs != liveToolIDs else { return rows }
+        self.messages = messages
+        toolIDs = liveToolIDs
+        rows = presentMessages(messages, liveToolIds: liveToolIDs)
+        return rows
     }
 }

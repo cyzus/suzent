@@ -172,4 +172,12 @@
     <string name="connection_help_detail">Check that Suzent is running on your desktop and both devices are online.</string>
     <string name="reminder_expanded">Expanded</string>
     <string name="reminder_collapsed">Collapsed</string>
+    <string name="demo_enter">Try offline demo</string>
+    <string name="demo_intro">Explore with sample data. No desktop, API key, or internet required.</string>
+    <string name="demo_banner">Offline demo · Scripted replies, no AI calls</string>
+    <string name="demo_exit">Exit demo</string>
+    <string name="demo_reset">Reset demo</string>
+    <string name="demo_limits">Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.</string>
+    <string name="demo_load_error">Could not open the demo workspace.</string>
+    <string name="about">About</string>
 </resources>

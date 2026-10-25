@@ -182,6 +182,7 @@ private struct ChatSidebarRow: View {
 struct ContentView: View {
     @Bindable var model: MobileModel
     @State private var showSidebar = false
+    @State private var transcriptCache = ChatPresentationCache()
     @State private var showSettings = false
     @State private var repairScanner = false
     @State private var showConnectionHelp = false
@@ -266,6 +267,14 @@ struct ContentView: View {
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
+                        if model.isDemo {
+                            HStack {
+                                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
+                                Spacer()
+                                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).disabled(model.busy)
+                            }.padding(.horizontal, 16).padding(.vertical, 8)
+                                .background(Color(presentation: PresentationTokens.yellow)).foregroundStyle(.black)
+                        }
                         if let error = model.error {
                             SuzentNotice(message: error) { model.error = nil }
                         }
@@ -347,6 +356,9 @@ struct ContentView: View {
         .accessibilityHidden(showModelPicker || showProjectPicker)
         .overlay { selectionOverlay }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showModelPicker || showProjectPicker)
+        .onChange(of: model.isDemo) { _, _ in
+            showSettings = false; showSidebar = false; showModelPicker = false; showProjectPicker = false; composing = false
+        }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
     }
@@ -594,17 +606,31 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Settings").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                SuzentDisclosure(title: "Desktop access") {
-                    if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
+                if model.isDemo {
+                    Text("Explore with sample data. No desktop, API key, or internet required.")
+                    Text("Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.")
+                        .font(.footnote).foregroundStyle(Color.suzentMuted)
+                    Button("Reset demo") { Task { await model.resetDemo() } }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
+                    Button("Exit demo") { model.exitDemo() }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
+                } else {
+                    SuzentDisclosure(title: "Desktop access") {
+                        if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
+                        Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
+                        Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
+                    }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                    Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
+                    Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
+                    SuzentDisclosure(title: "About") {
+                        Button("Try offline demo") { Task { await model.startDemo() } }
+                            .font(.system(size: PresentationTokens.typeCaption))
+                            .foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                            .buttonStyle(.plain).disabled(model.busy || model.streaming)
+                    }
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
-                    Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
-                }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
             }.padding(PresentationTokens.spacePage)
         }
     }
@@ -615,7 +641,7 @@ struct ContentView: View {
                                    startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
-                        let messages = presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
+                        let messages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
                         let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
                         let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
@@ -672,6 +698,12 @@ struct ContentView: View {
             SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
                 composing = false; showProjectPicker = true
             }.disabled(model.busy || model.projects.isEmpty)
+            if model.isDemo {
+                ForEach(model.demoPrompts, id: \.self) { prompt in
+                    Button(prompt) { model.draft = prompt; Task { await model.send() } }
+                        .buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                }
+            }
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 

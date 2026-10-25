@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "minor"},
+  "summary": "Add a bilingual offline demo on iOS and Android with scripted streaming, tool approvals, local attachments, persistent sample conversations, and reset/exit controls without a backend or model API key."
+}

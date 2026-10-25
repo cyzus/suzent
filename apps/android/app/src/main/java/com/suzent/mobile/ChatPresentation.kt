@@ -135,8 +135,8 @@ class LiveActivityBuffer {
     private var reasonIndex = -1
     private val startedArgs = mutableSetOf<String>()
     private var dirty = false
-    fun drain(): List<MessagePart>? = if (!dirty) null else normalizeParts(parts).also { dirty = false }
-    fun consume(event: org.json.JSONObject) {
+    @Synchronized fun drain(): List<MessagePart>? = if (!dirty) null else normalizeParts(parts).also { dirty = false }
+    @Synchronized fun consume(event: org.json.JSONObject) {
         val type = event.optString("type")
         val id = event.optString("toolCallId")
         val delta = event.optString("delta")
@@ -188,13 +188,6 @@ class LiveActivityBuffer {
         }
         dirty = true
     }
-}
-
-fun streamingMarkdown(text: String, active: Boolean): String {
-    if (!active || text.isBlank()) return text
-    val lastLine = text.substringAfterLast('\n').trim()
-    val blockEnding = lastLine.startsWith("```") || lastLine.startsWith("~~~") || lastLine.contains('|')
-    return text + if (blockEnding) "\n\n▍" else " ▍"
 }
 
 fun showAssemblyBadge(parts: List<MessagePart>, streaming: Boolean): Boolean =

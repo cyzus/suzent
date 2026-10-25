@@ -113,4 +113,31 @@ class ChatPresentationTest {
         assertEquals(listOf(FileAttachment("photo.jpg", "image/jpeg")), row.files)
         assertEquals("", row.text)
     }
+    @Test fun backgroundActivityBatchesKeepEveryDeltaAndReset() {
+        val buffer = LiveActivityBuffer()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val producer = executor.submit {
+                repeat(2_000) {
+                    buffer.consume(JSONObject().put("type", "TEXT_MESSAGE_CONTENT").put("delta", "块😀"))
+                }
+            }
+            var latest = ""
+            while (!producer.isDone) {
+                buffer.drain()?.let { parts ->
+                    val text = parts.firstOrNull()?.text.orEmpty()
+                    org.junit.Assert.assertTrue(text.startsWith(latest))
+                    latest = text
+                }
+                Thread.yield()
+            }
+            producer.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            buffer.drain()?.let { latest = it.firstOrNull()?.text.orEmpty() }
+            assertEquals("块😀".repeat(2_000), latest)
+            buffer.consume(JSONObject().put("type", "STREAM_RESET"))
+            buffer.consume(JSONObject().put("type", "TEXT_MESSAGE_CONTENT").put("delta", "尾"))
+            assertEquals("尾", buffer.drain()?.single()?.text)
+        } finally { executor.shutdownNow() }
+    }
+
 }
