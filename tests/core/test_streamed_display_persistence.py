@@ -193,6 +193,67 @@ def test_snapshot_is_detached_from_mutable_stream_parts():
     assert message["parts"][0]["displayData"]["value"] == "before"
 
 
+@pytest.mark.parametrize("target", ["inline", "canvas"])
+async def test_surface_events_survive_real_stream_and_reload(
+    database, target: str
+) -> None:
+    import asyncio
+    from pydantic_ai import Agent
+    from pydantic_ai.models.function import FunctionModel
+    from suzent.core.agent_deps import AgentDeps
+    from suzent.streaming import stream_agent_responses
+
+    async def respond(messages, info):
+        yield "Finished"
+
+    deps = AgentDeps(a2ui_queue=asyncio.Queue())
+    for revision in (1, 2):
+        await deps.a2ui_queue.put(
+            {
+                "event": "a2ui.render",
+                "id": "persistent",
+                "target": target,
+                "rev": revision,
+                "component": {"type": "text", "content": str(revision)},
+            }
+        )
+    await deps.a2ui_queue.put(
+        {
+            "event": "a2ui.render",
+            "id": "question",
+            "target": "inline",
+            "deferred": True,
+            "component": {"type": "text", "content": "Question"},
+        }
+    )
+    agent = Agent(FunctionModel(stream_function=respond), deps_type=AgentDeps)
+    chunks = [
+        chunk
+        async for chunk in stream_agent_responses(
+            agent, "render", deps, run_id="surface-run"
+        )
+    ]
+    assert any("a2ui.render" in chunk for chunk in chunks)
+    chat_id = database.create_chat(title="surface", config={})
+    assert await ChatProcessor()._persist_state(
+        chat_id,
+        [],
+        None,
+        [],
+        "render",
+        "Finished",
+        display_run_id="surface-run",
+        streamed_message=deps.streamed_message,
+    )
+    database.reconcile_chat_logs()
+    parts = database.get_chat(chat_id).messages[-1]["parts"]
+    surfaces = [part["surface"] for part in parts if part["type"] == "a2ui"]
+    assert len(surfaces) == 1
+    assert surfaces[0]["id"] == "persistent"
+    assert surfaces[0]["target"] == target
+    assert surfaces[0]["rev"] == 2
+
+
 async def test_completed_run_timing_survives_persistence(database) -> None:
     chat_id = database.create_chat(title="timed", config={})
     accumulator = _DraftDisplayAccumulator(chat_id, "timed-run")
