@@ -446,26 +446,6 @@ function InstallerDownloads(): ReactNode {
           </select>
         </div>
       </div>
-      <div className={styles.mobileDownloads}>
-        <a href="https://testflight.apple.com/join/gjcSRyZj">
-          {t({
-            id: "homepage.download.iosBeta",
-            message: "iPhone & iPad · TestFlight Beta",
-          })}
-        </a>
-        <Link href={localePath("/docs/getting-started/platforms#phone", locale)}>
-          {t({
-            id: "homepage.download.phoneGuide",
-            message: "Phone setup guide",
-          })}
-        </Link>
-        <p>
-          {t({
-            id: "homepage.download.betaAvailability",
-            message: "Beta access depends on approved builds and available places.",
-          })}
-        </p>
-      </div>
       <div className={styles.terminalAlternative}>
         <div className={styles.terminalHeader}>
           <p className={styles.terminalLabel}>
@@ -507,6 +487,17 @@ function InstallerDownloads(): ReactNode {
           <pre className={styles.cmdText}>suzent start</pre>
           <CopyButton text="suzent start" />
         </div>
+      </div>
+      <div className={styles.mobileDownloads}>
+        <Link className={styles.mobileLabel} href={localePath("/docs/getting-started/platforms#phone", locale)}>
+          {t({ id: "homepage.download.mobile", message: "Mobile" })}
+        </Link>
+        <a href="https://testflight.apple.com/join/gjcSRyZj">
+          {t({ id: "homepage.download.iosBeta", message: "iOS · TestFlight" })}
+        </a>
+        <a href="https://github.com/cyzus/suzent/releases/download/mobile-v0.4.1/suzent-0.4.1-android.apk">
+          {t({ id: "homepage.download.androidApk", message: "Android · APK" })}
+        </a>
       </div>
     </section>
   );

@@ -324,12 +324,12 @@
     "message": "完全开源。"
   },
   "homepage.download.iosBeta": {
-    "message": "iPhone 与 iPad · TestFlight 测试版"
+    "message": "iOS · TestFlight"
   },
-  "homepage.download.phoneGuide": {
-    "message": "手机连接指南"
+  "homepage.download.mobile": {
+    "message": "移动端"
   },
-  "homepage.download.betaAvailability": {
-    "message": "测试版需有获批构建且测试名额未满时才能加入。"
+  "homepage.download.androidApk": {
+    "message": "Android · APK"
   }
 }
