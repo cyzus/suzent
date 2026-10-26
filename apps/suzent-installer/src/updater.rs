@@ -238,6 +238,16 @@ pub fn run(args: &[String], repair: bool) -> i32 {
                 "Suzent {} failed: {error}",
                 if repair { "repair" } else { "update" }
             );
+            // Nobody asked for a silent update, so a failed one must not leave
+            // the user without the app they just opened. The rollback already
+            // restored the previous version, or the app reports the repair.
+            if args.iter().any(|arg| arg == "--silent") {
+                if let (Some(relaunch), Some(root)) =
+                    (flag_value(args, "--relaunch"), flag_value(args, "--dir"))
+                {
+                    let _ = launch_app(&PathBuf::from(relaunch), Path::new(&root));
+                }
+            }
             1
         }
     }

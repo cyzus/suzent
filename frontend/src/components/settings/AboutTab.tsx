@@ -5,9 +5,12 @@ import { useI18n } from '../../i18n';
 import { fetchSystemVersion, shortCommit } from '../../lib/api';
 import {
   checkDesktopUpdate,
+  getAutoUpdateEnabled,
+  setAutoUpdateEnabled,
   startDesktopUpdateAndRestart,
   type UpdateStatus,
 } from '../../lib/desktopUpdates';
+import { isWeb } from '../../lib/runtime';
 import { SuzentLogo } from '../SuzentLogo';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
@@ -32,6 +35,33 @@ export function AboutTab(): React.ReactElement {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [startingUpdate, setStartingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isWeb()) return;
+    let active = true;
+    getAutoUpdateEnabled()
+      .then((enabled) => {
+        if (active) setAutoUpdate(enabled);
+      })
+      .catch(() => {
+        if (active) setAutoUpdate(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleAutoUpdateChange(enabled: boolean): Promise<void> {
+    setAutoUpdate(enabled);
+    try {
+      await setAutoUpdateEnabled(enabled);
+    } catch (error) {
+      setAutoUpdate(!enabled);
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateError(t('updates.autoUpdateFailed', { error: message }));
+    }
+  }
 
   const refreshUpdateStatus = useCallback(
     async (force = false): Promise<void> => {
@@ -198,6 +228,23 @@ export function AboutTab(): React.ReactElement {
               )}
             </div>
           </div>
+
+          {autoUpdate !== null && (
+            <label className="mt-5 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={autoUpdate}
+                onChange={(e) => void handleAutoUpdateChange(e.target.checked)}
+                className="mt-0.5 h-5 w-5 border-2 border-brutal-black accent-brutal-black"
+              />
+              <span>
+                <span className="block text-xs font-bold uppercase">{t('updates.autoUpdate')}</span>
+                <span className="mt-1 block text-sm text-neutral-600 dark:text-neutral-400">
+                  {t('updates.autoUpdateDescription')}
+                </span>
+              </span>
+            </label>
+          )}
         </div>
       </SettingsCard>
     </SettingsPage>
