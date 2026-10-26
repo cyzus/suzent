@@ -1,0 +1,9 @@
+:HL["/_next/static/chunks/04p50hj_25foh.css","style"]
+:HL["/_next/static/chunks/0px3qjq0f1kt1.css","style"]
+:HL["/img/personal-agent-lineup.svg","image"]
+:HL["/img/personal-agent-anatomy.svg","image"]
+:HL["/img/personal-agent-data-routes.svg","image"]
+3:[["children",{"s":"__PAGE__","h":160}]]
+2:[["children",{"s":{"n":"path","t":"oc","k":"blog/your-agent-or-theirs","s":["zh-Hans"]},"h":65632,"c":"$Q3"}]]
+1:[["children",{"s":"(en)","h":131184,"c":"$Q2"}]]
+0:{"b":"DMFE4t77RNx_mZxQEmVcL","t":{"t":{"s":"","h":131152,"c":"$Q1"}}}
