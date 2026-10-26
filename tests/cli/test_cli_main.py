@@ -1784,3 +1784,114 @@ def test_fetch_release_webui_installs_the_verified_archive(
         ("verify", "suzent-webui.zip", "v1.2.3"),
         ("run", [str(script), "--install-archive"]),
     ]
+
+
+def _release_install(tmp_path, installed="v1.2.0"):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".suzent-bootstrap-complete").write_text("", encoding="utf-8")
+    state = tmp_path / ".suzent"
+    state.mkdir()
+    (state / "release-tag").write_text(installed, encoding="utf-8")
+    return tmp_path
+
+
+def test_auto_update_is_on_by_default_and_can_be_turned_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    assert cli_main.auto_update_enabled(tmp_path)
+    cli_main.set_auto_update(tmp_path, False)
+    assert not cli_main.auto_update_enabled(tmp_path)
+    cli_main.set_auto_update(tmp_path, True)
+    monkeypatch.setenv("SUZENT_AUTO_UPDATE", "0")
+    assert not cli_main.auto_update_enabled(tmp_path)
+
+
+def test_auto_update_allows_a_minor_release_on_a_clean_release_install(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    assert cli_main.auto_update_blocker(root, "v1.3.0") is None
+
+
+@pytest.mark.parametrize(
+    ("setup", "latest", "reason"),
+    [
+        (lambda root: cli_main.set_auto_update(root, False), "v1.3.0", "turned off"),
+        (
+            lambda root: (root / ".suzent-bootstrap-complete").unlink(),
+            "v1.3.0",
+            "development",
+        ),
+        (lambda root: None, "v2.0.0", "major version"),
+        (lambda root: None, "v1.2.0", "up to date"),
+        (
+            lambda root: (root / ".suzent" / "update-transaction.json").write_text(
+                "{}", encoding="utf-8"
+            ),
+            "v1.3.0",
+            "repair",
+        ),
+    ],
+)
+def test_auto_update_blocks_what_needs_a_person(
+    monkeypatch, tmp_path, setup, latest, reason
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    setup(root)
+    assert reason in (cli_main.auto_update_blocker(root, latest) or "")
+
+
+def test_auto_update_blocks_local_source_changes(monkeypatch, tmp_path):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    (root / "tracked.txt").write_text("a", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], cwd=root, check=True)
+    assert cli_main.auto_update_blocker(root, "v1.3.0") is None
+    (root / "tracked.txt").write_text("b", encoding="utf-8")
+    assert "local source changes" in cli_main.auto_update_blocker(root, "v1.3.0")
+
+
+def test_apply_staged_update_hands_the_staged_release_to_a_silent_updater(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        cli_main,
+        "_delegate_installer_update",
+        lambda root, **kwargs: calls.append(kwargs),
+    )
+
+    assert cli_main.apply_staged_update(root) is None
+    (root / ".suzent" / "staged-update.json").write_text(
+        json.dumps({"target_tag": "v1.3.0"}), encoding="utf-8"
+    )
+    assert cli_main.apply_staged_update(root) == "v1.3.0"
+    assert calls == [{"release_tag": "v1.3.0", "relaunch": None, "silent": True}]
+
+
+def test_silent_delegation_runs_headless_without_a_window(monkeypatch, tmp_path):
+    updater = tmp_path / "updater" / "suzent-installer"
+    updater.parent.mkdir()
+    updater.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
+    monkeypatch.setattr(cli_main, "_graphical_update_available", lambda: True)
+    monkeypatch.setattr(cli_main, "_install_release_updater", lambda tag: updater)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+
+    cli_main._delegate_installer_update(
+        tmp_path, release_tag="v1.2.3", relaunch=None, silent=True
+    )
+
+    assert len(popen_calls) == 1
+    assert {"--headless", "--silent"} <= set(popen_calls[0][0])
