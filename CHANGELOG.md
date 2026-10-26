@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.18.0] - 2026-10-26
+
+<!-- highlights -->
+### Highlights
+
+- **Suzent now updates itself.** New releases download in the background while you work and install in a few seconds the next time the app closes or starts. To turn it off, uncheck Update automatically under Settings → About, or run `suzent auto-update off`.
+- **Meet Regent.** Suzent Regent sits at the top of the sidebar and watches every project. It starts project sessions and follows up on them, wakes itself to remind you or check on work, and keeps a board of chats by where they stand for you: waiting on you, running, idle or resolved. Updates that need nothing from you no longer interrupt you.
+- **Bring your other agents.** Hand a task to a coding agent such as Claude Code or Codex, set up under Settings → ACP Agents. An editor that speaks ACP, such as Zed, can also use Suzent as its agent.
+- **Talk to it.** Realtime voice mode, with a 3-D voxel stage, passes longer work to the main agent in the background. Approvals you give by voice resume that work, and your message shows what Suzent understood rather than the raw transcript. Visual analysis now accepts video too.
+- **Memory that keeps what you actually said.** Only facts you stated yourself are remembered, with the words they came from. A new Memory page groups them by topic and links each back to its conversation, MEMORY.md becomes a short map of notebook pages, and `suzent memory lint` checks the files.
+- **Sovereign over your history.** Every chat is a plain JSONL file in `~/.suzent/chats/`, written before the database, so a crash or a lost `chats.db` no longer takes your history with it. Back it up by copying one folder; `suzent chats verify` and `suzent chats rebuild-index` repair it.
+- **Install it anywhere.** In mainland China, installs and updates pick domestic mirrors automatically, including npm packages on npmmirror for the release files. Headless servers can run `suzent web` without Node, since each release ships a prebuilt web UI.
+
+**Update once more by hand.** Install 0.18.0 with the Update button or `suzent update`. From then on, new versions install themselves.
+<!-- /highlights -->
+
+### Release notes
+- Add ACP sign-in from settings, preserve sessions across authentication failures, and improve streaming responsiveness and overflow handling.
+- Expose configured ACP agents through agent_list and clarify how to start and continue external agent tasks.
+- Add terminal pairing for ACP editors with local approval, private credentials, grant-owned sessions, and revocation.
+- Add cancellable ACP sign-in with native terminals and automatic verification, and reorganize settings into readable opaque cards.
+- Distinguish user requests from agent delegation briefs in automatic approval context, and retain the current request during long tool runs.
+- Keep suggested provider models current with reviewed catalog updates.
+- Fix Canvas rendering across models: render_ui now tells every provider that a component is a JSON object, so Claude and Gemini models stop sending malformed component trees, and rejected calls report which fields to fix.
+- Fix chat activity durations across tool resumptions, exclude time waiting for answers, recover historical timings, group structured tool continuations, and keep pending approval controls visible after refresh.
+- Keep every conversation as a plain-text JSONL file in `~/.suzent/chats/`, written before the database, so conversations survive a crash or a lost `chats.db` and can be backed up by copying one folder. Adds `suzent chats verify` and `suzent chats rebuild-index`.
+- Reference chats from a compact categorized @ menu and let agents read their messages on demand with pagination.
+- A ✓ next to a project chat's title marks it resolved, and Regent's board now lists project chats by where they stand for you (waiting on you, running, idle, resolved) instead of by task.
+- Project conversations now track whether they are waiting on you, running, idle or resolved: after each reply the Decision model notes whether the conversation needs you and writes a one-line summary of where it stands.
+- Installs and updates from mainland China now pick mainland mirrors automatically from the network, with a mirror switch in the installer, and the provider settings list China-reachable providers first with links to get API keys.
+- Preserve chat history and tool activity across compaction, fail safely when summaries fail, and keep conversation forks aligned with the selected turn.
+- Update dependencies: aiohttp 3.14.4, mcp 1.30.0, opentelemetry-api 1.45.1, Pillow 13.0.0 (security fixes), vite 8.3.4, rustls 0.23.45 in the installer, and dev tooling.
+- Add the Ember accent color scheme (#FFA64D in light mode, #FF6600 in dark mode) in Appearance settings and restore the Warm dark-mode accent to yellow (#FFE666).
+- SUZENT now sits at the top of the sidebar: it watches every project, starts and follows up with project sessions, wakes itself up to remind you or check on work, and shows what is waiting on you.
+- A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
+- The app header no longer crowds on narrow windows: it keeps a gap between a long chat title and the status marks, drops the old Chat / Memory / Skills tabs (the sidebar and the console rail already navigate there), and on the narrowest widths keeps just Regent's mark and the title.
+- Show what woke a background turn, such as a message from a paired device, while the turn is still running.
+- Reorganize the memory page into Memory, Organize and Raw records tabs with topics, plain-language organizing and links back to the source conversation, and extract memories straight from the chat log instead of separate transcript copies.
+- Memory keeps only facts you said yourself, with the words they came from; MEMORY.md becomes a short map of notebook pages, one memory_update tool remembers and retracts, and suzent memory lint / cleanup check and draft fixes for your memory files.
+- Support native video input in visual analysis and preserve existing visual tool settings.
+- Stop desktop notifications from firing when you stop or steer a reply, and announce the steered reply when it finishes.
+- On a mainland China network, download release files from npm packages on npmmirror before GitHub, so installs and updates no longer wait on GitHub.
+- Add standalone two-step model setup with optional connection checks and explicit role recommendations.
+- Keep inline canvas surfaces visible when chat activity collapses and persist streamed inline and side-panel surfaces so they survive refreshes.
+- Installs without Node, such as headless Linux servers, can now open Suzent in the browser with suzent web: each release ships a prebuilt web UI that setup, the installer and updates download from the same mirrors as the other release files.
+- Prevent the entire app viewport from scrolling or bouncing when content does not overflow.
+- Show fetched model capabilities and explain provider catalog fallbacks.
+- Quiet or failed heartbeat check-ins no longer leave their prompt in the chat, and a wake-up that lands while the chat is busy retries a minute later.
+- Add realtime voice mode with a Liquid-Geo 3-D voxel stage, echo gate, and background delegation to the main agent.
+- Stop Regent from receiving a session's final answer twice when the session already reported it to Regent.
+- Keep Regent's replies short and let it note updates that need nothing from you without a notification.
+- The ✓ that marks a chat resolved now shows only on chats opened from Regent's board, so project chats opened directly keep their usual header.
+- Tool calls that are approved automatically no longer add an empty user message to the conversation, for the model or in the saved history.
+- Show shell output while commands run and let the agent continue when a command outlives the initial wait.
+- Opening a chat from the task board or a link now opens its project in the sidebar and highlights its row; chats opened from Regent's board get a back-to-Regent tag in the header.
+- Keep sidebar previews on the latest readable message instead of showing raw tool output.
+- List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
+- Clear Regent's unread count while it is open, and show only read state in the sidebar instead of waiting-on-you counts.
+- Update Suzent silently: new releases download in the background and install in seconds when the app next closes or starts, with a setting and `suzent auto-update` to turn it off.
+- The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
+- Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
+- A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.
+- Let the standalone updater prefetch a release (desktop binary, source tag, Python packages and web UI) in the background, so applying it later takes seconds.
+- Resume voice-delegated turns after tool approval and route approval clicks to the active chat.
+- Fix realtime voice: show the front desk's clear reading as the user message instead of raw ASR, start a delegated request after a greeting the front desk answered itself, and seed the permission mode so voice chats use the auto tool classifier.
+
 ## [v0.17.0] - 2026-10-18
 
 <!-- highlights -->
