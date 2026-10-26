@@ -28,6 +28,7 @@ SUZENT_BRANCH="${SUZENT_BRANCH:-main}"
 MIN_NODE_MAJOR=20
 STATE_DIR="$HOME/.suzent"
 MIRROR_RELEASE_BASE="https://registry.npmmirror.com/-/binary/suzent"
+NPM_MIRROR_REGISTRY="https://registry.npmmirror.com"
 GITHUB_RELEASE_BASE="https://github.com/cyzus/suzent/releases/download"
 PYPI_MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"
 
@@ -114,14 +115,29 @@ esac
 ok "$OS_NAME detected"
 enable_china_mirrors
 
+# Release CI publishes this platform's release files as an npm package, which
+# npmmirror copies without review.
+npm_release_platform() {
+    case "$(uname -s)-$(uname -m)" in
+        Darwin-arm64) echo "darwin-arm64" ;;
+        Darwin-x86_64) echo "darwin-x64" ;;
+        *) echo "linux-x64" ;;
+    esac
+}
+
 INSTALL_REF="$SUZENT_BRANCH"
 RELEASE_TAG=""
 if [ -z "$SUZENT_BRANCH_EXPLICIT" ] && [ "${SUZENT_DEV_SETUP:-0}" != "1" ]; then
     RELEASE_TAG="${SUZENT_RELEASE_TAG:-}"
     if [ -z "$RELEASE_TAG" ]; then
         info "Resolving latest stable release..."
-        # The mirror first in China mode, so the version is one it can serve.
+        # The mirrors first in China mode, so the version is one they can serve.
         if china_mirror_enabled; then
+            RELEASE_TAG="$(curl -fsSL --max-time 15 "$NPM_MIRROR_REGISTRY/-/package/@suzent/desktop-$(npm_release_platform)/dist-tags" 2>/dev/null \
+                | grep -oE '"latest": *"[0-9]+\.[0-9]+\.[0-9]+"' \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | grep -vx '0\.0\.0' | sed 's/^/v/' || true)"
+        fi
+        if [ -z "$RELEASE_TAG" ] && china_mirror_enabled; then
             RELEASE_TAG="$(curl -fsSL --max-time 15 "$MIRROR_RELEASE_BASE/" 2>/dev/null \
                 | grep -oE '"name": *"v[0-9]+\.[0-9]+\.[0-9]+/"' \
                 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' \
@@ -189,9 +205,40 @@ sha256_of() {
 # download_release_asset <asset> <destination>: tries each release source in
 # turn and keeps the first download that matches the release's SHA256SUMS, so
 # a mirror can make a download faster but never different.
+# In China mode the npm package comes first: it is downloaded and unpacked
+# once, into the cache the suzent CLI also reads, and served as a file:// base.
+NPM_RELEASE_TRIED=false
+prepare_npm_release() {
+    $NPM_RELEASE_TRIED && return 0
+    NPM_RELEASE_TRIED=true
+    [ -n "$RELEASE_TAG" ] && [ -z "$RELEASE_BASE_URL" ] && china_mirror_enabled || return 0
+    local platform version dir partial
+    platform="$(npm_release_platform)"
+    version="${RELEASE_TAG#v}"
+    dir="$STATE_DIR/cache/npm/desktop-$platform/$RELEASE_TAG"
+    if [ ! -f "$dir/SHA256SUMS" ]; then
+        partial="$dir.partial"
+        rm -rf "$partial" && mkdir -p "$partial" || return 0
+        info "Downloading release files from the npm mirror..."
+        if ! curl -fsSL --connect-timeout 15 --max-time 600 \
+                "$NPM_MIRROR_REGISTRY/@suzent/desktop-$platform/-/desktop-$platform-$version.tgz" \
+                -o "$partial/package.tgz" \
+            || ! tar -xzf "$partial/package.tgz" -C "$partial" --strip-components=1 package \
+            || [ ! -f "$partial/SHA256SUMS" ]; then
+            warn "The npm mirror has no release files for $RELEASE_TAG; trying the next source."
+            rm -rf "$partial"
+            return 0
+        fi
+        rm -f "$partial/package.tgz"
+        rm -rf "$dir" && mv "$partial" "$dir" || return 0
+    fi
+    RELEASE_BASES=("file://$dir" "${RELEASE_BASES[@]}")
+}
+
 download_release_asset() {
     local asset="$1" dest="$2" base sums expected actual tmp
     tmp="$dest.download"
+    prepare_npm_release
     for base in "${RELEASE_BASES[@]}"; do
         sums="$(curl -fsSL --connect-timeout 15 --max-time 60 "$base/SHA256SUMS" 2>/dev/null || true)"
         expected="$(printf '%s\n' "$sums" | awk -v name="$asset" '{ file = $2; sub(/^\*/, "", file) } file == name { print tolower($1); exit }')"
