@@ -5,6 +5,7 @@
 ### Release notes
 - Keep the original Android table appearance while preparing Markwon row measurements before display to avoid repeated collapsed-height frames during streaming.
 - Reduce iOS chat scrolling work by keeping scroll measurements out of SwiftUI rendering updates and avoiding repeated message-history scans.
+- Refine the iOS sidebar with a compact search field, tighter project spacing, and lighter section headings and Settings styling.
 - Restart approval monitoring after retrying or reopening the same conversation so new tool approvals remain actionable.
 - Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, a matching attachment panel that moves the transcript and composer together when opened with the plus button, square send and stop controls, and desktop-style activity summaries, file counts, current-rail state, and timeline nodes.
 - Align the empty-chat greeting cube on Android and iOS with the desktop: a true 3-D cube with a rotating sigil, soft shadow, and reactive logo eyes.
