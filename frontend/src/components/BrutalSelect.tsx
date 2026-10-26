@@ -22,6 +22,8 @@ interface BrutalSelectProps {
   dropUp?: boolean;
   disabled?: boolean;
   hideChevron?: boolean;
+  /** `ghost` drops the border, shadow and fill so the trigger sits inside a toolbar. */
+  variant?: 'framed' | 'ghost';
   className?: string;
   buttonClassName?: string;
   dropdownClassName?: string;
@@ -36,6 +38,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   dropUp = false,
   disabled = false,
   hideChevron = false,
+  variant = 'framed',
   className = '',
   buttonClassName = '',
   dropdownClassName = '',
@@ -199,7 +202,11 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         onClick={() => {
           if (!disabled) setIsOpen(!isOpen);
         }}
-        className={`w-full bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'} ${buttonClassName}`}
+        className={`w-full dark:text-white px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
+          variant === 'ghost'
+            ? 'bg-transparent'
+            : `bg-white dark:bg-zinc-800 border-3 border-brutal-black hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${isOpen ? 'translate-x-[1px] translate-y-[1px]' : 'brutal-btn'}`
+        } ${buttonClassName}`}
       >
         <span className="truncate">
           {selectedOption ? selectedOption.label : effectivePlaceholder}
