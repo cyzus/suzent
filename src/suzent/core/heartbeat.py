@@ -16,7 +16,9 @@ import asyncio
 import time
 from datetime import datetime, timezone
 import dateutil.parser
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Sequence
+
+from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolSearchCallPart
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
@@ -27,6 +29,63 @@ from suzent.core.stream_registry import stream_controls
 logger = get_logger(__name__)
 
 HEARTBEAT_OK = "HEARTBEAT_OK"
+# A quiet reply may wrap the token in a short aside; anything longer is a report.
+_QUIET_ASIDE_CHARS = 300
+
+# Tools that only look things up. A quiet turn that called nothing else can be
+# dropped without the agent forgetting anything it did.
+_OBSERVING_TOOL_NAMES = frozenset(
+    {
+        "read_file",
+        "glob_search",
+        "grep_search",
+        "web_search",
+        "webpage_fetch",
+        "memory_search",
+        "session_search",
+        "agent_list",
+        "agent_read",
+        "skill_execute",
+    }
+)
+
+
+def is_quiet_reply(text: str) -> bool:
+    """Whether an answer is the agreed "nothing to report" token.
+
+    Heartbeats, quiet scheduled tasks and Regent's wake-ups all answer with the
+    same token, so one rule decides for every one of them that a reply needs
+    no notification and no unread badge.
+    """
+    text = (text or "").strip()
+    if text.startswith(HEARTBEAT_OK):
+        aside = text[len(HEARTBEAT_OK) :]
+    elif text.endswith(HEARTBEAT_OK):
+        aside = text[: -len(HEARTBEAT_OK)]
+    else:
+        return False
+    return len(aside.strip()) <= _QUIET_ASIDE_CHARS
+
+
+def turn_acted(messages: Sequence[Any]) -> bool:
+    """Whether a turn called a tool that does more than look something up.
+
+    Rolling such a turn back would erase what the agent did from its own
+    history: a check-in that nudged a session and then reported nothing would
+    nudge it again next time, with no memory of the first.
+    """
+    return any(
+        isinstance(part, ToolCallPart)
+        and not isinstance(part, ToolSearchCallPart)
+        and part.tool_name not in _OBSERVING_TOOL_NAMES
+        for message in messages
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+    )
+
+
+class ChatBusyError(RuntimeError):
+    """The chat a background turn is bound to already has a run in progress."""
 
 
 def get_active_heartbeat() -> Optional["HeartbeatRunner"]:
@@ -106,7 +165,9 @@ class HeartbeatRunner(BaseBrain):
                 "heartbeat_instructions": instructions,
                 "last_run_at": cfg.get("heartbeat_last_run_at"),
                 "last_result": cfg.get("heartbeat_last_result") or self._last_result,
-                "last_error": self._last_error,
+                # Per chat and persisted: the runner-wide error named whichever
+                # chat failed last and was gone after a restart.
+                "last_error": cfg.get("heartbeat_last_error"),
                 "heartbeat_due": chat_id in self._pending_heartbeats,
             }
 
@@ -160,6 +221,15 @@ class HeartbeatRunner(BaseBrain):
             return
 
         instructions = self.read_instructions(chat_id)
+        from suzent.core.focal_agent import (
+            is_focal_chat_id,
+            record_skipped_heartbeat,
+            should_run_focal_heartbeat,
+        )
+
+        if is_focal_chat_id(chat_id) and not should_run_focal_heartbeat(instructions):
+            record_skipped_heartbeat()
+            return
         marked_ts = time.time()
         self._pending_heartbeats[chat_id] = marked_ts
         asyncio.create_task(
@@ -227,7 +297,7 @@ class HeartbeatRunner(BaseBrain):
                     chat.config.pop("heartbeat_last_result", None)  # clear stale result
                     chat.updated_at = datetime.now()
                     flag_modified(chat, "config")
-                    session.commit()
+                    db.commit_chat_changes(session, [chat_id])
         except Exception as e:
             logger.error(f"Failed to update heartbeat_last_run_at: {e}")
 
@@ -239,6 +309,10 @@ class HeartbeatRunner(BaseBrain):
                 heartbeat_approvals=True,
             )
             self._last_error = None
+            db.merge_chat_config(chat_id, {"heartbeat_last_error": None})
+            from suzent.core.focal_agent import record_focal_heartbeat_done
+
+            record_focal_heartbeat_done(chat_id)
 
             if not response_text:
                 logger.debug(f"Heartbeat OK ({chat_id}) -- nothing needs attention")
@@ -260,7 +334,7 @@ class HeartbeatRunner(BaseBrain):
                         _chat.config["heartbeat_last_result"] = response_text
                         _chat.updated_at = datetime.now()
                         _fm(_chat, "config")
-                        _s.commit()
+                        db.commit_chat_changes(_s, [chat_id])
             except Exception as _e:
                 logger.warning(f"Failed to persist heartbeat_last_result: {_e}")
 
@@ -268,9 +342,15 @@ class HeartbeatRunner(BaseBrain):
 
             self._announce(chat_id, response_text, db)
 
+        except ChatBusyError:
+            logger.debug(f"Heartbeat skipped for {chat_id}: chat became busy")
         except Exception as e:
             logger.error(f"Heartbeat execution failed for {chat_id}: {e}")
             self._last_error = str(e)
+            try:
+                db.merge_chat_config(chat_id, {"heartbeat_last_error": str(e)[:500]})
+            except Exception as record_error:
+                logger.warning(f"Could not record heartbeat failure: {record_error}")
 
     @staticmethod
     def _announce(chat_id: str, response_text: str, db) -> None:
@@ -339,8 +419,10 @@ class HeartbeatRunner(BaseBrain):
         look like a failure so it can retry.
         """
         if chat_id in stream_controls:
-            logger.debug(f"Bound turn skipped for {chat_id}: stream already active")
-            return ""
+            # Raised, not an empty answer: "" means "ran and had nothing to say",
+            # and a scheduled task that hears that is recorded as done -- a
+            # one-shot reminder would be retired without ever firing.
+            raise ChatBusyError(f"Chat {chat_id} has a run in progress")
 
         db = get_database()
         chat = db.get_chat(chat_id)
@@ -356,7 +438,7 @@ class HeartbeatRunner(BaseBrain):
         )
 
         if suppress_ok:
-            if self._is_heartbeat_ok(response_text):
+            if not response_text or is_quiet_reply(response_text):
                 self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
                 return ""
             if answer_label:
@@ -476,16 +558,3 @@ class HeartbeatRunner(BaseBrain):
                 tool: "always_allow" for tool in heartbeat_allowed_tools
             }
         return build_agent_config(base, require_social_tool=False)
-
-    def _is_heartbeat_ok(self, response: str) -> bool:
-        if not response or response == HEARTBEAT_OK:
-            return True
-
-        if response.startswith(HEARTBEAT_OK):
-            remaining = response[len(HEARTBEAT_OK) :].strip()
-        elif response.endswith(HEARTBEAT_OK):
-            remaining = response[: -len(HEARTBEAT_OK)].strip()
-        else:
-            return False
-
-        return len(remaining) <= 300

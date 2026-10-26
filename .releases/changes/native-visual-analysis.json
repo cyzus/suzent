@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Support native video input in visual analysis and preserve existing visual tool settings."
+}

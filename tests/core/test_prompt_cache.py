@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from types import SimpleNamespace
 
@@ -12,9 +13,11 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from suzent.core import model_factory
 from suzent.core.prompt_cache import (
     CacheRouting,
+    ForkPrefixCapability,
     PromptCacheRoutingCapability,
     cache_key_for,
     cache_routing_settings,
+    pin_fork_prefix,
     register_cache_routing,
 )
 from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
@@ -210,3 +213,105 @@ async def test_anthropic_request_marks_cache_breakpoints() -> None:
     assert body["cache_control"]["type"] == "ephemeral"
     assert body["system"][-1]["cache_control"]["type"] == "ephemeral"
     assert body["tools"][-1]["cache_control"]["type"] == "ephemeral"
+
+
+def test_first_party_anthropic_streams_tool_input_as_it_is_written() -> None:
+    model = model_factory._create_anthropic_model(
+        "claude-sonnet-5-5", "test-key", PROVIDER_REGISTRY_BY_ID["anthropic"]
+    )
+
+    assert model.settings["anthropic_eager_input_streaming"] is True
+
+
+def test_compatible_anthropic_endpoint_keeps_buffered_tool_input() -> None:
+    spec = dataclasses.replace(
+        PROVIDER_REGISTRY_BY_ID["anthropic"], base_url="https://gateway.example/v1"
+    )
+
+    model = model_factory._create_anthropic_model("claude-sonnet-5-5", "k", spec)
+
+    assert "anthropic_eager_input_streaming" not in model.settings
+
+
+def _per_chat_agent(seen: list) -> Agent:
+    def respond(_messages, info: AgentInfo) -> ModelResponse:
+        seen.append(
+            (
+                info.instructions,
+                [tool.name for tool in info.function_tools],
+                dict(info.model_settings or {}),
+            )
+        )
+        return ModelResponse(parts=[TextPart("ok")])
+
+    model = FunctionModel(respond)
+    register_cache_routing(model, CacheRouting.PROMPT_CACHE_KEY)
+    agent = Agent(
+        model,
+        deps_type=SimpleNamespace,
+        capabilities=[PromptCacheRoutingCapability(), ForkPrefixCapability()],
+    )
+
+    @agent.instructions
+    def per_chat(ctx) -> str:
+        return f"You are serving {ctx.deps.chat_id}."
+
+    @agent.tool_plain
+    def lookup() -> str:
+        """Look something up."""
+        return "found"
+
+    return agent
+
+
+async def test_fork_replays_its_parents_prefix_under_its_cache_key() -> None:
+    seen: list = []
+    agent = _per_chat_agent(seen)
+
+    await agent.run("hi", deps=SimpleNamespace(chat_id="parent-replay"))
+    assert pin_fork_prefix("fork-replay", "parent-replay")
+    await agent.run(
+        "task",
+        deps=SimpleNamespace(
+            chat_id="fork-replay", prompt_cache_chat_id="parent-replay"
+        ),
+    )
+
+    (parent_instructions, parent_tools, parent_settings), fork = seen
+    assert fork[0] == parent_instructions == "You are serving parent-replay."
+    assert fork[1] == parent_tools
+    assert fork[2]["openai_prompt_cache_key"] == "parent-replay"
+    assert parent_settings["openai_prompt_cache_key"] == "parent-replay"
+
+
+async def test_fork_keeps_its_pinned_prefix_after_the_parent_moves_on() -> None:
+    seen: list = []
+    agent = _per_chat_agent(seen)
+
+    await agent.run("hi", deps=SimpleNamespace(chat_id="parent-moves"))
+    assert pin_fork_prefix("fork-pinned", "parent-moves")
+    await agent.run("again", deps=SimpleNamespace(chat_id="parent-moves"))
+    await agent.run("follow-up", deps=SimpleNamespace(chat_id="fork-pinned"))
+
+    assert seen[-1][0] == "You are serving parent-moves."
+
+
+async def test_unpinned_chat_builds_its_own_prefix() -> None:
+    seen: list = []
+    agent = _per_chat_agent(seen)
+
+    assert not pin_fork_prefix("fork-orphan", "parent-never-ran")
+    await agent.run("task", deps=SimpleNamespace(chat_id="fork-orphan"))
+
+    assert seen[0][0] == "You are serving fork-orphan."
+    assert seen[0][2]["openai_prompt_cache_key"] == "fork-orphan"
+
+
+async def test_cache_diagnostics_stay_off_for_other_providers(monkeypatch) -> None:
+    monkeypatch.setenv("SUZENT_CACHE_DIAGNOSTICS", "1")
+    seen: list = []
+    agent = _per_chat_agent(seen)
+
+    await agent.run("hi", deps=SimpleNamespace(chat_id="parent-diagnostics"))
+
+    assert "anthropic_cache_diagnostics" not in seen[0][2]

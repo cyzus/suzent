@@ -10,6 +10,17 @@ The architecture and protocol pages describe Suzent as it works today. Planned
 work and known gaps live here instead, so readers can tell the two apart. When
 an item ships, move its description into the relevant page and delete it here.
 
+## ACP integration
+
+The settings page supports protocol-driven authentication for outbound agents.
+Inbound editor pairing already supports terminal and agent authentication.
+Remaining outbound work:
+
+- Capability-gated logout.
+- Byte-budgeted streaming buffers and measured frontend render batching. The
+  current event-count limit fails explicitly on overflow; it is not disk-backed
+  replay or transparent recovery of an interrupted turn.
+
 ## Mobile apps
 
 See [Native mobile clients](./architecture/mobile.md) for what exists today.
@@ -25,6 +36,29 @@ Planned, in order:
    deadlines and deduplication. Current sends are never retried automatically.
 4. **System integration** — share extensions/intents, opt-in APNs/FCM notification
    delivery, platform-specific background work, accessibility and device QA.
+
+## Chat storage
+
+See [Chat storage](./architecture/chat-storage.md) for what exists today: each
+chat's JSONL log is authoritative and `chats.db` is rebuilt from the logs.
+
+Not done yet:
+
+- **Memory-extraction transcripts** (`transcripts/*.jsonl`) are still written
+  separately. They double as the extraction queue, with per-chat cursors, so
+  deriving them from the chat log means moving those cursors onto log `seq`s.
+- **Media and log compaction.** Nothing removes `.media/` files once no log
+  refers to them, and a log never shrinks: compaction and rollbacks keep the
+  replaced turns in earlier lines. A `suzent chats compact-log` would rewrite a
+  log as one `chat.imported` snapshot plus the events after its retry
+  checkpoint.
+- **Ideas from pydantic-ai-harness `StepPersistence`** not yet taken: a
+  tool-effect ledger (`tool.started` / `tool.finished`) so a restart can tell
+  which tool calls may already have run, and marking saved history as complete
+  or interrupted so an interrupted history is repaired before it is replayed.
+- **System chats.** Dream and sub-agent chats still keep no agent history.
+  Logging it, with an explicit `run.reset` event where dream deliberately
+  starts over, would let a sub-agent woken by `agent_send` keep its context.
 
 ## A2A
 

@@ -1,10 +1,11 @@
 """
 Session & memory inspection API routes (Phase 5).
 
-Endpoints for accessing transcripts, agent state snapshots, and daily memory logs.
+Endpoints for accessing agent state snapshots and daily memory logs.
 These provide visibility into the unified memory-session architecture.
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -13,79 +14,13 @@ from starlette.responses import JSONResponse
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
-from suzent.session.transcript import TranscriptManager
-from suzent.session.state_mirror import StateMirror
 
 logger = get_logger(__name__)
-
-# Shared instances (lazily created)
-_transcript_mgr: TranscriptManager = None
-_state_mirror: StateMirror = None
-
-
-def _get_transcript_mgr() -> TranscriptManager:
-    global _transcript_mgr
-    if _transcript_mgr is None:
-        _transcript_mgr = TranscriptManager()
-    return _transcript_mgr
-
-
-def _get_state_mirror() -> StateMirror:
-    global _state_mirror
-    if _state_mirror is None:
-        _state_mirror = StateMirror()
-    return _state_mirror
-
-
-async def get_session_transcript(request: Request) -> JSONResponse:
-    """
-    Get JSONL transcript content for a session.
-
-    Path params:
-        - session_id: Chat/session ID
-
-    Query params:
-        - last_n: Return only last N entries (optional)
-
-    Returns:
-        JSONResponse with transcript entries
-    """
-    try:
-        session_id = request.path_params.get("session_id")
-        if not session_id:
-            return JSONResponse({"error": "Missing session_id"}, status_code=400)
-
-        last_n_str = request.query_params.get("last_n")
-        last_n = int(last_n_str) if last_n_str else None
-
-        mgr = _get_transcript_mgr()
-
-        if not mgr.transcript_exists(session_id):
-            return JSONResponse(
-                {"error": f"No transcript found for session {session_id}"},
-                status_code=404,
-            )
-
-        entries = await mgr.read_transcript(session_id, last_n=last_n)
-
-        return JSONResponse(
-            {
-                "session_id": session_id,
-                "entries": entries,
-                "count": len(entries),
-            }
-        )
-
-    except ValueError as e:
-        return JSONResponse({"error": f"Invalid parameter: {e}"}, status_code=400)
-    except Exception as e:
-        logger.error(f"Error reading transcript for session: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 async def get_session_state(request: Request) -> JSONResponse:
     """
-    Get mirrored agent state JSON for a session.
+    Get a session's stored agent state as JSON.
 
     Path params:
         - session_id: Chat/session ID
@@ -98,8 +33,13 @@ async def get_session_state(request: Request) -> JSONResponse:
         if not session_id:
             return JSONResponse({"error": "Missing session_id"}, status_code=400)
 
-        mirror = _get_state_mirror()
-        state = mirror.read_state(session_id)
+        from suzent.database import get_database
+
+        chat = get_database().get_chat(session_id)
+        try:
+            state = json.loads(chat.agent_state) if chat and chat.agent_state else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            state = {"format": "pickle", "note": "Legacy format, not inspectable"}
 
         if state is None:
             return JSONResponse(

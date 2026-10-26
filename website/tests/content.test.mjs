@@ -65,7 +65,7 @@ test("English section links stay usable when the translated page lacks that sect
   );
   assert.match(
     page.content,
-    /\]\(\/docs\/features\/memory#memorymd-is-half-yours\)/,
+    /\]\(\/docs\/features\/memory#managing-whats-remembered\)/,
   );
 });
 

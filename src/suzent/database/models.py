@@ -95,6 +95,10 @@ class ChatModel(SQLModel, table=True):
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
     context_usage: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # What was said in realtime voice sessions, for display only. Kept apart
+    # from `messages`, which every turn rebuilds from the agent history: these
+    # rows have no counterpart there and never reach a model's context.
+    voice_log: Optional[list] = Field(default=None, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
 
     # Session lifecycle fields
@@ -133,6 +137,22 @@ class InputSuggestionModel(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class ChatStatusModel(SQLModel, table=True):
+    """Where a chat stands for the user: resolved by them, or waiting on them."""
+
+    __tablename__ = "chat_status"
+
+    chat_id: str = Field(primary_key=True)
+    # Set by the user; cleared when a new turn starts or the chat needs them again.
+    resolved_at: Optional[datetime] = None
+    # The Decision model's read of the chat's latest turn.
+    waiting_on_user: bool = Field(default=False)
+    waiting_reason: Optional[str] = None
+    summary: Optional[str] = None
+    judged_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentInboxMessageModel(SQLModel, table=True):
     """Durable local or cross-device message awaiting agent delivery."""
 
@@ -160,21 +180,20 @@ class AgentInboxMessageModel(SQLModel, table=True):
     last_error: Optional[str] = None
 
 
-class RetryCheckpointModel(SQLModel, table=True):
-    """Stores the last retry checkpoint for a chat session (one row per chat)."""
+class ChatLogIndexModel(SQLModel, table=True):
+    """How far each chat's JSONL log has been applied to its ``chats`` row.
 
-    __tablename__ = "retry_checkpoints"
+    Written in the same transaction as the row, so a log whose size or mtime
+    no longer matches has events SQLite never committed (a crash between the
+    append and the commit) or was edited by hand, and is replayed on start.
+    """
+
+    __tablename__ = "chat_log_index"
 
     chat_id: str = Field(primary_key=True)
-    agent_state_before: Optional[bytes] = None
-    messages_before: list = Field(default_factory=list, sa_column=Column(JSON))
-    user_message: str = Field(default="")
-    user_files: list = Field(default_factory=list, sa_column=Column(JSON))
-    config_snapshot: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    has_file_snapshot: bool = Field(default=False)
-    # Serialised FileTracker snapshot: list of {path, backup_name, version, backup_time}
-    file_snapshot: list = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    seq: int
+    size: int
+    mtime_ns: int
 
 
 class GoalModel(SQLModel, table=True):
@@ -454,9 +473,8 @@ class PostprocessJobModel(SQLModel, table=True):
 
 
 class PostProcessStep:
-    """Constant definitions for postprocess steps B1..B7."""
+    """Constant definitions for postprocess steps B2..B7."""
 
-    TRANSCRIPT = "B1_transcript"
     MEMORY = "B2_memory"
     COMPRESS = "B3_compress"
     DISPLAY = "B4_display"
@@ -464,7 +482,7 @@ class PostProcessStep:
     LIFECYCLE = "B6_lifecycle"
     MIRROR = "B7_mirror"
 
-    ALL = [TRANSCRIPT, MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
+    ALL = [MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
 
 
 class PostProcessStatus:

@@ -7,6 +7,7 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
+import { useEventBus } from '../hooks/useEventBus';
 import { CompactionCube, CompactionSweep } from './chat/CompactionCube';
 import {
   disableHeartbeat,
@@ -20,6 +21,11 @@ import {
 import { BrutalOnOff } from './BrutalOnOff';
 import { InformationPopover } from './InformationPopover';
 import { isImeComposing } from '../lib/ime';
+import { FOCAL_CHAT_ID } from '../lib/focalAgent';
+import { LiveRegentIdentity } from './regent/RegentHeader';
+import { RegentMark } from './regent/RegentMark';
+import { ResolveChatButton } from './chat/ResolveChatButton';
+import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -239,6 +245,9 @@ function HeartbeatWidget() {
     }
   };
 
+  // This chat's own last failure, kept until a check-in succeeds again. The
+  // runner-wide error named whichever chat failed last and vanished on restart.
+  const failure = currentChatId ? (chatStatus?.last_error ?? null) : statusError;
   const lastPingMs = lastPingAt ? new Date(lastPingAt).getTime() : 0;
   const fresh = enabled && lastPingMs > 0 && Date.now() - lastPingMs <= HEARTBEAT_HEALTHY_WINDOW_MS;
   const relative = formatRelativeTime(lastPingAt);
@@ -256,10 +265,10 @@ function HeartbeatWidget() {
     ekg = 'fast';
     heartClass = 'pixel-heart-beat-fast';
     text = t('chatWindow.heartbeatRunning');
-  } else if (statusError) {
+  } else if (failure) {
     ekg = 'slow';
     heartClass = '';
-    text = statusError.slice(0, 32);
+    text = t('chatWindow.heartbeatFailed');
   } else if (fresh) {
     ekg = 'active';
     heartClass = 'pixel-heart-beat';
@@ -322,7 +331,11 @@ function HeartbeatWidget() {
             />
           </svg>
         </div>
-        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
+        {/* Spelled out only when it needs attention: running, or failing. */}
+        <span
+          className={`${(failure && enabled) || inFlightForChat ? 'hidden md:inline' : 'sr-only'} text-[10px] font-bold uppercase tracking-wider ${failure && enabled && !inFlightForChat ? 'text-red-600 dark:text-red-400' : ''}`}
+          title={failure && enabled ? failure : undefined}
+        >
           {text}
         </span>
       </button>
@@ -554,7 +567,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
         <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider">
           {pctLabel}
         </span>
-        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 md:inline">
+        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 xl:inline">
           {fmt(contextTokens)}
         </span>
         {compacting && (
@@ -726,24 +739,28 @@ function SubAgentWidget() {
 
 function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => void }) {
   const { status, loading, error } = useDreamStatus();
+  const { memoryChats } = useEventBus();
+  const extracting = memoryChats.size > 0;
   const { t } = useI18n();
+  const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
 
-  if (loading && !status) return null;
-  if (!status?.active) return null;
+  if (!extracting && ((loading && !status) || !status?.active)) return null;
 
-  const pending = status.pending_count ?? 0;
-  const failed = !!error || status.last_result?.advanced === false;
-  const running = status.running;
+  const pending = status?.pending_count ?? 0;
+  const failed = !!error || status?.last_result?.advanced === false;
+  const running = extracting || !!status?.running;
 
-  const label = running
-    ? status.phase === 'finalizing'
-      ? t('settings.memoryConfig.dreamStatus.finalizing')
-      : t('settings.memoryConfig.dreamStatus.running')
-    : failed
-      ? t('settings.memoryConfig.statusBarNeedsReview')
-      : pending > 0
-        ? t('settings.memoryConfig.statusBarPending', { count: String(pending) })
-        : t('settings.memoryConfig.statusBarIdle');
+  const label = extracting
+    ? t('backgroundTasks.memoryProcessing')
+    : running
+      ? status?.phase === 'finalizing'
+        ? t('settings.memoryConfig.dreamStatus.finalizing')
+        : t('settings.memoryConfig.dreamStatus.running')
+      : failed
+        ? t('settings.memoryConfig.statusBarNeedsReview')
+        : pending > 0
+          ? t('settings.memoryConfig.statusBarPending', { count: String(pending) })
+          : t('settings.memoryConfig.statusBarIdle');
 
   const badgeClass = running
     ? 'bg-brutal-blue text-white animate-pulse border-2 border-brutal-black dark:border-neutral-500'
@@ -751,27 +768,72 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
       ? 'bg-brutal-red text-white border-2 border-brutal-black dark:border-neutral-500'
       : pending > 0
         ? 'bg-brutal-yellow text-brutal-black border-2 border-brutal-black dark:border-neutral-500'
-        : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300';
+        : 'text-neutral-600 dark:text-neutral-300';
 
   const title =
     error ||
-    status.reason ||
-    (status.watermark
-      ? t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })
+    (status?.active && status.reason) ||
+    (status?.watermark
+      ? t('settings.memoryConfig.statusBarWatermark', { watermark: status?.watermark })
       : t('settings.memoryConfig.dreamTitle'));
 
   return (
-    <button
-      type="button"
-      onClick={onOpenMemorySettings}
-      className={`flex items-center gap-1.5 flex-shrink-0 ml-3 px-1.5 py-0.5 font-bold uppercase tracking-wider ${badgeClass}`}
-      title={title}
+    <div
+      ref={rootRef}
+      className="relative ml-3 flex-shrink-0"
+      onBlur={handleBlur}
+      onMouseEnter={openPopover}
+      onMouseLeave={closePopoverWithDelay}
     >
-      <span className="text-[10px]" aria-hidden="true">
-        {running ? '◐' : failed ? '!' : '◌'}
-      </span>
-      <span className="hidden md:inline text-[9px]">{label}</span>
-    </button>
+      <button
+        type="button"
+        onClick={openPopover}
+        onFocus={openPopover}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={label}
+        className={`flex items-center gap-1.5 px-1.5 py-0.5 font-bold uppercase tracking-wider ${badgeClass}`}
+        title={title}
+      >
+        <span className="text-[10px]" aria-hidden="true">
+          {running ? '◐' : failed ? '!' : '◌'}
+        </span>
+        <span className="hidden md:inline text-[9px]">{label}</span>
+      </button>
+      {open && (
+        <InformationPopover
+          role="dialog"
+          aria-label={t('settings.memoryConfig.dreamTitle')}
+          className="absolute top-full right-0 z-50 w-64 space-y-2"
+        >
+          <div className="font-bold" role="status">
+            {label}
+          </div>
+          {status?.active && (
+            <div>{t('settings.memoryConfig.statusBarPending', { count: String(pending) })}</div>
+          )}
+          {status?.active && status.watermark && (
+            <div>
+              {t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })}
+            </div>
+          )}
+          {(error || (status?.active && status.reason)) && (
+            <div role={error ? 'alert' : undefined} className="break-words">
+              {error || status?.reason}
+            </div>
+          )}
+          {onOpenMemorySettings && (
+            <button
+              type="button"
+              onClick={onOpenMemorySettings}
+              className="underline hover:no-underline"
+            >
+              {t('settings.memoryConfig.openMemorySettings')}
+            </button>
+          )}
+        </InformationPopover>
+      )}
+    </div>
   );
 }
 
@@ -842,7 +904,7 @@ function BackendServiceWidget() {
         className={`h-2.5 w-2.5 flex-shrink-0 border border-brutal-black dark:border-neutral-300 ${dotClass}`}
         aria-hidden="true"
       />
-      <span className="hidden truncate lg:inline">{label}</span>
+      <span className={state === 'online' ? 'sr-only' : 'hidden truncate lg:inline'}>{label}</span>
     </div>
   );
 }
@@ -873,15 +935,81 @@ function ActiveChatTitle() {
   );
 }
 
+/**
+ * Who the header is about: Regent as a contact, or a chat with its project.
+ * Returns null on a new, unsaved chat, where the header keeps the brand title.
+ */
+export function ConversationIdentity(): React.ReactElement | null {
+  const { t } = useI18n();
+  const { currentChatId, chats, loadChat } = useChatCoreStore();
+  const openedFromRegent = useOpenedFromRegent();
+  useEffect(() => {
+    forgetRegentReturnUnless(currentChatId);
+  }, [currentChatId]);
+  if (!currentChatId) return null;
+  if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
+  const chat = chats.find((item) => item.id === currentChatId);
+  const title = chat?.title?.trim();
+  const backToRegent = openedFromRegent === currentChatId && (
+    <span className="flex shrink-0 items-center gap-1.5 self-center">
+      <button
+        type="button"
+        onClick={() => void loadChat(FOCAL_CHAT_ID)}
+        title={t('chatList.focal.back')}
+        aria-label={t('chatList.focal.back')}
+        className="regent-back -ml-1 inline-flex items-center gap-1.5 px-1 py-0.5 text-sm font-bold text-neutral-500 transition-colors hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400 dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+      >
+        <RegentMark size={14} />
+        <span className="hidden sm:inline">{t('chatList.focal.name')}</span>
+      </button>
+      <span aria-hidden="true" className="text-sm text-neutral-300 dark:text-zinc-600">
+        /
+      </span>
+    </span>
+  );
+  if (!title) return backToRegent || null;
+  return (
+    <div className="flex min-w-0 items-baseline gap-2">
+      {backToRegent}
+      <span
+        className="truncate text-sm font-extrabold text-brutal-black dark:text-white"
+        dir="auto"
+        title={title}
+      >
+        {title}
+      </span>
+      {chat?.projectName && (
+        <span className="hidden shrink-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 sm:inline dark:text-neutral-400">
+          {chat.projectName}
+        </span>
+      )}
+      {openedFromRegent === currentChatId && <ResolveChatButton chatId={currentChatId} />}
+    </div>
+  );
+}
+
 interface StatusBarProps {
   onOpenMemorySettings?: () => void;
   showActiveChatTitle?: boolean;
+  /** Render just the status marks, to sit inside the app header. */
+  inline?: boolean;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   onOpenMemorySettings,
   showActiveChatTitle = false,
+  inline = false,
 }) => {
+  if (inline) {
+    return (
+      <div className="hidden sm:flex min-w-0 items-center font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        <BackendServiceWidget />
+        <ContextWidget />
+        <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
+        <HeartbeatWidget />
+      </div>
+    );
+  }
   return (
     <div
       className={`

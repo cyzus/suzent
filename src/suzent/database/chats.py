@@ -1,15 +1,36 @@
+import copy
 import json
 import uuid
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import func, or_, text, update
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm.attributes import flag_modified
-from sqlmodel import col, delete, select
+from sqlmodel import Session, col, delete, select
 
+from suzent.logger import get_logger
+
+from .chat_log import (
+    ChatEventLog,
+    ChatLogError,
+    PendingAppend,
+    Projection,
+    RetryCheckpoint,
+    normalize_json,
+    project_chat,
+    project_state,
+    projection_differences,
+    state_bytes,
+    visible_messages,
+)
 from .models import (
+    ChatLogIndexModel,
     ChatModel,
+    ChatStatusModel,
     ChatSummaryModel,
     InputSuggestionModel,
     ProjectModel,
@@ -44,10 +65,20 @@ CHAT_SCOPED_CONFIG_KEYS = frozenset(
 # is distinguishable from an explicit None (restore a NULL checkpoint state).
 _UNSET = object()
 
-# Platforms hidden from the user's chat list. Only the autonomous dream consolidation
-# chat is hidden — sub-agent chats are intentionally kept visible (nested under their
-# parent agent in the UI), so they are NOT excluded here.
-HIDDEN_CHAT_PLATFORMS = ("dream",)
+# Platforms hidden from the user's chat list: the autonomous dream consolidation chat,
+# and the Focal Agent, which has its own top-level sidebar slot instead of a row in a
+# project. Sub-agent chats are intentionally kept visible (nested under their parent
+# agent in the UI), so they are NOT excluded here.
+HIDDEN_CHAT_PLATFORMS = ("dream", "focal")
+
+logger = get_logger(__name__)
+
+
+def _json_column(raw: Any, default: Any) -> Any:
+    """Decode a JSON column read with raw SQL, where it arrives as text."""
+    if raw is None:
+        return default
+    return json.loads(raw) if isinstance(raw, (str, bytes)) else raw
 
 
 def _reusable_chat_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -132,13 +163,20 @@ def _summarize_messages(
     """Return sidebar summary data without leaking tool detail blocks."""
     safe_messages = messages or []
     last_message = None
-    if safe_messages:
-        last_msg = safe_messages[-1]
-        content = last_msg.get("content") if isinstance(last_msg, dict) else last_msg
-        clean_content = _clean_message_preview(content)
-        last_message = clean_content[:100] if clean_content else None
-        if last_message and len(clean_content) > 100:
-            last_message += "..."
+    for message in reversed(safe_messages):
+        if not isinstance(message, dict) or message.get("role") not in {
+            "user",
+            "assistant",
+            "notice",
+            "system_triggered",
+        }:
+            continue
+        clean_content = _clean_message_preview(message.get("content"))
+        if clean_content:
+            last_message = clean_content[:100]
+            if len(clean_content) > 100:
+                last_message += "..."
+            break
 
     visible_count = sum(
         1
@@ -302,14 +340,374 @@ class ChatOperationsMixin:
         with self._session() as session:
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages or [])
-            session.commit()
-
+            self.commit_chat_changes(session, [chat_id], created=True)
         return chat_id
 
     def get_chat(self, chat_id: str) -> Optional[ChatModel]:
         """Get a specific chat by ID."""
         with self._session() as session:
             return session.get(ChatModel, chat_id)
+
+    def commit_chat_changes(
+        self,
+        session: Session,
+        chat_ids: Iterable[str],
+        *,
+        created: bool = False,
+        checkpoint_events: Optional[Dict[str, List[tuple[str, Any]]]] = None,
+    ) -> None:
+        """Commit *session*, recording what it changed in *chat_ids* logs first.
+
+        Every write to a ``chats`` row ends here instead of ``session.commit()``.
+        The uncommitted rows are projected, the difference from each chat's log
+        is appended and fsynced, and only then does SQLite commit. A failed
+        commit takes the appended events back out; a crash in between leaves
+        the log ahead of SQLite, which :meth:`reconcile_chat_logs` replays.
+        *checkpoint_events* adds log-only events per chat.
+        """
+        session.flush()
+        # Take SQLite's write lock even when the session changed nothing (an
+        # import, a checkpoint update) before any chat lock, so nothing ever
+        # waits for SQLite while holding a chat lock another writer needs.
+        session.execute(text("UPDATE chat_log_index SET seq = seq WHERE 0"))
+        ids = sorted(set(chat_ids))
+        pending: List[PendingAppend] = []
+        with ExitStack() as locks:
+            for chat_id in ids:
+                locks.enter_context(self.chat_log.lock(chat_id))
+            try:
+                for chat_id in ids:
+                    append = self.chat_log.prepare(
+                        chat_id,
+                        self._project_in_session(session, chat_id),
+                        created=created,
+                        extra=tuple((checkpoint_events or {}).get(chat_id, ())),
+                    )
+                    if append is not None:
+                        pending.append(append)
+                        self._index_in_session(
+                            session,
+                            chat_id,
+                            None
+                            if append.projection is None
+                            else (append.seq, append.size, append.mtime_ns),
+                        )
+                session.commit()
+            except BaseException:
+                session.rollback()
+                for append in pending:
+                    self.chat_log.undo(append)
+                raise
+            for append in pending:
+                self.chat_log.confirm(append)
+
+    def _project_in_session(
+        self, session: Session, chat_id: str
+    ) -> Optional[Projection]:
+        """Project the row as *session* sees it, uncommitted changes included."""
+        table = ChatModel.__table__
+        row = (
+            session.connection()
+            .execute(sa_select(table).where(table.c.id == chat_id))
+            .first()
+        )
+        return project_chat(row) if row is not None else None
+
+    def _index_in_session(
+        self, session: Session, chat_id: str, position: Optional[tuple[int, int, int]]
+    ) -> None:
+        if position is None:
+            session.exec(
+                delete(ChatLogIndexModel).where(ChatLogIndexModel.chat_id == chat_id)
+            )
+            return
+        seq, size, mtime_ns = position
+        session.merge(
+            ChatLogIndexModel(chat_id=chat_id, seq=seq, size=size, mtime_ns=mtime_ns)
+        )
+
+    def all_chat_ids(self) -> list[str]:
+        with self._session() as session:
+            return list(session.exec(select(ChatModel.id)).all())
+
+    def reconcile_chat_logs(self, *, rebuild: bool = False) -> int:
+        """Replay the logs SQLite has not caught up with. Returns chats changed.
+
+        A log is replayed when its size or mtime differs from what the index
+        recorded at the last commit: events a crash kept out of SQLite, a hand
+        edit, or a ``chats.db`` that was deleted and recreated empty. With
+        *rebuild*, every log is replayed.
+        """
+        with self._session() as session:
+            index = {
+                entry.chat_id: (entry.size, entry.mtime_ns)
+                for entry in session.exec(select(ChatLogIndexModel)).all()
+            }
+        changed = 0
+        for chat_id in self.chat_log.chat_ids():
+            if not rebuild and index.get(chat_id) == self.chat_log.stat(chat_id):
+                continue
+            try:
+                changed += self._restore_chat_from_log(chat_id)
+            except Exception as exc:
+                logger.warning("Could not replay the log of chat {}: {}", chat_id, exc)
+        if changed:
+            logger.info("Replayed {} chat logs into chats.db", changed)
+        self.chat_log.purge_trash()
+        return changed
+
+    def _restore_chat_from_log(self, chat_id: str) -> int:
+        """Make the row match its log. Returns 1 if the row changed."""
+        with self.chat_log.lock(chat_id):
+            self.chat_log.forget(chat_id)
+            logged, seq = self.chat_log.logged(chat_id)
+            if seq == 0:
+                # Unreadable and set aside, or holding no complete event: the
+                # row is the only copy, and its next write starts a new log.
+                self.chat_log.path(chat_id).unlink(missing_ok=True)
+                self.chat_log.forget(chat_id)
+                return 0
+        with self._session() as session:
+            stored = self._project_in_session(session, chat_id)
+            if logged is None:
+                if stored is not None:
+                    self._delete_chat_rows(session, [chat_id])
+                self._index_in_session(session, chat_id, None)
+                session.commit()
+                self.chat_log.retire(chat_id)
+                return int(stored is not None)
+            differs = bool(projection_differences(logged, stored))
+            if differs:
+                self._write_projection(session, chat_id, logged)
+            size, mtime_ns = self.chat_log.stat(chat_id)
+            self._index_in_session(session, chat_id, (seq, size, mtime_ns))
+            self.commit_chat_changes(session, [chat_id])
+        return int(differs)
+
+    def _write_projection(
+        self, session: Session, chat_id: str, projection: Projection
+    ) -> None:
+        """Overwrite (or create) a chat's row from its logged projection."""
+        chat = session.get(ChatModel, chat_id)
+        created_at = datetime.fromisoformat(projection["created_at"])
+        if chat is None:
+            chat = ChatModel(
+                id=chat_id, title="", created_at=created_at, updated_at=created_at
+            )
+        project_id = projection["project_id"]
+        if project_id and session.get(ProjectModel, project_id) is None:
+            # Projects live only in chats.db; a chat whose project is gone
+            # lands in the default project, and the move is logged.
+            default = self.get_project_by_slug(self.DEFAULT_PROJECT_SLUG)
+            project_id = default.id if default else None
+        last_active_at = projection["last_active_at"]
+        chat.title = projection["title"]
+        chat.pinned = projection["pinned"]
+        chat.project_id = project_id
+        chat.working_directory = projection["working_directory"]
+        chat.created_at = created_at
+        chat.updated_at = datetime.fromisoformat(projection["updated_at"])
+        chat.last_active_at = (
+            datetime.fromisoformat(last_active_at) if last_active_at else None
+        )
+        chat.turn_count = projection["turn_count"]
+        chat.context_usage = copy.deepcopy(projection["context_usage"])
+        chat.config = copy.deepcopy(projection["config"])
+        chat.messages = copy.deepcopy(projection["messages"])
+        chat.agent_state = state_bytes(projection["state"])
+        for column in ("context_usage", "config", "messages"):
+            flag_modified(chat, column)
+        session.add(chat)
+        self._reindex_in_session(session, chat_id, chat.messages)
+
+    def import_unlogged_chats(self) -> int:
+        """Start a log for every chat without one. Returns how many were started.
+
+        Chats written before logs existed get a ``chat.imported`` snapshot, and
+        their retry checkpoints move out of the old ``retry_checkpoints`` table.
+        """
+        logged = set(self.chat_log.chat_ids())
+        imported = 0
+        for chat_id in self.all_chat_ids():
+            if chat_id in logged:
+                continue
+            try:
+                with self._session() as session:
+                    self.commit_chat_changes(session, [chat_id])
+                imported += 1
+            except Exception as exc:
+                logger.warning("Could not start a log for chat {}: {}", chat_id, exc)
+        self._import_legacy_retry_checkpoints()
+        if imported:
+            logger.info("Started JSONL logs for {} existing chats", imported)
+        return imported
+
+    def _import_legacy_retry_checkpoints(self) -> None:
+        with self.engine.connect() as connection:
+            if not sa_inspect(connection).has_table("retry_checkpoints"):
+                return
+            rows = (
+                connection.execute(text("SELECT * FROM retry_checkpoints"))
+                .mappings()
+                .all()
+            )
+        for row in rows:
+            chat_id = row["chat_id"]
+            if self.get_retry_checkpoint(chat_id) is not None:
+                continue
+            config_snapshot = _json_column(row["config_snapshot"], {})
+            self.save_retry_checkpoint(
+                chat_id,
+                checkpoint_id=config_snapshot.get("_retry_checkpoint_id")
+                or uuid.uuid4().hex,
+                agent_state_before=row["agent_state_before"],
+                messages_before=_json_column(row["messages_before"], []),
+                user_message=row["user_message"] or "",
+                user_files=_json_column(row["user_files"], []),
+                config_snapshot=config_snapshot,
+                file_snapshot=_json_column(row["file_snapshot"], [])
+                if row["has_file_snapshot"]
+                else None,
+            )
+        with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE retry_checkpoints"))
+        logger.info("Moved {} retry checkpoints into chat logs", len(rows))
+
+    # -------------------------------------------------------------------------
+    # Retry checkpoints
+    # -------------------------------------------------------------------------
+
+    def save_retry_checkpoint(
+        self,
+        chat_id: str,
+        *,
+        checkpoint_id: str,
+        agent_state_before: Optional[bytes],
+        messages_before: List[Dict[str, Any]],
+        user_message: str,
+        user_files: List[Any],
+        config_snapshot: Dict[str, Any],
+        file_snapshot: Optional[List[Any]] = None,
+    ) -> bool:
+        """Record the state a retry of the coming turn rewinds to.
+
+        When that state is the chat as stored, the checkpoint names the log
+        position instead of carrying a copy, so a checkpoint per turn costs a
+        few hundred bytes rather than the whole conversation.
+        """
+        with self._session() as session:
+            # Hold SQLite's write lock so the row cannot move between the
+            # comparison below and the checkpoint's position in the log.
+            claimed = session.execute(
+                update(ChatModel).where(ChatModel.id == chat_id).values(id=ChatModel.id)
+            )
+            if claimed.rowcount != 1:
+                return False
+            current = self._project_in_session(session, chat_id)
+            before_messages = visible_messages(messages_before)
+            before_state = project_state(agent_state_before)
+            if before_messages == current["messages"] and (
+                before_state == current["state"]
+            ):
+                before: Dict[str, Any] = {"seq": None}
+            else:
+                before = {"messages": before_messages, "state": before_state}
+            checkpoint = normalize_json(
+                {
+                    "id": checkpoint_id,
+                    "user_message": user_message,
+                    "user_files": list(user_files),
+                    "config_snapshot": dict(config_snapshot),
+                    "has_file_snapshot": file_snapshot is not None,
+                    "file_snapshot": list(file_snapshot or []),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            checkpoint["before"] = before
+            self.commit_chat_changes(
+                session,
+                [chat_id],
+                checkpoint_events={chat_id: [("checkpoint.set", checkpoint)]},
+            )
+        return True
+
+    def get_retry_checkpoint(self, chat_id: str) -> Optional[RetryCheckpoint]:
+        with self.chat_log.lock(chat_id):
+            projection, _ = self.chat_log.logged(chat_id)
+            checkpoint = (projection or {}).get("checkpoint")
+            if checkpoint is None:
+                return None
+            return RetryCheckpoint.from_logged(
+                chat_id, copy.deepcopy(checkpoint), self.chat_log
+            )
+
+    def update_retry_checkpoint(
+        self, chat_id: str, checkpoint_id: str, fields: Dict[str, Any]
+    ) -> bool:
+        """Change fields of the chat's checkpoint if it is still *checkpoint_id*."""
+        checkpoint = self.get_retry_checkpoint(chat_id)
+        if checkpoint is None or checkpoint.id != checkpoint_id:
+            return False
+        update_event = ("checkpoint.update", {"id": checkpoint_id, "set": fields})
+        with self._session() as session:
+            self.commit_chat_changes(
+                session, [chat_id], checkpoint_events={chat_id: [update_event]}
+            )
+        return True
+
+    def record_turn_file_changes(
+        self, chat_id: str, file_snapshot: List[Dict[str, Any]]
+    ) -> None:
+        """Attach a finished turn's file changes to its checkpoint and its answer."""
+        checkpoint = self.get_retry_checkpoint(chat_id)
+        events: List[tuple[str, Any]] = []
+        if checkpoint is not None:
+            fields = {"file_snapshot": file_snapshot, "has_file_snapshot": True}
+            events.append(("checkpoint.update", {"id": checkpoint.id, "set": fields}))
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if chat is not None and file_snapshot:
+                display_messages = list(chat.messages or [])
+                assistant_index = next(
+                    (
+                        index
+                        for index in range(len(display_messages) - 1, -1, -1)
+                        if isinstance(display_messages[index], dict)
+                        and display_messages[index].get("role") == "assistant"
+                    ),
+                    None,
+                )
+                if assistant_index is not None:
+                    assistant = dict(display_messages[assistant_index])
+                    assistant["file_changes"] = file_snapshot
+                    display_messages[assistant_index] = assistant
+                    chat.messages = display_messages
+                    flag_modified(chat, "messages")
+                    session.add(chat)
+            self.commit_chat_changes(
+                session, [chat_id], checkpoint_events={chat_id: events}
+            )
+
+    def chat_log_differences(self, chat_log: ChatEventLog) -> dict[str, list[str]]:
+        """Fold every log in *chat_log* and compare it with the stored row.
+
+        Returns the chats that disagree, each with the fields that differ. A row
+        with no log, or a log with no row, is reported too.
+        """
+        report: dict[str, list[str]] = {}
+        for chat_id in sorted(set(self.all_chat_ids()) | set(chat_log.chat_ids())):
+            chat = self.get_chat(chat_id)
+            try:
+                logged, _ = chat_log.fold(chat_id)
+            except ChatLogError as exc:
+                report[chat_id] = [f"<unreadable log: {exc}>"]
+                continue
+            differences = projection_differences(
+                logged, project_chat(chat) if chat else None
+            )
+            if differences:
+                report[chat_id] = differences
+        return report
 
     def ensure_channel_chat(
         self,
@@ -409,8 +807,13 @@ class ChatOperationsMixin:
             session.add(chat)
             if messages is not None and reindex:
                 self._reindex_in_session(session, chat_id, messages)
-            session.commit()
-            return True
+            if messages is not None and not reindex:
+                # A streaming draft: the log leaves it out, and the turn's
+                # real write records the summary and timestamp it changes.
+                session.commit()
+            else:
+                self.commit_chat_changes(session, [chat_id])
+        return True
 
     def append_chat_message(self, chat_id: str, message: Dict[str, Any]) -> bool:
         """Append one display message to a chat."""
@@ -426,8 +829,32 @@ class ChatOperationsMixin:
             chat.updated_at = datetime.now()
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
-            session.commit()
+            self.commit_chat_changes(session, [chat_id])
+        return True
+
+    def append_voice_log(
+        self, chat_id: str, entries: List[Dict[str, Any]], limit: int = 1000
+    ) -> bool:
+        """Append realtime voice transcript rows, replacing rows with the same id."""
+        if not entries:
             return True
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            log = [row for row in (chat.voice_log or []) if isinstance(row, dict)]
+            index = {row.get("id"): i for i, row in enumerate(log)}
+            for entry in entries:
+                position = index.get(entry.get("id"))
+                if position is None:
+                    index[entry.get("id")] = len(log)
+                    log.append(dict(entry))
+                else:
+                    log[position] = dict(entry)
+            chat.voice_log = log[-limit:]
+            session.add(chat)
+            session.commit()
+        return True
 
     def append_chat_message_once(
         self, chat_id: str, message: Dict[str, Any], client_message_id: str
@@ -454,8 +881,8 @@ class ChatOperationsMixin:
             chat.updated_at = datetime.now()
             session.add(chat)
             self._reindex_in_session(session, chat_id, messages)
-            session.commit()
-            return "created"
+            self.commit_chat_changes(session, [chat_id])
+        return "created"
 
     def has_client_message(self, chat_id: str, client_message_id: str) -> bool:
         """Return whether a chat already contains a mobile send receipt."""
@@ -513,8 +940,8 @@ class ChatOperationsMixin:
                 chat.turn_count = max(0, (chat.turn_count or 0) + turn_count_delta)
             self._reindex_in_session(session, chat_id, messages)
             session.add(chat)
-            session.commit()
-            return True
+            self.commit_chat_changes(session, [chat_id])
+        return True
 
     def merge_chat_config(self, chat_id: str, updates: Dict[str, Any]) -> bool:
         """Atomically merge top-level keys into a chat's config.
@@ -532,8 +959,8 @@ class ChatOperationsMixin:
             _set_config_keys(session, chat_id, updates)
             chat.updated_at = datetime.now()
             session.add(chat)
-            session.commit()
-            return True
+            self.commit_chat_changes(session, [chat_id])
+        return True
 
     def commit_snapshot_state(
         self,
@@ -541,6 +968,8 @@ class ChatOperationsMixin:
         agent_state: bytes,
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
+        expected_revision: Optional[int] = None,
     ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 
@@ -555,10 +984,22 @@ class ChatOperationsMixin:
         can no longer overwrite them.
 
         Returns:
-            The new state revision if the chat exists, otherwise None.
+            The new revision, or None if the chat is missing or the expected
+            revision no longer matches.
         """
         now = datetime.now()
         with self._session() as session:
+            if expected_revision is not None:
+                claimed = session.execute(
+                    update(ChatModel)
+                    .where(
+                        ChatModel.id == chat_id,
+                        ChatModel.state_revision == expected_revision,
+                    )
+                    .values(state_revision=ChatModel.state_revision)
+                )
+                if claimed.rowcount != 1:
+                    return None
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 _postprocess_metrics.snapshot_failed += 1
@@ -600,6 +1041,16 @@ class ChatOperationsMixin:
                         session, chat_id, _message_summary(appended_messages)
                     )
 
+            if streamed_message is not None:
+                from suzent.core.display_log import merge_streamed_message
+
+                appended_messages = merge_streamed_message(
+                    list(chat.messages or []), streamed_message
+                )
+                chat.messages = appended_messages
+                flag_modified(chat, "messages")
+                _set_config_keys(session, chat_id, _message_summary(appended_messages))
+
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state
             chat.state_revision = next_revision
@@ -610,10 +1061,39 @@ class ChatOperationsMixin:
             session.add(chat)
             if appended_messages is not None:
                 self._reindex_in_session(session, chat_id, appended_messages)
-            session.commit()
-
+            self.commit_chat_changes(session, [chat_id])
         _postprocess_metrics.snapshot_committed += 1
         return next_revision
+
+    def append_display_rows(self, chat_id: str, rows: List[Dict[str, Any]]) -> bool:
+        """Append rows the display log needs now, and advance the revision.
+
+        For a turn's opening rows written before the turn ends. Advancing the
+        revision in the same transaction stops the previous turn's finalizer,
+        still holding the older revision, from replacing ``messages`` and
+        deleting them. Rows already at the tail are skipped.
+
+        Returns:
+            True when the chat exists.
+        """
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            existing = list(chat.messages or [])
+            added = [row for row in rows if row not in existing[-len(rows) :]]
+            if not added:
+                return True
+            messages = existing + added
+            chat.messages = messages
+            flag_modified(chat, "messages")
+            _set_config_keys(session, chat_id, _message_summary(messages))
+            chat.state_revision = (chat.state_revision or 0) + 1
+            chat.updated_at = datetime.now()
+            session.add(chat)
+            self._reindex_in_session(session, chat_id, messages)
+            self.commit_chat_changes(session, [chat_id])
+        return True
 
     def finalize_state_if_revision_matches(
         self,
@@ -622,8 +1102,12 @@ class ChatOperationsMixin:
         agent_state: bytes,
         messages: Optional[List[Dict[str, Any]]] = None,
         update_lifecycle: bool = True,
+        count_unread: bool = True,
     ) -> bool:
         """Finalize chat state only when revision matches expected value.
+
+        ``count_unread`` is False for a turn that reported nothing, which must
+        not light up the unread badge.
 
         Returns:
             True when finalized commit succeeds, False when stale/not found.
@@ -662,6 +1146,7 @@ class ChatOperationsMixin:
             if update_lifecycle:
                 chat.last_active_at = now
                 chat.turn_count = (chat.turn_count or 0) + 1
+            if update_lifecycle and count_unread:
                 session.execute(
                     text(
                         "UPDATE chats SET config = json_set("
@@ -673,8 +1158,8 @@ class ChatOperationsMixin:
                 )
 
             session.add(chat)
-            session.commit()
-            return True
+            self.commit_chat_changes(session, [chat_id])
+        return True
 
     def delete_chat(self, chat_id: str, cascade_subagents: bool = False) -> bool:
         """Delete a chat by ID. Optionally cascade-delete subagent children."""
@@ -686,20 +1171,29 @@ class ChatOperationsMixin:
             deleted_ids = [chat_id]
             if cascade_subagents:
                 all_chats = session.exec(select(ChatModel)).all()
-                for c in all_chats:
-                    if self._is_subagent_child(c, {chat_id}):
-                        session.delete(c)
-                        deleted_ids.append(c.id)
+                deleted_ids += [
+                    c.id for c in all_chats if self._is_subagent_child(c, {chat_id})
+                ]
 
-            session.delete(chat)
-            session.exec(
-                delete(InputSuggestionModel).where(
-                    col(InputSuggestionModel.chat_id).in_(deleted_ids)
-                )
-            )
+            self._delete_chat_rows(session, deleted_ids)
+            self.commit_chat_changes(session, deleted_ids)
+        return True
+
+    def _delete_chat_rows(self, session: Session, chat_ids: List[str]) -> None:
+        """Delete chats with their suggestions, status and search rows, uncommitted."""
+        for chat_id in chat_ids:
+            chat = session.get(ChatModel, chat_id)
+            if chat is not None:
+                session.delete(chat)
             self._remove_from_fts_in_session(session, chat_id)
-            session.commit()
-            return True
+        session.exec(
+            delete(InputSuggestionModel).where(
+                col(InputSuggestionModel.chat_id).in_(chat_ids)
+            )
+        )
+        session.exec(
+            delete(ChatStatusModel).where(col(ChatStatusModel.chat_id).in_(chat_ids))
+        )
 
     def _reindex_in_session(self, session, chat_id: str, messages) -> None:
         """Reindex a chat's FTS rows inside an open SQLModel session/transaction.
@@ -760,9 +1254,10 @@ class ChatOperationsMixin:
         """Reset unread count to zero when the user views a chat."""
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
-            if chat:
-                _set_config_keys(session, chat_id, {"unread_count": 0})
-                session.commit()
+            if not chat:
+                return
+            _set_config_keys(session, chat_id, {"unread_count": 0})
+            self.commit_chat_changes(session, [chat_id])
 
     def get_chat_projects(
         self, chat_ids: list[str]
@@ -867,7 +1362,7 @@ class ChatOperationsMixin:
             }
 
             results = []
-            summaries_backfilled = False
+            backfilled_ids: List[str] = []
 
             for row in session.exec(statement).all():
                 (
@@ -889,7 +1384,7 @@ class ChatOperationsMixin:
                     visible_count, last_message = _summarize_messages(messages)
                     if chat:
                         _set_config_keys(session, chat_id, _message_summary(messages))
-                        summaries_backfilled = True
+                        backfilled_ids.append(chat_id)
 
                 project = project_lookup.get(row_project_id) if row_project_id else None
                 results.append(
@@ -917,8 +1412,8 @@ class ChatOperationsMixin:
                     )
                 )
 
-            if summaries_backfilled:
-                session.commit()
+            if backfilled_ids:
+                self.commit_chat_changes(session, backfilled_ids)
 
             return results
 

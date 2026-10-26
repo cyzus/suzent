@@ -14,6 +14,10 @@ on:
         description: 'Sign existing macOS release assets, package the installer disk image, and upload CI artifacts without publishing'
         type: boolean
         default: false
+      npm_only:
+        description: 'Only publish an already published release to npm, for example when its publish-npm job did not run'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,7 +28,7 @@ concurrency:
 
 jobs:
   prepare-release:
-    if: ${{ !inputs.verify_signing }}
+    if: ${{ !inputs.verify_signing && !inputs.npm_only }}
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release-tag.outputs.tag }}
@@ -162,7 +166,7 @@ jobs:
         with:
           ref: ${{ needs.prepare-release.outputs.tag }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
@@ -235,6 +239,41 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
           INSTALLER_DMG: ${{ matrix.installer_dmg_asset }}
 
+  # `suzent web` needs the SPA, and a normal install has no Node to build it.
+  # Built in both asset modes: it must match this tag's frontend, not a
+  # previous release's.
+  build-webui:
+    needs: prepare-release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and pack web UI
+        run: python scripts/build_webui.py --archive suzent-webui.zip
+
+      - name: Upload web UI to draft release
+        run: gh release upload "$RELEASE_TAG" suzent-webui.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
   reuse-assets:
     needs: prepare-release
     if: needs.prepare-release.outputs.assets_mode == 'reuse'
@@ -264,6 +303,8 @@ jobs:
           fi
           mkdir -p reused-assets
           gh release download "$previous_tag" --pattern 'suzent-*' --dir reused-assets
+          # The web UI is rebuilt from this tag by build-webui.
+          rm -f reused-assets/suzent-webui.zip
           if [[ "$(find reused-assets -maxdepth 1 -type f | wc -l)" -lt 8 ]]; then
             echo "::error::Previous release $previous_tag does not contain all desktop and installer assets"
             exit 1
@@ -279,11 +320,13 @@ jobs:
     if: >-
       always() &&
       needs.prepare-release.result == 'success' &&
+      needs.build-webui.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse-assets.result == 'success' || needs.reuse-assets.result == 'skipped')
     needs:
       - prepare-release
       - build
+      - build-webui
       - reuse-assets
     runs-on: ubuntu-22.04
     steps:
@@ -306,6 +349,65 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
 
+  # npmmirror copies every npm package within minutes and without review, so
+  # the release files published here download domestically in mainland China.
+  # Publishing uses npm Trusted Publishing, so no npm token is stored; it runs
+  # after the GitHub release is out and its failure never holds the release.
+  # `always()` because the skipped reuse-assets (or build) job upstream would
+  # otherwise skip it too; `npm_only` publishes an existing release by itself.
+  publish-npm:
+    if: >-
+      always() &&
+      (needs.publish-release.result == 'success' || (inputs.npm_only && !inputs.verify_signing))
+    needs:
+      - prepare-release
+      - publish-release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Pack release files as npm packages
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          gh release download "$RELEASE_TAG" --pattern 'suzent-*' --pattern SHA256SUMS --dir release-assets
+          (cd release-assets && sha256sum --check SHA256SUMS)
+          python3 scripts/pack_npm_release.py release-assets "$RELEASE_TAG" npm-packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
+
+      - name: Publish to npm and ask npmmirror to sync
+        shell: bash
+        run: |
+          # Trusted Publishing needs npm 11.5.1 or newer.
+          npm install --global npm@^11.5.1
+          version="${RELEASE_TAG#v}"
+          for directory in npm-packages/*/; do
+            name="$(node -p "require('./${directory}package.json').name")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              (cd "$directory" && npm publish --access public)
+            fi
+            curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$name/syncs" \
+              || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
+          done
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
+
   verify-macos-signing:
     if: inputs.verify_signing
     runs-on: ${{ matrix.os }}
@@ -322,7 +424,7 @@ jobs:
             arch: x86_64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable

@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Prevent the entire app viewport from scrolling or bouncing when content does not overflow."
+}

@@ -12,6 +12,7 @@ import { SettingsPage } from './SettingsCard';
 import { isImeComposing } from '../../lib/ime';
 
 interface ModelRolesTabProps {
+  inlineVoiceModel?: boolean;
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
   unregisteredModels: string[];
@@ -148,7 +149,7 @@ export function ModelDropdown({
         type="button"
         onClick={handleOpen}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-brutal-yellow/20 brutal-btn"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn"
       >
         <span className="min-w-0 truncate">{label}</span>
         <span className="text-[10px] opacity-60">▼</span>
@@ -191,7 +192,7 @@ export function ModelDropdown({
                 <button
                   type="button"
                   onClick={() => handleSelect(m)}
-                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left font-mono text-xs hover:bg-brutal-yellow dark:border-zinc-700 dark:text-white dark:hover:bg-brutal-yellow/20"
+                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left font-mono text-xs hover:bg-neutral-100 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-700"
                   title={m}
                 >
                   <span className="truncate">{m}</span>
@@ -208,7 +209,7 @@ export function ModelDropdown({
                 <button
                   type="button"
                   onClick={() => handleSelect(trimmed)}
-                  className="w-full text-left px-3 py-2 font-mono text-xs font-bold hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-t-2 border-brutal-black truncate dark:text-white"
+                  className="w-full text-left px-3 py-2 font-mono text-xs font-bold hover:bg-neutral-100 dark:hover:bg-zinc-700 border-t-2 border-brutal-black truncate dark:text-white"
                   title={trimmed}
                 >
                   + {t('settings.roles.addCustom', { id: trimmed })}
@@ -292,7 +293,9 @@ function RoleRow({
           >
             {effective[0] || t('settings.roles.notConfigured')}
             {effective.length > 1 && (
-              <span className="ml-2 font-sans text-neutral-500">+{effective.length - 1}</span>
+              <span className="ml-2 font-sans text-neutral-500 dark:text-neutral-400">
+                +{effective.length - 1}
+              </span>
             )}
           </span>
           <span className="mt-1 block text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -305,7 +308,7 @@ function RoleRow({
                   : t('settings.roles.chooseModel')}
           </span>
         </span>
-        <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 sm:col-start-3 sm:row-span-1">
+        <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 sm:col-start-3 sm:row-span-1">
           <span
             className={`h-1.5 w-1.5 rounded-full ${offStatus ? 'bg-neutral-300' : selected.length ? 'bg-brutal-green' : isInherited ? 'bg-brutal-blue' : 'bg-neutral-300'}`}
             aria-hidden="true"
@@ -374,7 +377,9 @@ function RoleRow({
                     {t('settings.roles.backupModels', { count: draft.length - 1 })}
                   </summary>
                   <div className="mt-3 space-y-3">
-                    <p className="text-[11px] text-neutral-500">{t('settings.roles.modelOrder')}</p>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {t('settings.roles.modelOrder')}
+                    </p>
                     <ol className="space-y-2">
                       {draft.slice(1).map((model, offset) => {
                         const index = offset + 1;
@@ -463,6 +468,7 @@ function RoleRow({
 }
 
 export function ModelRolesTab({
+  inlineVoiceModel = false,
   roleModels,
   suggestions,
   unregisteredModels,
@@ -488,7 +494,7 @@ export function ModelRolesTab({
   }
 
   function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
-    if (role.key === 'tts')
+    if (role.key === 'tts' && !inlineVoiceModel)
       return (
         <button
           key="tts"

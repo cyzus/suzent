@@ -6,7 +6,6 @@ This ensures that if LanceDB data is lost or corrupted, the markdown
 source of truth can fully restore the search index.
 
 Also provides:
-- TranscriptIndexer: chunks JSONL session transcripts into LanceDB
 - CoreMemoryFileIndexer: watches persona.md / user.md / MEMORY.md for
   changes and keeps their embeddings in LanceDB up to date (Phase 2)
 """
@@ -92,181 +91,6 @@ def _owned_by_file(row: dict) -> bool:
         except Exception:
             return False
     return bool((metadata or {}).get("source_file"))
-
-
-# ---------------------------------------------------------------------------
-# Transcript Indexer (Phase 5)
-# ---------------------------------------------------------------------------
-
-# Default chunking parameters
-DEFAULT_CHUNK_SIZE = 400  # ~400 tokens per chunk
-DEFAULT_CHUNK_OVERLAP = 80  # 80 token overlap between chunks
-
-
-class TranscriptIndexer:
-    """
-    Chunks JSONL session transcripts and embeds them into LanceDB.
-
-    Each transcript turn is concatenated into a running text, then split
-    into overlapping chunks (~400 tokens, 80 overlap). Each chunk is
-    stored as an archival memory tagged with source session and line info.
-
-    Opt-in via config: transcript_indexing_enabled = True
-    """
-
-    def __init__(
-        self,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
-        chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
-    ):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-
-    async def index_transcript(
-        self,
-        transcript_path: Path,
-        session_id: str,
-        lancedb_store,
-        embedding_gen,
-        user_id: str,
-    ) -> dict:
-        """
-        Read a JSONL transcript and index its content into LanceDB.
-
-        Args:
-            transcript_path: Path to the .jsonl file
-            session_id: Session/chat ID
-            lancedb_store: LanceDBMemoryStore instance
-            embedding_gen: EmbeddingGenerator instance
-            user_id: User scope
-
-        Returns:
-            Dict with stats: total_turns, total_chunks, indexed, errors
-        """
-        stats = {
-            "total_turns": 0,
-            "total_chunks": 0,
-            "indexed": 0,
-            "errors": 0,
-        }
-
-        if not transcript_path.exists():
-            logger.debug(f"Transcript not found: {transcript_path}")
-            return stats
-
-        raw = await read_text_off_loop(transcript_path)
-        if raw is None:
-            stats["errors"] += 1
-            return stats
-
-        try:
-            # Read all turns
-            turns = []
-            for line in raw.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    turns.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-
-            stats["total_turns"] = len(turns)
-            if not turns:
-                return stats
-
-            # Build a running text from turns with line markers
-            segments = []
-            for idx, turn in enumerate(turns):
-                role = turn.get("role", "unknown")
-                content = turn.get("content", "")
-                ts = turn.get("ts", "")
-                segments.append(f"[L{idx}|{role}|{ts}] {content}")
-
-            full_text = "\n".join(segments)
-
-            # Chunk with overlap (approximate token = ~4 chars)
-            chunks = self._chunk_text(full_text)
-            stats["total_chunks"] = len(chunks)
-
-            # Embed and store each chunk
-            for i, chunk in enumerate(chunks):
-                try:
-                    embedding = await embedding_gen.generate(chunk["text"])
-                    await lancedb_store.add_memory(
-                        content=chunk["text"],
-                        embedding=embedding,
-                        user_id=user_id,
-                        chat_id=None,  # User-level for cross-session search
-                        metadata={
-                            "source_type": "transcript",
-                            "source_session_id": session_id,
-                            "chunk_index": i,
-                            "start_line": chunk["start_line"],
-                            "end_line": chunk["end_line"],
-                            "category": "transcript",
-                            "tags": ["transcript", session_id[:8]],
-                        },
-                        importance=0.3,  # Transcripts are lower importance than extracted facts
-                    )
-                    stats["indexed"] += 1
-                except Exception as e:
-                    logger.warning(f"Failed to index transcript chunk {i}: {e}")
-                    stats["errors"] += 1
-
-            logger.info(
-                f"Transcript indexing for {session_id}: "
-                f"{stats['indexed']} chunks from {stats['total_turns']} turns"
-            )
-
-        except Exception as e:
-            logger.error(f"Transcript indexing failed for {session_id}: {e}")
-            stats["errors"] += 1
-
-        return stats
-
-    def _chunk_text(self, text: str) -> List[dict]:
-        """
-        Split text into overlapping chunks.
-
-        Each chunk is ~chunk_size words with chunk_overlap word overlap.
-        Returns list of dicts with text, start_line, end_line.
-        """
-        words = text.split()
-        if not words:
-            return []
-
-        chunks = []
-        step = max(1, self.chunk_size - self.chunk_overlap)
-        i = 0
-
-        while i < len(words):
-            chunk_words = words[i : i + self.chunk_size]
-            chunk_text = " ".join(chunk_words)
-
-            # Extract line markers [L{n}|...] to track start/end lines
-            start_line = self._extract_line_num(chunk_words[0]) if chunk_words else 0
-            end_line = self._extract_line_num(chunk_words[-1]) if chunk_words else 0
-
-            chunks.append(
-                {
-                    "text": chunk_text,
-                    "start_line": start_line,
-                    "end_line": end_line,
-                }
-            )
-
-            i += step
-
-        return chunks
-
-    @staticmethod
-    def _extract_line_num(word: str) -> int:
-        """Extract line number from [L{n}|...] marker, or return 0."""
-        match = re.match(r"\[L(\d+)\|", word)
-        if match:
-            return int(match.group(1))
-        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -660,21 +484,11 @@ class CoreMemoryFileIndexer:
             source_type = "notebook" if label == "notebook" else "core_file"
             category, tags = self._page_taxonomy(label, filename, content)
             # Vault pages carry a lifecycle (frontmatter status/stale_after, inline
-            # confirmation counts). Core files carry none of that, with one exception:
-            # MEMORY.md's manual zone is where a person edits their own memory, and
-            # `write_memory_manual_zone` stamps it with a `human:` actor. Everything
-            # else on this path stays on the neutral default.
+            # confirmation counts). Core files carry none and stay on the neutral default.
             lifecycle = (
                 self._parse_page_lifecycle(content) if source_type == "notebook" else {}
             )
-            if source_type == "notebook":
-                segments = [(content, lifecycle)]
-            else:
-                # Chunked per zone, not per file: `_chunk_by_paragraphs` merges short
-                # paragraphs, so chunking MEMORY.md whole produces a single row
-                # spanning the generated half and the human half — one row that is
-                # both machine output and user-verified, which is neither.
-                segments = self._provenance_segments(content)
+            segments = [(content, lifecycle)]
 
             rows = []
             i = 0
@@ -879,6 +693,7 @@ class CoreMemoryFileIndexer:
         "literature",
         "project",
         "personal",
+        "experience",
         "documentation",
     }
 
@@ -1004,7 +819,7 @@ class CoreMemoryFileIndexer:
 
     @staticmethod
     def _parse_page_lifecycle(content: str) -> dict:
-        """Read `status` and `stale_after` out of a vault page's frontmatter.
+        """Read `status`, `stale_after`, `confirmed` and verification out of a page's frontmatter.
 
         Deliberately not a YAML parse: the frontmatter is hand-editable and a page with
         a malformed block must still be indexed. Unreadable keys simply go missing,
@@ -1016,48 +831,12 @@ class CoreMemoryFileIndexer:
             return lifecycle
         for line in m.group(1).splitlines():
             kv = re.match(
-                r"^(status|stale_after|verified_by|verified_at)\s*:\s*(.+?)\s*$",
+                r"^(status|stale_after|verified_by|verified_at|confirmed)\s*:\s*(.+?)\s*$",
                 line.strip(),
             )
             if kv:
                 lifecycle[kv.group(1)] = kv.group(2).strip().strip("\"'")
         return lifecycle
-
-    @staticmethod
-    def _provenance_segments(content: str) -> List[tuple]:
-        """Split a core file into `(text, lifecycle)` regions by who wrote them.
-
-        MEMORY.md is the only file with two authors: a generated zone rewritten on
-        every consolidation, and a manual zone a person edits and `write_memory_manual_zone`
-        stamps with a `human:` actor. Only the region *after* the end marker carries
-        that verification — everything above it is machine output, and scoring it as
-        human-verified would launder the generator's own text into the strongest
-        evidence class the ranker has. Every other core file comes back as one
-        unstamped segment, which is the neutral default it had before.
-        """
-        from .markdown_store import MEMORY_GENERATED_END
-
-        if MEMORY_GENERATED_END not in content:
-            return [(content, {})]
-        head, _, tail = content.partition(MEMORY_GENERATED_END)
-        verification = CoreMemoryFileIndexer._parse_verification(tail)
-        return [(head, {}), (tail, verification)]
-
-    @staticmethod
-    def _parse_verification(content: str) -> dict:
-        """Read the `<!-- verified: <actor> at <ts> -->` stamp, if the text carries one.
-
-        Written by `write_memory_manual_zone` when a person edits MEMORY.md, which is
-        the only place in the system where a claim comes from the user directly rather
-        than from extraction. Returned in the same shape as the frontmatter lifecycle
-        so both paths feed `_claim_strength` through one argument.
-        """
-        m = re.search(
-            r"<!--\s*verified:\s*(.+?)\s+at\s+(\S+?)\s*-->", content, re.IGNORECASE
-        )
-        if not m:
-            return {}
-        return {"verified_by": m.group(1).strip(), "verified_at": m.group(2).strip()}
 
     @staticmethod
     def _claim_strength(
@@ -1079,7 +858,10 @@ class CoreMemoryFileIndexer:
 
         # A repeated fact is one claim confirmed many times, not many facts. Log-scaled
         # so the difference between 1x and 5x matters and 40x vs 60x does not.
-        confirmations = 0
+        # The dream now keeps the count in frontmatter; older pages still carry it
+        # inline, and a page mid-migration may have both.
+        confirmed = str(lifecycle.get("confirmed", ""))
+        confirmations = int(confirmed) if confirmed.isdigit() else 0
         for m in re.finditer(r"\(confirmed\s+(\d+)x", chunk, re.IGNORECASE):
             confirmations = max(confirmations, int(m.group(1)))
         if confirmations > 1:

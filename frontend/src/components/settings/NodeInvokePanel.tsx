@@ -111,7 +111,9 @@ function InvokeForm({
         </SettingsListAction>
       </div>
 
-      {selected?.description && <p className="text-xs text-neutral-500">{selected.description}</p>}
+      {selected?.description && (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">{selected.description}</p>
+      )}
 
       {outcome && (
         <pre
@@ -138,7 +140,9 @@ export function NodeInvokePanel({
 }): React.ReactElement {
   if (!capabilities.length) {
     return (
-      <p className="text-xs text-neutral-500">This device advertises no capabilities to invoke.</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        This device advertises no capabilities to invoke.
+      </p>
     );
   }
   return (
@@ -196,7 +200,7 @@ export function PeerInvokePanel({ peerId }: { peerId: string }): React.ReactElem
   }
 
   if (loading) {
-    return <p className="text-xs text-neutral-500">Reading capabilities…</p>;
+    return <p className="text-xs text-neutral-500 dark:text-neutral-400">Reading capabilities…</p>;
   }
 
   if (error) {
@@ -210,7 +214,9 @@ export function PeerInvokePanel({ peerId }: { peerId: string }): React.ReactElem
 
   if (!capabilities?.length) {
     return (
-      <p className="text-xs text-neutral-500">This device has no hardware capabilities attached.</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        This device has no hardware capabilities attached.
+      </p>
     );
   }
 

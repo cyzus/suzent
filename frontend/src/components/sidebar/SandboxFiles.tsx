@@ -1,3 +1,6 @@
+import { useSidebarExpansion } from './SidebarExpansionContext';
+import { FullscreenButton } from '../FullscreenButton';
+import { isImeComposing } from '../../lib/ime';
 import React, { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
@@ -19,7 +22,6 @@ import {
   CodeBracketIcon,
   PhotoIcon,
   ArrowUpTrayIcon,
-  ArrowsPointingOutIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
@@ -43,7 +45,7 @@ interface SandboxFilesProps {
   // Bumps on every external open request so re-selecting the same file (after
   // navigating back to the list) re-triggers the preview.
   externalFileNonce?: number | null;
-  onMaximize?: (filePath: string, fileName: string) => void;
+  onMaximize?: (filePath: string, fileName: string, anchor?: DOMRect) => void;
 }
 
 const WORKSPACE_PATH = '/workspace';
@@ -117,6 +119,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
         onClick={() => (isDir ? onToggleDir(path) : onSelectFile(path, name))}
         onContextMenu={(event) => onContextMenu(event, { path, name, isDir })}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) return;
           if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
             onContextMenu(event, { path, name, isDir });
           }
@@ -197,6 +200,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   externalFileNonce,
   onMaximize,
 }) => {
+  const sidebarExpansion = useSidebarExpansion();
   const { t } = useI18n();
   const { currentChatId, config } = useChatStore();
 
@@ -523,28 +527,50 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
     return (
       <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
-        <div className="flex items-center gap-3 p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20 shadow-[0_2px_0_0_rgba(0,0,0,1)]">
+        <div className="flex items-start gap-3 px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20">
           <BrutalButton onClick={handleBack} title={t('sandbox.back')} size="icon">
             <ChevronLeftIcon className="w-5 h-5 stroke-2" />
           </BrutalButton>
-          <div className="bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]">
-            <span className="font-bold text-xs truncate block font-mono uppercase tracking-wider dark:text-white">
+          <div
+            className={
+              sidebarExpansion?.expanded
+                ? 'flex-1 min-w-0 flex min-h-8 items-center px-1'
+                : 'bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]'
+            }
+          >
+            <span
+              className={
+                sidebarExpansion?.expanded
+                  ? 'font-semibold text-xs truncate block font-mono text-neutral-700 dark:text-zinc-200'
+                  : 'font-bold text-xs truncate block font-mono uppercase tracking-wider dark:text-white'
+              }
+            >
               {filename}
             </span>
           </div>
-          {onMaximize && (
-            <BrutalButton
-              variant="warning"
-              size="icon"
-              onClick={() => onMaximize(selectedFile, filename)}
-              title={t('sandbox.maximize')}
-            >
-              <ArrowsPointingOutIcon className="w-5 h-5 stroke-2" />
-            </BrutalButton>
+          {(onMaximize || sidebarExpansion) && (
+            <FullscreenButton
+              expanded={sidebarExpansion?.expanded}
+              onClick={(event) =>
+                sidebarExpansion
+                  ? sidebarExpansion.toggle()
+                  : onMaximize?.(
+                      selectedFile,
+                      filename,
+                      event.currentTarget.getBoundingClientRect()
+                    )
+              }
+            />
           )}
         </div>
 
-        <div className="flex-1 overflow-auto p-4 relative bg-white dark:bg-zinc-900">
+        <div
+          className={
+            sidebarExpansion?.expanded
+              ? 'min-h-0 flex-1 overflow-auto scrollbar-thin relative bg-white dark:bg-zinc-900'
+              : 'flex-1 overflow-auto p-4 relative bg-white dark:bg-zinc-900'
+          }
+        >
           {loadingFile ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
@@ -579,7 +605,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
       {/* Toolbar */}
-      <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black shrink-0">
+      <div
+        className={
+          sidebarExpansion?.expanded
+            ? 'bg-white dark:bg-zinc-800 p-2 border-b-2 border-brutal-black shrink-0'
+            : 'bg-white dark:bg-zinc-800 p-2 border-b-2 border-brutal-black shrink-0'
+        }
+      >
         <div className="flex items-center gap-2">
           <RefreshButton onClick={handleRefresh} spinning={isRootLoading} />
           <BrutalButton
@@ -605,7 +637,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             onChange={handleFileChange}
             multiple
           />
-          <div className="min-w-0 flex-1 border-2 border-brutal-black bg-neutral-100 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-[2px_2px_0_0_#000] dark:bg-zinc-700 dark:text-white">
+          <div
+            className={
+              sidebarExpansion?.expanded
+                ? 'min-w-0 flex-1 px-2 py-1 font-mono text-[10px] text-neutral-500 dark:text-zinc-400'
+                : 'min-w-0 flex-1 border-2 border-brutal-black bg-neutral-100 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-[2px_2px_0_0_#000] dark:bg-zinc-700 dark:text-white'
+            }
+          >
             <span className="block truncate">{activeRoot}</span>
           </div>
         </div>
@@ -684,7 +722,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       )}
 
       {/* Status Footer */}
-      <div className="bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
+      <div
+        className={
+          sidebarExpansion?.expanded
+            ? 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-2 border-brutal-black select-none'
+            : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-2 border-brutal-black select-none'
+        }
+      >
         <span className="font-bold tracking-wider">
           {t(activeRootLabel)}: {t('sandbox.itemsCount', { count: String(totalItems) })}
         </span>

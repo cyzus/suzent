@@ -20,14 +20,16 @@ A surface is a named, renderable UI panel. It has:
 
 ### Component Tree
 
-Components are plain dicts with a `"type"` field. They nest recursively via `"children"` lists.
+Components are plain JSON objects with a `"type"` field. They nest recursively via `"children"` lists, whose entries are themselves component objects.
+
+`component` must be a JSON **object**. The recursive A2UI union is validated server-side by `A2UISurface`, but the tool schema sent to providers is a flat, provider-neutral object schema (`suzent.a2ui.schema.component_tool_schema()`): recursive `$defs` are rejected by some providers, and an untyped parameter made models guess (Anthropic streamed the tree as a JSON string; Gemini sent `children: [0, 1]`). A string containing a JSON *object* is still accepted for compatibility and logged as deprecated; any other string is rejected with an explanation and is never treated as HTML or text. Validation errors come back as one line per problem with the field path. When adding a field to `suzent.a2ui.models`, add it to `suzent.a2ui.schema` too; `tests/tools/test_render_ui_schema.py` fails on drift.
 
 **Container types** (have `children`):
 
 | Type | Description | Key fields |
 |------|-------------|------------|
 | `card` | Titled panel with a black header bar | `title`, `children` |
-| `stack` | Vertical or horizontal group | `children`, `gap` (`sm`/`md`/`lg`), `direction` |
+| `stack` | Vertical group | `children`, `gap` (`sm`/`md`/`lg`) |
 | `columns` | Side-by-side columns | `children`, `ratios` (list of flex weights) |
 
 **Leaf types**:
@@ -193,12 +195,39 @@ render_ui(
 
 ## Free-form HTML (`html` component)
 
+### Shared presentation
+
+Chat and Canvas share one live renderer per surface ID. `target` selects its
+initial placement; moving it later changes its location without creating a
+second renderer. The transcript keeps a compact pointer with “Show here” while
+the surface is in Canvas. Fullscreen expands the existing sidebar using the
+same state as dragging it across the chat; shrinking restores its docked width.
+Opening fullscreen from chat first moves the surface to Canvas. Switching
+Canvas tabs parks inactive renderers.
+
+The shared provider is scoped to the chat. Connected DOM nodes move using
+`Element.moveBefore` where supported, preserving iframe state as well as React
+form state. Older webviews fall back to `appendChild`: React state survives,
+but those engines may reload an iframe when reparenting it.
+
 When the typed components can't express what you need — charts, SVG diagrams, custom dashboards, interactive prototypes — use the `html` component. It renders a self-contained HTML document in a **sandboxed iframe**.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `html` | `str` | Self-contained HTML. May be a full document or a bare fragment. |
 | `height` | `int \| None` | Fixed height in px. When omitted, the iframe **auto-sizes** to its content. |
+
+Document-style HTML (news, reports, articles) should omit `height`. The resize
+reporter measures the body independently of the iframe viewport, including
+content changes, image loads and fonts, so it can grow past 4000px and shrink
+when the panel widens. Canvas owns scrolling and its header stays outside the
+scrollable body. A standalone HTML surface uses the document's own spacing,
+without an extra iframe border or Canvas padding.
+
+Viewport-based applications (maps, editors, dashboards) should set `height`.
+For a standalone fixed-height HTML surface, Canvas limits the iframe to the
+available panel height and leaves scrolling inside it. Nested fixed-height
+HTML components retain their own scroll region within the surrounding document.
 
 ### Sandbox model
 

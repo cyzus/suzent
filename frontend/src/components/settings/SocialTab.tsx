@@ -347,7 +347,7 @@ export function SocialTab({
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <span
-                    className={`border-2 border-brutal-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${isEnabled ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'dark:border-white'}`}
+                    className={`border-2 border-brutal-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${isEnabled ? 'bg-brutal-black text-white dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25' : 'dark:border-white/15 dark:text-zinc-400'}`}
                   >
                     {t(
                       isEnabled
@@ -610,7 +610,7 @@ export function SocialTab({
       {/* Pairing / Handshake card — always shown */}
       <SettingsCard>
         <SectionCardHeader
-          iconTone="yellow"
+          iconTone="neutral"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -660,7 +660,7 @@ export function SocialTab({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-base font-black tracking-widest bg-brutal-yellow text-brutal-black border border-brutal-black px-2 py-0.5">
+                      <span className="font-mono text-base font-black tracking-widest bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white border border-brutal-black px-2 py-0.5">
                         {p.token}
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs font-bold uppercase bg-neutral-200 dark:bg-zinc-700 px-1">

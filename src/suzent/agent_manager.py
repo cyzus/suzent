@@ -62,6 +62,8 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
 
     Returns MCP toolsets that can be passed to a pydantic-ai Agent.
     """
+    if config.get("mcp_disabled"):
+        return []
     from suzent.core import mcp_store as _mcp_store
 
     # JSON file is the source of truth; config dict can override for special callers
@@ -411,11 +413,15 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         for capability_id, selected_tools in capability_groups.items()
     )
     from suzent.core.context_usage import ContextUsageCapability
-    from suzent.core.prompt_cache import PromptCacheRoutingCapability
+    from suzent.core.prompt_cache import (
+        ForkPrefixCapability,
+        PromptCacheRoutingCapability,
+    )
 
     capabilities.append(ToolResultContextCapability())
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
+    capabilities.append(ForkPrefixCapability())
 
     agent = Agent(
         model,

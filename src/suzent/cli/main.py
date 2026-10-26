@@ -24,6 +24,7 @@ from pathlib import Path
 
 import psutil
 import typer
+from suzent import network_region
 from suzent.config import DEFAULT_PORT, RUNTIME_DIR
 from suzent.version import (
     UNKNOWN,
@@ -333,16 +334,19 @@ def _graphical_update_available() -> bool:
 
 
 def _fetch_latest_release(timeout: float = 10.0) -> dict:
-    url = f"https://api.github.com/repos/{_REPO}/releases/latest"
-    req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+    return network_region.fetch_latest_release(timeout=timeout)
 
 
-def _release_asset_url(asset_name: str, version: str) -> str:
-    if version == "latest":
-        return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
-    return f"https://github.com/{_REPO}/releases/download/{version}/{asset_name}"
+def _download_release_asset(asset_name: str, version: str, dest: Path) -> None:
+    """Download from the first release source that serves the asset."""
+    errors = []
+    for url in network_region.release_asset_urls(asset_name, version):
+        try:
+            _download_file_atomic(url, dest)
+            return
+        except OSError as error:
+            errors.append(f"{url}: {error}")
+    raise OSError("; ".join(errors))
 
 
 def _parse_release_checksum(contents: str, asset_name: str) -> str:
@@ -358,17 +362,20 @@ def _parse_release_checksum(contents: str, asset_name: str) -> str:
     raise ValueError(f"SHA256SUMS has no valid entry for {asset_name}")
 
 
+def _release_checksums(release_tag: str) -> str:
+    errors = []
+    for url in network_region.release_asset_urls("SHA256SUMS", release_tag):
+        request = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8")
+        except OSError as error:
+            errors.append(f"{url}: {error}")
+    raise OSError("; ".join(errors))
+
+
 def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None:
-    checksum_url = _release_asset_url("SHA256SUMS", release_tag)
-    request = urllib.request.Request(
-        checksum_url,
-        headers={"User-Agent": "suzent-updater"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        expected = _parse_release_checksum(
-            response.read().decode("utf-8"),
-            asset_name,
-        )
+    expected = _parse_release_checksum(_release_checksums(release_tag), asset_name)
     digest = hashlib.sha256()
     with path.open("rb") as file:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
@@ -378,6 +385,40 @@ def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None
         raise ValueError(
             f"Checksum mismatch for {asset_name}: expected {expected}, found {actual}"
         )
+
+
+WEBUI_ASSET = "suzent-webui.zip"
+
+
+def _fetch_release_webui(root: Path) -> bool:
+    """Install the web UI bundle released for this checkout's stable tag.
+
+    Covers an install whose setup ran before the asset existed, or whose
+    download failed. Source checkouts have no matching asset and build their own.
+    """
+    release_file = root / ".suzent" / "release-tag"
+    release_tag = (
+        release_file.read_text(encoding="utf-8").strip()
+        if release_file.exists()
+        else ""
+    )
+    script = root / "scripts" / "build_webui.py"
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag) or not script.is_file():
+        return False
+    typer.echo(f"  • Downloading the web UI for {release_tag}...")
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / WEBUI_ASSET
+        try:
+            _download_release_asset(WEBUI_ASSET, release_tag, archive)
+            _verify_release_asset(archive, WEBUI_ASSET, release_tag)
+        except (OSError, ValueError) as error:
+            typer.echo(f"  ❌ Web UI download failed: {error}")
+            return False
+        result = subprocess.run(
+            [sys.executable, str(script), "--install-archive", str(archive)],
+            cwd=str(root),
+        )
+    return result.returncode == 0
 
 
 def _local_ui_version(root: Path) -> str:
@@ -635,7 +676,7 @@ def _install_release_updater(release_tag: str) -> Path:
     asset = _platform_installer_asset_name()
     staged = updater.with_name(f".{updater.name}.{release_tag}.new")
     try:
-        _download_file_atomic(_release_asset_url(asset, release_tag), staged)
+        _download_release_asset(asset, release_tag, staged)
         _verify_release_asset(staged, asset, release_tag)
         if not IS_WINDOWS:
             staged.chmod(0o755)
@@ -653,6 +694,7 @@ def _delegate_installer_update(
     relaunch: Path | None,
     repair: bool = False,
     headless: bool = False,
+    silent: bool = False,
 ) -> None:
     typer.echo("  • Preparing standalone updater...")
     try:
@@ -675,9 +717,11 @@ def _delegate_installer_update(
     if relaunch is not None:
         command.extend(["--relaunch", str(relaunch)])
 
-    use_headless = headless or not _graphical_update_available()
+    use_headless = silent or headless or not _graphical_update_available()
     if use_headless:
         command.append("--headless")
+    if silent:
+        command.append("--silent")
 
     kwargs: dict = {"cwd": root, "env": os.environ.copy()}
     if IS_WINDOWS:
@@ -695,6 +739,135 @@ def _delegate_installer_update(
     action = "Repair" if repair else "Update"
     destination = "terminal" if use_headless else "standalone Suzent Installer"
     typer.echo(f"  • {action} continues in the {destination}.")
+
+
+_AUTO_UPDATE_FILE = Path(".suzent") / "auto-update"
+_STAGED_UPDATE_FILE = Path(".suzent") / "staged-update.json"
+_PREFETCH_TIMEOUT_SECONDS = 2 * 60 * 60
+
+
+def auto_update_enabled(root: Path) -> bool:
+    """Automatic updates are on unless the user turned them off."""
+    if os.environ.get("SUZENT_AUTO_UPDATE", "").strip().lower() in {
+        "0",
+        "false",
+        "off",
+    }:
+        return False
+    try:
+        return (root / _AUTO_UPDATE_FILE).read_text(encoding="utf-8").strip() != "off"
+    except OSError:
+        return True
+
+
+def set_auto_update(root: Path, enabled: bool) -> None:
+    path = root / _AUTO_UPDATE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("on" if enabled else "off", encoding="utf-8")
+
+
+def read_staged_update(root: Path) -> dict | None:
+    """Return the release the updater has staged in the background, if any."""
+    try:
+        data = json.loads((root / _STAGED_UPDATE_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    tag = str(data.get("target_tag", "")) if isinstance(data, dict) else ""
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+        return None
+    return data
+
+
+def _has_local_source_changes(root: Path) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(result.stdout.strip())
+
+
+def auto_update_blocker(root: Path, latest: str) -> str | None:
+    """Explain why `latest` must not be installed without asking, or None.
+
+    Silent updates are for stable release installs moving within a major
+    version. Anything that needs a person's judgement -- a source checkout,
+    local edits, an interrupted update, a major version -- keeps the manual
+    Update button instead.
+    """
+    if not auto_update_enabled(root):
+        return "automatic updates are turned off"
+    if _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL:
+        return "development installs update from their branch"
+    release_file = root / ".suzent" / "release-tag"
+    try:
+        installed = release_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        installed = ""
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", installed):
+        return "this installation does not track a release"
+    if _interrupted_update_message(root):
+        return "an interrupted update needs 'suzent repair'"
+    if not _is_newer_version(latest, installed):
+        return "already up to date"
+    if _version_key(latest)[:1] != _version_key(installed)[:1]:
+        return f"{latest} is a major version; update manually"
+    if _has_local_source_changes(root):
+        return "the installation has local source changes"
+    return None
+
+
+def prefetch_update(root: Path) -> str:
+    """Stage the latest release in the background when it may auto-install.
+
+    Returns a one-line description of what happened.
+    """
+    try:
+        latest = str(_fetch_latest_release(timeout=10.0).get("tag_name", ""))
+    except Exception as error:
+        return f"could not check for updates: {error}"
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", latest):
+        return f"invalid latest release tag: {latest or 'missing'}"
+    blocker = auto_update_blocker(root, latest)
+    if blocker:
+        return f"not staging {latest}: {blocker}"
+    # The target release's own updater does the work, so prefetching never
+    # depends on the features of the version that is running now.
+    updater = _install_release_updater(latest)
+    kwargs: dict = {"cwd": root, "capture_output": True, "text": True}
+    if IS_WINDOWS:
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
+        )
+    try:
+        result = subprocess.run(
+            [str(updater), "--prefetch", "--dir", str(root), "--target", latest],
+            timeout=_PREFETCH_TIMEOUT_SECONDS,
+            **kwargs,
+        )
+    except subprocess.TimeoutExpired:
+        return f"prefetch of {latest} timed out"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        return f"prefetch of {latest} failed: {detail[-1] if detail else result.returncode}"
+    return f"{latest} is staged"
+
+
+def apply_staged_update(root: Path, *, relaunch: Path | None = None) -> str | None:
+    """Hand a staged release to the updater, silently. Returns its tag or None."""
+    staged = read_staged_update(root)
+    if staged is None:
+        return None
+    tag = staged["target_tag"]
+    if auto_update_blocker(root, tag):
+        return None
+    _delegate_installer_update(root, release_tag=tag, relaunch=relaunch, silent=True)
+    return tag
 
 
 def _replace_ui_files(
@@ -753,7 +926,7 @@ def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
         staged_version = version_file.with_name(f".{version_file.name}.{version}.new")
 
         typer.echo("  • Downloading UI binary...")
-        _download_file_atomic(_release_asset_url(asset_name, version), staged_binary)
+        _download_release_asset(asset_name, version, staged_binary)
         if not IS_WINDOWS:
             staged_binary.chmod(0o755)
         staged_version.write_text(version, encoding="utf-8")
@@ -1834,10 +2007,13 @@ def register_commands(app: typer.Typer):
         """
         from suzent.webui import webui_available
 
+        fetched = False
         if not webui_available():
-            typer.echo("ERROR  No web UI is built into this install.")
-            typer.echo("   Build it with: python scripts/build_webui.py")
-            raise typer.Exit(code=1)
+            fetched = _fetch_release_webui(get_project_root())
+            if not fetched:
+                typer.echo("ERROR  No web UI is built into this install.")
+                typer.echo("   Build it with: python scripts/build_webui.py")
+                raise typer.Exit(code=1)
 
         if foreground:
             _web_foreground(port, host, debug, open_browser)
@@ -1847,6 +2023,13 @@ def register_commands(app: typer.Typer):
 
         controller = get_service_controller()
         status = controller.status()
+
+        if status.running and fetched:
+            # The web routes are registered at startup, so a backend that
+            # started without a bundle serves none until it restarts.
+            typer.echo("Restarting the Suzent service to serve the web UI...")
+            controller.restart()
+            status = controller.status()
 
         if status.running:
             if not status.ready:
@@ -1858,6 +2041,14 @@ def register_commands(app: typer.Typer):
         # `suzent serve`, or the backend the desktop app launched. Reuse it
         # rather than starting a second backend that would lose the port race.
         if _is_suzent_server_running("127.0.0.1", port):
+            if fetched:
+                # It registered its routes before the bundle existed, and this
+                # command does not own it, so it cannot restart it either.
+                typer.echo(
+                    f"The Suzent backend at http://127.0.0.1:{port}/ started "
+                    "before the web UI was installed. Restart it to serve the UI."
+                )
+                raise typer.Exit(code=1)
             typer.echo(f"OK  Suzent is already serving at http://127.0.0.1:{port}/")
             if open_browser:
                 webbrowser.open(f"http://127.0.0.1:{port}/")
@@ -2192,7 +2383,16 @@ def register_commands(app: typer.Typer):
             run_command(["git", "fetch"], cwd=root)
             run_command(["git", "merge", "--ff-only", "@{upstream}"], cwd=root)
             return
-        run_command(["git", "fetch", "origin", "tag", release_tag], cwd=root)
+        # An install cloned from GitHub may sit behind the firewall now, so
+        # China mode retries the tag from the source mirrors.
+        remotes = ["origin", *network_region.repo_sources()]
+        for index, remote in enumerate(remotes):
+            try:
+                run_command(["git", "fetch", remote, "tag", release_tag], cwd=root)
+                break
+            except subprocess.CalledProcessError:
+                if index == len(remotes) - 1:
+                    raise
         run_command(["git", "checkout", "--detach", release_tag], cwd=root)
 
     def _restore_stashed_changes(root: Path, stashed: bool) -> None:
@@ -2431,6 +2631,7 @@ def register_commands(app: typer.Typer):
                 ["uv", "run", "playwright", "install", "chromium"],
                 cwd=root,
                 shell_on_windows=True,
+                env=network_region.mirror_env(),
             )
         except subprocess.CalledProcessError:
             typer.echo(
@@ -2497,8 +2698,25 @@ def register_commands(app: typer.Typer):
             "--headless",
             help="Run the standalone updater in the terminal without a window.",
         ),
+        prefetch: bool = typer.Option(
+            False,
+            "--prefetch",
+            help="Download the latest release in the background without installing it.",
+        ),
+        apply_staged: bool = typer.Option(
+            False,
+            "--apply-staged",
+            help="Silently install a release that --prefetch already downloaded.",
+        ),
     ):
         """Update Suzent to the latest version."""
+        if prefetch:
+            typer.echo(prefetch_update(get_project_root()))
+            return
+        if apply_staged:
+            tag = apply_staged_update(get_project_root(), relaunch=relaunch)
+            typer.echo(f"Applying {tag}" if tag else "No staged update to apply.")
+            return
         _run_update(dev=dev, relaunch=relaunch, headless=headless)
 
     @app.command()
@@ -2602,6 +2820,28 @@ def register_commands(app: typer.Typer):
 
         if not report.ok:
             raise typer.Exit(code=1)
+
+    @app.command("auto-update")
+    def auto_update(
+        state: str = typer.Argument(
+            "status", help="on, off, or status", show_default=True
+        ),
+    ) -> None:
+        """Turn silent background updates on or off."""
+        root = get_project_root()
+        choice = state.strip().lower()
+        if choice in {"on", "off"}:
+            set_auto_update(root, choice == "on")
+        elif choice != "status":
+            typer.echo("❌ Use 'on', 'off' or 'status'.")
+            raise typer.Exit(code=2)
+        enabled = auto_update_enabled(root)
+        typer.echo(f"Automatic updates are {'on' if enabled else 'off'}.")
+        staged = read_staged_update(root)
+        if enabled and staged:
+            typer.echo(
+                f"{staged['target_tag']} is downloaded and installs when Suzent next restarts."
+            )
 
     @app.command("check-update")
     def check_update(

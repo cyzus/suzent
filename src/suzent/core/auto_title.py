@@ -16,6 +16,11 @@ def should_generate_auto_title(chat: Any) -> bool:
     """Generate when first turn or when a previous placeholder title survived."""
     if chat is None:
         return False
+    from suzent.core.focal_agent import is_focal_chat
+
+    # Regent keeps its name: it is one standing conversation, not a topic.
+    if is_focal_chat(chat):
+        return False
     turn_count = getattr(chat, "turn_count", 0) or 0
     if turn_count == 0:
         return True

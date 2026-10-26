@@ -104,8 +104,16 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
-Android parses Markdown off the UI thread and memoizes the saved transcript's
-presentation. The scoped title index does not load transcripts/checkpoints;
+Network events accumulate away from the UI thread; only display batches reach the
+native views. Android finishes each off-thread Markdown parse before rendering the
+latest pending text, so frequent deltas cannot keep cancelling a long parse. Both
+clients memoize saved transcript presentation. Live growth follows the bottom
+without restarting a layout/scroll animation on every batch. Streamed prose uses
+the same opaque Markdown renderer as saved messages, without per-fragment fades
+or a synthetic cursor inserted into the document. Android skips rebinding a
+native text view when its rendered content and styling are unchanged. Android tables retain the original Markwon table theme and row spans. A native
+text view prepares table row measurements before visible layout, rather than
+showing unmeasured rows and correcting their heights on the next frame. The scoped title index does not load transcripts/checkpoints;
 mobile detail reads omit desktop context-budget computation and return current
 `isRunning` state. Completion reconciles that state in both the selected chat and
 list so the stop control cannot retain a stale list flag.
@@ -211,16 +219,39 @@ appear in a separate scheduled-tasks section.
 
 `GET /mobile/client/session` advertises `scheduled_tasks: 1` when
 `GET /mobile/client/scheduled-tasks` is available. Clients skip that request on
-older backends. The endpoint only returns tasks whose target conversation is
-permitted for the device, including bound tasks and isolated `cron-{id}` tasks.
-It exposes name, active/running/error flags, offset-qualified run times, and an
-openable chat ID only when that chat exists; prompts and raw errors stay private.
-This sidebar is read-only. Pending tasks remain visible without creating a chat.
+older backends. Heartbeat rows (`source="heartbeat"`) are excluded, as on the
+desktop, and only tasks whose target conversation is permitted for the device are
+included, covering bound tasks and isolated `cron-{id}` tasks. Unlike the desktop,
+tasks bound to the focal agent's chat stay listed: the desktop hides them because its
+Regent card shows them, and a paired device has no such card.
+It exposes name, active/running/error flags, offset-qualified run times, an
+openable chat ID only when that chat exists, and `chatUpdatedAt` plus
+`lastRunFinishedAt` (the newest run's finish time) so a client can tell an unresolved
+failure from one already answered in the chat; prompts and raw errors stay private.
+A failure counts as resolved once the chat was updated after that run finished: it
+leaves the failing rank, drops the failure status line, and shows the chat's activity
+time instead of the run time, exactly as the desktop automation list does.
+Both clients order the section like the desktop: unresolved failures first, then
+active tasks, then paused ones, each group by next run (tasks without a next run
+last). Rows show the desktop status line (paused, paused · failed, last run failed,
+next run, active) with a running marker and the last-run date, and the section shows
+the task count badge with a five-row preview followed by View all. Search bypasses
+the preview so every match stays reachable. This sidebar is read-only. Pending tasks
+remain visible without creating a chat. Heartbeat sessions and Regent's own card stay
+desktop-only.
 
-Chats live in a searchable sidebar grouped by desktop Project, with collapsible
-sections and a new-conversation action per accessible, active project. New conversation
-opens an unsaved composer; only its first non-empty send creates a stored chat.
-The chosen project and model carry into that first message. If sending fails after
+Chats live in a searchable sidebar grouped by desktop Project, with one project
+expanded at a time — opening another collapses the previous one, matching the
+desktop `filterId` model. Projects are ordered by recent activity, derived from the
+newest chat each one owns because the chat listing already arrives newest first.
+Sections run scheduled tasks, pinned chats, projects, then ungrouped conversations,
+so the scheduled block sits above pinned chats as it does on the desktop. A New
+conversation row sits under the header rule, mirroring the desktop sidebar body, and
+projects have no create button of their own. New conversation opens an unsaved
+composer; only its first non-empty send creates a stored chat.
+The chosen project and model carry into that first message; an unsent composer shows
+the seeded default project by the name the backend gives it (`Home`, from
+`ChatDatabase.DEFAULT_PROJECT_NAME`) rather than a localised label. If sending fails after
 creation, retries reuse the created chat and retain the draft. Settings
 is pinned to the sidebar and contains Desktop access and foreground Node controls.
 iOS keeps the sidebar visible at tablet widths; phones use a drawer. The iOS
@@ -274,11 +305,29 @@ model, never arbitrary configuration or permission overrides.
 
 
 Mobile chat and controls use shared `typeChat`, `typeControl`, `typeSection`,
-`controlHeight` and `sidebarWidth` tokens. Both platforms use a centered wordmark
-between equal-size navigation icons, outlined search fields, left-aligned
-monospace project headings and a leading selection bar. Primary buttons retain
-the desktop blue, square border and hard shadow. Native keyboard, selection,
-model menus and system permission controls retain their platform behavior.
+`typeSidebarSection`, `controlHeight` and `sidebarWidth` tokens, plus the chrome
+tokens `borderWidth`/`borderWidthHeavy`, `shadowOffset`/`shadowOffsetHeavy`,
+`shadowOffsetOverlay`, `radius` and `selection-light`/`selection-dark`.
+`spaceRow` (10) is the vertical rhythm of every sidebar row — chat, scheduled
+task, and heading spacing all read from it, so the list keeps one cadence.
+`borderWidthHeavy` draws the rules in the sidebar chrome, `shadowOffsetOverlay`
+sits under menus, dialogs and the selector panels, and `shadowOffsetHeavy` covers
+the assistant badge and the model/project selection panels. No shadow offset is
+hardcoded in either client. Both
+platforms use a centered wordmark between equal-size navigation icons and
+outlined search fields. The sidebar follows the desktop treatment: a 3 px rule
+under its header and along the drawer edge, 10 pt uppercase tracked section
+headings, hairline rules between rows, and a grey fill for the current
+conversation instead of a leading selection bar. Header icons, the sidebar's New
+conversation row and project headers are plain rows from the shared icon/row
+primitives — square, no border or shadow, quiet 8% pressed fill — instead of
+Material `IconButton`, a bare SF Symbol or a bordered card; the desktop sidebar
+is equally flat, so per-row borders and shadows would read heavier than the
+baseline. Popup menus drop their platform elevation in favour of the shared hard
+shadow, and dialogs use a 2 px rule with a ruled uppercase header. Primary
+buttons retain the desktop blue, square border and hard shadow. Native keyboard,
+selection, model menus and system permission controls retain their platform
+behavior; iOS rename and delete confirmations still use system alerts.
 
 
 Successful connection opens the same unsaved start page as New conversation,
@@ -407,3 +456,40 @@ clients and changes only `manage_chats`.
 
 The desktop editor keeps a local draft until Save. Cancel discards the draft;
 failed saves leave it available to retry.
+
+## Offline demonstration
+
+Both native apps expose **Try offline demo** as a quiet text button at the bottom
+of the unpaired connection screen. Once paired, the entry is under **Settings →
+About**; it is absent from connection help and the regular chat surface. It is
+available in release builds to everyone. A persistent
+banner identifies scripted responses; Settings provides **Reset demo** and **Exit
+demo**. Existing desktop pairing credentials are retained when entering or leaving
+the demo, and demo operations never use them.
+
+The regular conversation UI consumes a `MobileClient` interface. `SuzentClient`
+(iOS) and `BackendClient` (Android) implement the real transport; `DemoClient`
+implements a local workspace with no network transport. Both platforms bundle the
+same English/Chinese fixtures from
+`packages/SuzentCore/Sources/SuzentCore/Resources/demo.json`. Android includes that
+directory as an asset source; SwiftPM processes it as a package resource.
+
+The demo supports scripted streaming, stop, tool approval/rejection, project/model
+selection, new conversations, pin/rename/move/delete, branching, editing and retry.
+Trip and tool-approval prompts are offered on the start page; arbitrary input gets
+a clearly labelled example response. Attachment selection uses the real native
+pickers, but the local client records only names and MIME types. It neither reads
+attachment bytes nor uploads or analyses them. No model API key is needed.
+
+Conversation changes are persisted in a separate versioned demo JSON file in app
+storage. Running turns progress independently of a stream observer while the app
+is alive, and reconcile on foreground return. An unfinished turn from a terminated
+process is marked interrupted on reopening. Reset restores the bundled examples.
+Pairing and foreground Node controls remain real-desktop features and are explained
+in demo Settings. Example citations have no remotely fetched favicons; opening a
+source website is an explicit user action requiring internet access.
+
+For review, provide the exact demo entry and scenario steps, disclose all simulated
+behaviour, and include a physical-device video of real desktop pairing and
+interaction. This mode provides an accessible demonstration, not a guarantee that
+stores will waive access to the real connection flow.

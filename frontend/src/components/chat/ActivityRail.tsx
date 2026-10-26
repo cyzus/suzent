@@ -16,7 +16,7 @@ import { parseSubAgentResult } from './subAgentResult';
 import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
 
 export type AguiChunkType =
-  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
+  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice' | 'incoming-message';
 
 export type AguiChunk = { type: AguiChunkType; items: AGUIPart[] };
 
@@ -347,12 +347,17 @@ export const WorkedDuration: React.FC<{
     return () => window.clearInterval(timer);
   }, [isActive]);
 
+  if (
+    !isActive &&
+    (durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds < 0)
+  ) {
+    return null;
+  }
+
   return (
     <span className="shrink-0 whitespace-nowrap py-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">
       {t('activityRail.workedFor', {
-        duration: formatActivityDuration(
-          isActive ? elapsedSeconds : (durationSeconds ?? elapsedSeconds)
-        ),
+        duration: formatActivityDuration(isActive ? elapsedSeconds : durationSeconds!),
       })}
     </span>
   );
@@ -376,7 +381,16 @@ export const TurnActivity: React.FC<{
   isStreaming: boolean;
   durationSeconds?: number;
   startedAtMs?: number;
-}> = ({ children, finalStart, isStreaming, durationSeconds, startedAtMs }) => {
+  persistentIndices?: number[];
+}> = ({
+  children,
+  finalStart,
+  isStreaming,
+  durationSeconds,
+  startedAtMs,
+  persistentIndices = [],
+}) => {
+  const { t } = useI18n();
   const bodyId = React.useId();
   const [expanded, setExpanded] = useState(false);
   const wasStreaming = React.useRef(isStreaming);
@@ -385,6 +399,12 @@ export const TurnActivity: React.FC<{
     wasStreaming.current = isStreaming;
   }, [isStreaming]);
   const mounted = useDisclosureBody(expanded);
+  const work = children
+    .slice(0, finalStart)
+    .filter((_, index) => !persistentIndices.includes(index));
+  const surfaces = children
+    .slice(0, finalStart)
+    .filter((_, index) => persistentIndices.includes(index));
   if (isStreaming)
     return (
       <>
@@ -406,7 +426,15 @@ export const TurnActivity: React.FC<{
             onClick={() => setExpanded(!expanded)}
             className="activity-rail-header activity-turn-duration"
           >
-            <WorkedDuration durationSeconds={durationSeconds} startedAtMs={startedAtMs} />
+            {durationSeconds !== undefined &&
+            Number.isFinite(durationSeconds) &&
+            durationSeconds >= 0 ? (
+              <WorkedDuration durationSeconds={durationSeconds} startedAtMs={startedAtMs} />
+            ) : (
+              <span className="shrink-0 whitespace-nowrap py-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                {t('activityRail.activity')}
+              </span>
+            )}
             <DisclosureChevron
               expanded={expanded}
               className="w-3 h-3 shrink-0 text-neutral-400 transition-transform duration-200"
@@ -420,12 +448,13 @@ export const TurnActivity: React.FC<{
           >
             <div className="min-h-0 overflow-hidden">
               <div className="activity-turn-history space-y-2 py-1">
-                {expanded || mounted ? children.slice(0, finalStart) : null}
+                {expanded || mounted ? work : null}
               </div>
             </div>
           </div>
         </div>
       )}
+      {surfaces}
       {children.slice(finalStart)}
     </>
   );
@@ -477,8 +506,11 @@ export const ActivityRail: React.FC<{
   const visible = expanded || hasPending;
   const bodyMounted = useDisclosureBody(visible, { keepMounted: hasPending });
 
+  // Deliberately no `overscroll-contain`: this capped body sits on top of the
+  // transcript, so containing overscroll traps the wheel here once it reaches
+  // the rail's own top or bottom and the chat behind it stops scrolling.
   const scrollClassName =
-    'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain';
+    'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto';
   const summary = !hasPending && summaryTools ? summarizeActivity(summaryTools, t) : undefined;
   const latestTool = summaryTools?.[summaryTools.length - 1];
   const thinking = isCurrent && isThinking;

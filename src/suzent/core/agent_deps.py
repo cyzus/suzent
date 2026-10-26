@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+from suzent.core.run_clock import RunClock
 
 
 @dataclass
@@ -60,6 +61,7 @@ class AgentDeps:
     # --- Social messaging ---
     channel_manager: Any = None  # ChannelManager instance
     event_loop: Optional[asyncio.AbstractEventLoop] = None
+    shell_output_callback: Optional[Callable[[str, str, str], None]] = None
     social_context: dict = field(default_factory=dict)
 
     # --- Skills ---
@@ -71,7 +73,6 @@ class AgentDeps:
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name -> "always_allow" | "always_deny"
-    auto_approve_tools: bool = False
     tool_permission_policies: dict = field(default_factory=dict)
     permission_mode: str = "default"
     interaction_profile: str = "interactive"
@@ -79,11 +80,27 @@ class AgentDeps:
     permission_feedback: list[str] = field(default_factory=list)
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
+    display_run_id: Optional[str] = None
+    run_clock: RunClock | None = None
+    streamed_message: Optional[dict[str, Any]] = None
+    model_request_history: Optional[list] = None
+    # History length before this turn's own request was appended, so a quiet
+    # heartbeat can be rolled back to exactly where the conversation stood.
+    turn_start_index: Optional[int] = None
+    # Set when a heartbeat ended in HEARTBEAT_OK and its exchange was dropped.
+    heartbeat_rolled_back: bool = False
 
     # --- Tool inventory ---
     base_tool_names: frozenset = field(
         default_factory=frozenset
     )  # user-selected tools for this session
+    # A forked sub-agent keeps its parent's tool definitions so the cached
+    # prefix still matches, and is held to its own tools only when it calls
+    # one. None means no call-time restriction.
+    call_allowed_tools: Optional[frozenset[str]] = None
+    # The chat whose prompt-cache routing key this run reuses; a fork shares
+    # its parent's so both land where the parent's prefix is cached.
+    prompt_cache_chat_id: str = ""
 
     # --- A2UI canvas ---
     a2ui_queue: Optional[asyncio.Queue] = (
@@ -101,6 +118,7 @@ class AgentDeps:
     section_cache: dict[str, str] = field(default_factory=dict)
     context_sources: dict[str, dict[str, str]] = field(default_factory=dict)
     context_breakdown: dict[str, Any] | None = None
+    context_overhead_estimate: int = 0
 
     # --- File change tracker (for lightweight retry checkpoints) ---
     file_tracker: Any = None  # FileTracker instance; set by build_agent_deps

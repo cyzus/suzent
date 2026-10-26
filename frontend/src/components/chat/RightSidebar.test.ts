@@ -17,6 +17,36 @@ const baseFlags = (overrides: Partial<AutoOpenFlags> = {}): AutoOpenFlags => ({
 });
 
 describe('evaluateSidebarAutoOpen', () => {
+  it('closes the Canvas pane when its surface moves back into chat, only once', () => {
+    const before = baseFlags({
+      activeTab: 'canvas',
+      canvasSurfaceId: 'a',
+      canvasLocation: 'canvas',
+    });
+    const after = { ...before, canvasLocation: 'inline' as const };
+    expect(evaluateSidebarAutoOpen(before, after).shouldClose).toBe(true);
+    expect(evaluateSidebarAutoOpen(after, after).shouldClose).toBeUndefined();
+    expect(evaluateSidebarAutoOpen(after, before).shouldClose).toBeUndefined();
+  });
+
+  it('does not close other tabs or mistake surface/chat switches for a move', () => {
+    const before = baseFlags({
+      activeTab: 'canvas',
+      canvasSurfaceId: 'a',
+      canvasLocation: 'canvas',
+    });
+    const after = { ...before, canvasLocation: 'inline' as const };
+    for (const flags of [
+      { ...after, activeTab: 'files' as const },
+      { ...after, canvasSurfaceId: 'b' },
+      { ...after, chatId: 'chat-b' },
+      { ...after, canvasResolved: false },
+      { ...after, file: true, fileToPreview: { path: '/a', name: 'a' } },
+    ]) {
+      expect(evaluateSidebarAutoOpen(before, flags).shouldClose).toBeUndefined();
+    }
+  });
+
   it('does not switch tabs or open when switching from New Chat (null) to a chat with tasks', () => {
     // 1. User is on New Chat (chatId: null); goalChatId is null so goalResolved is true, goal is false
     const onNewChat = baseFlags({
@@ -161,5 +191,40 @@ describe('evaluateSidebarAutoOpen', () => {
       shouldOpen: true,
     });
     expect(evaluateSidebarAutoOpen(prev, prev)).toEqual({ nextTab: null, shouldOpen: false });
+  });
+});
+
+describe('Focal Agent session board', () => {
+  it('opens the board when arriving on the Focal chat with room for it', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' })
+      )
+    ).toEqual({ nextTab: 'plan', shouldOpen: true });
+  });
+
+  it('closes the board on arrival when the user closed it there last time', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'closed' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false, shouldClose: true });
+  });
+
+  it('leaves the sidebar alone on narrow screens and once already on the Focal chat', () => {
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'chat-a' }),
+        baseFlags({ chatId: 'focal-suzent' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false });
+    expect(
+      evaluateSidebarAutoOpen(
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' }),
+        baseFlags({ chatId: 'focal-suzent', focalBoard: 'open' })
+      )
+    ).toEqual({ nextTab: null, shouldOpen: false });
   });
 });

@@ -56,6 +56,12 @@ skills, and memory in a private GitHub repository you own, and brings them to
 another computer. API keys are never synced, so add them again in
 **Settings → Providers** on the new computer.
 
+Your conversations are not synced. Each one is a plain-text file in
+`~/.suzent/chats/`, so copying that folder keeps all of them. Quit Suzent first
+so no conversation is half-written. Put the folder back in a new `~/.suzent`
+and Suzent rebuilds your conversations from it on its next start; they appear
+in your Home project, because projects themselves are kept in `chats.db`.
+
 ### How do I start over from scratch?
 
 To empty a single conversation, type `/clear`. To reset Suzent entirely, quit

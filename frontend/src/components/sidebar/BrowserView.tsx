@@ -33,6 +33,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
   );
   const [documentVisible, setDocumentVisible] = useState(document.visibilityState === 'visible');
   const [actionError, setActionError] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const previewEnabled =
     previewChoice?.mode === details?.mode
       ? previewChoice?.enabled === true
@@ -87,6 +88,29 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
     } catch {
       setActionError(true);
     }
+  };
+
+  const togglePreview = async (): Promise<void> => {
+    if (!details) return;
+    setPreviewError(false);
+    if (previewEnabled) {
+      setPreviewChoice({ mode: details.mode, enabled: false });
+      return;
+    }
+    if (details.mode === 'extension') {
+      try {
+        const response = await fetch(`${getApiBase()}/browser/preview-tab`, {
+          method: 'POST',
+          headers: { 'X-Suzent-Browser-Setup': '1' },
+        });
+        if (!response.ok) throw new Error();
+        setDetails(await response.json());
+      } catch {
+        setPreviewError(true);
+        return;
+      }
+    }
+    setPreviewChoice({ mode: details.mode, enabled: true });
   };
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -293,8 +317,8 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
             size="sm"
             className="min-w-0 flex-1 basis-36 break-words"
             aria-pressed={previewEnabled}
-            disabled={!details}
-            onClick={() => setPreviewChoice({ mode: details!.mode, enabled: !previewEnabled })}
+            disabled={!details || (details.mode === 'extension' && !details.connected)}
+            onClick={() => void togglePreview()}
           >
             {previewEnabled ? (
               <StopIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -321,6 +345,11 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
       {actionError && (
         <p role="alert" className="px-3 text-xs">
           {t('browser.showTabError')}
+        </p>
+      )}
+      {previewError && (
+        <p role="alert" className="px-3 text-xs">
+          {t('browser.previewTabError')}
         </p>
       )}
       <div

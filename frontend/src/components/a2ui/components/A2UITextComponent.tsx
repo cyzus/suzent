@@ -14,7 +14,7 @@ function looksLikeMarkdown(input: string): boolean {
     /^#{1,6}\s/m.test(text) ||
     /^\s*[-*+]\s+/m.test(text) ||
     /^\s*\d+\.\s+/m.test(text) ||
-    /\[[^\]]+\]\([^\)]+\)/.test(text) ||
+    /\[[^\]]+\]\([^)]+\)/.test(text) ||
     /^>\s+/m.test(text) ||
     /\|.+\|/.test(text) ||
     /\*\*[^*]+\*\*/.test(text) ||

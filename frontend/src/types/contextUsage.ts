@@ -22,5 +22,6 @@ export interface ContextBreakdown {
   estimated_tokens: number;
   reserve_tokens: number;
   measured_input_tokens: number | null;
+  overhead_estimate?: number;
   has_unmeasured_media: boolean;
 }

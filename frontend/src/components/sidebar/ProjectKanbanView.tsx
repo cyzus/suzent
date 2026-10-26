@@ -76,10 +76,53 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
         disabled={pendingTaskId != null}
         task={task}
         tasks={tasks}
-        chatTitle={task.chatId ? chatTitles[task.chatId] : undefined}
+        chatTitle={task.chatTitle ?? (task.chatId ? chatTitles[task.chatId] : undefined)}
         onOpen={onOpenTask}
       />
     ));
+  const badgeClass = (key: string): string =>
+    key === 'attention' || key === 'waiting'
+      ? 'bg-brutal-yellow text-brutal-black'
+      : key === 'active'
+        ? 'bg-brutal-blue text-white'
+        : key === 'completed'
+          ? 'bg-brutal-green text-brutal-black'
+          : 'bg-white text-brutal-black';
+  const renderSection = (
+    key: string,
+    label: string,
+    count: number,
+    tone: string,
+    children: React.ReactNode
+  ): React.ReactNode => (
+    <details
+      key={key}
+      open={!collapsedGroups[key]}
+      onToggle={(event) => {
+        const collapsed = !event.currentTarget.open;
+        setCollapsedGroups((previous) =>
+          previous[key] === collapsed ? previous : { ...previous, [key]: collapsed }
+        );
+      }}
+      className="group/task-section"
+    >
+      <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden border-y-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 text-xs font-black font-mono tracking-wide text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+        <span
+          aria-hidden="true"
+          className="inline-block transition-transform group-open/task-section:rotate-90"
+        >
+          ▸
+        </span>
+        {label}{' '}
+        <span
+          className={`ml-auto min-w-5 border border-brutal-black px-1 text-center font-mono ${badgeClass(tone)}`}
+        >
+          {count}
+        </span>
+      </summary>
+      <div className="py-1">{children}</div>
+    </details>
+  );
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-900 text-brutal-black dark:text-white">
       <header className="task-header shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-5 py-4 space-y-4">
@@ -170,37 +213,15 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
             ))}
             {groups
               .filter((group) => group.tasks.length > 0)
-              .map((group) => (
-                <details
-                  key={group.key}
-                  open={!collapsedGroups[group.key]}
-                  onToggle={(event) => {
-                    const collapsed = !event.currentTarget.open;
-                    setCollapsedGroups((previous) =>
-                      previous[group.key] === collapsed
-                        ? previous
-                        : { ...previous, [group.key]: collapsed }
-                    );
-                  }}
-                  className="group/task-section"
-                >
-                  <summary className="flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden border-y-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 text-xs font-black font-mono tracking-wide text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block transition-transform group-open/task-section:rotate-90"
-                    >
-                      ▸
-                    </span>
-                    {t(`taskFlow.groups.${group.key}`)}{' '}
-                    <span
-                      className={`ml-auto min-w-5 border border-brutal-black px-1 text-center font-mono ${group.key === 'attention' || group.key === 'waiting' ? 'bg-brutal-yellow text-brutal-black' : group.key === 'active' ? 'bg-brutal-blue text-white' : group.key === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white text-brutal-black'}`}
-                    >
-                      {group.tasks.length}
-                    </span>
-                  </summary>
-                  <div className="py-1">{renderTasks(group.tasks)}</div>
-                </details>
-              ))}
+              .map((group) =>
+                renderSection(
+                  group.key,
+                  t(`taskFlow.groups.${group.key}`),
+                  group.tasks.length,
+                  group.key,
+                  renderTasks(group.tasks)
+                )
+              )}
           </div>
         )}
       </div>

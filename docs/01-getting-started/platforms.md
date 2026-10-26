@@ -25,6 +25,20 @@ for the agent on your computer. Nothing runs on the phone itself, so your
 memory and keys stay home. To get it and pair it, see
 [Mobile app](../03-features/mobile.md).
 
+### Try it without a desktop
+
+Choose **Try offline demo** at the bottom of the phone's connection screen to
+explore with sample data. If already paired, use **Settings → About → Try offline
+demo**. No computer, API key, account, or internet connection is required. You can
+send messages, try a trip-planning example, approve or reject a simulated tool,
+attach files, and manage conversations.
+
+Replies are scripted, tools are simulated, and attachments stay on your phone
+without being uploaded or analysed. The banner always identifies the demo.
+**Settings → Reset demo** restores the examples; **Exit demo** returns to the
+connection screen. Existing desktop pairing is retained. To use your own agent,
+exit the demo and pair with your computer.
+
 ## Browser
 
 Run this on the computer where Suzent is installed:

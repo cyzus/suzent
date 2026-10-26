@@ -20,13 +20,13 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 | Path | What it holds |
 |---|---|
 | `config/` | Your settings files (see below). |
-| `chats.db` | Your conversations. |
+| `chats/` | Your conversations, one plain-text file each. This is the master copy. |
+| `chats.db` | An index of your conversations, plus your projects, tasks, and schedules. Suzent rebuilds the conversations in it from `chats/` if it goes missing. |
 | `sandbox/projects/<project>/` | Each [project's library](../03-features/filesystem.md#where-files-go). |
 | `sandbox/shared/` | The folder shared by all projects. Your memory's Markdown files are in `sandbox/shared/memory/`. |
 | `notebook/` | The [notebook](../03-features/memory/llm-wiki.md) vault. |
 | `memory/` | The memory search index, rebuilt from the Markdown files. |
 | `skills/` | Skills you added. See [Skills](../03-features/skills.md). |
-| `transcripts/` | A transcript of each conversation. |
 | `runtime/` | Logs. `server.log` is the background service's log. |
 | `github-sync/` | The local copy used by [GitHub Sync](../03-features/github-sync.md). |
 | `browser_profile/` | The agent's own browser profile, when it remembers logins. |
@@ -116,8 +116,6 @@ See [Memory](../03-features/memory/README.md). More tuning is on
 | `max_context_tokens` | `0` | Cap the context budget. `0` uses whatever the model supports. |
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
 | `goals_max_turns` | `20` | How many turns [goal mode](../03-features/automation.md#goal-mode) runs before pausing. |
-| `jsonl_transcripts_enabled` | `true` | Keep a transcript of each conversation. |
-| `transcript_indexing_enabled` | `false` | Make past conversations searchable, at the cost of extra embedding calls. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |
 | `stream_idle_timeout_seconds` | `120` | How long to wait between model response updates when the provider has no default of its own. Tool execution has separate limits. |

@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n';
 import { ProvidersTab } from './ProvidersTab';
 import type { ApiProvider } from '../../lib/api';
@@ -22,6 +22,9 @@ const provider: ApiProvider = {
   models: [],
   user_config: { enabled_models: [], custom_models: [] },
 };
+beforeEach(() => {
+  vi.stubGlobal('navigator', { language: 'en', languages: ['en'] });
+});
 function render(
   tab: 'credentials' | 'models' = 'credentials',
   currentProvider: ApiProvider = provider
@@ -65,6 +68,8 @@ describe('Provider settings overview', () => {
     expect(summary).not.toContain('Sign in with your ChatGPT account');
     expect(html).toContain('Sign In');
     expect(html).toContain('Not Signed In');
+    const card = html.slice(html.lastIndexOf('<details'));
+    expect(card.indexOf('Connection successful')).toBeLessThan(card.indexOf('</details>'));
   });
   it('starts collapsed with search and enabled-model count', () => {
     const html = render();
@@ -87,5 +92,26 @@ describe('Provider settings overview', () => {
     expect(html).toContain('Search models by name or ID');
     expect(html).toContain('aria-label="Add model ID..."');
     expect(html).toContain('Example model');
+  });
+  it('shows fetched model details and keeps enabled models that were not fetched', () => {
+    const html = render('models', {
+      ...provider,
+      models: [
+        {
+          id: 'example/new-model',
+          name: 'New model',
+          context_length: 128000,
+          supports_vision: true,
+          supports_reasoning: true,
+          supports_function_calling: true,
+        },
+      ],
+    });
+    expect(html).toContain('New model');
+    expect(html).toContain('128,000 token context');
+    expect(html).toContain('Vision');
+    expect(html).toContain('Reasoning');
+    expect(html).toContain('Tools');
+    expect(html).toContain('example/model');
   });
 });

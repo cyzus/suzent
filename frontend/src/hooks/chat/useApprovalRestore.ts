@@ -1,6 +1,25 @@
 import { useCallback, type MutableRefObject } from 'react';
 import type { AGUIPart } from '../useAGUI';
 import type { PendingPermissionApproval } from '../../lib/api';
+import type { Message } from '../../types/api';
+
+export function resolvedApprovalToolCallIds(messages: Message[]): Set<string> {
+  const resolved = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue;
+    for (const part of message.parts ?? []) {
+      if (part.type !== 'tool' || !part.toolCallId) continue;
+      if (
+        part.state === 'completed' ||
+        part.state === 'error' ||
+        (part.state === undefined && part.output != null)
+      ) {
+        resolved.add(part.toolCallId);
+      }
+    }
+  }
+  return resolved;
+}
 
 /**
  * Restores a suspended-for-approval run's transient UI when a chat is re-entered.

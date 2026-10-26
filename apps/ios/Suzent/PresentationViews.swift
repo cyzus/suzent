@@ -11,6 +11,8 @@ extension Color {
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
     static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
+    static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
     static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
@@ -238,14 +240,15 @@ private extension String {
 struct ChatRowButtonStyle: ButtonStyle {
     var selected: Bool
     var destructive = false
+    var divider = false
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.red : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.primary.opacity(0.08) : .clear)
-            .overlay(alignment: .leading) {
-                if selected { Rectangle().fill(Color.primary).frame(width: 3) }
+            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
+            .overlay(alignment: .bottom) {
+                if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
             }
             .opacity(enabled ? 1 : 0.4)
     }
@@ -275,6 +278,33 @@ struct SuzentButtonStyle: ButtonStyle {
             .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
             .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
             .padding(.bottom, quiet ? 0 : PresentationTokens.shadowOffset)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Header icon control: 44 target, no border or shadow, quiet pressed fill (desktop header icons).
+struct SuzentIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.suzentText)
+            .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// Plain navigation row, mirroring the desktop sidebar's New chat row: icon, label, pressed fill.
+struct SuzentRowButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
             .opacity(enabled ? 1 : 0.45)
     }
 }
@@ -606,7 +636,6 @@ private final class CitationContentCache {
 struct SuzentMarkdown: View {
     let text: String
     var citationSources: [CitationSource] = []
-    var softStreaming: Bool? = nil
     var textSize: Double = PresentationTokens.typeChat
     @State private var pendingLink: URL?
     @State private var browserLink: URL?
@@ -675,8 +704,6 @@ struct SuzentMarkdown: View {
                 .paragraph { configuration in
                     if configuration.content.renderMarkdown().contains("suzent-citation://") {
                         CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink, sources: citationSources, icons: icons.images) { pendingLink = $0 }
-                    } else if let softStreaming, !configuration.content.renderMarkdown().contains("![") {
-                        SoftStreamParagraph(markdown: configuration.content.renderMarkdown(), active: softStreaming) { pendingLink = $0 }
                     } else { configuration.label }
                 }
                 .text {
@@ -728,8 +755,8 @@ struct SuzentAssistantBadge: View {
                 SuzentLogoMark().frame(width: 26, height: 26)
                     .frame(width: 90, height: 40).background(Color.suzentSurface)
                     .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
-                    .padding(.trailing, 3).padding(.bottom, 3)
+                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
+                    .padding(.trailing, PresentationTokens.shadowOffsetOverlay).padding(.bottom, PresentationTokens.shadowOffsetOverlay)
             }
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
@@ -743,8 +770,8 @@ struct ActivityContent: View {
         let chunks = activityChunks(parts)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
-                if chunk.first?.type == "text" { StreamingMarkdown(text: chunk.first?.text ?? "", active: live && index == chunks.count - 1, citationSources: citationSources) }
-                else { ActivityRail(parts: chunk, live: live) }
+                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
+                else { ActivityRail(parts: chunk, live: live && index == chunks.count - 1) }
             }
         }
     }
@@ -757,26 +784,54 @@ struct ActivityRail: View {
     init(parts: [MessagePart], live: Bool) {
         self.parts = parts; self.live = live; _expanded = State(initialValue: false)
     }
-    private var waiting: Bool { parts.contains { $0.state == "approval-requested" } }
-    private var running: Bool { live && parts.contains { $0.state == "running" } }
+    private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
+    private var running: Bool { live && (parts.last?.type == "reasoning" || parts.contains { $0.state == "running" }) }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
     private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
+    private var totals: String {
+        activitySummary(parts, live: live).map { entry in
+            let format: String
+            switch entry.kind {
+            case "running": format = String(localized: "In progress: %d")
+            case "commands": format = String(localized: "Commands run: %d")
+            case "read": format = String(localized: "Files read: %d")
+            case "changed": format = String(localized: "Files modified: %d")
+            case "searches": format = String(localized: "Searches: %d")
+            case "other": format = String(localized: "Other tool calls: %d")
+            case "failed": format = String(localized: "Failed calls: %d")
+            default: format = String(localized: "Other tool calls: %d")
+            }
+            return String(format: format, entry.count)
+        }.joined(separator: " · ")
+    }
+    private var summary: String {
+        if waiting { return String(localized: "Approval required") }
+        if (!live || expanded) && !totals.isEmpty { return totals }
+        guard let part = parts.last else { return String(localized: "Completed") }
+        if part.type == "reasoning" {
+            let firstLine = (part.text ?? "").split(separator: "\n").first.map(String.init) ?? ""
+            return String(localized: "Reasoning") + ": " + String(firstLine.prefix(80))
+        }
+        return activityToolLabel(part)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
                 HStack(spacing: 10) {
-                    Text(waiting ? String(localized: "Approval required") : running ? String(localized: "Running") : failed ? String(localized: "Failed") : String(localized: "Completed"))
+                    Text(summary).lineLimit(1).truncationMode(.tail)
                         .foregroundStyle(waiting || failed ? accent : .secondary)
                     if running { StreamingPulse() }
-                    Text("|").foregroundStyle(.tertiary)
-                    Text("\(parts.count) steps")
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
+                    if totals.isEmpty || (live && !expanded) || waiting {
+                        Text("|").foregroundStyle(.tertiary)
+                        Text("\(activityStepCount(parts)) steps").fixedSize()
+                    }
+                    Image(systemName: expanded || waiting ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
                     Spacer(minLength: 0)
-                }.font(.system(size: 12, weight: .bold, design: .monospaced))
+                }.font(.system(size: 11, weight: .bold, design: .monospaced))
                     .textCase(.uppercase).foregroundStyle(Color.suzentMuted)
                     .padding(.vertical, 12).padding(.horizontal, 4).contentShape(Rectangle())
             }.buttonStyle(.plain)
-            if expanded {
+            if expanded || waiting {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
                 VStack(spacing: 0) {
                     ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
@@ -785,7 +840,7 @@ struct ActivityRail: View {
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 2) }
     }
 }
 
@@ -801,22 +856,22 @@ struct ToolActivityBlock: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(spacing: 0) {
                 Text(part.state == "approval-requested" ? "!" : failed ? "×" : running ? "·" : "✓")
-                    .font(.system(size: 10, weight: .bold)).frame(width: 16, height: 16)
+                    .font(.system(size: 7, weight: .bold)).frame(width: 10, height: 10)
                     .foregroundStyle(part.state == "approval-requested" ? .black : color)
                     .background(part.state == "approval-requested" ? Color(presentation: PresentationTokens.yellow) : color.opacity(0.08))
                 Rectangle().fill(last ? Color.clear : Color.primary.opacity(0.12)).frame(width: 1)
-            }.padding(.top, 14)
+            }.frame(width: 16).padding(.top, 17)
             VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 8) {
-                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? part.toolName?.nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
+                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? activityToolLabel(part).nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
                             .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
                         Spacer(minLength: 4)
                         if running { StreamingPulse() }
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.suzentMuted)
                     }.frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain)
-                if !expanded, part.type == "tool", let preview = (failed ? part.output?.nonEmpty : part.args?.nonEmpty) {
+                if !expanded, failed, let preview = part.output?.nonEmpty {
                     Text(preview).font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.bottom, 10)
                 }
@@ -873,46 +928,30 @@ struct ApprovalCards: View {
 
 
 struct GreetingCube: View {
+    let engaged: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var started = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
-            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * .pi / 12
-            ZStack {
-                Canvas { context, size in
-                    context.scaleBy(x: size.width / 160, y: size.height / 160)
-                    context.translateBy(x: 80, y: 80)
-                    context.rotate(by: .radians(phase))
-                    let rect = Path(CGRect(x: -54, y: -54, width: 108, height: 108))
-                    context.stroke(rect, with: .color(.gray.opacity(0.5)), lineWidth: 1)
-                    context.rotate(by: .radians(-phase * 2 + .pi / 4))
-                    context.stroke(rect, with: .color(.gray.opacity(0.4)), lineWidth: 1)
+            Canvas { context, size in
+                context.scaleBy(x: size.width / 160, y: size.height / 160)
+                let ink: UInt32 = colorScheme == .dark ? PresentationTokens.text_dark : PresentationTokens.black
+                for mark in GreetingCubeScene.frame(seconds: timeline.date.timeIntervalSince(started), engaged: engaged, reduced: reduceMotion, inkColor: ink) {
+                    var path = Path()
+                    for (index, point) in mark.points.enumerated() {
+                        let position = CGPoint(x: point.x, y: point.y)
+                        if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
+                    }
+                    if mark.points.count > 2 { path.closeSubpath() }
+                    let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
+                    if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
+                    else { context.fill(path, with: shading) }
                 }
-                cube
-                    .rotation3DEffect(.degrees(sin(phase * 4) * 12), axis: (x: 0, y: 1, z: 0))
-                    .rotation3DEffect(.degrees(cos(phase * 4) * 4), axis: (x: 1, y: 0, z: 0))
-                    .offset(y: sin(phase * 4) * 4)
             }
         }.accessibilityHidden(true)
-    }
-
-    private var cube: some View {
-        Canvas { context, size in
-            context.scaleBy(x: size.width / 160, y: size.height / 160)
-            func polygon(_ points: [CGPoint]) -> Path {
-                Path { path in path.addLines(points); path.closeSubpath() }
-            }
-            let top = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 95, y: 27), CGPoint(x: 143, y: 45), CGPoint(x: 65, y: 57)])
-            let left = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 65, y: 57), CGPoint(x: 65, y: 141), CGPoint(x: 28, y: 109)])
-            let front = polygon([CGPoint(x: 65, y: 57), CGPoint(x: 143, y: 45), CGPoint(x: 138, y: 122), CGPoint(x: 65, y: 141)])
-            for (face, color) in [(top, Color(white: 0.18)), (left, Color(white: 0.04)), (front, Color.black)] {
-                context.fill(face, with: .color(color)); context.stroke(face, with: .color(.gray), lineWidth: 1)
-            }
-            for points in SuzentLogoGeometry.eyes {
-                context.fill(polygon(points.map { CGPoint(x: $0.0, y: $0.1) }), with: .color(.white))
-            }
-        }
     }
 }
 
@@ -964,7 +1003,7 @@ struct SuzentSelectionPanel: View {
             }
         }.background(Color.suzentSurface)
             .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 4, y: 4) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetHeavy, y: PresentationTokens.shadowOffsetHeavy) }
             .padding(.trailing, 4).padding(.bottom, 4)
             .onAppear { titleFocused = true }
     }
@@ -1082,7 +1121,7 @@ struct AssemblyBadge: View {
             .background(Color.suzentSurface)
             .clipped()
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 3, y: 3) }
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
             .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
         }
         .frame(height: expanded ? 111 : 43)
@@ -1099,166 +1138,6 @@ struct AssemblyBadge: View {
         .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
 }
-
-private struct StreamingMarkdown: View {
-    let text: String
-    let active: Bool
-    let citationSources: [CitationSource]
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        SuzentMarkdown(text: streamingMarkdown(text, active: active), citationSources: citationSources,
-            softStreaming: active && !reduceMotion)
-    }
-}
-
-private final class StreamFadeLayoutManager: NSLayoutManager {
-    struct Reveal {
-        let range: NSRange
-        let began: TimeInterval
-    }
-    var reveals: [Reveal] = []
-
-    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
-        guard let context = UIGraphicsGetCurrentContext(), !reveals.isEmpty else {
-            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
-            return
-        }
-        let now = ProcessInfo.processInfo.systemUptime
-        let segments = reveals.map { (glyphRange(forCharacterRange: $0.range, actualCharacterRange: nil), $0.began) }
-        var boundaries = Set([glyphsToShow.location, NSMaxRange(glyphsToShow)])
-        for (range, _) in segments {
-            let clipped = NSIntersectionRange(range, glyphsToShow)
-            if clipped.length > 0 { boundaries.insert(clipped.location); boundaries.insert(NSMaxRange(clipped)) }
-        }
-        let sorted = boundaries.sorted()
-        for index in 0..<(sorted.count - 1) {
-            let range = NSRange(location: sorted[index], length: sorted[index + 1] - sorted[index])
-            let began = segments.first { NSLocationInRange(range.location, $0.0) }?.1
-            let progress = began.map { min(1, max(0, (now - $0) / 0.15)) } ?? 1
-            context.saveGState()
-            context.setAlpha(0.12 + 0.88 * (1 - pow(1 - progress, 2)))
-            super.drawGlyphs(forGlyphRange: range, at: origin)
-            context.restoreGState()
-        }
-    }
-}
-
-private final class StreamFadeTextView: UITextView {
-    let fadeLayout: StreamFadeLayoutManager
-    private var previous = ""
-    private var ticker: Timer?
-
-    init() {
-        let storage = NSTextStorage()
-        let layout = StreamFadeLayoutManager()
-        let container = NSTextContainer(size: .zero)
-        container.lineFragmentPadding = 0
-        storage.addLayoutManager(layout)
-        layout.addTextContainer(container)
-        fadeLayout = layout
-        super.init(frame: .zero, textContainer: container)
-        isScrollEnabled = false
-        isEditable = false
-        backgroundColor = .clear
-        textContainerInset = .zero
-        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    func update(_ content: NSAttributedString, active: Bool) {
-        let now = ProcessInfo.processInfo.systemUptime
-        var body = content.string
-        while body.last?.isWhitespace == true { body.removeLast() }
-        if body.hasSuffix("▍") { body.removeLast() }
-        while body.last?.isWhitespace == true { body.removeLast() }
-        if !active || !body.hasPrefix(previous) { fadeLayout.reveals.removeAll() }
-        else if body.utf16.count > previous.utf16.count {
-            let raw = NSRange(location: previous.utf16.count, length: body.utf16.count - previous.utf16.count)
-            let composed = (body as NSString).rangeOfComposedCharacterSequences(for: raw)
-            // One fade per received fragment keeps draw calls independent of character count.
-            fadeLayout.reveals.append(.init(range: composed, began: now))
-        }
-        fadeLayout.reveals.removeAll { now - $0.began >= 0.15 || NSMaxRange($0.range) > content.length }
-        if !attributedText.isEqual(to: content) { attributedText = content }
-        previous = body
-        startTicker()
-    }
-
-    private func startTicker() {
-        guard ticker == nil, window != nil, !fadeLayout.reveals.isEmpty else { return }
-        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
-            MainActor.assumeIsolated {
-                let now = ProcessInfo.processInfo.systemUptime
-                self.fadeLayout.reveals.removeAll { now - $0.began >= 0.15 }
-                self.fadeLayout.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: self.textStorage.length))
-                self.setNeedsDisplay()
-                if self.fadeLayout.reveals.isEmpty { self.ticker?.invalidate(); self.ticker = nil }
-            }
-        }
-        ticker = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window == nil { ticker?.invalidate(); ticker = nil } else { startTicker() }
-    }
-}
-
-private struct SoftStreamParagraph: UIViewRepresentable {
-    let markdown: String
-    let active: Bool
-    let openLink: (URL) -> Void
-
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var openLink: (URL) -> Void
-        init(openLink: @escaping (URL) -> Void) { self.openLink = openLink }
-        func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
-            if ["http", "https", "suzent-citation"].contains(URL.scheme?.lowercased()) { openLink(URL) }
-            return false
-        }
-    }
-    func makeCoordinator() -> Coordinator { Coordinator(openLink: openLink) }
-    func makeUIView(context: Context) -> StreamFadeTextView {
-        let view = StreamFadeTextView()
-        view.delegate = context.coordinator
-        return view
-    }
-    func updateUIView(_ view: StreamFadeTextView, context: Context) {
-        context.coordinator.openLink = openLink
-        let parsed = (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown)
-        let result = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
-        let entire = NSRange(location: 0, length: result.length)
-        result.addAttributes([.font: UIFont.systemFont(ofSize: PresentationTokens.typeChat), .foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark)], range: entire)
-        var offset = 0
-        for run in parsed.runs {
-            let length = String(parsed[run.range].characters).utf16.count
-            let range = NSRange(location: offset, length: length)
-            let intent = run.inlinePresentationIntent ?? []
-            var font = UIFont.systemFont(ofSize: PresentationTokens.typeChat)
-            if intent.contains(.code) {
-                font = .monospacedSystemFont(ofSize: PresentationTokens.typeChat, weight: .semibold)
-                result.addAttributes([.backgroundColor: UIColor(red: 1, green: 230/255, blue: 102/255, alpha: 1), .foregroundColor: UIColor.black], range: range)
-            } else {
-                var traits: UIFontDescriptor.SymbolicTraits = []
-                if intent.contains(.stronglyEmphasized) { traits.insert(.traitBold) }
-                if intent.contains(.emphasized) { traits.insert(.traitItalic) }
-                if let descriptor = font.fontDescriptor.withSymbolicTraits(traits) { font = UIFont(descriptor: descriptor, size: PresentationTokens.typeChat) }
-            }
-            result.addAttribute(.font, value: font, range: range)
-            if intent.contains(.strikethrough) { result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
-            offset += length
-        }
-        view.linkTextAttributes = [.foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark)]
-        view.update(result, active: active)
-    }
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: StreamFadeTextView, context: Context) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-    }
-}
-
 
 private struct ChatContentFrameKey: PreferenceKey {
     static var defaultValue: CGRect { .zero }
@@ -1314,9 +1193,7 @@ struct FollowingChatScrollView<Content: View>: View {
                     }
                     // Scroll only after layout adds height, never for each received token.
                     if heightChanged && tracking.following && !tracking.dragging && startsAtBottom {
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
-                            reader.scrollTo("bottom", anchor: .bottom)
-                        }
+                        reader.scrollTo("bottom", anchor: .bottom)
                     }
                 }
                 .onChange(of: viewport.size.height) { _, _ in

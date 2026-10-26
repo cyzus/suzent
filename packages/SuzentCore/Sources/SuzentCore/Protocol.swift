@@ -69,6 +69,8 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
     public let nextRunAt: String?
     public let lastRunAt: String?
     public let hasError: Bool
+    public let chatUpdatedAt: String?
+    public let lastRunFinishedAt: String?
 }
 
 public struct Project: Decodable, Identifiable, Sendable {
@@ -91,7 +93,7 @@ public struct FileAttachment: Decodable, Sendable, Equatable {
     }
 }
 
-public struct ChatMessage: Decodable, Sendable {
+public struct ChatMessage: Decodable, Sendable, Equatable {
     public let role: String
     public let content: String
 

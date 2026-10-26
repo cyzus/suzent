@@ -225,6 +225,43 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
     assert captured["model_override"] == "openai/gpt-4.1"
 
 
+@pytest.mark.asyncio
+async def test_spawn_subagent_defaults_to_current_model(monkeypatch):
+    captured = {}
+
+    async def fake_spawn_subagent(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            task_id="sub_12345678",
+            status="queued",
+            result_summary=None,
+            error=None,
+            chat_id="subagent-sub_12345678",
+            parent_chat_id=kwargs["parent_chat_id"],
+            tools_allowed=[],
+        )
+
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner._resolve_tool_names",
+        lambda tools_allowed: ([], []),
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.spawn_subagent",
+        fake_spawn_subagent,
+    )
+
+    result = await AgentTool().forward(
+        SimpleNamespace(
+            deps=SimpleNamespace(chat_id="chat-1", model_id="anthropic/claude-x")
+        ),
+        description="Search the codebase",
+        tools_allowed=[],
+    )
+
+    assert result.success
+    assert captured["model_override"] == "anthropic/claude-x"
+
+
 def test_spawn_subagent_guidance_does_not_embed_model_workflow():
     assert "coun" + "cil" not in AgentTool.session_guidance.lower()
     assert "model_override" not in AgentTool.session_guidance

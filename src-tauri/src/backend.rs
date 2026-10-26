@@ -165,7 +165,10 @@ impl BackendProcess {
         self.control_token = Some(control_token);
 
         // Poll server.port file written by Python's write_port_file() at startup.
-        let port = self.poll_port_file(&port_file, Duration::from_secs(30))?;
+        // The first launch compiles bytecode for every dependency, which with
+        // antivirus scanning can take minutes on Windows. A backend that dies
+        // is still reported at once, so the long wait only covers a slow start.
+        let port = self.poll_port_file(&port_file, Duration::from_secs(300))?;
         self.port = port;
         println!("Backend reported port: {}", port);
         self.wait_for_backend(repo_dir)?;

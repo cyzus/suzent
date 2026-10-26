@@ -1,11 +1,13 @@
 """Tools for discovering, reading, messaging, and stopping agent sessions."""
 
+import asyncio
 from typing import Annotated, Any, Literal, Optional
 
 from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.focal_agent import FOCAL_CHAT_ID, is_focal_chat
 from suzent.database import ChatModel, get_database
 from suzent.a2a import agent_bridge
 from suzent.a2a.agent_bridge import A2ABridgeError
@@ -18,6 +20,7 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 _MAX_TRANSCRIPT_CHARS = 20_000
 _HIDDEN_AGENT_PLATFORMS = {"dream", "subagent_wakeup"}
+NEW_AGENT_ID = "new"
 
 
 def _require_chat_id(ctx: RunContext[AgentDeps]) -> Optional[str]:
@@ -50,8 +53,29 @@ def _accessible_agent(agent_id: str, current_chat_id: str) -> Optional[ChatModel
         return None
     if target.id == current.id:
         return target
+    if is_focal_chat(current):
+        return target
     if current.project_id and target.project_id == current.project_id:
         return target
+    return None
+
+
+def _sendable_agent(agent_id: str, current_chat_id: str) -> Optional[ChatModel]:
+    """An agent this chat may message: any it can access, plus the Focal Agent.
+
+    Any session may report to the Focal Agent, but not read its conversation,
+    which spans every project, or stop its turns.
+    """
+    target = _accessible_agent(agent_id, current_chat_id)
+    if target is not None:
+        return target
+    focal = _resolve_agent_chat(agent_id)
+    if (
+        focal is not None
+        and is_focal_chat(focal)
+        and get_database().get_chat(current_chat_id)
+    ):
+        return focal
     return None
 
 
@@ -63,6 +87,8 @@ def _agent_kind(chat: ChatModel) -> str:
         return "cron"
     if platform == "suzent":
         return "remote"
+    if platform == "focal":
+        return "focal"
     if platform in {"social", "telegram", "slack", "discord", "feishu", "wechat"}:
         return "social"
     return "interactive"
@@ -94,11 +120,44 @@ def _agent_record(chat: ChatModel) -> dict[str, Any]:
     }
 
 
+def _with_project_summary(record: dict[str, Any]) -> dict[str, Any]:
+    """Add the project and bound-task summary the Focal Agent needs across projects."""
+    project_id = record.get("project_id")
+    if not project_id:
+        return record
+    db = get_database()
+    project = db.get_project(project_id)
+    tasks = db.list_tasks(project_id=project_id, chat_id=record["agent_id"])
+    return {
+        **record,
+        "project_slug": project.slug if project else None,
+        "project_name": project.name if project else None,
+        "tasks": [
+            {
+                "id": task.id,
+                "title": task.title,
+                "status": task.status,
+                "waiting_kind": task.waiting_kind,
+                "waiting_reason": task.waiting_reason,
+            }
+            for task in tasks
+        ],
+    }
+
+
 def _format_agent(record: dict[str, Any]) -> str:
     title = str(record.get("title") or "Untitled agent").replace("\n", " ")
     if len(title) > 100:
         title = title[:97] + "..."
-    return f"- {record['agent_id']} · {record['kind']} · {record['status']}\n  {title}"
+    line = f"- {record['agent_id']} · {record['kind']} · {record['status']}"
+    if record.get("project_slug"):
+        line += f" · [{record['project_slug']}]"
+    line += f"\n  {title}"
+    for task in record.get("tasks") or []:
+        line += f"\n  #{task['id']} {task['status']}: {task['title']}"
+        if task.get("waiting_reason"):
+            line += f" (waiting on {task['waiting_kind']}: {task['waiting_reason']})"
+    return line
 
 
 def _format_bounded_transcript(
@@ -116,7 +175,7 @@ def _format_bounded_transcript(
 
 
 class AgentListTool(Tool):
-    """List local project agents and paired remote Suzent agents."""
+    """List agent sessions, or discover configured ACP agents with status='acp'."""
 
     name = "AgentListTool"
     tool_name = "agent_list"
@@ -126,8 +185,15 @@ class AgentListTool(Tool):
         self,
         ctx: RunContext[AgentDeps],
         status: Annotated[
-            Literal["active", "recent"],
-            Field(description="List active agents or recent agents."),
+            Literal["active", "recent", "acp"],
+            Field(
+                description=(
+                    "'active' or 'recent': existing sessions you can message. "
+                    "'acp': configured local ACP agents that can run work; the result "
+                    "says how to start one. Checks installation only, not "
+                    "authentication or handshake."
+                )
+            ),
         ] = "active",
         limit: Annotated[
             int,
@@ -141,8 +207,46 @@ class AgentListTool(Tool):
                 ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
             )
 
+        if status == "acp":
+            from suzent.acp.registry import ACPAgentRegistry
+
+            configured = ACPAgentRegistry().list_agents()
+            records = [
+                {
+                    "acp_agent_id": agent.id,
+                    "name": agent.name,
+                    "description": agent.description,
+                    "available": agent.available,
+                }
+                for agent in configured[:limit]
+            ]
+            lines = [
+                f"- {record['acp_agent_id']} · {record['name']} · "
+                f"{'installed' if record['available'] else 'not installed'}"
+                + (f"\n  {record['description']}" if record["description"] else "")
+                for record in records
+            ]
+            start = (
+                "Start a project session on one with agent_dispatch(agent_id='new', "
+                "project_id=..., acp_agent_id=<listed ID>, message=...)."
+                if is_focal_chat(current)
+                else "Start with agent(runtime='acp', acp_agent_id=<listed ID>, "
+                "description=...)."
+            )
+            return ToolResult.success_result(
+                "Configured ACP agents (installation check only):\n"
+                + ("\n".join(lines) or "No ACP agents configured.")
+                + f"\n{start} These IDs cannot be messaged. "
+                "If not installed, configure it in Settings → ACP Agents.",
+                metadata={"acp_agents": records, "has_more": len(configured) > limit},
+            )
+
+        focal = is_focal_chat(current)
         if status == "recent":
-            if current.project_id:
+            if focal:
+                summaries = get_database().list_chats(limit=limit + 1)
+                chats = [get_database().get_chat(summary.id) for summary in summaries]
+            elif current.project_id:
                 summaries = get_database().list_chats(
                     limit=limit + 1, project_id=current.project_id
                 )
@@ -177,6 +281,8 @@ class AgentListTool(Tool):
                 if chat is not None and _agent_is_active(chat.id)
             ]
             records.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+        if focal:
+            records = [_with_project_summary(record) for record in records]
 
         # Both federation paths are delegation targets: Suzent peers reached by
         # pairing, and external agents reached by the open A2A protocol.
@@ -283,23 +389,54 @@ class AgentSendTool(Tool):
     tool_name = "agent_send"
     group = ToolGroup.AGENT
 
-    def forward(
+    async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        agent_id: Annotated[str, Field(description="Stable agent ID from agent_list.")],
+        agent_id: Annotated[
+            str,
+            Field(
+                description=(
+                    "Stable session agent_id from agent_list(active/recent), or the task ID "
+                    "returned by agent, including ACP tasks. Sending wakes an idle session. "
+                    "Do not pass an acp_agent_id or acp_session_id."
+                )
+            ),
+        ],
         message: Annotated[
             str,
             Field(min_length=1, max_length=20_000, description="Message to deliver."),
         ],
+        wait: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Wait for the agent's reply and get it as this tool's result. "
+                    "Otherwise the call returns at once, and a sub-agent's reply "
+                    "wakes you when it is ready. Local agents only."
+                )
+            ),
+        ] = False,
     ) -> ToolResult:
-        current_chat_id = _require_chat_id(ctx)
+        """Send a message to another agent, such as a sub-agent you spawned.
 
+        A sub-agent keeps its whole history between messages, so use this to
+        correct, extend, or question its work rather than spawning a new one.
+        """
+        return await self._deliver(
+            _require_chat_id(ctx), agent_id, message.strip(), wait
+        )
+
+    async def _deliver(
+        self, current_chat_id: Optional[str], agent_id: str, message: str, wait: bool
+    ) -> ToolResult:
         # External A2A agents settle in one call — message/send blocks until the
         # remote task completes or asks a question — so the reply comes straight
         # back rather than through the durable outbox the Suzent peer path uses.
         if agent_bridge.parse_address(agent_id):
             try:
-                outcome = agent_bridge.delegate(agent_id, message.strip())
+                outcome = await asyncio.to_thread(
+                    agent_bridge.delegate, agent_id, message
+                )
             except A2ABridgeError as exc:
                 return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
             return ToolResult.success_result(
@@ -318,11 +455,16 @@ class AgentSendTool(Tool):
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
                 )
+            if wait:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "wait is not supported for remote agents; send without it.",
+                )
             try:
                 record, _ = peer_transport.enqueue(
                     agent_id=agent_id,
                     sender_chat_id=current_chat_id,
-                    content=message.strip(),
+                    content=message,
                 )
             except PeerAgentTransportError as exc:
                 return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
@@ -336,7 +478,7 @@ class AgentSendTool(Tool):
                 },
             )
 
-        target = _accessible_agent(agent_id, current_chat_id or "")
+        target = _sendable_agent(agent_id, current_chat_id or "")
         if current_chat_id is None or target is None:
             return ToolResult.error_result(
                 ToolErrorCode.FILE_NOT_FOUND,
@@ -348,20 +490,68 @@ class AgentSendTool(Tool):
                 "Use a normal follow-up turn instead of sending to the current agent.",
             )
 
-        from suzent.core.agent_inbox import enqueue_agent_message
+        if wait:
+            return await self._send_and_wait(current_chat_id, target, message)
 
+        from suzent.core.agent_inbox import enqueue_agent_message
+        from suzent.core.subagent_runner import is_subagent_of
+
+        if current_chat_id == FOCAL_CHAT_ID:
+            from suzent.core.focal_agent import watch_session
+
+            watch_session(target.id)
         record, _ = enqueue_agent_message(
             sender_chat_id=current_chat_id,
             target_chat_id=target.id,
-            content=message.strip(),
+            content=message,
+        )
+        reply_note = (
+            " Its reply will wake you when it is ready."
+            if is_subagent_of(target, current_chat_id)
+            or current_chat_id == FOCAL_CHAT_ID
+            else ""
         )
         return ToolResult.success_result(
-            f"Message queued for agent '{target.id}'.",
+            f"Message queued for agent '{target.id}'.{reply_note}",
             metadata={
                 "message_id": record["message_id"],
                 "agent_id": target.id,
                 "status": record["status"],
             },
+        )
+
+    @staticmethod
+    async def _send_and_wait(
+        current_chat_id: str, target: ChatModel, message: str
+    ) -> ToolResult:
+        from suzent.core.agent_inbox import deliver_and_wait
+        from suzent.core.subagent_runner import summarize_agent_output
+
+        try:
+            reply = await deliver_and_wait(
+                sender_chat_id=current_chat_id,
+                target_chat_id=target.id,
+                content=message,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Agent '{target.id}' failed to answer: {exc}",
+            )
+        if reply is None:
+            return ToolResult.success_result(
+                f"Agent '{target.id}' was already working, so your message joined "
+                "its current turn instead of getting a reply of its own.",
+                metadata={"agent_id": target.id, "status": "injected"},
+            )
+        # The reply cites sources only the target's chat knows, so render them
+        # as plain references, as a sub-agent's result is.
+        text, _ = summarize_agent_output(reply.text, reply.citation_sources, target.id)
+        return ToolResult.success_result(
+            f"Agent '{target.id}' replied:\n{text}",
+            metadata={"agent_id": target.id, "status": "replied"},
         )
 
 

@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import {
   ApiField,
   ApiProvider,
+  Model,
   CustomProviderPayload,
   fetchChatGPTStatus,
   logoutChatGPT,
@@ -45,6 +46,20 @@ const FIELD_ACTION_PRIMARY =
 
 type ProviderTab = 'credentials' | 'models';
 
+function modelDetails(model: Model, t: ReturnType<typeof useI18n>['t']): string {
+  const details = [model.id];
+  if (model.context_length) {
+    details.push(
+      t('settings.providers.modelContext', { count: model.context_length.toLocaleString() })
+    );
+  }
+  if (model.supports_vision) details.push(t('settings.providers.modelVision'));
+  if (model.supports_reasoning) details.push(t('settings.providers.modelReasoning'));
+  if (model.supports_function_calling) details.push(t('settings.providers.modelTools'));
+  if (model.description) details.push(model.description);
+  return details.join(' · ');
+}
+
 function getProviderTitleClass(label: string): string {
   if (label.length > 18) return 'text-sm';
   if (label.length > 12) return 'text-base';
@@ -53,6 +68,8 @@ function getProviderTitleClass(label: string): string {
 }
 
 interface ProvidersTabProps {
+  onboarding?: boolean;
+  onCredentialDraftChange?: (dirty: boolean) => void;
   providers: ApiProvider[];
   apiKeys: Record<string, string>;
   userConfigs: Record<string, UserConfig>;
@@ -81,7 +98,7 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
 
   return (
     <span
-      className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'border-brutal-black text-brutal-black dark:border-white dark:text-white bg-transparent'}`}
+      className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25' : 'border-brutal-black text-brutal-black dark:border-white/15 dark:text-zinc-400 bg-transparent'}`}
     >
       {t(`settings.providers.${hasKey ? 'keySet' : 'noKey'}`)}
     </span>
@@ -178,7 +195,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.id')} *
           </label>
           <input
@@ -190,7 +207,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.label')} *
           </label>
           <input
@@ -205,7 +222,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.apiType')}
           </label>
           <select
@@ -221,7 +238,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
           </select>
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
             {t('settings.providers.addForm.baseUrl')}
           </label>
           <input
@@ -235,7 +252,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
       </div>
 
       <div className="border-t-2 border-neutral-200 dark:border-zinc-700 pt-4 space-y-3">
-        <p className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+        <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
           {t('settings.providers.addForm.apiKeySection')}
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -307,6 +324,7 @@ function ChatGPTProviderCard({
   onAuthChanged,
   onVerify,
   verifying,
+  verification,
 }: {
   provider: ApiProvider;
   config: UserConfig;
@@ -314,6 +332,7 @@ function ChatGPTProviderCard({
   onAuthChanged?: () => Promise<void> | void;
   onVerify: (provider: ApiProvider) => void;
   verifying: boolean;
+  verification?: { success: boolean; message: string };
 }): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<ChatGPTStatusResponse | null>(null);
@@ -391,12 +410,13 @@ function ChatGPTProviderCard({
 
   const statusKey = status?.status ?? 'not_logged_in';
   const connected = status?.connected === true;
-  const allModels = [...(provider.default_models || [])];
+  const allModels =
+    provider.models.length > 0 ? [...provider.models] : [...(provider.default_models || [])];
 
   for (const model of provider.models || []) {
-    if (!allModels.find((x) => x.id === model.id)) {
-      allModels.push(model);
-    }
+    const index = allModels.findIndex((x) => x.id === model.id);
+    if (index === -1) allModels.push(model);
+    else allModels[index] = { ...allModels[index], ...model };
   }
 
   for (const modelId of config.custom_models) {
@@ -416,7 +436,7 @@ function ChatGPTProviderCard({
     : t('settings.providers.chatgpt.signIn');
 
   return (
-    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProviderIcon provider={provider} />
@@ -441,7 +461,7 @@ function ChatGPTProviderCard({
         </div>
       </summary>
 
-      <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4">
+      <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4 dark:border-zinc-600">
         <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
           <div className="flex min-w-0 items-center gap-2" role="status">
             <span
@@ -509,7 +529,7 @@ function ChatGPTProviderCard({
                 <button
                   onClick={() => setPendingLogin(null)}
                   disabled={loading}
-                  className="px-3 py-1.5 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-500 bg-white dark:bg-zinc-900 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-500 dark:text-neutral-400 bg-white dark:bg-zinc-900 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -537,13 +557,25 @@ function ChatGPTProviderCard({
               {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
             </BrutalButton>
           </div>
+          {verification && (
+            <p
+              role="status"
+              className={`border-l-4 px-3 py-2 text-xs ${verification.success ? 'border-brutal-green' : 'border-brutal-red'}`}
+            >
+              {verification.message}
+            </p>
+          )}
           <BrutalMultiSelect
             variant="list"
             value={config.enabled_models}
             onChange={(newVal) =>
               onConfigChange(provider.id, { ...config, enabled_models: newVal })
             }
-            options={allModels.map((m) => ({ value: m.id, label: m.name || m.id }))}
+            options={allModels.map((m) => ({
+              value: m.id,
+              label: m.name || m.id,
+              description: modelDetails(m, t),
+            }))}
             emptyMessage={t('settings.providers.noModelsFound')}
             dropdownClassName="max-h-56"
           />
@@ -556,6 +588,8 @@ function ChatGPTProviderCard({
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
+  onboarding = false,
+  onCredentialDraftChange,
   providers,
   apiKeys,
   userConfigs,
@@ -606,6 +640,9 @@ export function ProvidersTab({
   const [syncResult, setSyncResult] = useState<string | null>(null);
   // Tracks which secret field keys are currently in edit mode (user clicked "Change")
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    onCredentialDraftChange?.(editingFields.size > 0 || Object.keys(keyDrafts).length > 0);
+  }, [editingFields, keyDrafts, onCredentialDraftChange]);
 
   const startEditing = (fieldKey: string) => {
     setEditingFields((prev) => new Set(prev).add(fieldKey));
@@ -677,50 +714,48 @@ export function ProvidersTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.providers.title')}
-        subtitle={t('settings.providers.subtitle')}
-        actions={
-          <>
-            {syncResult && (
-              <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
-                {syncResult}
-              </span>
-            )}
-            <BrutalButton
-              onClick={handleSync}
-              disabled={syncing}
-              title={t('settings.providers.syncTooltip')}
-              variant="dark"
-              size="sm"
-              className="!border-white"
-            >
-              {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-            </BrutalButton>
-            <BrutalButton
-              onClick={() => setShowAddForm((v) => !v)}
-              variant="light"
-              size="sm"
-              className="!border-white"
-            >
-              {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
-            </BrutalButton>
-          </>
-        }
-      />
+      {!onboarding && (
+        <SettingsHeader
+          title={t('settings.providers.title')}
+          subtitle={t('settings.providers.subtitle')}
+          actions={
+            !onboarding && (
+              <>
+                {syncResult && (
+                  <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
+                    {syncResult}
+                  </span>
+                )}
+                <BrutalButton
+                  onClick={handleSync}
+                  disabled={syncing}
+                  title={t('settings.providers.syncTooltip')}
+                  variant="primary"
+                  size="sm"
+                >
+                  {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                </BrutalButton>
+                <BrutalButton onClick={() => setShowAddForm((v) => !v)} variant="light" size="sm">
+                  {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
+                </BrutalButton>
+              </>
+            )
+          }
+        />
+      )}
 
       {showAddForm && (
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
       )}
 
-      <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+      <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
         <summary className="cursor-pointer p-3 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
           {t('settings.providers.enabledSummary', {
             models: enabledCount,
             providers: enabledGroups.length,
           })}
         </summary>
-        <div className="space-y-3 border-t-2 border-brutal-black p-3">
+        <div className="space-y-3 border-t-2 border-brutal-black p-3 dark:border-zinc-600">
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
             {t('settings.providers.enabledSummaryHint')}
           </p>
@@ -763,7 +798,7 @@ export function ProvidersTab({
         onChange={(event) => setQuery(event.target.value)}
         aria-label={t('settings.providers.searchProviders')}
         placeholder={t('settings.providers.searchProviders')}
-        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:bg-zinc-800 dark:text-white"
+        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-400"
       />
       {!providers.some((provider) =>
         `${provider.label} ${provider.id}`.toLowerCase().includes(query.trim().toLowerCase())
@@ -793,22 +828,21 @@ export function ProvidersTab({
                   onAuthChanged={onChatGPTAuthChanged}
                   onVerify={onVerify}
                   verifying={!!verifying[provider.id]}
+                  verification={verification[provider.id]}
                 />
-                {verification[provider.id] && (
-                  <p role="status" className="mt-2 text-xs dark:text-white">
-                    {verification[provider.id].message}
-                  </p>
-                )}
               </div>
             );
           }
 
-          const allModels = [...(provider.default_models || [])];
+          const allModels =
+            provider.models.length > 0
+              ? [...provider.models]
+              : [...(provider.default_models || [])];
 
           for (const model of provider.models || []) {
-            if (!allModels.find((x) => x.id === model.id)) {
-              allModels.push(model);
-            }
+            const index = allModels.findIndex((x) => x.id === model.id);
+            if (index === -1) allModels.push(model);
+            else allModels[index] = { ...allModels[index], ...model };
           }
 
           for (const modelId of conf.custom_models) {
@@ -829,7 +863,7 @@ export function ProvidersTab({
                 providerPanels.current[provider.id] = element;
               }}
               key={provider.id}
-              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white`}
+              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none`}
             >
               {/* Provider Header */}
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
@@ -842,7 +876,7 @@ export function ProvidersTab({
                     >
                       {provider.label}
                     </span>
-                    {provider.user_defined && (
+                    {provider.user_defined && !onboarding && (
                       <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
                         {t('settings.providers.customProvider')}
                       </span>
@@ -861,7 +895,7 @@ export function ProvidersTab({
                   </span>
                   <span aria-hidden="true">▾</span>
                   <div
-                    className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
+                    className={`w-4 h-4 rounded-full border-2 border-brutal-black dark:border-zinc-500 ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
                   ></div>
                 </div>
               </summary>
@@ -885,6 +919,16 @@ export function ProvidersTab({
               <div className="flex flex-1 flex-col gap-4 p-4">
                 {activeTab === 'credentials' && (
                   <div className="space-y-4">
+                    {provider.key_url && (
+                      <a
+                        href={provider.key_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
+                      >
+                        {t('settings.providers.getKey', { provider: provider.label })}
+                      </a>
+                    )}
                     {provider.fields.map((field) => {
                       const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
                       const isConfigured =
@@ -896,7 +940,7 @@ export function ProvidersTab({
                       return (
                         <div key={field.key} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+                            <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
                               {field.label}
                             </label>
                             {isConfigured && (
@@ -1025,7 +1069,7 @@ export function ProvidersTab({
                         ? t('settings.providers.fetching')
                         : t('settings.providers.testConnection')}
                     </BrutalButton>
-                    <p className="text-[11px] text-neutral-500">
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
                       {t('settings.providers.connectionHint')}
                     </p>
                   </div>
@@ -1114,7 +1158,7 @@ export function ProvidersTab({
                       aria-label={t('settings.providers.searchModels')}
                       className="mb-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs dark:bg-zinc-900 dark:text-white"
                     />
-                    <p className="mb-2 text-xs text-neutral-500">
+                    <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
                       {t('settings.providers.enabledCount', {
                         count: conf.enabled_models.length,
                       })}
@@ -1132,7 +1176,11 @@ export function ProvidersTab({
                             .toLowerCase()
                             .includes((modelQueries[provider.id] || '').trim().toLowerCase())
                         )
-                        .map((m) => ({ value: m.id, label: m.name || m.id }))}
+                        .map((m) => ({
+                          value: m.id,
+                          label: m.name || m.id,
+                          description: modelDetails(m, t),
+                        }))}
                       emptyMessage={t('settings.providers.noModelsFound')}
                       emptyAction={
                         !(modelQueries[provider.id] || '').trim() && (
@@ -1156,7 +1204,7 @@ export function ProvidersTab({
 
                     {/* Footer */}
                     <div className="flex justify-between items-center px-1 mt-2">
-                      <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">
+                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
                         {t('settings.providers.modelsAvailable', {
                           count: String(allModels.length),
                         })}
@@ -1164,7 +1212,7 @@ export function ProvidersTab({
                     </div>
                   </div>
                 )}
-                {provider.user_defined && (
+                {provider.user_defined && !onboarding && (
                   <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
                     <BrutalButton
                       size="xs"
@@ -1181,6 +1229,11 @@ export function ProvidersTab({
           );
         })}
       </div>
+      {onboarding && (
+        <BrutalButton variant="ghost" size="sm" onClick={() => setShowAddForm((v) => !v)}>
+          {t(showAddForm ? 'common.cancel' : 'onboarding.otherProvider')}
+        </BrutalButton>
+      )}
     </SettingsPage>
   );
 }

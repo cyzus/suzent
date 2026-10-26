@@ -99,7 +99,9 @@ def is_tool_history_protocol_error(error: Exception) -> bool:
     text = str(error).lower()
     return (
         (status_code in (None, 400))
-        and "role 'tool'" in text
-        and "preceding message" in text
         and "tool_calls" in text
+        and (
+            ("role 'tool'" in text and "preceding message" in text)
+            or ("insufficient tool messages" in text and "tool_call_id" in text)
+        )
     )

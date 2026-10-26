@@ -464,6 +464,11 @@ const BUILDERS: Record<string, Builder> = {
     detail: str(args.image_path) ? basename(str(args.image_path)!) : null,
   }),
 
+  analyze_visual: (args, t) => ({
+    verb: verb(t, 'lookAtVisual'),
+    detail: str(args.visual_path) ? basename(str(args.visual_path)!) : null,
+  }),
+
   speak: (args, t) => ({
     verb: verb(t, 'say'),
     detail: str(args.text) ? quoted(str(args.text)!) : str(args.prompt),
@@ -507,6 +512,13 @@ const BUILDERS: Record<string, Builder> = {
   agent_list: (_args, t) => ({ verb: verb(t, 'listAgents') }),
   agent_read: (args, t) => ({ verb: verb(t, 'checkAgent'), detail: str(args.agent_id) }),
   agent_send: (args, t) => {
+    const id = str(args.agent_id);
+    const message = str(args.message);
+    const detail =
+      id && message ? `${id} · ${compact(message)}` : (id ?? (message && compact(message)));
+    return { verb: verb(t, 'messageAgent'), detail: detail || null };
+  },
+  agent_dispatch: (args, t) => {
     const id = str(args.agent_id);
     const message = str(args.message);
     const detail =

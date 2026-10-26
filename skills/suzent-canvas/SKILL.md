@@ -20,12 +20,20 @@ headless automation.
 4. Reuse the same `surface_id` to update an existing surface.
 5. Set an `action` on every button and form; use `context` for stable identifiers.
 
-Use typed components for ordinary UI. Read `references/components.md` before building a
-non-trivial tree, custom HTML visualization, or multi-step form.
+Use typed components for simple semantic controls (status cards, tables, forms, buttons,
+progress) and `html` for complex displays such as charts, SVG and custom dashboards.
+Read `references/components.md` before building a non-trivial tree, custom HTML
+visualization, or multi-step form; it has copyable JSON for each.
 
 ## Constraints
 
+- `component` is one JSON **object**, never a string: `{"type": "card", "children": [...]}`.
+  Every node, including each entry of `children`, is an object with a `type`. Children
+  are objects, never indexes or ids such as `[0, 1]`.
+- Put every field inside `component`; do not spread `type` or `children` beside `surface_id`.
 - Use `content` for text and `label` for buttons or badges; never invent a `text` field.
+- If a call is rejected, fix the exact fields named in the error and call again. Do not
+  switch a simple form or table to `html` just to get past a validation error.
 - Keep action names stable and specific because they return to the conversation as
   `[canvas: <action>]` events.
 - Do not render a choice UI merely because options exist. Use it when clicking is

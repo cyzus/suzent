@@ -64,6 +64,14 @@ it('keeps the delegated agent avatar animated after the spawn call returns', () 
 // group. Every rail used to claim the turn's worked-for time and to animate as
 // if it were live, so a long turn showed several identical running headers.
 describe('ActivityRail header', () => {
+  it('hides unknown or invalid completed durations while preserving real zero', () => {
+    expect(renderToStaticMarkup(<WorkedDuration />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration startedAtMs={Date.now() - 60000} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={NaN} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={-1} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkedDuration durationSeconds={0} />)).toContain('Worked for 0s');
+  });
+
   it('reports the worked time on the first rail of a turn only', () => {
     expect(renderToStaticMarkup(<WorkedDuration durationSeconds={65} />)).toContain(
       'Worked for 1m 5s'
@@ -135,11 +143,41 @@ it('keeps approvals outside repeated groups', () => {
 });
 
 describe('TurnActivity', () => {
+  it('keeps a canvas visible when more tool work follows it', () => {
+    const markup = renderToStaticMarkup(
+      <TurnActivity finalStart={3} isStreaming={false} durationSeconds={5} persistentIndices={[1]}>
+        {[
+          <div key="tool1">hidden earlier tool</div>,
+          <div key="canvas">persistent canvas content</div>,
+          <div key="tool2">hidden later tool</div>,
+          <div key="answer">final answer</div>,
+        ]}
+      </TurnActivity>
+    );
+    expect(markup).toContain('persistent canvas content');
+    expect(markup).toContain('final answer');
+    expect(markup).not.toContain('hidden earlier tool');
+    expect(markup).not.toContain('hidden later tool');
+  });
   const children = [
     <div key="work">intermediate commentary</div>,
     <div key="tool">tool details</div>,
     <div key="final">final answer</div>,
   ];
+  it.each([undefined, NaN, -1])('keeps a labeled disclosure when duration is %s', (duration) => {
+    const markup = renderToStaticMarkup(
+      <TurnActivity finalStart={2} isStreaming={false} durationSeconds={duration}>
+        {children}
+      </TurnActivity>
+    );
+    expect(markup).toMatch(
+      /<button[^>]*aria-expanded="false"[^>]*>[\s\S]*?Activity[\s\S]*?<\/button>/
+    );
+    expect(markup).not.toContain('Worked for');
+    expect(markup).toContain('final answer');
+    expect(markup).not.toContain('intermediate commentary');
+  });
+
   it('collapses all work under the duration and leaves the final answer visible', () => {
     const markup = renderToStaticMarkup(
       <TurnActivity finalStart={2} isStreaming={false} durationSeconds={68}>
@@ -250,6 +288,16 @@ it('limits scrolling to the inner rail', () => {
   expect(markup.match(/overflow-y-auto/g)).toHaveLength(1);
   expect(markup.match(/max-h-\[min\(24rem,50vh\)\]/g)).toHaveLength(1);
   expect(markup).toContain('tool content');
+});
+
+// The capped rail sits on top of the transcript. Containing its overscroll
+// stops the wheel dead once the rail reaches its own top or bottom, so the chat
+// behind it cannot be scrolled while the pointer is over an expanded rail.
+it('lets scrolling chain to the chat once the rail reaches its edge', () => {
+  const markup = renderRail({ defaultExpanded: true, children: <div>tool content</div> });
+  expect(markup).toContain('activity-rail-scroll');
+  expect(markup).not.toContain('overscroll-contain');
+  expect(markup).not.toContain('overscroll-none');
 });
 
 it('keeps a tool-only rail summary collapsed inside the expanded turn', () => {

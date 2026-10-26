@@ -66,7 +66,9 @@ function ReachBadge({ reach }: { reach: Reach }): React.ReactElement {
   return (
     <span
       className={`px-2 py-0.5 text-[10px] font-bold uppercase border-2 border-brutal-black ${
-        isSuzent ? 'bg-brutal-blue text-white' : 'bg-brutal-yellow text-brutal-black'
+        isSuzent
+          ? 'bg-brutal-blue text-white'
+          : 'bg-neutral-200 text-brutal-black dark:bg-zinc-700 dark:text-white'
       }`}
       title={
         isSuzent
@@ -258,7 +260,9 @@ export function MeshTab(): React.ReactElement {
         {status && (
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <code className="text-xs break-all text-neutral-500">{status.card_url}</code>
+              <code className="text-xs break-all text-neutral-500 dark:text-neutral-400">
+                {status.card_url}
+              </code>
               <SettingsListAction onClick={() => setShowCard((v) => !v)}>
                 {showCard ? 'Hide card' : 'View card'}
               </SettingsListAction>
@@ -291,7 +295,9 @@ export function MeshTab(): React.ReactElement {
                         <span className="font-bold text-sm truncate">{task.agent_name}</span>
                       </div>
                       {task.prompt && (
-                        <p className="text-xs text-neutral-500 mt-1 truncate">{task.prompt}</p>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 truncate">
+                          {task.prompt}
+                        </p>
                       )}
                     </div>
                     <div className="flex gap-2">
@@ -337,9 +343,11 @@ export function MeshTab(): React.ReactElement {
                 <div className="flex items-center gap-2 min-w-0">
                   <StatePill state={task.state} />
                   <span className="text-sm truncate">{task.agent_name}</span>
-                  <span className="text-xs text-neutral-500 truncate">{task.prompt}</span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                    {task.prompt}
+                  </span>
                 </div>
-                <span className="text-[11px] text-neutral-500 shrink-0">
+                <span className="text-[11px] text-neutral-500 dark:text-neutral-400 shrink-0">
                   {relativeTime(task.updated_at)}
                 </span>
               </div>
@@ -365,9 +373,11 @@ export function MeshTab(): React.ReactElement {
               <div className="flex items-center gap-2 min-w-0">
                 <ReachBadge reach="suzent" />
                 <span className="font-bold text-sm truncate">{peer.name || peer.base_url}</span>
-                <code className="text-[11px] text-neutral-500 truncate">{peer.base_url}</code>
+                <code className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+                  {peer.base_url}
+                </code>
               </div>
-              <span className="text-[11px] uppercase font-bold text-neutral-500 shrink-0">
+              <span className="text-[11px] uppercase font-bold text-neutral-500 dark:text-neutral-400 shrink-0">
                 {peer.mode === 'trigger' ? 'ready' : peer.mode}
               </span>
             </div>
@@ -382,14 +392,16 @@ export function MeshTab(): React.ReactElement {
                       <ReachBadge reach="a2a" />
                       <span className="font-bold text-sm truncate">{agent.name}</span>
                       {agent.has_token && (
-                        <span className="text-[10px] uppercase font-bold text-neutral-500">
+                        <span className="text-[10px] uppercase font-bold text-neutral-500 dark:text-neutral-400">
                           keyed
                         </span>
                       )}
                     </div>
-                    <code className="text-[11px] text-neutral-500 break-all">{agent.base_url}</code>
+                    <code className="text-[11px] text-neutral-500 dark:text-neutral-400 break-all">
+                      {agent.base_url}
+                    </code>
                     {agent.card?.skills?.length ? (
-                      <p className="text-xs text-neutral-500 mt-1">
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                         Skills: {agent.card.skills.map((s) => s.name).join(', ')}
                       </p>
                     ) : null}
@@ -466,7 +478,7 @@ export function MeshTab(): React.ReactElement {
           ))}
 
           {peers.length === 0 && agents.length === 0 && (
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Nothing in the mesh yet. Pair a Suzent device from the Devices tab, or add an external
               agent below.
             </p>
@@ -499,7 +511,7 @@ export function MeshTab(): React.ReactElement {
               {busy === 'add' ? 'Fetching card…' : 'Add'}
             </BrutalButton>
           </div>
-          <p className="text-xs text-neutral-500 mt-2">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
             We fetch <code>/.well-known/agent-card.json</code> to confirm the address is a real A2A
             agent before saving it.
           </p>
@@ -522,9 +534,13 @@ export function MeshTab(): React.ReactElement {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <StatePill state={task.state} />
-                  <span className="text-xs text-neutral-500 truncate">{task.message}</span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                    {task.message}
+                  </span>
                 </div>
-                <code className="text-[11px] text-neutral-500 shrink-0">{task.context_id}</code>
+                <code className="text-[11px] text-neutral-500 dark:text-neutral-400 shrink-0">
+                  {task.context_id}
+                </code>
               </div>
             ))}
           </div>

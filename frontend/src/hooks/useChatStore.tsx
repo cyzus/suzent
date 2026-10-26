@@ -19,6 +19,9 @@ import {
   type ThinkingEffort,
 } from '../types/api';
 import { getApiBase } from '../lib/api';
+import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { collectRunTimings } from '../lib/runTiming';
+import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
@@ -40,7 +43,8 @@ function escapeHtml(s: string): string {
  * every tool result and follow-up response it led to is later. Without this,
  * nothing downstream can tell how long the turn actually worked.
  */
-function noteTurnActivity(bubble: Partial<Message>, timestamp?: string): void {
+function noteTurnActivity(bubble: Partial<Message>, timestamp?: string, source?: Message): void {
+  bubble.run_timings = collectRunTimings([bubble, ...(source ? [source] : [])]);
   if (!timestamp) return;
   const current = bubble.turn_last_activity_at;
   if (!current || new Date(timestamp).getTime() > new Date(current).getTime()) {
@@ -222,7 +226,9 @@ const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
   backendDefaults: ConfigOptions
 ): ChatConfig => ({
-  model: prefs?.model || backendDefaults.defaultModel || backendDefaults.models[0] || '',
+  // No fallback to models[0]: with no provider configured that is just the
+  // alphabetically first catalog model (Claude Haiku), which the user cannot call.
+  model: prefs?.model || backendDefaults.defaultModel || '',
   agent: prefs?.agent || backendDefaults.agents[0] || '',
   tools: withBuiltinTools(prefs?.tools || backendDefaults.defaultTools, backendDefaults),
   memory_enabled: prefs?.memory_enabled,
@@ -396,7 +402,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   // Models we have already refetched the listing for, so an unlisted model
   // (an ACP agent, a disabled provider) costs one request, not one per load.
   const refetchedForModelsRef = useRef<Set<string>>(new Set());
-  const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
   const [activeStreamingChatId, setActiveStreamingChatId] = useState<string | null>(null);
@@ -449,7 +454,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const next = !prev;
       try {
         localStorage.setItem('suzent_hide_tool_calls', String(next));
-      } catch {}
+      } catch {
+        // Persisting this display preference is best effort.
+      }
       return next;
     });
   }, []);
@@ -523,7 +530,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     // Fallback to backend defaults
     if (backendConfig) {
       return {
-        model: backendConfig.defaultModel || backendConfig.models[0] || '',
+        model: backendConfig.defaultModel || '',
         agent: backendConfig.agents[0] || '',
         tools: withBuiltinTools(backendConfig.defaultTools, backendConfig),
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
@@ -1546,6 +1553,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
             // into the legacy HTML `<details>` string blocks that the UI parser expects.
             const serverMessages: any[] = chat.messages || [];
+            // Match recovery drafts before tool continuations change the response content.
+            // Keep the original array indices for forks and file-change references.
+            const visibleServerMessages = new Set(hideStreamingDrafts(serverMessages, false));
             const mappedMessages: Message[] = [];
 
             let currentAssistant: Partial<Message> | null = null;
@@ -1556,6 +1566,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             let awaitingToolContinuation = false;
 
             for (const [serverMessageIndex, msg] of serverMessages.entries()) {
+              if (!visibleServerMessages.has(msg)) continue;
               if (msg.role === 'user') {
                 // Empty user rows are tool-resume continuations (system-reminder injected
                 // by the backend, then stripped to empty). Drop them — they don't represent
@@ -1630,7 +1641,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                   };
                   awaitingToolContinuation = false;
                 }
-                noteTurnActivity(currentAssistant!, msg.timestamp);
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
+                awaitingToolContinuation = hasToolContinuation(msg);
                 if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                   msg.tool_calls.forEach((tc: any) => {
                     const args = escapeHtml(
@@ -1655,7 +1667,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 }
                 currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
                 currentAssistant.raw_message_end_index = serverMessageIndex + 1;
-                noteTurnActivity(currentAssistant!, msg.timestamp);
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
                 awaitingToolContinuation = true;
               } else {
                 if (currentAssistant) {
@@ -1841,7 +1853,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (!cascade) return prev.filter((c) => c.id !== chatId);
         return prev.filter((c) => {
           if (c.id === chatId) return false;
-          const config = (c as any).config;
           const parentId = (c as any).parentChatId;
           return !(parentId === chatId);
         });

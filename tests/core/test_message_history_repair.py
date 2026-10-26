@@ -52,6 +52,12 @@ def test_recognizes_repairable_openai_compatible_error() -> None:
     )
 
     assert is_tool_history_protocol_error(protocol_error)
+    deepseek_error = ProtocolError(
+        "An assistant message with 'tool_calls' must be followed by tool "
+        "messages responding to each 'tool_call_id'. "
+        "(insufficient tool messages following tool_calls message)"
+    )
+    assert is_tool_history_protocol_error(deepseek_error)
     assert not is_tool_history_protocol_error(ValueError("unrelated"))
 
 

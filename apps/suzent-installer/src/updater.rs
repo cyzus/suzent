@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -9,8 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
-const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/download";
+use crate::network;
 /// Keeps a captured failure reason short enough to stay readable in the UI.
 const FAILURE_DETAIL_LIMIT: usize = 600;
 
@@ -20,9 +18,9 @@ fn background_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     command
 }
 
-#[derive(Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
+fn background(command: &mut Command) -> &mut Command {
+    crate::hide_command_window(command);
+    command
 }
 
 #[derive(Deserialize, Serialize)]
@@ -211,6 +209,25 @@ impl UpdatePaths {
     fn backup_local_ui(&self) -> PathBuf {
         self.backup_dir.join("local-desktop")
     }
+
+    fn staged_webui(&self) -> PathBuf {
+        self.staging_dir.join(super::webui::ASSET)
+    }
+
+    /// Records a release whose downloads are already staged, so the app can
+    /// apply it at its next quiet moment without touching the network.
+    fn prefetch_manifest(&self) -> PathBuf {
+        self.state_dir.join("staged-update.json")
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct PrefetchManifest {
+    target_tag: String,
+    target_commit: String,
+    prefetched_at: u64,
+    python_cache_warmed: bool,
+    webui_staged: bool,
 }
 
 pub fn run(args: &[String], repair: bool) -> i32 {
@@ -221,6 +238,16 @@ pub fn run(args: &[String], repair: bool) -> i32 {
                 "Suzent {} failed: {error}",
                 if repair { "repair" } else { "update" }
             );
+            // Nobody asked for a silent update, so a failed one must not leave
+            // the user without the app they just opened. The rollback already
+            // restored the previous version, or the app reports the repair.
+            if args.iter().any(|arg| arg == "--silent") {
+                if let (Some(relaunch), Some(root)) =
+                    (flag_value(args, "--relaunch"), flag_value(args, "--dir"))
+                {
+                    let _ = launch_app(&PathBuf::from(relaunch), Path::new(&root));
+                }
+            }
             1
         }
     }
@@ -255,11 +282,13 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     if let Some(pid) = flag_value(args, "--wait-pid").and_then(|value| value.parse().ok()) {
         wait_for_process_exit(pid, Duration::from_secs(120))?;
     }
+    // Detect before stopping anything, so the transaction itself never waits on it.
+    network::china_mode(args);
 
     let journal_paths = UpdatePaths::new(root.clone(), "development");
     fs::create_dir_all(&journal_paths.state_dir)
         .map_err(display_io("create update state directory"))?;
-    let _lock = acquire_lock(&journal_paths.state_dir)?;
+    let _lock = acquire_update_lock(&journal_paths.state_dir)?;
     recover_legacy_journal(&journal_paths)?;
     let development = development_update_mode(&root, args, repair)?;
     if development {
@@ -322,7 +351,7 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     });
     let target_tag = match configured_target {
         Some(tag) => tag,
-        None => resolve_latest_release()?,
+        None => network::latest_release_tag(network::resolved_china_mode())?,
     };
     if !is_release_tag(&target_tag) {
         return Err(format!("invalid release tag: {target_tag}"));
@@ -358,6 +387,199 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
     println!("Suzent is ready on {target_tag}");
     Ok(())
+}
+
+/// Downloads everything a stable update needs while Suzent keeps running:
+/// the desktop binary, the release source, the Python wheels (into uv's
+/// cache) and the web UI. Nothing installed is touched, so a later
+/// `--update` to the same tag only has to switch versions.
+pub fn run_prefetch(args: &[String]) -> i32 {
+    match run_prefetch_inner(args) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("Suzent update prefetch failed: {error}");
+            1
+        }
+    }
+}
+
+fn run_prefetch_inner(args: &[String]) -> Result<(), String> {
+    let root = flag_value(args, "--dir")
+        .map(PathBuf::from)
+        .ok_or_else(|| "--dir is required for prefetch".to_string())?;
+    if !root.join(".git").exists() {
+        return Err(format!("{} is not a Suzent Git checkout", root.display()));
+    }
+    let china = network::china_mode(args);
+    let target_tag = match flag_value(args, "--target") {
+        Some(tag) => tag,
+        None => network::latest_release_tag(china)?,
+    };
+    if !is_release_tag(&target_tag) {
+        return Err(format!("invalid release tag: {target_tag}"));
+    }
+
+    let mut paths = UpdatePaths::new(root, &target_tag);
+    // Separate from the update's status so an update window never shows a
+    // background download as its own progress.
+    paths.status = paths.state_dir.join("update-prefetch-status.json");
+    fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
+    let _lock = acquire_lock_as(&paths.state_dir, Some(PREFETCH_LOCK_MARKER))?;
+    if paths.journal.exists() {
+        return Err("an interrupted update needs 'suzent repair' first".into());
+    }
+    if read_trimmed(paths.state_dir.join("update-channel")).as_deref() == Some("dev") {
+        return Err("development installs update from their branch, not a release".into());
+    }
+    if read_trimmed(paths.state_dir.join("release-tag")).as_deref() == Some(target_tag.as_str()) {
+        let _ = fs::remove_file(paths.prefetch_manifest());
+        println!("Suzent is already on {target_tag}");
+        return Ok(());
+    }
+    if let Some(manifest) = read_prefetch_manifest(&paths) {
+        if manifest.target_tag == target_tag
+            && manifest.python_cache_warmed
+            && manifest.webui_staged
+            && paths.staged_ui().is_file()
+        {
+            println!("Suzent {target_tag} is already staged");
+            return Ok(());
+        }
+    }
+    // Only the newest release is worth keeping staged.
+    if let Ok(entries) = fs::read_dir(paths.state_dir.join("update-staging")) {
+        for entry in entries.flatten() {
+            if entry.path() != paths.staging_dir {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    write_status(
+        &paths,
+        "preflight",
+        5,
+        "Preparing update download",
+        &target_tag,
+    )?;
+    let target_commit = prepare_target(&paths, &target_tag).map_err(|error| {
+        record_failure(&paths, &target_tag, &error);
+        error
+    })?;
+
+    write_status(
+        &paths,
+        "dependencies",
+        60,
+        "Downloading Python packages",
+        &target_tag,
+    )?;
+    let python_cache_warmed = match warm_python_cache(&paths, &target_tag, china) {
+        Ok(()) => true,
+        Err(error) => {
+            push_status_warning(&paths, format!("Python packages not prefetched: {error}"))?;
+            false
+        }
+    };
+
+    write_status(&paths, "webui", 85, "Downloading web UI", &target_tag)?;
+    let bases = network::release_bases(china, &target_tag);
+    let webui_staged = match super::webui::prefetch(&bases, &paths.staged_webui()) {
+        Ok(()) => true,
+        Err(error) => {
+            push_status_warning(&paths, format!("Web UI not prefetched: {error}"))?;
+            false
+        }
+    };
+
+    write_json_atomic(
+        &paths.prefetch_manifest(),
+        &PrefetchManifest {
+            target_tag: target_tag.clone(),
+            target_commit,
+            prefetched_at: now_epoch_millis(),
+            python_cache_warmed,
+            webui_staged,
+        },
+        "record staged update",
+    )?;
+    write_status(&paths, "staged", 100, "Update ready to apply", &target_tag)?;
+    println!("Suzent {target_tag} is staged");
+    Ok(())
+}
+
+fn read_prefetch_manifest(paths: &UpdatePaths) -> Option<PrefetchManifest> {
+    serde_json::from_slice(&fs::read(paths.prefetch_manifest()).ok()?).ok()
+}
+
+/// Synchronizes the target release into a throwaway checkout and venv, the
+/// same way the update itself will, which leaves every wheel (and the build
+/// backend for Suzent itself) in uv's cache. The real `uv sync` during the
+/// update then links from the cache instead of downloading.
+fn warm_python_cache(paths: &UpdatePaths, target_tag: &str, china: bool) -> Result<(), String> {
+    let checkout = paths.staging_dir.join("python-prefetch");
+    remove_prefetch_checkout(&paths.root, &checkout);
+    let checkout_arg = checkout.display().to_string();
+    run_checked(
+        background_command("git")
+            .args([
+                "worktree",
+                "add",
+                "--detach",
+                "--force",
+                &checkout_arg,
+                target_tag,
+            ])
+            .current_dir(&paths.root),
+        "check out release for Python prefetch",
+    )?;
+    let result = (|| {
+        let uv = super::find_uv_after_install().unwrap_or_else(|| PathBuf::from("uv"));
+        let python = service_python(&paths.root);
+        let prepare = |command: &mut Command| {
+            background(command).current_dir(&checkout);
+            command.env_remove("UV_PROJECT_ENVIRONMENT");
+            if python.is_file() {
+                command.env("UV_PYTHON", &python);
+            }
+        };
+        if china {
+            let mut failure = None;
+            network::sync_locked_dependencies_via_mirror(&uv, &checkout, &["social"], |command| {
+                prepare(command);
+                match run_checked(command, "prefetch Python packages") {
+                    Ok(()) => true,
+                    Err(error) => {
+                        failure = Some(error);
+                        false
+                    }
+                }
+            });
+            failure.map_or(Ok(()), Err)
+        } else {
+            let mut command = Command::new(&uv);
+            command.args(["sync", "--frozen", "--quiet", "--extra", "social"]);
+            prepare(&mut command);
+            run_checked(&mut command, "prefetch Python packages")
+        }
+    })();
+    remove_prefetch_checkout(&paths.root, &checkout);
+    result
+}
+
+fn remove_prefetch_checkout(root: &Path, checkout: &Path) {
+    if checkout.exists() {
+        let _ = background_command("git")
+            .args(["worktree", "remove", "--force"])
+            .arg(checkout)
+            .current_dir(root)
+            .output();
+        let _ = fs::remove_dir_all(checkout);
+    }
+    let _ = background_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(root)
+        .output();
 }
 
 /// Runs the whole update transaction so a failure at any phase can be
@@ -725,25 +947,69 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, Strin
     )?;
     fs::create_dir_all(&paths.staging_dir)
         .map_err(display_io("create update staging directory"))?;
-    let expected = release_checksum(target_tag, ui_asset_name())?;
+    let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+    let expected = release_checksum(&bases, ui_asset_name())?;
     prepare_ui(paths, &expected, || {
-        download_file(
-            &release_asset_url(target_tag),
-            &paths.staged_ui(),
-            paths,
-            target_tag,
-        )
+        let mut errors = Vec::new();
+        for base in &bases {
+            if network::is_npm_base(base) {
+                // Already in memory: the checksums came from the same package.
+                match network::fetch_release_file(std::slice::from_ref(base), ui_asset_name())
+                    .and_then(|bytes| write_staged_file(&paths.staged_ui(), &bytes))
+                {
+                    Ok(()) => return Ok(()),
+                    Err(error) => errors.push(error),
+                }
+                continue;
+            }
+            let url = format!("{}/{}", base.trim_end_matches('/'), ui_asset_name());
+            match download_file(&url, &paths.staged_ui(), paths, target_tag) {
+                Ok(()) => return Ok(()),
+                Err(error) => errors.push(error),
+            }
+        }
+        Err(errors.join("; "))
     })?;
     set_executable(&paths.staged_ui())?;
 
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
-    run_checked(
-        background_command("git")
-            .args(["fetch", "--force", "origin", "tag", target_tag])
-            .current_dir(&paths.root),
-        "fetch release source",
-    )?;
-    git_text(&paths.root, &["rev-list", "-n", "1", target_tag])
+    // Release tags never move, so one fetched by an earlier prefetch is reused.
+    if let Ok(commit) = local_tag_commit(&paths.root, target_tag) {
+        return Ok(commit);
+    }
+    // Fall back to the source repositories when `origin` is unreachable,
+    // e.g. an install cloned from GitHub that now sits behind the firewall.
+    let mut remotes = vec!["origin"];
+    if network::resolved_china_mode() {
+        remotes.extend(network::repo_sources(true));
+    }
+    let mut errors = Vec::new();
+    let fetched = remotes.into_iter().any(|remote| {
+        run_checked(
+            background_command("git")
+                .args(["fetch", "--force", remote, "tag", target_tag])
+                .current_dir(&paths.root),
+            "fetch release source",
+        )
+        .map_err(|error| errors.push(error))
+        .is_ok()
+    });
+    if !fetched {
+        return Err(errors.join("; "));
+    }
+    local_tag_commit(&paths.root, target_tag)
+}
+
+fn local_tag_commit(root: &Path, target_tag: &str) -> Result<String, String> {
+    git_text(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/tags/{target_tag}^{{commit}}"),
+        ],
+    )
 }
 
 fn prepare_ui(
@@ -899,14 +1165,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         target_tag,
     )?;
     if let Err(error) = refresh_shortcuts(paths) {
-        let mut status: UpdateStatus = serde_json::from_slice(
-            &fs::read(&paths.status).map_err(display_io("read shortcut status"))?,
-        )
-        .map_err(|error| error.to_string())?;
-        status
-            .warnings
-            .push(format!("{error}; run 'suzent shortcuts' to retry"));
-        write_json_atomic(&paths.status, &status, "record shortcut warning")?;
+        push_status_warning(paths, format!("{error}; run 'suzent shortcuts' to retry"))?;
     }
     if !transaction.development && !paths.root.join(".suzent-bootstrap-complete").is_file() {
         let config = super::InstallConfig::from_env_and_args(&[
@@ -920,7 +1179,26 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
                 .unwrap_or_else(|| "failed to finish bootstrap".to_string()));
         }
     }
+    if !transaction.development {
+        // Last, so no later failure can roll the source back underneath the
+        // new bundle. A failed download keeps the previous bundle and is not
+        // worth a rollback.
+        let bases = network::release_bases(network::resolved_china_mode(), target_tag);
+        if let Err(error) =
+            super::webui::install_prefetched(&paths.root, &bases, Some(&paths.staged_webui()))
+        {
+            push_status_warning(paths, format!("Web UI not updated: {error}"))?;
+        }
+    }
     Ok(())
+}
+
+fn push_status_warning(paths: &UpdatePaths, warning: String) -> Result<(), String> {
+    let mut status: UpdateStatus =
+        serde_json::from_slice(&fs::read(&paths.status).map_err(display_io("read update status"))?)
+            .map_err(|error| error.to_string())?;
+    status.warnings.push(warning);
+    write_json_atomic(&paths.status, &status, "record update warning")
 }
 
 fn read_transaction(paths: &UpdatePaths) -> Result<UpdateTransaction, String> {
@@ -1153,13 +1431,34 @@ fn verify_backend_version(root: &Path, target_tag: &str) -> Result<(), String> {
 
 fn run_uv_sync_mode(root: &Path, development: bool) -> Result<(), String> {
     let mut last_error = String::new();
+    let uv = super::find_uv_after_install().unwrap_or_else(|| PathBuf::from("uv"));
+    let extras: &[&str] = if development {
+        &["social", "dev"]
+    } else {
+        &["social"]
+    };
     for attempt in 1..=3 {
-        let mut command = background_command("uv");
-        command.args(["sync", "--frozen", "--extra", "social"]);
-        if development {
-            command.args(["--extra", "dev"]);
-        }
-        match run_checked(command.current_dir(root), "synchronize Python environment") {
+        let result = if network::resolved_china_mode() {
+            let mut failure = None;
+            network::sync_locked_dependencies_via_mirror(&uv, root, extras, |command| {
+                match run_checked(background(command), "synchronize Python environment") {
+                    Ok(()) => true,
+                    Err(error) => {
+                        failure = Some(error);
+                        false
+                    }
+                }
+            });
+            failure.map_or(Ok(()), Err)
+        } else {
+            let mut command = background_command(&uv);
+            command.arg("sync").arg("--frozen");
+            for extra in extras {
+                command.args(["--extra", extra]);
+            }
+            run_checked(command.current_dir(root), "synchronize Python environment")
+        };
+        match result {
             Ok(()) => return Ok(()),
             Err(error) => last_error = error,
         }
@@ -1323,15 +1622,52 @@ fn process_exists(pid: u32) -> bool {
         .unwrap_or(true)
 }
 
+const PREFETCH_LOCK_MARKER: &str = "prefetch";
+/// How long an update waits for a background prefetch to finish downloading
+/// before giving up; the prefetch's downloads are the update's own first step.
+const PREFETCH_WAIT: Duration = Duration::from_secs(15 * 60);
+
 fn acquire_lock(state_dir: &Path) -> Result<UpdateLock, String> {
+    acquire_lock_as(state_dir, None)
+}
+
+/// Takes the update lock, waiting out a background prefetch rather than
+/// failing on it.
+fn acquire_update_lock(state_dir: &Path) -> Result<UpdateLock, String> {
+    let started = Instant::now();
+    loop {
+        match acquire_lock(state_dir) {
+            Err(_) if lock_held_by_prefetch(state_dir) && started.elapsed() < PREFETCH_WAIT => {
+                thread::sleep(Duration::from_millis(500));
+            }
+            result => return result,
+        }
+    }
+}
+
+fn lock_held_by_prefetch(state_dir: &Path) -> bool {
+    read_trimmed(state_dir.join("update.lock"))
+        .is_some_and(|value| value.split_whitespace().nth(1) == Some(PREFETCH_LOCK_MARKER))
+}
+
+fn acquire_lock_as(state_dir: &Path, marker: Option<&str>) -> Result<UpdateLock, String> {
     let path = state_dir.join("update.lock");
     match OpenOptions::new().write(true).create_new(true).open(&path) {
         Ok(mut file) => {
-            writeln!(file, "{}", std::process::id()).map_err(display_io("write update lock"))?;
+            let holder = match marker {
+                Some(marker) => format!("{} {marker}", std::process::id()),
+                None => std::process::id().to_string(),
+            };
+            writeln!(file, "{holder}").map_err(display_io("write update lock"))?;
             Ok(UpdateLock { path })
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            let pid = read_trimmed(&path).and_then(|value| value.parse::<u32>().ok());
+            let pid = read_trimmed(&path).and_then(|value| {
+                value
+                    .split_whitespace()
+                    .next()
+                    .and_then(|pid| pid.parse::<u32>().ok())
+            });
             if pid.is_some_and(process_exists) {
                 return Err(format!(
                     "another Suzent update is already running (PID {})",
@@ -1339,35 +1675,10 @@ fn acquire_lock(state_dir: &Path) -> Result<UpdateLock, String> {
                 ));
             }
             fs::remove_file(&path).map_err(display_io("remove stale update lock"))?;
-            acquire_lock(state_dir)
+            acquire_lock_as(state_dir, marker)
         }
         Err(error) => Err(format!("failed to acquire update lock: {error}")),
     }
-}
-
-fn resolve_latest_release() -> Result<String, String> {
-    let api =
-        env::var("SUZENT_LATEST_RELEASE_API").unwrap_or_else(|_| LATEST_RELEASE_API.to_string());
-    let response = reqwest::blocking::Client::builder()
-        .user_agent("suzent-installer")
-        .build()
-        .map_err(|error| format!("failed to create release client: {error}"))?
-        .get(api)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("failed to resolve latest release: {error}"))?
-        .json::<ReleaseResponse>()
-        .map_err(|error| format!("invalid latest release response: {error}"))?;
-    Ok(response.tag_name)
-}
-
-fn release_asset_url(tag: &str) -> String {
-    let base = release_base_url(tag);
-    format!("{}/{}", base.trim_end_matches('/'), ui_asset_name())
-}
-
-fn release_base_url(tag: &str) -> String {
-    env::var("SUZENT_RELEASE_BASE_URL").unwrap_or_else(|_| format!("{RELEASE_BASE_URL}/{tag}"))
 }
 
 fn ui_asset_name() -> &'static str {
@@ -1380,6 +1691,17 @@ fn ui_asset_name() -> &'static str {
     } else {
         "suzent-linux-x86_64"
     }
+}
+
+fn write_staged_file(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+    let temporary = destination.with_extension("download");
+    let result = fs::write(&temporary, bytes)
+        .map_err(display_io("write downloaded asset"))
+        .and_then(|()| rename_with_retry(&temporary, destination, "finish downloaded asset"));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn download_file(
@@ -1437,19 +1759,10 @@ fn download_file(
     result
 }
 
-fn release_checksum(tag: &str, asset_name: &str) -> Result<String, String> {
-    let url = format!("{}/SHA256SUMS", release_base_url(tag).trim_end_matches('/'));
-    let checksums = reqwest::blocking::Client::builder()
-        .user_agent("suzent-installer")
-        .build()
-        .map_err(|error| format!("failed to create checksum client: {error}"))?
-        .get(&url)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| format!("failed to download release checksums: {error}"))?
-        .text()
-        .map_err(|error| format!("failed to read release checksums: {error}"))?;
-    parse_release_checksum(&checksums, asset_name)
+fn release_checksum(bases: &[String], asset_name: &str) -> Result<String, String> {
+    let checksums = network::fetch_release_file(bases, "SHA256SUMS")
+        .map_err(|error| format!("failed to download release checksums: {error}"))?;
+    parse_release_checksum(&String::from_utf8_lossy(&checksums), asset_name)
 }
 
 fn verify_asset_checksum(path: &Path, expected: &str) -> Result<(), String> {
@@ -1464,7 +1777,7 @@ fn verify_asset_checksum(path: &Path, expected: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_release_checksum(contents: &str, asset_name: &str) -> Result<String, String> {
+pub(crate) fn parse_release_checksum(contents: &str, asset_name: &str) -> Result<String, String> {
     for line in contents.lines() {
         let mut parts = line.split_whitespace();
         let Some(digest) = parts.next() else {
@@ -1726,6 +2039,8 @@ fn cleanup_transaction_files(paths: &UpdatePaths) {
     let _ = fs::remove_file(&paths.journal);
     let _ = fs::remove_dir_all(&paths.staging_dir);
     let _ = fs::remove_dir_all(&paths.backup_dir);
+    let _ = fs::remove_file(paths.prefetch_manifest());
+    let _ = fs::remove_file(paths.state_dir.join("update-prefetch-status.json"));
 }
 
 fn repository_hazard(root: &Path) -> Result<Option<String>, String> {
@@ -2946,6 +3261,37 @@ mod tests {
         assert!(second.is_err());
         drop(first);
         assert!(acquire_lock(temp.path()).is_ok());
+    }
+
+    #[test]
+    fn update_lock_waits_for_a_background_prefetch() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let prefetch = super::acquire_lock_as(temp.path(), Some(super::PREFETCH_LOCK_MARKER))
+            .expect("prefetch lock");
+        assert!(acquire_lock(temp.path()).is_err());
+        let releaser = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(300));
+            drop(prefetch);
+        });
+        assert!(super::acquire_update_lock(temp.path()).is_ok());
+        releaser.join().unwrap();
+    }
+
+    #[test]
+    fn prepare_reuses_a_release_tag_fetched_by_prefetch() {
+        let (temp, target, _) = development_fixture();
+        super::run_checked(
+            background_command("git")
+                .args(["tag", "v9.9.9", &target.commit])
+                .current_dir(temp.path()),
+            "fixture tag",
+        )
+        .unwrap();
+        assert_eq!(
+            super::local_tag_commit(temp.path(), "v9.9.9").unwrap(),
+            target.commit
+        );
+        assert!(super::local_tag_commit(temp.path(), "v9.9.8").is_err());
     }
 
     #[test]

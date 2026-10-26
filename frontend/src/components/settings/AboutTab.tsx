@@ -1,12 +1,16 @@
+import { BrutalButton } from '../BrutalButton';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import { fetchSystemVersion, shortCommit } from '../../lib/api';
 import {
   checkDesktopUpdate,
+  getAutoUpdateEnabled,
+  setAutoUpdateEnabled,
   startDesktopUpdateAndRestart,
   type UpdateStatus,
 } from '../../lib/desktopUpdates';
+import { isWeb } from '../../lib/runtime';
 import { SuzentLogo } from '../SuzentLogo';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
@@ -31,6 +35,33 @@ export function AboutTab(): React.ReactElement {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [startingUpdate, setStartingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isWeb()) return;
+    let active = true;
+    getAutoUpdateEnabled()
+      .then((enabled) => {
+        if (active) setAutoUpdate(enabled);
+      })
+      .catch(() => {
+        if (active) setAutoUpdate(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleAutoUpdateChange(enabled: boolean): Promise<void> {
+    setAutoUpdate(enabled);
+    try {
+      await setAutoUpdateEnabled(enabled);
+    } catch (error) {
+      setAutoUpdate(!enabled);
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateError(t('updates.autoUpdateFailed', { error: message }));
+    }
+  }
 
   const refreshUpdateStatus = useCallback(
     async (force = false): Promise<void> => {
@@ -115,6 +146,17 @@ export function AboutTab(): React.ReactElement {
   return (
     <SettingsPage>
       <SettingsHeader title={t('settings.about.title')} subtitle={t('settings.about.subtitle')} />
+      <div>
+        <BrutalButton
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            window.location.hash = '#/setup';
+          }}
+        >
+          {t('onboarding.restart')}
+        </BrutalButton>
+      </div>
 
       <SettingsCard className="overflow-hidden">
         <div className="flex flex-col items-center text-center py-4">
@@ -130,7 +172,7 @@ export function AboutTab(): React.ReactElement {
             label={t('settings.about.frontendVersion')}
             value={frontendVersion}
             commit={shortCommit(__FRONTEND_BUILD_COMMIT__)}
-            tone="yellow"
+            tone="neutral"
           />
           <VersionCard
             label={t('settings.about.backendVersion')}
@@ -186,6 +228,23 @@ export function AboutTab(): React.ReactElement {
               )}
             </div>
           </div>
+
+          {autoUpdate !== null && (
+            <label className="mt-5 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={autoUpdate}
+                onChange={(e) => void handleAutoUpdateChange(e.target.checked)}
+                className="mt-0.5 h-5 w-5 border-2 border-brutal-black accent-brutal-black"
+              />
+              <span>
+                <span className="block text-xs font-bold uppercase">{t('updates.autoUpdate')}</span>
+                <span className="mt-1 block text-sm text-neutral-600 dark:text-neutral-400">
+                  {t('updates.autoUpdateDescription')}
+                </span>
+              </span>
+            </label>
+          )}
         </div>
       </SettingsCard>
     </SettingsPage>
@@ -197,7 +256,7 @@ interface VersionCardProps {
   value: string;
   commit?: string | null;
   badge?: string | null;
-  tone: 'yellow' | 'blue' | 'red';
+  tone: 'neutral' | 'blue' | 'red';
 }
 
 export function VersionCard({
@@ -208,7 +267,7 @@ export function VersionCard({
   tone,
 }: VersionCardProps): React.ReactElement {
   const toneClass = {
-    yellow: 'bg-brutal-yellow text-brutal-black',
+    neutral: 'bg-neutral-200 text-brutal-black dark:bg-zinc-700 dark:text-white',
     blue: 'bg-brutal-blue text-white',
     red: 'bg-brutal-red text-white',
   }[tone];
@@ -228,7 +287,7 @@ export function VersionCard({
           </div>
         )}
         {badge && (
-          <span className="mt-3 inline-block border-2 border-brutal-black bg-brutal-yellow px-2 py-0.5 text-[10px] font-black uppercase text-brutal-black">
+          <span className="mt-3 inline-block border-2 border-brutal-black bg-neutral-200 dark:bg-zinc-700 dark:text-white px-2 py-0.5 text-[10px] font-black uppercase text-brutal-black">
             {badge}
           </span>
         )}

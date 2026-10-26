@@ -79,6 +79,7 @@ const EXACT_TOOL_ICONS = {
 
   // Memory & Recall
   memory_search: CpuChipIcon,
+  memory_update: CpuChipIcon,
   session_search: ChatBubbleLeftRightIcon,
 
   // Planning, Tasks & Automation
@@ -96,6 +97,7 @@ const EXACT_TOOL_ICONS = {
   generate_image: PhotoIcon,
   edit_image: PaintBrushIcon,
   analyze_image: EyeIcon,
+  analyze_visual: EyeIcon,
   generate_video: FilmIcon,
   check_video_status: FilmIcon,
   speak: SpeakerWaveIcon,
@@ -106,6 +108,7 @@ const EXACT_TOOL_ICONS = {
   agent_list: UserGroupIcon,
   agent_read: UserGroupIcon,
   agent_send: UserGroupIcon,
+  agent_dispatch: UserGroupIcon,
   agent_stop: UserGroupIcon,
 } as const;
 
@@ -181,6 +184,7 @@ export function pickToolAnimationKind(
     case 'read_file':
     case 'webpage_fetch':
     case 'analyze_image':
+    case 'analyze_visual':
     case 'agent_read':
       return 'scan';
     case 'write_file':
@@ -204,6 +208,7 @@ export function pickToolAnimationKind(
     case 'session_search':
     case 'agent':
     case 'agent_send':
+    case 'agent_dispatch':
       return 'memory';
     case 'skill_execute':
     case 'schedule_cron':
@@ -243,6 +248,7 @@ export function pickToolRunningSurfaceClass(toolName: string): ToolRunningSurfac
     case 'session_search':
     case 'search_tools':
     case 'analyze_image':
+    case 'analyze_visual':
     case 'list_tasks':
     case 'agent_list':
     case 'agent_read':
@@ -266,6 +272,7 @@ export function pickToolRunningSurfaceClass(toolName: string): ToolRunningSurfac
     case 'update_task':
     case 'manage_goal':
     case 'agent_send':
+    case 'agent_dispatch':
       return 'brutal-running-dots';
 
     // 3. Compute, Shell Processes, Delegation & Automation -> 45-deg hazard stripes

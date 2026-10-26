@@ -99,6 +99,7 @@ class ConfigModel(BaseModel):
         "ImageEditTool",
         "AgentTool",
         "MemorySearchTool",
+        "MemoryUpdateTool",
         "SessionSearchTool",
     ]
     tool_options: Optional[List[str]] = None
@@ -149,7 +150,7 @@ class ConfigModel(BaseModel):
     # on its own. Kept well above a single chatty afternoon so it never competes with
     # ordinary ingest.
     memory_consolidation_min_confirmations: int = 25
-    memory_consolidation_memory_max_lines: int = 200
+    memory_map_max_lines: int = 30
     memory_consolidation_model: Optional[str] = None
     memory_dream_tools: List[str] = [
         "ReadFileTool",
@@ -207,8 +208,6 @@ class ConfigModel(BaseModel):
 
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0
-    jsonl_transcripts_enabled: bool = True
-    transcript_indexing_enabled: bool = False
 
     # Ceiling on the context budget before compaction kicks in. 0 (the default)
     # means "whatever the active model supports" — the budget is resolved per
@@ -220,7 +219,7 @@ class ConfigModel(BaseModel):
     context_hard_trim_threshold: float = 0.80
     compaction_keep_recent_turns: int = 3
     compaction_chunk_size: int = 20
-    compaction_timeout_seconds: int = 60
+    compaction_timeout_seconds: int = 180
 
     stream_idle_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     stream_wait_notice_seconds: float = Field(default=15.0, gt=0, allow_inf_nan=False)

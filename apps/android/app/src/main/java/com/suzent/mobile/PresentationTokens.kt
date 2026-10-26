@@ -21,9 +21,16 @@ object PresentationTokens {
     const val shadow_dark: Long = 0xFF080808
     const val link_dark: Long = 0xFF78AAFF
     const val code_header_dark: Long = 0xFF2B2B2B
+    const val selection_light: Long = 0xFFE5E5E5
+    const val selection_dark: Long = 0xFF3F3F46
     const val borderWidth = 2
     const val shadowOffset = 2
+    const val borderWidthHeavy = 3
+    const val shadowOffsetHeavy = 4
+    const val shadowOffsetOverlay = 3
+    const val radius = 0
     const val spaceSmall = 8
+    const val spaceRow = 10
     const val spaceMedium = 12
     const val spacePage = 16
     const val spaceLarge = 24
@@ -33,6 +40,7 @@ object PresentationTokens {
     const val typeChat = 15
     const val typeControl = 15
     const val typeSection = 20
+    const val typeSidebarSection = 10
     const val controlHeight = 44
     const val sidebarWidth = 320
     val ignoredToolNames = listOf("final_answer", "final answer")

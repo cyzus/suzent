@@ -11,15 +11,16 @@
         var isDark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (isDark) document.documentElement.classList.add('dark');
 
-        var validSchemes = ['warm', 'cold', 'green'];
+        var validSchemes = ['warm', 'cold', 'green', 'ember'];
         var scheme = localStorage.getItem('suzent-scheme');
         if (!validSchemes.includes(scheme)) scheme = 'warm';
         document.documentElement.dataset.scheme = scheme;
 
         var colors = {
-          warm:  { light: '#FFE666', dark: '#FF6600' },
+          warm:  { light: '#FFE666', dark: '#FFE666' },
           cold:  { light: '#7DD3FC', dark: '#38BDF8' },
           green: { light: '#86EFAC', dark: '#4ADE80' },
+          ember: { light: '#FFA64D', dark: '#FF6600' },
         };
         var c = colors[scheme] || colors.warm;
         document.documentElement.style.setProperty('--brutal-yellow', isDark ? c.dark : c.light);

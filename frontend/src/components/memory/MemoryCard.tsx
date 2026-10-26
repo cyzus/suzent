@@ -5,9 +5,9 @@
  * something. Importance is a spine and a badge rather than a number: most rows sit
  * at the neutral 0.5, so a figure repeated on every card would be noise.
  *
- * The category is the one piece of metadata that gets prominence, because it is
- * what makes a scrolled list legible: a journal entry and a wiki concept should not
- * look identical.
+ * The kind (or, for notebook pages and early records, the category) is the one
+ * piece of metadata that gets prominence, because it is what makes a scrolled list
+ * legible: a fact about you and a lesson learned should not look identical.
  */
 
 import React, { useState } from 'react';
@@ -16,15 +16,17 @@ import { BrutalDeleteButton } from '../BrutalDeleteButton';
 import { BrutalDeleteOverlay } from '../BrutalDeleteOverlay';
 import { useI18n } from '../../i18n';
 import { MemoryMarkdown, stripFrontmatter } from './MemoryMarkdown';
+import { useChatStore } from '../../hooks/useChatStore';
+import { memoryApi } from '../../lib/memoryApi';
 
 interface MemoryCardProps {
   memory: ArchivalMemory;
   onDelete: (memoryId: string) => Promise<void>;
   searchQuery?: string;
   compact?: boolean;
-  /** Clicking a tag on a card filters the list by it. */
-  onTagClick?: (tag: string) => void;
-  activeTags?: string[];
+  /** Clicking a topic on a card filters the list by it. */
+  onTopicClick?: (topic: string) => void;
+  activeTopics?: string[];
 }
 
 /**
@@ -48,6 +50,52 @@ const CATEGORY_ACCENTS: Record<string, string> = {
 };
 
 const DEFAULT_ACCENT = 'bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white';
+
+/** A typed memory is labelled by what it is about rather than by its category. */
+const KIND_ACCENTS: Record<string, string> = {
+  user: 'bg-brutal-yellow text-brutal-black',
+  experience: 'bg-brutal-blue text-white',
+  world: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+};
+
+/**
+ * Opens the conversation a daily-log memory was captured in. The lookup runs on
+ * click, not per card, since most cards are never traced back.
+ */
+const OriginLink: React.FC<{ memoryId: string }> = ({ memoryId }) => {
+  const { t } = useI18n();
+  const { loadChat, switchToView } = useChatStore();
+  const [state, setState] = useState<'idle' | 'loading' | 'missing'>('idle');
+
+  const open = async (): Promise<void> => {
+    setState('loading');
+    try {
+      const origin = await memoryApi.getMemoryOrigin(memoryId);
+      if (!origin?.chat_id) {
+        setState('missing');
+        return;
+      }
+      setState('idle');
+      loadChat(origin.chat_id);
+      switchToView?.('chat');
+    } catch {
+      setState('missing');
+    }
+  };
+
+  if (state === 'missing') {
+    return <span className="italic">{t('memoryCard.origin.missing')}</span>;
+  }
+  return (
+    <button
+      onClick={() => void open()}
+      disabled={state === 'loading'}
+      className="font-bold text-neutral-600 hover:text-brutal-black hover:underline disabled:opacity-50 dark:text-neutral-300 dark:hover:text-white"
+    >
+      {t('memoryCard.origin.link')}
+    </button>
+  );
+};
 
 /** Escape a user-typed query so it can go into a RegExp literal safely. */
 function escapeRegExp(value: string): string {
@@ -76,8 +124,8 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
   onDelete,
   searchQuery,
   compact = false,
-  onTagClick,
-  activeTags = [],
+  onTopicClick,
+  activeTopics = [],
 }) => {
   const { t } = useI18n();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -153,9 +201,15 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
     );
   };
 
-  const tags: string[] = memory.metadata?.tags || [];
+  const topics: string[] = memory.metadata?.topics || [];
+  const kind = memory.metadata?.kind as string | undefined;
   const category = memory.metadata?.category as string | undefined;
-  const categoryAccent = (category && CATEGORY_ACCENTS[category]) || DEFAULT_ACCENT;
+  const typedKind = kind && kind in KIND_ACCENTS ? kind : undefined;
+  const badgeLabel = typedKind ? t(`memoryCard.kind.${typedKind}`) : category?.replace(/_/g, ' ');
+  const categoryAccent = typedKind
+    ? KIND_ACCENTS[typedKind]
+    : (category && CATEGORY_ACCENTS[category]) || DEFAULT_ACCENT;
+  const isLogged = memory.metadata?.source_type === 'archive_log';
   const sourceFile = memory.metadata?.source_file as string | undefined;
   const content = readableContent(memory.content);
   // Importance is a constant for indexed memories; only surface it when it deviates.
@@ -198,16 +252,16 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
               {highlightText(content, searchQuery)}
             </p>
             <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-              {category && (
+              {badgeLabel && (
                 <span
                   className={`border border-brutal-black px-1 font-bold uppercase ${categoryAccent}`}
                 >
-                  {category.replace(/_/g, ' ')}
+                  {badgeLabel}
                 </span>
               )}
               <span className="font-bold uppercase">{formatDate(memory.created_at)}</span>
-              {sourceFile && <span className="truncate font-mono">{sourceFile}</span>}
-              {tags.length > 0 && <span>#{tags[0]}</span>}
+              {!isLogged && sourceFile && <span className="truncate font-mono">{sourceFile}</span>}
+              {topics.length > 0 && <span className="font-mono">{topics[0]}</span>}
             </div>
           </div>
 
@@ -274,11 +328,11 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
 
           {/* Quiet footer: only what actually varies between memories */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-            {category && (
+            {badgeLabel && (
               <span
                 className={`border border-brutal-black px-1 font-bold uppercase tracking-wide ${categoryAccent}`}
               >
-                {category.replace(/_/g, ' ')}
+                {badgeLabel}
               </span>
             )}
 
@@ -286,29 +340,34 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
               {formatDate(memory.created_at)}
             </span>
 
-            {sourceFile && (
-              <span className="font-mono" title={String(category || '')}>
-                {sourceFile}
-              </span>
+            {/* A daily-log file name says nothing; the conversation behind it does. */}
+            {isLogged ? (
+              <OriginLink memoryId={memory.id} />
+            ) : (
+              sourceFile && (
+                <span className="font-mono" title={String(category || '')}>
+                  {sourceFile}
+                </span>
+              )
             )}
 
-            {tags.slice(0, 3).map((tag: string) =>
-              onTagClick ? (
+            {topics.slice(0, 3).map((topic: string) =>
+              onTopicClick ? (
                 <button
-                  key={tag}
-                  onClick={() => onTagClick(tag)}
-                  className={`transition-colors hover:text-brutal-black dark:hover:text-white ${
-                    activeTags.includes(tag)
+                  key={topic}
+                  onClick={() => onTopicClick(topic)}
+                  className={`font-mono transition-colors hover:text-brutal-black dark:hover:text-white ${
+                    activeTopics.includes(topic)
                       ? 'font-bold text-brutal-black dark:text-white'
                       : 'text-neutral-400 dark:text-neutral-500'
                   }`}
-                  title={t('memoryCard.meta.filterByTag', { tag })}
+                  title={t('memoryCard.meta.filterByTopic', { topic })}
                 >
-                  #{tag}
+                  {topic}
                 </button>
               ) : (
-                <span key={tag} className="text-neutral-400 dark:text-neutral-500">
-                  #{tag}
+                <span key={topic} className="font-mono text-neutral-400 dark:text-neutral-500">
+                  {topic}
                 </span>
               )
             )}

@@ -13,6 +13,7 @@ using Server-Sent Events (SSE), including:
 """
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime
 import json
 import math
@@ -20,7 +21,7 @@ import os
 import time
 import traceback
 import uuid
-from typing import Optional, Dict, Any, AsyncGenerator
+from typing import Optional, Dict, Any, AsyncGenerator, Sequence
 
 from pydantic_ai import (
     Agent,
@@ -42,6 +43,7 @@ from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.display_log import merge_streamed_message
 from suzent.core.citation_manager import CitationManager
 from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
@@ -238,6 +240,24 @@ _PREFILL_RATE_RECOVERY = 0.05
 _observed_prefill_k: Dict[str, float] = {}
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
+
+
+# A model call that went quiet or lost its connection mid-stream. The provider
+# may have been working the whole time, so a fresh request can pick it up again.
+MODEL_STALLED_CODE = "model_stalled"
+
+
+def model_failure_code(error: object) -> Optional[str]:
+    """Name a model failure that a new request can recover from."""
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+
+    if isinstance(error, TimeoutError):
+        return MODEL_STALLED_CODE
+    # An HTTP status means the provider answered; anything else here is a
+    # dropped or unfinished response.
+    if isinstance(error, ModelAPIError) and not isinstance(error, ModelHTTPError):
+        return MODEL_STALLED_CODE
+    return None
 
 
 def _stream_idle_timeout(model_id: str | None) -> float:
@@ -438,9 +458,31 @@ class _DraftDisplayAccumulator:
         self._tool_index: dict[str, dict[str, Any]] = {}
         self.last_persisted_at = 0.0
         self.dirty = False
+        self.timestamp = datetime.now().astimezone().isoformat()
         # The draft write runs off the token loop, one at a time. Kept here so
         # the final forced persist can wait for it instead of racing it.
         self._persist_task: Optional["asyncio.Task[None]"] = None
+
+    def snapshot(
+        self, model_id: Optional[str] = None, *, finished_at: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
+        if not self.parts:
+            return None
+        return {
+            "role": "assistant",
+            "content": "\n\n".join(
+                str(part.get("text") or "")
+                for part in self.parts
+                if part.get("type") == "text" and part.get("text")
+            ),
+            "parts": deepcopy(self.parts),
+            "_streaming_run_id": self.run_id,
+            "id": self.run_id,
+            "timestamp": self.timestamp,
+            "run_started_at": self.timestamp,
+            **({"run_finished_at": finished_at} if finished_at else {}),
+            "model": model_id,
+        }
 
     def apply(self, event: Any) -> None:
         event_type = _event_type_value(event)
@@ -597,6 +639,7 @@ class _DraftDisplayAccumulator:
             self.run_id,
             snapshot,
             content,
+            started_at=self.timestamp,
         )
         if force:
             # The last write of a turn has to land before the stream reports
@@ -682,11 +725,36 @@ class _DraftDisplayAccumulator:
             tool["output"] = _stringify_part_content(value.get("output"))
             tool["approvalId"] = None
             self.dirty = True
+        elif (
+            name == "incoming_message"
+            and isinstance(value, dict)
+            and not value.get("persisted")
+        ):
+            # Kept in order among the reply's parts, so a reload mid-turn still
+            # shows the message where the run took it in.
+            self.parts.append(
+                {"type": "incoming-message", "text": str(value.get("content") or "")}
+            )
+            self.dirty = True
         elif name == "tool_display" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
             tool["displayData"] = value
             self.dirty = True
+        elif name == "shell_output_delta" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            delta = value.get("delta")
+            tool = self._find_tool(tool_call_id)
+            if (
+                tool is not None
+                and tool.get("state") != "completed"
+                and isinstance(delta, str)
+            ):
+                prefix = "[stderr]\n" if value.get("stream") == "stderr" else ""
+                tool["output"] = (str(tool.get("output") or "") + prefix + delta)[
+                    -128 * 1024 :
+                ]
+                self.dirty = True
         elif name == "tool_call_outcome" and isinstance(value, dict):
             tool = self._ensure_tool(str(value.get("toolCallId") or ""))
             tool["outcome"] = value.get("outcome")
@@ -696,8 +764,22 @@ class _DraftDisplayAccumulator:
             # on them and the frontend drops them the moment the user answers.
             # Persisting one into the draft makes the answered question render a
             # second time when the finished turn is reloaded from the backend.
-            if value.get("target") == "inline" and not value.get("deferred"):
-                self.parts.append({"type": "a2ui", "surface": value})
+            if value.get("target", "inline") in {"inline", "canvas"} and not value.get(
+                "deferred"
+            ):
+                existing = next(
+                    (
+                        part
+                        for part in self.parts
+                        if part.get("type") == "a2ui"
+                        and part.get("surface", {}).get("id") == value.get("id")
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    existing["surface"] = deepcopy(value)
+                else:
+                    self.parts.append({"type": "a2ui", "surface": deepcopy(value)})
                 self.dirty = True
         elif name == "citation_sources" and isinstance(value, dict):
             self._merge_citation_sources(value.get("sources"))
@@ -736,7 +818,12 @@ class _DraftDisplayAccumulator:
 
 
 def _persist_draft_display_message(
-    chat_id: str, run_id: str, parts: list[dict[str, Any]], content: str
+    chat_id: str,
+    run_id: str,
+    parts: list[dict[str, Any]],
+    content: str,
+    *,
+    started_at: Optional[str] = None,
 ) -> None:
     from suzent.database import get_database
 
@@ -752,21 +839,10 @@ def _persist_draft_display_message(
         "parts": parts,
         "_streaming_draft": True,
         "_streaming_run_id": run_id,
+        **({"run_started_at": started_at} if started_at else {}),
     }
 
-    if messages:
-        last = messages[-1]
-        if (
-            isinstance(last, dict)
-            and last.get("role") == "assistant"
-            and last.get("_streaming_draft")
-            and last.get("_streaming_run_id") == run_id
-        ):
-            messages[-1] = draft
-        else:
-            messages.append(draft)
-    else:
-        messages.append(draft)
+    messages = merge_streamed_message(messages, draft)
 
     # The draft is transient: every 0.75s it is overwritten, and the turn's real
     # write reindexes it when it lands. Reindexing here re-wrote every FTS row of
@@ -801,7 +877,7 @@ def _tool_timeout_from_event(event: Any) -> float:
     if tool_name == "ask_question":
         # The call is waiting on a person, who may take as long as they like.
         return math.inf
-    if tool_name != "run_command":
+    if tool_name not in ("run_command", "agent_send"):
         return timeout
 
     args = getattr(part, "args", None)
@@ -812,6 +888,10 @@ def _tool_timeout_from_event(event: Any) -> float:
             args = None
     if not isinstance(args, dict):
         args = {}
+    if tool_name == "agent_send":
+        # Waiting for a reply is waiting on another agent's whole turn, the
+        # same case as a blocking sub-agent above.
+        return math.inf if args.get("wait") is True else timeout
     from suzent.tools.shell.shell_tools import RunCommandTool
 
     return RunCommandTool.stream_wait_timeout_seconds(args.get("timeout"))
@@ -846,6 +926,27 @@ def _run_result_usage(result: Any) -> Any:
     """Read run usage whether pydantic-ai exposes it as a property or method."""
     usage = result.usage
     return usage() if callable(usage) else usage
+
+
+def _incoming_message_texts(event: Any) -> list[str]:
+    """What to show for messages a live run took in mid-turn.
+
+    Another agent's message reaches a busy chat by injection rather than a new
+    turn; without this the chat showed nothing of it until the turn ended.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
+
+    texts: list[str] = []
+    for message in getattr(event, "messages", ()) or ():
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                shown = extract_system_reminder_display_trigger(part.content)
+                if shown:
+                    texts.append(shown)
+    return texts
 
 
 def _make_run_injector(stream: Any) -> Any:
@@ -921,6 +1022,15 @@ async def _await_model_event(
         control.model_wait = wait
     stage: str | None = None
     started = time.monotonic()
+    from suzent.core.context_compressor import compaction_seconds
+
+    compacted_before = compaction_seconds(chat_id)
+
+    def elapsed() -> float:
+        # Compaction runs before the model request this wait is for, and
+        # reports its own progress, so its time is not the model being silent.
+        compacting = compaction_seconds(chat_id) - compacted_before
+        return time.monotonic() - started - compacting
 
     async def publish(new_stage: str) -> None:
         nonlocal stage
@@ -943,7 +1053,7 @@ async def _await_model_event(
         previous = await probe() if probe is not None else None
         probing = previous is not None
         while True:
-            waited = time.monotonic() - started
+            waited = elapsed()
             if wait.extended.is_set() and stage != "extended":
                 deadline = wait.timeout_seconds
                 await publish("extended")
@@ -978,7 +1088,7 @@ async def _await_model_event(
                 return task.result()
             if extension_task in done:
                 continue
-            waited = time.monotonic() - started
+            waited = elapsed()
             if not probing:
                 if waited >= deadline:
                     raise asyncio.TimeoutError
@@ -1061,8 +1171,9 @@ async def _iter_stream_events_with_timeout(
                     break
                 except asyncio.TimeoutError as exc:
                     logger.warning(
-                        "[Streaming] Event wait timed out: model={} phase={} "
+                        "[Streaming] Event wait timed out: chat={} model={} phase={} "
                         "timeout_s={} last_event={}",
+                        chat_id,
                         _model_id,
                         phase,
                         timeout,
@@ -1263,6 +1374,21 @@ async def _queue_custom_event(
     await out_queue.put(("chunk", _encode_custom(event_name, data)))
 
 
+def roll_back_heartbeat(history: list, original_count: int, deps: Any) -> list:
+    """Drop a quiet heartbeat's whole exchange, its own prompt included.
+
+    The history handed to the stream already ends with the heartbeat prompt,
+    so its starting length is one past where the conversation stood. Rolling
+    back to that length kept the prompt, and the processor then re-attached
+    the HEARTBEAT_OK reply to it -- both resurfaced on the next turn.
+    """
+    turn_start = getattr(deps, "turn_start_index", None)
+    kept = list(history)[: original_count if turn_start is None else turn_start]
+    deps.last_messages = kept
+    deps.heartbeat_rolled_back = True
+    return kept
+
+
 async def stream_agent_responses(
     agent: Agent,
     message: str | list | None,
@@ -1273,6 +1399,7 @@ async def stream_agent_responses(
     permission_resolutions: Optional[list[dict[str, Any]]] = None,
     is_heartbeat: bool = False,
     run_id: Optional[str] = None,
+    presaved_triggers: Sequence[str] = (),
 ) -> AsyncGenerator[str, None]:
     """
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
@@ -1286,6 +1413,9 @@ async def stream_agent_responses(
     # Callers may supply this so they can recognise the draft row this run
     # wrote; see the trigger-row placement in chat_processor.
     run_id = run_id or str(uuid.uuid4())
+    from suzent.core.run_clock import RunClock
+
+    deps.run_clock = RunClock()
     if chat_id:
         claim_stream_control(chat_id, control)
     # Indicates whether the stream paused waiting for user approvals.
@@ -1294,6 +1424,18 @@ async def stream_agent_responses(
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
+    shell_output_loop = asyncio.get_running_loop()
+
+    def publish_shell_output(tool_call_id: str, stream: str, chunk: str) -> None:
+        shell_output_loop.call_soon_threadsafe(
+            sse_queue.put_nowait,
+            (
+                "shell_output_delta",
+                {"toolCallId": tool_call_id, "stream": stream, "delta": chunk},
+            ),
+        )
+
+    deps.shell_output_callback = publish_shell_output
 
     # --- Inline citations ---
     # One manager per run. Tools register citable sources on the manager via
@@ -1399,12 +1541,31 @@ async def stream_agent_responses(
 
     # History tracker for cancellation recovery
     partial_history = list(message_history) if message_history else []
+    deps.model_request_history = None
+    last_request_history: Optional[list] = None
+
+    def capture_request_history() -> bool:
+        nonlocal partial_history, last_request_history
+        request_history = getattr(deps, "model_request_history", None)
+        if request_history is None or request_history is last_request_history:
+            return False
+        last_request_history = request_history
+        partial_history = list(request_history)
+        return True
 
     out_queue: asyncio.Queue = asyncio.Queue()
     if chat_id:
         register_active_stream(chat_id, out_queue)
 
     # --- Mid-run checkpoint helper ---
+    checkpoint_tasks: set[asyncio.Task[None]] = set()
+    checkpoint_lock = asyncio.Lock()
+
+    def schedule_checkpoint(messages: list) -> None:
+        task = asyncio.create_task(_save_mid_run_checkpoint(messages))
+        checkpoint_tasks.add(task)
+        task.add_done_callback(checkpoint_tasks.discard)
+
     async def _save_mid_run_checkpoint(messages: list) -> None:
         """Persist a partial agent state snapshot after each completed tool batch.
 
@@ -1428,7 +1589,8 @@ async def stream_agent_responses(
                 )
                 get_database().update_chat(chat_id, agent_state=_st)
 
-            await asyncio.to_thread(_sync_save)
+            async with checkpoint_lock:
+                await asyncio.to_thread(_sync_save)
             # Anything already delivered into this history is now on disk, so a
             # sender waiting to ack its inbox row can safely stop waiting.
             control.mark_history_persisted()
@@ -1467,6 +1629,12 @@ async def stream_agent_responses(
         )
 
         try:
+            for trigger in presaved_triggers:
+                # Already a row of its own in the display log, so the draft
+                # must not copy it into the reply as well.
+                await sse_queue.put(
+                    ("incoming_message", {"content": trigger, "persisted": True})
+                )
             for resolution in permission_resolutions or []:
                 await sse_queue.put(("permission_resolution", resolution))
 
@@ -1563,7 +1731,16 @@ async def stream_agent_responses(
                             )
 
                             # ── Mid-run checkpoint tracking ──────────────────
+                            if capture_request_history():
+                                _chk_base = list(partial_history)
+                                _chk_resp_parts = {}
+                                _chk_tool_returns = []
                             _event_kind = getattr(event, "event_kind", "")
+                            if _event_kind == "enqueued_messages":
+                                for _incoming in _incoming_message_texts(event):
+                                    await sse_queue.put(
+                                        ("incoming_message", {"content": _incoming})
+                                    )
                             _new_tool_names = [
                                 name
                                 for name in _tool_search_class_names(event)
@@ -1651,9 +1828,7 @@ async def stream_agent_responses(
                                         _MResp(parts=_resp_parts),
                                         _MReq(parts=list(_chk_tool_returns)),
                                     ]
-                                    asyncio.create_task(
-                                        _save_mid_run_checkpoint(_checkpoint)
-                                    )
+                                    schedule_checkpoint(_checkpoint)
                                     # Also update partial_history so the finally
                                     # block has the latest state on crash/cancel.
                                     partial_history = _checkpoint
@@ -1802,14 +1977,16 @@ async def stream_agent_responses(
                         ]
                         partial_history = continuation
                         deps.last_messages = continuation
-                        asyncio.create_task(_save_mid_run_checkpoint(continuation))
+                        schedule_checkpoint(continuation)
                         logger.warning(
                             "[Streaming] {} in-flight tool call(s) timed out; "
                             "resuming agent with failed tool result(s).",
                             len(_failed_returns),
                         )
                         history = continuation
-                        prompt = ""  # no new user message on resume
+                        # None, not "": pydantic-ai sends any non-None prompt,
+                        # so "" added an empty user message to every resume.
+                        prompt = None
                         current_deferred = None
                         continue  # restart loop so the agent reacts
 
@@ -1889,7 +2066,7 @@ async def stream_agent_responses(
                                     approvals=auto_approvals
                                 )
                                 history = current_history
-                                prompt = ""  # no new user message on resume
+                                prompt = None  # no new user message on resume
                                 continue  # restart loop
 
                             # Some tools still need the user's decision.
@@ -1920,25 +2097,52 @@ async def stream_agent_responses(
                     # Agent finished (or was cancelled) — exit loop
                     break
 
-            # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
+            # A heartbeat that reported nothing is rolled back, unless it acted:
+            # dropping that turn would make the agent forget what it did.
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
-                from suzent.core.heartbeat import get_active_heartbeat
+                from suzent.core.focal_agent import record_focal_heartbeat_done
 
-                runner = get_active_heartbeat()
-                if runner and runner._is_heartbeat_ok(final_response_text):
+                record_focal_heartbeat_done(chat_id)
+                from suzent.core.heartbeat import (
+                    get_active_heartbeat,
+                    is_quiet_reply,
+                    turn_acted,
+                )
+
+                turn_start = getattr(deps, "turn_start_index", None)
+                this_turn = list(partial_history)[
+                    original_count if turn_start is None else turn_start :
+                ]
+                if (
+                    get_active_heartbeat()
+                    and (not final_response_text or is_quiet_reply(final_response_text))
+                    and not turn_acted(this_turn)
+                ):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
-                    partial_history = partial_history[:original_count]
-                    deps.last_messages = partial_history
+                    partial_history = roll_back_heartbeat(
+                        partial_history, original_count, deps
+                    )
                     # Signal the frontend to discard the streamed heartbeat content.
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
+            capture_request_history()
             logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
+            # A check-in that failed reported nothing either. Without this its
+            # internal prompt stayed in the saved history and later showed up
+            # in the transcript as if the user had typed it.
+            if is_heartbeat and chat_id:
+                partial_history = roll_back_heartbeat(
+                    partial_history, original_count, deps
+                )
             await sse_queue.put(("error", e))
         finally:
+            if not getattr(deps, "heartbeat_rolled_back", False):
+                capture_request_history()
             await sse_queue.put(("done", None))
 
     agent_task = asyncio.create_task(_agent_runner())
+    draft_accumulator: Optional[_DraftDisplayAccumulator] = None
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
@@ -1966,23 +2170,20 @@ async def stream_agent_responses(
                             logger.debug(
                                 "[Streaming] Failed to cache inline A2UI surface"
                             )
-                    await out_queue.put(
-                        (
-                            "chunk",
-                            _encode_custom(
-                                ev["event"],
-                                {
-                                    "id": ev["id"],
-                                    "title": ev.get("title", ""),
-                                    "component": ev["component"],
-                                    "target": ev.get("target", "inline"),
-                                    "deferred": ev.get("deferred", False),
-                                    "chatId": chat_id,
-                                    **({"rev": ev["rev"]} if "rev" in ev else {}),
-                                },
-                            ),
-                        )
-                    )
+                    value = {
+                        "id": ev["id"],
+                        "title": ev.get("title", ""),
+                        "component": ev["component"],
+                        "target": ev.get("target", "inline"),
+                        "deferred": ev.get("deferred", False),
+                        "chatId": chat_id,
+                        **({"rev": ev["rev"]} if "rev" in ev else {}),
+                    }
+                    event = CustomEvent(name=ev["event"], value=value)
+                    if draft_accumulator is not None:
+                        draft_accumulator.apply(event)
+                        await draft_accumulator.maybe_persist()
+                    await out_queue.put(("chunk", _encoder.encode(event)))
                 except asyncio.QueueEmpty:
                     break
 
@@ -2180,8 +2381,14 @@ async def stream_agent_responses(
                 elif msg_type == "permission_decision":
                     yield CustomEvent(name="tool_permission_decision", value=payload)
 
+                elif msg_type == "shell_output_delta":
+                    yield CustomEvent(name="shell_output_delta", value=payload)
+
                 elif msg_type == "permission_resolution":
                     yield CustomEvent(name="tool_permission_resolution", value=payload)
+
+                elif msg_type == "incoming_message":
+                    yield CustomEvent(name="incoming_message", value=payload)
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
@@ -2213,7 +2420,9 @@ async def stream_agent_responses(
                     break
 
                 elif msg_type == "error":
-                    err = RunErrorEvent(message=str(payload))
+                    err = RunErrorEvent(
+                        message=str(payload), code=model_failure_code(payload)
+                    )
                     await out_queue.put(("chunk", _encoder.encode(err)))
                     break
 
@@ -2223,7 +2432,7 @@ async def stream_agent_responses(
 
     # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker() -> None:
-        draft_accumulator: Optional[_DraftDisplayAccumulator] = None
+        nonlocal draft_accumulator
         try:
             if not is_heartbeat:
                 draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
@@ -2258,6 +2467,8 @@ async def stream_agent_responses(
             await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
             if draft_accumulator is not None:
+                finished_at = datetime.now().astimezone().isoformat()
+                active_seconds = deps.run_clock.elapsed()
                 try:
                     final_sources = citation_mgr.to_event_payload()
                     if final_sources:
@@ -2265,6 +2476,18 @@ async def stream_agent_responses(
                     await draft_accumulator.maybe_persist(force=True)
                 except Exception as exc:
                     logger.debug(f"[Streaming] Failed to persist final draft: {exc}")
+                # The fast snapshot commits this even if a draft write failed.
+                # Model history may have been compacted several times by now.
+                deps.streamed_message = draft_accumulator.snapshot(
+                    getattr(agent, "_model_id", None),
+                    finished_at=finished_at,
+                )
+                if deps.streamed_message is not None:
+                    deps.streamed_message["run_active_seconds"] = active_seconds
+                if deps.streamed_message is not None and deferred_tool_results:
+                    deps.streamed_message["_resumed_tool_call_ids"] = list(
+                        deferred_tool_results.approvals
+                    )
             await out_queue.put(("done", None))
 
     encode_task = asyncio.create_task(encode_worker())
@@ -2330,24 +2553,37 @@ async def stream_agent_responses(
                 except (asyncio.CancelledError, Exception):
                     pass
 
-        # Ensure memory is saved even on early termination (cancellation, tool error, etc.)
-        #
-        # `is None` was not enough: `process_turn` seeds `deps.last_messages`
-        # with the restored history before the run starts, so on this path it is
-        # never None and the branch never fired. A stopped turn then persisted
-        # the history it began with, throwing away everything the run had
-        # already checkpointed -- the user pressed stop and watched the whole
-        # turn disappear, tool calls included. `partial_history` tracks the last
-        # mid-run checkpoint, so prefer it whenever it is ahead. A run that
-        # finished normally has set `last_messages` to the full result, which is
-        # never shorter, so this cannot walk a completed turn backwards.
-        _persisted = getattr(deps, "last_messages", None)
-        if _persisted is None or len(partial_history or []) > len(_persisted):
-            try:
-                agent._last_messages = partial_history
-                deps.last_messages = partial_history
-            except Exception as e:
-                logger.error(f"Failed to reconstruct partial history: {e}")
+        # Old background checkpoints must land before the caller commits its
+        # final snapshot. Otherwise an older, larger context can undo compaction.
+        if checkpoint_tasks:
+            await asyncio.gather(*checkpoint_tasks, return_exceptions=True)
+
+        # The latest checkpoint/result is authoritative even when compaction
+        # made it shorter than the history with which this run started.
+        try:
+            if (
+                partial_history
+                and getattr(deps, "streamed_message", None)
+                and partial_history != (message_history or [])
+            ):
+                from dataclasses import replace
+
+                # Forking needs an exact model-history boundary: a display row
+                # can contain many model responses and tool results.
+                last = partial_history[-1]
+                partial_history = partial_history[:-1] + [
+                    replace(
+                        last,
+                        metadata={
+                            **(last.metadata or {}),
+                            "suzent_display_run_id": run_id,
+                        },
+                    )
+                ]
+            agent._last_messages = partial_history
+            deps.last_messages = partial_history
+        except Exception as e:
+            logger.error(f"Failed to reconstruct partial history: {e}")
 
         if chat_id:
             if not getattr(deps, "is_suspended", False):

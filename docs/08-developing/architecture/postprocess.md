@@ -16,6 +16,11 @@ Saving state after a turn involves several steps that can take a few seconds eac
 
 As soon as the agent finishes streaming, Suzent saves a lightweight snapshot of the conversation — just enough that if you send another message before the background work completes, the new turn still has the full history to work with.
 
+The snapshot commits the current model context and the captured display output
+in one transaction. Display output is keyed by run UUID and comes from stream
+events, independently of model-history compaction. Pending tool checkpoints are
+drained first so an older checkpoint cannot overwrite the final context.
+
 ### Phase B: Background job
 
 In parallel, a background job runs through these steps in order:

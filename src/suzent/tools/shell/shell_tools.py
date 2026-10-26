@@ -12,17 +12,21 @@ from suzent.tools.shell.process_tool import ShellProcessBackend
 
 
 class RunCommandTool(ShellCommandBackend):
-    """Run a command synchronously."""
+    """Run a command, yielding long-running processes for later checks."""
 
     name = "RunCommandTool"
     tool_name = "run_command"
     group = ToolGroup.SHELL
     display_name = "Run command"
-    description = "Run a bounded shell command and wait for its complete output."
+    description = (
+        "Run a shell command. Quick commands return complete output; commands still "
+        "running after 10 seconds return an ID for check_command or stop_command."
+    )
     deferrable = False
     session_guidance = (
-        "Shell is for shell/system commands only. Use run_command for bounded "
-        "work and start_command with check_command/stop_command for long-running "
+        "Shell is for shell/system commands only. run_command yields an ID "
+        "after 10 seconds if still running; use check_command/stop_command "
+        "with that ID. Use start_command for known long-running "
         "processes. Never use Shell to read, search, or edit files; use the "
         "dedicated filesystem tools instead."
     )
@@ -44,7 +48,10 @@ class RunCommandTool(ShellCommandBackend):
             Optional[int],
             Field(
                 ge=0,
-                description="Optional timeout in seconds; defaults to 120 seconds.",
+                description=(
+                    "Optional completion timeout in seconds. If omitted, return "
+                    "a command ID after 10 seconds when still running."
+                ),
             ),
         ] = None,
     ) -> ToolResult:
@@ -112,7 +119,7 @@ class CheckCommandTool(ShellProcessBackend):
         ctx: RunContext[AgentDeps],
         command_id: Annotated[
             str,
-            Field(description="Background command ID returned by start_command."),
+            Field(description="Command ID returned by start_command or run_command."),
         ],
         offset: Annotated[
             int,
@@ -145,7 +152,7 @@ class StopCommandTool(ShellProcessBackend):
         ctx: RunContext[AgentDeps],
         command_id: Annotated[
             str,
-            Field(description="Background command ID returned by start_command."),
+            Field(description="Command ID returned by start_command or run_command."),
         ],
     ) -> ToolResult:
         return super().forward(ctx, process_id=command_id, action="kill", offset=0)

@@ -28,7 +28,7 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({
 }) => {
   const { t } = useI18n();
   const segments = useMemo(() => {
-    if (!content || !onFileClick) return [];
+    if (!content || (!onFileClick && !content.includes('@[chat://'))) return [];
 
     // File mention chips serialize to `@[path]`. Match those first so a
     // Windows host path like `@[D:/workspace/file.md]` is not split into
@@ -82,6 +82,23 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({
         if (segment.type === 'text') {
           return <React.Fragment key={idx}>{segment.value}</React.Fragment>;
         } else {
+          if (segment.path.startsWith('chat://')) {
+            let title = segment.path;
+            try {
+              title = decodeURIComponent(segment.path.split('/').slice(3).join('/'));
+            } catch {
+              /* Keep malformed references readable. */
+            }
+            return (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1 border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-xs font-bold"
+                title={segment.path}
+              >
+                💬 {title}
+              </span>
+            );
+          }
           const fileName = basename(segment.path);
 
           return (

@@ -5,6 +5,11 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.focal_agent import (
+    ATTENTION_WAITING_KINDS,
+    notify_focal_of_blocked_task,
+    notify_focal_of_finished_session,
+)
 from suzent.core.project_context import resolve_project_id
 from suzent.database import get_database
 from suzent.logger import get_logger
@@ -119,6 +124,21 @@ class TaskUpdateTool(Tool):
             return ToolResult.error_result(
                 ToolErrorCode.UNKNOWN_ERROR, f"Failed to update task [#{task_id}]."
             )
+
+        newly_needs_user = (
+            updated.status == "blocked"
+            and updated.waiting_kind in ATTENTION_WAITING_KINDS
+            and (
+                task.status != "blocked"
+                or task.waiting_kind != updated.waiting_kind
+                or task.waiting_reason != updated.waiting_reason
+            )
+        )
+        if newly_needs_user:
+            notify_focal_of_blocked_task(updated, updated.chat_id or ctx.deps.chat_id)
+        closed = ("completed", "cancelled")
+        if updated.chat_id and updated.status in closed and task.status not in closed:
+            notify_focal_of_finished_session(updated.chat_id)
 
         msg = f"Task [#{task_id}] updated."
         if status:

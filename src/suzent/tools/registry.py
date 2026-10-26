@@ -212,6 +212,7 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.tasks import TaskUpdateTool
     from suzent.tools.tasks import TaskListTool
     from suzent.tools.schedule_tool import ScheduleTool
+    from suzent.tools.focal import FocalDispatchTool, FocalNotesTool, FocalScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -219,8 +220,8 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
     from suzent.tools.creative.image_generation_tool import ImageGenerationTool
     from suzent.tools.creative.image_edit_tool import ImageEditTool
-    from suzent.tools.creative.image_vision_tool import ImageVisionTool
-    from suzent.tools.recall import MemorySearchTool
+    from suzent.tools.creative.visual_analysis_tool import VisualAnalysisTool
+    from suzent.tools.recall import MemorySearchTool, MemoryUpdateTool
     from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
@@ -256,17 +257,21 @@ def _all_tool_classes() -> tuple:
         VideoStatusTool,
         ImageGenerationTool,
         ImageEditTool,
-        ImageVisionTool,
+        VisualAnalysisTool,
         SpeakTool,
         SocialMessageTool,
         SkillTool,
         MemorySearchTool,
+        MemoryUpdateTool,
         SessionSearchTool,
         AgentTool,
         AgentListTool,
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        FocalDispatchTool,
+        FocalScheduleTool,
+        FocalNotesTool,
     )
 
 
@@ -278,7 +283,7 @@ CAPABILITY_DESCRIPTIONS = {
     "Orchestration": "Load skills and delegate bounded work to sub-agents.",
     "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
-    "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
+    "Memory & recall": "Search and correct durable memory, and retrieve relevant past sessions.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {
@@ -349,6 +354,22 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
             "tools": tools,
         }
         for label, tools in capabilities.items()
+    ]
+
+
+def get_tool_summaries(tool_names: List[str]) -> List[Dict[str, str]]:
+    """Display metadata for the named tools, in the order given."""
+    classes = {cls.name: cls for cls in _all_tool_classes()}
+    return [
+        {
+            "id": name,
+            "name": getattr(classes[name], "display_name", None)
+            or _humanize_tool_name(name),
+            "description": _tool_description(classes[name]),
+            "runtimeName": classes[name].tool_name,
+        }
+        for name in tool_names
+        if name in classes
     ]
 
 

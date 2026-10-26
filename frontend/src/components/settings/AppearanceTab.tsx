@@ -78,7 +78,7 @@ export function AppearanceTab(): React.ReactElement {
   const { scheme, setScheme, mode, setMode } = useTheme();
   const { locale, setLocale, t } = useI18n();
 
-  const schemeKeys: Scheme[] = ['warm', 'cold', 'green'];
+  const schemeKeys: Scheme[] = ['warm', 'cold', 'green', 'ember'];
   const modeKeys: ThemeMode[] = ['light', 'dark', 'system'];
 
   return (

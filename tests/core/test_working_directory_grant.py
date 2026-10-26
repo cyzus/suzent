@@ -272,3 +272,54 @@ def test_inherited_grants_are_copied_not_shared():
 def test_a_parent_without_grants_adds_nothing():
     assert inherited_permission_grants({}) == {}
     assert inherited_permission_grants({"permission_rules": []}) == {}
+
+
+def test_a_followup_turn_keeps_the_sub_agent_role_and_model():
+    from suzent.core.subagent_runner import followup_config
+
+    config = {
+        "static_instructions": "You are a focused code-search sub-agent.",
+        "model": "openai/gpt-4.1",
+        "memory_enabled": False,
+        "permission_mode": "plan",
+        "permission_rules": [{"tool": "RunCommandTool", "decision": "allow"}],
+        "tool_approval_policy": {"WriteFileTool": "always_deny"},
+        "cwd": "/repo",
+    }
+
+    assert followup_config(config) == {
+        "static_instructions": "You are a focused code-search sub-agent.",
+        "model": "openai/gpt-4.1",
+        "memory_enabled": False,
+        "permission_mode": "plan",
+        "permission_rules": [{"tool": "RunCommandTool", "decision": "allow"}],
+        "tool_approval_policy": {"WriteFileTool": "always_deny"},
+    }
+
+
+def test_a_kept_worktree_becomes_the_followup_working_directory(monkeypatch):
+    from types import SimpleNamespace
+
+    from suzent.core.subagent_runner import SubAgentTask, _keep_worktree_as_cwd
+
+    merged = []
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.get_database",
+        lambda: SimpleNamespace(
+            merge_chat_config=lambda chat_id, updates: merged.append((chat_id, updates))
+        ),
+    )
+    task = SubAgentTask(
+        task_id="sub_1",
+        parent_chat_id="parent",
+        description="Refactor",
+        tools_allowed=[],
+        chat_id="subagent-sub_1",
+        worktree_path="/repo/.git/worktrees-tmp/subagent-1",
+    )
+
+    _keep_worktree_as_cwd(task)
+
+    assert merged == [
+        ("subagent-sub_1", {"cwd": "/repo/.git/worktrees-tmp/subagent-1"})
+    ]

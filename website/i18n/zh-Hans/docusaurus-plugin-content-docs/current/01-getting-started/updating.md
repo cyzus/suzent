@@ -6,6 +6,25 @@ description: 如何更新 Suzent、修复快捷方式，以及跨版本升级已
 
 # 更新 Suzent
 
+## 自动更新
+
+Suzent 会自动保持最新。它每隔几个小时检查一次新版本，并在你继续使用时于后台下载。新版本会在 Suzent 下次关闭或启动时安装，只需几秒钟，安装后桌面应用会提示你已更新。如果 Suzent 以后台服务方式运行且没有打开桌面应用，它会在凌晨 3 点到 5 点之间、且所有对话都已空闲 30 分钟时安装更新。
+
+要关闭自动更新，可以在 设置 → 关于 中取消勾选 **自动更新**，或运行：
+
+```bash
+suzent auto-update off      # 也可以用 on、status
+```
+
+在环境变量中设置 `SUZENT_AUTO_UPDATE=0` 同样可以关闭。
+
+以下更新不会自动安装，需要你自己来（点击更新按钮或运行 `suzent update`）：
+
+- 新的大版本；
+- 改动过 Suzent 自身文件的安装；
+- 源码仓库安装（跟随开发分支）；
+- 已经失败两次的更新，此后 Suzent 会停留在当前可用的版本。
+
 ## 更新到最新版本
 
 ```bash
@@ -50,7 +69,7 @@ python scripts/retire_legacy_rows.py            # 只报告
 python scripts/retire_legacy_rows.py --export   # 保存到每日日志
 ```
 
-**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在分为 Suzent 写的部分和你写的部分，用标记注释分隔（见 [MEMORY.md 有一半属于你](../03-features/memory/README.md#memorymd-is-half-yours)）。没有标记的文件会被视为完全由你编写，不会被改动。让一次整理生成新文件，或自己加上标记，就能恢复自动更新。
+**已有的 `MEMORY.md` 不会被覆盖。** `MEMORY.md` 现在是一份指向笔记本页面的简短链接地图（见 [MEMORY.md 是一张地图](../03-features/memory/README.md#memorymd-is-a-map)），Suzent 不再重写它。要转换旧文件，运行 `suzent memory cleanup`：它会把建议的地图和其他修改写在记忆旁边供你查看，在你应用之前不会改动任何内容。
 
 **前几次 dream 之后笔记本会出现大量改动。** Suzent 会为已有页面添加复查日期和确认计数。如果你的笔记本在 Git 或同步文件夹中，这些改动是正常的。
 

@@ -212,6 +212,34 @@ class TestMiddleware:
         assert not called
         assert sent and sent[0]["type"] == "websocket.close"
 
+    @pytest.mark.asyncio
+    async def test_voice_ws_requires_full_scope_but_other_ws_does_not(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _agent_id, agent_token = store.mint("Peer", "linux", scope="agent")
+        _full_id, full_token = store.mint("Host", "host", scope="full")
+
+        def ws_scope(path, token):
+            return _scope(
+                "websocket",
+                "100.64.0.5",
+                headers=[(b"authorization", f"Bearer {token}".encode())],
+                path=path,
+                store=store,
+            )
+
+        called, sent = await _run(ws_scope("/ws/voice", agent_token))
+        assert not called
+        assert sent[0] == {"type": "websocket.close", "code": 1008}
+        called, _ = await _run(ws_scope("/ws/voice", full_token))
+        assert called
+        called, _ = await _run(ws_scope("/ws/other", agent_token))
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_loopback_voice_ws_remains_trusted(self):
+        called, _ = await _run(_scope("websocket", "127.0.0.1", path="/ws/voice"))
+        assert called
+
 
 def test_browser_node_page_is_public_but_not_the_devices_api():
     """The /node page must be exempt by EXACT path, never as a prefix.
@@ -340,6 +368,22 @@ class TestRebindingGuard:
         scope["query_string"] = f"token={token}".encode()
         called, _ = await _run(scope)
         assert called
+
+    @pytest.mark.asyncio
+    async def test_voice_ws_query_token_authenticates_full_scope_only(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, full_tok = store.mint("Browser", "web", scope="full")
+        _id2, agent_tok = store.mint("Peer", "agent", scope="agent")
+        ok_scope = _scope("websocket", "100.64.0.5", path="/ws/voice", store=store)
+        ok_scope["query_string"] = f"chat_id=c1&token={full_tok}".encode()
+        called, _ = await _run(ok_scope)
+        assert called
+
+        bad_scope = _scope("websocket", "100.64.0.5", path="/ws/voice", store=store)
+        bad_scope["query_string"] = f"chat_id=c1&token={agent_tok}".encode()
+        called_bad, sent_bad = await _run(bad_scope)
+        assert not called_bad
+        assert sent_bad == [{"type": "websocket.close", "code": 1008}]
 
     @pytest.mark.asyncio
     async def test_query_token_rejected_on_other_paths(self, tmp_path):

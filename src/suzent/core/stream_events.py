@@ -97,13 +97,6 @@ class CustomEventName(str, Enum):
     ACP_SESSION_RESET = "acp.session_reset"
 
 
-# Backwards compatibility aliases
-TEXT_MESSAGE_CONTENT = StreamEventType.TEXT_MESSAGE_CONTENT
-TOOL_CALL = StreamEventType.TOOL_CALL_START
-TOOL_RETURN = StreamEventType.TOOL_CALL_RESULT
-CUSTOM = StreamEventType.CUSTOM
-
-
 def is_text_event(event_type: str) -> bool:
     """Check if an event type is a text message event."""
     return event_type in {
@@ -138,14 +131,4 @@ def is_tool_event(event_type: str) -> bool:
         StreamEventType.TOOL_CALL_ARGS,
         StreamEventType.TOOL_CALL_END,
         StreamEventType.TOOL_CALL_RESULT,
-    }
-
-
-def is_legacy_event(event_type: str) -> bool:
-    """Check if an event type is a legacy smolagents event."""
-    return event_type in {
-        StreamEventType.STREAM_DELTA,
-        StreamEventType.TOOL_OUTPUT,
-        StreamEventType.ERROR,
-        StreamEventType.FINAL_ANSWER,
     }

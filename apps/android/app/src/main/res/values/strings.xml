@@ -98,7 +98,8 @@
     <string name="greeting_evening">Good evening.</string>
     <string name="greeting_bed">Bed time? Or maybe late night coding?</string>
     <string name="creating_in">Creating in</string>
-    <string name="default_project">Default</string>
+    <!-- Mirrors ChatDatabase.DEFAULT_PROJECT_NAME; project names are data, not copy. -->
+    <string name="default_project">Home</string>
     <string name="activity_input">Input</string>
     <string name="activity_output">Output</string>
     <string name="activity_steps">%1$d steps</string>
@@ -157,13 +158,33 @@
     <string name="task_paused">Paused</string>
     <string name="task_failed">Last run failed</string>
     <string name="task_active">Active</string>
-    <string name="task_next_run">Next run: %1$s</string>
+    <string name="task_next_run">Next run %1$s</string>
     <string name="task_no_conversation">No conversation yet</string>
+    <string name="task_paused_failed">Paused · Failed</string>
+    <string name="task_not_yet">Not yet</string>
+    <string name="task_view_all">View all %1$d scheduled tasks</string>
+    <string name="task_show_fewer">Show fewer</string>
     <string name="expand_subagents">Expand %1$d sub-agents</string>
     <string name="collapse_subagents">Collapse %1$d sub-agents</string>
+    <string name="subagent_count">%1$d sub-agents</string>
     <string name="connecting_suzent">Connecting to Suzent</string>
     <string name="connection_help">Connection help</string>
     <string name="connection_help_detail">Check that Suzent is running on your desktop and both devices are online.</string>
     <string name="reminder_expanded">Expanded</string>
     <string name="reminder_collapsed">Collapsed</string>
+    <string name="demo_enter">Try offline demo</string>
+    <string name="demo_intro">Explore with sample data. No desktop, API key, or internet required.</string>
+    <string name="demo_banner">Offline demo · Scripted replies, no AI calls</string>
+    <string name="demo_exit">Exit demo</string>
+    <string name="demo_reset">Reset demo</string>
+    <string name="demo_limits">Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.</string>
+    <string name="demo_load_error">Could not open the demo workspace.</string>
+    <string name="about">About</string>
+    <string name="rail_summary_running">In progress: %1$d</string>
+    <string name="rail_summary_commands">Commands run: %1$d</string>
+    <string name="rail_summary_read">Files read: %1$d</string>
+    <string name="rail_summary_changed">Files modified: %1$d</string>
+    <string name="rail_summary_searches">Searches: %1$d</string>
+    <string name="rail_summary_other">Other tool calls: %1$d</string>
+    <string name="rail_summary_failed">Failed calls: %1$d</string>
 </resources>

@@ -69,7 +69,8 @@ See [Updating Suzent](../01-getting-started/updating.md) for details.
 | Command | What it does | Key options |
 |---|---|---|
 | `suzent check-update` | Check whether a newer release is available. | `--json`, `--cached` |
-| `suzent update` | Update Suzent and the desktop app to the latest release. | `--headless` to update in the terminal without a window |
+| `suzent update` | Update Suzent and the desktop app to the latest release. | `--headless` to update in the terminal without a window; `--prefetch` to only download it; `--apply-staged` to install a downloaded release silently |
+| `suzent auto-update` | Turn silent background updates on or off. | `on`, `off`, `status` |
 | `suzent upgrade` | Same as `suzent update`. | `--headless` |
 | `suzent repair` | Reinstall the current release, for example after an update was interrupted. | `--headless` |
 | `suzent shortcuts` | Create or repair the app's menu entry and shortcuts. | `--desktop` / `--no-desktop`, `--menu` / `--no-menu`, `--remove`, `--json` |
@@ -184,6 +185,16 @@ A heartbeat is a regular check-in inside one conversation. See
 Each takes `--chat <id>` (or `-c`) to choose the conversation. Without it, the
 conversation your terminal is using is picked.
 
+## Memory
+
+Check your memory files and draft fixes for them. See
+[Memory](../03-features/memory/README.md#checking-and-tidying-your-memory-files).
+
+| Command | What it does |
+|---|---|
+| `suzent memory lint` | List problems in `MEMORY.md`, `user.md`, `persona.md`, `heartbeat.md` and oversized notebook pages. |
+| `suzent memory cleanup` | Write suggested fixes to a dated folder under the notebook's `.state/cleanup/`, with a `README.md` and a diff to review. Your files are not changed. |
+
 ## Chat app pairing
 
 Handle requests from people asking to use your bot. See
@@ -223,6 +234,12 @@ Pair other computers and phones, and let devices use each other. See
 | Command | What it does | Key options |
 |---|---|---|
 | `suzent acp` | Let an editor that supports the Agent Client Protocol, such as Zed, use Suzent as its agent. Your editor runs this command; you don't run it yourself. | `--permission-mode` (`default`, `auto`, or `full_access`) |
+| `suzent acp --login` | Request editor access, approve the matching code under Settings → ACP Agents → Editor connections, then reconnect your editor. | `--client-name`, `--server-url` |
+
+Editor pairing is required by default. Use `--client-name` matching your editor's
+reported name when signing in manually. `--server-url` selects a local backend;
+Suzent must already be running. `--no-require-auth` disables pairing and chat
+isolation for trusted local integrations. See [editor setup](../03-features/nodes.md#use-suzent-from-your-editor-acp).
 
 See [Use Suzent from your editor](../03-features/nodes.md#use-suzent-from-your-editor-acp).
 
@@ -234,3 +251,14 @@ to the latest development version. `suzent logs --frontend`
 reads the development window's log, and `suzent setup-build-tools` installs
 the Windows build tools needed to compile the desktop app. See the
 [development guide](../08-developing/contributing/development-guide.md).
+
+`suzent chats read <chat_id> --offset 0 --limit 20` reads a page of visible messages
+without assistant reasoning traces. Use the returned `next_offset` to continue;
+`null` means there are no more messages.
+
+`suzent chats show <chat_id>` prints a conversation from its file in
+`~/.suzent/chats/`. `suzent chats verify` checks that the index in `chats.db` matches every
+conversation file in `~/.suzent/chats/`, and lists any that do not.
+`suzent chats rebuild-index` rewrites every conversation in `chats.db` from
+those files; quit Suzent before running it. See
+[chat storage](../08-developing/architecture/chat-storage.md).

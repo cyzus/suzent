@@ -60,18 +60,14 @@ If a tool call or command fails:
 - You may proceed WITHOUT confirmation for routine local workflows (e.g., running tests, building, local commits, creating branches).
 - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
 
-# Verification Contract
-Non-trivial implementation requires independent verification before you report completion.
-Non-trivial means: **3+ file edits, any backend/API change, or any logic modification**.
-
-When this applies, you MUST:
-1. Spawn a sub-agent: `subagent_type='verify'`, `run_in_background=False`
-2. Pass it: the original task description, list of files changed, and approach taken
-3. Instruct it to run tests/build/lint and actively try to break your changes
-4. Only report completion when the result contains `VERDICT: PASS` with console evidence
-
-If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verify.
-Your own checks do not substitute — only the verifier assigns the verdict.
+# Verification
+Verify implementation changes before reporting completion. Choose checks that cover
+the changed behavior and its likely failure modes; small changes can use focused
+tests or lint, while broader changes may need integration tests or a build.
+Use an independent `verify` sub-agent when the change is high risk, spans coupled
+components, or would benefit from a fresh review. Give it the task, changed files,
+approach, and relevant checks. Investigate failures and remaining gaps before
+reporting results. State what you checked and what you could not verify.
 
 # Tool Discovery
 Some tools are loaded on demand. If a tool-search capability is available, use it
@@ -117,8 +113,9 @@ SUBAGENT_INSTRUCTIONS: dict[str, str] = {
     ),
     "verify": (
         "You are a verification sub-agent. "
-        "Your job is to run tests, build commands, and lint checks to validate code changes. "
-        "Actively try to break the changes — run the full test suite, not just happy-path checks. "
+        "Review the changed code and run tests, build commands, or lint checks that cover "
+        "the changed behavior and likely failure modes. Broaden checks when risk warrants it. "
+        "Actively look for regressions and explain any checks you could not run. "
         "End your response with exactly one of:\n"
         "  VERDICT: PASS — all checks passed, no regressions found\n"
         "  VERDICT: PARTIAL — some checks passed but gaps remain (explain)\n"
@@ -224,7 +221,45 @@ Task: {description}
 
 Result:
 {result_summary}
+
+To correct, extend, or question this work, send `{task_id}` a message with agent_send. \
+It keeps everything it read and did, so a follow-up costs less than a new sub-agent.
 """
+
+SUBAGENT_REPLY = """
+Sub-agent `{task_id}` replied to your message.
+Your message: {request}
+
+Reply:
+{reply}
+"""
+
+# Hidden reminder that resumes a sub-agent whose model call stalled mid-turn.
+#: Sent as a hidden reminder with a forked sub-agent's task. A fork keeps its
+#: parent's system prompt and tool list byte-for-byte so it can read the
+#: parent's cached prefix, which leaves no room for its role in the system
+#: prompt; the role arrives here instead, and outranks the inherited prompt.
+SUBAGENT_FORK_REMINDER = """\
+You are now a sub-agent forked from the conversation above. That conversation is \
+context only: do not continue it, answer its user, or redo work it already did. \
+Work only on the task in this message, then reply with your result, which goes to \
+the agent that started you rather than to the user.
+{role}
+Where the system prompt above says otherwise, this takes precedence: do not spawn \
+or message other agents, including for the Verification Contract, and do not ask \
+the user questions.
+You may call only these tools, plus built-in and MCP tools; any other call is \
+refused: {tools}"""
+
+SUBAGENT_STALL_RESUME = """\
+Your previous response was cut off because the connection to the model stalled. \
+Nothing from the unfinished step was kept. Continue the task from where it stands now; \
+if you were writing a large file, write it in smaller parts."""
+
+# Tool result for a blocking sub-agent that moved to the background after a stall.
+SUBAGENT_MOVED_TO_BACKGROUND = """\
+Sub-agent {task_id} is still working, but its model stalled, so it now runs in the \
+background. Carry on with other work; its result arrives in this chat when it finishes."""
 
 SUBAGENT_WORKTREE_KEPT = """
 
@@ -240,7 +275,7 @@ Review them and merge what you want, then remove the worktree \
 # with the display logic in chat_processor.
 STRIPPED_IMAGE_REMINDER_TEMPLATE = """\
 The user attached {count} image(s) at: {paths}. The active model cannot view \
-images directly. Use the analyze_image tool on these path(s) to inspect them \
+images directly. Use the analyze_visual tool on these path(s) to inspect them \
 when relevant."""
 
 # Hidden (model-only) directive injected as a <system-reminder> when files are
@@ -250,6 +285,12 @@ UPLOAD_INDEX_REMINDER_TEMPLATE = """\
 The user attached {count} file(s): {paths}. When you first read one, add it to \
 the file index in context.md with its format, size, and key structure (such as \
 rows and columns), so later chats do not need to re-read it."""
+
+# Hidden (model-only) label prepended to a steer, so the transcript shows only
+# the words the user typed while the model still knows why the turn restarted.
+STEER_REMINDER = """\
+The user interrupted your previous response to redirect you. Follow the message \
+below instead of continuing what you were doing."""
 
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
@@ -620,6 +661,7 @@ DYNAMIC_SECTION_LAYERS: dict[str, PromptLayer] = {
     "inject_enabled_models": PromptLayer.RUNTIME,
     "inject_session_guidance": PromptLayer.RUNTIME,
     "inject_social_context": PromptLayer.RUNTIME,
+    "inject_focal_context": PromptLayer.RUNTIME,
     "inject_base_instructions": PromptLayer.USER_PREFERENCE,
     "inject_memory_context": PromptLayer.RETRIEVED_CONTEXT,
 }
@@ -773,6 +815,21 @@ def register_dynamic_instructions(
         if not ctx.deps.social_context:
             return ""
         return build_social_context(ctx.deps.social_context)
+
+    @agent.instructions
+    def inject_focal_context(ctx: Any) -> str:
+        from suzent.core.focal_agent import (
+            build_focal_global_context,
+            is_focal_chat_id,
+        )
+
+        try:
+            if not is_focal_chat_id(getattr(ctx.deps, "chat_id", None)):
+                return ""
+            return build_focal_global_context()
+        except Exception as e:
+            logger.warning(f"Focal Agent global context unavailable this run: {e}")
+            return ""
 
 
 async def render_core_memory(deps: Any) -> str:

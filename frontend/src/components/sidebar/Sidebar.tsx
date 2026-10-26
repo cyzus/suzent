@@ -1,13 +1,14 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
-import { SuzentLogo } from '../SuzentLogo';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { LEFT_SIDEBAR_WIDTH_PX, MIN_LEFT_SIDEBAR_WIDTH_PX } from '../../lib/layout';
 import { SidebarToggleIcon } from '../SidebarToggleIcon';
 
 interface SidebarProps {
   chatsContent: React.ReactNode;
+  /** Right side of the logo row, e.g. search and new chat. */
+  headerActions?: React.ReactNode;
   width: number;
   maxWidth: number;
   isDesktop: boolean;
@@ -16,10 +17,12 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onClose?: () => void;
   titlebarControls?: React.ReactNode;
+  showSettingsButton?: boolean;
 }
 
 export function Sidebar({
   chatsContent,
+  headerActions,
   width,
   maxWidth,
   isDesktop,
@@ -28,6 +31,7 @@ export function Sidebar({
   onOpenSettings,
   onClose,
   titlebarControls,
+  showSettingsButton = true,
 }: SidebarProps): React.ReactElement {
   const { t } = useI18n();
   const panelRef = React.useRef<HTMLElement>(null);
@@ -69,10 +73,11 @@ export function Sidebar({
           left: isDesktop ? undefined : 0,
           visibility: isOpen ? 'visible' : 'hidden',
         }}
+        // Desktop margin/width changes must settle at once to avoid reflowing the transcript every frame.
         className={`
         fixed lg:relative z-50 h-full shrink-0
         border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
-        transform-gpu will-change-transform transition-[width,transform,margin-left] duration-[160ms] ease-out motion-reduce:transition-none
+        transform-gpu transition-transform duration-[160ms] ease-out lg:transition-none motion-reduce:transition-none
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0'}
       `}
       >
@@ -104,11 +109,7 @@ export function Sidebar({
             <SidebarToggleIcon side="left" open />
           </button>
 
-          {/* Vertical Separator */}
-          <div className="h-6 w-[2px] bg-neutral-300 dark:bg-zinc-600 mx-2 rounded-full" />
-
-          {/* Logo (Static) */}
-          <SuzentLogo className="h-7 w-7" interactive />
+          {headerActions}
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -116,36 +117,38 @@ export function Sidebar({
         </div>
 
         {/* User / Global Settings - Bottom Stick */}
-        <button
-          onClick={onOpenSettings}
-          className="w-full flex items-center h-[52px] px-4 bg-white dark:bg-zinc-800 border-t border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 transition-colors group shrink-0 relative z-20"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-[18px] w-[18px] shrink-0 text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors"
-            viewBox="0 0 20 20"
-            fill="currentColor"
+        {showSettingsButton && (
+          <button
+            onClick={onOpenSettings}
+            className="w-full flex items-center h-[52px] px-4 bg-white dark:bg-zinc-800 border-t border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 transition-colors group shrink-0 relative z-20"
           >
-            <path
-              fillRule="evenodd"
-              d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <span className="font-bold text-xs truncate uppercase tracking-tight text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors ml-2.5">
-            {t('sidebar.settings')}
-          </span>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-all shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-[18px] w-[18px] shrink-0 text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="font-medium text-xs truncate text-neutral-600 dark:text-neutral-300 group-hover:text-brutal-black dark:group-hover:text-white transition-colors ml-2.5">
+              {t('sidebar.settings')}
+            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-all shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </aside>
     </>
   );

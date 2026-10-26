@@ -35,8 +35,8 @@ from suzent.tools.browser.extension.routes import (
 from suzent.logger import get_logger, setup_logging
 from suzent.mobile.client_api import client_routes
 from suzent.routes.mobile_routes import mobile_routes
+from suzent.routes.acp_pairing_routes import acp_pairing_routes
 from suzent.routes.chat_routes import (
-    approve_tool,
     chat,
     chat_send,
     create_chat,
@@ -45,9 +45,14 @@ from suzent.routes.chat_routes import (
     get_chat,
     get_chat_file_changes,
     get_chats,
+    delete_focal_wakeup,
+    get_chat_states,
+    get_focal_agent,
+    get_focal_panel,
     get_permission_mode,
     live_stream,
     mark_chat_read,
+    set_chat_resolved,
     retry_chat,
     fork_chat_route,
     steer_chat,
@@ -83,6 +88,11 @@ from suzent.routes.permission_routes import (
     delete_permission_rule,
     get_chat_permission_state,
     get_permissions,
+)
+from suzent.routes.onboarding_routes import (
+    role_recommendations,
+    verify_onboarding_model,
+    check_onboarding_connection,
 )
 from suzent.routes.config_routes import (
     get_api_keys_status,
@@ -154,6 +164,8 @@ from suzent.routes.memory_routes import (
     update_project_context,
     search_archival_memory,
     delete_archival_memory,
+    get_archival_memory_origin,
+    get_recent_memory_changes,
     get_memory_stats,
     consolidate_memory,
     lint_memory,
@@ -183,7 +195,6 @@ from suzent.routes.system_routes import (
     open_in_explorer,
 )
 from suzent.routes.session_routes import (
-    get_session_transcript,
     get_session_state,
     get_memory_daily_log,
     list_memory_daily_logs,
@@ -193,8 +204,10 @@ from suzent.routes.session_routes import (
 from suzent.routes.browser_routes import (
     browser_settings_endpoint,
     browser_status_endpoint,
+    browser_preview_tab_endpoint,
     browser_websocket_endpoint,
 )
+from suzent.routes.voice_routes import voice_websocket_endpoint
 from suzent.routes.node_routes import (
     browser_node_page,
     node_websocket_endpoint,
@@ -265,7 +278,9 @@ from suzent.routes.acp_routes import (
     resolve_acp_permission,
     resume_acp_session,
     probe_acp_agent,
+    authenticate_acp_agent,
 )
+from suzent.routes.acp_auth_routes import acp_auth_routes
 from suzent.routes.background_task_routes import (
     list_background_tasks,
     get_background_task,
@@ -668,6 +683,14 @@ async def startup():
             _monitor_service_resources(), name="service_resource_guard"
         )
 
+    from suzent.config.paths import PROJECT_DIR
+    from suzent.service.auto_update import run_auto_update
+
+    app.state.auto_updater = asyncio.create_task(
+        run_auto_update(PROJECT_DIR, service=os.getenv("SUZENT_RUN_MODE") == "service"),
+        name="auto_updater",
+    )
+
     try:
         from genai_prices import UpdatePrices
 
@@ -878,6 +901,13 @@ async def startup():
             sweep_overflow_periodically(), name="overflow_sweeper"
         )
 
+    # Chats from before the JSONL logs get one; until then their first write
+    # starts it.
+    app.state.chat_log_import = asyncio.create_task(
+        asyncio.to_thread(get_database().import_unlogged_chats),
+        name="chat_log_import",
+    )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
@@ -982,7 +1012,7 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
-    for task_name in ("service_resource_guard", "overflow_sweeper"):
+    for task_name in ("service_resource_guard", "overflow_sweeper", "auto_updater"):
         task = getattr(app.state, task_name, None)
         if task is not None and not task.done():
             task.cancel()
@@ -1141,6 +1171,8 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         *mobile_routes,
+        *acp_pairing_routes,
+        *acp_auth_routes,
         *client_routes,
         Route("/health", health, methods=["GET"]),
         Route("/ready", readiness, methods=["GET"]),
@@ -1148,6 +1180,11 @@ app = Starlette(
         Route("/service/stop", stop_service, methods=["POST"]),
         Route("/acp/agents", list_acp_agents, methods=["GET"]),
         Route("/acp/agents/{agent_id}/probe", probe_acp_agent, methods=["POST"]),
+        Route(
+            "/acp/agents/{agent_id}/authenticate",
+            authenticate_acp_agent,
+            methods=["POST"],
+        ),
         Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
         Route("/acp/sessions", create_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
@@ -1164,7 +1201,6 @@ app = Starlette(
         Route("/chat/extend-wait", extend_model_wait, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
-        Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
         Route("/chat/input-suggestion", get_input_suggestion, methods=["POST"]),
@@ -1180,7 +1216,12 @@ app = Starlette(
         Route("/commands", get_commands, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
+        Route("/focal", get_focal_agent, methods=["GET"]),
+        Route("/focal/panel", get_focal_panel, methods=["GET"]),
+        Route("/focal/chats", get_chat_states, methods=["GET"]),
+        Route("/focal/wakeups/{job_id:int}", delete_focal_wakeup, methods=["DELETE"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
+        Route("/chats/{chat_id}/resolved", set_chat_resolved, methods=["POST"]),
         Route(
             "/chats/{chat_id}/permission-mode",
             get_permission_mode,
@@ -1247,6 +1288,15 @@ app = Starlette(
         Route("/config/role-models", save_role_models, methods=["POST"]),
         Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
+        Route("/config/role-recommendations", role_recommendations, methods=["POST"]),
+        Route(
+            "/config/onboarding/check-connection",
+            check_onboarding_connection,
+            methods=["POST"],
+        ),
+        Route(
+            "/config/onboarding/verify-model", verify_onboarding_model, methods=["POST"]
+        ),
         Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
         Route(
             "/config/providers/custom/{provider_id}",
@@ -1320,6 +1370,12 @@ app = Starlette(
         Route(
             "/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]
         ),
+        Route(
+            "/memory/archival/{memory_id}/origin",
+            get_archival_memory_origin,
+            methods=["GET"],
+        ),
+        Route("/memory/recent", get_recent_memory_changes, methods=["GET"]),
         Route("/memory/stats", get_memory_stats, methods=["GET"]),
         Route("/memory/daily", list_memory_daily_logs, methods=["GET"]),
         Route("/memory/daily/{date}", get_memory_daily_log, methods=["GET"]),
@@ -1328,11 +1384,6 @@ app = Starlette(
         Route("/memory/dream/status", get_dream_status, methods=["GET"]),
         Route("/memory/consolidate", consolidate_memory, methods=["POST"]),
         Route("/memory/lint", lint_memory, methods=["POST"]),
-        Route(
-            "/session/{session_id}/transcript",
-            get_session_transcript,
-            methods=["GET"],
-        ),
         Route(
             "/session/{session_id}/state",
             get_session_state,
@@ -1350,7 +1401,9 @@ app = Starlette(
         WebSocketRoute("/ws/browser-extension", extension_websocket),
         Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
         Route("/browser/status", browser_status_endpoint, methods=["GET", "POST"]),
+        Route("/browser/preview-tab", browser_preview_tab_endpoint, methods=["POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
+        WebSocketRoute("/ws/voice", voice_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
         # Specific paths must precede /nodes/{node_id} so they aren't captured

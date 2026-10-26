@@ -53,7 +53,9 @@ function LogRow({ entry }: { entry: LogEntry }): React.ReactElement {
   const level = entry.level;
   return (
     <div className={`flex gap-2 px-2 py-[1px] ${level ? (ROW_STYLE[level] ?? '') : 'bg-white/5'}`}>
-      {entry.time && <span className="shrink-0 text-neutral-500">{entry.time}</span>}
+      {entry.time && (
+        <span className="shrink-0 text-neutral-500 dark:text-neutral-400">{entry.time}</span>
+      )}
       {level && (
         <span className={`w-[4.5rem] shrink-0 font-bold ${LEVEL_STYLE[level]}`}>{level}</span>
       )}
@@ -213,7 +215,9 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
       </div>
 
       {logs?.available === false ? (
-        <p className="font-mono text-xs text-neutral-500">{t('settings.service.logMissing')}</p>
+        <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
+          {t('settings.service.logMissing')}
+        </p>
       ) : (
         <div
           ref={boxRef}
@@ -222,7 +226,7 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
           className="max-h-96 overflow-auto border-2 border-brutal-black bg-brutal-black py-2 font-mono text-xs leading-relaxed text-neutral-200"
         >
           {shown.length === 0 ? (
-            <p className="px-3 py-1 text-neutral-500">
+            <p className="px-3 py-1 text-neutral-500 dark:text-neutral-400">
               {entries.length === 0
                 ? t('settings.service.logEmpty')
                 : t('settings.service.logNoMatch')}
@@ -233,7 +237,7 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-neutral-500">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
         <span>
           {t('settings.service.logCounts', { shown: shown.length, total: entries.length })}
           {problems > 0 && (

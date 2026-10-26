@@ -494,14 +494,14 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): Reac
               <button
                 type="button"
                 onClick={() => update({ weekdays: WEEKDAYS_PRESET })}
-                className="px-2 py-1 text-[10px] font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-600 transition-colors"
+                className="px-2 py-1 text-[10px] font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
               >
                 {t('settings.automation.weekdaysShort')}
               </button>
               <button
                 type="button"
                 onClick={() => update({ weekdays: EVERYDAY_PRESET })}
-                className="px-2 py-1 text-[10px] font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-600 transition-colors"
+                className="px-2 py-1 text-[10px] font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
               >
                 {t('settings.automation.everyDayShort')}
               </button>

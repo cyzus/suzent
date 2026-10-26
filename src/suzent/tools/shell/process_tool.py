@@ -74,7 +74,7 @@ class ShellProcessBackend(Tool):
         ctx: RunContext[AgentDeps],
         process_id: Annotated[
             str,
-            Field(description="Background command ID returned by start_command."),
+            Field(description="Command ID returned by start_command or run_command."),
         ],
         action: Annotated[
             Literal["poll", "status", "kill"],
@@ -93,7 +93,7 @@ class ShellProcessBackend(Tool):
         """Manage a background process.
 
         Args:
-            process_id: The ID returned by start_command.
+            process_id: The ID returned by start_command or run_command.
             action: One of "poll", "status", or "kill".
             offset: For "poll" only — byte offset from previous poll response.
                     Start at 0, then pass the returned next_offset on each call.

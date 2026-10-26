@@ -122,6 +122,27 @@ app too.
    [background service](./automation.md#keep-suzent-running-in-the-background)).
 2. In your editor's settings for external agents, add a custom agent with the
    command `suzent` and the argument `acp`.
+3. Choose **Pair with Suzent** when your editor asks you to sign in. In
+   **Settings → ACP Agents → Editor connections**, compare the code with the
+   login terminal, check the confirmation box, and approve the request.
+   Return to the editor and reconnect after login succeeds.
+
+Editors without terminal login can choose **Approve in Suzent settings**;
+the code appears in their agent log. Alternatively run
+`suzent acp --login --client-name "<editor name>"` yourself, using the name
+reported by the editor, then reconnect. Requests expire after five minutes.
+
+Each authorization can resume only the conversations it created. It uses your
+Suzent memory, skills and workspace tools, and the editor handles tool approval
+prompts. Only approve editors you trust. Revoke a connection from the same
+settings section to block further requests and stop active work. A new login
+creates a new authorization; it does not recover the old authorization's chats.
+Credentials are saved per backend address and editor name, so instances using
+the same name and address share an authorization. Changing either requires login
+again. Existing unpaired ACP conversations remain available in Suzent itself.
+
+For existing trusted local integrations, `suzent acp --no-require-auth` explicitly
+opts out of pairing. This also opts out of authorization-based chat isolation.
 
 The editor's open folder becomes the agent's working folder. When the agent
 needs permission, the editor asks you. To skip those prompts for unattended
@@ -130,6 +151,27 @@ arguments.
 
 It also works the other way around: under **Settings → ACP Agents**, Suzent can
 use coding agents such as Claude Code or Codex as helpers.
+
+Opening the page or clicking **Refresh** checks installed agents automatically.
+An agent that passes the check shows **Signed in**, with **Sign in again**
+available if you need to repeat authorization. Installation alone is not a
+login check.
+
+To sign in, click **Sign in** beside an installed agent. Finish the agent's
+login flow in the browser or terminal that opens on the computer running
+Suzent. The page shows progress, lets you cancel, and checks the connection
+again when login finishes. If the agent offers several methods, use **Probe**
+to discover them and choose a method before signing in. Once it reports
+**Reachable**, retry your task. Suzent keeps the saved conversation ID when authentication
+expires; it does not start a replacement conversation just because login is
+required.
+
+Signing in from this page requires access from the same computer. On a host
+without a graphical terminal, expand **Details** to copy the login command,
+run it on that host, then probe again. Installation and login help stays
+collapsed until needed. Installation status alone does not confirm
+authentication, and a successful probe confirms session creation rather than
+availability of every model or tool.
 
 ## Command line reference
 

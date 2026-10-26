@@ -83,6 +83,7 @@ class ScheduleTool(Tool):
     name: str = "ScheduleTool"
     tool_name: str = "schedule_task"
     group: ToolGroup = ToolGroup.TASKS
+    max_tasks_per_chat: int = MAX_AGENT_TASKS_PER_CHAT
 
     def forward(
         self,
@@ -202,6 +203,7 @@ class ScheduleTool(Tool):
         timezone: Optional[str],
         bind_to_chat: bool,
         quiet_if_nothing_to_report: bool,
+        announce: bool = False,
     ) -> ToolResult:
         if not prompt or not prompt.strip():
             return ToolResult.error_result(
@@ -222,7 +224,7 @@ class ScheduleTool(Tool):
             for job in db.list_cron_jobs_for_chat(chat_id, active_only=True)
             if job.source == AGENT_SOURCE
         ]
-        if len(existing) >= MAX_AGENT_TASKS_PER_CHAT:
+        if len(existing) >= self.max_tasks_per_chat:
             names = ", ".join(f"#{j.id} {j.name}" for j in existing)
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -255,7 +257,7 @@ class ScheduleTool(Tool):
             chat_id=chat_id,
             context_mode="bound" if bind_to_chat else "isolated",
             suppress_ok=bool(quiet_if_nothing_to_report) and bind_to_chat,
-            delivery_mode="none" if bind_to_chat else "announce",
+            delivery_mode="announce" if announce or not bind_to_chat else "none",
             source=AGENT_SOURCE,
         )
 

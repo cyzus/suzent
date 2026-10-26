@@ -27,7 +27,6 @@ async def test_postprocess_keeps_streamed_reply_without_duplicating_or_resolving
     processor = ChatProcessor()
     persist = AsyncMock(return_value=True)
     monkeypatch.setattr(processor, "_persist_state", persist)
-    monkeypatch.setattr(processor, "_write_transcript", AsyncMock())
     if not suspended:
         monkeypatch.setattr(
             "suzent.core.task_registry.register_background_task",
@@ -132,6 +131,7 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         tool_names,
         append_display_messages=None,
         draft_run_id=None,
+        streamed_message=None,
     ):
         called["snapshot"] += 1
         from pydantic_ai.messages import ModelResponse, TextPart
@@ -217,6 +217,7 @@ async def test_persist_state_skips_stale_revision_guard(monkeypatch):
             agent_state,
             messages=None,
             update_lifecycle=True,
+            count_unread=True,
         ):
             self.finalize_calls.append((chat_id, expected_revision, messages))
             return False

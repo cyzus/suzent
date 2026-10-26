@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "On a mainland China network, download release files from npm packages on npmmirror before GitHub, so installs and updates no longer wait on GitHub."
+}

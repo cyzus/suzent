@@ -19,7 +19,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.native_tools._tool_search import TOOL_SEARCH_FUNCTION_TOOL_NAME
 
-from suzent.tools.capability import ToolDenyCapability, is_denied
+from suzent.tools.capability import ToolDenyCapability, is_call_allowed, is_denied
 
 
 def _recording_model(seen: list[set[str]]) -> FunctionModel:
@@ -143,3 +143,55 @@ def test_an_mcp_tool_is_denied_by_its_own_name():
 def test_a_builtin_cannot_be_denied():
     assert not is_denied("read_file", frozenset({"ReadFileTool"}), {})
     assert not is_denied("read_file", frozenset(), {"read_file": "always_deny"})
+
+
+def test_call_allowlist_admits_named_builtin_and_mcp_tools() -> None:
+    allowed = frozenset({"WebpageTool"})
+
+    assert is_call_allowed("webpage_fetch", allowed)
+    assert is_call_allowed("read_file", allowed)
+    assert is_call_allowed("some_mcp_server_tool", allowed)
+    assert not is_call_allowed("web_search", allowed)
+
+
+async def test_fork_sees_every_tool_but_a_disallowed_call_fails() -> None:
+    calls = iter(["web_search", "done"])
+    results: list = []
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        name = next(calls)
+        if name == "done":
+            results.extend(
+                part
+                for message in messages
+                for part in getattr(message, "parts", [])
+                if getattr(part, "tool_name", None) == "web_search"
+                and not isinstance(part, ToolCallPart)
+            )
+            return ModelResponse(parts=[TextPart(content="done")])
+        assert "web_search" in {tool.name for tool in info.function_tools}
+        return ModelResponse(parts=[ToolCallPart(tool_name=name, args={})])
+
+    ran: list[str] = []
+
+    def web_search() -> str:
+        """Search the web."""
+        ran.append("web_search")
+        return "results"
+
+    agent = Agent(
+        FunctionModel(model),
+        deps_type=SimpleNamespace,
+        tools=[web_search],
+        capabilities=[ToolDenyCapability()],
+    )
+    await agent.run(
+        "go",
+        deps=SimpleNamespace(
+            tool_approval_policy={}, call_allowed_tools=frozenset({"WebpageTool"})
+        ),
+    )
+
+    assert ran == []
+    assert len(results) == 1
+    assert "not available to this sub-agent" in str(results[0].content)

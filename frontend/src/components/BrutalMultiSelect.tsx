@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 interface Option {
   value: string;
   label: string;
+  description?: string;
 }
 
 interface BrutalMultiSelectProps {
@@ -141,7 +142,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
     return (
       <div className={`space-y-2 ${className}`}>
         {label && (
-          <label className="block font-bold tracking-wide text-brutal-black uppercase mb-1 text-xs">
+          <label className="block font-bold tracking-wide text-brutal-black dark:text-zinc-200 uppercase mb-1 text-xs">
             {label}
           </label>
         )}
@@ -165,7 +166,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                 onClick={() => handleToggle(option.value)}
                 className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
-                    ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
+                    ? 'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-200 dark:border-emerald-400/30 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
                     : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                 }`}
               >
@@ -184,8 +185,15 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                     </svg>
                   )}
                 </div>
-                <span className="min-w-0 flex-1 truncate" title={option.value}>
-                  {option.label}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate" title={option.value}>
+                    {option.label}
+                  </span>
+                  {option.description && (
+                    <span className="block mt-1 text-[10px] font-normal normal-case text-neutral-500 dark:text-neutral-400 break-all">
+                      {option.description}
+                    </span>
+                  )}
                 </span>
               </button>
             );
@@ -210,7 +218,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
     createPortal(
       <div
         ref={dropdownRef}
-        className={`fixed z-[9999] bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
+        className={`fixed z-[9999] bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
         style={{
           top: effectiveDropUp ? 'auto' : dropdownPosition.top,
           bottom: effectiveDropUp
@@ -232,10 +240,10 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
               key={option.value}
               type="button"
               onClick={() => handleToggle(option.value)}
-              className={`w-full text-left px-3 py-2 font-bold text-xs uppercase transition-colors border-b-2 border-neutral-100 last:border-0 flex items-center gap-2 hover:bg-neutral-50`}
+              className={`w-full text-left px-3 py-2 font-bold text-xs uppercase transition-colors border-b-2 border-neutral-100 last:border-0 flex items-center gap-2 hover:bg-neutral-50 dark:border-white/10 dark:hover:bg-zinc-700`}
             >
               <div
-                className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${isSelected ? 'bg-brutal-green' : 'bg-white'}`}
+                className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${isSelected ? 'bg-brutal-green' : 'bg-white dark:bg-zinc-900 dark:border-white/20'}`}
               >
                 {isSelected && (
                   <svg
@@ -249,7 +257,9 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                   </svg>
                 )}
               </div>
-              <span className={`flex-1 ${isSelected ? 'text-brutal-black' : 'text-neutral-600'}`}>
+              <span
+                className={`flex-1 ${isSelected ? 'text-brutal-black dark:text-zinc-100' : 'text-neutral-600 dark:text-zinc-300'}`}
+              >
                 {option.label}
               </span>
             </button>
@@ -262,7 +272,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       {label && (
-        <label className="block font-bold tracking-wide text-brutal-black uppercase mb-1 text-xs">
+        <label className="block font-bold tracking-wide text-brutal-black dark:text-zinc-200 uppercase mb-1 text-xs">
           {label}
         </label>
       )}
@@ -272,7 +282,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
+        className={`w-full bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
       >
         <span className="truncate">{displayLabel}</span>
         <svg

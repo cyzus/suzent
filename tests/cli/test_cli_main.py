@@ -650,10 +650,31 @@ def test_replace_ui_files_restores_both_files_when_metadata_install_fails(
     assert version_file.read_text(encoding="utf-8") == "v1.0.0"
 
 
-def test_release_asset_url_pins_requested_tag():
-    assert cli_main._release_asset_url("suzent.exe", "v1.2.3") == (
-        "https://github.com/cyzus/suzent/releases/download/v1.2.3/suzent.exe"
+def test_release_asset_download_falls_back_to_the_next_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_main.network_region,
+        "release_asset_urls",
+        lambda asset, version: [
+            f"https://mirror.test/{version}/{asset}",
+            f"https://github.test/{version}/{asset}",
+        ],
     )
+    attempted = []
+
+    def fake_download(url, dest):
+        attempted.append(url)
+        if "mirror" in url:
+            raise OSError("not synced yet")
+        dest.write_bytes(b"asset")
+
+    monkeypatch.setattr(cli_main, "_download_file_atomic", fake_download)
+    destination = tmp_path / "suzent.exe"
+    cli_main._download_release_asset("suzent.exe", "v1.2.3", destination)
+    assert attempted == [
+        "https://mirror.test/v1.2.3/suzent.exe",
+        "https://github.test/v1.2.3/suzent.exe",
+    ]
+    assert destination.read_bytes() == b"asset"
 
 
 def test_backend_sync_args_keep_dev_extra_for_development_workspace(tmp_path):
@@ -1718,3 +1739,159 @@ def test_start_points_at_the_log_a_failure_would_land_in(
 
     assert result.exit_code == 0
     assert expected_hint in result.output
+
+
+def test_fetch_release_webui_needs_a_stable_release_tag(tmp_path, monkeypatch) -> None:
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "build_webui.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        cli_main,
+        "_download_release_asset",
+        lambda *_args: pytest.fail("source checkouts have no release bundle"),
+    )
+
+    assert cli_main._fetch_release_webui(tmp_path) is False
+
+
+def test_fetch_release_webui_installs_the_verified_archive(
+    tmp_path, monkeypatch
+) -> None:
+    (tmp_path / ".suzent").mkdir()
+    (tmp_path / ".suzent" / "release-tag").write_text("v1.2.3\n", encoding="utf-8")
+    (tmp_path / "scripts").mkdir()
+    script = tmp_path / "scripts" / "build_webui.py"
+    script.write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        cli_main,
+        "_download_release_asset",
+        lambda name, tag, dest: dest.write_bytes(b"zip"),
+    )
+    monkeypatch.setattr(
+        cli_main,
+        "_verify_release_asset",
+        lambda path, name, tag: calls.append(("verify", name, tag)),
+    )
+
+    def fake_run(command, **_kwargs):
+        calls.append(("run", command[1:3]))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
+
+    assert cli_main._fetch_release_webui(tmp_path) is True
+    assert calls == [
+        ("verify", "suzent-webui.zip", "v1.2.3"),
+        ("run", [str(script), "--install-archive"]),
+    ]
+
+
+def _release_install(tmp_path, installed="v1.2.0"):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".suzent-bootstrap-complete").write_text("", encoding="utf-8")
+    state = tmp_path / ".suzent"
+    state.mkdir()
+    (state / "release-tag").write_text(installed, encoding="utf-8")
+    return tmp_path
+
+
+def test_auto_update_is_on_by_default_and_can_be_turned_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    assert cli_main.auto_update_enabled(tmp_path)
+    cli_main.set_auto_update(tmp_path, False)
+    assert not cli_main.auto_update_enabled(tmp_path)
+    cli_main.set_auto_update(tmp_path, True)
+    monkeypatch.setenv("SUZENT_AUTO_UPDATE", "0")
+    assert not cli_main.auto_update_enabled(tmp_path)
+
+
+def test_auto_update_allows_a_minor_release_on_a_clean_release_install(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    assert cli_main.auto_update_blocker(root, "v1.3.0") is None
+
+
+@pytest.mark.parametrize(
+    ("setup", "latest", "reason"),
+    [
+        (lambda root: cli_main.set_auto_update(root, False), "v1.3.0", "turned off"),
+        (
+            lambda root: (root / ".suzent-bootstrap-complete").unlink(),
+            "v1.3.0",
+            "development",
+        ),
+        (lambda root: None, "v2.0.0", "major version"),
+        (lambda root: None, "v1.2.0", "up to date"),
+        (
+            lambda root: (root / ".suzent" / "update-transaction.json").write_text(
+                "{}", encoding="utf-8"
+            ),
+            "v1.3.0",
+            "repair",
+        ),
+    ],
+)
+def test_auto_update_blocks_what_needs_a_person(
+    monkeypatch, tmp_path, setup, latest, reason
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    setup(root)
+    assert reason in (cli_main.auto_update_blocker(root, latest) or "")
+
+
+def test_auto_update_blocks_local_source_changes(monkeypatch, tmp_path):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    (root / "tracked.txt").write_text("a", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], cwd=root, check=True)
+    assert cli_main.auto_update_blocker(root, "v1.3.0") is None
+    (root / "tracked.txt").write_text("b", encoding="utf-8")
+    assert "local source changes" in cli_main.auto_update_blocker(root, "v1.3.0")
+
+
+def test_apply_staged_update_hands_the_staged_release_to_a_silent_updater(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("SUZENT_AUTO_UPDATE", raising=False)
+    root = _release_install(tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        cli_main,
+        "_delegate_installer_update",
+        lambda root, **kwargs: calls.append(kwargs),
+    )
+
+    assert cli_main.apply_staged_update(root) is None
+    (root / ".suzent" / "staged-update.json").write_text(
+        json.dumps({"target_tag": "v1.3.0"}), encoding="utf-8"
+    )
+    assert cli_main.apply_staged_update(root) == "v1.3.0"
+    assert calls == [{"release_tag": "v1.3.0", "relaunch": None, "silent": True}]
+
+
+def test_silent_delegation_runs_headless_without_a_window(monkeypatch, tmp_path):
+    updater = tmp_path / "updater" / "suzent-installer"
+    updater.parent.mkdir()
+    updater.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
+    monkeypatch.setattr(cli_main, "_graphical_update_available", lambda: True)
+    monkeypatch.setattr(cli_main, "_install_release_updater", lambda tag: updater)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+
+    cli_main._delegate_installer_update(
+        tmp_path, release_tag="v1.2.3", relaunch=None, silent=True
+    )
+
+    assert len(popen_calls) == 1
+    assert {"--headless", "--silent"} <= set(popen_calls[0][0])

@@ -89,7 +89,9 @@ function PermissionPicker({
           onChange={(chat_ids) => setPermissions({ ...permissions, chat_ids })}
         />
       )}
-      <p className="text-xs text-neutral-500">{t('mobileAccess.toolPolicy')}</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        {t('mobileAccess.toolPolicy')}
+      </p>
     </div>
   );
 }
@@ -108,7 +110,7 @@ function ApprovePhone({
   const { t } = useI18n();
   const [permissions, setPermissions] = useState<MobilePermissions>(emptyPermissions);
   return (
-    <div className="border-2 border-brutal-black dark:border-white p-4 space-y-3">
+    <div className="border-2 border-brutal-black dark:border-white/15 p-4 space-y-3">
       <strong>
         {device.display_name} · {device.platform}
       </strong>
@@ -310,7 +312,7 @@ export function MobileAccessCard({
               {(['prepareStep', 'scanStep', 'confirmStep'] as const).map((step, index) => (
                 <li key={step} className="flex items-start gap-3">
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-sm font-black text-brutal-black"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-neutral-200 text-sm font-black text-brutal-black dark:bg-zinc-700 dark:text-white"
                     aria-hidden="true"
                   >
                     {index + 1}
@@ -319,7 +321,7 @@ export function MobileAccessCard({
                 </li>
               ))}
             </ol>
-            <details className="border-2 border-brutal-black p-3 dark:border-white">
+            <details className="border-2 border-brutal-black p-3 dark:border-white/15">
               <summary className="cursor-pointer text-sm font-bold">
                 {t('mobileAccess.accessSettings')}
               </summary>
@@ -332,7 +334,7 @@ export function MobileAccessCard({
                 />
               </div>
             </details>
-            <details className="border-2 border-brutal-black p-3 dark:border-white">
+            <details className="border-2 border-brutal-black p-3 dark:border-white/15">
               <summary className="cursor-pointer text-sm font-bold">
                 {t('mobileAccess.networkSettings')}
               </summary>
@@ -340,7 +342,7 @@ export function MobileAccessCard({
                 <label className="block space-y-1 text-sm">
                   <span>{t('mobileAccess.origin')}</span>
                   <input
-                    className="w-full border-2 border-brutal-black bg-transparent p-2 dark:border-white"
+                    className="w-full border-2 border-brutal-black bg-transparent p-2 dark:border-white/15"
                     value={origin}
                     disabled={busy || invitationActive}
                     onChange={(event) => setOrigin(event.target.value)}
@@ -357,7 +359,7 @@ export function MobileAccessCard({
               </div>
             </details>
           </div>
-          <div className="flex flex-col items-center justify-center gap-4 border-2 border-brutal-black bg-neutral-50 p-4 text-center dark:border-white dark:bg-zinc-900">
+          <div className="flex flex-col items-center justify-center gap-4 border-2 border-brutal-black bg-neutral-50 p-4 text-center dark:border-white/15 dark:bg-zinc-900">
             {invitationActive ? (
               <>
                 <Badge tone="amber">{t('mobileAccess.waiting')}</Badge>
@@ -423,7 +425,7 @@ export function MobileAccessCard({
               decide={decide}
             />
           ))}
-        <div className="border-t-2 border-brutal-black pt-4 dark:border-white">
+        <div className="border-t-2 border-brutal-black pt-4 dark:border-white/15">
           <h4 className="text-sm font-black">{t('mobileAccess.pairedDevices')}</h4>
           {devices.length === 0 && (
             <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-400">

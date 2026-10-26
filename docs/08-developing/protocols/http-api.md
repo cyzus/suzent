@@ -62,6 +62,8 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/daily/{date}` | GET | Read one day's log |
 | `/memory/archival` | GET | Search remembered facts |
 | `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
+| `/memory/archival/{id}/origin` | GET | The daily-log section a fact came from: `{date, time, chat_id, title}`, or 404 |
+| `/memory/recent?days=7` | GET | What changed lately: facts added per kind, revised facts, repeated confirmations |
 | `/memory/stats` | GET | Counts and index size |
 | `/memory/project-contexts` | GET | List per-project context files |
 | `/memory/project-contexts/{id}` | PUT | Update a project's context |
@@ -70,9 +72,9 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/consolidate` | POST | Run consolidation now |
 | `/memory/lint` | POST | Run the notebook audit now |
 
-Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
-anything the agent worked out on its own — see
-[MEMORY.md is half yours](https://suzent.com/docs/features/memory#memorymd-is-half-yours).
+Editing a core block through `PUT /memory/core` writes its file as-is; `MEMORY.md` is
+a curated map, not a fact store — see
+[Memory Architecture](../architecture/memory-architecture.md#memorymd-is-a-map).
 
 
 ## Automation
@@ -101,6 +103,16 @@ anything the agent worked out on its own — see
 | GET | `/heartbeat/md` | Read HEARTBEAT.md content |
 | PUT | `/heartbeat/md` | Update HEARTBEAT.md content |
 | PUT | `/heartbeat/interval` | Set interval (`{"interval_minutes": N}`) |
+
+### Focal Agent (Regent)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/focal` | Create the Focal chat if needed; return its presence status |
+| GET | `/focal/panel` | Fixed tool list and scheduled wake-ups |
+| DELETE | `/focal/wakeups/{job_id}` | Cancel one of the Focal Agent's own wake-ups |
+
+See [Focal Agent](../architecture/focal-agent.md).
 
 
 ### Scheduler architecture

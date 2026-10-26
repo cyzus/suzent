@@ -39,9 +39,6 @@ if TYPE_CHECKING:
     from suzent.config.paths import (
         migrate_legacy_user_skills_dir as migrate_legacy_user_skills_dir,
     )
-    from suzent.config.paths import (
-        rebuild_merged_skills_dir as rebuild_merged_skills_dir,
-    )
     from suzent.config.paths import sync_managed_skills_dirs as sync_managed_skills_dirs
 
 _PATHS = (
@@ -63,7 +60,6 @@ _PATHS = (
     "get_external_skill_sources",
     "migrate_legacy_user_skills_dir",
     "sync_managed_skills_dirs",
-    "rebuild_merged_skills_dir",
     "ensure_skills_synced",
 )
 

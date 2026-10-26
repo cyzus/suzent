@@ -28,13 +28,13 @@ user_id: default-user
 The extraction model runs every few exchanges, so a small fast model is the right choice
 here. Leave it unset to use the default chat model.
 
-These settings change *how* memory works. To change *what* Suzent remembers, edit
-the notes in `MEMORY.md` instead; see
-[MEMORY.md is half yours](https://suzent.com/docs/features/memory#memorymd-is-half-yours).
+These settings change *how* memory works. To change *what* Suzent remembers, tell
+it in a conversation or edit the notebook pages; see
+[Managing what's remembered](https://suzent.com/docs/features/memory#managing-whats-remembered).
 
 ## Consolidation
 
-How often the dream runs, and how much it takes on. See
+How often the organizer runs, and how much it takes on. See
 [How memory is tidied](./README.md#how-memory-is-tidied).
 
 ```yaml
@@ -46,9 +46,15 @@ memory_consolidation_min_confirmations: 25    # Repeated facts that justify a ru
 memory_consolidation_max_days: 14             # Days of logs read in one run
 memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
 memory_consolidation_timeout_seconds: 600
-memory_consolidation_model: null              # Legacy; set the Dream role in Settings → Model Roles instead
-memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
+memory_consolidation_model: null              # Legacy; set the Memory organizer role in Settings → Model Roles instead
+memory_map_max_lines: 30                      # Size cap on the MEMORY.md map
 ```
+
+## How facts are picked out
+
+There is nothing to set here. Facts about you are saved only when they are in your own
+words, lessons only when the chat shows both the failure and the fix, and facts from
+files or pages only with their source.
 
 The notebook audit runs on its own, slower schedule, and only once consolidation is
 caught up:
@@ -89,18 +95,12 @@ Changing the embedding model means re-embedding everything you have stored: one 
 chunk across your whole memory. It is not a free switch, and the dimension has to change
 with it.
 
-## Sessions and transcripts
+## Sessions
 
 ```yaml
 session_daily_reset_hour: 0        # UTC hour for a daily reset (0 = off)
 session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
-jsonl_transcripts_enabled: true    # Keep a transcript per session
-transcript_indexing_enabled: false # Also make transcripts searchable
 ```
-
-Transcript indexing lets you search across past conversations, not just extracted facts.
-It costs storage and embedding calls proportional to everything you say, which is why it
-is off by default.
 
 ## Context window
 

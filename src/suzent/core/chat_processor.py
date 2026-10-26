@@ -28,6 +28,7 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 from pydantic_ai.tools import ToolDenied
 
+from suzent.core.chat_mentions import build_chat_mention_context
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
@@ -37,9 +38,14 @@ from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
+from suzent.core.heartbeat import is_quiet_reply
+from suzent.core.prompt_cache import record_turn_config
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.streaming import remove_pending_approvals, stream_agent_responses
-from suzent.memory import AgentAction
+from suzent.streaming import (
+    MODEL_STALLED_CODE,
+    remove_pending_approvals,
+    stream_agent_responses,
+)
 from suzent.database import (
     get_database,
     PostProcessStep,
@@ -382,28 +388,26 @@ def _cancel_unprocessed_tool_calls(
     if not pending_ids:
         return messages, set()
 
-    pending_calls: dict[str, ToolCallPart] = {}
+    denial = f"The tool call was denied because {reason}."
+    repaired: list[Any] = []
+    cancelled_ids: set[str] = set()
     for message in messages:
+        repaired.append(message)
         if not isinstance(message, ModelResponse):
             continue
-        for part in message.parts:
-            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids:
-                pending_calls[part.tool_call_id] = part
-
-    cancelled_ids = set(pending_calls)
-    if not cancelled_ids:
-        return messages, set()
-
-    denial = f"The tool call was denied because {reason}."
-    denial_parts = [
-        ToolReturnPart(
-            tool_name=pending_calls[tool_call_id].tool_name,
-            tool_call_id=tool_call_id,
-            content=ToolDenied(message=denial),
-        )
-        for tool_call_id in sorted(cancelled_ids)
-    ]
-    return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
+        denial_parts = [
+            ToolReturnPart(
+                tool_name=part.tool_name,
+                tool_call_id=part.tool_call_id,
+                content=ToolDenied(message=denial),
+            )
+            for part in message.parts
+            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids
+        ]
+        if denial_parts:
+            cancelled_ids.update(part.tool_call_id for part in denial_parts)
+            repaired.append(ModelRequest(parts=denial_parts))
+    return repaired, cancelled_ids
 
 
 def _expire_display_tool_parts(
@@ -482,6 +486,19 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
     return messages
 
 
+def _history_to_snapshot(messages: list, full_response: str, deps: Any) -> list:
+    """The history a finished turn persists.
+
+    A rolled-back heartbeat has nothing to preserve: re-attaching its
+    HEARTBEAT_OK here is what used to leak it into the transcript.
+    """
+    if getattr(deps, "is_suspended", False) or getattr(
+        deps, "heartbeat_rolled_back", False
+    ):
+        return messages
+    return _preserve_partial_response(messages, full_response)
+
+
 def _is_denied_tool_return(content: Any) -> bool:
     if isinstance(content, ToolDenied):
         return True
@@ -495,11 +512,11 @@ def _is_denied_tool_return(content: Any) -> bool:
 
 # User-facing notice when image(s) were dropped because the active model lacks
 # vision. Deliberately free of tool jargon — the directive to actually call
-# analyze_image goes to the model via a hidden <system-reminder> built from
+# analyze_visual goes to the model via a hidden <system-reminder> built from
 # ``STRIPPED_IMAGE_REMINDER_TEMPLATE`` (in suzent.prompts).
 STRIPPED_IMAGE_NOTICE_TEMPLATE = """\
 The current model ({model_id}) can't read images. {count} image(s) were not \
-sent, but the assistant can still inspect them with analyze_image."""
+sent, but the assistant can still inspect them with analyze_visual."""
 
 ATTACHMENT_PROCESSING_ERROR_NOTICE = (
     "Failed to process one or more attachments. Please upload them again."
@@ -553,9 +570,20 @@ def build_steering_text(steer_message: str) -> str:
     sanitized, which is why the wrapping lives in one testable function rather
     than inline at the call site.
     """
-    from suzent.core.system_reminder import sanitize_untrusted_text
+    from suzent.core.system_reminder import (
+        sanitize_untrusted_text,
+        wrap_in_system_reminder,
+    )
+    from suzent.prompts import STEER_REMINDER
 
-    return f"[User interrupted to redirect]: {sanitize_untrusted_text(steer_message)}"
+    return (
+        f"{wrap_in_system_reminder(STEER_REMINDER)}\n"
+        f"{sanitize_untrusted_text(steer_message).strip()}"
+    )
+
+
+class ModelStalledError(RuntimeError):
+    """The model went quiet or dropped the connection before the turn ended."""
 
 
 class ChatProcessor:
@@ -599,6 +627,15 @@ class ChatProcessor:
         except Exception as e:
             logger.warning(f"Error waiting for previous post-processing: {e}")
 
+        status_turn: Optional[int] = None
+        if not is_heartbeat:
+            from suzent.core.chat_status import begin_turn
+
+            try:
+                status_turn = begin_turn(chat_id)
+            except Exception as e:
+                logger.debug(f"[chat_status] reopen skipped for {chat_id}: {e}")
+
         # 1. Configuration
         logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
         config = {
@@ -608,6 +645,10 @@ class ChatProcessor:
         }
         if config_override:
             config.update(config_override)
+
+        from suzent.core.focal_agent import apply_focal_tool_policy
+
+        apply_focal_tool_policy(config, chat_id)
 
         # RepoContext is constructed with static filesystem roots, so include the
         # resolved project/working-tree identity in the stable agent config. This
@@ -671,6 +712,7 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
             raise
+        record_turn_config(chat_id, config, getattr(agent, "_model_id", None))
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
@@ -749,7 +791,7 @@ class ChatProcessor:
         agent_images = []
         attachment_context = ""
         # Names of images stripped because the active model lacks vision. They
-        # stay on disk and readable via analyze_image (a separate vision-role
+        # stay on disk and readable via analyze_visual (a separate vision-role
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
         stripped_image_paths: list[str] = []
@@ -819,7 +861,7 @@ class ChatProcessor:
                         # Active model can't read images — don't ship raw bytes
                         # (the provider would reject them). Keep the file on disk
                         # and record the virtual path so we can tell the model, via
-                        # a hidden system reminder, to inspect it with analyze_image
+                        # a hidden system reminder, to inspect it with analyze_visual
                         # (the directive must not appear in the user's bubble).
                         name = result.get("filename") or result["agent_path"]
                         stripped_image_names.append(name)
@@ -871,6 +913,8 @@ class ChatProcessor:
                 ):
                     yield chunk
                 return
+
+        attachment_context += build_chat_mention_context(message_content or "")
 
         if file_mentions:
             attachment_context += _build_file_mention_context(file_mentions)
@@ -1019,11 +1063,6 @@ class ChatProcessor:
                     chat_id,
                 )
 
-        # Calls already answered before this turn (abandoned ones were just given a
-        # result above); post-processing reports only the rest, since the snapshot
-        # it receives is the whole (compacted) history.
-        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
-
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
@@ -1077,9 +1116,14 @@ class ChatProcessor:
         )
 
         pending_trigger_rows: list[dict] = []
+        # Trigger rows written to the display log before the run starts. The
+        # frontend reloads that log the moment the stream opens, which is before
+        # they land, so the stream itself has to announce them.
+        presaved_triggers: list[str] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
         stream_run_id = str(uuid.uuid4())
+        deps.display_run_id = stream_run_id
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
             # The constituents, not a join. build_combined_reminder has to match
@@ -1091,7 +1135,7 @@ class ChatProcessor:
         # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
         # hallucinate "this scheduled task already fired, skip it" and no-op.
         # A non-vision model can't see the stripped image(s); tell it (invisibly
-        # to the user) to inspect them via analyze_image. Merge into the adhoc
+        # to the user) to inspect them via analyze_visual. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
@@ -1128,6 +1172,7 @@ class ChatProcessor:
                 parts=parts,
                 metadata={"context_sources": dict(deps.context_sources)},
             )
+            deps.turn_start_index = len(message_history)
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
@@ -1163,6 +1208,9 @@ class ChatProcessor:
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
 
+            # A turn started by a hidden message (another agent's request, a
+            # wake-up) has nothing in the display log until it ends, so a session
+            # Regent started showed its reply with no sign of what was asked.
             if self._is_subagent_chat(chat_id):
                 await asyncio.to_thread(
                     _presave_turn_rows,
@@ -1170,6 +1218,17 @@ class ChatProcessor:
                     visible_prompt,
                     pending_trigger_rows,
                 )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
+            elif display_trigger and pending_trigger_rows:
+                # Revisioned, unlike the sub-agent path: a stateful chat's
+                # previous turn may still be finalizing, and would otherwise
+                # replace the display log and drop this row mid-stream.
+                await asyncio.to_thread(
+                    get_database().append_display_rows,
+                    chat_id,
+                    pending_trigger_rows,
+                )
+                presaved_triggers = [row["content"] for row in pending_trigger_rows]
 
         # Handle stateless resume
         deferred_tool_results = None
@@ -1416,6 +1475,7 @@ class ChatProcessor:
                 permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
                 run_id=stream_run_id,
+                presaved_triggers=presaved_triggers,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -1442,52 +1502,16 @@ class ChatProcessor:
                     snap = ft.make_snapshot()
                     if snap:
                         from suzent.core.file_tracker import FileTracker as _FT
-                        from suzent.database import (
-                            ChatModel,
-                            RetryCheckpointModel,
-                            get_database as _get_db,
-                        )
-                        from sqlmodel import Session
-                        from sqlalchemy.orm.attributes import flag_modified
+                        from suzent.database import get_database as _get_db
 
                         file_snapshot_json = _changed_file_snapshot(
                             _FT.snapshot_to_json(snap)
                         )
-
-                        def _commit_file_snapshot():
-                            _db = _get_db()
-                            with Session(_db.engine) as _sess:
-                                _ckpt = _sess.get(RetryCheckpointModel, chat_id)
-                                if _ckpt:
-                                    _ckpt.file_snapshot = file_snapshot_json
-                                    _ckpt.has_file_snapshot = True
-                                    flag_modified(_ckpt, "file_snapshot")
-                                _chat = _sess.get(ChatModel, chat_id)
-                                if _chat and file_snapshot_json:
-                                    display_messages = list(_chat.messages or [])
-                                    assistant_index = next(
-                                        (
-                                            index
-                                            for index in range(
-                                                len(display_messages) - 1, -1, -1
-                                            )
-                                            if isinstance(display_messages[index], dict)
-                                            and display_messages[index].get("role")
-                                            == "assistant"
-                                        ),
-                                        None,
-                                    )
-                                    if assistant_index is not None:
-                                        assistant = dict(
-                                            display_messages[assistant_index]
-                                        )
-                                        assistant["file_changes"] = file_snapshot_json
-                                        display_messages[assistant_index] = assistant
-                                        _chat.messages = display_messages
-                                        flag_modified(_chat, "messages")
-                                _sess.commit()
-
-                        await asyncio.to_thread(_commit_file_snapshot)
+                        await asyncio.to_thread(
+                            _get_db().record_turn_file_changes,
+                            chat_id,
+                            file_snapshot_json,
+                        )
             except Exception as _ft_fin_err:
                 logger.debug(
                     f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
@@ -1512,10 +1536,9 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
-                if not getattr(deps, "is_suspended", False):
-                    snapshot_messages = _preserve_partial_response(
-                        snapshot_messages, full_response
-                    )
+                snapshot_messages = _history_to_snapshot(
+                    snapshot_messages, full_response, deps
+                )
 
                 # Stateless chats never snapshot agent_state (see note above).
                 if not _stateless_chat:
@@ -1526,6 +1549,7 @@ class ChatProcessor:
                         tool_names=getattr(agent, "_tool_names", []),
                         append_display_messages=pending_trigger_rows,
                         draft_run_id=stream_run_id,
+                        streamed_message=getattr(deps, "streamed_message", None),
                     )
                     if (
                         retry_checkpoint_id is not None
@@ -1565,7 +1589,6 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
-                    prior_tool_call_ids=prior_tool_call_ids,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1634,6 +1657,20 @@ class ChatProcessor:
                 except Exception as e:
                     logger.debug(f"[goal] continuation scheduling skipped: {e}")
 
+            # 11. Read where the chat now stands for the user, off the hot path.
+            was_cancelled = bool(
+                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
+            )
+            if status_turn is not None and not stream_failed and not was_cancelled:
+                try:
+                    from suzent.core.chat_status import schedule_judgement
+
+                    await schedule_judgement(
+                        chat_id, message_content, full_response, status_turn
+                    )
+                except Exception as e:
+                    logger.debug(f"[chat_status] judging skipped for {chat_id}: {e}")
+
     async def _post_process_turn(
         self,
         chat_id: str,
@@ -1648,12 +1685,11 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
-        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> bool:
         """Background post-processing for a completed turn.
 
-        Runs the transcript write, memory extraction (scheduled independently),
-        and display rebuild + state persistence, tracking each step against the
+        Runs display rebuild + state persistence, then schedules memory
+        extraction independently, tracking each step against the
         post-process job. Designed to run as a background task so the SSE stream
         can close immediately while this finishes.
         """
@@ -1688,53 +1724,75 @@ class ChatProcessor:
                 f"History length: {msg_count}"
             )
 
-            # B1: Write JSONL transcript
+            is_suspended = getattr(deps, "is_suspended", False)
+            compressed_messages = last_messages
+
             try:
-                # System/forked turns (dream, sub-agents) don't get transcripts
-                # written/indexed — keeps their chatter out of memory (NEW-7).
-                if not self._is_system_chat(chat_id):
-                    await self._write_transcript(
-                        chat_id,
-                        message_content,
-                        full_response,
-                        last_messages,
-                        prior_tool_call_ids,
+                if is_suspended:
+                    logger.debug(
+                        f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
+                    )
+                    db.update_job_step_status(
+                        job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                     )
                 db.update_job_step_status(
-                    job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
+                    job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
                 )
+            except Exception:
+                pass
+
+            persisted = False
+            # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
+            try:
+                persisted = await self._persist_state(
+                    chat_id=chat_id,
+                    messages=compressed_messages,
+                    model_id=getattr(agent, "_model_id", None),
+                    tool_names=getattr(agent, "_tool_names", []),
+                    user_content=message_content,
+                    agent_content=full_response,
+                    skip_messages=is_heartbeat,
+                    expected_revision=snapshot_revision,
+                    postprocess_job_id=postprocess_job_id,
+                    inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
+                    file_snapshot=file_snapshot,
+                    display_run_id=getattr(deps, "display_run_id", None),
+                    streamed_message=getattr(deps, "streamed_message", None),
+                )
+                if not persisted:
+                    db.finalize_postprocess_job(
+                        job_id, PostProcessOutcome.SKIPPED_STALE
+                    )
+                    return False
+                db.update_job_step_status(
+                    job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
+                )
+                db.update_job_step_status(
+                    job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
+                )
+
             except Exception as e:
-                logger.error(f"Transcript writing failed: {e}")
+                logger.error(f"State persistence failed: {e}")
                 db.update_job_step_status(
                     job_id,
-                    PostProcessStep.TRANSCRIPT,
+                    PostProcessStep.PERSIST,
+                    StepStatus.FAILED,
+                    error=str(e),
+                )
+                db.update_job_step_status(
+                    job_id,
+                    PostProcessStep.DISPLAY,
                     StepStatus.FAILED,
                     error=str(e),
                 )
 
-            is_suspended = getattr(deps, "is_suspended", False)
-            compressed_messages = last_messages
-
-            if is_suspended:
-                logger.debug(
-                    f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
-                )
-                try:
-                    db.update_job_step_status(
-                        job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
-                    )
-                    db.update_job_step_status(
-                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                    )
-                except Exception:
-                    pass
-            else:
-                # B2: Memory Extraction (independent; never blocks display/state persistence)
+            if persisted and not is_suspended:
+                # B2: Memory extraction reads the turn from the chat log just written,
+                # in the background so it never holds up the turn.
                 async def _run_memory_extraction() -> None:
                     memory_db = get_database()
                     try:
-                        # The turn is already in the transcript (B1); the queue
-                        # decides whether this is the moment to extract it.
+                        # The queue decides whether this is the moment to extract.
                         if not self._is_system_chat(chat_id):
                             from suzent.memory.extraction_queue import (
                                 get_extraction_queue,
@@ -1780,55 +1838,6 @@ class ChatProcessor:
                         StepStatus.FAILED,
                         error=str(e),
                     )
-                try:
-                    db.update_job_step_status(
-                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                    )
-                except Exception:
-                    pass
-
-            persisted = False
-            # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
-            try:
-                persisted = await self._persist_state(
-                    chat_id=chat_id,
-                    messages=compressed_messages,
-                    model_id=getattr(agent, "_model_id", None),
-                    tool_names=getattr(agent, "_tool_names", []),
-                    user_content=message_content,
-                    agent_content=full_response,
-                    skip_messages=is_heartbeat,
-                    expected_revision=snapshot_revision,
-                    postprocess_job_id=postprocess_job_id,
-                    inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
-                    file_snapshot=file_snapshot,
-                )
-                if not persisted:
-                    db.finalize_postprocess_job(
-                        job_id, PostProcessOutcome.SKIPPED_STALE
-                    )
-                    return False
-                db.update_job_step_status(
-                    job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
-                )
-                db.update_job_step_status(
-                    job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
-                )
-
-            except Exception as e:
-                logger.error(f"State persistence failed: {e}")
-                db.update_job_step_status(
-                    job_id,
-                    PostProcessStep.PERSIST,
-                    StepStatus.FAILED,
-                    error=str(e),
-                )
-                db.update_job_step_status(
-                    job_id,
-                    PostProcessStep.DISPLAY,
-                    StepStatus.FAILED,
-                    error=str(e),
-                )
 
             logger.info(
                 f"[ChatProcessor] Background post-processing complete for {chat_id}"
@@ -1991,7 +2000,9 @@ class ChatProcessor:
 
         steering_text = build_steering_text(steer_message)
         message_history.append(
-            ModelRequest(parts=[make_user_prompt_part(steering_text)])
+            ModelRequest(
+                parts=[make_user_prompt_part(steering_text, runtime_authored=True)]
+            )
         )
 
         # 5. Start new agent run via process_turn with pre-built history
@@ -2044,6 +2055,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
@@ -2108,6 +2121,8 @@ class ChatProcessor:
                     if isinstance(event, TextChunk):
                         full_response += event.content
                     elif isinstance(event, ErrorEvent):
+                        if event.code == MODEL_STALLED_CODE:
+                            raise ModelStalledError(event.message)
                         raise RuntimeError(event.message)
         finally:
             if _stream_queue is not None:
@@ -2125,6 +2140,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         counts_toward_goal: Optional[bool] = None,
+        citation_sources_out: Optional[list[dict]] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -2152,6 +2168,7 @@ class ChatProcessor:
                 system_reminders=system_reminders,
                 incoming_citation_sources=incoming_citation_sources,
                 counts_toward_goal=counts_toward_goal,
+                citation_sources_out=citation_sources_out,
             )
 
     async def _process_upload_file(
@@ -2225,42 +2242,6 @@ class ChatProcessor:
         except Exception:
             return False
 
-    async def _write_transcript(
-        self,
-        chat_id: str,
-        user_content: str,
-        agent_content: str,
-        messages: list,
-        prior_tool_call_ids: frozenset[str] = frozenset(),
-    ) -> None:
-        """Write user and assistant turns to the JSONL transcript.
-
-        Memory extraction reads its turns from here, so the hidden reminder is
-        stripped (it carries recalled memories the extractor would store again)
-        and each tool call keeps the start of its result.
-        """
-        try:
-            from suzent.core.system_reminder import strip_system_reminders
-            from suzent.session.transcript import TranscriptManager
-
-            tm = TranscriptManager()
-            await tm.append_turn(chat_id, "user", strip_system_reminders(user_content))
-
-            actions = []
-            for action in _extract_tool_calls(
-                messages, exclude_ids=prior_tool_call_ids
-            ):
-                actions.append(
-                    {"tool": action.tool, "args": action.args, "output": action.output}
-                )
-
-            await tm.append_turn(
-                chat_id, "assistant", agent_content, actions=actions or None
-            )
-
-        except Exception as e:
-            logger.debug(f"Transcript write failed for {chat_id}: {e}")
-
     async def _persist_state(
         self,
         chat_id: str,
@@ -2274,6 +2255,8 @@ class ChatProcessor:
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
         file_snapshot: Optional[list[dict]] = None,
+        display_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> bool:
         """Persist conversation state to database."""
 
@@ -2303,6 +2286,19 @@ class ChatProcessor:
                 if skip_messages:
                     # Heartbeat: rollback already owns message state; only save agent_state.
                     target_messages = None
+                elif display_run_id is not None:
+                    from suzent.core.display_log import merge_streamed_message
+
+                    # The stream owns the visible timeline. Compaction, retries,
+                    # and model-history sanitizers cannot recreate that timeline.
+                    target_messages = list(chat_messages)
+                    if streamed_message is not None:
+                        target_messages = merge_streamed_message(
+                            target_messages, streamed_message
+                        )
+                        target_messages = _attach_latest_file_changes(
+                            target_messages, file_snapshot
+                        )
                 else:
                     # 100% Backend Authored: rebuild the complete display log from the full agent history
                     # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
@@ -2358,6 +2354,7 @@ class ChatProcessor:
                         agent_state=agent_state,
                         messages=target_messages,
                         update_lifecycle=True,
+                        count_unread=not is_quiet_reply(agent_content),
                     )
                     if not finalized:
                         logger.info(
@@ -2374,15 +2371,6 @@ class ChatProcessor:
                         db.update_chat(
                             chat_id, agent_state=agent_state, messages=target_messages
                         )
-
-                # Mirror state to inspectable JSON file
-                if agent_state:
-                    try:
-                        from suzent.session.state_mirror import StateMirror
-
-                        StateMirror().mirror_state(chat_id, agent_state)
-                    except Exception as mirror_err:
-                        logger.debug(f"State mirror failed: {mirror_err}")
 
                 logger.info(f"Persisted state for chat {chat_id}")
                 return True
@@ -2401,14 +2389,14 @@ class ChatProcessor:
         tool_names: List[str],
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
         draft_run_id: Optional[str] = None,
+        streamed_message: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
-        """Persist only agent_state for fast-follow turn recovery.
+        """Commit model state and captured display output for fast-follow recovery.
 
         This intentionally avoids display-log rebuilding, memory extraction,
         compression, and lifecycle field updates. The one exception is
-        *append_display_messages*: rows whose provenance cannot be recovered
-        later, so they have to become durable alongside the history rather than
-        waiting for post-processing that may never run.
+        *append_display_messages* and *streamed_message* become durable with
+        the history rather than waiting for post-processing that may never run.
         """
 
         def _sync() -> Optional[int]:
@@ -2421,6 +2409,7 @@ class ChatProcessor:
                 agent_state,
                 append_display_messages=append_display_messages,
                 draft_run_id=draft_run_id,
+                **({"streamed_message": streamed_message} if streamed_message else {}),
             )
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)
@@ -2521,62 +2510,6 @@ def _strip_attachment_annotations(text: str) -> str:
     return _REFERENCE_PATTERN.sub("", text).strip()
 
 
-def _answered_tool_call_ids(messages: list) -> frozenset[str]:
-    """IDs of the tool calls in ``messages`` that already have a result."""
-    from pydantic_ai.messages import ModelResponse, ToolCallPart
-
-    return frozenset(
-        call.tool_call_id
-        for msg in messages
-        if isinstance(msg, ModelResponse)
-        for call in msg.parts
-        if isinstance(call, ToolCallPart)
-    ) - _collect_unprocessed_tool_call_ids(messages)
-
-
-def _extract_tool_calls(
-    messages: list, exclude_ids: frozenset[str] = frozenset()
-) -> List[AgentAction]:
-    """Extract AgentAction records from pydantic-ai message history.
-
-    Calls whose ID is in *exclude_ids* are skipped.
-    """
-    from pydantic_ai.messages import (
-        ModelResponse,
-        ModelRequest,
-        ToolCallPart,
-        ToolReturnPart,
-    )
-
-    actions = []
-    # Build a map of tool_call_id → return content
-    returns: Dict[str, str] = {}
-    for msg in messages:
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart):
-                    returns[part.tool_call_id] = str(part.content)[:200]
-
-    # Extract tool calls
-    for msg in messages:
-        if isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if (
-                    isinstance(part, ToolCallPart)
-                    and part.tool_call_id not in exclude_ids
-                ):
-                    output = returns.get(part.tool_call_id, "")
-                    actions.append(
-                        AgentAction(
-                            tool=part.tool_name,
-                            args=part.args if isinstance(part.args, dict) else {},
-                            output=output,
-                        )
-                    )
-
-    return actions
-
-
 def _is_compaction_summary_message(msg: Any) -> bool:
     """True if `msg` is a synthetic compaction summary request/response.
 
@@ -2601,11 +2534,11 @@ def _agent_history_is_compacted(messages: list) -> bool:
     return False
 
 
-def _last_user_index(messages: list) -> int:
-    """Index of the last user-role row in ``messages`` (or -1)."""
+def _last_turn_boundary_index(messages: list) -> int:
+    """Index of the last user or system-triggered turn boundary (or -1)."""
     last = -1
     for idx, m in enumerate(messages):
-        if m.get("role") == "user":
+        if m.get("role") in {"user", "system_triggered"}:
             last = idx
     return last
 
@@ -2617,13 +2550,13 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
     history plus this turn's new output; the original earlier messages are gone
     from the LLM context but still live in the stored ``chat_messages``. We keep
     the stored rows *before* this turn as the base, then splice in the freshly
-    rebuilt current turn (from its last user message onward).
+    rebuilt current turn (from its last user or system-triggered message onward).
 
     Critically this must be idempotent: post-process can run more than once for a
     turn (retries, snapshot + finalize), and the turn's user row is pre-written to
     the display log at turn start. A naive ``stored + new_rows`` appends the
     assistant reply again on every pass, producing duplicate responses. Instead we
-    truncate the stored log at *its* last user row (this turn's pre-saved prompt)
+    truncate the stored log at *its* last turn boundary (this turn's pre-saved prompt)
     and replace everything from there with the rebuilt turn.
     """
     stored = list(chat_messages or [])
@@ -2635,16 +2568,37 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
         # least omits the synthetic summary rows.
         return rebuilt
 
-    # This turn's rows in the rebuild: from its last user message onward.
-    rb_user_idx = _last_user_index(rebuilt)
+    # This turn's rows in the rebuild: from its last user or system-triggered message onward.
+    rb_user_idx = _last_turn_boundary_index(rebuilt)
     turn_rows = rebuilt[rb_user_idx:] if rb_user_idx >= 0 else rebuilt
 
     # Base = stored rows before this turn. The turn's user prompt was pre-written
-    # to the display log, so the stored log's last user row IS this turn's prompt;
+    # to the display log, so the stored log's last turn boundary IS this turn's prompt;
     # drop it and anything after (a reply appended by an earlier persist pass) so
     # re-running yields the same result instead of appending duplicates.
-    st_user_idx = _last_user_index(stored)
+    st_user_idx = _last_turn_boundary_index(stored)
     base = stored[:st_user_idx] if st_user_idx >= 0 else stored
+
+    # Compaction can drop the current prompt from the agent history while tool
+    # execution continues. In that case the stored prompt is the only durable
+    # turn boundary; do not replace it with an older prompt or assistant row.
+    if st_user_idx >= 0 and (
+        rb_user_idx < 0
+        or rebuilt[rb_user_idx].get("role") != stored[st_user_idx].get("role")
+        or rebuilt[rb_user_idx].get("content") != stored[st_user_idx].get("content")
+    ):
+        turn_rows = list(rebuilt[rb_user_idx + 1 :] if rb_user_idx >= 0 else rebuilt)
+        # A terminal answer from a history that no longer contains this prompt
+        # cannot be attributed to the current turn. Keep tool activity and
+        # progress, but do not present that answer as the turn's conclusion.
+        if (
+            turn_rows
+            and turn_rows[-1].get("role") == "assistant"
+            and turn_rows[-1].get("content")
+            and not turn_rows[-1].get("tool_calls")
+        ):
+            turn_rows.pop()
+        return base + [stored[st_user_idx]] + turn_rows
 
     return base + turn_rows
 
@@ -2954,6 +2908,10 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                             result.append(entry)
                             continue
                         if extract_system_reminder_content(stripped_attachments):
+                            continue
+                        # Empty text with no media: the "" prompt older resumes
+                        # sent after automatic tool approvals. Nobody wrote it.
+                        if isinstance(part.content, str):
                             continue
 
                     entry = {"role": "user", "content": clean_text}

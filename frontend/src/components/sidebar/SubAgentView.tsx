@@ -5,6 +5,7 @@
  * moment a run finishes; the /subagents and /chats fetches fill in the parts
  * the stream does not carry (the tool-call log, the final result text).
  */
+import { extractToolLog, type ToolLogEntry } from './subAgentToolLog';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   ArrowPathIcon,
@@ -13,6 +14,8 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
+import { collectRunTimings, recordedWorkedSeconds } from '../../lib/runTiming';
+import type { Message } from '../../types/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
 import { AgentAvatar } from './subAgentDisplay';
@@ -51,12 +54,6 @@ interface SubAgentTask {
   worktree_branch?: string | null;
 }
 
-interface ToolLogEntry {
-  toolName: string;
-  args: string;
-  output?: string;
-}
-
 interface SubAgentViewProps {
   taskId: string;
   onClose?: () => void;
@@ -67,7 +64,10 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
   const ms = end - new Date(startedAt).getTime();
   if (ms < 0) return '';
-  const s = Math.floor(ms / 1000);
+  return formatSeconds(Math.floor(ms / 1000));
+}
+
+function formatSeconds(s: number): string {
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -76,35 +76,14 @@ function elapsed(startedAt: string | null): string {
   return formatDuration(startedAt, null);
 }
 
-/** Parse tool call log from /chats/{chatId} messages */
-function extractToolLog(messages: any[]): ToolLogEntry[] {
-  const entries: ToolLogEntry[] = [];
-  const outputs: Record<string, string> = {};
-
-  for (const msg of messages) {
-    if (msg.role === 'tool' && msg.tool_call_id) {
-      outputs[msg.tool_call_id] = msg.content ?? '';
-    }
-  }
-  for (const msg of messages) {
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
-      for (const tc of msg.tool_calls) {
-        entries.push({
-          toolName: tc.function?.name ?? 'unknown',
-          args: tc.function?.arguments ?? '',
-          output: outputs[tc.id],
-        });
-      }
-    }
-  }
-  return entries;
-}
-
 export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) => {
   const { t } = useI18n();
   const { taskStates } = useSubAgentStatus();
   const [fetchedTask, setFetchedTask] = useState<SubAgentTask | null>(null);
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
+  const [workedSeconds, setWorkedSeconds] = useState<number>();
+  const [hasRecordedTiming, setHasRecordedTiming] = useState(false);
+  const chatMessagesRef = useRef<Message[]>([]);
   const [elapsedTime, setElapsedTime] = useState('');
   const [stopping, setStopping] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -130,6 +109,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       const res = await fetch(`${getApiBase()}/chats/${chatId}`);
       if (!res.ok) return;
       const data = await res.json();
+      chatMessagesRef.current = data.messages ?? [];
+      setHasRecordedTiming(collectRunTimings(chatMessagesRef.current).length > 0);
+      setWorkedSeconds(recordedWorkedSeconds(data.messages ?? []));
       const entries = extractToolLog(data.messages ?? []);
       if (entries.length > 0) setToolLog(entries);
     } catch {
@@ -166,6 +148,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   useEffect(() => {
     setFetchedTask(null);
     setToolLog([]);
+    setWorkedSeconds(undefined);
+    setHasRecordedTiming(false);
+    chatMessagesRef.current = [];
     taskRef.current = null;
 
     fetchTask();
@@ -184,7 +169,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
     elapsedRef.current = setInterval(() => {
       const current = taskRef.current;
       if (current?.started_at && isSubAgentActive(current.status)) {
-        setElapsedTime(elapsed(current.started_at));
+        const seconds = recordedWorkedSeconds(chatMessagesRef.current, Date.now());
+        setElapsedTime(
+          seconds !== undefined
+            ? formatSeconds(seconds)
+            : collectRunTimings(chatMessagesRef.current).length
+              ? ''
+              : elapsed(current.started_at)
+        );
       }
     }, 1000);
 
@@ -207,7 +199,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       intervalRef.current = null;
     }
     if (task?.started_at) {
-      setElapsedTime(elapsed(task.started_at));
+      const seconds = recordedWorkedSeconds(chatMessagesRef.current, Date.now());
+      setElapsedTime(
+        seconds !== undefined
+          ? formatSeconds(seconds)
+          : collectRunTimings(chatMessagesRef.current).length
+            ? ''
+            : elapsed(task.started_at)
+      );
     }
   }, [task?.status]);
 
@@ -216,13 +215,20 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   // child's bus subscription open so a redirect sent from this panel still
   // learns when the run picked it up.
   useSubAgentActivity(task?.chat_id, isRunning);
-  const duration = task ? formatDuration(task.started_at, task.finished_at) : '';
+  const duration =
+    workedSeconds !== undefined
+      ? formatSeconds(workedSeconds)
+      : hasRecordedTiming
+        ? ''
+        : task
+          ? formatDuration(task.started_at, task.finished_at)
+          : '';
   const outcomeText = task?.status === 'completed' ? task.result_summary : task?.error;
 
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
-      <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
+      <div className="flex items-start justify-between px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
           <AgentAvatar model={task?.model_override} status={task?.status} />
           <div className="min-w-0">

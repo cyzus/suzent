@@ -1,6 +1,7 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod auto_update;
 mod backend;
 mod notifications;
 
@@ -155,12 +156,48 @@ fn start_update_and_restart(
     }
 
     spawn_update_script(&script)?;
+    auto_update::skip_on_exit();
 
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(250));
         app_handle.exit(0);
     });
 
+    Ok(())
+}
+
+#[tauri::command]
+fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    window
+        .set_decorations(enabled)
+        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        let style = if enabled {
+            tauri::TitleBarStyle::Overlay
+        } else {
+            tauri::TitleBarStyle::Visible
+        };
+        // On macOS the decorations change lands asynchronously and rebuilds
+        // the style mask without the full-size content flag. Set straight
+        // away, the title bar style is applied first and then wiped, and the
+        // web content sits a title bar lower than the page thinks, so every
+        // click lands off the pointer (tauri#10225). Apply it afterwards.
+        let styled = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            if let Err(error) = styled.set_title_bar_style(style) {
+                eprintln!("Could not restore the title bar style: {error}");
+            }
+        });
+        window
+            .set_title(if enabled {
+                ""
+            } else {
+                "SUZENT - Your Personal Agent"
+            })
+            .map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
@@ -176,12 +213,43 @@ fn restart_app(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(
         }
     }
 
+    auto_update::skip_on_exit();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(250));
         app_handle.restart();
     });
 
     Ok(())
+}
+
+#[tauri::command]
+fn get_auto_update_enabled() -> bool {
+    auto_update::enabled(&backend::find_install_workspace_dir())
+}
+
+#[tauri::command]
+fn set_auto_update_enabled(enabled: bool) -> Result<(), String> {
+    auto_update::set_enabled(&backend::find_install_workspace_dir(), enabled)
+}
+
+/// Installs a staged release the previous exit did not get to, before the
+/// backend starts from the old version. Returns whether the app is handing
+/// over to the updater, which relaunches it.
+fn apply_staged_update_on_start() -> bool {
+    let root = backend::find_install_workspace_dir();
+    let Some(tag) = auto_update::pending(&root) else {
+        return false;
+    };
+    let Ok(relaunch) = find_relaunch_exe(&root) else {
+        return false;
+    };
+    match auto_update::spawn(&root, &tag, Some(&relaunch)) {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!("Could not install staged update {tag}: {error}");
+            false
+        }
+    }
 }
 
 #[tauri::command]
@@ -799,6 +867,11 @@ fn main() {
             });
 
             let status = build_bootstrap_status(Some(app.handle()));
+            if !status.required && apply_staged_update_on_start() {
+                auto_update::skip_on_exit();
+                app.handle().exit(0);
+                return Ok(());
+            }
             if status.required {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
@@ -816,6 +889,7 @@ fn main() {
             check_for_update,
             start_update_and_restart,
             restart_app,
+            set_startup_window_controls,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,
@@ -826,14 +900,29 @@ fn main() {
             set_service_enabled,
             restart_background_service,
             get_service_log_path,
+            get_auto_update_enabled,
+            set_auto_update_enabled,
             notifications::show_notification
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if auto_update::skipped_on_exit() {
+                    return;
+                }
+                let root = backend::find_install_workspace_dir();
+                if let Some(tag) = auto_update::pending(&root) {
+                    if let Err(error) = auto_update::spawn(&root, &tag, None) {
+                        eprintln!("Could not install staged update {tag}: {error}");
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(debug_assertions)]

@@ -1,14 +1,14 @@
 import React from 'react';
 import { BrutalButton } from '../BrutalButton';
 
-type IconTone = 'blue' | 'green' | 'yellow' | 'black' | 'neutral';
+type IconTone = 'blue' | 'green' | 'black' | 'neutral';
 
 const ICON_TONE: Record<IconTone, string> = {
-  blue: 'bg-brutal-blue text-white',
-  green: 'bg-brutal-green text-brutal-black',
-  yellow: 'bg-brutal-yellow text-brutal-black',
+  blue: 'bg-brutal-blue text-white dark:bg-blue-400/10 dark:text-blue-300 dark:border-blue-400/25',
+  green:
+    'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25',
   black: 'bg-brutal-black text-white',
-  neutral: 'bg-neutral-400 text-white',
+  neutral: 'bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white',
 };
 
 interface SectionCardHeaderProps {
@@ -138,6 +138,21 @@ interface SettingsPageProps {
   children: React.ReactNode;
 }
 
+export function SettingsHelp({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+      <summary className="cursor-pointer font-bold">{title}</summary>
+      <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-300">{children}</div>
+    </details>
+  );
+}
+
 /** Consistent vertical rhythm and bottom breathing room for every settings tab. */
 export function SettingsPage({ className = '', children }: SettingsPageProps): React.ReactElement {
   return <div className={`space-y-4 pb-3 ${className}`}>{children}</div>;
@@ -206,11 +221,14 @@ export function SettingsGrid({
 type BadgeTone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
 
 const BADGE_TONE: Record<BadgeTone, string> = {
-  green: 'bg-brutal-green text-brutal-black',
-  blue: 'bg-brutal-blue text-white',
-  amber: 'bg-amber-400 text-brutal-black',
-  red: 'bg-brutal-red text-white',
-  neutral: 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white',
+  green:
+    'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25',
+  blue: 'bg-brutal-blue text-white dark:bg-blue-400/10 dark:text-blue-300 dark:border-blue-400/25',
+  amber:
+    'bg-amber-400 text-brutal-black dark:bg-amber-400/10 dark:text-amber-200 dark:border-amber-400/25',
+  red: 'bg-brutal-red text-white dark:bg-red-400/10 dark:text-red-300 dark:border-red-400/25',
+  neutral:
+    'bg-neutral-100 text-brutal-black dark:bg-white/5 dark:text-zinc-300 dark:border-white/15',
 };
 
 interface BadgeProps {
@@ -262,7 +280,7 @@ export function SettingsListAction({
   let colorClasses = '';
   if (active) {
     colorClasses =
-      'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black dark:border-white';
+      'bg-brutal-black text-white border-brutal-black dark:bg-white/10 dark:text-zinc-100 dark:border-white/25';
   } else if (tone === 'blue') {
     colorClasses =
       'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-blue hover:text-brutal-blue dark:hover:border-blue-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20';
@@ -271,7 +289,7 @@ export function SettingsListAction({
       'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-red hover:text-brutal-red dark:hover:border-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20';
   } else {
     colorClasses =
-      'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
+      'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white/30 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
   }
 
   return (
@@ -291,7 +309,7 @@ interface SettingsListItemProps {
 
 /**
  * Common wrapper for list items in settings (MCP servers, Cron Jobs).
- * Applies the standard surface border, shadow, and subtle textured background.
+ * Applies an opaque, untextured surface with the standard border and shadow.
  */
 export function SettingsListItem({
   children,
@@ -299,9 +317,8 @@ export function SettingsListItem({
 }: SettingsListItemProps): React.ReactElement {
   return (
     <div
-      className={`group relative overflow-hidden border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900 ${className}`}
+      className={`group !animate-none relative overflow-hidden border-2 border-brutal-black bg-white text-neutral-900 shadow-brutal-sm dark:bg-zinc-900 dark:text-neutral-100 ${className}`}
     >
-      <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
       <div className="relative z-10 w-full h-full flex flex-col">{children}</div>
     </div>
   );

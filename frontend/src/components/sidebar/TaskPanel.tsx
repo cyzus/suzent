@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Goal, Task } from '../../types/api';
 import { useGoalTasks, type KanbanData } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
 import { ProjectKanbanView } from './ProjectKanbanView';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { GoalSummary } from './GoalSummary';
+import { ChatStatusBoard } from './ChatStatusBoard';
+import { readFocalProjectFilter, writeFocalProjectFilter } from '../../lib/focalAgent';
 
 interface TaskPanelProps {
   navigationError?: string | null;
@@ -16,6 +18,8 @@ interface TaskPanelProps {
   chatTitles?: Record<string, string>;
   onOpenTask?: (task: Task) => Promise<boolean>;
   onOpenChat?: (chatId: string) => void;
+  /** On Regent's chat the panel shows every project chat by where it stands for the user. */
+  focal?: boolean;
 }
 
 export function TaskPanel({
@@ -28,12 +32,21 @@ export function TaskPanel({
   chatTitles,
   onOpenTask,
   onOpenChat,
+  focal = false,
 }: TaskPanelProps): React.ReactElement {
   const { t } = useI18n();
   const { chatLoading, chatError, kanbanError, kanbanLoading, refresh, refreshKanban } =
     useGoalTasks();
-  const [scope, setScope] = useState<'chat' | 'project'>('chat');
+  const [scope, setScope] = useState<'chat' | 'project'>(focal ? 'project' : 'chat');
+  useEffect(() => {
+    setScope(focal ? 'project' : 'chat');
+  }, [focal]);
   const chatScope = scope === 'chat';
+  const [projectFilter, setProjectFilter] = useState<string>(() => readFocalProjectFilter() ?? '');
+  const chooseProject = (projectId: string): void => {
+    setProjectFilter(projectId);
+    writeFocalProjectFilter(projectId);
+  };
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
   const opening = useRef(false);
@@ -49,6 +62,17 @@ export function TaskPanel({
       setPendingTaskId(null);
     }
   };
+  if (focal) {
+    return (
+      <div className="task-panel h-full min-h-0" style={{ containerType: 'inline-size' }}>
+        <ChatStatusBoard
+          projectFilter={projectFilter}
+          onProjectFilter={chooseProject}
+          onOpenChat={onOpenChat}
+        />
+      </div>
+    );
+  }
   return (
     <div className="task-panel h-full min-h-0" style={{ containerType: 'inline-size' }}>
       <ProjectKanbanView

@@ -26,6 +26,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from suzent.config import CONFIG
+from suzent.core.focal_agent import (
+    FOCAL_CHAT_ID,
+    cancel_focal_wakeup,
+    focal_status,
+    focal_tools,
+    focal_wakeups,
+    get_or_create_focal_chat,
+)
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
@@ -419,7 +427,7 @@ async def chat(request: Request) -> StreamingResponse:
                             ).isoformat()
                             _chat.config.pop("heartbeat_last_result", None)
                             flag_modified(_chat, "config")
-                            _s.commit()
+                            db.commit_chat_changes(_s, [chat_id])
 
                 # Build prompt from file — frontend no longer needs to know the template.
                 from suzent.prompts import (
@@ -1182,6 +1190,8 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         db = get_database()
 
         chat = db.get_chat(chat_id)
+        if not chat and chat_id == FOCAL_CHAT_ID:
+            chat = get_or_create_focal_chat()
         if not chat:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
@@ -1190,6 +1200,15 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         )
         response_chat["projectId"] = db.get_chat_project_id(chat_id)
         if isinstance(response_chat.get("messages"), list):
+            from suzent.core.display_log import recover_logged_run_timing
+
+            chat_log = getattr(db, "chat_log", None)
+            if chat_log is not None:
+                response_chat["messages"] = await asyncio.to_thread(
+                    recover_logged_run_timing,
+                    response_chat["messages"],
+                    chat_log.events(chat_id),
+                )
             from suzent.core.chat_processor import (
                 _attach_latest_file_changes,
                 _preserve_citation_sources,
@@ -1269,6 +1288,65 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_focal_agent(request: Request) -> JSONResponse:
+    """Ensure the Focal Agent chat exists and return its presence telemetry."""
+    try:
+        get_or_create_focal_chat()
+        return JSONResponse(focal_status())
+    except Exception as e:
+        logger.error(f"Error in get_focal_agent: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_focal_panel(request: Request) -> JSONResponse:
+    """The Focal Agent's fixed tools and the wake-ups it has scheduled."""
+    try:
+        get_or_create_focal_chat()
+        return JSONResponse({"tools": focal_tools(), "wakeups": focal_wakeups()})
+    except Exception as e:
+        logger.error(f"Error in get_focal_panel: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_chat_states(request: Request) -> JSONResponse:
+    """Chats by where they stand for the user, for Regent's board."""
+    from suzent.core.chat_status import count_states, list_chat_states
+
+    try:
+        rows = list_chat_states(
+            request.query_params.get("project_id") or None,
+            request.query_params.get("chat_id") or None,
+        )
+        return JSONResponse({"chats": rows, "counts": count_states(rows)})
+    except Exception as e:
+        logger.error(f"Error in get_chat_states: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def set_chat_resolved(request: Request) -> JSONResponse:
+    """Resolve a chat for the user, or reopen it. Body: ``{"resolved": bool}``."""
+    from suzent.core.chat_status import set_resolved
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get("resolved"), bool):
+        return JSONResponse(
+            {"error": "resolved must be true or false"}, status_code=400
+        )
+    if not set_resolved(request.path_params["chat_id"], body["resolved"]):
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+async def delete_focal_wakeup(request: Request) -> JSONResponse:
+    """Cancel one of the Focal Agent's wake-ups."""
+    if not cancel_focal_wakeup(int(request.path_params["job_id"])):
+        return JSONResponse({"error": "Wake-up not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
 async def create_chat(request: Request) -> JSONResponse:
     """Create a new chat. Optional ``project_id`` body field assigns to a project."""
     try:
@@ -1287,13 +1365,9 @@ async def create_chat(request: Request) -> JSONResponse:
         # explicit non-default mode. The frontend store always sends "default",
         # so treat that as "unset" and upgrade it to the user's preference.
         if isinstance(config, dict):
-            requested_mode = str(config.get("permission_mode") or "").strip().lower()
-            if requested_mode in ("", "default"):
-                default_mode = str(
-                    getattr(CONFIG, "default_permission_mode", "default") or "default"
-                )
-                if default_mode in _PERMISSION_MODES:
-                    config["permission_mode"] = default_mode
+            from suzent.permissions.context import seed_default_permission_mode
+
+            seed_default_permission_mode(config)
 
         db = get_database()
         chat_id = db.create_chat(title, config, messages, project_id=project_id)
@@ -1603,8 +1677,3 @@ async def steer_chat(request: Request) -> StreamingResponse:
     except Exception as e:
         logger.error(f"Error handling steer request: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-async def approve_tool(request: Request) -> JSONResponse:
-    """Legacy endpoint. Approvals are now passed via /chat with resume_approvals."""
-    return JSONResponse({"status": "resolved", "approved": True})

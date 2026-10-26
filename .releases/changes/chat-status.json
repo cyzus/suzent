@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Project conversations now track whether they are waiting on you, running, idle or resolved: after each reply the Decision model notes whether the conversation needs you and writes a one-line summary of where it stands."
+}

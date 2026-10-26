@@ -41,7 +41,7 @@ _SUBAGENT_PROFILES: dict[SubagentType, list[str]] = {
     "explore": ["GlobTool", "GrepTool", "ReadFileTool"],
     "plan": ["GlobTool", "GrepTool", "ReadFileTool", "WebSearchTool", "WebpageTool"],
     "write": ["ReadFileTool", "WriteFileTool", "EditFileTool", "GlobTool", "GrepTool"],
-    "verify": ["RunCommandTool"],
+    "verify": ["RunCommandTool", "ReadFileTool", "GlobTool", "GrepTool"],
     "web": ["WebSearchTool", "WebpageTool"],
 }
 
@@ -57,21 +57,42 @@ class AgentTool(Tool):
     session_guidance: str = (
         "## AgentTool — When and How to Delegate\n"
         "\n"
-        "### When to spawn a sub-agent (use proactively)\n"
-        "- **explore**: when you need to find files by pattern, search code for keywords, or answer "
-        "questions about a codebase — especially when a simple search might take more than 3 tries. "
-        "Keeps raw search output out of your context window.\n"
-        "- **plan**: when a task requires designing an implementation strategy, identifying critical "
-        "files, or weighing architectural trade-offs before writing any code.\n"
+        "### External ACP agents — discover, start, continue\n"
+        "Use ACP when the user requests a configured external coding agent, such as Codex "
+        "or Claude Code. Use native profiles for Suzent helpers.\n"
+        "1. Call agent_list(status='acp') to discover exact acp_agent_id values and installation "
+        "status. Installed does not guarantee authentication or a successful handshake.\n"
+        "2. Start with agent(description='Complete task instructions', runtime='acp', "
+        "acp_agent_id='<listed ID>', run_in_background=True). Supply cwd when needed. "
+        "ACP uses its own tools and model: omit subagent_type, tools_allowed, and tools_denied. "
+        "A parent chat's denied tools can prevent ACP delegation.\n"
+        "3. Continue with agent_send(agent_id='<returned task ID>', message='Next instructions'). "
+        "For existing conversations, discover session agent_id values with "
+        "agent_list(status='recent'). Use wait=True for a direct reply. Background sub-agent "
+        "results wake the parent automatically.\n"
+        "acp_agent_id selects a configured executable; acp_session_id is an optional protocol "
+        "session ID for explicit resume when starting a task; agent_send.agent_id identifies "
+        "a Suzent chat or sub-agent task. Never interchange these IDs.\n"
+        "\n"
+        "### When to spawn a sub-agent\n"
+        "Keep connected research, planning, and execution in your own loop so you can use "
+        "what you learn in later steps. Load relevant skills and tools as needed. Delegate "
+        "when work is independent and can run in parallel, needs an isolated workspace or "
+        "fresh review, or would otherwise overwhelm your context.\n"
+        "- **explore**: for a bounded code search whose detailed results you will not need "
+        "for subsequent decisions. Do ordinary code searches yourself.\n"
+        "- **plan**: for an independent second opinion on a complex design. Plan work "
+        "you will implement in your own loop.\n"
         "- **write**: when file editing work is independent of your current turn and can run in "
         "parallel (run_in_background=True), or when you want changes isolated in a worktree.\n"
-        "- **verify**: how you satisfy the Verification Contract. That contract defines "
-        "when it is required and what verdict you need; this is the tool for it.\n"
-        "- **web**: when you need external information that would clutter your context with raw results.\n"
-        "- **general (no subagent_type)**: for any complex multi-step task where the raw tool output "
-        "would fill your context with content you won't need again.\n"
+        "- **verify**: for an independent review of high-risk or coupled changes; "
+        "run focused checks yourself for smaller changes.\n"
+        "- **web**: for independent research with a compact result; keep research "
+        "you need to reason over in your own context.\n"
+        "- **general (no subagent_type)**: for a bounded independent task with "
+        "a clear result to return.\n"
         "\n"
-        "### Parallelism — your most powerful lever\n"
+        "### Parallelism\n"
         "Independent sub-agents can run simultaneously. When multiple research angles or tasks "
         "don't depend on each other, spawn them all in the SAME turn with run_in_background=True. "
         "You will be notified as each one finishes.\n"
@@ -79,6 +100,14 @@ class AgentTool(Tool):
         "a bounded visible transcript, agent_send for durable cross-session messaging, and "
         "agent_stop to cancel work that is no longer needed. Background sub-agent results "
         "wake this conversation automatically.\n"
+        "\n"
+        "### Follow-ups — keep talking to the same sub-agent\n"
+        "A finished sub-agent keeps everything it read and did. To correct its work, ask a "
+        "question about it, or hand it the next step of the same job, send it a message with "
+        "agent_send (agent_id = its task ID) instead of spawning a new one that starts from "
+        "nothing. Its reply wakes you like its first result did; pass wait=True to get the "
+        "reply as the tool result instead. Spawn a new sub-agent only for a separate task or "
+        "a different tool profile.\n"
         "\n"
         "### Tool selection\n"
         "1. **subagent_type** (easiest): use a preset profile (explore / plan / write / verify / web)\n"
@@ -152,11 +181,13 @@ class AgentTool(Tool):
             Optional[str],
             Field(
                 description=(
+                    "Native execution only; omit when runtime='acp'. "
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
                     "Invalid or disabled IDs are rejected instead of silently falling back. "
-                    "With inherit_context it defaults to your current model, which reuses "
-                    "the cached conversation prefix."
+                    "Defaults to your current model. Pick another only for independent "
+                    "work, such as a cheaper model for broad searches or a different "
+                    "model for a second opinion."
                 ),
             ),
         ] = None,
@@ -199,12 +230,14 @@ class AgentTool(Tool):
         acp_agent_id: Annotated[
             Optional[str],
             Field(
-                description="ACP registry agent id; required when runtime='acp'.",
+                description="Exact acp_agent_id from agent_list(status='acp'); required for runtime='acp'. Not a chat or task ID.",
             ),
         ] = None,
         acp_session_id: Annotated[
             Optional[str],
-            Field(description="Optional ACP session id to resume."),
+            Field(
+                description="Optional ACP protocol session ID for explicit resume. For follow-up work on a Suzent task, use agent_send with its task/chat ID instead."
+            ),
         ] = None,
     ) -> ToolResult:
         """
@@ -229,7 +262,8 @@ class AgentTool(Tool):
         - 'web': web research. Use to keep raw search results out of your context.
 
         When the agent is done, its result is returned to you — not shown directly to the user.
-        Summarize findings in your own words when reporting back.
+        Summarize findings in your own words when reporting back. To follow up with the same
+        sub-agent, message its task ID with agent_send rather than spawning another.
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
@@ -241,7 +275,7 @@ class AgentTool(Tool):
             run_in_background: True (default) = fire-and-forget, auto-wakeup on completion.
                 False = blocking, result returned inline.
             cwd: Working directory for the sub-agent's shell and file tools.
-            model_override: Optional enabled model ID for the sub-agent.
+            model_override: Optional enabled model ID; defaults to the current model.
             inherit_context: If True, sub-agent receives a snapshot of current conversation history.
             isolation: 'none' (default) or 'worktree' (git-isolated branch).
             isolation_target_path: Git repo root. Required when isolation='worktree'.
@@ -301,9 +335,10 @@ class AgentTool(Tool):
                     },
                 )
 
-        # Another model would have to prefill the whole inherited history again.
-        if inherit_context and not model_override and runtime != "acp":
-            model_override = ctx.deps.model_id
+        # The model running this turn, which can be newer than what the parent
+        # chat has stored; the runner falls back to the stored one.
+        if not model_override and runtime != "acp":
+            model_override = getattr(ctx.deps, "model_id", None)
 
         if runtime == "acp":
             effective_tools = []
@@ -438,6 +473,13 @@ class AgentTool(Tool):
                         f"{worktree_note}"
                     ),
                     metadata={**metadata, "result_summary": task.result_summary},
+                )
+            if task.backgrounded and task.status in ("queued", "running"):
+                from suzent.prompts import SUBAGENT_MOVED_TO_BACKGROUND
+
+                return ToolResult.success_result(
+                    SUBAGENT_MOVED_TO_BACKGROUND.format(task_id=task.task_id),
+                    metadata={**metadata, "run_in_background": True},
                 )
             outcome = "was stopped" if task.status == "cancelled" else "failed"
             return ToolResult.error_result(

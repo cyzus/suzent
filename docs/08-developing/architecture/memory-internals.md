@@ -10,7 +10,7 @@ This page describes the implementation-level structure of Suzent memory as it ex
 
 | Layer | Responsibility |
 |---|---|
-| Agent prompt and tools | `memory_search`, `block_update`, and file access. |
+| Agent prompt and tools | `memory_search`, `memory_update`, and file access. |
 | `MemoryManager` | Extraction, retrieval, and core memory formatting. |
 | `MarkdownMemoryStore` | File-backed operational memory plus notebook state helpers. |
 | `CoreMemoryFileIndexer` | Converts memory files into embedding rows in LanceDB. |
@@ -30,6 +30,13 @@ DATA_DIR/
     .state/
       recall_log.jsonl
       tombstones.jsonl
+      rejected.jsonl              # claims the user said are wrong
+      confirmations.jsonl         # restatements waiting for the dream
+      superseded.txt              # log lines the dream folded, for the runner to retire
+      review_queue.md             # open questions the dream could not settle
+      dream_ops.md                # the dream's op log, flushed to log.md by the runner
+      capture_dropped.jsonl       # candidates the capture gates dropped, with codes
+      cleanup/YYYY-MM-DD/         # `suzent memory cleanup` drafts
     0_Inbox/
     1_Projects/
     2_Wiki/
@@ -43,9 +50,6 @@ DATA_DIR/
     .index_state.json
     archive/
       YYYY-MM-DD.md
-
-.suzent/transcripts/ or configured data paths
-  {session_id}.jsonl              # session transcripts
 ```
 
 In sandbox mode, the agent sees operational memory as `/shared/memory/` and the notebook as `/mnt/notebook/`. In host mode, configured mount paths can be shown in the prompt instead.
@@ -91,12 +95,9 @@ The current implementation reindexes the whole current-day archive file after a 
 
 `retrieve_relevant_memories()` first checks whether the archival index has rows. It then uses either embedding-backed hybrid search or FTS-only search. Results are formatted for prompt injection and logged best-effort to the notebook recall log for later `MEMORY.md` promotion.
 
-### MEMORY.md writers
+### MEMORY.md
 
-There are two MEMORY.md update paths:
-
-- `refresh_core_memory_facts()` summarizes high-importance archival rows. This remains as a compatibility path for high-importance per-turn extraction.
-- `promote_memory_md()` is the dream-era path. It summarizes consolidated personal notebook pages plus recall signals after successful consolidation.
+No code path regenerates MEMORY.md. `ensure_memory_map()` drafts a pointer map from notebook page titles only when the file is missing or empty; after that the dream and the user maintain it. `lint_memory_files()` returns the contract findings described in memory-architecture.md.
 
 ## CoreMemoryFileIndexer
 
@@ -159,9 +160,9 @@ The notebook skill supplies operational runbooks:
 
 The dream prompt adapts the ingest workflow by making the runner own the watermark entry.
 
-## Transcripts and session state
+## Session state
 
-Conversation transcripts are append-only JSONL files managed by the session layer. Transcript indexing is separate from memory-file indexing and is opt-in via `transcript_indexing_enabled`.
+The chat event log is the only record of a conversation; memory extraction reads it directly (see [Memory architecture](./memory-architecture.md#write-path-in-batches-of-turns)). Earlier versions also wrote a JSONL transcript copy per chat under `transcripts/`; nothing writes or indexes it now, and an old folder can be deleted.
 
 State snapshots are inspectable JSON mirrors of agent state. They support UI/debug workflows but are not the memory source of truth.
 
@@ -183,11 +184,10 @@ The memory system is designed to avoid silent loss:
 
 The memory routes are registered in `src/suzent/server.py` and documented for users in
 [HTTP API: Memory](../protocols/http-api.md#memory).
-Two adjacent session routes belong to the session layer rather than memory:
+An adjacent session route belongs to the session layer rather than memory:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/session/{id}/transcript` | GET | Get session transcript |
 | `/session/{id}/state` | GET | Get agent state snapshot |
 
 ## Tombstones do not change a file's mtime

@@ -38,7 +38,7 @@ interface MemoryMarkdownProps {
  * rendering it leaves a rule and a run of `key: value` lines above the actual text.
  */
 export function stripFrontmatter(raw: string): string {
-  return raw.replace(/^﻿?---\s*\n[\s\S]*?\n---\s*(\n|$)/, '').trimStart();
+  return raw.replace(/^\uFEFF?---\s*\n[\s\S]*?\n---\s*(\n|$)/, '').trimStart();
 }
 
 /**

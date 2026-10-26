@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "minor" },
+  "summary": "Update Suzent silently: new releases download in the background and install in seconds when the app next closes or starts, with a setting and `suzent auto-update` to turn it off."
+}
