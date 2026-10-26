@@ -1,10 +1,11 @@
 {
-  "version": "0.4.0",
+  "version": "0.4.1",
   "consumed": [
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-compact-chat-controls.json",
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/ios-resource-bundle-signing.json",
     ".releases/changes/ios-scroll-invalidation.json",
     ".releases/changes/ios-sidebar-hierarchy.json",
     ".releases/changes/mobile-approval-retry.json",
