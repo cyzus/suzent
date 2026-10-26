@@ -187,4 +187,11 @@
     <string name="rail_summary_searches">Searches: %1$d</string>
     <string name="rail_summary_other">Other tool calls: %1$d</string>
     <string name="rail_summary_failed">Failed calls: %1$d</string>
+    <string name="sidebar_projects">Projects</string>
+    <string name="sidebar_empty">No chats yet</string>
+    <string name="sidebar_no_results">No matching chats</string>
+    <string name="pairing_recognized_connecting">QR code recognized. Connecting to your desktop…</string>
+    <string name="pairing_sending">Sending connection request…</string>
+    <string name="pairing_finishing">Finishing connection…</string>
+    <string name="pairing_network_help">Keep Suzent open on your desktop and check Wi-Fi or Tailscale.</string>
 </resources>

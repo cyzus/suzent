@@ -67,4 +67,16 @@ class PairingTest {
         }.exceptionOrNull() as PairingFailure
         assertEquals(PairingFailure.Reason.UNREACHABLE, failure.reason)
     }
+    @Test fun reachableAddressDoesNotWaitForSlowFirstAddress() = kotlinx.coroutines.runBlocking {
+        val value = invitation().put("expires_at", System.currentTimeMillis() / 1000.0 + 300)
+            .put("origins", JSONArray().put("https://desktop.example").put("https://tailnet.example"))
+        val selected = kotlinx.coroutines.withTimeout(2000) {
+            resolvePairingInvitation(PairingInvitation.parse(value.toString())) { origin ->
+                if (origin == "https://desktop.example") kotlinx.coroutines.delay(30000)
+                origin
+            }
+        }
+        assertEquals("https://tailnet.example", selected.first.origin)
+        assertEquals("https://tailnet.example", selected.second)
+    }
 }

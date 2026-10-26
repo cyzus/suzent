@@ -115,7 +115,14 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                                 SuzentTextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
                             }
                         }
-                        if (model.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.checking_addresses), color = Color.White) }
+                        if (model.busy) {
+                            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                                Text(model.pairingStatus ?: stringResource(R.string.checking_addresses), color = MaterialTheme.colorScheme.onSurface)
+                                Text(stringResource(R.string.pairing_network_help), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                SuzentTextButton(onClick = model::cancelPairing) { Text(stringResource(R.string.cancel_pairing)) }
+                            }
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             SuzentTextButton(onClick = { torch = !torch }, enabled = allowed && !cameraFailed,
                                 modifier = Modifier.border(1.dp, Color.White).background(if (torch) Color(PresentationTokens.yellow) else Color.Black)) {
@@ -155,7 +162,10 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                             }
                             Text(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection_help else R.string.confirm_desktop_help), style = MaterialTheme.typography.bodySmall)
                             model.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                            if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            if (model.busy) {
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                                Text(model.pairingStatus ?: stringResource(R.string.pairing_finishing))
+                            }
                             SuzentAction(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection else R.string.request_pairing), model::approveDestination, prominent = true, enabled = !model.busy)
                         }
                     }

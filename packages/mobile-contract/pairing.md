@@ -163,3 +163,16 @@ without duplicating its device entry. No cross-network reachability is implied.
 `tls-fixture.json` contains public test certificates only (no private keys). Its
 short-lived leaf is tested at the fixed verification date 2030-01-01 so validity
 checks remain deterministic.
+
+### Address discovery and progress
+
+The phone probes the validated invitation addresses concurrently. Only capabilities
+and permission previews are probed; claiming still happens once, on the first
+successfully validated destination, after the user confirms. Cancel outstanding
+probes when a destination succeeds or the user cancels, and recheck invitation
+expiry before using the result. Existing certificate pinning applies to every probe.
+
+Both phones show invitation recognition immediately, followed by connection-request
+and connection-finalization progress. Legacy desktop approval retains its separate
+waiting state and comparison code. Discovery offers cancellation and network help;
+expired, declined, and unreachable outcomes remain explicit errors with scan-again.

@@ -212,3 +212,12 @@
 "Searches: %d" = "搜索了 %d 次";
 "Other tool calls: %d" = "调用了 %d 次其他工具";
 "Failed calls: %d" = "%d 次调用失败";
+
+"No chats yet" = "还没有对话";
+"No matching chats" = "没有匹配的对话";
+
+"QR code recognized. Connecting to your desktop…" = "已识别二维码，正在连接桌面端…";
+"Sending connection request…" = "正在发送连接请求…";
+"Finishing connection…" = "正在完成连接…";
+
+"Keep Suzent open on your desktop and check Wi-Fi or Tailscale." = "请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。";

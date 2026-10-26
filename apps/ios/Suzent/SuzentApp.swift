@@ -97,14 +97,14 @@ private struct ChatSidebarRow: View {
                         }
                     }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
                         .foregroundStyle(Color.suzentMuted)
-                        .frame(height: 16)
+                        .frame(height: meta != nil || childCount > 0 ? 16 : 0)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Spacer(minLength: 0)
                 if chat.isRunning == true { Image(systemName: "ellipsis") }
             }.padding(.leading, nested ? 32 : 12).padding(.trailing, 12).padding(.vertical, PresentationTokens.spaceRow)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(ChatRowButtonStyle(selected: selected, divider: !nested)).disabled(!enabled)
+        }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
             // The fold control sits over a hidden placeholder so it is not a button nested inside the row button.
             .overlayPreferenceValue(SidebarFoldAnchorKey.self) { anchor in
                 GeometryReader { proxy in
@@ -402,14 +402,18 @@ struct ContentView: View {
     private var sidebar: some View {
         let scheduledIDs = scheduledChatIDs(model.chats)
         let normalRows = sidebarChats(model.chats.filter { !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
+        let visibleProjects = projects.filter { project in search.isEmpty || normalRows.contains(where: { $0.root.projectId == project.id }) }
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Chats").font(.system(size: PresentationTokens.typeSection, weight: .bold))
+                HStack(spacing: 10) {
+                    SuzentLogoMark().frame(width: 24, height: 24)
+                    Text("SUZENT").font(.system(size: 14, weight: .bold)).tracking(2)
+                }
                 Spacer()
                 Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Close sidebar")
             }.padding(.horizontal, 16)
-            Rectangle().fill(Color.suzentShadow).frame(height: PresentationTokens.borderWidthHeavy)
+            Divider().padding(.top, 8)
             Button { composing = false; Task { await model.createChat(); showSidebar = false; showSettings = false } } label: {
                 Label("New conversation", systemImage: "square.and.pencil")
                     .font(.system(size: PresentationTokens.typeCaption, weight: .medium))
@@ -427,9 +431,14 @@ struct ContentView: View {
                         sidebarHeading("Pinned")
                         conversationRows(normalRows.filter { $0.root.pinned == true })
                     }
-                    ForEach(projects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
+                    if !visibleProjects.isEmpty { sidebarHeading("Projects") }
+                    ForEach(visibleProjects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
                     let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
-                    if !unassigned.isEmpty { conversationRows(unassigned) }
+                    if !unassigned.isEmpty { sidebarHeading("Chats"); conversationRows(unassigned) }
+                    if normalRows.isEmpty && scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents).isEmpty {
+                        Text(search.isEmpty ? String(localized: "No chats yet") : String(localized: "No matching chats"))
+                            .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24)
+                    }
                 }.padding(.horizontal, 16)
             }
             .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }

@@ -7,6 +7,7 @@ import SuzentCore
     var invitationText = ""
     var pairingInvitation: PairingInvitation?
     var pairingPreview: PairingPreview?
+    var pairingStatus: String?
     var pairingCode: String?
     var device: ClientDevice?
     var canReconnect = false
@@ -127,8 +128,9 @@ import SuzentCore
         busy = true
         let current = generation
         let allowHTTP = allowsHTTP
+        pairingStatus = String(localized: "QR code recognized. Connecting to your desktop…")
         pairingTask = Task {
-            defer { if generation == current { busy = false } }
+            defer { if generation == current { busy = false; pairingStatus = nil } }
             do {
                 let selected = try await invitation.resolving { origin -> PairingPreview? in
                     let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: invitation.tls)
@@ -146,6 +148,7 @@ import SuzentCore
     func cancelPairing() {
         pairingTask?.cancel()
         pairingTask = nil
+        pairingStatus = nil
         pairingInvitation = nil
         pairingCode = nil
         pairingPreview = nil
@@ -159,7 +162,8 @@ import SuzentCore
         error = nil
         let current = generation
         pairingTask = Task {
-            defer { if generation == current { busy = false; pairingCode = nil } }
+            defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
+            pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
                 let bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
@@ -175,6 +179,7 @@ import SuzentCore
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
                 if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
+                pairingStatus = String(localized: "Finishing connection…")
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
                     let result = try await bootstrap.collect(pairingID: invitation.pairingId, pickupSecret: claim.pickupSecret)
