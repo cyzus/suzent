@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 580" width="880" height="580" role="img" aria-label="Regent architecture blueprint showing the full hierarchy: You at the top, Regent orchestrating across projects, autonomous Project Primary Sessions, and task-scoped Sub-agents at the bottom.">
+  <defs>
+    <pattern id="arch-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#d8d8d8"/>
+    </pattern>
+    <pattern id="arch-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#dcdcdc" stroke-width="2"/>
+    </pattern>
+    <marker id="arch-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: #ffffff; stroke: #000000; stroke-width: 2.5; }
+    .card-heavy { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+    .shadow { fill: #000000; }
+  </style>
+
+  <!-- Canvas -->
+  <rect x="0" y="0" width="880" height="580" fill="#ffffff"/>
+  <rect x="12" y="12" width="856" height="556" fill="url(#arch-grid)" stroke="#000000" stroke-width="3"/>
+
+  <!-- Left Rail Labels (Layer Markers) -->
+  <g transform="translate(26, 30)">
+    <rect x="0" y="0" width="118" height="22" fill="#000000"/>
+    <text x="59" y="15" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">01 · ATTENTION</text>
+  </g>
+  <g transform="translate(26, 144)">
+    <rect x="0" y="0" width="118" height="22" fill="#000000"/>
+    <text x="59" y="15" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">02 · ORCHESTRATION</text>
+    <text x="59" y="36" class="mono" font-size="8" font-weight="700" fill="#333333" text-anchor="middle">Cross-project routing</text>
+  </g>
+  <g transform="translate(26, 316)">
+    <rect x="0" y="0" width="118" height="22" fill="#000000"/>
+    <text x="59" y="15" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">03 · PROJECTS</text>
+    <text x="59" y="36" class="mono" font-size="8" font-weight="700" fill="#333333" text-anchor="middle">Durable primary sessions</text>
+  </g>
+  <g transform="translate(26, 488)">
+    <rect x="0" y="0" width="118" height="22" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+    <text x="59" y="15" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle" letter-spacing="0.6">04 · SUB-AGENTS</text>
+    <text x="59" y="35" class="mono" font-size="8" fill="#444444" text-anchor="middle">Ephemeral task helpers</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- LAYER 01: USER CONVERSATION                                           -->
+  <!-- ===================================================================== -->
+  <g transform="translate(160, 24)">
+    <rect x="6" y="6" width="560" height="66" class="shadow"/>
+    <rect x="0" y="0" width="560" height="66" class="card-heavy"/>
+    <rect x="0" y="0" width="136" height="66" fill="#000000"/>
+    <text x="68" y="31" class="ui" font-size="15" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">YOU</text>
+    <text x="68" y="48" class="mono" font-size="9" fill="#cccccc" text-anchor="middle">SINGLE ENTRY POINT</text>
+
+    <rect x="152" y="13" width="392" height="40" fill="#f5f5f5" stroke="#000000" stroke-width="2"/>
+    <text x="166" y="30" class="mono" font-size="11" font-weight="700" fill="#000000">&gt; "Benchmark the new parser and draft the release post."</text>
+    <text x="166" y="45" class="mono" font-size="9" fill="#555555">Sent to Regent · no project tab switching required</text>
+  </g>
+
+  <!-- Connector: You <-> Regent -->
+  <line x1="400" y1="96" x2="400" y2="132" stroke="#000000" stroke-width="3" marker-end="url(#arch-arrow)"/>
+  <line x1="480" y1="138" x2="480" y2="100" stroke="#000000" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#arch-arrow)"/>
+  <text x="388" y="119" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="end">intent</text>
+  <text x="492" y="119" class="mono" font-size="9" font-weight="700" fill="#000000">1-line decisions</text>
+
+  <!-- ===================================================================== -->
+  <!-- LAYER 02: REGENT (FOCAL AGENT)                                        -->
+  <!-- ===================================================================== -->
+  <g transform="translate(160, 138)">
+    <rect x="7" y="7" width="560" height="118" class="shadow"/>
+    <rect x="0" y="0" width="560" height="118" class="card-heavy"/>
+
+    <!-- Header Strip -->
+    <rect x="0" y="0" width="560" height="34" fill="#000000"/>
+    <!-- Exact 2D RegentMark from RegentMark.tsx -->
+    <g transform="translate(15, 3) scale(0.84)">
+      <path d="M3 3.6 Q12 0 21 3.6 L21 6.6 Q12 10.2 3 6.6 Z" fill="#ffffff"/>
+      <path d="M4.6 4.2 Q12 6.9 19.4 4.2" fill="none" stroke="#000000" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
+      <rect x="10.3" y="5.3" width="3.4" height="3.4" rx="0.8" transform="rotate(45 12 7)" fill="#000000"/>
+      <rect x="0" y="9.6" width="24" height="24" rx="4" fill="#ffffff"/>
+      <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
+      <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
+    </g>
+
+    <text x="46" y="22" class="ui" font-size="14" font-weight="900" fill="#ffffff" letter-spacing="1">REGENT</text>
+    <text x="118" y="22" class="mono" font-size="10" fill="#bbbbbb">singleton · focal-suzent · no write/exec tools</text>
+    <rect x="444" y="8" width="104" height="18" fill="#ffffff"/>
+    <text x="496" y="20" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle">NEVER EXECUTES</text>
+
+    <!-- 3 Internal Sub-modules -->
+    <g transform="translate(16, 45)">
+      <rect x="0" y="0" width="168" height="58" fill="#f7f7f7" stroke="#000000" stroke-width="2"/>
+      <text x="12" y="18" class="mono" font-size="10" font-weight="700" fill="#000000">agent_dispatch</text>
+      <line x1="12" y1="25" x2="156" y2="25" stroke="#000000" stroke-width="1"/>
+      <text x="12" y="39" class="ui" font-size="10" fill="#222222">Routes work across projects</text>
+      <text x="12" y="51" class="ui" font-size="10" fill="#222222">(never blocks waiting)</text>
+    </g>
+
+    <g transform="translate(196, 45)">
+      <rect x="0" y="0" width="168" height="58" fill="#f7f7f7" stroke="#000000" stroke-width="2"/>
+      <text x="12" y="18" class="mono" font-size="10" font-weight="700" fill="#000000">Filter, Not Relay</text>
+      <line x1="12" y1="25" x2="156" y2="25" stroke="#000000" stroke-width="1"/>
+      <text x="12" y="39" class="ui" font-size="10" fill="#222222">Distills replies to blockers;</text>
+      <text x="12" y="51" class="ui" font-size="10" fill="#222222">quiet token on routine OKs</text>
+    </g>
+
+    <g transform="translate(376, 45)">
+      <rect x="0" y="0" width="168" height="58" fill="#f7f7f7" stroke="#000000" stroke-width="2"/>
+      <text x="12" y="18" class="mono" font-size="10" font-weight="700" fill="#000000">30m Heartbeat</text>
+      <line x1="12" y1="25" x2="156" y2="25" stroke="#000000" stroke-width="1"/>
+      <text x="12" y="39" class="ui" font-size="10" fill="#222222">Nudges stalled work; skips</text>
+      <text x="12" y="51" class="ui" font-size="10" fill="#222222">in code when nothing changed</text>
+    </g>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- DISPATCH BUS (REGENT -> PROJECT SESSIONS)                             -->
+  <!-- ===================================================================== -->
+  <line x1="440" y1="263" x2="440" y2="286" stroke="#000000" stroke-width="3"/>
+  <line x1="246" y1="286" x2="634" y2="286" stroke="#000000" stroke-width="3"/>
+  <line x1="246" y1="286" x2="246" y2="310" stroke="#000000" stroke-width="3" marker-end="url(#arch-arrow)"/>
+  <line x1="440" y1="286" x2="440" y2="310" stroke="#000000" stroke-width="3" marker-end="url(#arch-arrow)"/>
+  <line x1="634" y1="286" x2="634" y2="310" stroke="#000000" stroke-width="3" marker-end="url(#arch-arrow)"/>
+
+  <rect x="352" y="276" width="176" height="19" fill="#000000"/>
+  <text x="440" y="289" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">agent_dispatch (ASYNC)</text>
+
+  <!-- ===================================================================== -->
+  <!-- LAYER 03: DURABLE PROJECT PRIMARY SESSIONS                            -->
+  <!-- ===================================================================== -->
+  <!-- Project 1: Research -->
+  <g transform="translate(160, 316)">
+    <rect x="5" y="5" width="172" height="122" class="shadow"/>
+    <rect x="0" y="0" width="172" height="122" class="card"/>
+    <rect x="0" y="0" width="172" height="26" fill="#eaeaea" stroke="#000000" stroke-width="2.5"/>
+    <text x="12" y="17" class="ui" font-size="12" font-weight="800" fill="#000000">Project: Research</text>
+    <text x="12" y="43" class="mono" font-size="9" font-weight="700" fill="#000000">Primary Session · running</text>
+    <rect x="12" y="52" width="148" height="22" fill="#f7f7f7" stroke="#000000" stroke-width="1.5"/>
+    <text x="18" y="66" class="mono" font-size="9" fill="#000000">[in_progress] #04 Lit review</text>
+    <rect x="12" y="79" width="148" height="22" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="18" y="93" class="mono" font-size="9" fill="#555555">[pending] #05 Synthesis</text>
+    <text x="12" y="114" class="mono" font-size="8" fill="#555555">Owns project context.md</text>
+  </g>
+
+  <!-- Project 2: Coding -->
+  <g transform="translate(354, 316)">
+    <rect x="5" y="5" width="172" height="122" class="shadow"/>
+    <rect x="0" y="0" width="172" height="122" class="card"/>
+    <rect x="0" y="0" width="172" height="26" fill="#eaeaea" stroke="#000000" stroke-width="2.5"/>
+    <text x="12" y="17" class="ui" font-size="12" font-weight="800" fill="#000000">Project: Coding</text>
+    <text x="12" y="43" class="mono" font-size="9" font-weight="700" fill="#000000">Primary Session · waiting</text>
+    <rect x="12" y="52" width="148" height="22" fill="#f7f7f7" stroke="#000000" stroke-width="1.5"/>
+    <text x="18" y="66" class="mono" font-size="9" fill="#000000">[completed] #11 Parser bench</text>
+    <rect x="12" y="79" width="148" height="22" fill="#000000"/>
+    <text x="18" y="93" class="mono" font-size="9" font-weight="700" fill="#ffffff">▲ BLOCKED: Drop v1 API?</text>
+    <text x="12" y="114" class="mono" font-size="8" fill="#555555">Owns repo cwd &amp; task board</text>
+  </g>
+
+  <!-- Project 3: Writing -->
+  <g transform="translate(548, 316)">
+    <rect x="5" y="5" width="172" height="122" class="shadow"/>
+    <rect x="0" y="0" width="172" height="122" class="card"/>
+    <rect x="0" y="0" width="172" height="26" fill="#eaeaea" stroke="#000000" stroke-width="2.5"/>
+    <text x="12" y="17" class="ui" font-size="12" font-weight="800" fill="#000000">Project: Writing</text>
+    <text x="12" y="43" class="mono" font-size="9" font-weight="700" fill="#000000">Primary Session · running</text>
+    <rect x="12" y="52" width="148" height="22" fill="#f7f7f7" stroke="#000000" stroke-width="1.5"/>
+    <text x="18" y="66" class="mono" font-size="9" fill="#000000">[in_progress] #02 Release post</text>
+    <rect x="12" y="79" width="148" height="22" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="18" y="93" class="mono" font-size="9" fill="#555555">[pending] #03 Diagrams</text>
+    <text x="12" y="114" class="mono" font-size="8" fill="#555555">Owns drafts &amp; artifacts</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- LAYER 04: EPHEMERAL SUB-AGENTS (SPAWNED BY SESSIONS)                  -->
+  <!-- ===================================================================== -->
+  <!-- Research sub-agents -->
+  <line x1="210" y1="443" x2="210" y2="478" stroke="#000000" stroke-width="2" marker-end="url(#arch-arrow)"/>
+  <line x1="282" y1="443" x2="282" y2="478" stroke="#000000" stroke-width="2" marker-end="url(#arch-arrow)"/>
+  <g transform="translate(160, 484)">
+    <rect x="0" y="0" width="82" height="54" fill="url(#arch-hatch)" stroke="#000000" stroke-width="2"/>
+    <rect x="6" y="6" width="70" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="41" y="17" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">subagent: web</text>
+    <text x="41" y="36" class="mono" font-size="8" fill="#222222" text-anchor="middle">Paper search</text>
+    <text x="41" y="47" class="mono" font-size="7" fill="#555555" text-anchor="middle">(returns to parent)</text>
+  </g>
+  <g transform="translate(250, 484)">
+    <rect x="0" y="0" width="82" height="54" fill="url(#arch-hatch)" stroke="#000000" stroke-width="2"/>
+    <rect x="6" y="6" width="70" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="41" y="17" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">subagent: web</text>
+    <text x="41" y="36" class="mono" font-size="8" fill="#222222" text-anchor="middle">Citation check</text>
+    <text x="41" y="47" class="mono" font-size="7" fill="#555555" text-anchor="middle">(returns to parent)</text>
+  </g>
+
+  <!-- Coding sub-agents -->
+  <line x1="404" y1="443" x2="404" y2="478" stroke="#000000" stroke-width="2" marker-end="url(#arch-arrow)"/>
+  <line x1="476" y1="443" x2="476" y2="478" stroke="#000000" stroke-width="2" marker-end="url(#arch-arrow)"/>
+  <g transform="translate(354, 484)">
+    <rect x="0" y="0" width="82" height="54" fill="url(#arch-hatch)" stroke="#000000" stroke-width="2"/>
+    <rect x="6" y="6" width="70" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="41" y="17" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">explore</text>
+    <text x="41" y="36" class="mono" font-size="8" fill="#222222" text-anchor="middle">Grep call sites</text>
+    <text x="41" y="47" class="mono" font-size="7" fill="#555555" text-anchor="middle">(context shield)</text>
+  </g>
+  <g transform="translate(444, 484)">
+    <rect x="0" y="0" width="82" height="54" fill="url(#arch-hatch)" stroke="#000000" stroke-width="2"/>
+    <rect x="6" y="6" width="70" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="41" y="17" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">verify</text>
+    <text x="41" y="36" class="mono" font-size="8" fill="#222222" text-anchor="middle">Run test suite</text>
+    <text x="41" y="47" class="mono" font-size="7" fill="#555555" text-anchor="middle">(worktree sandbox)</text>
+  </g>
+
+  <!-- Writing sub-agent -->
+  <line x1="634" y1="443" x2="634" y2="478" stroke="#000000" stroke-width="2" marker-end="url(#arch-arrow)"/>
+  <g transform="translate(548, 484)">
+    <rect x="0" y="0" width="172" height="54" fill="url(#arch-hatch)" stroke="#000000" stroke-width="2"/>
+    <rect x="8" y="6" width="156" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="86" y="17" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">subagent: write (parallel)</text>
+    <text x="86" y="36" class="mono" font-size="8" fill="#222222" text-anchor="middle">Drafting SVG diagrams in background</text>
+    <text x="86" y="47" class="mono" font-size="7" fill="#555555" text-anchor="middle">(never talks to Regent directly)</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- ESCALATION RETURN PATH (RIGHT SIDE)                                   -->
+  <!-- ===================================================================== -->
+  <path d="M 526 390 L 792 390 L 792 197 L 732 197" fill="none" stroke="#000000" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arch-arrow)"/>
+  <g transform="translate(740, 256)">
+    <rect x="3" y="3" width="112" height="68" class="shadow"/>
+    <rect x="0" y="0" width="112" height="68" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+    <rect x="0" y="0" width="112" height="18" fill="#000000"/>
+    <text x="56" y="13" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">AGENT INBOX</text>
+    <text x="56" y="34" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle">Wakes Regent</text>
+    <text x="56" y="48" class="mono" font-size="8" fill="#444444" text-anchor="middle">only when a project</text>
+    <text x="56" y="59" class="mono" font-size="8" fill="#444444" text-anchor="middle">session blocks/ends</text>
+  </g>
+</svg>
