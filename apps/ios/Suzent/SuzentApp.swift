@@ -421,7 +421,14 @@ struct ContentView: View {
             }.buttonStyle(SuzentRowButtonStyle())
                 .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
-            SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+                TextField("Search chats", text: $search).font(.system(size: 14))
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+            }.padding(.horizontal, 12).frame(height: 40)
+                .background(Color.suzentText.opacity(0.04))
+                .overlay(Rectangle().strokeBorder(Color.suzentText.opacity(0.12), lineWidth: 1))
+                .padding(.horizontal, 16).padding(.vertical, 12)
             ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -432,7 +439,9 @@ struct ContentView: View {
                         conversationRows(normalRows.filter { $0.root.pinned == true })
                     }
                     if !visibleProjects.isEmpty { sidebarHeading("Projects") }
-                    ForEach(visibleProjects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(visibleProjects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
+                    }
                     let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
                     if !unassigned.isEmpty { sidebarHeading("Chats"); conversationRows(unassigned) }
                     if normalRows.isEmpty && scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents).isEmpty {
@@ -451,7 +460,7 @@ struct ContentView: View {
             }
             Divider()
             Button { composing = false; showSettings = true; showSidebar = false } label: {
-                Label("Settings", systemImage: "gearshape").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                Label("Settings", systemImage: "gearshape").font(.system(size: 15, weight: .medium)).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 20)
             }.buttonStyle(.plain)
         }
     }
@@ -469,8 +478,8 @@ struct ContentView: View {
                 }
                 .font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
                 .foregroundStyle(Color.suzentText)
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             }.buttonStyle(SuzentRowButtonStyle())
             if isOpen { conversationRows(rows) }
         }
@@ -515,8 +524,8 @@ struct ContentView: View {
 
     private func sidebarHeading(_ title: LocalizedStringKey, count: Int? = nil) -> some View {
         HStack(spacing: 8) {
-            Text(title).font(.system(size: PresentationTokens.typeSidebarSection, weight: .heavy))
-                .textCase(.uppercase).tracking(1.6).foregroundStyle(Color.suzentMuted)
+            Text(title).font(.system(size: 11, weight: .semibold))
+                .textCase(.uppercase).tracking(0.8).foregroundStyle(Color.suzentMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let count {
                 Text("\(count)").font(.system(size: PresentationTokens.typeSidebarSection, weight: .bold))
