@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.18.0] - 2026-10-25
+## [v0.18.0] - 2026-10-26
 
 <!-- highlights -->
 ### Highlights
@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A session SUZENT starts, or one another agent writes to, now shows the request it was given while it works, not only after the turn ends.
 - The app header no longer crowds on narrow windows: it keeps a gap between a long chat title and the status marks, drops the old Chat / Memory / Skills tabs (the sidebar and the console rail already navigate there), and on the narrowest widths keeps just Regent's mark and the title.
 - Show what woke a background turn, such as a message from a paired device, while the turn is still running.
+- Reorganize the memory page into Memory, Organize and Raw records tabs with topics, plain-language organizing and links back to the source conversation, and extract memories straight from the chat log instead of separate transcript copies.
 - Memory keeps only facts you said yourself, with the words they came from; MEMORY.md becomes a short map of notebook pages, one memory_update tool remembers and retracts, and suzent memory lint / cleanup check and draft fixes for your memory files.
 - Support native video input in visual analysis and preserve existing visual tool settings.
 - Stop desktop notifications from firing when you stop or steer a reply, and announce the steered reply when it finishes.
