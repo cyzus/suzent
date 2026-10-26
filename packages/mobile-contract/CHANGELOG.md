@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.4.0] - 2026-10-25
+## [mobile-v0.4.0] - 2026-10-26
 
 ### Release notes
 - Keep the original Android table appearance while preparing Markwon row measurements before display to avoid repeated collapsed-height frames during streaming.
