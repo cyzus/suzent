@@ -14,6 +14,10 @@ on:
         description: 'Sign existing macOS release assets, package the installer disk image, and upload CI artifacts without publishing'
         type: boolean
         default: false
+      npm_only:
+        description: 'Only publish an already published release to npm, for example when its publish-npm job did not run'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,7 +28,7 @@ concurrency:
 
 jobs:
   prepare-release:
-    if: ${{ !inputs.verify_signing }}
+    if: ${{ !inputs.verify_signing && !inputs.npm_only }}
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release-tag.outputs.tag }}
@@ -349,8 +353,12 @@ jobs:
   # the release files published here download domestically in mainland China.
   # Publishing uses npm Trusted Publishing, so no npm token is stored; it runs
   # after the GitHub release is out and its failure never holds the release.
+  # `always()` because the skipped reuse-assets (or build) job upstream would
+  # otherwise skip it too; `npm_only` publishes an existing release by itself.
   publish-npm:
-    if: needs.publish-release.result == 'success'
+    if: >-
+      always() &&
+      (needs.publish-release.result == 'success' || (inputs.npm_only && !inputs.verify_signing))
     needs:
       - prepare-release
       - publish-release
@@ -362,7 +370,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare-release.outputs.tag }}
+          ref: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -379,7 +387,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
 
       - name: Publish to npm and ask npmmirror to sync
         shell: bash
@@ -398,7 +406,7 @@ jobs:
               || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
           done
         env:
-          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
 
   verify-macos-signing:
     if: inputs.verify_signing
