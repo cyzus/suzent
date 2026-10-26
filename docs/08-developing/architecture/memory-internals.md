@@ -50,9 +50,6 @@ DATA_DIR/
     .index_state.json
     archive/
       YYYY-MM-DD.md
-
-.suzent/transcripts/ or configured data paths
-  {session_id}.jsonl              # session transcripts
 ```
 
 In sandbox mode, the agent sees operational memory as `/shared/memory/` and the notebook as `/mnt/notebook/`. In host mode, configured mount paths can be shown in the prompt instead.
@@ -163,9 +160,9 @@ The notebook skill supplies operational runbooks:
 
 The dream prompt adapts the ingest workflow by making the runner own the watermark entry.
 
-## Transcripts and session state
+## Session state
 
-Conversation transcripts are append-only JSONL files managed by the session layer. Transcript indexing is separate from memory-file indexing and is opt-in via `transcript_indexing_enabled`.
+The chat event log is the only record of a conversation; memory extraction reads it directly (see [Memory architecture](./memory-architecture.md#write-path-in-batches-of-turns)). Earlier versions also wrote a JSONL transcript copy per chat under `transcripts/`; nothing writes or indexes it now, and an old folder can be deleted.
 
 State snapshots are inspectable JSON mirrors of agent state. They support UI/debug workflows but are not the memory source of truth.
 
@@ -187,11 +184,10 @@ The memory system is designed to avoid silent loss:
 
 The memory routes are registered in `src/suzent/server.py` and documented for users in
 [HTTP API: Memory](../protocols/http-api.md#memory).
-Two adjacent session routes belong to the session layer rather than memory:
+An adjacent session route belongs to the session layer rather than memory:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/session/{id}/transcript` | GET | Get session transcript |
 | `/session/{id}/state` | GET | Get agent state snapshot |
 
 ## Tombstones do not change a file's mtime

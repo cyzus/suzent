@@ -19,7 +19,7 @@ small, cheap model while your conversations use the best one you have.
 | **Memory Extraction** | Picking out facts worth remembering after each turn. | Cheap |
 | **Decision** | Quick yes-or-no calls: whether a [goal](../03-features/automation.md#goal-mode) is done, whether a tool call is safe to [approve automatically](../03-features/tools/human-in-the-loop.md), and, after each reply in a project conversation, whether it is waiting on you. | Cheap |
 | **Goal Judge**, **Permission Review** | Override Decision for just one of those calls. Found under **Advanced decision roles**. | Decision |
-| **Dream** | Overnight [memory consolidation](../03-features/memory/README.md#how-memory-is-tidied). | Primary |
+| **Memory organizer** | Overnight [memory consolidation](../03-features/memory/README.md#how-memory-is-tidied). | Primary |
 | **Vision** | Reading images. | Primary, if it can see images |
 | **Embedding** | Memory search. | Nothing; assign one to use memory search |
 | **Image Generation**, **Image Editing**, **Video generation**, **TTS** | The [creative tools](../03-features/tools/media.md). | Nothing; assign one to use the tool |

@@ -9,6 +9,7 @@ This module handles all memory endpoints including:
 
 import json
 import traceback
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -32,6 +33,9 @@ ARCHIVAL_ORDER_COLUMNS = {
 }
 # How deep "load more" may page into a relevance-ranked search.
 ARCHIVAL_SEARCH_MAX_DEPTH = 500
+# Newest log facts scanned for the "recent changes" strip, and items listed per section.
+RECENT_CHANGES_MAX_ROWS = 1000
+RECENT_CHANGES_LIST = 10
 
 
 def _optional_float(raw: Optional[str]) -> Optional[float]:
@@ -337,6 +341,9 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         source_types = _csv_list(request.query_params.get("source_types"))
         categories = _csv_list(request.query_params.get("categories"))
         tags = _csv_list(request.query_params.get("tags"))
+        kinds = _csv_list(request.query_params.get("kinds"))
+        topics = _csv_list(request.query_params.get("topics"))
+        filters = (source_types, categories, tags, kinds, topics)
         want_facets = request.query_params.get("facets", "").lower() in ("1", "true")
 
         if order_by not in ARCHIVAL_ORDER_COLUMNS:
@@ -375,7 +382,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                     for m in memories
                     if float(m.get("importance", 0)) < max_importance
                 ]
-            if source_types or categories or tags:
+            if any(filters):
                 memories = [
                     m
                     for m in memories
@@ -383,9 +390,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                         m.get("metadata")
                         if isinstance(m.get("metadata"), dict)
                         else {},
-                        source_types,
-                        categories,
-                        tags,
+                        *filters,
                     )
                 ]
             memories = memories[offset : offset + limit]
@@ -405,6 +410,8 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 source_types=source_types,
                 categories=categories,
                 tags=tags,
+                kinds=kinds,
+                topics=topics,
             )
             total = await manager.store.get_memory_count(
                 user_id=user_id,
@@ -414,6 +421,8 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 source_types=source_types,
                 categories=categories,
                 tags=tags,
+                kinds=kinds,
+                topics=topics,
             )
 
         # Format memories for frontend
@@ -461,6 +470,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 chat_id=None,
                 min_importance=min_importance,
                 max_importance=max_importance,
+                source_types=source_types,
             )
 
         return JSONResponse(payload)
@@ -537,6 +547,107 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error(f"Error deleting archival memory: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_archival_memory_origin(request: Request) -> JSONResponse:
+    """The conversation a daily-log memory was captured from.
+
+    Returns `{"date", "time", "chat_id", "title"}`; `chat_id` is null when the chat
+    is gone or its id prefix is ambiguous. 404 for rows that are not log facts.
+    """
+    try:
+        manager = await _get_or_initialize_memory_manager()
+        if not manager:
+            return JSONResponse(
+                {"error": "Memory system not initialized"}, status_code=503
+            )
+        mem = await manager.store.get_memory(request.path_params["memory_id"])
+        meta = (mem or {}).get("metadata") or {}
+        origin = None
+        if meta.get("source_type") == "archive_log" and meta.get("source_file"):
+            origin = await run_in_threadpool(
+                manager.markdown_store.find_fact_origin,
+                meta["source_file"],
+                mem.get("content", ""),
+            )
+        if not origin:
+            return JSONResponse({"error": "Origin not found"}, status_code=404)
+
+        db = get_database()
+        prefix = origin.pop("chat_prefix")
+        matches = [
+            chat_id
+            for chat_id in await run_in_threadpool(db.chat_log.chat_ids)
+            if chat_id.startswith(prefix)
+        ]
+        chat = db.get_chat(matches[0]) if len(matches) == 1 else None
+        return JSONResponse(
+            origin
+            | {
+                "chat_id": chat.id if chat else None,
+                "title": chat.title if chat else None,
+            }
+        )
+    except Exception:
+        logger.error(f"Error finding memory origin: {traceback.format_exc()}")
+        return JSONResponse({"error": "Could not find origin"}, status_code=500)
+
+
+async def get_recent_memory_changes(request: Request) -> JSONResponse:
+    """What memory picked up in the last `days` (default 7).
+
+    `added` counts new typed log facts by kind, `revised` lists facts captured as
+    corrections of something already known, and `confirmed` lists known memories
+    that came up again and are waiting for the next organize run to count them.
+    """
+    try:
+        days = max(1, min(int(request.query_params.get("days", "7")), 90))
+        manager = await _get_or_initialize_memory_manager()
+        if not manager:
+            return JSONResponse(
+                {"error": "Memory system not initialized"}, status_code=503
+            )
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = await manager.store.list_memories(
+            user_id=request.query_params.get("user_id", CONFIG.user_id),
+            limit=RECENT_CHANGES_MAX_ROWS,
+            source_types=["archive_log"],
+        )
+        added: dict[str, int] = {}
+        revised: list[dict[str, Any]] = []
+        for row in rows:
+            created = row.get("created_at")
+            if not created or _as_utc(created) < since:
+                continue
+            meta = row.get("metadata") or {}
+            if meta.get("kind", "untyped") != "untyped":
+                added[meta["kind"]] = added.get(meta["kind"], 0) + 1
+            if "revision" in (meta.get("tags") or []):
+                revised.append({"id": str(row["id"]), "content": row["content"]})
+
+        since_day = since.strftime("%Y-%m-%d")
+        confirmed = [
+            row
+            for row in manager.markdown_store.summarize_confirmations()
+            if row["last"] >= since_day
+        ]
+        return JSONResponse(
+            {
+                "since": since_day,
+                "added": added,
+                "revised": revised[:RECENT_CHANGES_LIST],
+                "confirmed": confirmed[:RECENT_CHANGES_LIST],
+            }
+        )
+    except ValueError as e:
+        return JSONResponse({"error": f"Invalid parameter: {e}"}, status_code=400)
+    except Exception:
+        logger.error(f"Error reading recent memory changes: {traceback.format_exc()}")
+        return JSONResponse({"error": "Could not read recent changes"}, status_code=500)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 async def get_memory_stats(request: Request) -> JSONResponse:

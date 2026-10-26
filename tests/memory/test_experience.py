@@ -5,11 +5,11 @@ import json
 
 import pytest
 
+from suzent.database.chat_log import ChatEventLog
 from suzent.memory import experience
 from suzent.memory.experience import Lesson, LessonResponse
 from suzent.memory.extraction_queue import ExtractionQueue
 from suzent.memory.markdown_store import MarkdownMemoryStore
-from suzent.session.transcript import TranscriptManager
 
 BATCH = """## Earlier context (already processed; do not extract)
 
@@ -153,11 +153,26 @@ class _Recorder:
 async def test_scheduled_turns_reach_experience_capture_only(tmp_path, monkeypatch):
     recorder = _Recorder()
     monkeypatch.setattr("suzent.memory.lifecycle.get_memory_manager", lambda: recorder)
-    queue = ExtractionQueue(tmp_path)
+    monkeypatch.setattr("suzent.config.DATA_DIR", tmp_path / "data")
+    log = ChatEventLog(tmp_path)
+    queue = ExtractionQueue(log)
     await queue.catch_up("u1")
-    transcript = TranscriptManager(str(tmp_path))
-    await transcript.append_turn("c1", "user", "**Scheduled Task: release**\nShip it")
-    await transcript.append_turn("c1", "assistant", "Push failed: denied")
+    created = {"config": {}, "messages": []}
+    messages = [
+        {"role": "system_triggered", "content": "**Scheduled Task: release**"},
+        {"role": "assistant", "content": "Push failed: denied"},
+    ]
+    events = [("chat.created", created)] + [("message.append", m) for m in messages]
+    log.path("c1").write_text(
+        "".join(
+            json.dumps(
+                {"v": 1, "seq": seq, "ts": "2026-10-25T09:00:00+00:00"}
+                | {"type": kind, "data": data}
+            )
+            + "\n"
+            for seq, (kind, data) in enumerate(events, start=1)
+        )
+    )
 
     await queue.flush("c1", "u1")
 

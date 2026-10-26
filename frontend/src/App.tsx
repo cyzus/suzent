@@ -17,7 +17,7 @@ import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SidebarToggleIcon } from './components/SidebarToggleIcon';
 import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
-import { MemoryView } from './components/memory/MemoryView';
+import { MemoryView, type MemoryTab } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
@@ -320,9 +320,7 @@ function UpdateButton(): React.ReactElement | null {
 function AppInner(): React.ReactElement {
   const [mainView, setMainView] = useState<MainView>('chat');
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
-  const [memoryInitialTab, setMemoryInitialTab] = useState<
-    'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined
-  >(undefined);
+  const [memoryInitialTab, setMemoryInitialTab] = useState<MemoryTab | undefined>(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsNavigationHost, setSettingsNavigationHost] = useState<HTMLDivElement | null>(null);
   const sidebarOpenBeforeSettings = React.useRef(false);
@@ -794,7 +792,7 @@ function AppInner(): React.ReactElement {
                 <StatusBar
                   inline
                   onOpenMemorySettings={() => {
-                    setMemoryInitialTab('dreaming');
+                    setMemoryInitialTab('organize');
                     setMainView('memory');
                   }}
                 />

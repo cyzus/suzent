@@ -473,9 +473,8 @@ class PostprocessJobModel(SQLModel, table=True):
 
 
 class PostProcessStep:
-    """Constant definitions for postprocess steps B1..B7."""
+    """Constant definitions for postprocess steps B2..B7."""
 
-    TRANSCRIPT = "B1_transcript"
     MEMORY = "B2_memory"
     COMPRESS = "B3_compress"
     DISPLAY = "B4_display"
@@ -483,7 +482,7 @@ class PostProcessStep:
     LIFECYCLE = "B6_lifecycle"
     MIRROR = "B7_mirror"
 
-    ALL = [TRANSCRIPT, MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
+    ALL = [MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
 
 
 class PostProcessStatus:
