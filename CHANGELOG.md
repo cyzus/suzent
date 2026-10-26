@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep sidebar previews on the latest readable message instead of showing raw tool output.
 - List sidebar projects by most recent chat activity instead of creation order, and move a project to the top as soon as you chat in it.
 - Clear Regent's unread count while it is open, and show only read state in the sidebar instead of waiting-on-you counts.
+- Update Suzent silently: new releases download in the background and install in seconds when the app next closes or starts, with a setting and `suzent auto-update` to turn it off.
 - The agent can follow up with a sub-agent it already started instead of spawning a new one; the sub-agent keeps its work, and its reply comes back like its first result.
 - Sub-agents now use the parent chat's model by default, and sub-agents that share the parent's conversation reuse its prompt cache, so they start faster and cost less.
 - A sub-agent whose model stalls now resumes instead of failing, and one the agent was waiting on moves to the background so the agent can carry on. Claude also streams large file writes as it writes them, so they no longer time out.

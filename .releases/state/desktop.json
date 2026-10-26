@@ -122,6 +122,7 @@
     ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",
     ".releases/changes/sidebar-unread-only.json",
+    ".releases/changes/silent-auto-update.json",
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/skill-default-enablement.json",
     ".releases/changes/subagent-followup.json",
