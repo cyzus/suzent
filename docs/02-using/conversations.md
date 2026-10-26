@@ -83,6 +83,22 @@ is sent when the turn ends. You can cancel it, or click **Steer** to send it
 right away as a redirect. You can redirect or stop a single sub-agent the
 same way, from its box in the chat.
 
+## Talk instead of typing
+
+Click the microphone next to the paperclip in the message box to start voice
+mode, and just speak. A fast voice model answers you out loud and hands
+anything that needs real work to your agent, which does it in the chat as
+usual, with its tools, memory, and the chat's permission mode. While it works
+you can keep talking: add to the request, correct it, or say "stop". When it's
+done, the voice reads you a short summary and leaves code, links, and long
+lists in the chat. Click the **✕** on the voice bar to end the call; switching
+to another chat ends it too.
+
+Voice mode needs an OpenAI, Google Gemini, or xAI API key. Under
+**Settings → Voice & audio → Realtime voice** you can pick the model, its
+voice, and how sensitive it is to speech. If Suzent hears its own voice from
+your speakers, set sensitivity to **Low** (Gemini only), or use headphones.
+
 ## When a turn goes wrong
 
 | What happened | What to do |

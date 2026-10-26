@@ -23,6 +23,19 @@ Play yet, and some desktop features are missing (see [Limits](#limits)).
 | **Android** | Android 8 or later | Download the APK from a `mobile-v...` release on [GitHub Releases](https://github.com/cyzus/suzent/releases) and install it. |
 | **iOS** | iOS 17 or later | Not publicly available yet. Builds go to TestFlight for testers. |
 
+## Try it without a computer
+
+Tap **Try offline demo** at the bottom of the app's connection screen to look
+around with sample data. On a paired phone it's under **Settings → About**. You
+don't need a computer, an API key, or an internet connection: you can send
+messages, try a trip-planning example, approve or reject a pretend tool request,
+attach files, and organize chats.
+
+Replies are scripted and nothing reaches an AI model; a banner says so the whole
+time. Attachments stay on the phone. **Reset demo** in Settings restores the
+examples, and **Exit demo** takes you back to the connection screen. An existing
+pairing is kept while you're in the demo.
+
 ## Pair your phone
 
 1. **Make your computer reachable.** Open **Settings → Mesh → Network access**,

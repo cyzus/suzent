@@ -15,7 +15,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 |---|---|---|
 | **Providers** | Add API keys, sign in to providers, and choose which models are available. | [Models & Providers](../04-models/README.md) |
 | **Model Roles** | Pick which model handles each kind of work, with backups. | [Model roles](../04-models/model-roles.md) |
-| **Voice & audio** | Choose how the agent's speech sounds and plays. | [Images, video and speech](../03-features/tools/media.md) |
+| **Voice & audio** | Choose how the agent's speech sounds and plays, and the model and voice for voice mode. | [Speech](../03-features/tools/media.md#speech), [Voice mode](../02-using/conversations.md#talk-instead-of-typing) |
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](../03-features/memory/README.md) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](../03-features/automation.md) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](../05-chat-apps/README.md) |
