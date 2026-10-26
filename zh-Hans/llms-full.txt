@@ -1322,7 +1322,7 @@ it in a conversation or edit the notebook pages; see
 
 ## Consolidation
 
-How often the dream runs, and how much it takes on. See
+How often the organizer runs, and how much it takes on. See
 [How memory is tidied](https://suzent.com/zh-Hans/docs/features/memory#how-memory-is-tidied).
 
 ```yaml
@@ -1334,7 +1334,7 @@ memory_consolidation_min_confirmations: 25    # Repeated facts that justify a ru
 memory_consolidation_max_days: 14             # Days of logs read in one run
 memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
 memory_consolidation_timeout_seconds: 600
-memory_consolidation_model: null              # Legacy; set the Dream role in Settings → Model Roles instead
+memory_consolidation_model: null              # Legacy; set the Memory organizer role in Settings → Model Roles instead
 memory_map_max_lines: 30                      # Size cap on the MEMORY.md map
 ```
 
@@ -1383,18 +1383,12 @@ Changing the embedding model means re-embedding everything you have stored: one 
 chunk across your whole memory. It is not a free switch, and the dimension has to change
 with it.
 
-## Sessions and transcripts
+## Sessions
 
 ```yaml
 session_daily_reset_hour: 0        # UTC hour for a daily reset (0 = off)
 session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
-jsonl_transcripts_enabled: true    # Keep a transcript per session
-transcript_indexing_enabled: false # Also make transcripts searchable
 ```
-
-Transcript indexing lets you search across past conversations, not just extracted facts.
-It costs storage and embedding calls proportional to everything you say, which is why it
-is off by default.
 
 ## Context window
 
@@ -4172,7 +4166,6 @@ else, set the `SUZENT_DATA_DIR` environment variable before starting Suzent.
 | `notebook/` | The [notebook](https://suzent.com/zh-Hans/docs/features/memory/llm-wiki) vault. |
 | `memory/` | The memory search index, rebuilt from the Markdown files. |
 | `skills/` | Skills you added. See [Skills](https://suzent.com/zh-Hans/docs/features/skills). |
-| `transcripts/` | A transcript of each conversation. |
 | `runtime/` | Logs. `server.log` is the background service's log. |
 | `github-sync/` | The local copy used by [GitHub Sync](https://suzent.com/zh-Hans/docs/features/github-sync). |
 | `browser_profile/` | The agent's own browser profile, when it remembers logins. |
@@ -4262,8 +4255,6 @@ See [Memory](https://suzent.com/zh-Hans/docs/features/memory). More tuning is on
 | `max_context_tokens` | `0` | Cap the context budget. `0` uses whatever the model supports. |
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
 | `goals_max_turns` | `20` | How many turns [goal mode](https://suzent.com/zh-Hans/docs/features/automation#goal-mode) runs before pausing. |
-| `jsonl_transcripts_enabled` | `true` | Keep a transcript of each conversation. |
-| `transcript_indexing_enabled` | `false` | Make past conversations searchable, at the cost of extra embedding calls. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |
 | `stream_idle_timeout_seconds` | `120` | How long to wait between model response updates when the provider has no default of its own. Tool execution has separate limits. |
@@ -5615,9 +5606,11 @@ flowchart LR
 
 ## Write path, in batches of turns
 
-Extraction reads each chat's JSONL transcript (`transcripts/{chat_id}.jsonl`), which
-gets one user and one assistant entry per turn. `memory/extraction_queue.py` keeps a
-cursor per chat in `transcripts/memory_cursors.json` and extracts the turns past it:
+Extraction reads each chat's event log, the same one the chat is rebuilt from, so there
+is no separate copy to drift. `memory/extraction_queue.py` keeps a cursor per chat in
+`.memory_cursors.json` next to the log; a cursor is the `(event seq, index)` of the last
+message extracted, because one splice event can insert several messages. The turns past
+it are extracted:
 
 - at the end of a turn, when 6 or more turns or 8k characters are pending;
 - otherwise when the chat has been quiet for 10 minutes;
@@ -5628,11 +5621,12 @@ A batch (at most 16k characters) is the new turns, each dated with when it happe
 after the last two already-extracted turns marked as context only. It goes through
 `MemoryManager.process_conversation_for_memories`. The cursor moves only once the batch
 is written, and a failed extraction raises, so the turns stay queued and are retried.
-The first run after upgrading from per-turn extraction starts every existing chat at
-its current end, since those turns were already extracted. Turns from a chat with
-memory switched off are skipped rather than queued.
+With no cursor file, every existing chat starts at its current end, except for the turns
+the old transcript-based queue still had pending; those are carried over by counting
+trailing turns. Turns from a chat with memory switched off, and chats the app runs for
+itself (the organizer, subagents), are skipped rather than queued.
 
-The transcript entry is the user's message with hidden reminders stripped, the tool
+Each turn in a batch is the user's message with hidden reminders stripped, the tool
 calls made this turn with the start of each result, and the final reply. The main
 agent's system prompt and reminders are left out on purpose: the reminder carries
 recalled memories, and an extractor that saw them would store them again. Tool calls
@@ -6039,9 +6033,6 @@ DATA_DIR/
     .index_state.json
     archive/
       YYYY-MM-DD.md
-
-.suzent/transcripts/ or configured data paths
-  {session_id}.jsonl              # session transcripts
 ```
 
 In sandbox mode, the agent sees operational memory as `/shared/memory/` and the notebook as `/mnt/notebook/`. In host mode, configured mount paths can be shown in the prompt instead.
@@ -6152,9 +6143,9 @@ The notebook skill supplies operational runbooks:
 
 The dream prompt adapts the ingest workflow by making the runner own the watermark entry.
 
-## Transcripts and session state
+## Session state
 
-Conversation transcripts are append-only JSONL files managed by the session layer. Transcript indexing is separate from memory-file indexing and is opt-in via `transcript_indexing_enabled`.
+The chat event log is the only record of a conversation; memory extraction reads it directly (see [Memory architecture](https://suzent.com/zh-Hans/docs/developing/architecture/memory-architecture#write-path-in-batches-of-turns)). Earlier versions also wrote a JSONL transcript copy per chat under `transcripts/`; nothing writes or indexes it now, and an old folder can be deleted.
 
 State snapshots are inspectable JSON mirrors of agent state. They support UI/debug workflows but are not the memory source of truth.
 
@@ -6176,11 +6167,10 @@ The memory system is designed to avoid silent loss:
 
 The memory routes are registered in `src/suzent/server.py` and documented for users in
 [HTTP API: Memory](https://suzent.com/zh-Hans/docs/developing/protocols/http-api#memory).
-Two adjacent session routes belong to the session layer rather than memory:
+An adjacent session route belongs to the session layer rather than memory:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/session/{id}/transcript` | GET | Get session transcript |
 | `/session/{id}/state` | GET | Get agent state snapshot |
 
 ## Tombstones do not change a file's mtime
@@ -9678,6 +9668,8 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/daily/{date}` | GET | Read one day's log |
 | `/memory/archival` | GET | Search remembered facts |
 | `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
+| `/memory/archival/{id}/origin` | GET | The daily-log section a fact came from: `{date, time, chat_id, title}`, or 404 |
+| `/memory/recent?days=7` | GET | What changed lately: facts added per kind, revised facts, repeated confirmations |
 | `/memory/stats` | GET | Counts and index size |
 | `/memory/project-contexts` | GET | List per-project context files |
 | `/memory/project-contexts/{id}` | PUT | Update a project's context |
