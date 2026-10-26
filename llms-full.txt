@@ -9004,6 +9004,8 @@ updater, setup scripts and `suzent update` download these packages from
 `registry.npmmirror.com` first and fall back to GitHub. The job publishes with
 npm Trusted Publishing, so no npm token is stored, and its failure never affects
 the GitHub release.
+To publish an already published release to npm by itself, run the **Build and
+Publish Desktop Release** workflow by hand with its tag and **npm_only** checked.
 
 Trusted Publishing can only be configured on a package that already exists, so
 the packages were created once by hand:
