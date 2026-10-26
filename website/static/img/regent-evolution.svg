@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" width="880" height="420" role="img" aria-label="Before and after Regent: moving from human-as-router across many chat tabs to a single point of attention.">
+  <defs>
+    <!-- Subtle architectural grid -->
+    <pattern id="evo-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#ececec" stroke-width="1"/>
+    </pattern>
+    <!-- 45-degree hatch for noise / shadow texture -->
+    <pattern id="evo-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#d4d4d4" stroke-width="2"/>
+    </pattern>
+    <pattern id="evo-hatch-dark" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#000000" stroke-width="1.5"/>
+    </pattern>
+    <!-- Sharp arrow markers -->
+    <marker id="arrow-black" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .box { fill: #ffffff; stroke: #000000; stroke-width: 2.5; }
+    .box-heavy { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+    .shadow { fill: #000000; }
+  </style>
+
+  <!-- Outer Frame -->
+  <rect x="0" y="0" width="880" height="420" fill="#ffffff"/>
+  <rect x="12" y="12" width="856" height="396" fill="url(#evo-grid)" stroke="#000000" stroke-width="3"/>
+
+  <!-- Center Divider -->
+  <line x1="440" y1="12" x2="440" y2="408" stroke="#000000" stroke-width="3"/>
+  <rect x="422" y="192" width="36" height="36" fill="#000000"/>
+  <path d="M 433 210 L 447 210 M 442 204 L 448 210 L 442 216" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="square"/>
+
+  <!-- ===================================================================== -->
+  <!-- LEFT PANEL: BEFORE (YOU ARE THE ROUTER)                               -->
+  <!-- ===================================================================== -->
+  <g transform="translate(12, 12)">
+    <!-- Top Section Bar -->
+    <rect x="0" y="0" width="428" height="38" fill="#f4f4f4" stroke="#000000" stroke-width="3"/>
+    <rect x="14" y="10" width="28" height="18" fill="#000000"/>
+    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">01</text>
+    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#000000" letter-spacing="0.8">WITHOUT REGENT · HUMAN AS ROUTER</text>
+
+    <!-- YOU node under stress -->
+    <g transform="translate(114, 62)">
+      <rect x="5" y="5" width="200" height="58" fill="url(#evo-hatch-dark)" stroke="#000000" stroke-width="2"/>
+      <rect x="0" y="0" width="200" height="58" class="box-heavy"/>
+      <rect x="0" y="0" width="200" height="18" fill="#000000"/>
+      <text x="100" y="13" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="1">ATTENTION BOTTLENECK</text>
+      <text x="100" y="37" class="ui" font-size="14" font-weight="800" fill="#000000" text-anchor="middle">YOU</text>
+      <text x="100" y="51" class="mono" font-size="10" fill="#555555" text-anchor="middle">manual polling · tab switching</text>
+    </g>
+
+    <!-- Tangled bidirectional lines (You <-> Every Session) -->
+    <path d="M 164 120 L 62 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
+    <path d="M 194 120 L 164 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
+    <path d="M 234 120 L 266 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
+    <path d="M 264 120 L 366 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
+
+    <!-- Cross-talk / manual copy-paste indicator -->
+    <rect x="118" y="156" width="192" height="22" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+    <text x="214" y="171" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">4× UNFILTERED TRANSCRIPTS</text>
+
+    <!-- 4 Noisy Session Windows -->
+    <!-- Tab 1 -->
+    <g transform="translate(20, 218)">
+      <rect x="4" y="4" width="88" height="106" class="shadow"/>
+      <rect x="0" y="0" width="88" height="106" class="box"/>
+      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
+      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
+      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Research</text>
+      <line x1="10" y1="32" x2="76" y2="32" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="42" x2="68" y2="42" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="52" x2="78" y2="52" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="62" x2="54" y2="62" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="72" x2="72" y2="72" stroke="#b0b0b0" stroke-width="4"/>
+      <rect x="10" y="82" width="68" height="14" fill="#000000"/>
+      <text x="44" y="92" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">2,400 words</text>
+    </g>
+
+    <!-- Tab 2 -->
+    <g transform="translate(120, 218)">
+      <rect x="4" y="4" width="88" height="106" class="shadow"/>
+      <rect x="0" y="0" width="88" height="106" class="box"/>
+      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
+      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
+      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Coding</text>
+      <line x1="10" y1="32" x2="72" y2="32" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="42" x2="78" y2="42" stroke="#b0b0b0" stroke-width="4"/>
+      <rect x="8" y="50" width="72" height="14" fill="#000000"/>
+      <text x="44" y="60" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">BLOCKED?</text>
+      <line x1="10" y1="72" x2="64" y2="72" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="82" x2="74" y2="82" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="92" x2="50" y2="92" stroke="#b0b0b0" stroke-width="4"/>
+    </g>
+
+    <!-- Tab 3 -->
+    <g transform="translate(220, 218)">
+      <rect x="4" y="4" width="88" height="106" class="shadow"/>
+      <rect x="0" y="0" width="88" height="106" class="box"/>
+      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
+      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
+      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Writing</text>
+      <line x1="10" y1="32" x2="74" y2="32" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="42" x2="60" y2="42" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="52" x2="78" y2="52" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="62" x2="70" y2="62" stroke="#b0b0b0" stroke-width="4"/>
+      <rect x="10" y="76" width="68" height="18" fill="url(#evo-hatch)" stroke="#000000" stroke-width="1.5"/>
+      <text x="44" y="88" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">idle 2 hrs</text>
+    </g>
+
+    <!-- Tab 4 -->
+    <g transform="translate(320, 218)">
+      <rect x="4" y="4" width="88" height="106" class="shadow"/>
+      <rect x="0" y="0" width="88" height="106" class="box"/>
+      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
+      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
+      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Ops / Cron</text>
+      <line x1="10" y1="32" x2="68" y2="32" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="42" x2="76" y2="42" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="52" x2="54" y2="52" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="62" x2="78" y2="62" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="72" x2="66" y2="72" stroke="#b0b0b0" stroke-width="4"/>
+      <line x1="10" y1="82" x2="72" y2="82" stroke="#b0b0b0" stroke-width="4"/>
+    </g>
+
+    <!-- Bottom Caption -->
+    <rect x="20" y="344" width="388" height="34" fill="#f4f4f4" stroke="#000000" stroke-width="2"/>
+    <text x="214" y="365" class="ui" font-size="12" font-weight="600" fill="#000000" text-anchor="middle">Every new session adds another inbox you have to babysit.</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- RIGHT PANEL: AFTER (REGENT AS COO)                                    -->
+  <!-- ===================================================================== -->
+  <g transform="translate(440, 12)">
+    <!-- Top Section Bar -->
+    <rect x="0" y="0" width="428" height="38" fill="#000000" stroke="#000000" stroke-width="3"/>
+    <rect x="14" y="10" width="28" height="18" fill="#ffffff"/>
+    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">02</text>
+    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#ffffff" letter-spacing="0.8">WITH REGENT · SINGLE POINT OF ATTENTION</text>
+
+    <!-- YOU node (calm) -->
+    <g transform="translate(124, 58)">
+      <rect x="5" y="5" width="180" height="46" class="shadow"/>
+      <rect x="0" y="0" width="180" height="46" class="box-heavy"/>
+      <text x="90" y="21" class="ui" font-size="14" font-weight="800" fill="#000000" text-anchor="middle">YOU</text>
+      <text x="90" y="37" class="mono" font-size="10" fill="#000000" text-anchor="middle">1 conversation · decisions only</text>
+    </g>
+
+    <!-- Clean single link -->
+    <line x1="214" y1="109" x2="214" y2="142" stroke="#000000" stroke-width="3" marker-end="url(#arrow-black)"/>
+
+    <!-- REGENT Hero Node -->
+    <g transform="translate(64, 148)">
+      <rect x="6" y="6" width="300" height="64" class="shadow"/>
+      <rect x="0" y="0" width="300" height="64" fill="#000000" stroke="#000000" stroke-width="3"/>
+      <!-- Exact 2D RegentMark from RegentMark.tsx (inverted on black header) -->
+      <g transform="translate(18, 9) scale(1.35)">
+        <path d="M3 3.6 Q12 0 21 3.6 L21 6.6 Q12 10.2 3 6.6 Z" fill="#ffffff"/>
+        <path d="M4.6 4.2 Q12 6.9 19.4 4.2" fill="none" stroke="#000000" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
+        <rect x="10.3" y="5.3" width="3.4" height="3.4" rx="0.8" transform="rotate(45 12 7)" fill="#000000"/>
+        <rect x="0" y="9.6" width="24" height="24" rx="4" fill="#ffffff"/>
+        <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
+        <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
+      </g>
+      <!-- Labels -->
+      <text x="64" y="29" class="ui" font-size="16" font-weight="900" fill="#ffffff" letter-spacing="1">REGENT</text>
+      <rect x="148" y="16" width="136" height="17" fill="#ffffff"/>
+      <text x="216" y="28" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle">ORCHESTRATION LAYER</text>
+      <text x="64" y="49" class="mono" font-size="10" fill="#d4d4d4">dispatches work · filters reports</text>
+    </g>
+
+    <!-- Structured Dispatch Bus -->
+    <line x1="214" y1="218" x2="214" y2="238" stroke="#000000" stroke-width="2.5"/>
+    <line x1="64" y1="238" x2="364" y2="238" stroke="#000000" stroke-width="2.5"/>
+    <line x1="64" y1="238" x2="64" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
+    <line x1="164" y1="238" x2="164" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
+    <line x1="264" y1="238" x2="264" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
+    <line x1="364" y1="238" x2="364" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
+
+    <!-- 4 Isolated Project Sessions -->
+    <g transform="translate(20, 264)">
+      <rect x="3" y="3" width="88" height="60" class="shadow"/>
+      <rect x="0" y="0" width="88" height="60" class="box"/>
+      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Research</text>
+      <rect x="12" y="34" width="64" height="16" fill="#f0f0f0" stroke="#000000" stroke-width="1.5"/>
+      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">● RUNNING</text>
+    </g>
+
+    <g transform="translate(120, 264)">
+      <rect x="3" y="3" width="88" height="60" class="shadow"/>
+      <rect x="0" y="0" width="88" height="60" class="box"/>
+      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Coding</text>
+      <rect x="12" y="34" width="64" height="16" fill="#000000"/>
+      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">▲ 1 BLOCKER</text>
+    </g>
+
+    <g transform="translate(220, 264)">
+      <rect x="3" y="3" width="88" height="60" class="shadow"/>
+      <rect x="0" y="0" width="88" height="60" class="box"/>
+      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Writing</text>
+      <rect x="12" y="34" width="64" height="16" fill="#f0f0f0" stroke="#000000" stroke-width="1.5"/>
+      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">● RUNNING</text>
+    </g>
+
+    <g transform="translate(320, 264)">
+      <rect x="3" y="3" width="88" height="60" class="shadow"/>
+      <rect x="0" y="0" width="88" height="60" class="box"/>
+      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Ops / Cron</text>
+      <rect x="12" y="34" width="64" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#555555" text-anchor="middle">✓ QUIET OK</text>
+    </g>
+
+    <!-- Bottom Caption -->
+    <rect x="20" y="344" width="388" height="34" fill="#000000"/>
+    <text x="214" y="365" class="ui" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">You talk to Regent. Regent runs the projects.</text>
+  </g>
+</svg>
