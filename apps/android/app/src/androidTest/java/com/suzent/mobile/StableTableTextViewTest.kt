@@ -48,6 +48,34 @@ class StableTableTextViewTest {
         }
     }
 
+    @Test fun darkTableUsesCurrentTextAndLinkColorsOnFirstFrame() = onMain {
+        val stable = createStable()
+        val reference = createReference()
+        for (view in listOf(stable, reference)) {
+            view.setTextColor(Color.WHITE)
+            view.setLinkTextColor(Color.CYAN)
+            view.setBackgroundColor(Color.rgb(24, 24, 24))
+        }
+        bind(stable, source)
+        val actual = render(stable, 700)
+        assertTrue("Dark table cached the light theme paint", settledReference(reference, source, 700).sameAs(actual))
+    }
+
+    @Test fun themeChangeRefreshesExistingTableLayouts() = onMain {
+        val stable = createStable()
+        bind(stable, source)
+        render(stable, 700)
+        stable.setTextColor(Color.WHITE)
+        stable.setLinkTextColor(Color.CYAN)
+        stable.setBackgroundColor(Color.rgb(24, 24, 24))
+        val reference = createReference().apply {
+            setTextColor(Color.WHITE)
+            setLinkTextColor(Color.CYAN)
+            setBackgroundColor(Color.rgb(24, 24, 24))
+        }
+        assertTrue("Theme change retained cached table colors", settledReference(reference, source, 700).sameAs(render(stable, 700)))
+    }
+
     private fun createStable(): StableTableTextView = StableTableTextView(context()).apply {
         tablePlugin = TablePlugin.create(context())
         configure(this)

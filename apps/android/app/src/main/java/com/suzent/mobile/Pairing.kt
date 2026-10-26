@@ -2,6 +2,9 @@ package com.suzent.mobile
 
 import org.json.JSONObject
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.Channel
 
 class PairingFailure(val reason: Reason) : Exception() {
     enum class Reason { INVALID, INCOMPATIBLE, EXPIRED, DENIED, UNREACHABLE, SECURE_CONNECTION }
@@ -69,18 +72,32 @@ data class PairingInvitation(val origin: String, val id: String, val secret: Str
 }
 
 
-suspend fun <T> resolvePairingInvitation(invitation: PairingInvitation, probe: suspend (String) -> T): Pair<PairingInvitation, T> {
-    for (origin in invitation.origins) {
-        kotlinx.coroutines.currentCoroutineContext().ensureActive()
-        if (invitation.expiresAt <= System.currentTimeMillis() / 1000.0) throw PairingFailure(PairingFailure.Reason.EXPIRED)
-        try {
-            val value = probe(origin)
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            return invitation.copy(origin = origin) to value
-        } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
-        catch (_: Exception) { }
+suspend fun <T> resolvePairingInvitation(invitation: PairingInvitation, probe: suspend (String) -> T): Pair<PairingInvitation, T> = coroutineScope {
+    ensureActive()
+    if (invitation.expiresAt <= System.currentTimeMillis() / 1000.0) throw PairingFailure(PairingFailure.Reason.EXPIRED)
+    val results = Channel<Pair<PairingInvitation, T>?>(Channel.UNLIMITED)
+    val jobs = invitation.origins.map { origin ->
+        launch {
+            val result = try { invitation.copy(origin = origin) to probe(origin) }
+            catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
+            catch (_: Exception) { null }
+            results.send(result)
+        }
     }
-    throw PairingFailure(if (invitation.tls == null) PairingFailure.Reason.UNREACHABLE else PairingFailure.Reason.SECURE_CONNECTION)
+    try {
+        repeat(jobs.size) {
+            val result = results.receive()
+            if (result != null) {
+                ensureActive()
+                if (invitation.expiresAt <= System.currentTimeMillis() / 1000.0) throw PairingFailure(PairingFailure.Reason.EXPIRED)
+                return@coroutineScope result
+            }
+        }
+        throw PairingFailure(if (invitation.tls == null) PairingFailure.Reason.UNREACHABLE else PairingFailure.Reason.SECURE_CONNECTION)
+    } finally {
+        jobs.forEach { it.cancel() }
+        results.close()
+    }
 }
 
 

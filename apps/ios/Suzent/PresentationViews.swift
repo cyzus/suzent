@@ -771,7 +771,7 @@ struct ActivityContent: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
                 if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
-                else { ActivityRail(parts: chunk, live: live && index == chunks.count - 1) }
+                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
             }
         }
     }
@@ -781,11 +781,12 @@ struct ActivityRail: View {
     let parts: [MessagePart]
     let live: Bool
     @State private var expanded: Bool
-    init(parts: [MessagePart], live: Bool) {
-        self.parts = parts; self.live = live; _expanded = State(initialValue: false)
+    let current: Bool
+    init(parts: [MessagePart], live: Bool, current: Bool) {
+        self.parts = parts; self.live = live; self.current = current; _expanded = State(initialValue: false)
     }
     private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
-    private var running: Bool { live && (parts.last?.type == "reasoning" || parts.contains { $0.state == "running" }) }
+    private var running: Bool { live && ((current && parts.last?.type == "reasoning") || parts.contains { $0.state == "running" }) }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
     private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
     private var totals: String {
@@ -806,7 +807,7 @@ struct ActivityRail: View {
     }
     private var summary: String {
         if waiting { return String(localized: "Approval required") }
-        if (!live || expanded) && !totals.isEmpty { return totals }
+        if (!live || !current || expanded) && !totals.isEmpty { return totals }
         guard let part = parts.last else { return String(localized: "Completed") }
         if part.type == "reasoning" {
             let firstLine = (part.text ?? "").split(separator: "\n").first.map(String.init) ?? ""
@@ -821,26 +822,26 @@ struct ActivityRail: View {
                     Text(summary).lineLimit(1).truncationMode(.tail)
                         .foregroundStyle(waiting || failed ? accent : .secondary)
                     if running { StreamingPulse() }
-                    if totals.isEmpty || (live && !expanded) || waiting {
+                    if totals.isEmpty || (live && current && !expanded) || waiting {
                         Text("|").foregroundStyle(.tertiary)
                         Text("\(activityStepCount(parts)) steps").fixedSize()
                     }
                     Image(systemName: expanded || waiting ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
                     Spacer(minLength: 0)
-                }.font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .textCase(.uppercase).foregroundStyle(Color.suzentMuted)
-                    .padding(.vertical, 12).padding(.horizontal, 4).contentShape(Rectangle())
+                }.font(.system(size: 13, weight: .medium)).foregroundStyle(Color.suzentMuted)
+                    .padding(.vertical, 12).padding(.horizontal, 12).contentShape(Rectangle())
             }.buttonStyle(.plain)
             if expanded || waiting {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
                 VStack(spacing: 0) {
                     ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-                        ToolActivityBlock(part: part, live: live, last: index == parts.count - 1)
+                        ToolActivityBlock(part: part, live: live, last: index == parts.count - 1, current: current)
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 2) }
+            .background(Color.primary.opacity(0.025))
+            .overlay(alignment: .leading) { Rectangle().fill(waiting ? Color(presentation: PresentationTokens.yellow) : accent.opacity(0.3)).frame(width: 2) }
     }
 }
 
@@ -848,8 +849,9 @@ struct ToolActivityBlock: View {
     let part: MessagePart
     let live: Bool
     var last = true
+    var current = true
     @State private var expanded = false
-    private var running: Bool { live && part.state == "running" }
+    private var running: Bool { live && (part.state == "running" || (current && last && part.type == "reasoning")) }
     private var failed: Bool { ["error", "denied"].contains(part.state ?? "") }
     private var color: Color { failed ? .red : running ? Color.suzentLink : .secondary }
     var body: some View {
