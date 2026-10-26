@@ -152,7 +152,6 @@ async def test_persistence_failure_is_propagated_to_job_and_completion(monkeypat
     monkeypatch.setattr(
         processor, "_persist_state", AsyncMock(side_effect=OSError("disk full"))
     )
-    monkeypatch.setattr(processor, "_write_transcript", AsyncMock())
     result = await processor._post_process_turn(
         chat_id="chat",
         user_id="user",

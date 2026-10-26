@@ -48,9 +48,11 @@ flowchart LR
 
 ## Write path, in batches of turns
 
-Extraction reads each chat's JSONL transcript (`transcripts/{chat_id}.jsonl`), which
-gets one user and one assistant entry per turn. `memory/extraction_queue.py` keeps a
-cursor per chat in `transcripts/memory_cursors.json` and extracts the turns past it:
+Extraction reads each chat's event log, the same one the chat is rebuilt from, so there
+is no separate copy to drift. `memory/extraction_queue.py` keeps a cursor per chat in
+`.memory_cursors.json` next to the log; a cursor is the `(event seq, index)` of the last
+message extracted, because one splice event can insert several messages. The turns past
+it are extracted:
 
 - at the end of a turn, when 6 or more turns or 8k characters are pending;
 - otherwise when the chat has been quiet for 10 minutes;
@@ -61,11 +63,12 @@ A batch (at most 16k characters) is the new turns, each dated with when it happe
 after the last two already-extracted turns marked as context only. It goes through
 `MemoryManager.process_conversation_for_memories`. The cursor moves only once the batch
 is written, and a failed extraction raises, so the turns stay queued and are retried.
-The first run after upgrading from per-turn extraction starts every existing chat at
-its current end, since those turns were already extracted. Turns from a chat with
-memory switched off are skipped rather than queued.
+With no cursor file, every existing chat starts at its current end, except for the turns
+the old transcript-based queue still had pending; those are carried over by counting
+trailing turns. Turns from a chat with memory switched off, and chats the app runs for
+itself (the organizer, subagents), are skipped rather than queued.
 
-The transcript entry is the user's message with hidden reminders stripped, the tool
+Each turn in a batch is the user's message with hidden reminders stripped, the tool
 calls made this turn with the start of each result, and the final reply. The main
 agent's system prompt and reminders are left out on purpose: the reminder carries
 recalled memories, and an extractor that saw them would store them again. Tool calls

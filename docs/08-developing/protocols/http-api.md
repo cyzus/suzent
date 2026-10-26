@@ -62,6 +62,8 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/daily/{date}` | GET | Read one day's log |
 | `/memory/archival` | GET | Search remembered facts |
 | `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
+| `/memory/archival/{id}/origin` | GET | The daily-log section a fact came from: `{date, time, chat_id, title}`, or 404 |
+| `/memory/recent?days=7` | GET | What changed lately: facts added per kind, revised facts, repeated confirmations |
 | `/memory/stats` | GET | Counts and index size |
 | `/memory/project-contexts` | GET | List per-project context files |
 | `/memory/project-contexts/{id}` | PUT | Update a project's context |
