@@ -18,6 +18,7 @@
     ".releases/changes/background-task-wakeups.json",
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
+    ".releases/changes/canvas-page-dropdown.json",
     ".releases/changes/canvas-render-ui-schema.json",
     ".releases/changes/chat-activity-duration-approval.json",
     ".releases/changes/chat-file-card-layout.json",

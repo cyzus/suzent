@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.18.1] - 2026-10-26
 
 ### Release notes
+- Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 
 ## [v0.18.0] - 2026-10-26
