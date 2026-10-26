@@ -26,6 +26,7 @@
     ".releases/changes/mobile-send-idempotency.json",
     ".releases/changes/mobile-sidebar-agents-schedules.json",
     ".releases/changes/mobile-sidebar-align.json",
+    ".releases/changes/mobile-sidebar-pairing-polish.json",
     ".releases/changes/mobile-streaming-motion.json",
     ".releases/changes/mobile-streaming-performance.json",
     ".releases/changes/mobile-system-reminders.json",

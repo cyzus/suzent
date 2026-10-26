@@ -10,6 +10,7 @@
 - Align the empty-chat greeting cube on Android and iOS with the desktop: a true 3-D cube with a rotating sigil, soft shadow, and reactive logo eyes.
 - Add a bilingual offline demo on iOS and Android with scripted streaming, tool approvals, local attachments, persistent sample conversations, and reset/exit controls without a backend or model API key.
 - Align the iOS and Android sidebar with the desktop: shared border, shadow and spacing tokens, single-expand projects sorted by recent activity, scheduled tasks ordered like the automation list with heartbeat filtering and failure-handled suppression, full-height drawer rule, flat rows and an inline sub-agent control.
+- Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Stabilize mobile streamed replies with background event batching, coalesced Markdown rendering, cached history presentation, and direct bottom following; remove fragment opacity fades and inline cursors that caused flashing and repeated reflow.
 
 ## [mobile-v0.3.0] - 2026-10-14
