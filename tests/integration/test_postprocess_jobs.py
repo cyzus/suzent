@@ -89,10 +89,10 @@ def test_update_job_step_status(db, chat_id):
     )
     db.start_postprocess_job(job_id)
 
-    # Update B1: Transcript
+    # Update B5: Persist
     success = db.update_job_step_status(
         job_id,
-        PostProcessStep.TRANSCRIPT,
+        PostProcessStep.PERSIST,
         "success",
         duration_ms=150,
     )
@@ -111,10 +111,10 @@ def test_update_job_step_status(db, chat_id):
     assert job.step_status_json is not None
 
     step_status = json.loads(job.step_status_json)
-    assert PostProcessStep.TRANSCRIPT in step_status
+    assert PostProcessStep.PERSIST in step_status
     assert PostProcessStep.MEMORY in step_status
-    assert step_status[PostProcessStep.TRANSCRIPT]["status"] == "success"
-    assert step_status[PostProcessStep.TRANSCRIPT]["duration_ms"] == 150
+    assert step_status[PostProcessStep.PERSIST]["status"] == "success"
+    assert step_status[PostProcessStep.PERSIST]["duration_ms"] == 150
     assert step_status[PostProcessStep.MEMORY]["status"] == "success"
     assert step_status[PostProcessStep.MEMORY]["duration_ms"] == 320
 
@@ -159,7 +159,7 @@ def test_finalize_postprocess_job_success(db, chat_id):
 
     # Record some steps
     db.update_job_step_status(
-        job_id, PostProcessStep.TRANSCRIPT, "success", duration_ms=100
+        job_id, PostProcessStep.PERSIST, "success", duration_ms=100
     )
     db.update_job_step_status(
         job_id, PostProcessStep.MEMORY, "success", duration_ms=200
@@ -291,7 +291,6 @@ def test_postprocess_job_full_lifecycle(db, chat_id):
 
     # 3. Record all steps as successful
     for step in [
-        PostProcessStep.TRANSCRIPT,
         PostProcessStep.MEMORY,
         PostProcessStep.COMPRESS,
         PostProcessStep.DISPLAY,
@@ -311,7 +310,7 @@ def test_postprocess_job_full_lifecycle(db, chat_id):
     assert job.finished_at is not None
 
     step_status = json.loads(job.step_status_json)
-    assert len(step_status) == 7  # All 7 steps
+    assert len(step_status) == 6
     for step_key in step_status:
         assert step_status[step_key]["status"] == "success"
 

@@ -27,7 +27,6 @@ async def test_postprocess_keeps_streamed_reply_without_duplicating_or_resolving
     processor = ChatProcessor()
     persist = AsyncMock(return_value=True)
     monkeypatch.setattr(processor, "_persist_state", persist)
-    monkeypatch.setattr(processor, "_write_transcript", AsyncMock())
     if not suspended:
         monkeypatch.setattr(
             "suzent.core.task_registry.register_background_task",

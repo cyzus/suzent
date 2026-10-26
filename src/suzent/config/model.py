@@ -208,8 +208,6 @@ class ConfigModel(BaseModel):
 
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0
-    jsonl_transcripts_enabled: bool = True
-    transcript_indexing_enabled: bool = False
 
     # Ceiling on the context budget before compaction kicks in. 0 (the default)
     # means "whatever the active model supports" — the budget is resolved per
