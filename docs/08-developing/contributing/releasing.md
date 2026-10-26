@@ -87,7 +87,7 @@ allocation for test artifacts; this is not yet a store distribution scheme.
 ## Review and release
 
 Review the open product Release PR, its version, changelog, and CI results.
-Merge using **Create a merge commit** once it contains the latest main. CI verifies
+Merge using **Squash and merge** once it contains the latest main. CI verifies
 that its versions, consumed declarations and generated notes match its plan and
 that no unrelated files were added to the release branch.
 
