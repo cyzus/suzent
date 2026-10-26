@@ -10,14 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- highlights -->
 ### Highlights
 
-- **Talk to it.** Realtime voice mode with a Liquid-Geo 3-D voxel stage, an echo gate, and background delegation to the main agent. Approvals you give by voice resume the delegated turn, and your message shows what Suzent understood rather than the raw transcription.
-- **SUZENT sits at the top of your sidebar.** It watches every project, starts and follows up with project sessions, wakes itself to remind you or check on work, and keeps a board that lists chats by where they stand for you: waiting on you, running, idle or resolved. Quiet replies no longer interrupt you.
-- **Memory that keeps what you actually said.** Only facts you stated yourself are remembered, with the words they came from. MEMORY.md becomes a short map of notebook pages, one tool handles remembering and retracting, and `suzent memory lint` checks the files.
-- **Your conversations are plain files.** Every chat is a JSONL file in `~/.suzent/chats/`, written before the database, so a crash or a lost `chats.db` no longer takes your history with it. Back it up by copying one folder; `suzent chats verify` and `suzent chats rebuild-index` repair it.
-- **Sees video, renders surfaces, types nothing twice.** Visual analysis now accepts native video. Canvas surfaces stay visible when activity collapses and survive a refresh. A next-message suggestion appears as grey text after each answer, and ⌘/Ctrl+Enter queues a message while the agent is still working.
-- **Works for you wherever you are.** Install and update from mainland China with automatic mirrors, and run Suzent on a headless server with `suzent web` — no Node required, since each release ships a prebuilt web UI. macOS installs as a notarized disk image.
+- **Suzent now updates itself.** New releases download in the background while you work and install in a few seconds the next time the app closes or starts. To turn it off, uncheck Update automatically under Settings → About, or run `suzent auto-update off`.
+- **Meet Regent.** Suzent Regent sits at the top of the sidebar and watches every project. It starts project sessions and follows up on them, wakes itself to remind you or check on work, and keeps a board of chats by where they stand for you: waiting on you, running, idle or resolved. Updates that need nothing from you no longer interrupt you.
+- **Bring your other agents.** Hand a task to a coding agent such as Claude Code or Codex, set up under Settings → ACP Agents. An editor that speaks ACP, such as Zed, can also use Suzent as its agent.
+- **Talk to it.** Realtime voice mode, with a 3-D voxel stage, passes longer work to the main agent in the background. Approvals you give by voice resume that work, and your message shows what Suzent understood rather than the raw transcript. Visual analysis now accepts video too.
+- **Memory that keeps what you actually said.** Only facts you stated yourself are remembered, with the words they came from. A new Memory page groups them by topic and links each back to its conversation, MEMORY.md becomes a short map of notebook pages, and `suzent memory lint` checks the files.
+- **Sovereign over your history.** Every chat is a plain JSONL file in `~/.suzent/chats/`, written before the database, so a crash or a lost `chats.db` no longer takes your history with it. Back it up by copying one folder; `suzent chats verify` and `suzent chats rebuild-index` repair it.
+- **Install it anywhere.** In mainland China, installs and updates pick domestic mirrors automatically, including npm packages on npmmirror for the release files. Headless servers can run `suzent web` without Node, since each release ships a prebuilt web UI.
 
-**Reach for the keyboard.** After each answer, press Tab to accept the suggested next message, or ⌘/Ctrl+Enter to queue one.
+**Update once more by hand.** Install 0.18.0 with the Update button or `suzent update`. From then on, new versions install themselves.
 <!-- /highlights -->
 
 ### Release notes
