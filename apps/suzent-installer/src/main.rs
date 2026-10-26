@@ -263,7 +263,11 @@ fn main() {
     if has_flag(&args, "--update") || has_flag(&args, "--repair") {
         let repair = has_flag(&args, "--repair");
         if has_flag(&args, "--headless") {
-            show_update_console();
+            // A silent update runs while nobody is watching (app exit or
+            // relaunch), so it gets no console window either.
+            if !has_flag(&args, "--silent") {
+                show_update_console();
+            }
             std::process::exit(updater::run(&args, repair));
         }
         run_update_tauri(args, repair);

@@ -6,6 +6,31 @@ description: How to update Suzent, repair shortcuts, and what to check when upgr
 
 # Updating Suzent
 
+## Automatic updates
+
+Suzent keeps itself up to date. Every few hours it checks for a new release and
+downloads it in the background while you keep working. The new version is
+installed the next time Suzent closes or starts, which takes a few seconds,
+and the desktop app tells you once it has been updated. If Suzent runs as a
+background service with no desktop app open, it installs the update between
+3 and 5 a.m. when no chat has been active for 30 minutes.
+
+To turn this off, uncheck **Update automatically** in Settings → About, or run:
+
+```bash
+suzent auto-update off      # or: on, status
+```
+
+Setting `SUZENT_AUTO_UPDATE=0` in the environment also turns it off.
+
+Some updates are never installed automatically. Suzent leaves those to you
+(use the Update button or `suzent update`):
+
+- a new major version;
+- an install with local changes to Suzent's own files;
+- a source checkout, which follows the development branch;
+- an update that failed twice, after which Suzent stays on the version that works.
+
 ## Update to the latest release
 
 ```bash
