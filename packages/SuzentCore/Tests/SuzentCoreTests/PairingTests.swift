@@ -91,3 +91,16 @@ private func invitation(_ overrides: [String: Any] = [:]) throws -> String {
     #expect(pairingRepairProof(token: "old-token", invitation: value, side: "phone") == "9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be")
     #expect(pairingRepairProof(token: "old-token", invitation: value, side: "desktop") != "9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be")
 }
+
+@Test func reachableAddressDoesNotWaitForSlowFirstAddress() async throws {
+    let value = try PairingInvitation.parse(invitation([
+        "expires_at": Date().timeIntervalSince1970 + 300,
+        "origins": ["https://desktop.example", "https://tailnet.example"]
+    ]))
+    let selected = try await value.resolving { origin in
+        if origin == "https://desktop.example" { try await Task.sleep(for: .seconds(30)) }
+        return origin
+    }
+    #expect(selected.invitation.origin == "https://tailnet.example")
+    #expect(selected.value == "https://tailnet.example")
+}

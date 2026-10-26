@@ -631,17 +631,17 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
-                else ActivityRail(chunk, live && index == chunks.lastIndex)
+                else ActivityRail(chunk, live, index == chunks.lastIndex)
             }
         }
     }
 }
 
 @Composable
-private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
+private fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
     var expanded by remember { mutableStateOf(false) }
     val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
-    val running = live && (parts.lastOrNull()?.type == "reasoning" || parts.any { it.state == "running" })
+    val running = live && ((current && parts.lastOrNull()?.type == "reasoning") || parts.any { it.state == "running" })
     val failed = parts.any { it.state in listOf("error", "denied") }
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
@@ -660,17 +660,19 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     val latest = parts.lastOrNull()
     val status = when {
         waiting -> stringResource(R.string.approval_required)
-        (!live || expanded) && totals.isNotEmpty() -> totals
+        (!live || !current || expanded) && totals.isNotEmpty() -> totals
         latest?.type == "reasoning" -> stringResource(R.string.reasoning) + ": " + latest.text.lineSequence().firstOrNull().orEmpty().take(80)
         latest != null -> activityToolLabel(latest)
         else -> stringResource(R.string.activity_completed)
     }
-    Column(Modifier.fillMaxWidth()) {
-        SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
-            Text(status.uppercase(), modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+    Column(Modifier.fillMaxWidth().background(ink.copy(alpha = 0.025f)).drawBehind {
+        drawRect(if (waiting) Color(PresentationTokens.yellow) else accent.copy(alpha = 0.3f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
+    }) {
+        SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
+            Text(status, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                 color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
             if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
-            if (totals.isEmpty() || (live && !expanded) || waiting) {
+            if (totals.isEmpty() || (live && current && !expanded) || waiting) {
                 Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
                 Text(stringResource(R.string.activity_steps, activityStepCount(parts)).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -683,7 +685,7 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 parts.forEachIndexed { index, part ->
                     key(part.toolCallId.ifEmpty { "reason-$index" }) {
-                        ToolActivityBlock(part, live, index == parts.lastIndex)
+                        ToolActivityBlock(part, live, index == parts.lastIndex, current)
                     }
                 }
             }
@@ -693,10 +695,10 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
 }
 
 @Composable
-fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
+fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, current: Boolean = true) {
     val ink = MaterialTheme.colorScheme.onSurface
     var details by remember { mutableStateOf(false) }
-    val active = live && part.state == "running"
+    val active = live && (part.state == "running" || (current && last && part.type == "reasoning"))
     val error = part.state in listOf("error", "denied")
     val pending = part.state == "approval-requested"
     val color = if (error) MaterialTheme.colorScheme.error else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant

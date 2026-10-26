@@ -58,13 +58,16 @@ fun PairingView(model: MobileModel) {
             }
             Text(invitation.origin)
             Text(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection_help else R.string.confirm_desktop_help))
-            if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (model.busy) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(model.pairingStatus ?: stringResource(R.string.pairing_finishing))
+            }
             SuzentAction(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection else R.string.request_pairing),
                 model::approveDestination, prominent = true, enabled = !model.busy)
             SuzentTextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
         } else if (model.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(stringResource(R.string.checking_addresses))
+            Text(model.pairingStatus ?: stringResource(R.string.checking_addresses))
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else {
             Text(stringResource(R.string.pairing_steps))
