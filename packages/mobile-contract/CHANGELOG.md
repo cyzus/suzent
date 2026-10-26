@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.4.1] - 2026-10-26
+
+### Release notes
+- Fix iOS release archiving by applying the distribution provisioning profile only to the app, leaving the offline demo resource bundle unprovisioned.
+
 ## [mobile-v0.4.0] - 2026-10-26
 
 ### Release notes
