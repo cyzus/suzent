@@ -33,7 +33,8 @@ export const en = {
       model: 'Realtime model',
       voice: 'Provider voice',
       auto: 'Auto',
-      noneConfigured: 'No realtime voice provider has a configured API key.',
+      noneConfigured:
+        'No realtime-capable model found. Configure an OpenAI, Gemini, or xAI provider in Settings → Models.',
       captionsAfterSpeech: 'text appears after you finish speaking',
       sensitivity: 'Speech detection sensitivity',
       sensitivityLow: 'Low (recommended for speakers)',
