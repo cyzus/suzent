@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Fix iOS release archiving by applying the distribution provisioning profile only to the app, leaving the offline demo resource bundle unprovisioned."
+}
