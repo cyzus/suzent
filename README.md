@@ -225,7 +225,4 @@ Found a vulnerability? Please report it privately—see [SECURITY.md](SECURITY.m
 
 **[APACHE 2.0](LICENSE)** © 2026 Yizhou Chi.
 
-**Exception for Creative Assets:**
-The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [TERMS-OF-USE-ASSETS](TERMS-OF-USE-ASSETS.md) for details.
-
 **SUMMON LOCALLY. REMEMBER PRIVATELY. ANSWER TO NO FALSE GOD.**
