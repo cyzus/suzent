@@ -2,10 +2,11 @@ import { useSidebarExpansion } from './SidebarExpansionContext';
 import { ExpandedSurfaceCard } from '../ExpandedSurfaceCard';
 import { BrutalButton } from '../BrutalButton';
 import { FullscreenButton } from '../FullscreenButton';
+import { BrutalSelect } from '../BrutalSelect';
 /**
  * CanvasView — renders active A2UI surfaces in the sidebar canvas panel.
  *
- * Shows a tab strip when multiple surfaces are active. User interactions
+ * Shows a page dropdown when multiple surfaces are active. User interactions
  * (button clicks, form submits) are dispatched via the /canvas/{chatId}/action
  * endpoint and inject a lightweight "action message" into the chat.
  */
@@ -101,31 +102,20 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
     );
   }
 
-  const surfaceNav = (
-    <div className="flex-1 overflow-x-auto flex min-w-0 h-8 items-stretch">
-      {hasMultipleSurfaces ? (
-        surfaces.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setActiveSurface(s.id)}
-            className={`px-3 h-full flex items-center text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
-            ${
-              s.id === activeSurfaceId
-                ? 'bg-brutal-black text-white'
-                : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
-            }`}
-          >
-            {s.title ?? s.id}
-          </button>
-        ))
-      ) : (
-        <div className="px-3 h-full flex-1 min-w-0 flex items-center bg-white dark:bg-zinc-800">
-          <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate w-full block">
-            {activeSurface.title ?? activeSurface.id}
-          </span>
-        </div>
-      )}
-    </div>
+  const surfaceNav = hasMultipleSurfaces ? (
+    <BrutalSelect
+      value={activeSurface.id}
+      onChange={setActiveSurface}
+      options={surfaces.map((s) => ({ value: s.id, label: s.title ?? s.id }))}
+      variant="ghost"
+      className="min-w-0 max-w-full"
+      buttonClassName="!h-8 !gap-2 !px-2 !py-0 font-mono !text-[10px] uppercase tracking-widest hover:!bg-neutral-100 dark:hover:!bg-zinc-700 [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0"
+      dropdownClassName="min-w-[200px] font-mono [&_button]:!text-[10px] [&_button]:tracking-widest"
+    />
+  ) : (
+    <span className="block truncate px-3 text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
+      {activeSurface.title ?? activeSurface.id}
+    </span>
   );
 
   const content = (
@@ -147,11 +137,9 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
   return (
     <>
       <div className="flex flex-col h-full min-h-0 min-w-0">
-        <div
-          className={`flex items-stretch border-b-2 border-brutal-black shrink-0 ${hasMultipleSurfaces ? 'bg-neutral-100 dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800'}`}
-        >
-          <div className="flex-1 min-w-0">{surfaceNav}</div>
-          <div className="px-3 py-2 flex items-start justify-center bg-white dark:bg-zinc-800 shrink-0">
+        <div className="flex items-center border-b-2 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
+          <div className="flex-1 min-w-0 pl-1">{surfaceNav}</div>
+          <div className="px-3 py-2 flex items-start justify-center shrink-0">
             <FullscreenButton
               expanded={sidebarExpansion?.expanded}
               onClick={() => (sidebarExpansion ? sidebarExpansion.toggle() : setIsFullscreen(true))}
