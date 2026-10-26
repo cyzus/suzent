@@ -1,5 +1,19 @@
 # Mobile changelog
 
+## [mobile-v0.4.0] - 2026-10-26
+
+### Release notes
+- Keep the original Android table appearance while preparing Markwon row measurements before display to avoid repeated collapsed-height frames during streaming.
+- Reduce iOS chat scrolling work by keeping scroll measurements out of SwiftUI rendering updates and avoiding repeated message-history scans.
+- Refine the iOS sidebar with a compact search field, tighter project spacing, and lighter section headings and Settings styling.
+- Restart approval monitoring after retrying or reopening the same conversation so new tool approvals remain actionable.
+- Align the mobile composer with the desktop layout using a compact single-line input that reveals the attachment and model toolbar when editing, a matching attachment panel that moves the transcript and composer together when opened with the plus button, square send and stop controls, and desktop-style activity summaries, file counts, current-rail state, and timeline nodes.
+- Align the empty-chat greeting cube on Android and iOS with the desktop: a true 3-D cube with a rotating sigil, soft shadow, and reactive logo eyes.
+- Add a bilingual offline demo on iOS and Android with scripted streaming, tool approvals, local attachments, persistent sample conversations, and reset/exit controls without a backend or model API key.
+- Align the iOS and Android sidebar with the desktop: shared border, shadow and spacing tokens, single-expand projects sorted by recent activity, scheduled tasks ordered like the automation list with heartbeat filtering and failure-handled suppression, full-height drawer rule, flat rows and an inline sub-agent control.
+- Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
+- Stabilize mobile streamed replies with background event batching, coalesced Markdown rendering, cached history presentation, and direct bottom following; remove fragment opacity fades and inline cursors that caused flashing and repeated reflow.
+
 ## [mobile-v0.3.0] - 2026-10-14
 
 ### Release notes
