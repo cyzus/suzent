@@ -35,6 +35,8 @@ targets:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your paired Suzent desktop backend.
         INFOPLIST_FILE: Config/Release.plist
       configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(SUZENT_PROVISIONING_PROFILE)"
         Debug:
           INFOPLIST_FILE: Config/Debug.plist
 schemes:
