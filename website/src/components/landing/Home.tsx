@@ -446,6 +446,26 @@ function InstallerDownloads(): ReactNode {
           </select>
         </div>
       </div>
+      <div className={styles.mobileDownloads}>
+        <a href="https://testflight.apple.com/join/gjcSRyZj">
+          {t({
+            id: "homepage.download.iosBeta",
+            message: "iPhone & iPad · TestFlight Beta",
+          })}
+        </a>
+        <Link href={localePath("/docs/getting-started/platforms#phone", locale)}>
+          {t({
+            id: "homepage.download.phoneGuide",
+            message: "Phone setup guide",
+          })}
+        </Link>
+        <p>
+          {t({
+            id: "homepage.download.betaAvailability",
+            message: "Beta access depends on approved builds and available places.",
+          })}
+        </p>
+      </div>
       <div className={styles.terminalAlternative}>
         <div className={styles.terminalHeader}>
           <p className={styles.terminalLabel}>

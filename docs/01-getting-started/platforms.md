@@ -21,11 +21,15 @@ agent.
 ## Phone
 
 The mobile app (currently in preview) is a remote control for the agent on your
-computer. Nothing runs on the phone itself, so your memory and keys stay home.
+computer. Your live agent runs on that computer, where its memory and model API
+keys stay; the offline demo runs locally on your phone.
 
 1. Get the app. Android builds are attached to the `mobile-v...` releases on
    [GitHub Releases](https://github.com/cyzus/suzent/releases); the iOS app is
-   distributed through TestFlight.
+   available through the [iOS TestFlight beta](https://testflight.apple.com/join/gjcSRyZj).
+   On your iPhone or iPad, install Apple’s TestFlight app, open the invitation,
+   and follow the steps to accept the beta and install Suzent. Availability
+   depends on an approved build and open places in the test group.
 2. On your computer, open **Settings → Devices → Mobile access**, choose what
    the phone may do, and click **Pair a phone**.
 3. Scan the QR code with the app and confirm.
