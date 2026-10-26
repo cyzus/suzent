@@ -33,7 +33,8 @@ export const zhCN = {
       model: '实时模型',
       voice: '提供商语音',
       auto: '自动',
-      noneConfigured: '尚未为任何实时语音提供商配置 API 密钥。',
+      noneConfigured:
+        '没有可用的实时语音模型。请在“设置 → 模型”中配置 OpenAI、Gemini 或 xAI 提供商。',
       captionsAfterSpeech: '说完后才显示文字',
       sensitivity: '语音检测灵敏度',
       sensitivityLow: '低（外放推荐）',
