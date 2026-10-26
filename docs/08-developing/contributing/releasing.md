@@ -101,6 +101,29 @@ notes, all eight application/installer assets, the `suzent-webui.zip` web UI
 bundle (rebuilt from the tag in both asset modes), and `SHA256SUMS`. Do not manually
 publish a partially populated draft.
 
+Once the release is published, the `publish-npm` job copies its files into four
+npm packages, `@suzent/desktop-win32-x64`, `desktop-darwin-arm64`,
+`desktop-darwin-x64` and `desktop-linux-x64`, each holding that platform's app
+and installer plus the web UI bundle and `SHA256SUMS`. npmmirror copies every
+npm package without review, so on a mainland China network the installer,
+updater, setup scripts and `suzent update` download these packages from
+`registry.npmmirror.com` first and fall back to GitHub. The job publishes with
+npm Trusted Publishing, so no npm token is stored, and its failure never affects
+the GitHub release.
+
+Trusted Publishing can only be configured on a package that already exists, so
+the packages were created once by hand:
+
+```bash
+npm login
+python scripts/pack_npm_release.py --bootstrap --publish npm-bootstrap
+```
+
+This publishes an empty `0.0.0` of each package, which every client ignores.
+Then, on npmjs.com, open each package's **Settings → Trusted Publisher**, choose
+GitHub Actions, and enter owner `cyzus`, repository `suzent` and workflow
+`build-desktop.yml`, leaving the environment empty.
+
 The three product branches may be reviewed and merged independently. When one
 merges, refresh the others against main before merging it.
 

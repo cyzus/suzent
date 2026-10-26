@@ -5,12 +5,13 @@
 //! from the system language: a Chinese-language system abroad keeps GitHub,
 //! and an English-language system in mainland China gets the mirrors.
 
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -18,6 +19,11 @@ use std::time::Duration;
 /// it is listed in cnpm/binary-mirror-config. Until then every lookup falls
 /// back to GitHub.
 pub const MIRROR_RELEASE_BASE: &str = "https://registry.npmmirror.com/-/binary/suzent";
+/// Release CI also publishes each platform's release files as the npm package
+/// `@suzent/desktop-<platform>`, which npmmirror copies without review.
+const NPM_MIRROR_REGISTRY: &str = "https://registry.npmmirror.com";
+/// A release base of this form reads files out of the npm package for a tag.
+const NPM_BASE_PREFIX: &str = "npm:";
 pub const GITHUB_RELEASE_BASE: &str = "https://github.com/cyzus/suzent/releases/download";
 const GITHUB_LATEST_RELEASE: &str = "https://github.com/cyzus/suzent/releases/latest";
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
@@ -161,10 +167,19 @@ pub fn release_bases(china: bool, tag: &str) -> Vec<String> {
     }
     let github = format!("{GITHUB_RELEASE_BASE}/{tag}");
     if china {
-        vec![format!("{MIRROR_RELEASE_BASE}/{tag}"), github]
+        vec![
+            format!("{NPM_BASE_PREFIX}{tag}"),
+            format!("{MIRROR_RELEASE_BASE}/{tag}"),
+            github,
+        ]
     } else {
         vec![github]
     }
+}
+
+/// Whether `base` is the npm package source rather than a URL.
+pub fn is_npm_base(base: &str) -> bool {
+    base.starts_with(NPM_BASE_PREFIX)
 }
 
 /// Downloads `name` from the first release base that serves it.
@@ -176,6 +191,13 @@ pub fn fetch_release_file(bases: &[String], name: &str) -> Result<Vec<u8>, Strin
         .map_err(|error| format!("failed to create download client: {error}"))?;
     let mut errors = Vec::new();
     for base in bases {
+        if let Some(tag) = base.strip_prefix(NPM_BASE_PREFIX) {
+            match fetch_npm_release_file(tag, name) {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => errors.push(error),
+            }
+            continue;
+        }
         let url = format!("{}/{name}", base.trim_end_matches('/'));
         match client
             .get(&url)
@@ -190,6 +212,103 @@ pub fn fetch_release_file(bases: &[String], name: &str) -> Result<Vec<u8>, Strin
     Err(format!("failed to download {name}: {}", errors.join("; ")))
 }
 
+/// npm platform name of the release files a file of this name belongs to.
+/// Files every package carries, such as SHA256SUMS, come from this machine's.
+pub fn npm_platform_for(name: &str) -> &'static str {
+    const PLATFORMS: [(&str, &str); 4] = [
+        ("windows-x86_64", "win32-x64"),
+        ("macos-aarch64", "darwin-arm64"),
+        ("macos-x86_64", "darwin-x64"),
+        ("linux-x86_64", "linux-x64"),
+    ];
+    for (suffix, platform) in PLATFORMS {
+        if name.contains(suffix) {
+            return platform;
+        }
+    }
+    if cfg!(windows) {
+        "win32-x64"
+    } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+        "darwin-arm64"
+    } else if cfg!(target_os = "macos") {
+        "darwin-x64"
+    } else {
+        "linux-x64"
+    }
+}
+
+pub fn npm_tarball_url(platform: &str, tag: &str) -> String {
+    let version = tag.trim_start_matches('v');
+    format!("{NPM_MIRROR_REGISTRY}/@suzent/desktop-{platform}/-/desktop-{platform}-{version}.tgz")
+}
+
+type NpmPackage = Result<Arc<HashMap<String, Vec<u8>>>, String>;
+
+/// Files of the npm package for `name`'s platform at `tag`. Each package is
+/// downloaded once per run, and a failure is remembered so the next file goes
+/// straight to the next source.
+fn fetch_npm_release_file(tag: &str, name: &str) -> Result<Vec<u8>, String> {
+    static PACKAGES: OnceLock<Mutex<HashMap<String, NpmPackage>>> = OnceLock::new();
+    let url = npm_tarball_url(npm_platform_for(name), tag);
+    let package = {
+        let mut packages = PACKAGES
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        packages
+            .entry(url.clone())
+            .or_insert_with(|| download_npm_package(&url).map(Arc::new))
+            .clone()
+    };
+    package?
+        .get(name)
+        .cloned()
+        .ok_or_else(|| format!("{url}: package has no {name}"))
+}
+
+fn download_npm_package(url: &str) -> Result<HashMap<String, Vec<u8>>, String> {
+    let bytes = client(Duration::from_secs(300))
+        .ok_or("failed to create download client")?
+        .get(url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .and_then(|response| response.bytes())
+        .map_err(|error| format!("{url}: {error}"))?;
+    npm_package_files(&bytes).map_err(|error| format!("{url}: {error}"))
+}
+
+/// The top-level files of an npm tarball, whose entries sit under `package/`.
+pub fn npm_package_files(tarball: &[u8]) -> Result<HashMap<String, Vec<u8>>, String> {
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tarball));
+    let mut files = HashMap::new();
+    let entries = archive
+        .entries()
+        .map_err(|error| format!("invalid npm package: {error}"))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|error| format!("invalid npm package: {error}"))?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry
+            .path()
+            .map_err(|error| format!("invalid npm package: {error}"))?
+            .to_string_lossy()
+            .into_owned();
+        let Some(name) = path.strip_prefix("package/") else {
+            continue;
+        };
+        if name.is_empty() || name.contains('/') {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("invalid npm package: {error}"))?;
+        files.insert(name.to_string(), bytes);
+    }
+    Ok(files)
+}
+
 /// Latest stable tag. In China mode the mirror listing comes first, so the
 /// chosen version is one the mirror can already serve.
 pub fn latest_release_tag(china: bool) -> Result<String, String> {
@@ -198,6 +317,10 @@ pub fn latest_release_tag(china: bool) -> Result<String, String> {
     }
     let mut errors = Vec::new();
     if china {
+        match latest_from_npm() {
+            Ok(tag) => return Ok(tag),
+            Err(error) => errors.push(error),
+        }
         match latest_from_mirror() {
             Ok(tag) => return Ok(tag),
             Err(error) => errors.push(error),
@@ -258,6 +381,30 @@ fn latest_from_redirect() -> Result<String, String> {
 pub fn tag_from_release_url(url: &str) -> Option<String> {
     let tag = url.trim_end_matches('/').rsplit('/').next()?;
     is_release_tag(tag).then(|| tag.to_string())
+}
+
+fn latest_from_npm() -> Result<String, String> {
+    let url = format!(
+        "{NPM_MIRROR_REGISTRY}/-/package/@suzent/desktop-{}/dist-tags",
+        npm_platform_for("")
+    );
+    let tags = client(Duration::from_secs(15))
+        .ok_or("failed to create mirror client")?
+        .get(&url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("npm mirror: {error}"))?
+        .text()
+        .map_err(|error| format!("npm mirror: {error}"))?;
+    tag_from_npm_dist_tags(&tags).ok_or_else(|| "npm mirror has no stable release".into())
+}
+
+/// `vX.Y.Z` from npm `dist-tags`, skipping the 0.0.0 placeholder that only
+/// exists so Trusted Publishing could be set up.
+pub fn tag_from_npm_dist_tags(body: &str) -> Option<String> {
+    let tags: serde_json::Value = serde_json::from_str(body).ok()?;
+    let tag = format!("v{}", tags.get("latest")?.as_str()?);
+    (is_release_tag(&tag) && tag != "v0.0.0").then_some(tag)
 }
 
 fn latest_from_mirror() -> Result<String, String> {
@@ -638,6 +785,7 @@ mod tests {
         assert_eq!(
             release_bases(true, "v1.2.3"),
             vec![
+                "npm:v1.2.3".to_string(),
                 "https://registry.npmmirror.com/-/binary/suzent/v1.2.3".to_string(),
                 "https://github.com/cyzus/suzent/releases/download/v1.2.3".to_string(),
             ]
@@ -646,6 +794,64 @@ mod tests {
             release_bases(false, "v1.2.3"),
             vec!["https://github.com/cyzus/suzent/releases/download/v1.2.3".to_string()]
         );
+    }
+
+    #[test]
+    fn maps_release_files_to_npm_packages() {
+        assert_eq!(npm_platform_for("suzent-windows-x86_64.exe"), "win32-x64");
+        assert_eq!(
+            npm_platform_for("suzent-installer-macos-aarch64.dmg"),
+            "darwin-arm64"
+        );
+        assert_eq!(npm_platform_for("suzent-macos-x86_64"), "darwin-x64");
+        assert_eq!(
+            npm_platform_for("suzent-installer-linux-x86_64"),
+            "linux-x64"
+        );
+        assert_eq!(npm_platform_for("SHA256SUMS"), npm_platform_for(""));
+        assert_eq!(
+            npm_tarball_url("win32-x64", "v1.2.3"),
+            "https://registry.npmmirror.com/@suzent/desktop-win32-x64/-/desktop-win32-x64-1.2.3.tgz"
+        );
+    }
+
+    #[test]
+    fn reads_latest_tag_from_npm_dist_tags() {
+        assert_eq!(
+            tag_from_npm_dist_tags(r#"{"latest":"0.18.0"}"#),
+            Some("v0.18.0".to_string())
+        );
+        assert_eq!(tag_from_npm_dist_tags(r#"{"latest":"0.0.0"}"#), None);
+        assert_eq!(tag_from_npm_dist_tags(r#"{"latest":"1.0.0-beta.1"}"#), None);
+        assert_eq!(tag_from_npm_dist_tags("not json"), None);
+    }
+
+    #[test]
+    fn reads_top_level_files_from_npm_tarball() {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::default(),
+        ));
+        for (path, contents) in [
+            ("package/SHA256SUMS", "sums"),
+            ("package/suzent-linux-x86_64", "app"),
+            ("package/nested/file", "skip"),
+            ("other/file", "skip"),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, path, contents.as_bytes())
+                .unwrap();
+        }
+        let tarball = builder.into_inner().unwrap().finish().unwrap();
+        let files = npm_package_files(&tarball).unwrap();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files["SHA256SUMS"], b"sums");
+        assert_eq!(files["suzent-linux-x86_64"], b"app");
+        assert!(npm_package_files(b"not a tarball").is_err());
     }
 
     #[test]
