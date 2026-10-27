@@ -267,3 +267,12 @@ also opted in, so the parent's requests carry the flag too. It is off by
 default because HIPAA-enabled organizations reject it, and other Anthropic
 endpoints do not support it. OpenAI's Responses API reports its own
 diagnostics without a flag, and the fork log includes either.
+
+For every other chat, `ForkPrefixCapability` logs two DEBUG lines per model
+request. The first says what changed in the prefix since that chat's previous
+request: the tool definitions, or the first instruction section whose hash
+moved, named by its first line (`section 12 '# Memory System' changed
+(c85e47c9->ccad99b0)`). The second gives the cache read share. A miss with
+`unchanged` before it points at the provider (routing, expiry), not at the
+prompt. Hashes live in this process only, so the first request after a restart
+reads `first request in this process`.
