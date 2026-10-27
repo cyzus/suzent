@@ -34,7 +34,7 @@ export const en = {
       voice: 'Provider voice',
       auto: 'Auto',
       noneConfigured:
-        'No realtime-capable model found. Configure an OpenAI, Gemini, or xAI provider in Settings → Models.',
+        'No realtime-capable model found. Configure an OpenAI, Gemini, xAI, or DashScope provider in Settings → Models.',
       captionsAfterSpeech: 'text appears after you finish speaking',
       sensitivity: 'Speech detection sensitivity',
       sensitivityLow: 'Low (recommended for speakers)',

@@ -310,10 +310,16 @@
       "mode": "chat"
     },
     "dashscope/qwen3.5-omni-plus-realtime-2026-03-15": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "dashscope/qwen3.5-omni-plus-realtime": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "dashscope/qwen3.5-omni-plus-2026-03-15": {
       "mode": "chat"
@@ -322,10 +328,16 @@
       "mode": "chat"
     },
     "dashscope/qwen3.5-omni-flash-realtime-2026-03-15": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "dashscope/qwen3.5-omni-flash-realtime": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "dashscope/qwen3.5-omni-flash-2026-03-15": {
       "mode": "chat"
