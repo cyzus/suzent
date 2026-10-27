@@ -4,7 +4,8 @@ type AudioContextConstructor = new (options?: AudioContextOptions) => AudioConte
 
 export class PcmPlayer {
   readonly context: AudioContext;
-  onDrained?: () => void;
+  /** Called when queued audio starts (true) and when it drains or is flushed (false). */
+  onPlayingChange?: (playing: boolean) => void;
   private nextStart = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private firstStart: number | null = null;
@@ -34,17 +35,20 @@ export class PcmPlayer {
       this.playedBeforeFlush = 0;
     }
     this.nextStart = start + buffer.duration;
+    const wasIdle = !this.sources.size;
     this.sources.add(source);
     source.onended = () => {
-      this.sources.delete(source);
+      // A flushed source still ends later; flush already settled the queue.
+      if (!this.sources.delete(source)) return;
       if (!this.sources.size) {
         this.nextStart = 0;
         this.firstStart = null;
         this.playedBeforeFlush = 0;
-        this.onDrained?.();
+        this.onPlayingChange?.(false);
       }
     };
     source.start(start);
+    if (wasIdle) this.onPlayingChange?.(true);
   }
 
   /** Whether Suzent's voice is coming out of the speakers right now. */
@@ -64,6 +68,7 @@ export class PcmPlayer {
   }
 
   flush(): void {
+    const wasPlaying = this.sources.size > 0;
     this.playedBeforeFlush = this.playedMs();
     for (const source of this.sources) {
       try {
@@ -75,6 +80,7 @@ export class PcmPlayer {
     this.sources.clear();
     this.nextStart = 0;
     this.firstStart = null;
+    if (wasPlaying) this.onPlayingChange?.(false);
   }
 
   async close(): Promise<void> {

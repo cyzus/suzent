@@ -21,6 +21,8 @@ export interface VoiceSessionState {
   /** Whether the model streams the user's words while they speak (null: unknown). */
   liveCaptions: boolean | null;
   errorKey: string | null;
+  /** Suzent's reply audio is queued or playing locally. */
+  playing: boolean;
 }
 export type VoiceSessionAction =
   | { type: 'start' }
@@ -29,6 +31,7 @@ export type VoiceSessionAction =
   | { type: 'working'; active: boolean }
   | { type: 'transcript'; transcript: VoiceTranscript }
   | { type: 'interrupted' }
+  | { type: 'playback'; playing: boolean }
   | { type: 'error'; key: string }
   | { type: 'closed' }
   | { type: 'stop' };
@@ -39,6 +42,7 @@ export const initialVoiceSessionState: VoiceSessionState = {
   working: false,
   liveCaptions: null,
   errorKey: null,
+  playing: false,
 };
 
 // Captions only need the latest exchange; the bar never shows more.
@@ -64,6 +68,8 @@ export function voiceSessionReducer(
       return { ...state, status: action.state };
     case 'working':
       return { ...state, working: action.active };
+    case 'playback':
+      return state.playing === action.playing ? state : { ...state, playing: action.playing };
     case 'error':
       return { ...state, status: 'error', errorKey: action.key, working: false };
     case 'interrupted':
@@ -88,6 +94,15 @@ export function voiceSessionReducer(
       return { ...state, transcripts: transcripts.slice(-MAX_LINES) };
     }
   }
+}
+
+/**
+ * The status to show. The server says `listening` once the provider has sent
+ * the whole reply, but a provider that streams faster than real time (Qwen-Omni
+ * sends ~6x) leaves seconds of it still playing here: that is still speaking.
+ */
+export function shownStatus(state: VoiceSessionState): VoiceSessionStatus {
+  return state.status === 'listening' && state.playing ? 'speaking' : state.status;
 }
 
 /** The newest line from each speaker: what the caption strip shows. */
@@ -248,7 +263,12 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
   const handleMessage = useCallback(
     (message: VoiceServerMessage) => {
       if (message.type === 'ready') {
-        playerRef.current = new PcmPlayer(message.output_sample_rate);
+        const player = new PcmPlayer(message.output_sample_rate);
+        player.onPlayingChange = (playing) => {
+          // close() of an ended call flushes; that must not reach the next call.
+          if (playerRef.current === player) dispatch({ type: 'playback', playing });
+        };
+        playerRef.current = player;
         dispatch({
           type: 'ready',
           liveCaptions: message.live_captions ?? null,
@@ -342,6 +362,7 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
   useEffect(() => () => void cleanup(), [cleanup]);
   return {
     ...state,
+    status: shownStatus(state),
     micLevel: micLevelRef as { readonly current: number },
     active: state.status !== 'idle' && state.status !== 'error',
     supported: voiceSupported(),
