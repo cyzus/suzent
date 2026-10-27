@@ -136,9 +136,19 @@ class PrefixSnapshot:
     tool_defs: tuple[ToolDefinition, ...]
 
 
+@dataclass(frozen=True)
+class PrefixSignature:
+    """Short hashes of what a request sent before its history."""
+
+    tools: str
+    #: (first line, hash) per instruction section, in the order sent.
+    sections: tuple[tuple[str, str], ...]
+
+
 _TURN_CONFIGS: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _LATEST_PREFIXES: OrderedDict[str, PrefixSnapshot] = OrderedDict()
 _FORK_PREFIXES: OrderedDict[str, PrefixSnapshot] = OrderedDict()
+_PREFIX_SIGNATURES: OrderedDict[str, PrefixSignature] = OrderedDict()
 
 
 def _remember(store: OrderedDict, key: str, value: Any) -> None:
@@ -213,6 +223,50 @@ def _log_tool_drift(
     )
 
 
+def _short_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+
+
+def prefix_signature(
+    instruction_parts: Sequence[InstructionPart],
+    tool_defs: Sequence[ToolDefinition],
+) -> PrefixSignature:
+    tools = "\n".join(repr(_tool_signature(tool_def)) for tool_def in tool_defs)
+    return PrefixSignature(
+        tools=_short_hash(tools),
+        sections=tuple(
+            (
+                part.content.strip().split("\n", 1)[0][:40],
+                _short_hash(part.content),
+            )
+            for part in instruction_parts
+        ),
+    )
+
+
+def describe_prefix_change(old: PrefixSignature | None, new: PrefixSignature) -> str:
+    """Which part of the prefix a request changed since the chat's last one.
+
+    Only the first changed section matters for the cache: everything after it
+    is re-read anyway.
+    """
+    if old is None:
+        return "first request in this process"
+    changes = []
+    if old.tools != new.tools:
+        changes.append(f"tools changed ({old.tools}->{new.tools})")
+    for index, (before, after) in enumerate(zip(old.sections, new.sections)):
+        if before != after:
+            changes.append(
+                f"section {index} {after[0]!r} changed ({before[1]}->{after[1]})"
+            )
+            break
+    else:
+        if len(old.sections) != len(new.sections):
+            changes.append(f"section count {len(old.sections)}->{len(new.sections)}")
+    return "; ".join(changes) or "unchanged"
+
+
 def _diagnostics_enabled() -> bool:
     return os.getenv(_DIAGNOSTICS_ENV, "").strip().lower() in ("1", "true", "yes")
 
@@ -278,6 +332,17 @@ class ForkPrefixCapability(AbstractCapability[AgentDeps]):
             request_context.model_request_parameters = replace(
                 params, instruction_parts=list(pinned.instruction_parts)
             )
+        if chat_id and request_context.model_request_parameters.instruction_parts:
+            signature = prefix_signature(
+                request_context.model_request_parameters.instruction_parts,
+                request_context.model_request_parameters.function_tools,
+            )
+            logger.debug(
+                "Prompt prefix for {}: {}",
+                chat_id,
+                describe_prefix_change(_PREFIX_SIGNATURES.get(chat_id), signature),
+            )
+            _remember(_PREFIX_SIGNATURES, chat_id, signature)
         # Anthropic compares a request only with one that also opted in, so the
         # parent has to carry diagnostics too for a fork's first request to be
         # explained. Off by default: HIPAA-enabled organizations reject them.
@@ -300,4 +365,12 @@ class ForkPrefixCapability(AbstractCapability[AgentDeps]):
         chat_id = getattr(ctx.deps, "chat_id", "") or ""
         if chat_id in _FORK_PREFIXES:
             _log_fork_cache_result(chat_id, response)
+        elif chat_id:
+            usage = response.usage
+            logger.debug(
+                "Prompt cache for {}: {}/{} input tokens read from cache",
+                chat_id,
+                usage.cache_read_tokens,
+                usage.input_tokens,
+            )
         return response
