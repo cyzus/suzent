@@ -95,16 +95,33 @@ describe('PcmPlayer', () => {
     expect(player.playedMs()).toBe(100);
   });
 
-  it('fires onDrained after the last source ends', () => {
+  it('reports playing when audio is first queued and stopped after the last source ends', () => {
     const { player, context } = makePlayer();
-    const drained = vi.fn();
-    player.onDrained = drained;
+    const changes = vi.fn();
+    player.onPlayingChange = changes;
     player.enqueue(chunk(100));
     player.enqueue(chunk(100));
+    expect(changes.mock.calls).toEqual([[true]]);
     context.sources[0].onended?.();
-    expect(drained).not.toHaveBeenCalled();
+    expect(changes.mock.calls).toEqual([[true]]);
     context.sources[1].onended?.();
-    expect(drained).toHaveBeenCalledTimes(1);
+    expect(changes.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('reports stopped once on flush, not again when the flushed sources end', () => {
+    const { player, context } = makePlayer();
+    const changes = vi.fn();
+    player.flush();
+    player.onPlayingChange = changes;
+    player.flush();
+    expect(changes).not.toHaveBeenCalled();
+    player.enqueue(chunk(100));
+    player.enqueue(chunk(100));
+    player.flush();
+    // Stopped sources still fire onended afterwards.
+    context.sources[0].onended?.();
+    context.sources[1].onended?.();
+    expect(changes.mock.calls).toEqual([[true], [false]]);
   });
 
   it('close flushes and closes the context', async () => {
