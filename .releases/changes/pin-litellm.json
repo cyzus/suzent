@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version."
+}

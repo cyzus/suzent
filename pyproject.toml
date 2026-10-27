@@ -32,7 +32,9 @@ classifiers = [
 dependencies = [
     "crawl4ai>=0.7.3",
     "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.56,<3",
-    "litellm",
+    # Exact pin: litellm 1.82.7/1.82.8 on PyPI were compromised (Mar 2026). Bump
+    # deliberately, after checking the release and the uv.lock hashes.
+    "litellm==1.81.13",
     "starlette>=1.0.0,<2.0.0",
     "uvicorn",
     "python-dotenv",
