@@ -35,7 +35,19 @@ class FocalMessageTool(Tool):
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        messages: Annotated[list[str], Field(min_length=1, max_length=4)],
+        messages: Annotated[
+            list[str],
+            Field(
+                min_length=1,
+                max_length=4,
+                description=(
+                    "One to four messages to deliver in order as separate bubbles "
+                    "in this conversation. Each must contain text and be at most "
+                    "4000 characters. These are visible immediately; do not repeat "
+                    "them in your final answer."
+                ),
+            ),
+        ],
     ) -> ToolResult:
         from suzent.core.focal_agent import FOCAL_CHAT_ID
 
@@ -66,7 +78,19 @@ class FocalReactionTool(Tool):
     group = ""
     deferrable = False
 
-    async def forward(self, ctx: RunContext[AgentDeps], emoji: Reaction) -> ToolResult:
+    async def forward(
+        self,
+        ctx: RunContext[AgentDeps],
+        emoji: Annotated[
+            Reaction,
+            Field(
+                description=(
+                    "Emoji to set as your reaction to the user message in this turn, "
+                    "replacing your previous reaction. Use an empty string to remove it."
+                )
+            ),
+        ],
+    ) -> ToolResult:
         from suzent.core.focal_agent import FOCAL_CHAT_ID
         from suzent.core.system_reminder import strip_system_reminders
 
