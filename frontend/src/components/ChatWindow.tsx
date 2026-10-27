@@ -1,3 +1,4 @@
+import { regentReactions } from '../lib/regentConversation';
 import { ModelWaitNotice } from './chat/ModelWaitNotice';
 import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
@@ -458,6 +459,7 @@ const MessageList: React.FC<{
   fallbackModel?: string;
   /** Turn durations keyed by *absolute* message index; built from the full history. */
   turnWorkedSeconds?: Map<number, number>;
+  reactionParts?: AGUIPart[];
 }> = ({
   messages,
   streamingForCurrentChat,
@@ -481,7 +483,15 @@ const MessageList: React.FC<{
   chatCitationSources,
   fallbackModel,
   turnWorkedSeconds,
+  reactionParts,
 }) => {
+  const reactions = useMemo(
+    () =>
+      chatId === FOCAL_CHAT_ID
+        ? regentReactions(messages, reactionParts)
+        : new Map<number, string>(),
+    [chatId, messages, reactionParts]
+  );
   const { t, locale } = useI18n();
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
@@ -685,6 +695,7 @@ const MessageList: React.FC<{
                 {isUser ? (
                   <UserMessage
                     message={m}
+                    reaction={reactions.get(idx)}
                     chatId={chatId}
                     onImageClick={onImageClick}
                     onFileClick={onFileClick}
@@ -3390,6 +3401,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     {safeMessages.length > 0 && (
                       <MessageListMemo
                         messages={visibleMessages}
+                        reactionParts={showTransientAssistant ? streamingParts : undefined}
                         turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
                         streamingForCurrentChat={false}
                         chatCitationSources={chatCitationSources}

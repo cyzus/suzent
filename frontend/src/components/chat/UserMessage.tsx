@@ -268,6 +268,7 @@ function UserImageGallery({
 }
 
 interface UserMessageProps {
+  reaction?: string;
   message: Message;
   chatId?: string;
   onImageClick?: (src: string) => void;
@@ -282,6 +283,7 @@ interface UserMessageProps {
 
 const UserMessageComponent: React.FC<UserMessageProps> = ({
   message,
+  reaction,
   chatId,
   onImageClick,
   onFileClick,
@@ -411,7 +413,9 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
       {/* Text content — edit mode swaps the bubble for a textarea */}
       {message.content && !isEditing && (
         <div className="flex justify-end pr-1 pb-1">
-          <div className="relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-white/10 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)]">
+          <div
+            className={`relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-white/10 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)] ${chatId === FOCAL_CHAT_ID ? 'regent-user-bubble' : ''}`}
+          >
             <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-200 font-sans font-normal leading-relaxed whitespace-pre-wrap">
               <ClickableContent
                 content={content}
@@ -466,6 +470,20 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               </BrutalButton>
             </div>
           </div>
+        </div>
+      )}
+
+      {reaction && chatId === FOCAL_CHAT_ID && (
+        <div className="flex justify-end !mt-1.5 pr-1" aria-live="polite">
+          <span
+            className="regent-reaction"
+            role="img"
+            aria-label={t('chatMessage.regentReaction', { emoji: reaction })}
+            title={t('chatMessage.regentReaction', { emoji: reaction })}
+            tabIndex={0}
+          >
+            <span aria-hidden="true">{reaction}</span>
+          </span>
         </div>
       )}
 
