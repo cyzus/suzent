@@ -153,3 +153,28 @@ describe('desktop notifications', () => {
     expect(body.endsWith('…')).toBe(true);
   });
 });
+
+it('uses Regent deliveries as a fallback preview and announces the turn only once', () => {
+  watchForReply('focal-suzent');
+  recordReplyChunk(
+    'focal-suzent',
+    frame({ type: 'TOOL_CALL_START', toolCallName: 'send_message', toolCallId: 'send' })
+  );
+  recordReplyChunk(
+    'focal-suzent',
+    frame({
+      type: 'TOOL_CALL_RESULT',
+      toolCallId: 'send',
+      content: {
+        success: true,
+        metadata: { regent_messages: ['Hello', 'Two tests failed.'] },
+      },
+    })
+  );
+  recordReplyChunk('focal-suzent', frame({ type: 'TEXT_MESSAGE_START' }));
+  expect(takeReplyOutcome('focal-suzent')).toEqual({
+    outcome: 'ready',
+    preview: 'Hello Two tests failed.',
+  });
+  expect(takeReplyOutcome('focal-suzent')).toBeNull();
+});

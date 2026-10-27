@@ -667,6 +667,14 @@ export const zhCN = {
           name: '记笔记',
           description: '维护 Regent 自己的笔记：你希望它怎么做事，不记项目状态。',
         },
+        FocalMessageTool: {
+          name: '发送聊天消息',
+          description: '在与 Regent 的对话中发送一条或多条独立消息。',
+        },
+        FocalReactionTool: {
+          name: '回应消息',
+          description: '让 Regent 用表情回应你的消息。',
+        },
         AgentSendTool: {
           name: '发送智能体消息',
           description: '向另一个智能体会话持久化投递消息并将其唤醒。',
@@ -1785,6 +1793,8 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    regentThinking: 'Regent 正在思考',
+    regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
     today: '今天',

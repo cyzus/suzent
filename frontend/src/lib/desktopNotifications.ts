@@ -3,6 +3,7 @@
  * elsewhere, or needs feedback on an action. Desktop only: in web mode
  * every call is a no-op.
  */
+import { readRegentDelivery } from './regentConversation';
 import { isDesktop } from './runtime';
 
 const MAX_BODY_LENGTH = 200;
@@ -18,6 +19,8 @@ interface WatchedReply {
   // the turn was sent. Until then any stream events belong to an older run.
   runId?: string;
   preview: string;
+  sentPreview: string;
+  messageToolIds: Set<string>;
   failed: boolean;
   stopped: boolean;
   pendingApprovals: Set<string>;
@@ -57,7 +60,14 @@ export async function notifyDesktop(title: string, body: string): Promise<void> 
 }
 
 function freshReply(): WatchedReply {
-  return { preview: '', failed: false, stopped: false, pendingApprovals: new Set() };
+  return {
+    preview: '',
+    sentPreview: '',
+    messageToolIds: new Set(),
+    failed: false,
+    stopped: false,
+    pendingApprovals: new Set(),
+  };
 }
 
 export function watchForReply(chatId: string): void {
@@ -100,6 +110,11 @@ export function recordReplyChunk(chatId: string, rawData: string, runId?: string
       code?: string;
       name?: string;
       delta?: string;
+      toolCallId?: string;
+      toolCallName?: string;
+      content?: unknown;
+      output?: unknown;
+      result?: unknown;
       value?: Record<string, unknown>;
     };
     try {
@@ -107,7 +122,27 @@ export function recordReplyChunk(chatId: string, rawData: string, runId?: string
     } catch {
       continue;
     }
-    if (frame.type === 'TEXT_MESSAGE_START') {
+    if (
+      frame.type === 'TOOL_CALL_START' &&
+      frame.toolCallName === 'send_message' &&
+      frame.toolCallId
+    ) {
+      watched.messageToolIds.add(frame.toolCallId);
+    } else if (
+      frame.type === 'TOOL_CALL_RESULT' &&
+      frame.toolCallId &&
+      watched.messageToolIds.has(frame.toolCallId)
+    ) {
+      const raw = frame.content ?? frame.output ?? frame.result;
+      const delivery = readRegentDelivery({
+        type: 'tool',
+        toolName: 'send_message',
+        state: 'completed',
+        output: typeof raw === 'string' ? raw : JSON.stringify(raw),
+      });
+      if (delivery && 'messages' in delivery)
+        watched.sentPreview = delivery.messages.join(' ').slice(0, MAX_BODY_LENGTH + 1);
+    } else if (frame.type === 'TEXT_MESSAGE_START') {
       watched.preview = '';
     } else if (frame.type === 'TEXT_MESSAGE_CONTENT' && typeof frame.delta === 'string') {
       watched.preview = (watched.preview + frame.delta)
@@ -143,5 +178,5 @@ export function takeReplyOutcome(
       : watched.pendingApprovals.size > 0
         ? 'approval'
         : 'ready';
-  return { outcome, preview: truncateNotificationBody(watched.preview) };
+  return { outcome, preview: truncateNotificationBody(watched.preview || watched.sentPreview) };
 }

@@ -1,3 +1,4 @@
+import { readRegentDelivery, regentDisplayParts } from '../../lib/regentConversation';
 import presentation from '../../../../packages/presentation/tokens.json';
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
@@ -178,6 +179,7 @@ function filterBlocks(blocks: ContentBlock[]): ContentBlock[] {
 /** Check if a message consists only of toolCall/codeStep blocks (no real prose/code content) */
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
+  conversational?: boolean;
   messageIndex: number;
   workedDurationSeconds?: number;
   streamStartedAtMs?: number;
@@ -206,6 +208,7 @@ const AGUIPartsContent: React.FC<{
   onForceWebContext?: (contextId: string) => void;
 }> = ({
   parts,
+  conversational = false,
   workedDurationSeconds,
   streamStartedAtMs,
   isStreaming,
@@ -244,7 +247,10 @@ const AGUIPartsContent: React.FC<{
     <TurnActivity
       finalStart={getFinalContentStart(renderGroups)}
       persistentIndices={renderGroups.flatMap((group, index) =>
-        group.type === 'single' && group.chunk.type === 'a2ui' ? [index] : []
+        group.type === 'single' &&
+        (group.chunk.type === 'a2ui' || (conversational && group.chunk.type === 'text'))
+          ? [index]
+          : []
       )}
       isStreaming={Boolean(isStreaming)}
       durationSeconds={workedDurationSeconds}
@@ -639,13 +645,20 @@ const AGUIPartsContent: React.FC<{
         // ACP, while the agent boots -- and rendering that shell put an empty
         // bordered box with a blinking cursor under the assembly animation.
         if (!fullText.trim()) return null;
-        return (
+        const content = (
           <AssistantTextChunk
             key={ci}
             text={fullText}
-            isStreaming={Boolean(isStreaming && isLastChunk)}
+            isStreaming={Boolean(isStreaming && isLastChunk && !chunk.items[0]?.regentBubble)}
             onFileClick={onFileClick}
           />
+        );
+        return conversational ? (
+          <div key={ci} className="regent-message-bubble">
+            {content}
+          </div>
+        ) : (
+          content
         );
       })}
     </TurnActivity>
@@ -796,7 +809,11 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 }) => {
   const { t } = useI18n();
   const isStreamingThis = isStreaming && isLastMessage;
-  const effectiveParts = aguiParts ?? message.parts;
+  const rawParts = aguiParts ?? message.parts;
+  const effectiveParts = useMemo(
+    () => (regent && rawParts ? regentDisplayParts(rawParts) : rawParts),
+    [regent, rawParts]
+  );
   const hasParts = effectiveParts && effectiveParts.length > 0;
   // The ACP runtime stamps `acp/<agent-id>` on the response it produced; the
   // chat-level fallback carries the same shape for turns saved before that.
@@ -930,7 +947,19 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   // Keep overflow clipping on the chat scroller and message contents, not the
   // sticky badge ancestor: WebKit can jitter sticky layers inside overflow: clip.
-  const badgeContainer = isHistory ? (
+  const badgeContainer = regent ? (
+    <div className="mb-2 flex items-center gap-2 text-neutral-500 dark:text-neutral-400">
+      <RegentMark size={18} />
+      <span className="text-[11px] font-medium">{t('chatList.focal.name')}</span>
+      {isStreamingThis && (
+        <span role="status" aria-label={t('chatMessage.regentThinking')} className="regent-typing">
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+    </div>
+  ) : isHistory ? (
     <div className="mb-2 mt-1 flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
         {/* An ACP turn was produced by an external agent, so it is signed with
@@ -1044,6 +1073,19 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     </div>
   );
 
+  if (
+    regent &&
+    !isStreamingThis &&
+    rawParts?.some((part) => part.toolName === 'react_to_message' && readRegentDelivery(part)) &&
+    !effectiveParts?.some(
+      (part) =>
+        part.type !== 'reasoning' &&
+        part.type !== 'citation-sources' &&
+        (part.type !== 'text' || part.text?.trim())
+    )
+  )
+    return null;
+
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (effectiveParts !== undefined) {
     const { triggers, response } = splitLeadingTriggers(effectiveParts);
@@ -1074,6 +1116,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
               {hasParts ? (
                 <AGUIPartsContent
                   parts={response}
+                  conversational={conversational}
                   messageIndex={messageIndex}
                   workedDurationSeconds={workedDurationSeconds}
                   streamStartedAtMs={streamStartedAtMs}

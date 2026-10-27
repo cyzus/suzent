@@ -2706,3 +2706,90 @@ button.activity-turn-duration:focus-visible {
   background: #27272a;
   border-color: #3f3f46;
 }
+
+/* Deliberate Regent messages keep their boundaries throughout a turn. */
+.regent-message-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 0.25rem 1rem 1rem 1rem;
+  background: rgb(255 255 255 / 70%);
+  overflow-wrap: anywhere;
+}
+.dark .regent-message-bubble {
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 14%);
+}
+.regent-reaction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid rgb(0 0 0 / 15%);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+.dark .regent-reaction {
+  background: #27272a;
+  border-color: rgb(255 255 255 / 20%);
+}
+.regent-reaction:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.regent-typing {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 4px;
+}
+.regent-typing span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: regentTyping 1.4s ease-in-out infinite;
+}
+.regent-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.regent-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes regentTyping {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .regent-typing span {
+    animation: none;
+  }
+}
+
+.regent-message-bubble .prose > :first-child {
+  margin-top: 0;
+}
+.regent-message-bubble .prose > :last-child {
+  margin-bottom: 0;
+}
+.regent-user-bubble {
+  border-width: 1px;
+  border-color: rgb(0 0 0 / 12%);
+  border-radius: 1rem 0.25rem 1rem 1rem;
+  box-shadow: none;
+}
+.dark .regent-user-bubble {
+  box-shadow: none;
+}
