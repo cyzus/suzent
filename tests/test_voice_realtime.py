@@ -92,7 +92,7 @@ def test_realtime_options_say_which_models_stream_captions(monkeypatch):
 def test_realtime_options_come_from_configured_providers_capabilities(monkeypatch):
     monkeypatch.setattr(
         "suzent.voice.realtime.get_configured_provider_ids",
-        lambda: {"gemini", "google", "dashscope"},
+        lambda: {"gemini", "google", "anthropic"},
     )
     ids = [o["id"] for o in list_realtime_options()]
     assert ids[0] == "gemini/gemini-3.8-live"  # the provider default leads
@@ -113,6 +113,35 @@ def test_realtime_options_include_models_found_only_in_capability_data(monkeypat
         VoiceSettings(realtime_model="openai/gpt-realtime-mini")
     )
     assert model.model_name == "gpt-realtime-mini"
+
+
+def test_dashscope_realtime_uses_qwen_omni_over_the_openai_protocol(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.voice.realtime.get_configured_provider_ids", lambda: {"dashscope"}
+    )
+    ids = [o["id"] for o in list_realtime_options()]
+    assert ids[0] == "dashscope/qwen3.5-omni-flash-realtime"
+    assert "dashscope/qwen3.5-omni-plus-realtime" in ids
+    # No function calling, so it could never hand work to Suzent.
+    assert "dashscope/qwen3-omni-flash-realtime" not in ids
+
+    monkeypatch.setattr(
+        "suzent.voice.realtime.resolve_api_key",
+        lambda provider: "key" if provider == "dashscope" else None,
+    )
+    model_id, model = resolve_realtime_model(VoiceSettings(realtime_voice="Ethan"))
+    assert model_id == "dashscope/qwen3.5-omni-flash-realtime"
+    assert model._realtime_url().startswith(
+        "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3.5-omni-flash-realtime"
+    )
+    assert model.profile["audio_input_sample_rate"] == 16000
+    assert model.profile["supports_output_truncation"] is False
+    session = model._session_config("hi", None, model_settings=None)
+    assert session["audio"]["input"]["format"]["rate"] == 16000
+    assert session["audio"]["input"]["transcription"] == {
+        "model": "qwen3-asr-flash-realtime"
+    }
+    assert session["audio"]["output"]["voice"] == "Ethan"
 
 
 def test_realtime_options_empty_without_configured_providers(monkeypatch):
