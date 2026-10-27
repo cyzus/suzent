@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.18.1] - 2026-10-27
+## [v0.19.0] - 2026-10-27
 
 ### Release notes
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
 - Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
+- Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
 - The voice call animation keeps showing Suzent speaking until its reply has finished playing, instead of stopping early with fast realtime models such as Qwen-Omni.
 
 ## [v0.18.0] - 2026-10-26
