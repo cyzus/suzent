@@ -24,9 +24,9 @@ The mobile app (currently in preview) is a remote control for the agent on your
 computer. Your live agent runs on that computer, where its memory and model API
 keys stay; the offline demo runs locally on your phone.
 
-1. Get the app. Download the [Android APK (0.4.1)](https://github.com/cyzus/suzent/releases/download/mobile-v0.4.1/suzent-0.4.1-android.apk)
+1. Get the app. Download the [latest Android APK](https://suzent.com/download/android/)
    or browse the `mobile-v...` versions on [GitHub Releases](https://github.com/cyzus/suzent/releases). The iOS app is
-   available through the [iOS TestFlight beta](https://testflight.apple.com/join/gjcSRyZj).
+   available through the [iOS TestFlight beta](https://suzent.com/download/ios/).
    On your iPhone or iPad, install Apple’s TestFlight app, open the invitation,
    and follow the steps to accept the beta and install Suzent. Availability
    depends on an approved build and open places in the test group.

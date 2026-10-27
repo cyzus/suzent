@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createContent, root, site, locales } from "./content.mjs";
+import { downloads, resolveAndroidDownload, downloadRedirect } from "./downloads.mjs";
+const androidDownload = await resolveAndroidDownload();
 const content = createContent();
 const sovereignty = JSON.parse(
   fs.readFileSync(path.join(root, "content/sovereignty.json"), "utf8"),
@@ -38,6 +40,8 @@ const write = (url, text) => {
   fs.writeFileSync(file, text);
 };
 write(".nojekyll", "");
+write("download/android/index.html", downloadRedirect(androidDownload));
+write("download/ios/index.html", downloadRedirect(downloads.testflight));
 write(
   "sitemap.xml",
   '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +

@@ -167,3 +167,10 @@ jobs:
           fi
           gh release upload "$TAG" assets/* --clobber
           gh release edit "$TAG" --draft=false --latest=false
+
+  refresh-downloads:
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    needs: publish
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deploy-docs.yml
