@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.18.1] - 2026-10-26
+## [v0.18.1] - 2026-10-27
 
 ### Release notes
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
+- Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
 
 ## [v0.18.0] - 2026-10-26
