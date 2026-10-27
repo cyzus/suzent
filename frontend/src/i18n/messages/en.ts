@@ -1878,6 +1878,8 @@ export const en = {
     },
   },
   chatMessage: {
+    regentThinking: 'Regent is thinking',
+    regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
     today: 'Today',

@@ -200,6 +200,7 @@ class StreamParser:
         self.buffer = ""
         self._pending_tools: dict[str, _PendingToolCall] = {}
         self._last_tool_call_id = ""
+        self._delivered_message_ids: set[str] = set()
 
     def parse(self, chunks: Iterator[Union[str, bytes]]) -> Iterator[StreamEvent]:
         """
@@ -385,6 +386,22 @@ class StreamParser:
             or "unknown"
         )
         yield ToolOutput(tool_name, _stringify(content), tool_call_id=call_id)
+        # Background turns collect TextChunks for their one completion notice.
+        # Regent's deliberately sent messages count even with an empty final answer.
+        if tool_name == "send_message" and call_id not in self._delivered_message_ids:
+            try:
+                result = json.loads(content) if isinstance(content, str) else content
+                texts = result.get("metadata", {}).get("regent_messages")
+                if (
+                    result.get("success") is True
+                    and isinstance(texts, list)
+                    and texts
+                    and all(isinstance(text, str) and text.strip() for text in texts)
+                ):
+                    self._delivered_message_ids.add(call_id)
+                    yield TextChunk("\n\n".join(texts) + "\n\n")
+            except (ValueError, AttributeError, TypeError):
+                pass
 
     def _handle_delta(self, data: dict) -> Iterator[StreamEvent]:
         """Handle legacy stream_delta content."""

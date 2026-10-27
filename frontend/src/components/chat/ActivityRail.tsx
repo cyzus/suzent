@@ -82,7 +82,12 @@ export function buildAguiActivityChunks(parts: AGUIPart[]): AguiChunk[] {
     if (isEmptyAguiPart(part)) continue;
     const type = part.type as AguiChunkType;
     const current = chunks[chunks.length - 1];
-    if (current && current.type === type) {
+    if (
+      current &&
+      current.type === type &&
+      !part.regentBubble &&
+      !current.items.at(-1)?.regentBubble
+    ) {
       current.items.push(part);
       continue;
     }

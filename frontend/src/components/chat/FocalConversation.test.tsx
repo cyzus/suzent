@@ -120,3 +120,74 @@ describe('Focal conversation controls', () => {
     expect(regular).toContain('<time');
   });
 });
+
+it('keeps sent Regent bubbles visible after tool work and hides delivery plumbing', () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      conversational
+      regent
+      message={{
+        role: 'assistant',
+        content: '',
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'send_message',
+            toolCallId: 'sent',
+            state: 'completed',
+            output: JSON.stringify({
+              success: true,
+              message: 'Delivered',
+              metadata: { regent_messages: ['Looking now.', 'Two tests failed.'] },
+            }),
+          },
+          {
+            type: 'tool',
+            toolName: 'web_search',
+            toolCallId: 'search',
+            state: 'completed',
+            output: 'result',
+          },
+          { type: 'text', text: 'Shall I fix them?' },
+        ],
+      }}
+      messageIndex={1}
+      isStreaming={false}
+      isLastMessage={false}
+    />
+  );
+  expect(html).toContain('Looking now.');
+  expect(html).toContain('Two tests failed.');
+  expect(html).toContain('Shall I fix them?');
+  expect(html.match(/class="regent-message-bubble"/g)).toHaveLength(3);
+  expect(html).not.toContain('send_message');
+  expect(html).not.toContain('Delivered');
+});
+
+it('does not leave an empty Regent card after a reaction-only reply', () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      conversational
+      regent
+      message={{
+        role: 'assistant',
+        content: '',
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'react_to_message',
+            state: 'completed',
+            output: JSON.stringify({
+              success: true,
+              metadata: { regent_reaction: '👍' },
+            }),
+          },
+        ],
+      }}
+      messageIndex={1}
+      isStreaming={false}
+      isLastMessage={false}
+    />
+  );
+  expect(html).toBe('');
+});
