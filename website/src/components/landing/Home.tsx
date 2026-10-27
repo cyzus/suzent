@@ -492,10 +492,10 @@ function InstallerDownloads(): ReactNode {
         <Link className={styles.mobileLabel} href={localePath("/docs/getting-started/platforms#phone", locale)}>
           {t({ id: "homepage.download.mobile", message: "Mobile" })}
         </Link>
-        <a href="https://testflight.apple.com/join/gjcSRyZj">
+        <a href="/download/ios/">
           {t({ id: "homepage.download.iosBeta", message: "iOS · TestFlight" })}
         </a>
-        <a href="https://github.com/cyzus/suzent/releases/download/mobile-v0.4.1/suzent-0.4.1-android.apk">
+        <a href="/download/android/">
           {t({ id: "homepage.download.androidApk", message: "Android · APK" })}
         </a>
       </div>

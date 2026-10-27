@@ -143,3 +143,19 @@ or resetting the demo preserves its real pairing. Check both English and Chinese
 background/foreground during streaming and pending approval, process termination,
 and subsequent reopening of the saved demo workspace. A store may still request
 access to the real backend; the offline demo does not guarantee review acceptance.
+
+## Website download links
+
+The homepage and phone guide use `/download/android/` and `/download/ios/`.
+`website/content/downloads.json` owns the GitHub repository and TestFlight invite.
+Website preparation resolves all GitHub release pages, selects the highest stable
+`mobile-vMAJOR.MINOR.PATCH` version with an uploaded APK, and generates static
+redirect pages. Drafts, prereleases, desktop releases and releases without an APK
+are excluded. A failed lookup stops deployment, preserving the previous site.
+Local website builds need GitHub API access; set `GITHUB_TOKEN` if rate-limited.
+
+After Android assets are published, **Release mobile** calls the documentation
+workflow to rebuild the site from main. This also refreshes links when retrying an
+already published release, without replacing its assets. If website refresh fails,
+rerun the failed job or dispatch **Deploy Documentation**; do not rebuild the apps.
+The TestFlight invitation remains the same across builds unless the group changes.
