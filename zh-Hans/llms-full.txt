@@ -130,9 +130,9 @@ The mobile app (currently in preview) is a remote control for the agent on your
 computer. Your live agent runs on that computer, where its memory and model API
 keys stay; the offline demo runs locally on your phone.
 
-1. Get the app. Download the [Android APK (0.4.1)](https://github.com/cyzus/suzent/releases/download/mobile-v0.4.1/suzent-0.4.1-android.apk)
+1. Get the app. Download the [latest Android APK](https://suzent.com/download/android/)
    or browse the `mobile-v...` versions on [GitHub Releases](https://github.com/cyzus/suzent/releases). The iOS app is
-   available through the [iOS TestFlight beta](https://testflight.apple.com/join/gjcSRyZj).
+   available through the [iOS TestFlight beta](https://suzent.com/download/ios/).
    On your iPhone or iPad, install Apple’s TestFlight app, open the invitation,
    and follow the steps to accept the beta and install Suzent. Availability
    depends on an approved build and open places in the test group.
@@ -8628,6 +8628,22 @@ or resetting the demo preserves its real pairing. Check both English and Chinese
 background/foreground during streaming and pending approval, process termination,
 and subsequent reopening of the saved demo workspace. A store may still request
 access to the real backend; the offline demo does not guarantee review acceptance.
+
+## Website download links
+
+The homepage and phone guide use `/download/android/` and `/download/ios/`.
+`website/content/downloads.json` owns the GitHub repository and TestFlight invite.
+Website preparation resolves all GitHub release pages, selects the highest stable
+`mobile-vMAJOR.MINOR.PATCH` version with an uploaded APK, and generates static
+redirect pages. Drafts, prereleases, desktop releases and releases without an APK
+are excluded. A failed lookup stops deployment, preserving the previous site.
+Local website builds need GitHub API access; set `GITHUB_TOKEN` if rate-limited.
+
+After Android assets are published, **Release mobile** calls the documentation
+workflow to rebuild the site from main. This also refreshes links when retrying an
+already published release, without replacing its assets. If website refresh fails,
+rerun the failed job or dispatch **Deploy Documentation**; do not rebuild the apps.
+The TestFlight invitation remains the same across builds unless the group changes.
 
 
 ---
