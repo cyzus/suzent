@@ -176,3 +176,20 @@ describe('file citation support', () => {
     expect(html).toContain('📝');
   });
 });
+
+it('recovers delimiter-free citations only when their sources are known', () => {
+  const html = render('可使用 APIcitet0_src_1。另一个来源 citet0_src_2。');
+  // English words joined to a token are not silently rewritten.
+  expect(html).toContain('APIcitet0_src_1');
+  expect(html).toContain('example.org');
+  expect(html).not.toContain('citet0_src_2');
+  expect(render('文档说明citet0_src_1。')).toContain('example.com');
+  expect(render('Literal citet0_src_99')).toContain('citet0_src_99');
+  expect(renderWithSources('Literal citet0_src_1', new Map())).toContain('citet0_src_1');
+  expect(formatTextWithCitationReferences('说明citet0_src_1。', sources)).toContain(
+    'https://example.com'
+  );
+  expect(formatTextWithCitationReferences('Literal citet0_src_99', sources)).toBe(
+    'Literal citet0_src_99'
+  );
+});

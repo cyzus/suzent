@@ -77,3 +77,23 @@ describe('Regent conversation delivery', () => {
     expect(readRegentDelivery(delivery('bad', { regent_messages: [42] }))).toBeUndefined();
   });
 });
+
+it('hides quiet signals in live text, recovered history and sent bubbles without losing work', () => {
+  const work: AGUIPart = {
+    type: 'tool',
+    toolName: 'update_notes',
+    state: 'completed',
+    output: 'Saved',
+  };
+  const parts: AGUIPart[] = [work, { type: 'text', text: 'HEARTBEAT_OK' }];
+  expect(regentDisplayParts(parts)).toEqual([work]);
+  expect(regentDisplayParts([{ type: 'text', text: 'HEARTBEAT_' }], true)).toEqual([]);
+  expect(regentDisplayParts([{ type: 'text', text: 'HEARTBEAT_' }])).toHaveLength(1);
+  const sent = delivery('send', { regent_messages: ['Hello', 'HEARTBEAT_OK'] });
+  expect(regentDisplayParts([sent]).map((p) => p.text)).toEqual(['Hello']);
+  const explanation: AGUIPart = {
+    type: 'text',
+    text: 'The token HEARTBEAT_OK means nothing needs attention.',
+  };
+  expect(regentDisplayParts([explanation])).toEqual([explanation]);
+});
