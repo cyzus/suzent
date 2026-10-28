@@ -55,7 +55,15 @@ class FocalMessageTool(Tool):
             return ToolResult.error_result(
                 ToolErrorCode.PERMISSION_DENIED, "Only Regent can send messages here."
             )
+        from suzent.core.heartbeat import is_quiet_reply
+
         texts = [text.strip() for text in messages]
+        if any(is_quiet_reply(text) for text in texts):
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "HEARTBEAT_OK is an internal quiet-turn signal, not a chat message. "
+                "Return it normally when there is nothing to tell the user.",
+            )
         if not 1 <= len(texts) <= 4 or any(
             not text or len(text) > 4000 for text in texts
         ):

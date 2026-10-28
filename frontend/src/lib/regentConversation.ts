@@ -1,3 +1,4 @@
+import { isQuietReply } from './quietReply';
 import type { Message } from '../types/api';
 import type { AGUIPart } from '../types/agui';
 
@@ -29,7 +30,7 @@ export function readRegentDelivery(part: AGUIPart): RegentDelivery | undefined {
 }
 
 /** Delivery IDs reuse tool call IDs, so stream recovery cannot duplicate bubbles. */
-export function regentDisplayParts(parts: AGUIPart[]): AGUIPart[] {
+export function regentDisplayParts(parts: AGUIPart[], streaming = false): AGUIPart[] {
   const latest = new Map<string, AGUIPart>();
   for (const part of parts) {
     if (part.type === 'tool' && part.toolCallId) {
@@ -51,14 +52,26 @@ export function regentDisplayParts(parts: AGUIPart[]): AGUIPart[] {
     }
     const delivery = readRegentDelivery(part);
     if (delivery && 'messages' in delivery) {
-      return delivery.messages.map((text, index) => ({
-        type: 'text',
-        text,
-        messageId: `${part.toolCallId}:${index}`,
-        regentBubble: true,
-      }));
+      return delivery.messages.flatMap((text, index) =>
+        isQuietReply(text)
+          ? []
+          : [
+              {
+                type: 'text',
+                text,
+                messageId: `${part.toolCallId}:${index}`,
+                regentBubble: true,
+              },
+            ]
+      );
     }
     if (delivery && 'reaction' in delivery) return [];
+    if (
+      part.type === 'text' &&
+      (isQuietReply(part.text) ||
+        (streaming && !!part.text?.trim() && 'HEARTBEAT_OK'.startsWith(part.text.trim())))
+    )
+      return [];
     if (
       part.type === 'tool' &&
       ['send_message', 'react_to_message'].includes(part.toolName || '') &&

@@ -1,3 +1,4 @@
+import { isQuietReply } from '../../lib/quietReply';
 import { readRegentDelivery, regentDisplayParts } from '../../lib/regentConversation';
 import presentation from '../../../../packages/presentation/tokens.json';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -180,6 +181,7 @@ function filterBlocks(blocks: ContentBlock[]): ContentBlock[] {
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
   conversational?: boolean;
+  identity?: React.ReactNode;
   messageIndex: number;
   workedDurationSeconds?: number;
   streamStartedAtMs?: number;
@@ -209,6 +211,7 @@ const AGUIPartsContent: React.FC<{
 }> = ({
   parts,
   conversational = false,
+  identity,
   workedDurationSeconds,
   streamStartedAtMs,
   isStreaming,
@@ -245,6 +248,7 @@ const AGUIPartsContent: React.FC<{
 
   return (
     <TurnActivity
+      identity={identity}
       finalStart={getFinalContentStart(renderGroups)}
       persistentIndices={renderGroups.flatMap((group, index) =>
         group.type === 'single' &&
@@ -811,8 +815,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   const isStreamingThis = isStreaming && isLastMessage;
   const rawParts = aguiParts ?? message.parts;
   const effectiveParts = useMemo(
-    () => (regent && rawParts ? regentDisplayParts(rawParts) : rawParts),
-    [regent, rawParts]
+    () => (regent && rawParts ? regentDisplayParts(rawParts, isStreamingThis) : rawParts),
+    [regent, rawParts, isStreamingThis]
   );
   const hasParts = effectiveParts && effectiveParts.length > 0;
   // The ACP runtime stamps `acp/<agent-id>` on the response it produced; the
@@ -948,7 +952,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   // Keep overflow clipping on the chat scroller and message contents, not the
   // sticky badge ancestor: WebKit can jitter sticky layers inside overflow: clip.
   const badgeContainer = regent ? (
-    <div className="mb-2 flex items-center gap-2 text-neutral-500 dark:text-neutral-400">
+    <div className="regent-identity flex items-center gap-2 text-neutral-500 dark:text-neutral-400">
       <RegentMark size={18} />
       <span className="text-[11px] font-medium">{t('chatList.focal.name')}</span>
       {isStreamingThis && (
@@ -1076,7 +1080,10 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   if (
     regent &&
     !isStreamingThis &&
-    rawParts?.some((part) => part.toolName === 'react_to_message' && readRegentDelivery(part)) &&
+    (isQuietReply(message.content) ||
+      rawParts?.some(
+        (part) => (part.type === 'text' && isQuietReply(part.text)) || readRegentDelivery(part)
+      )) &&
     !effectiveParts?.some(
       (part) =>
         part.type !== 'reasoning' &&
@@ -1100,8 +1107,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
               <IncomingMessage text={part.text || ''} />
             </div>
           ))}
-          {/* Badge/Assembly Container */}
-          {badgeContainer}
+          {(!regent || !hasParts) && badgeContainer}
 
           <div
             className={
@@ -1117,6 +1123,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                 <AGUIPartsContent
                   parts={response}
                   conversational={conversational}
+                  identity={regent ? badgeContainer : undefined}
                   messageIndex={messageIndex}
                   workedDurationSeconds={workedDurationSeconds}
                   streamStartedAtMs={streamStartedAtMs}
