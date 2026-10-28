@@ -540,7 +540,7 @@ const MessageList: React.FC<{
 
   let previousTimestamp: string | undefined;
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}>
       {messages.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 

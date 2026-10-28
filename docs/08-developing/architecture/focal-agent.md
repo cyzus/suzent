@@ -307,6 +307,7 @@ replayed deliveries. The original parts remain in storage and model history.
 
 Regent's text stays visible when activity folds at the end of a turn. The UI
 uses a compact identity and thinking dots, light/dark bubble styles, and an
-accessible reaction label. Desktop notifications remain once per turn, with
+accessible reaction label. Completed work duration shares the identity row and
+expands on demand; long answers retain bubbles with restrained heading sizes. Desktop notifications remain once per turn, with
 sent messages used as a fallback preview when final text is empty. The stream
 parser also includes sent messages in text collected for background replies.

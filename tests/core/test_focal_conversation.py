@@ -122,3 +122,9 @@ async def test_reaction_does_not_target_a_background_trigger() -> None:
         prompt=wrap_in_system_reminder("Check projects", display_trigger="Wake up")
     )
     assert not (await FocalReactionTool().forward(ctx, "👀")).success
+
+
+async def test_message_tool_refuses_internal_quiet_signals() -> None:
+    result = await FocalMessageTool().forward(context(), ["Hello", "HEARTBEAT_OK"])
+    assert not result.success
+    assert "regent_messages" not in result.metadata
