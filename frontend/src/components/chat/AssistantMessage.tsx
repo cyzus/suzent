@@ -1042,14 +1042,17 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   const conversationCopy = conversational && fullMessageText && !isThinking && (
     <CopyButton
       text={fullMessageText}
-      className="conversation-copy absolute bottom-1 right-0 !w-8 !h-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
+      className="conversation-copy relative shrink-0 !w-8 !h-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
     />
   );
 
   const messageFooter = conversational ? (
-    !isThinking && citationSourcesList.length > 0 ? (
-      <SourcesPanel sources={citationSourcesList} />
-    ) : null
+    <div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
+      {conversationCopy}
+      {!isThinking && citationSourcesList.length > 0 && (
+        <SourcesPanel sources={citationSourcesList} />
+      )}
+    </div>
   ) : (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
@@ -1099,9 +1102,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     return (
       <CitationProvider sources={citationSourcesMap}>
         <div
-          className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message pr-10' : 'pr-4 md:pr-12'}`}
+          className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
         >
-          {conversationCopy}
           {triggers.map((part, index) => (
             <div key={`trigger-${index}`} className="mb-6">
               <IncomingMessage text={part.text || ''} />
@@ -1222,9 +1224,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   return (
     <CitationProvider sources={citationSourcesMap}>
       <div
-        className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message pr-10' : 'pr-4 md:pr-12'}`}
+        className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
       >
-        {conversationCopy}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
 
