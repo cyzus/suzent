@@ -1,5 +1,5 @@
 {
-  "version": "0.4.1",
+  "version": "0.5.0",
   "consumed": [
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/ios-app-store-orientations.json",
@@ -15,6 +15,7 @@
     ".releases/changes/mobile-chat-model-source.json",
     ".releases/changes/mobile-chat-title-header.json",
     ".releases/changes/mobile-component-parity.json",
+    ".releases/changes/mobile-conversation-home.json",
     ".releases/changes/mobile-desktop-composer.json",
     ".releases/changes/mobile-device-name.json",
     ".releases/changes/mobile-greeting-cube.json",
