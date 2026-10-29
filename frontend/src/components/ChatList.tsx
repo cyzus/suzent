@@ -44,10 +44,12 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
+import { ProjectSettingsDialog } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
 
 const ALL_PROJECTS_FILTER = '__all__';
+const SYSTEM_PROJECT_SLUGS = new Set(['default', 'social']);
 const AUTOMATION_PREVIEW_LIMIT = 5;
 const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
@@ -113,6 +115,7 @@ interface ChatListProps {
 
 /** Search and new chat, as icons in the sidebar's logo row. */
 const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
+const ARCHIVED_PAGE_SIZE = 50;
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
 function sidebarNavRowClass(selected: boolean): string {
@@ -129,6 +132,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const {
     chats,
     pinnedChats,
+    archivedCount,
     chatTotal,
     loadingChats,
     loadingMoreChats,
@@ -161,6 +165,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     setCurrentProjectId,
     createProject,
     renameProject,
+    updateProjectSettings,
     deleteProject,
     moveChat,
     moveAllChats,
@@ -203,6 +208,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     anchor: { rect: DOMRect };
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState('');
   const [taskMenu, setTaskMenu] = useState<{
     jobId: number;
@@ -251,10 +257,18 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [archivedChats, setArchivedChats] = useState<ChatSummary[]>([]);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  // Grows by a page per "load more"; a refetch covers everything already shown.
+  const [archivedLimit, setArchivedLimit] = useState(ARCHIVED_PAGE_SIZE);
   const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
   const knownChats = useMemo(
-    () => new Map([...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])),
-    [chats, pinnedChats, projectChats]
+    () =>
+      new Map(
+        [...archivedChats, ...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])
+      ),
+    [archivedChats, chats, pinnedChats, projectChats]
   );
 
   useEffect(() => {
@@ -637,6 +651,24 @@ export const ChatList: React.FC<ChatListProps> = ({
     void fetchProjectChats(filterId);
   }, [filterId, fetchProjectChats, chatTotal]);
 
+  const fetchArchivedChats = useCallback(async () => {
+    setLoadingArchived(true);
+    try {
+      const res = await fetch(`${getApiBase()}/chats?archived=true&limit=${archivedLimit}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setArchivedChats(data.chats || []);
+    } catch (error) {
+      console.error('Error fetching archived chats:', error);
+    } finally {
+      setLoadingArchived(false);
+    }
+  }, [archivedLimit]);
+
+  useEffect(() => {
+    if (archivedOpen) void fetchArchivedChats();
+  }, [archivedOpen, archivedCount, fetchArchivedChats]);
+
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
     return projectChats;
@@ -719,8 +751,18 @@ export const ChatList: React.FC<ChatListProps> = ({
       organization === 'list' || filterId !== ALL_PROJECTS_FILTER
         ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
         : [];
-    return [...new Set([...pinnedChats, ...listed].map((chat) => chat.id))];
-  }, [chats, filterId, localSearchQuery, organization, pinnedChats, visibleChats]);
+    const archived = archivedOpen ? archivedChats : [];
+    return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
+  }, [
+    archivedChats,
+    archivedOpen,
+    chats,
+    filterId,
+    localSearchQuery,
+    organization,
+    pinnedChats,
+    visibleChats,
+  ]);
 
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -738,7 +780,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const findChatSummary = (chatId: string): ChatSummary | undefined =>
     chatsRef.current.find((c) => c.id === chatId) ??
     projectChatsRef.current.find((c) => c.id === chatId) ??
-    pinnedChats.find((c) => c.id === chatId);
+    pinnedChats.find((c) => c.id === chatId) ??
+    archivedChats.find((c) => c.id === chatId);
 
   const clearSelection = (): void => {
     setSelection(EMPTY_SELECTION);
@@ -1057,6 +1100,42 @@ export const ChatList: React.FC<ChatListProps> = ({
         actions: [{ label: t('common.cancel'), tone: 'default' }],
       });
     }
+  };
+
+  const handleSetArchived = async (chatIds: string[], archived: boolean): Promise<void> => {
+    if (chatIds.length === 0) return;
+    const ids = new Set(chatIds);
+    if (archived) setProjectChats((prev) => prev.filter((chat) => !ids.has(chat.id)));
+    else setArchivedChats((prev) => prev.filter((chat) => !ids.has(chat.id)));
+    const results = await Promise.allSettled(
+      chatIds.map(async (chatId) => {
+        const response = await fetch(`${getApiBase()}/chats/${chatId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      })
+    );
+    await Promise.all([
+      refreshChatList(undefined, true),
+      refreshProjects(),
+      filterId !== ALL_PROJECTS_FILTER ? fetchProjectChats(filterId) : undefined,
+      archivedOpen ? fetchArchivedChats() : undefined,
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      setDialog({
+        title: t('chatList.archiveError'),
+        message: t('chatList.archiveErrorMessage'),
+        actions: [{ label: t('common.cancel'), tone: 'default' }],
+      });
+    }
+  };
+
+  const handleBulkArchive = (): void => {
+    const ids = [...selection.selected];
+    clearSelection();
+    void handleSetArchived(ids, !ids.every((id) => findChatSummary(id)?.archived));
   };
 
   // ── Move chat to project ──
@@ -1944,7 +2023,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <div className="space-y-0.5 px-2 pb-2">
                       {sortedProjects.map((project) => {
                         const isOpen = filterId === project.id;
-                        const isSystem = project.slug === 'default' || project.slug === 'social';
                         const isRenaming = renamingProjectId === project.id;
                         return (
                           <div key={project.id}>
@@ -2007,30 +2085,28 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   </button>
                                   <span className="relative flex items-center justify-center">
                                     <span
-                                      className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
+                                      className={`flex transition-opacity ${projectMenu?.projectId === project.id ? 'opacity-0' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
                                     >
                                       <RunningMark
                                         running={!isOpen && runningProjectIds.has(project.id)}
                                       />
                                     </span>
-                                    {!isSystem && (
-                                      <button
-                                        type="button"
-                                        aria-label={t('chatList.menu.title')}
-                                        title={t('chatList.menu.title')}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          const rect = event.currentTarget.getBoundingClientRect();
-                                          setProjectMenu({
-                                            projectId: project.id,
-                                            anchor: { rect },
-                                          });
-                                        }}
-                                        className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
-                                      >
-                                        <MoreActionsIcon />
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.menu.title')}
+                                      title={t('chatList.menu.title')}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        setProjectMenu({
+                                          projectId: project.id,
+                                          anchor: { rect },
+                                        });
+                                      }}
+                                      className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                    >
+                                      <MoreActionsIcon />
+                                    </button>
                                   </span>
                                 </>
                               )}
@@ -2090,6 +2166,60 @@ export const ChatList: React.FC<ChatListProps> = ({
                   </div>
                 )}
               </section>
+              {(archivedCount > 0 || archivedOpen) && (
+                <section
+                  className={`order-2 border-t border-neutral-200 dark:border-zinc-700 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={archivedOpen}
+                    onClick={() => setArchivedOpen((open) => !open)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                  >
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                      {t('chatList.archivedChats')}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {archivedCount}
+                      <svg
+                        className={`h-3 w-3 transition-transform ${archivedOpen ? 'rotate-90' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        strokeWidth={3}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </button>
+                  {archivedOpen &&
+                    (loadingArchived && archivedChats.length === 0 ? (
+                      renderListSkeleton()
+                    ) : archivedChats.length === 0 ? (
+                      <div className="px-4 py-4 text-center text-[10px] font-bold uppercase text-neutral-400">
+                        {t('chatList.archivedEmpty')}
+                      </div>
+                    ) : (
+                      <div className="px-1.5 pb-2">
+                        {archivedChats.map((chat) => renderChatRow(chat, true, false, true))}
+                        {archivedCount > archivedChats.length && (
+                          <button
+                            type="button"
+                            onClick={() => setArchivedLimit((limit) => limit + ARCHIVED_PAGE_SIZE)}
+                            disabled={loadingArchived}
+                            className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                          >
+                            {loadingArchived
+                              ? t('chatList.loadingMore')
+                              : t('chatList.loadMore', {
+                                  count: archivedCount - archivedChats.length,
+                                })}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                </section>
+              )}
             </>
           )}
         </div>
@@ -2101,9 +2231,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
           projects={projects}
           pinned={false}
+          archived={[...selection.selected].every((id) => findChatSummary(id)?.archived)}
           bulkCount={Math.max(2, selection.selected.size)}
           initialView={bulkMenu.view}
           onTogglePin={() => undefined}
+          onToggleArchive={handleBulkArchive}
           onRename={() => undefined}
           onDelete={handleRequestBulkDelete}
           onMoveToProject={(projectId) => void handleBulkMove(projectId)}
@@ -2117,7 +2249,8 @@ export const ChatList: React.FC<ChatListProps> = ({
           const chat =
             pinnedChats.find((c) => c.id === openMenu.chatId) ??
             chatsRef.current.find((c) => c.id === openMenu.chatId) ??
-            projectChatsRef.current.find((c) => c.id === openMenu.chatId);
+            projectChatsRef.current.find((c) => c.id === openMenu.chatId) ??
+            archivedChats.find((c) => c.id === openMenu.chatId);
           if (!chat) return null;
           return (
             <ChatRowMenu
@@ -2126,7 +2259,9 @@ export const ChatList: React.FC<ChatListProps> = ({
               projects={projects}
               currentProjectId={chat.projectId ?? undefined}
               pinned={pinnedChats.some((item) => item.id === chat.id)}
+              archived={!!chat.archived}
               onTogglePin={() => void handleTogglePin(chat.id)}
+              onToggleArchive={() => void handleSetArchived([chat.id], !chat.archived)}
               onRename={() => {
                 setRenamingChatId(chat.id);
                 setRenameValue(chat.title || '');
@@ -2175,82 +2310,111 @@ export const ChatList: React.FC<ChatListProps> = ({
         (() => {
           const p = projects.find((pr) => pr.id === projectMenu.projectId);
           if (!p) return null;
+          const isSystem = SYSTEM_PROJECT_SLUGS.has(p.slug);
           return (
             <ProjectRowMenu
               anchor={projectMenu.anchor}
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
               rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
-              onRename={() => {
-                setProjectRenameValue(p.name);
-                setRenamingProjectId(p.id);
-              }}
-              onDelete={() => {
-                // Always allow delete. If the project has chats, prompt the user
-                // to confirm — chats will be moved to the default project first.
-                const fallback = projects.find((pr) => pr.slug === 'default');
-                const finalizeDelete = async () => {
-                  const result = await deleteProject(p.id);
-                  if (!result.success) {
-                    setDialog({
-                      title: p.name,
-                      message: result.error || t('chatList.menu.deleteFailed'),
-                      actions: [{ label: t('common.ok'), tone: 'primary' }],
-                    });
-                    return;
-                  }
-                  if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
-                  await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
-                };
-
-                if (p.chatCount === 0) {
-                  setDialog({
-                    title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                    message: t('chatList.menu.deleteConfirmEmpty'),
-                    actions: [
-                      { label: t('common.cancel') },
-                      { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
-                    ],
-                  });
-                  return;
-                }
-
-                if (!fallback) {
-                  setDialog({
-                    title: p.name,
-                    message: t('chatList.menu.deleteFailed'),
-                    actions: [{ label: t('common.ok'), tone: 'primary' }],
-                  });
-                  return;
-                }
-
-                setDialog({
-                  title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                  message: t('chatList.menu.deleteConfirmWithChats', {
-                    count: p.chatCount,
-                    target: fallback.name,
-                  }),
-                  actions: [
-                    { label: t('common.cancel') },
-                    {
-                      label: t('chatList.menu.delete'),
-                      tone: 'danger',
-                      onClick: async () => {
-                        const moveResult = await moveAllChats(p.id, fallback.id);
-                        if (!moveResult.success) {
+              onSettings={() => setSettingsProjectId(p.id)}
+              onRename={
+                isSystem
+                  ? undefined
+                  : () => {
+                      setProjectRenameValue(p.name);
+                      setRenamingProjectId(p.id);
+                    }
+              }
+              onDelete={
+                isSystem
+                  ? undefined
+                  : () => {
+                      // Always allow delete. If the project has chats, prompt the user
+                      // to confirm — chats will be moved to the default project first.
+                      const fallback = projects.find((pr) => pr.slug === 'default');
+                      const finalizeDelete = async () => {
+                        const result = await deleteProject(p.id);
+                        if (!result.success) {
                           setDialog({
                             title: p.name,
-                            message: moveResult.error || t('chatList.menu.deleteFailed'),
+                            message: result.error || t('chatList.menu.deleteFailed'),
                             actions: [{ label: t('common.ok'), tone: 'primary' }],
                           });
                           return;
                         }
-                        await finalizeDelete();
-                      },
-                    },
-                  ],
-                });
-              }}
+                        if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
+                        await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+                      };
+
+                      if (p.chatCount === 0) {
+                        setDialog({
+                          title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                          message: t('chatList.menu.deleteConfirmEmpty'),
+                          actions: [
+                            { label: t('common.cancel') },
+                            {
+                              label: t('chatList.menu.delete'),
+                              tone: 'danger',
+                              onClick: finalizeDelete,
+                            },
+                          ],
+                        });
+                        return;
+                      }
+
+                      if (!fallback) {
+                        setDialog({
+                          title: p.name,
+                          message: t('chatList.menu.deleteFailed'),
+                          actions: [{ label: t('common.ok'), tone: 'primary' }],
+                        });
+                        return;
+                      }
+
+                      setDialog({
+                        title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                        message: t('chatList.menu.deleteConfirmWithChats', {
+                          count: p.chatCount,
+                          target: fallback.name,
+                        }),
+                        actions: [
+                          { label: t('common.cancel') },
+                          {
+                            label: t('chatList.menu.delete'),
+                            tone: 'danger',
+                            onClick: async () => {
+                              const moveResult = await moveAllChats(p.id, fallback.id);
+                              if (!moveResult.success) {
+                                setDialog({
+                                  title: p.name,
+                                  message: moveResult.error || t('chatList.menu.deleteFailed'),
+                                  actions: [{ label: t('common.ok'), tone: 'primary' }],
+                                });
+                                return;
+                              }
+                              await finalizeDelete();
+                            },
+                          },
+                        ],
+                      });
+                    }
+              }
               onClose={() => setProjectMenu(null)}
+            />
+          );
+        })()}
+
+      {settingsProjectId &&
+        (() => {
+          const p = projects.find((pr) => pr.id === settingsProjectId);
+          if (!p) return null;
+          return (
+            <ProjectSettingsDialog
+              project={p}
+              canRename={!SYSTEM_PROJECT_SLUGS.has(p.slug)}
+              onSave={(update) => updateProjectSettings(p.id, update)}
+              onClose={() => setSettingsProjectId(null)}
+              rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
             />
           );
         })()}

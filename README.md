@@ -14,13 +14,13 @@
 
 An open-source, local-first personal AI agent whose memory, authority, runtime, and continuity stay yours.
 
-Memory in plain files you own · any model, cloud or local · tools that act only within your permissions · desktop, mobile, and the chat apps you already use
+A memory it curates in files you own · 16 model providers, cloud or your own hardware · actions reviewed against your rules · Regent keeps every project moving while you're away · desktop, phone, editor, and the chat apps you already use
 
 [![Version](https://badgen.net/github/release/cyzus/suzent?label=version)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
 **[Website](https://suzent.com)** • **[Quickstart](docs/01-getting-started/quickstart.md)** • **[Docs](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[Contributing](./CONTRIBUTING.md)**
 
-<img src="docs/assets/readme/suzent-tour.gif" alt="A tour of the Suzent desktop app: chat, core memory, scheduled tasks, and social channels" width="880" />
+<img src="docs/assets/readme/hero.svg" alt="The Suzent cube at the centre of an orrery. A ring of sixteen model providers turns around it, from OpenAI, ChatGPT and Claude to DeepSeek, Qwen, Kimi and GLM and models you host yourself, while its memory, permissions, phone, schedules, chat apps and folders circle closer in." width="640" />
 
 </div>
 
@@ -28,9 +28,9 @@ Memory in plain files you own · any model, cloud or local · tools that act onl
 
 ## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **MEET SUZENT**
 
-**SUZENT** [soo-zuh-nt] keeps an agent's identity, memory, skills, workspace, and runtime under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
+**SUZENT** [soo-zuh-nt] keeps an agent's identity, memory, skills, workspace, and runtime under your control. Use GPT, Claude, Gemini, DeepSeek, Qwen, a model on your own GPU, or whatever comes next, without resetting the agent that knows you and your work.
 
-Its memory is append-only Markdown on your disk, not rows in someone else's database. Its tool calls pass through permission modes you define. Its code runs in an isolated Docker sandbox, or on the host under path restrictions you set. It can research, write, code, pursue goals, run scheduled work, connect to your devices, and meet you in Telegram, Slack, Discord, Feishu, or WeChat — always inside boundaries you set.
+It is not a chat window. It remembers what you told it and what it learned, tidies that memory overnight, works through goals and schedules while you're away, and asks before it does anything you haven't allowed. Its memory is plain files on your disk, its actions pass through permission modes you set, and its code runs in an isolated Docker sandbox or on the host under path restrictions you choose.
 
 **Models are replaceable. Platforms are temporary. Your agent remains.**
 
@@ -120,38 +120,90 @@ Or re-run the install command above — it detects an existing installation and 
 
 ## **WHAT MAKES AN AGENT SOVEREIGN?**
 
+Sovereignty is not merely local execution. It is ownership of the agent's **mind, authority, vessel, and continuity**.
+
+<div align="center">
+<img src="docs/assets/readme/pillars.svg" alt="The four sovereignty pillars. I Sovereign Mind, model is not identity: memory, skills and notes are files, the model is a swappable engine. II Sovereign Authority, action within your law: Ask, Smart or Full Access, where in Smart mode a reviewer model lets an action run, asks you, or blocks it. III Sovereign Vessel, runtime in your domain: your computer, folders, laptop and phone, no vendor cloud. IV Sovereign Continuity, self over platform: memory and skills move to a new machine while keys stay local." width="880" />
+</div>
+
 | Question | SUZENT's answer |
 |---|---|
-| Who owns its memory? | **You.** Markdown files are the durable source of truth. |
-| Who chooses its intelligence? | **You.** Models and providers are replaceable. |
-| Who defines what it may do? | **You.** Permissions, rules, and sandbox boundaries are explicit. |
+| Who owns its memory? | **You.** Plain files on your disk are the source of truth. |
+| Who chooses its intelligence? | **You.** Sixteen providers built in, and any compatible endpoint you add. |
+| Who defines what it may do? | **You.** Permission modes, rules, and sandbox boundaries are explicit. |
 | Where does it live? | **On infrastructure you control.** |
 | Can it move? | Memory, skills, and configuration are portable; credentials stay local. |
 | Can you inspect it? | Tool calls, authorization decisions, files, and memory remain visible. |
 
-Sovereignty is not merely local execution. It is ownership of the agent's **mind, authority, vessel, and continuity**.
+---
 
-## **THE SOVEREIGN SYSTEM**
+## <img src="docs/assets/robot-agnostic.svg" width="28" style="vertical-align: middle;" /> **CHOOSE ITS INTELLIGENCE**
 
-### <img src="docs/assets/robot-agnostic.svg" width="28" style="vertical-align: middle;" /> **CHOOSE ITS INTELLIGENCE**
+Models are engines, not identities. Add as many providers as you like, pick a model per conversation, and switch without losing the memory, skills, or workspace that make the agent yours.
 
-Models are engines, not identities. Switch between GPT, Claude, Gemini, DeepSeek, local models, and compatible providers without surrendering the memory, skills, or workspace that make the agent yours.
+| | Providers |
+|---|---|
+| **Frontier labs** | [OpenAI](docs/04-models/cloud/openai.md) (also Azure OpenAI) · [ChatGPT Subscription](docs/04-models/cloud/chatgpt-subscription.md) (sign in with your ChatGPT plan, no API key) · [Anthropic Claude](docs/04-models/cloud/anthropic.md) · [Google Gemini](docs/04-models/cloud/gemini.md) · [xAI Grok](docs/04-models/cloud/xai.md) |
+| **Open-weight labs** | [DeepSeek](docs/04-models/cloud/deepseek.md) · [Qwen (DashScope)](docs/04-models/cloud/dashscope.md) · [Kimi (Moonshot)](docs/04-models/cloud/moonshot.md) · [GLM (Zhipu AI)](docs/04-models/cloud/zhipu.md) · [MiniMax](docs/04-models/cloud/minimax.md) · [Xiaomi MiMo](docs/04-models/cloud/xiaomi-mimo.md) |
+| **Gateways** | [OpenRouter](docs/04-models/cloud/openrouter.md) (hundreds of models, one key) · [LiteLLM Proxy](docs/04-models/local/litellm.md) |
+| **Your own hardware** | [Ollama](docs/04-models/local/ollama.md) · [vLLM](docs/04-models/local/vllm.md) · [SGLang](docs/04-models/local/sglang.md) |
+| **Anything else** | Add a custom provider for any OpenAI-compatible endpoint, or a custom model ID on any card above. |
 
-### <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **OWN ITS MEMORY**
+Keys live in your operating system's keychain, never in plain-text config. [Model roles](docs/04-models/model-roles.md) let a small, cheap model handle titles, memory extraction, and permission review while your best model holds the conversation, and every role can carry backup models that take over when the first one fails.
 
-Conversation facts land in append-only Markdown logs, consolidate into an inspectable notebook, and are indexed for semantic recall—the files stay authoritative, and the LanceDB index can be rebuilt from them at any time. Read, edit, delete, version, and carry that memory yourself.
+---
 
-### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **GOVERN ITS ACTIONS**
+## <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **OWN ITS MEMORY**
 
-Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. An optional Docker sandbox isolates execution, while the activity timeline records what ran, what changed, and why it was authorized.
+Memory is where a sovereign agent keeps its self, so Suzent treats it as a curated knowledge base, not a chat log.
 
-### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **RUN IT ANYWHERE, LET IT WORK**
+<div align="center">
+<img src="docs/assets/readme/memory.svg" alt="Suzent's memory pipeline. Each chat's facts are captured with the words they came from, appended to a plain file for that day, folded overnight by the organizer into one notebook page per topic with a map the agent always reads, and recalled in every chat by hybrid search over meaning, keywords, recency and importance. Lessons come from failures that were fixed; facts fade instead of being deleted; the search index rebuilds from the files." width="880" />
+</div>
 
-Goals, project tasks, subagents, Cron, and Heartbeat let the agent continue beyond one reply, inside isolated project workspaces and folders you already own—including an Obsidian vault—and across approved companion devices. Interactive turns checkpoint their session workspace before work begins, so retry restores both the conversation and local changes—not just the text.
+- **It captures with evidence.** Every few exchanges, facts are extracted and typed (a preference, a project detail, a lesson), each with the exact words it came from. A fact about you is kept only when you said it yourself, never when the agent guessed it.
+- **It learns from what went wrong.** When a command fails or you correct the agent, and the same exchanges show the fix, it saves what to do next time and where it applies. A lesson that keeps recurring for a repository is offered as a change to that repository's agent instructions.
+- **It tidies overnight.** An organizer reads the new daily logs and, for each fact, confirms, sharpens, supersedes, or adds it on a topic page. Contradictions become questions for you instead of guesses, and the old value is kept under a History heading.
+- **It keeps a notebook.** One page per topic, in a folder of plain notes the agent also researches and writes into (it opens as an Obsidian vault if you use Obsidian). A short map of those pages is loaded into every chat.
+- **It recalls with hybrid search.** Meaning, keywords, recency, and importance are scored together, so a fact you repeat often ranks above one you mentioned once.
+- **It forgets gently.** Each fact gets a review date by kind (a year for preferences, three weeks for passing context). Expired facts fade in search; nothing is deleted behind your back.
 
-Extend it further with portable `SKILL.md` packages and any MCP server you connect.
+All of it is plain text files (Markdown) on your disk: open them in any editor, change them, keep them in Git. The LanceDB search index is rebuilt from those files at any time. [How memory works →](docs/03-features/memory/README.md)
 
-### <img src="docs/assets/robot-reader.svg" width="28" style="vertical-align: middle;" /> **KEEP ITS CONTINUITY**
+---
+
+## <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **GOVERN ITS ACTIONS**
+
+Autonomy never makes the agent the authority. Each conversation runs in one of three modes:
+
+| Mode | What happens |
+|---|---|
+| **Ask** (default) | Read-only actions run. Anything that changes files or the outside world asks you first. |
+| **Smart** | Clearly low-risk actions run on their own. Everything else goes to a separate reviewer model, which approves it, blocks it, or asks you. |
+| **Full Access** | Actions run without asking. |
+
+Your deny rules, blocked paths, and dangerous-command checks apply in every mode. An optional Docker sandbox isolates execution, and the activity timeline records what ran, what changed, and why it was authorized. [Permissions & approvals →](docs/03-features/tools/human-in-the-loop.md)
+
+---
+
+## <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **LET IT WORK WHILE YOU'RE AWAY**
+
+You are the sovereign; **Regent** governs in your stead. It is the one conversation at the top of the sidebar that watches every project: tell it what you want done, and it hands the work to a session in the right project, or to a coding agent such as Codex or Claude Code, then follows up while you're gone.
+
+<div align="center">
+<img src="docs/assets/readme/regent.svg" alt="You give Regent one instruction. Regent hands the work to sessions in the right projects, or to coding agents such as Codex and Claude Code, checks in on them while you are away, and brings back only what needs your decision. It reminds you when asked, the sessions it starts run in Smart mode, and it stays quiet when nothing needs you." width="880" />
+</div>
+
+- **One place to look.** Its board shows which chats are waiting on you, which are running, and a one-line note on where each stands.
+- **It only brings you decisions.** When a session finishes with nothing for you to do, Regent notes it quietly. Work that is blocked on you always notifies you.
+- **It checks in on its own.** Every 30 minutes it looks for stalled work and unanswered questions, and nudges things along.
+- **It remembers how you like to work**: what to bring to you, what to handle itself, and when not to disturb you.
+
+Any chat can also run on a timetable ("every weekday at 9, summarize my inbox", or a reminder next Friday), and every chat turn saves a checkpoint first, so a retry restores both the conversation and the files. Extend it with portable `SKILL.md` packages and any MCP server you connect. [Regent →](docs/02-using/regent.md) · [Scheduled tasks →](docs/03-features/automation.md)
+
+---
+
+## <img src="docs/assets/robot-reader.svg" width="28" style="vertical-align: middle;" /> **KEEP ITS CONTINUITY**
 
 GitHub Sync carries portable configuration, user skills, and Markdown memory through a private repository while credentials remain device-local. A provider can disappear, a model can change, and a machine can be replaced without taking the agent's continuity with it.
 
@@ -159,19 +211,26 @@ GitHub Sync carries portable configuration, user skills, and Markdown memory thr
 
 ## **WHERE YOU TALK TO IT**
 
-One agent, one memory, reachable from several surfaces. Messaging channels are off by default and access-controlled: a user ID must appear in `allowed_users` before the agent will answer it.
+<div align="center">
+<img src="docs/assets/readme/reach.svg" alt="One agent, one memory, every surface: the desktop app, the web console, a paired phone, your editor over ACP, other agents over A2A, your approved devices, and Telegram, Slack, Discord, Feishu and WeChat for allowed users only." width="880" />
+</div>
+
+One agent, one memory, reachable from every surface. Messaging channels are off by default and access-controlled: a user ID must appear in `allowed_users` before the agent will answer it.
 
 | Surface | Transport | Supports | Setup |
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
+| **Web console** | Local backend | The same UI in your browser | `suzent web` |
 | **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/mobile.md) |
+| **Your editor** | ACP | Use Suzent as the agent in Zed and other ACP clients | [Guide](docs/03-features/nodes.md#use-suzent-from-your-editor-acp) |
+| **Other agents** | A2A | Delegate work to other agents, or take work you grant them | [Guide](docs/03-features/nodes.md#work-with-other-agents-a2a) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/05-chat-apps/telegram.md) |
 | **Slack** | Socket Mode (Events API) | Text, files | [Guide](docs/05-chat-apps/slack.md) |
 | **Discord** | Gateway | Text, files | [Guide](docs/05-chat-apps/discord.md) |
 | **Feishu (Lark)** | WebSocket | Text, files | [Guide](docs/05-chat-apps/feishu.md) |
 | **WeChat** | iLink Bot API | Text | [Guide](docs/05-chat-apps/wechat.md) |
 
-Each conversation becomes a persistent session, so history, working memory, and extracted facts survive a restart. Uploaded files land in the sandbox at `/persistence/uploads/`.
+Each conversation becomes a persistent session, so history, working memory, and extracted facts survive a restart.
 
 ---
 
@@ -181,7 +240,8 @@ Each conversation becomes a persistent session, so history, working memory, and 
 |---|---|
 | [What is Suzent?](docs/01-getting-started/intro.md) | What a sovereign agent is and what Suzent can do |
 | [Quickstart](docs/01-getting-started/quickstart.md) | Install, connect a model, and start chatting |
-| [Models & Providers](docs/04-models/README.md) | OpenAI, Anthropic, Gemini, Ollama, and more, plus model roles |
+| [Regent](docs/02-using/regent.md) | The one chat that watches every project and follows up while you're away |
+| [Models & Providers](docs/04-models/README.md) | All 16 providers, custom endpoints, and model roles |
 | [Memory](docs/03-features/memory/README.md) | What the agent remembers, where it lives, and how to edit it |
 | [Notebook](docs/03-features/memory/llm-wiki.md) | Agent-maintained, Obsidian-compatible knowledge vault |
 | [Tools](docs/03-features/tools/README.md) | Everything the agent can do, and how to turn it on or off |
@@ -203,7 +263,7 @@ The full index lives in [docs/README.md](docs/README.md).
 
 *   **BACKEND**: Python 3.12, FastAPI, pydantic-ai, litellm, SQLite.
 *   **FRONTEND**: React, TypeScript, Tailwind, Vite, Tauri.
-*   **MEMORY**: LanceDB local vector storage.
+*   **MEMORY**: Markdown files as the source of truth, LanceDB hybrid (vector + full-text) index.
 *   **SANDBOX**: Docker (optional).
 *   **EXTENSIBILITY**: MCP, portable `SKILL.md` packages.
 
@@ -224,8 +284,5 @@ Found a vulnerability? Please report it privately—see [SECURITY.md](SECURITY.m
 ## **LICENSE**
 
 **[APACHE 2.0](LICENSE)** © 2026 Yizhou Chi.
-
-**Exception for Creative Assets:**
-The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [TERMS-OF-USE-ASSETS](TERMS-OF-USE-ASSETS.md) for details.
 
 **SUMMON LOCALLY. REMEMBER PRIVATELY. ANSWER TO NO FALSE GOD.**

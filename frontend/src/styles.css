@@ -2706,3 +2706,154 @@ button.activity-turn-duration:focus-visible {
   background: #27272a;
   border-color: #3f3f46;
 }
+
+/* Deliberate Regent messages keep their boundaries throughout a turn. */
+.regent-message-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgb(0 0 0 / 65%);
+  border-radius: 0.375rem;
+  background: rgb(255 255 255 / 70%);
+  overflow-wrap: anywhere;
+}
+.dark .regent-message-bubble {
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 28%);
+}
+.regent-reaction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid rgb(0 0 0 / 15%);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+.dark .regent-reaction {
+  background: #27272a;
+  border-color: rgb(255 255 255 / 20%);
+}
+.regent-reaction:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.regent-typing {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 4px;
+}
+.regent-typing span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: regentTyping 1.4s ease-in-out infinite;
+}
+.regent-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.regent-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes regentTyping {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .regent-typing span {
+    animation: none;
+  }
+}
+
+.regent-message-bubble .prose > :first-child {
+  margin-top: 0;
+}
+.regent-message-bubble .prose > :last-child {
+  margin-bottom: 0;
+}
+.regent-user-bubble {
+  border-width: 1px;
+  border-color: rgb(0 0 0 / 65%);
+  border-radius: 0.375rem;
+  box-shadow: none;
+}
+.dark .regent-user-message .regent-user-bubble {
+  border-color: rgb(255 255 255 / 28%);
+  box-shadow: none;
+}
+
+.regent-turn-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  min-height: 1.75rem;
+}
+.regent-activity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0;
+  color: #737373;
+  font-size: 0.6875rem;
+}
+.regent-activity-toggle span {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  text-transform: none;
+  padding: 0;
+}
+.regent-activity-toggle:hover {
+  color: #171717;
+}
+.dark .regent-activity-toggle {
+  color: #a3a3a3;
+}
+.dark .regent-activity-toggle:hover {
+  color: #f5f5f5;
+}
+.regent-activity-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.regent-message-bubble .prose :where(h1, h2, h3) {
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.regent-user-content {
+  position: relative;
+}
+.regent-user-content-reacted {
+  padding-bottom: 0.875rem;
+}
+.regent-user-content .regent-reaction-anchor {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  margin: 0;
+  z-index: 1;
+}
+.regent-user-message .regent-user-actions {
+  min-height: 1.5rem;
+  margin-top: 0.375rem;
+}
+.regent-conversation-list {
+  padding-inline-end: 1.25rem;
+}

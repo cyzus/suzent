@@ -488,6 +488,17 @@ function InstallerDownloads(): ReactNode {
           <CopyButton text="suzent start" />
         </div>
       </div>
+      <div className={styles.mobileDownloads}>
+        <Link className={styles.mobileLabel} href={localePath("/docs/getting-started/platforms#phone", locale)}>
+          {t({ id: "homepage.download.mobile", message: "Mobile" })}
+        </Link>
+        <a href="/download/ios/">
+          {t({ id: "homepage.download.iosBeta", message: "iOS · TestFlight" })}
+        </a>
+        <a href="/download/android/">
+          {t({ id: "homepage.download.androidApk", message: "Android · APK" })}
+        </a>
+      </div>
     </section>
   );
 }

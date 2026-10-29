@@ -322,5 +322,14 @@
   },
   "homepage.openSource.open": {
     "message": "完全开源。"
+  },
+  "homepage.download.iosBeta": {
+    "message": "iOS · TestFlight"
+  },
+  "homepage.download.mobile": {
+    "message": "移动端"
+  },
+  "homepage.download.androidApk": {
+    "message": "Android · APK"
   }
 }

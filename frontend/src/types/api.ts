@@ -136,6 +136,7 @@ export interface Chat {
 
 export interface ChatSummary {
   pinned?: boolean;
+  archived?: boolean;
   id: string;
   title: string;
   createdAt: string;
@@ -174,6 +175,8 @@ export interface Project {
   archived: boolean;
   chatCount: number;
   unreadChatCounts?: Record<string, number>;
+  /** Default working directory for the project's chats, if set. */
+  workingDirectory?: string | null;
 }
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';

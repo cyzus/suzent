@@ -45,6 +45,7 @@ class ChatSummaryModel(BaseModel):
     createdAt: str
     updatedAt: str
     pinned: bool = False
+    archived: bool = False
     messageCount: int
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
@@ -70,6 +71,9 @@ class ProjectModel(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     archived: bool = Field(default=False)
+    # Default working directory for every chat in the project. A chat's own
+    # working directory still wins; see resolve_chat_working_directory().
+    working_directory: Optional[str] = None
 
     chats: List["ChatModel"] = Relationship(back_populates="project")
     goals: List["GoalModel"] = Relationship(
@@ -90,6 +94,7 @@ class ChatModel(SQLModel, table=True):
     id: str = Field(primary_key=True)
     title: str
     pinned: bool = Field(default=False)
+    archived: bool = Field(default=False)
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))

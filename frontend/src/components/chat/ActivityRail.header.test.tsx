@@ -369,3 +369,15 @@ it('keeps the memory icon after completion without suggesting the call is still 
   });
   expect(running).toContain('tool-icon-anim-memory');
 });
+
+it('keeps a compact identity and live work visible without a second duration row', () => {
+  const markup = renderToStaticMarkup(
+    <TurnActivity identity={<span>Regent</span>} finalStart={1} isStreaming>
+      {[<div key="work">Working on a tool</div>, <div key="reply">Reply</div>]}
+    </TurnActivity>
+  );
+  expect(markup).toContain('regent-turn-header');
+  expect(markup).toContain('Working on a tool');
+  expect(markup).toContain('Reply');
+  expect(markup).not.toContain('activity-turn-duration');
+});

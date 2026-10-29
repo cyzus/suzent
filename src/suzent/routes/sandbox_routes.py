@@ -137,6 +137,8 @@ def _get_resolver_for_request(
             cwd = working_directory or config.get("cwd")
             sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
             configured_volumes = config.get("sandbox_volumes", [])
+            if not cwd:
+                cwd = get_database().resolve_chat_working_directory(chat)
     except Exception as e:
         logger.warning(f"Failed to fetch chat config for file access: {e}")
 

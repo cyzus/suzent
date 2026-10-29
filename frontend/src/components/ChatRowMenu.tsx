@@ -12,10 +12,13 @@ interface ChatRowMenuProps {
   projects: Project[];
   currentProjectId?: string | null;
   pinned: boolean;
+  /** Archived chats offer Unarchive instead of Archive, and cannot be pinned. */
+  archived?: boolean;
   /** When more than one chat is selected, the menu acts on all of them. */
   bulkCount?: number;
   initialView?: View;
   onTogglePin: () => void;
+  onToggleArchive: () => void;
   onRename: () => void;
   onDelete: () => void;
   onMoveToProject: (projectId: string) => void;
@@ -36,9 +39,11 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   projects,
   currentProjectId,
   pinned,
+  archived = false,
   bulkCount = 1,
   initialView = 'root',
   onTogglePin,
+  onToggleArchive,
   onRename,
   onDelete,
   onMoveToProject,
@@ -51,17 +56,19 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
 
   const singleChatItems = (
     <>
-      <button
-        type="button"
-        role="menuitem"
-        className={`${itemBase} ${itemDefault}`}
-        onClick={() => {
-          onTogglePin();
-          onClose();
-        }}
-      >
-        {t(pinned ? 'chatList.unpinChat' : 'chatList.pinChat')}
-      </button>
+      {!archived && (
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemBase} ${itemDefault}`}
+          onClick={() => {
+            onTogglePin();
+            onClose();
+          }}
+        >
+          {t(pinned ? 'chatList.unpinChat' : 'chatList.pinChat')}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -126,6 +133,35 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
+      </button>
+
+      <button
+        type="button"
+        role="menuitem"
+        className={`${itemBase} ${itemDefault}`}
+        onClick={() => {
+          onToggleArchive();
+          onClose();
+        }}
+      >
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M4 7h16M5 7v12a1 1 0 001 1h12a1 1 0 001-1V7M3 4h18v3H3zM10 11h4"
+          />
+        </svg>
+        {isBulk
+          ? t(archived ? 'chatList.selection.unarchiveCount' : 'chatList.selection.archiveCount', {
+              count: bulkCount,
+            })
+          : t(archived ? 'chatList.unarchiveChat' : 'chatList.archiveChat')}
       </button>
 
       <div role="separator" className="h-0.5 bg-brutal-black my-0.5" />

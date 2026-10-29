@@ -315,3 +315,50 @@ async def test_cache_diagnostics_stay_off_for_other_providers(monkeypatch) -> No
     await agent.run("hi", deps=SimpleNamespace(chat_id="parent-diagnostics"))
 
     assert "anthropic_cache_diagnostics" not in seen[0][2]
+
+
+def _sections(*contents: str) -> list:
+    from pydantic_ai.messages import InstructionPart
+
+    return [InstructionPart(content=content) for content in contents]
+
+
+def test_prefix_change_names_the_first_section_that_moved() -> None:
+    from pydantic_ai.tools import ToolDefinition
+
+    from suzent.core.prompt_cache import describe_prefix_change, prefix_signature
+
+    tools = [ToolDefinition(name="read_file", parameters_json_schema={})]
+    before = prefix_signature(
+        _sections("# Role\nfixed", "# Memory System\nold", "# Regent\nold"), tools
+    )
+    after = prefix_signature(
+        _sections("# Role\nfixed", "# Memory System\nnew", "# Regent\nnew"), tools
+    )
+
+    change = describe_prefix_change(before, after)
+
+    assert "section 1 '# Memory System' changed" in change
+    assert "Regent" not in change
+    assert "tools" not in change
+    assert describe_prefix_change(before, before) == "unchanged"
+    assert describe_prefix_change(None, before) == "first request in this process"
+
+
+def test_prefix_change_reports_tools_and_added_sections() -> None:
+    from pydantic_ai.tools import ToolDefinition
+
+    from suzent.core.prompt_cache import describe_prefix_change, prefix_signature
+
+    before = prefix_signature(
+        _sections("# Role"), [ToolDefinition(name="a", parameters_json_schema={})]
+    )
+    after = prefix_signature(
+        _sections("# Role", "# Extra"),
+        [ToolDefinition(name="b", parameters_json_schema={})],
+    )
+
+    change = describe_prefix_change(before, after)
+
+    assert change.startswith("tools changed")
+    assert "section count 1->2" in change

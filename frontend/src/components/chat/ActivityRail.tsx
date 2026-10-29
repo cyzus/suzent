@@ -82,7 +82,12 @@ export function buildAguiActivityChunks(parts: AGUIPart[]): AguiChunk[] {
     if (isEmptyAguiPart(part)) continue;
     const type = part.type as AguiChunkType;
     const current = chunks[chunks.length - 1];
-    if (current && current.type === type) {
+    if (
+      current &&
+      current.type === type &&
+      !part.regentBubble &&
+      !current.items.at(-1)?.regentBubble
+    ) {
       current.items.push(part);
       continue;
     }
@@ -376,6 +381,7 @@ export function getFinalContentStart<T extends { type: string }>(
 }
 
 export const TurnActivity: React.FC<{
+  identity?: React.ReactNode;
   children: React.ReactNode[];
   finalStart: number;
   isStreaming: boolean;
@@ -383,6 +389,7 @@ export const TurnActivity: React.FC<{
   startedAtMs?: number;
   persistentIndices?: number[];
 }> = ({
+  identity,
   children,
   finalStart,
   isStreaming,
@@ -405,6 +412,46 @@ export const TurnActivity: React.FC<{
   const surfaces = children
     .slice(0, finalStart)
     .filter((_, index) => persistentIndices.includes(index));
+  if (identity) {
+    return (
+      <>
+        <div className="regent-turn-header">
+          {identity}
+          {!isStreaming && work.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              onClick={() => setExpanded(!expanded)}
+              className="regent-activity-toggle"
+            >
+              {durationSeconds !== undefined &&
+              Number.isFinite(durationSeconds) &&
+              durationSeconds >= 0 ? (
+                <WorkedDuration durationSeconds={durationSeconds} />
+              ) : (
+                <span>{t('activityRail.activity')}</span>
+              )}
+              <DisclosureChevron expanded={expanded} className="w-3 h-3 shrink-0" />
+            </button>
+          )}
+        </div>
+        {isStreaming ? (
+          children
+        ) : (
+          <>
+            {work.length > 0 && (
+              <div id={bodyId} hidden={!expanded} className="activity-turn-history space-y-2 py-1">
+                {expanded ? work : null}
+              </div>
+            )}
+            {surfaces}
+            {children.slice(finalStart)}
+          </>
+        )}
+      </>
+    );
+  }
   if (isStreaming)
     return (
       <>

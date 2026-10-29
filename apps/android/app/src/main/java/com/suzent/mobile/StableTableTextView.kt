@@ -1,6 +1,7 @@
 package com.suzent.mobile
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Picture
 import android.text.SpannableString
@@ -17,6 +18,8 @@ internal class StableTableTextView(context: Context) : TextView(context) {
     private var preparedRows = emptyList<TableRowSpan>()
     private var preparedWidth = 0
     private var preparedTextSize = 0f
+    private var preparedTextColor = 0
+    private var preparedLinkColor = 0
 
     fun prepareMarkdown(content: Spanned): Spanned {
         prepareRows(content, width - compoundPaddingLeft - compoundPaddingRight)
@@ -34,10 +37,22 @@ internal class StableTableTextView(context: Context) : TextView(context) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
+    override fun onDraw(canvas: Canvas) {
+        // Color-only changes invalidate drawing without requesting a new measure.
+        prepareRows(text, width - compoundPaddingLeft - compoundPaddingRight)
+        super.onDraw(canvas)
+    }
+
     private fun prepareRows(content: CharSequence, available: Int): Boolean {
         if (content !is Spanned || available <= 0) return false
+        // TextView applies ColorStateList to its paint during onDraw, but table
+        // layouts capture that paint here, before the first draw.
+        paint.color = currentTextColor
+        paint.linkColor = linkTextColors.defaultColor
+        val styleChanged = paint.textSize != preparedTextSize ||
+            paint.color != preparedTextColor || paint.linkColor != preparedLinkColor
         val rows = content.getSpans(0, content.length, TableRowSpan::class.java).toList()
-        if (rows.isEmpty() || rows == preparedRows && available == preparedWidth && paint.textSize == preparedTextSize) return false
+        if (rows.isEmpty() || rows == preparedRows && available == preparedWidth && !styleChanged) return false
         val measuring = SpannableString(content)
         // The pending text can still refer to the preceding TextView layout. The
         // measurement canvas must supply the upcoming width instead.
@@ -51,7 +66,7 @@ internal class StableTableTextView(context: Context) : TextView(context) {
                 val start = measuring.getSpanStart(row)
                 val end = measuring.getSpanEnd(row)
                 row.invalidator(null)
-                if (row in preparedRows && paint.textSize != preparedTextSize) {
+                if (row in preparedRows && styleChanged) {
                     val resized = Picture()
                     val resizedCanvas = resized.beginRecording(available + 1, 1)
                     resizedCanvas.clipRect(0, 0, 0, 0)
@@ -65,6 +80,8 @@ internal class StableTableTextView(context: Context) : TextView(context) {
         preparedRows = rows
         preparedWidth = available
         preparedTextSize = paint.textSize
+        preparedTextColor = paint.color
+        preparedLinkColor = paint.linkColor
         return true
     }
 }

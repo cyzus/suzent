@@ -35,12 +35,12 @@ struct PairingView: View {
                     Text(invitation.phoneConfirmation
                          ? String(localized: "Confirm to connect with the permissions shown above. You do not need to approve again on desktop.")
                          : String(localized: "Your desktop will ask you to approve this phone. Node access stays separate."))
-                    if model.busy { ProgressView() }
+                    if model.busy { ProgressView(model.pairingStatus ?? String(localized: "Finishing connection…")) }
                     Button(invitation.phoneConfirmation ? String(localized: "Confirm connection") : String(localized: "Request pairing"), action: model.approveDestination)
                         .buttonStyle(SuzentButtonStyle(prominent: true)).disabled(model.busy)
                     Button("Cancel", action: model.cancelPairing).disabled(model.busy)
                 } else if model.busy {
-                    ProgressView("Checking desktop addresses…")
+                    ProgressView(model.pairingStatus ?? String(localized: "Checking desktop addresses…"))
                     Button("Cancel pairing", action: model.cancelPairing).buttonStyle(SuzentButtonStyle())
                 } else {
                     Text("On desktop, open Settings → Devices → Mobile access, then choose Pair a phone.")

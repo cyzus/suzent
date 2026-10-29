@@ -29,6 +29,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var invitationText by mutableStateOf("")
     var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
     var pairingPreview by mutableStateOf<PairingPreview?>(null)
+    var pairingStatus by mutableStateOf<String?>(null)
     var pairingCode by mutableStateOf<String?>(null)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
@@ -153,6 +154,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         error = null
         busy = true
         val current = generation
+        pairingStatus = text(R.string.pairing_recognized_connecting)
         pairingJob = viewModelScope.launch {
             try {
                 val selected = resolvePairingInvitation(invitation) { origin ->
@@ -165,13 +167,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (current == generation) { pairingPreview = selected.second; pairingInvitation = selected.first }
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure) }
-            finally { if (current == generation) busy = false }
+            finally { if (current == generation) { busy = false; pairingStatus = null } }
         }
     }
 
     fun cancelPairing() {
         pairingJob?.cancel()
         pairingJob = null
+        pairingStatus = null
         pairingInvitation = null
         pairingCode = null
         pairingPreview = null
@@ -185,6 +188,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         busy = true
         error = null
         val current = generation
+        pairingStatus = text(R.string.pairing_sending)
         pairingJob = viewModelScope.launch {
             val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "", deviceTrust = invitation.tls)
             try {
@@ -201,6 +205,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
                 if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
+                pairingStatus = text(R.string.pairing_finishing)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
                     currentCoroutineContext().ensureActive()
                     val result = bootstrap.collect(invitation.id, claim.getString("pickup_secret"))
@@ -238,7 +243,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation == current) { pairingInvitation = null; handle(failure) }
             } finally {
                 bootstrap.close()
-                if (generation == current) { busy = false; pairingCode = null }
+                if (generation == current) { busy = false; pairingCode = null; pairingStatus = null }
             }
         }
     }
@@ -555,7 +560,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (foreground) observe(id)
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
-            finally { if (current == generation) busy = false }
+            finally { if (current == generation) { busy = false; pairingStatus = null } }
         }
     }
 

@@ -853,6 +853,9 @@
     },
     "gemini/gemini-3.8-live": {
       "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
       "max_input_tokens": 131072,
       "max_output_tokens": 65536,
       "supports_vision": true,

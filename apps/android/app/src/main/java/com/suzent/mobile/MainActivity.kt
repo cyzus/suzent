@@ -226,6 +226,7 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
         merged.sortedWith(compareBy({ activity[it.id] ?: Int.MAX_VALUE }, { serverOrder.getValue(it.id) }))
     }
+    val visibleProjects = projects.filter { project -> search.isEmpty() || normalRows.any { it.root.projectId == project.id } }
     val scheduledGroups = scheduledSidebarGroups(model.chats, model.scheduledTasks, search, expandedAgents)
     // Matches the desktop automation preview: five rows, then View all.
     val scheduledPreview = 5
@@ -233,11 +234,11 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
     val headerShadow = suzentShadow
     Column(Modifier.fillMaxHeight().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(stringResource(R.string.chats), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("SUZENT", letterSpacing = 2.sp, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             val label = stringResource(R.string.close_sidebar)
             SuzentIconButton(onClick = close, label = label) { Text("×", fontSize = 20.sp, lineHeight = 20.sp) }
         }
-        HorizontalDivider(thickness = PresentationTokens.borderWidthHeavy.dp, color = suzentShadow)
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
         SuzentRowButton(label = stringResource(R.string.new_chat), onClick = { create(null) }, leadingIcon = R.drawable.ic_new_chat,
             enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true,
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp))
@@ -275,7 +276,8 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
             }
-            projects.forEach { project ->
+            if (visibleProjects.isNotEmpty()) item(key = "projects-heading") { SidebarSectionHeading(stringResource(R.string.sidebar_projects)) }
+            visibleProjects.forEach { project ->
                 val projectOpen = expandedProject == project.id
                 val isOpen = projectOpen || search.isNotEmpty()
                 item(key = "project:${project.id}") {
@@ -295,6 +297,10 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                 if (isOpen) items(normalRows.filter { !it.root.pinned && it.root.projectId == project.id }, key = { it.chat.id }) {
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
+            }
+            if (normalRows.any { !it.root.pinned && it.root.projectId == null }) item(key = "chats-heading") { SidebarSectionHeading(stringResource(R.string.chats)) }
+            if (normalRows.isEmpty() && scheduledGroups.isEmpty()) item(key = "empty") {
+                Text(stringResource(if (search.isEmpty()) R.string.sidebar_empty else R.string.sidebar_no_results), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             items(normalRows.filter { !it.root.pinned && it.root.projectId == null }, key = { it.chat.id }) {
                 SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
@@ -390,13 +396,8 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
     val pressed by interaction.collectIsPressedAsState()
     val foreground = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurface
     val selection = suzentSelection
-    val rule = suzentRowDivider
     Box {
     Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) selection else MaterialTheme.colorScheme.surface)
-        .drawBehind {
-            if (!nested) drawLine(rule, androidx.compose.ui.geometry.Offset(0f, size.height - 1.dp.toPx()),
-                androidx.compose.ui.geometry.Offset(size.width, size.height - 1.dp.toPx()), 1.dp.toPx())
-        }
         .combinedClickable(interactionSource = interaction, indication = null, enabled = !model.busy,
             onLongClickLabel = stringResource(R.string.conversation_actions),
             onLongClick = { moving = false; menu = true }, onClick = { open(chat) })
@@ -415,8 +416,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
                 chat.isScheduled -> stringResource(R.string.scheduled_task)
                 else -> null
             }
-            // Reserved even when empty: chat rows must share one height cadence.
-            Row(Modifier.heightIn(min = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            if (meta != null || childCount > 0) Row(Modifier.heightIn(min = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 if (meta != null) Text(meta, fontSize = PresentationTokens.typeSidebarSection.sp, lineHeight = 14.sp,
                     fontWeight = FontWeight.Medium, color = muted,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)

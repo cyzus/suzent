@@ -2008,3 +2008,23 @@
     transition: none;
   }
 }
+
+.mobileDownloads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin-top: 1rem;
+  font-size: 0.75rem;
+}
+.mobileDownloads a {
+  color: inherit;
+  text-decoration: none;
+}
+.mobileDownloads a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.mobileDownloads .mobileLabel {
+  opacity: 0.6;
+}

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider."
+}

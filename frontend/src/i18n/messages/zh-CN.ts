@@ -33,7 +33,8 @@ export const zhCN = {
       model: '实时模型',
       voice: '提供商语音',
       auto: '自动',
-      noneConfigured: '尚未为任何实时语音提供商配置 API 密钥。',
+      noneConfigured:
+        '没有可用的实时语音模型。请在“设置 → 模型”中配置 OpenAI、Gemini、xAI 或 DashScope 提供商。',
       captionsAfterSpeech: '说完后才显示文字',
       sensitivity: '语音检测灵敏度',
       sensitivityLow: '低（外放推荐）',
@@ -365,12 +366,13 @@ export const zhCN = {
     backendStartTimeout: '后端启动超时。请检查 ~/.suzent/runtime/server.log 获取详细信息。',
     startingBackend: '正在启动并检查后端服务',
     verifyingBackend: '正在验证后端兼容性',
-    recoverStartup: '重启并重试',
+    recoverStartup: '重试启动',
     reconnectStartup: '重新连接',
     recovering: '正在重试…',
-    recoveryHintDesktop: '加载卡住了？重启 Suzent 并重新尝试启动，保留现有数据。',
+    recoveryHintDesktop: '重新启动后端服务，现有数据会保留。',
     recoveryHintWeb: '重新加载页面，再次尝试连接。',
-    recoveryFailed: '重启失败，请重试或关闭后重新打开 Suzent。',
+    recoveryFailed: '重试失败，请再试一次或关闭后重新打开 Suzent。',
+    blockedStartupHint: '这个问题重试无法解决。请先按上面的提示处理，然后重新打开 Suzent。',
     startupElapsed: '已等待 {seconds} 秒',
     logoAriaLabel: 'Suzent 标志',
     backendCompatibility: {
@@ -390,6 +392,18 @@ export const zhCN = {
     replyNeedsApproval: '需要你的批准才能继续',
     replyFailed: '回复失败',
     untitledChat: 'Suzent',
+  },
+  projectSettings: {
+    title: '{name} 设置',
+    name: '名称',
+    workingDirectory: '工作目录',
+    workingDirectoryPlaceholder: '未设置',
+    workingDirectoryHelp:
+      '该项目的对话默认在这个文件夹里工作：命令从这里启动，相对路径从这里解析，agent 修改这里的文件无需确认。单个对话自己设了工作目录的，仍以对话的为准。项目库和 context.md 位置不变。',
+    browse: '浏览',
+    clear: '清除',
+    save: '保存',
+    saveFailed: '无法保存项目设置',
   },
   hostPicker: {
     title: '选择文件夹',
@@ -665,6 +679,14 @@ export const zhCN = {
         FocalNotesTool: {
           name: '记笔记',
           description: '维护 Regent 自己的笔记：你希望它怎么做事，不记项目状态。',
+        },
+        FocalMessageTool: {
+          name: '发送聊天消息',
+          description: '在与 Regent 的对话中发送一条或多条独立消息。',
+        },
+        FocalReactionTool: {
+          name: '回应消息',
+          description: '让 Regent 用表情回应你的消息。',
         },
         AgentSendTool: {
           name: '发送智能体消息',
@@ -1485,6 +1507,12 @@ export const zhCN = {
     pinChat: '置顶聊天',
     unpinChat: '取消置顶',
     pinnedChats: '置顶聊天',
+    archiveChat: '归档聊天',
+    unarchiveChat: '取消归档',
+    archivedChats: '已归档',
+    archivedEmpty: '没有已归档的聊天',
+    archiveError: '归档操作失败',
+    archiveErrorMessage: '请重试。',
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',
@@ -1569,6 +1597,7 @@ export const zhCN = {
     },
     menu: {
       title: '操作',
+      settings: '设置',
       rename: '重命名',
       moveToProject: '移动到项目',
       delete: '删除',
@@ -1586,6 +1615,8 @@ export const zhCN = {
     selection: {
       moveCount: '将 {count} 个对话移动到项目',
       deleteCount: '删除 {count} 个对话',
+      archiveCount: '归档 {count} 个对话',
+      unarchiveCount: '取消归档 {count} 个对话',
       deleteTitle: '确定删除 {count} 个对话吗？',
       deleteMessage: '此操作将永久删除所选对话及其所有消息。',
       cascadeMessage: '部分所选对话包含子 Agent。是否一并删除？',
@@ -1784,6 +1815,8 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    regentThinking: 'Regent 正在思考',
+    regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
     today: '今天',

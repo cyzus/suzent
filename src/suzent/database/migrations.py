@@ -33,6 +33,13 @@ class DatabaseMigrationMixin:
                             "WHERE slug = 'default' AND name = 'Default'"
                         )
                     )
+            if "archived" not in columns:
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
 
         # Migration: Add 'headers' column to 'mcp_servers' table
         if "mcp_servers" in inspector.get_table_names():
@@ -226,6 +233,16 @@ class DatabaseMigrationMixin:
                         text(
                             "CREATE INDEX IF NOT EXISTS ix_chats_project_id ON chats(project_id)"
                         )
+                    )
+                    conn.commit()
+
+        # Migration: Add per-project default working directory.
+        if "projects" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("projects")]
+            if "working_directory" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(
+                        text("ALTER TABLE projects ADD COLUMN working_directory TEXT")
                     )
                     conn.commit()
 
