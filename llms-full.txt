@@ -730,6 +730,24 @@ files on your computer:
 Selected chats are highlighted. Right-click any of them to move or delete them
 all together. A plain click or Esc clears the selection.
 
+## Project settings
+
+Open a project's settings from the **⋯** menu next to it in the sidebar's
+**Projects** list. **Home** and **Social** have settings too, though they
+can't be renamed.
+
+**Working directory** points every chat in the project at a folder on your
+computer, such as the codebase the project is about. Chats in the project then
+work there by default: commands start in that folder, relative paths resolve
+inside it, and the agent can edit files there without asking. Choose a folder
+with **Browse**, or paste its full path. **Clear** goes back to the default,
+the project's `scratch/` folder.
+
+A chat that already has its own working directory, for example one opened from
+an editor, keeps it. The project library, including `context.md`, stays in the
+project folder whichever working directory is set. Changing the setting
+applies from each chat's next message.
+
 ## Give it standing instructions
 
 Project context is the place for anything every chat should know: the goal,
@@ -1197,7 +1215,7 @@ project's conversations, plus one folder shared by every project:
 | Folder | What it is | Sandbox path | Host-mode path |
 |---|---|---|---|
 | Project library | The project's files: its context note, notes, deliverables, and uploads. | `/workspace` | `$PROJECT_PATH` |
-| Scratch | Throwaway files such as helper scripts and downloads. The agent's working folder unless the chat has its own **Working Dir**. Not part of the library, and trimmed once it passes `scratch_max_mb`. | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
+| Scratch | Throwaway files such as helper scripts and downloads. The agent's working folder unless the chat or its project has a working directory (see [Project settings](https://suzent.com/docs/using/projects#project-settings)). Not part of the library, and trimmed once it passes `scratch_max_mb`. | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
 | Uploads | Files you attach in the chat or send from a [chat app](https://suzent.com/docs/chat-apps). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
 | Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | A variable named after that path, e.g. `$DATA` |
