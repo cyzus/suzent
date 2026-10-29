@@ -174,3 +174,42 @@ def test_project_working_directory_can_be_set_and_cleared(
     cleared = client.patch(f"/projects/{project_id}", json={"working_directory": None})
     assert cleared.status_code == 200
     assert cleared.json()["workingDirectory"] is None
+
+
+def test_project_folders_list_what_its_chats_used(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from suzent.routes import project_routes
+
+    monkeypatch.setattr(project_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(
+            routes=[
+                Route(
+                    "/projects/{project_id}/folders",
+                    project_routes.list_project_folders,
+                )
+            ]
+        )
+    )
+    project_id = temp_db.create_project("Work", "work")
+    other_project_id = temp_db.create_project("Other", "other")
+    repo, data, gone, elsewhere = (tmp_path / n for n in ("repo", "data", "gone", "x"))
+    for folder in (repo, data, elsewhere):
+        folder.mkdir()
+
+    mounted = temp_db.create_chat(
+        "mounted",
+        {"sandbox_volumes": [f"{data}:/mnt/data", f"{gone}:/mnt/gone"]},
+    )
+    temp_db.link_chat_to_project(mounted, project_id)
+    pinned = temp_db.create_chat("pinned", {})
+    temp_db.link_chat_to_project(pinned, project_id)
+    temp_db.update_chat(pinned, working_directory=str(repo))
+    other = temp_db.create_chat("other", {"cwd": str(elsewhere)})
+    temp_db.link_chat_to_project(other, other_project_id)
+
+    response = client.get(f"/projects/{project_id}/folders")
+    assert response.status_code == 200
+    assert response.json()["folders"] == [str(repo), str(data)]
+    assert client.get("/projects/missing/folders").status_code == 404

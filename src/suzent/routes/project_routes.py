@@ -8,6 +8,7 @@ Endpoints:
 - ``POST   /projects``               create a new project
 - ``PATCH  /projects/{id}``          rename / archive / change settings
 - ``DELETE /projects/{id}``          delete an empty, non-system project
+- ``GET    /projects/{id}/folders``  folders the project's chats recently used
 - ``POST   /chats/{id}/project``     move a chat to a different project
 """
 
@@ -232,6 +233,15 @@ async def update_project(request: Request) -> JSONResponse:
     return JSONResponse(
         _project_to_dict(project, db.count_chats_in_project(project_id))
     )
+
+
+async def list_project_folders(request: Request) -> JSONResponse:
+    """Folders the project's chats worked in or mounted, newest first."""
+    project_id = request.path_params.get("project_id")
+    db = get_database()
+    if not project_id or not db.get_project(project_id):
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    return JSONResponse({"folders": db.get_project_recent_folders(project_id)})
 
 
 async def delete_project(request: Request) -> JSONResponse:

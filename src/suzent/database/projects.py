@@ -495,6 +495,38 @@ class ProjectOperationsMixin:
         project = self.get_project(project_id)
         return project.working_directory if project else None
 
+    def get_project_recent_folders(self, project_id: str, limit: int = 8) -> List[str]:
+        """Host folders the project's chats worked in or mounted, newest first.
+
+        Collects each chat's working directory and its mounted folders, skips
+        folders that no longer exist, and returns at most ``limit`` paths.
+        """
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        with self._session() as session:
+            rows = session.exec(
+                select(ChatModel.working_directory, ChatModel.config)
+                .where(ChatModel.project_id == project_id)
+                .order_by(ChatModel.updated_at.desc())
+            ).all()
+
+        folders: List[str] = []
+        for working_directory, config in rows:
+            config = config or {}
+            candidates = [working_directory, config.get("cwd")]
+            for volume in config.get("sandbox_volumes") or []:
+                parsed = PathResolver.parse_volume_string(str(volume))
+                if parsed:
+                    candidates.append(parsed[0])
+            for candidate in candidates:
+                if not candidate or candidate in folders:
+                    continue
+                if Path(candidate).expanduser().is_dir():
+                    folders.append(candidate)
+                    if len(folders) >= limit:
+                        return folders
+        return folders
+
     def get_project_dir(self, chat_id: str) -> Path:
         """Host path for the project a chat belongs to.
 

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Pick a project's working directory with the same folder picker as the chat box, including folders the project's chats already used."
+}

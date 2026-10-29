@@ -12,10 +12,20 @@ interface RecentFolder {
 interface FolderContextPickerProps {
   onMount: (paths: string[]) => void;
   activeVolumes?: string[];
+  /** Host paths to show as active, in place of parsing `activeVolumes`. */
+  activeFolders?: string[];
   onRemoveVolume?: (index: number) => void;
+  /** Folders already used in the current project, listed above recent ones. */
+  projectFolders?: string[];
+  /** Pick one folder at a time (e.g. a working directory) instead of mounting several. */
+  multiple?: boolean;
+  activeTitle?: string;
+  emptyActiveText?: string;
   disabled?: boolean;
   dropUp?: boolean;
   buttonLabel?: string;
+  /** Replaces the default borderless toolbar look of the trigger button. */
+  buttonClassName?: string;
 }
 
 const HISTORY_KEY = 'suzent_folder_history';
@@ -24,10 +34,16 @@ const MAX_HISTORY = 5;
 export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   onMount,
   activeVolumes = [],
+  activeFolders,
   onRemoveVolume,
+  projectFolders = [],
+  multiple = true,
+  activeTitle,
+  emptyActiveText,
   disabled = false,
   dropUp = true,
   buttonLabel,
+  buttonClassName,
 }) => {
   const { t } = useI18n();
   const [history, setHistory] = useState<RecentFolder[]>([]);
@@ -70,7 +86,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
 
   const handleNativePick = async () => {
     try {
-      const selected = await pickHostDirectory({ multiple: true });
+      const selected = await pickHostDirectory({ multiple });
 
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
@@ -84,33 +100,32 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     }
   };
 
+  const activePaths =
+    activeFolders ?? activeVolumes.map((volume) => volume.substring(0, volume.lastIndexOf(':')));
+
   const handleRecentClick = (path: string) => {
-    // Check if already active
-    const existingIndex = activeVolumes.findIndex(
-      (v) => v.substring(0, v.lastIndexOf(':')) === path
-    );
+    const existingIndex = activePaths.indexOf(path);
     if (existingIndex !== -1) {
       onRemoveVolume?.(existingIndex);
     } else {
       addToHistory([path]);
       onMount([path]);
+      if (!multiple) setIsOpen(false);
     }
   };
 
   // Calculate active count for badge
-  const activeCount = activeVolumes.length;
+  const activeCount = activePaths.length;
 
   const getDynamicLabel = (): string | null => {
-    if (!activeVolumes.length) return null;
-    const firstName = activeVolumes[0].split(/[\\/]/).filter(Boolean).pop() ?? activeVolumes[0];
-    if (activeVolumes.length === 1) return firstName;
-    return firstName;
+    if (!activePaths.length) return null;
+    return activePaths[0].split(/[\\/]/).filter(Boolean).pop() ?? activePaths[0];
   };
 
   const dynamicLabel = getDynamicLabel();
+  const inactiveProjectFolders = projectFolders.filter((path) => !activePaths.includes(path));
   const inactiveHistory = history.filter(
-    (item) =>
-      !activeVolumes.some((volume) => volume.substring(0, volume.lastIndexOf(':')) === item.path)
+    (item) => !activePaths.includes(item.path) && !projectFolders.includes(item.path)
   );
 
   const [effectiveDropUp, setEffectiveDropUp] = useState(dropUp);
@@ -189,6 +204,31 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     };
   }, [isOpen]);
 
+  const renderFolderList = (paths: string[], Icon: typeof FolderIcon) => (
+    <div className="border-y border-neutral-200 dark:border-zinc-700 divide-y divide-neutral-200 dark:divide-zinc-700">
+      {paths.map((path) => (
+        <button
+          type="button"
+          key={path}
+          onClick={() => handleRecentClick(path)}
+          className="group w-full text-left px-1 py-2 flex items-center gap-2.5 text-xs text-brutal-black dark:text-white transition-colors hover:bg-brutal-yellow/40 dark:hover:bg-zinc-700 focus:outline-none focus-visible:bg-brutal-yellow/40"
+        >
+          <Icon className="w-4 h-4 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-bold">{path.split(/[/\\]/).pop()}</div>
+            <div
+              className="truncate text-[10px] font-mono text-neutral-500 dark:text-neutral-400"
+              title={path}
+            >
+              {path}
+            </div>
+          </div>
+          <PlusIcon className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      ))}
+    </div>
+  );
+
   const dropdown =
     isOpen &&
     dropdownPosition &&
@@ -215,7 +255,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <FolderIcon className="w-4 h-4 shrink-0 text-brutal-black dark:text-white" />
               <span className="text-xs font-black uppercase tracking-wide text-brutal-black dark:text-white">
-                {t('folderContext.activeContexts')}
+                {activeTitle ?? t('folderContext.activeContexts')}
               </span>
             </div>
             <span
@@ -227,13 +267,11 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
 
           {activeCount === 0 ? (
             <div className="text-xs text-neutral-500 dark:text-neutral-400 py-2">
-              {t('folderContext.noFoldersMounted')}
+              {emptyActiveText ?? t('folderContext.noFoldersMounted')}
             </div>
           ) : (
             <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 divide-y-2 divide-brutal-black">
-              {activeVolumes.map((vol, idx) => {
-                const lastSemi = vol.lastIndexOf(':');
-                const hostPath = vol.substring(0, lastSemi);
+              {activePaths.map((hostPath, idx) => {
                 const folderName = hostPath.split(/[/\\]/).pop() || hostPath;
 
                 return (
@@ -268,6 +306,15 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           )}
         </div>
 
+        {inactiveProjectFolders.length > 0 && (
+          <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
+            <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
+              {t('folderContext.projectFolders')}
+            </div>
+            {renderFolderList(inactiveProjectFolders, FolderIcon)}
+          </div>
+        )}
+
         <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
           <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
             {t('folderContext.recentFolders')}
@@ -279,28 +326,10 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 : t('folderContext.noRecentFolders')}
             </div>
           ) : (
-            <div className="border-y border-neutral-200 dark:border-zinc-700 divide-y divide-neutral-200 dark:divide-zinc-700">
-              {inactiveHistory.map((item) => (
-                <button
-                  type="button"
-                  key={item.path}
-                  onClick={() => handleRecentClick(item.path)}
-                  className="group w-full text-left px-1 py-2 flex items-center gap-2.5 text-xs text-brutal-black dark:text-white transition-colors hover:bg-brutal-yellow/40 dark:hover:bg-zinc-700 focus:outline-none focus-visible:bg-brutal-yellow/40"
-                >
-                  <ClockIcon className="w-4 h-4 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-bold">{item.path.split(/[/\\]/).pop()}</div>
-                    <div
-                      className="truncate text-[10px] font-mono text-neutral-500 dark:text-neutral-400"
-                      title={item.path}
-                    >
-                      {item.path}
-                    </div>
-                  </div>
-                  <PlusIcon className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </button>
-              ))}
-            </div>
+            renderFolderList(
+              inactiveHistory.map((item) => item.path),
+              ClockIcon
+            )
           )}
         </div>
 
@@ -327,13 +356,22 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        className={`
+        className={
+          buttonClassName ??
+          `
                     flex items-center gap-1.5 px-2 h-9 w-full min-w-0 border-0 shadow-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue
                     bg-transparent text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700
-                `}
+                `
+        }
       >
         <FolderIcon className="w-4 h-4 shrink-0" />
-        <span className="hidden sm:inline truncate min-w-0">
+        <span
+          className={
+            buttonClassName
+              ? 'flex-1 truncate min-w-0 text-left'
+              : 'hidden sm:inline truncate min-w-0'
+          }
+        >
           {buttonLabel || dynamicLabel || t('folderContext.context')}
         </span>
         {activeCount > 1 && (

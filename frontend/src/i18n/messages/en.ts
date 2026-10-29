@@ -422,8 +422,6 @@ export const en = {
     workingDirectoryPlaceholder: 'Not set',
     workingDirectoryHelp:
       'Chats in this project work in this folder by default: commands start here, relative paths resolve here, and the agent can edit files here without asking. A chat with its own working directory keeps it. The project library and context.md stay where they are.',
-    browse: 'Browse',
-    clear: 'Clear',
     save: 'Save',
     saveFailed: 'Could not save project settings',
   },
@@ -2636,6 +2634,7 @@ export const en = {
     details: 'Error details',
   },
   folderContext: {
+    projectFolders: 'Used in this project',
     activeContexts: 'Active contexts',
     noFoldersMounted: 'No folders mounted',
     remove: 'Remove',

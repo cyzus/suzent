@@ -400,8 +400,6 @@ export const zhCN = {
     workingDirectoryPlaceholder: '未设置',
     workingDirectoryHelp:
       '该项目的对话默认在这个文件夹里工作：命令从这里启动，相对路径从这里解析，agent 修改这里的文件无需确认。单个对话自己设了工作目录的，仍以对话的为准。项目库和 context.md 位置不变。',
-    browse: '浏览',
-    clear: '清除',
     save: '保存',
     saveFailed: '无法保存项目设置',
   },
@@ -2541,6 +2539,7 @@ export const zhCN = {
     details: '错误详情',
   },
   folderContext: {
+    projectFolders: '本项目用过的',
     activeContexts: '已挂载上下文',
     noFoldersMounted: '未挂载任何文件夹',
     remove: '移除',

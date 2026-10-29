@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
 import { isImeComposing } from '../lib/ime';
-import { pickHostDirectory } from '../lib/hostPathPicker';
+import { getApiBase } from '../lib/api';
+import { FolderContextPicker } from './chat/FolderContextPicker';
 
 export interface ProjectSettingsUpdate {
   name?: string;
@@ -22,8 +23,8 @@ interface ProjectSettingsDialogProps {
 
 const INPUT_CLASS =
   'w-full min-w-0 px-2 py-1.5 text-xs bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black dark:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-brutal-blue';
-const SMALL_BUTTON_CLASS =
-  'shrink-0 px-2 py-1.5 text-[10px] font-extrabold uppercase border-2 border-brutal-black dark:border-zinc-500 bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-40';
+const PICKER_BUTTON_CLASS =
+  'flex items-center gap-1.5 w-full min-w-0 px-2 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-zinc-500 hover:bg-neutral-100 dark:hover:bg-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue';
 
 /**
  * Per-project settings. The working directory set here is the default cwd for
@@ -41,8 +42,21 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
   const [workingDirectory, setWorkingDirectory] = useState(project.workingDirectory ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projectFolders, setProjectFolders] = useState<string[]>([]);
   const nameRef = useRef<HTMLInputElement | null>(null);
-  const directoryRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${getApiBase()}/projects/${project.id}/folders`)
+      .then((res) => (res.ok ? res.json() : { folders: [] }))
+      .then((data: { folders?: string[] }) => {
+        if (!cancelled) setProjectFolders(data.folders ?? []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,22 +64,12 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    const focus = setTimeout(() => (canRename ? nameRef : directoryRef).current?.focus(), 0);
+    const focus = setTimeout(() => nameRef.current?.focus(), 0);
     return () => {
       document.removeEventListener('keydown', onKey);
       clearTimeout(focus);
     };
   }, [onClose, canRename]);
-
-  const browse = async () => {
-    try {
-      const selected = await pickHostDirectory({ multiple: false });
-      const path = Array.isArray(selected) ? selected[0] : selected;
-      if (path) setWorkingDirectory(path);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    }
-  };
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -145,34 +149,21 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
           )}
 
           <div className="space-y-1">
-            <label
-              htmlFor="project-settings-working-directory"
-              className="block text-[10px] font-extrabold uppercase tracking-wide text-brutal-black dark:text-white"
-            >
+            <span className="block text-[10px] font-extrabold uppercase tracking-wide text-brutal-black dark:text-white">
               {t('projectSettings.workingDirectory')}
-            </label>
-            <div className="flex items-stretch gap-1">
-              <input
-                id="project-settings-working-directory"
-                ref={directoryRef}
-                value={workingDirectory}
-                placeholder={t('projectSettings.workingDirectoryPlaceholder')}
-                onChange={(event) => setWorkingDirectory(event.target.value)}
-                spellCheck={false}
-                className={`${INPUT_CLASS} font-mono`}
-              />
-              <button type="button" onClick={browse} className={SMALL_BUTTON_CLASS}>
-                {t('projectSettings.browse')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setWorkingDirectory('')}
-                disabled={!workingDirectory}
-                className={SMALL_BUTTON_CLASS}
-              >
-                {t('projectSettings.clear')}
-              </button>
-            </div>
+            </span>
+            <FolderContextPicker
+              multiple={false}
+              activeFolders={workingDirectory ? [workingDirectory] : []}
+              projectFolders={projectFolders}
+              onMount={(paths) => setWorkingDirectory(paths[0] ?? '')}
+              onRemoveVolume={() => setWorkingDirectory('')}
+              activeTitle={t('projectSettings.workingDirectory')}
+              emptyActiveText={t('projectSettings.workingDirectoryPlaceholder')}
+              buttonLabel={workingDirectory || t('projectSettings.workingDirectoryPlaceholder')}
+              buttonClassName={PICKER_BUTTON_CLASS}
+              dropUp={false}
+            />
             <p className="text-[11px] leading-snug text-neutral-500 dark:text-neutral-400">
               {t('projectSettings.workingDirectoryHelp')}
             </p>

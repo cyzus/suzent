@@ -50,9 +50,10 @@ can't be renamed.
 **Working directory** points every chat in the project at a folder on your
 computer, such as the codebase the project is about. Chats in the project then
 work there by default: commands start in that folder, relative paths resolve
-inside it, and the agent can edit files there without asking. Choose a folder
-with **Browse**, or paste its full path. **Clear** goes back to the default,
-the project's `scratch/` folder.
+inside it, and the agent can edit files there without asking. The folder picker
+works like **Working Dir** in the chat box: pick a folder this project's chats
+already used, a recent folder, or **Choose a different folder**. Remove the
+selected folder to go back to the default, the project's `scratch/` folder.
 
 A chat that already has its own working directory, for example one opened from
 an editor, keeps it. The project library, including `context.md`, stays in the
