@@ -54,7 +54,7 @@ export function Sidebar({
   return (
     <>
       {/* Mobile Backdrop */}
-      {isOpen && (
+      {isDesktop && isOpen && (
         <div
           className="fixed inset-0 bg-brutal-black/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={onClose}
@@ -66,7 +66,7 @@ export function Sidebar({
         ref={panelRef}
         aria-hidden={!isOpen}
         style={{
-          width: isDesktop ? width : Math.min(LEFT_SIDEBAR_WIDTH_PX, window.innerWidth),
+          width: isDesktop ? width : '100%',
           marginLeft: isDesktop && !isOpen ? -width : 0,
           // The web console adds a navigation rail before this panel. Anchor the
           // drawer to the viewport so translating it out cannot leave that rail's width visible.
@@ -75,7 +75,7 @@ export function Sidebar({
         }}
         // Desktop margin/width changes must settle at once to avoid reflowing the transcript every frame.
         className={`
-        fixed lg:relative z-50 h-full shrink-0
+        mobile-home fixed lg:relative z-50 h-full shrink-0
         border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
         transform-gpu transition-transform duration-[160ms] ease-out lg:transition-none motion-reduce:transition-none
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0'}
@@ -99,15 +99,18 @@ export function Sidebar({
         >
           {titlebarControls}
 
+          {!isDesktop && <h1 className="flex-1 text-xl font-bold tracking-tight">SUZENT</h1>}
           {/* Toggle Button (Close) */}
-          <button
-            onClick={onClose}
-            className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
-            aria-label={t('sidebar.close')}
-            title={t('sidebar.close')}
-          >
-            <SidebarToggleIcon side="left" open />
-          </button>
+          {isDesktop && (
+            <button
+              onClick={onClose}
+              className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
+              aria-label={t('sidebar.close')}
+              title={t('sidebar.close')}
+            >
+              <SidebarToggleIcon side="left" open />
+            </button>
+          )}
 
           {headerActions}
         </div>

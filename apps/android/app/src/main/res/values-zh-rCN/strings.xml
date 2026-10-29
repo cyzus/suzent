@@ -193,4 +193,5 @@
     <string name="pairing_sending">正在发送连接请求…</string>
     <string name="pairing_finishing">正在完成连接…</string>
     <string name="pairing_network_help">请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。</string>
+    <string name="back_to_chats">返回会话列表</string>
 </resources>
