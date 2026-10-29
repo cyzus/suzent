@@ -454,6 +454,7 @@ export const zhCN = {
   },
   sidebar: {
     resizeLeft: '调整左侧边栏宽度',
+    backToChats: '返回会话列表',
     resizeRight: '调整右侧边栏宽度',
     resizeHint:
       '拖动调整宽度，继续向窄处拖动可收起；按住可拉回，松手确认；双击恢复默认，方向键微调。',

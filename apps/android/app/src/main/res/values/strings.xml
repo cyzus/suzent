@@ -194,4 +194,5 @@
     <string name="pairing_sending">Sending connection request…</string>
     <string name="pairing_finishing">Finishing connection…</string>
     <string name="pairing_network_help">Keep Suzent open on your desktop and check Wi-Fi or Tailscale.</string>
+    <string name="back_to_chats">Back to chats</string>
 </resources>

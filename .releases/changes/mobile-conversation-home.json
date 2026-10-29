@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "minor"},
+  "summary": "Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation."
+}

@@ -97,7 +97,11 @@ function ConsoleLayout(): React.ReactElement {
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {location !== '/setup' && <ConsoleSidebar railOnly={onChat} />}
+      {location !== '/setup' && (
+        <div className={onChat ? 'hidden lg:flex' : 'flex'}>
+          <ConsoleSidebar railOnly={onChat} />
+        </div>
+      )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-dot-pattern">
         <ConsoleRoute />
       </div>

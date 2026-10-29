@@ -1,3 +1,4 @@
+import { useMobileNavigation } from './hooks/useMobileNavigation';
 import { WorkspacePanelHost, WorkspacePanelProvider } from './components/WorkspacePanel';
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
@@ -361,6 +362,9 @@ function AppInner(): React.ReactElement {
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
 
+  const mobile = viewportWidth < DESKTOP_BREAKPOINT_PX;
+  const mobileNavigation = useMobileNavigation(mobile);
+
   // The left sidebar only ever closes itself under layout pressure -- too narrow
   // for three panes, or the window crossing into mobile width. That's a loan,
   // not a state change: we remember that *we* closed it (not the user) and
@@ -715,6 +719,8 @@ function AppInner(): React.ReactElement {
               <>
                 <div className={isSettingsOpen ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
                   <ChatList
+                    mobile={mobile}
+                    onOpenChat={mobileNavigation.open}
                     searchOpen={sidebarSearchOpen}
                     onSearchOpenChange={setSidebarSearchOpen}
                     onOpenAutomation={() => openSettings('automation')}
@@ -722,6 +728,7 @@ function AppInner(): React.ReactElement {
                     onOpenView={(view) => {
                       setMemoryInitialTab(undefined);
                       setMainView(view);
+                      mobileNavigation.open();
                     }}
                   />
                 </div>
@@ -732,7 +739,7 @@ function AppInner(): React.ReactElement {
               </>
             }
             showSettingsButton={!isSettingsOpen}
-            isOpen={isLeftSidebarOpen}
+            isOpen={mobile ? !mobileNavigation.detail && !isSettingsOpen : isLeftSidebarOpen}
             onOpenSettings={() => openSettings()}
             onClose={closeLeftSidebar}
             titlebarControls={
@@ -744,7 +751,9 @@ function AppInner(): React.ReactElement {
               ) : null
             }
           />
-          <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
+          <div
+            className={`${mobile && !mobileNavigation.detail && !isSettingsOpen ? 'hidden' : 'flex'} app-main flex-1 min-w-0 flex-col overflow-hidden w-full`}
+          >
             <header
               className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between gap-4 md:gap-6 bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
               onMouseDown={handleHeaderMouseDown}
@@ -756,7 +765,24 @@ function AppInner(): React.ReactElement {
                     onMaximize={toggleWindowMaximize}
                   />
                 ) : null}
-                {isLeftSidebarOpen ? (
+                {mobile ? (
+                  <button
+                    type="button"
+                    onClick={mobileNavigation.back}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                    aria-label={t('sidebar.backToChats')}
+                  >
+                    <svg
+                      className="h-6 w-6"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path d="m14 6-6 6 6 6" />
+                    </svg>
+                  </button>
+                ) : isLeftSidebarOpen ? (
                   <div className="h-10 w-10 mr-3" aria-hidden="true" />
                 ) : (
                   <div
