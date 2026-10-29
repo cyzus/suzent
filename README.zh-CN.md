@@ -14,7 +14,7 @@
 
 一个开源、本地优先的个人 AI 智能体，它的记忆、权限、运行环境与连续性始终属于你。
 
-记忆由它自己整理，存在你拥有的文件里 · 16 家模型提供商，云端或你自己的硬件 · 每个行动都按你的规则审查 · 你不在时也按计划和目标工作 · 桌面、手机、编辑器，以及你已经在用的聊天应用
+记忆由它自己整理，存在你拥有的文件里 · 16 家模型提供商，云端或你自己的硬件 · 每个行动都按你的规则审查 · 你不在时由 Regent 推进每个项目 · 桌面、手机、编辑器，以及你已经在用的聊天应用
 
 [![版本](https://badgen.net/github/release/cyzus/suzent?label=%E7%89%88%E6%9C%AC)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![许可证](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-加入聊天-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
@@ -30,7 +30,7 @@
 
 **SUZENT** [soo-zuh-nt] 让智能体的身份、记忆、技能、工作区和运行环境始终处于你的控制之下。你可以使用 GPT、Claude、Gemini、DeepSeek、通义千问、跑在你自己 GPU 上的模型，以及未来出现的任何模型，而无需重置那个了解你和你的工作的智能体。
 
-它不只是一个聊天窗口。它记得你告诉过它的事和它自己学到的经验，每晚整理这些记忆，在你不在时按目标和计划持续工作，做你没有允许的事之前会先问你。它的记忆是你磁盘上的普通文件，它的行动要经过你设定的权限模式，它的代码运行在隔离的 Docker 沙盒中，或在你设定路径限制的主机上运行。
+它不只是一个聊天窗口。它记得你告诉过它的事和它自己学到的经验，每晚整理这些记忆，在你不在时持续推进各个项目，做你没有允许的事之前会先问你。它的记忆是你磁盘上的普通文件，它的行动要经过你设定的权限模式，它的代码运行在隔离的 Docker 沙盒中，或在你设定路径限制的主机上运行。
 
 **模型可以替换，平台终会更迭，而你的智能体始终属于你。**
 
@@ -188,16 +188,18 @@ suzent update
 
 ## <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **你不在时，它也在工作**
 
+你是主人，**Regent** 替你治理。它是侧边栏顶部那个唯一的对话，看得到每个项目：你告诉它要做什么，它就把工作交给对应项目里的会话，或交给 Codex、Claude Code 这样的编程智能体，然后在你离开时持续跟进。
+
 <div align="center">
-<img src="docs/assets/readme/autonomy.zh-CN.svg" alt="你不在时 Suzent 也在工作：定时任务、心跳清单、做到判定完成为止的目标，以及并行的子智能体。无人值守时使用谨慎的权限模式，对话每一轮都会建立检查点，重试会恢复文件。" width="880" />
+<img src="docs/assets/readme/regent.zh-CN.svg" alt="你只需对 Regent 说一句话。它把工作交给对应项目里的会话，或交给 Codex、Claude Code 这样的编程智能体，在你不在时定期查看进展，只把需要你决定的事带回来。它会按你的要求提醒你，它开的会话使用智能模式，没事时不会打扰你。" width="880" />
 </div>
 
-- **定时任务**：“每个工作日 9 点总结我的收件箱”、每 15 分钟检查一次构建，或下周五的一次性提醒。
-- **心跳**：智能体在对话里定期过一遍你写的清单，没事时保持安静。
-- **目标**：`/goal 修复 src/ 里所有 lint 错误`，它会一轮接一轮地做，直到判定模型确认目标达成。
-- **子智能体**：把部分工作交给并行的助手。
+- **只看一个地方。** 它的看板列出哪些对话在等你、哪些正在运行，每个都有一句话说明进展。
+- **只带回需要你决定的事。** 会话做完而你无需操作时，Regent 只会安静地记一笔；卡在你这里的事一定会通知你。
+- **自己定期查看。** 每 30 分钟检查一次停滞的工作和没人回答的问题，并推动它们继续。
+- **记得你喜欢的工作方式**：什么要告诉你，什么自己处理，什么时候别打扰你。
 
-无人值守的运行始终使用智能模式，定时任务能做的事不会被悄悄放宽。每轮对话开始前都会为工作区建立检查点，重试会同时恢复对话和文件。你还可以用可移植的 `SKILL.md` 技能包和任意 MCP 服务器扩展它。[自动化 →](docs/03-features/automation.md)
+任何对话也都可以按时间表运行（“每个工作日 9 点总结我的收件箱”，或者下周五提醒一次）。每轮对话开始前都会保存检查点，重试会同时恢复对话和文件。你还可以用可移植的 `SKILL.md` 技能包和任意 MCP 服务器扩展它。[Regent →](docs/02-using/regent.md) · [定时任务 →](docs/03-features/automation.md)
 
 ---
 
@@ -238,6 +240,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 |---|---|
 | [什么是 Suzent？](docs/01-getting-started/intro.md) | 什么是主权智能体，以及 Suzent 能做什么 |
 | [快速上手](docs/01-getting-started/quickstart.md) | 安装、连接模型、开始对话 |
+| [Regent](docs/02-using/regent.md) | 看得到所有项目、在你离开时持续跟进的那个对话 |
 | [模型与提供商](docs/04-models/README.md) | 全部 16 家提供商、自定义端点和模型角色 |
 | [记忆](docs/03-features/memory/README.md) | 智能体记住了什么、存在哪里、如何修改 |
 | [笔记本](docs/03-features/memory/llm-wiki.md) | 由智能体维护、兼容 Obsidian 的知识库 |

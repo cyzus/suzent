@@ -14,7 +14,7 @@
 
 An open-source, local-first personal AI agent whose memory, authority, runtime, and continuity stay yours.
 
-A memory it curates in files you own · 16 model providers, cloud or your own hardware · actions reviewed against your rules · works on schedules and goals while you're away · desktop, phone, editor, and the chat apps you already use
+A memory it curates in files you own · 16 model providers, cloud or your own hardware · actions reviewed against your rules · Regent keeps every project moving while you're away · desktop, phone, editor, and the chat apps you already use
 
 [![Version](https://badgen.net/github/release/cyzus/suzent?label=version)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
@@ -188,16 +188,18 @@ Your deny rules, blocked paths, and dangerous-command checks apply in every mode
 
 ## <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **LET IT WORK WHILE YOU'RE AWAY**
 
+You are the sovereign; **Regent** governs in your stead. It is the one conversation at the top of the sidebar that watches every project: tell it what you want done, and it hands the work to a session in the right project, or to a coding agent such as Codex or Claude Code, then follows up while you're gone.
+
 <div align="center">
-<img src="docs/assets/readme/autonomy.svg" alt="Suzent keeps working while you are away: scheduled tasks, a heartbeat checklist, goals it pursues until a judge says they are done, and sub-agents working in parallel. Unattended runs use a cautious permission mode, and each chat turn is checkpointed so a retry restores files." width="880" />
+<img src="docs/assets/readme/regent.svg" alt="You give Regent one instruction. Regent hands the work to sessions in the right projects, or to coding agents such as Codex and Claude Code, checks in on them while you are away, and brings back only what needs your decision. It reminds you when asked, the sessions it starts run in Smart mode, and it stays quiet when nothing needs you." width="880" />
 </div>
 
-- **Schedules**: "every weekday at 9, summarize my inbox", a build check every 15 minutes, or a one-off reminder next Friday.
-- **Heartbeat**: a checklist the agent revisits inside a conversation, staying silent when nothing needs you.
-- **Goals**: `/goal fix every lint error in src/` keeps it working turn after turn until a judge model says the goal is met.
-- **Sub-agents**: hand pieces of the work to helpers running in parallel.
+- **One place to look.** Its board shows which chats are waiting on you, which are running, and a one-line note on where each stands.
+- **It only brings you decisions.** When a session finishes with nothing for you to do, Regent notes it quietly. Work that is blocked on you always notifies you.
+- **It checks in on its own.** Every 30 minutes it looks for stalled work and unanswered questions, and nudges things along.
+- **It remembers how you like to work**: what to bring to you, what to handle itself, and when not to disturb you.
 
-Unattended runs always use Smart mode, so nobody can widen what a scheduled task may do. Every chat turn checkpoints its workspace first, so retrying restores both the conversation and the files. Extend it with portable `SKILL.md` packages and any MCP server you connect. [Automation →](docs/03-features/automation.md)
+Any chat can also run on a timetable ("every weekday at 9, summarize my inbox", or a reminder next Friday), and every chat turn saves a checkpoint first, so a retry restores both the conversation and the files. Extend it with portable `SKILL.md` packages and any MCP server you connect. [Regent →](docs/02-using/regent.md) · [Scheduled tasks →](docs/03-features/automation.md)
 
 ---
 
@@ -238,6 +240,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 |---|---|
 | [What is Suzent?](docs/01-getting-started/intro.md) | What a sovereign agent is and what Suzent can do |
 | [Quickstart](docs/01-getting-started/quickstart.md) | Install, connect a model, and start chatting |
+| [Regent](docs/02-using/regent.md) | The one chat that watches every project and follows up while you're away |
 | [Models & Providers](docs/04-models/README.md) | All 16 providers, custom endpoints, and model roles |
 | [Memory](docs/03-features/memory/README.md) | What the agent remembers, where it lives, and how to edit it |
 | [Notebook](docs/03-features/memory/llm-wiki.md) | Agent-maintained, Obsidian-compatible knowledge vault |
