@@ -52,6 +52,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     top: number;
     left: number;
     width: number;
+    maxHeight: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -150,21 +151,28 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         shouldDropUp = false;
       } else if (!dropUp && spaceBelow < height && spaceAbove > height) {
         shouldDropUp = true;
+      } else if (spaceAbove < height && spaceBelow < height) {
+        // Neither side fits the full panel (e.g. opened from a centered
+        // dialog): use the roomier side and shrink the panel to fit it.
+        shouldDropUp = spaceAbove > spaceBelow;
       }
 
       setEffectiveDropUp(shouldDropUp);
+      const maxHeight = Math.min(height, (shouldDropUp ? spaceAbove : spaceBelow) - 16);
 
       if (shouldDropUp) {
         setDropdownPosition({
           top: rect.top - 4,
           left,
           width,
+          maxHeight,
         });
       } else {
         setDropdownPosition({
           top: rect.bottom + 4,
           left,
           width,
+          maxHeight,
         });
       }
     }
@@ -248,6 +256,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           // path, running off the right edge. A definite width is also what
           // lets the `truncate` on those paths take effect.
           width: dropdownPosition.width,
+          maxHeight: dropdownPosition.maxHeight,
         }}
       >
         <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900">
