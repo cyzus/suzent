@@ -1128,6 +1128,8 @@ async def get_chats(request: Request) -> JSONResponse:
         search: substring match on title or message body
         project_id: filter to chats in this project
         platform: legacy filter; prefer ``project_id`` going forward
+        archived: ``true`` lists only archived chats; otherwise they are hidden
+            unless *search* is given
     """
     try:
         db = get_database()
@@ -1137,6 +1139,14 @@ async def get_chats(request: Request) -> JSONResponse:
         search = request.query_params.get("search", "").strip() or None
         platform = request.query_params.get("platform", "").strip() or None
         project_id = request.query_params.get("project_id", "").strip() or None
+        # Search reaches archived chats too, so an archived chat can still be found.
+        archived = (
+            True
+            if request.query_params.get("archived", "").lower() == "true"
+            else None
+            if search
+            else False
+        )
 
         chats = db.list_chats(
             limit=limit,
@@ -1144,12 +1154,13 @@ async def get_chats(request: Request) -> JSONResponse:
             search=search,
             platform=platform,
             project_id=project_id,
+            archived=archived,
         )
         total = db.get_chat_count(
-            search=search, platform=platform, project_id=project_id
+            search=search, platform=platform, project_id=project_id, archived=archived
         )
         kind_counts = db.get_chat_kind_counts(
-            search=search, platform=platform, project_id=project_id
+            search=search, platform=platform, project_id=project_id, archived=archived
         )
 
         # Convert Pydantic models to dicts, annotating live background streams
@@ -1169,8 +1180,11 @@ async def get_chats(request: Request) -> JSONResponse:
                         **chat.model_dump(mode="json", by_alias=True),
                         "isRunning": is_background_streaming(chat.id),
                     }
-                    for chat in db.list_chats(limit=None, pinned=True)
+                    for chat in db.list_chats(limit=None, pinned=True, archived=False)
                 ],
+                "archivedCount": db.get_chat_count(
+                    platform=platform, project_id=project_id, archived=True
+                ),
                 "total": total,
                 "kindCounts": kind_counts,
                 "limit": limit,
@@ -1399,8 +1413,9 @@ async def create_chat(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-class ChatPinUpdate(BaseModel):
+class ChatFlagsUpdate(BaseModel):
     pinned: StrictBool | None = None
+    archived: StrictBool | None = None
 
 
 async def update_chat(request: Request) -> JSONResponse:
@@ -1420,13 +1435,18 @@ async def update_chat(request: Request) -> JSONResponse:
             instructions = config.pop("heartbeat_instructions")
 
         try:
-            pinned = ChatPinUpdate.model_validate(data).pinned
+            flags = ChatFlagsUpdate.model_validate(data)
         except ValidationError:
             return JSONResponse(
-                {"error": "'pinned' must be a boolean"}, status_code=400
+                {"error": "'pinned' and 'archived' must be booleans"}, status_code=400
             )
         success = db.update_chat(
-            chat_id, title=title, config=config, messages=messages, pinned=pinned
+            chat_id,
+            title=title,
+            config=config,
+            messages=messages,
+            pinned=flags.pinned,
+            archived=flags.archived,
         )
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)

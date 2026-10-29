@@ -34,7 +34,9 @@ class ProjectOperationsMixin:
         counts: dict[str, dict[str, int]] = {}
         with self._session() as session:
             rows = session.exec(
-                select(ChatModel.id, ChatModel.project_id, ChatModel.config)
+                select(ChatModel.id, ChatModel.project_id, ChatModel.config).where(
+                    ChatModel.archived.is_(False)
+                )
             ).all()
             for chat_id, project_id, config in rows:
                 if (config or {}).get("platform") == "focal":
