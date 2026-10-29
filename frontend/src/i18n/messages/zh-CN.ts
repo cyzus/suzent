@@ -394,14 +394,19 @@ export const zhCN = {
     untitledChat: 'Suzent',
   },
   projectSettings: {
-    title: '{name} 设置',
     name: '名称',
     workingDirectory: '工作目录',
-    workingDirectoryPlaceholder: '未设置',
-    workingDirectoryHelp:
-      '该项目的对话默认在这个文件夹里工作：命令从这里启动，相对路径从这里解析，agent 修改这里的文件无需确认。单个对话自己设了工作目录的，仍以对话的为准。项目库和 context.md 位置不变。',
     save: '保存',
     saveFailed: '无法保存项目设置',
+    title: '项目设置',
+    folders: '文件夹',
+    foldersHelp: '项目里的每个对话都能读写这些文件夹，并默认在「工作目录」里开始工作。',
+    makePrimary: '设为工作目录',
+    removeFolder: '移除',
+    addFolder: '添加文件夹',
+    noFolders: '还没有文件夹，对话默认在项目的 scratch 文件夹里工作。',
+    chatOverrideNote:
+      '单个对话自己选了工作目录的，以对话为准。context.md 和项目库仍在项目文件夹里。',
   },
   hostPicker: {
     title: '选择文件夹',

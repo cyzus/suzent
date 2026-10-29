@@ -24,8 +24,12 @@ interface FolderContextPickerProps {
   disabled?: boolean;
   dropUp?: boolean;
   buttonLabel?: string;
-  /** Replaces the default borderless toolbar look of the trigger button. */
+  /**
+   * Replaces the toolbar look of the trigger: it then shows only its icon and
+   * label, styled by this class.
+   */
   buttonClassName?: string;
+  buttonIcon?: typeof FolderIcon;
 }
 
 const HISTORY_KEY = 'suzent_folder_history';
@@ -44,6 +48,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   dropUp = true,
   buttonLabel,
   buttonClassName,
+  buttonIcon: ButtonIcon = FolderIcon,
 }) => {
   const { t } = useI18n();
   const [history, setHistory] = useState<RecentFolder[]>([]);
@@ -373,31 +378,31 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 `
         }
       >
-        <FolderIcon className="w-4 h-4 shrink-0" />
-        <span
-          className={
-            buttonClassName
-              ? 'flex-1 truncate min-w-0 text-left'
-              : 'hidden sm:inline truncate min-w-0'
-          }
-        >
-          {buttonLabel || dynamicLabel || t('folderContext.context')}
-        </span>
-        {activeCount > 1 && (
-          <span className="min-w-5 h-5 px-1 inline-flex items-center justify-center bg-white/80 border border-brutal-black text-[9px] leading-none">
-            {activeCount}
-          </span>
+        <ButtonIcon className="w-4 h-4 shrink-0" />
+        {buttonClassName ? (
+          <span className="truncate min-w-0">{buttonLabel}</span>
+        ) : (
+          <>
+            <span className="hidden sm:inline truncate min-w-0">
+              {buttonLabel || dynamicLabel || t('folderContext.context')}
+            </span>
+            {activeCount > 1 && (
+              <span className="min-w-5 h-5 px-1 inline-flex items-center justify-center bg-white/80 border border-brutal-black text-[9px] leading-none">
+                {activeCount}
+              </span>
+            )}
+            <svg
+              className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </>
         )}
-        <svg
-          className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
       {dropdown}
     </div>

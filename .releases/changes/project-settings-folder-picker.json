@@ -1,4 +1,4 @@
 {
-  "products": {"desktop": "patch"},
-  "summary": "Pick a project's working directory with the same folder picker as the chat box, including folders the project's chats already used."
+  "products": {"desktop": "minor"},
+  "summary": "Give projects several folders, the first being the working directory, picked with the same folder picker as the chat box; open project settings by right-clicking a project."
 }

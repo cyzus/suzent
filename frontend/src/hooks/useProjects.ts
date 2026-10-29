@@ -19,7 +19,7 @@ interface ProjectContextValue {
   archiveProject: (id: string, archived: boolean) => Promise<void>;
   updateProjectSettings: (
     id: string,
-    update: { name?: string; workingDirectory?: string | null }
+    update: { name?: string; workingDirectory?: string | null; extraFolders?: string[] }
   ) => Promise<{ success: boolean; error?: string }>;
   deleteProject: (id: string) => Promise<{ success: boolean; error?: string }>;
   moveChat: (chatId: string, projectId: string, fromProjectId?: string | null) => Promise<boolean>;
@@ -162,11 +162,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const updateProjectSettings = useCallback(
     async (
       id: string,
-      update: { name?: string; workingDirectory?: string | null }
+      update: { name?: string; workingDirectory?: string | null; extraFolders?: string[] }
     ): Promise<{ success: boolean; error?: string }> => {
       const body: Record<string, unknown> = {};
       if (update.name !== undefined) body.name = update.name;
       if (update.workingDirectory !== undefined) body.working_directory = update.workingDirectory;
+      if (update.extraFolders !== undefined) body.extra_folders = update.extraFolders;
       try {
         const res = await fetch(`${getApiBase()}/projects/${id}`, {
           method: 'PATCH',
@@ -181,7 +182,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setProjects((prev) =>
           prev.map((p) =>
             p.id === id
-              ? { ...p, name: saved.name, workingDirectory: saved.workingDirectory ?? null }
+              ? {
+                  ...p,
+                  name: saved.name,
+                  workingDirectory: saved.workingDirectory ?? null,
+                  extraFolders: saved.extraFolders ?? [],
+                }
               : p
           )
         );

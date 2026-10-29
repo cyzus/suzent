@@ -54,6 +54,7 @@ def _project_to_dict(project, chat_count: int) -> dict:
         "archived": project.archived,
         "chatCount": chat_count,
         "workingDirectory": project.working_directory,
+        "extraFolders": list(project.extra_folders or []),
     }
 
 
@@ -183,9 +184,11 @@ async def create_project(request: Request) -> JSONResponse:
 
 
 async def update_project(request: Request) -> JSONResponse:
-    """Update a project. Body: ``{name?, archived?, working_directory?}``.
+    """Update a project.
 
-    ``working_directory`` set to ``null`` or ``""`` clears it.
+    Body: ``{name?, archived?, working_directory?, extra_folders?}``.
+    ``working_directory`` set to ``null`` or ``""`` clears it; ``extra_folders``
+    replaces the project's extra folders.
     """
     project_id = request.path_params.get("project_id")
     if not project_id:
@@ -199,11 +202,18 @@ async def update_project(request: Request) -> JSONResponse:
     name = body.get("name")
     archived = body.get("archived")
     has_working_directory = "working_directory" in body
-    if name is None and archived is None and not has_working_directory:
+    has_extra_folders = "extra_folders" in body
+    if (
+        name is None
+        and archived is None
+        and not has_working_directory
+        and not has_extra_folders
+    ):
         return JSONResponse(
             {
                 "error": (
-                    "Provide at least one of 'name', 'archived' or 'working_directory'"
+                    "Provide at least one of 'name', 'archived', "
+                    "'working_directory' or 'extra_folders'"
                 )
             },
             status_code=400,
@@ -219,6 +229,20 @@ async def update_project(request: Request) -> JSONResponse:
         )
         if error:
             return JSONResponse({"error": error}, status_code=400)
+    extra_folders = None
+    if has_extra_folders:
+        raw_folders = body.get("extra_folders") or []
+        if not isinstance(raw_folders, list):
+            return JSONResponse(
+                {"error": "'extra_folders' must be a list of paths"}, status_code=400
+            )
+        extra_folders = []
+        for raw in raw_folders:
+            folder, error = _normalize_working_directory(raw)
+            if error:
+                return JSONResponse({"error": error}, status_code=400)
+            if folder and folder not in extra_folders:
+                extra_folders.append(folder)
 
     db = get_database()
     project = db.update_project(
@@ -226,6 +250,7 @@ async def update_project(request: Request) -> JSONResponse:
         name=name,
         archived=bool(archived) if archived is not None else None,
         working_directory=working_directory,
+        extra_folders=extra_folders,
     )
     if not project:
         return JSONResponse({"error": "Project not found"}, status_code=404)

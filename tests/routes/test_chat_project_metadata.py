@@ -213,3 +213,56 @@ def test_project_folders_list_what_its_chats_used(
     assert response.status_code == 200
     assert response.json()["folders"] == [str(repo), str(data)]
     assert client.get("/projects/missing/folders").status_code == 404
+
+
+def test_project_extra_folders_are_mounted_for_its_chats(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from suzent.routes import project_routes
+
+    monkeypatch.setattr(project_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(
+            routes=[
+                Route(
+                    "/projects/{project_id}",
+                    project_routes.update_project,
+                    methods=["PATCH"],
+                )
+            ]
+        )
+    )
+    project_id = temp_db.create_project("Work", "work")
+    docs, data = tmp_path / "docs", tmp_path / "other" / "docs"
+    docs.mkdir()
+    data.mkdir(parents=True)
+
+    response = client.patch(
+        f"/projects/{project_id}",
+        json={"extra_folders": [str(docs), str(data), str(docs)]},
+    )
+    assert response.status_code == 200
+    assert response.json()["extraFolders"] == [str(docs), str(data)]
+    assert (
+        client.patch(
+            f"/projects/{project_id}",
+            json={"extra_folders": [str(tmp_path / "missing")]},
+        ).status_code
+        == 400
+    )
+
+    chat_id = temp_db.create_chat("chat", {})
+    temp_db.link_chat_to_project(chat_id, project_id)
+    chat = temp_db.get_chat(chat_id)
+    assert temp_db.with_project_folders(chat, None) == [
+        f"{docs}:/mnt/docs",
+        f"{data}:/mnt/docs-1",
+    ]
+    # A folder the chat already mounts keeps the chat's mount.
+    assert temp_db.with_project_folders(chat, [f"{docs}:/mnt/mine"]) == [
+        f"{docs}:/mnt/mine",
+        f"{data}:/mnt/docs",
+    ]
+
+    outside = temp_db.create_chat("outside", {})
+    assert temp_db.with_project_folders(temp_db.get_chat(outside), ["a:/b"]) == ["a:/b"]

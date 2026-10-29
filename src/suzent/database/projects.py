@@ -407,11 +407,13 @@ class ProjectOperationsMixin:
         name: Optional[str] = None,
         archived: Optional[bool] = None,
         working_directory: Optional[str] = None,
+        extra_folders: Optional[List[str]] = None,
     ) -> Optional[ProjectModel]:
-        """Update a project's name, archived flag and/or working directory.
+        """Update a project's name, archived flag, working directory or folders.
 
-        ``working_directory=""`` clears the project's working directory;
-        ``None`` leaves it unchanged.
+        ``working_directory=""`` clears the project's working directory and
+        ``extra_folders=[]`` clears its extra folders; ``None`` leaves either
+        unchanged.
         """
         with self._session() as session:
             project = session.get(ProjectModel, project_id)
@@ -423,6 +425,8 @@ class ProjectOperationsMixin:
                 project.archived = archived
             if working_directory is not None:
                 project.working_directory = working_directory or None
+            if extra_folders is not None:
+                project.extra_folders = list(extra_folders)
             session.add(project)
             session.commit()
             session.refresh(project)
@@ -494,6 +498,49 @@ class ProjectOperationsMixin:
             return None
         project = self.get_project(project_id)
         return project.working_directory if project else None
+
+    def with_project_folders(
+        self, chat: Any, volumes: Optional[List[str]]
+    ) -> List[str]:
+        """``volumes`` plus mounts for the extra folders of the chat's project.
+
+        A folder the chat already mounts keeps the chat's mount.
+        """
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        merged = list(volumes or [])
+        project_id = (
+            chat.get("project_id")
+            if isinstance(chat, dict)
+            else getattr(chat, "project_id", None)
+        )
+        if not isinstance(project_id, str):
+            return merged
+        project = self.get_project(project_id)
+        if not project or not project.extra_folders:
+            return merged
+
+        def normalize(path: str) -> str:
+            return str(path).replace("\\", "/").rstrip("/")
+
+        mounted_hosts: set[str] = set()
+        mount_points: set[str] = set()
+        for volume in merged:
+            parsed = PathResolver.parse_volume_string(str(volume))
+            if parsed:
+                mounted_hosts.add(normalize(parsed[0]))
+                mount_points.add(parsed[1])
+        for folder in project.extra_folders:
+            if normalize(folder) in mounted_hosts:
+                continue
+            name = normalize(folder).split("/")[-1] or "data"
+            mount_point, counter = f"/mnt/{name}", 1
+            while mount_point in mount_points:
+                mount_point, counter = f"/mnt/{name}-{counter}", counter + 1
+            merged.append(f"{folder}:{mount_point}")
+            mounted_hosts.add(normalize(folder))
+            mount_points.add(mount_point)
+        return merged
 
     def get_project_recent_folders(self, project_id: str, limit: int = 8) -> List[str]:
         """Host folders the project's chats worked in or mounted, newest first.
