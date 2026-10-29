@@ -135,6 +135,7 @@
     ".releases/changes/silent-auto-update.json",
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/skill-default-enablement.json",
+    ".releases/changes/startup-retry-in-place.json",
     ".releases/changes/subagent-followup.json",
     ".releases/changes/subagent-fork-model-live-view.json",
     ".releases/changes/subagent-parent-model.json",
