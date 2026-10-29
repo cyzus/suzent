@@ -8,6 +8,9 @@ import { TitleBar } from './TitleBar';
 
 interface BackendLoadingScreenProps {
   error?: string | null;
+  /** False when retrying cannot help until the user acts on `error`. */
+  recoverable?: boolean;
+  /** Retries in place; without it the page reloads. */
   onRetry?: () => void | Promise<void>;
   status?: string;
   progressHint?: number;
@@ -27,6 +30,7 @@ const STEP_PROGRESS: Record<string, number> = {
 
 export function BackendLoadingScreen({
   error,
+  recoverable = true,
   onRetry,
   status,
   progressHint = 0,
@@ -51,8 +55,6 @@ export function BackendLoadingScreen({
         await onRetry();
         recoveryPending.current = false;
         setRecovering(false);
-      } else if (isDesktop()) {
-        await invoke('restart_app');
       } else {
         window.location.reload();
       }
@@ -259,7 +261,12 @@ export function BackendLoadingScreen({
               </div>
             </div>
           )}
-          {error && (
+          {error && !recoverable && (
+            <p className="mt-8 max-w-xs text-xs leading-5 text-neutral-500">
+              {t('app.blockedStartupHint')}
+            </p>
+          )}
+          {error && recoverable && (
             <div className="mt-8 flex flex-col items-center gap-3">
               <button
                 type="button"

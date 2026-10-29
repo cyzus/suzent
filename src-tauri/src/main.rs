@@ -20,7 +20,32 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 struct AppState {
     backend: Mutex<Option<BackendProcess>>,
     backend_startup: Mutex<()>,
-    backend_startup_error: Mutex<Option<String>>,
+    backend_startup_error: Mutex<Option<StartupError>>,
+}
+
+#[derive(Clone, Serialize)]
+struct StartupError {
+    message: String,
+    /// False when starting again cannot succeed until the user acts on `message`.
+    recoverable: bool,
+}
+
+impl StartupError {
+    fn blocked(message: String) -> Self {
+        Self {
+            message,
+            recoverable: false,
+        }
+    }
+}
+
+impl From<String> for StartupError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            recoverable: true,
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -64,7 +89,7 @@ async fn check_for_update() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_backend_startup_error(state: State<AppState>) -> Result<Option<String>, String> {
+fn get_backend_startup_error(state: State<AppState>) -> Result<Option<StartupError>, String> {
     let error_guard = state
         .backend_startup_error
         .lock()
@@ -326,9 +351,19 @@ fn set_install_workspace(
 }
 
 #[tauri::command]
-fn retry_backend_start(app_handle: tauri::AppHandle) -> Result<(), String> {
+fn retry_backend_start(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+    // Clear before returning so the caller's first poll cannot see the previous failure.
+    if let Ok(mut error_guard) = state.backend_startup_error.lock() {
+        *error_guard = None;
+    }
     spawn_backend_start(app_handle);
     Ok(())
+}
+
+/// Whether a startup attempt is still running, which may legitimately take minutes.
+#[tauri::command]
+fn is_backend_starting(state: State<AppState>) -> bool {
+    state.backend_startup.try_lock().is_err()
 }
 
 #[tauri::command]
@@ -428,7 +463,7 @@ fn set_service_enabled_blocking(
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            let (port, backend) = get_backend_config(&app_handle)?;
+            let (port, backend) = get_backend_config(&app_handle).map_err(|e| e.message)?;
             {
                 let mut current = state
                     .backend
@@ -595,9 +630,10 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
             .join(".suzent")
             .join("update-transaction.json");
         if update_journal.exists() {
-            let error =
+            let error = StartupError::blocked(
                 "A Suzent update was interrupted. Run 'suzent repair' before starting the backend."
-                    .to_string();
+                    .to_string(),
+            );
             if let Some(state) = app_handle.try_state::<AppState>() {
                 if let Ok(mut error_guard) = state.backend_startup_error.lock() {
                     *error_guard = Some(error.clone());
@@ -632,20 +668,20 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
                     eprintln!("Failed to inject backend port: {}", e);
                     let _ = window.emit(
                         "backend-error",
-                        format!("Failed to inject backend port: {}", e),
+                        StartupError::from(format!("Failed to inject backend port: {}", e)),
                     );
                 } else {
                     let _ = app_handle.emit("backend-ready", port);
                 }
             }
             Err(e) => {
-                eprintln!("Failed to start backend: {}", e);
+                eprintln!("Failed to start backend: {}", e.message);
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     if let Ok(mut error_guard) = state.backend_startup_error.lock() {
                         *error_guard = Some(e.clone());
                     }
                 }
-                if e == "bootstrap-required" {
+                if e.message == "bootstrap-required" {
                     let _ = app_handle.emit(
                         "bootstrap-required",
                         build_bootstrap_status(Some(&app_handle)),
@@ -895,6 +931,7 @@ fn main() {
             run_bootstrap_stage,
             set_install_workspace,
             retry_backend_start,
+            is_backend_starting,
             frontend_ready,
             get_service_status,
             set_service_enabled,
@@ -934,7 +971,9 @@ fn read_port_file() -> Option<u16> {
 
 /// Dev mode: expect a manually-started backend; just read the port from SUZENT_PORT.
 #[cfg(debug_assertions)]
-fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+fn get_backend_config(
+    app_handle: &tauri::AppHandle,
+) -> Result<(u16, BackendProcess), StartupError> {
     let _ = app_handle;
 
     let install_test_mode = std::env::var("SUZENT_DIR")
@@ -947,7 +986,7 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
     if install_test_mode {
         let repo_dir = backend::find_install_workspace_dir();
         if !backend::is_workspace_bootstrapped(&repo_dir) {
-            return Err("bootstrap-required".to_string());
+            return Err("bootstrap-required".to_string().into());
         }
 
         let uv_exe = backend::find_uv();
@@ -979,7 +1018,9 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
         port
     };
     let repo_dir = backend::find_install_workspace_dir();
-    if let Some(backend) = BackendProcess::attach_if_matching(resolved, &repo_dir)? {
+    if let Some(backend) =
+        BackendProcess::attach_if_matching(resolved, &repo_dir).map_err(StartupError::blocked)?
+    {
         println!(
             "Dev mode: attached to existing backend on port {}",
             resolved
@@ -993,13 +1034,15 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
 
 /// Release mode: launch the backend via `uv run python -m suzent.server`.
 #[cfg(not(debug_assertions))]
-fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+fn get_backend_config(
+    app_handle: &tauri::AppHandle,
+) -> Result<(u16, BackendProcess), StartupError> {
     let _ = app_handle;
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
 
     if !backend::is_workspace_bootstrapped(&repo_dir) {
-        return Err("bootstrap-required".to_string());
+        return Err("bootstrap-required".to_string().into());
     }
 
     let configured_port = std::env::var("SUZENT_PORT")
@@ -1015,7 +1058,9 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
     } else {
         configured_port
     };
-    if let Some(backend) = BackendProcess::attach_if_matching(attach_port, &repo_dir)? {
+    if let Some(backend) =
+        BackendProcess::attach_if_matching(attach_port, &repo_dir).map_err(StartupError::blocked)?
+    {
         println!(
             "Attached to existing Suzent service on port {}",
             attach_port

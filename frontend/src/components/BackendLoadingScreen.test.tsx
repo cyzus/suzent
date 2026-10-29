@@ -23,6 +23,16 @@ describe('startup recovery', () => {
     }
   );
 
+  it('offers no retry when retrying cannot fix the error', () => {
+    vi.stubGlobal('window', { __TAURI__: { window: { getCurrentWindow: () => ({}) } } });
+    const html = renderToStaticMarkup(
+      <BackendLoadingScreen error="Run suzent repair" recoverable={false} />
+    );
+    expect(html).toContain('app.blockedStartupHint');
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('app.recoverStartup');
+  });
+
   it('keeps initialization free of retry controls and matches the application background', () => {
     vi.stubGlobal('window', { __TAURI__: { window: { getCurrentWindow: () => ({}) } } });
     const html = renderToStaticMarkup(<BackendLoadingScreen progressHint={45} />);
