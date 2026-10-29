@@ -113,6 +113,7 @@ interface ChatListProps {
 
 /** Search and new chat, as icons in the sidebar's logo row. */
 const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
+const ARCHIVED_PAGE_SIZE = 50;
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
 function sidebarNavRowClass(selected: boolean): string {
@@ -255,6 +256,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedChats, setArchivedChats] = useState<ChatSummary[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
+  // Grows by a page per "load more"; a refetch covers everything already shown.
+  const [archivedLimit, setArchivedLimit] = useState(ARCHIVED_PAGE_SIZE);
   const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
   const knownChats = useMemo(
     () =>
@@ -647,7 +650,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const fetchArchivedChats = useCallback(async () => {
     setLoadingArchived(true);
     try {
-      const res = await fetch(`${getApiBase()}/chats?archived=true&limit=200`);
+      const res = await fetch(`${getApiBase()}/chats?archived=true&limit=${archivedLimit}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setArchivedChats(data.chats || []);
@@ -656,7 +659,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     } finally {
       setLoadingArchived(false);
     }
-  }, []);
+  }, [archivedLimit]);
 
   useEffect(() => {
     if (archivedOpen) void fetchArchivedChats();
@@ -744,8 +747,18 @@ export const ChatList: React.FC<ChatListProps> = ({
       organization === 'list' || filterId !== ALL_PROJECTS_FILTER
         ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
         : [];
-    return [...new Set([...pinnedChats, ...listed].map((chat) => chat.id))];
-  }, [chats, filterId, localSearchQuery, organization, pinnedChats, visibleChats]);
+    const archived = archivedOpen ? archivedChats : [];
+    return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
+  }, [
+    archivedChats,
+    archivedOpen,
+    chats,
+    filterId,
+    localSearchQuery,
+    organization,
+    pinnedChats,
+    visibleChats,
+  ]);
 
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -2188,6 +2201,20 @@ export const ChatList: React.FC<ChatListProps> = ({
                     ) : (
                       <div className="px-1.5 pb-2">
                         {archivedChats.map((chat) => renderChatRow(chat, true, false, true))}
+                        {archivedCount > archivedChats.length && (
+                          <button
+                            type="button"
+                            onClick={() => setArchivedLimit((limit) => limit + ARCHIVED_PAGE_SIZE)}
+                            disabled={loadingArchived}
+                            className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                          >
+                            {loadingArchived
+                              ? t('chatList.loadingMore')
+                              : t('chatList.loadMore', {
+                                  count: archivedCount - archivedChats.length,
+                                })}
+                          </button>
+                        )}
                       </div>
                     ))}
                 </section>
