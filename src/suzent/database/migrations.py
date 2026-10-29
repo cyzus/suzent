@@ -33,6 +33,13 @@ class DatabaseMigrationMixin:
                             "WHERE slug = 'default' AND name = 'Default'"
                         )
                     )
+            if "archived" not in columns:
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
 
         # Migration: Add 'headers' column to 'mcp_servers' table
         if "mcp_servers" in inspector.get_table_names():

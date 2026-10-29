@@ -136,6 +136,7 @@ export interface Chat {
 
 export interface ChatSummary {
   pinned?: boolean;
+  archived?: boolean;
   id: string;
   title: string;
   createdAt: string;

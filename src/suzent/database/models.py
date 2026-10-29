@@ -45,6 +45,7 @@ class ChatSummaryModel(BaseModel):
     createdAt: str
     updatedAt: str
     pinned: bool = False
+    archived: bool = False
     messageCount: int
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
@@ -93,6 +94,7 @@ class ChatModel(SQLModel, table=True):
     id: str = Field(primary_key=True)
     title: str
     pinned: bool = Field(default=False)
+    archived: bool = Field(default=False)
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))

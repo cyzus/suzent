@@ -90,7 +90,9 @@ def _reusable_chat_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _apply_chat_filters(statement, search, platform, project_id, fts_ids=None):
+def _apply_chat_filters(
+    statement, search, platform, project_id, fts_ids=None, archived=None
+):
     """Apply common search/platform/project filters to a ChatModel statement.
 
     The hidden dream consolidation chat is always excluded from listing — it is an
@@ -126,6 +128,8 @@ def _apply_chat_filters(statement, search, platform, project_id, fts_ids=None):
         )
     if project_id is not None:
         statement = statement.where(ChatModel.project_id == project_id)
+    if archived is not None:
+        statement = statement.where(ChatModel.archived == archived)
     if platform == "social":
         statement = statement.where(
             text("json_extract(config, '$.platform') IS NOT NULL")
@@ -503,6 +507,7 @@ class ChatOperationsMixin:
         last_active_at = projection["last_active_at"]
         chat.title = projection["title"]
         chat.pinned = projection["pinned"]
+        chat.archived = projection["archived"]
         chat.project_id = project_id
         chat.working_directory = projection["working_directory"]
         chat.created_at = created_at
@@ -748,6 +753,7 @@ class ChatOperationsMixin:
         context_usage: Dict[str, Any] = None,
         reindex: bool = True,
         pinned: bool | None = None,
+        archived: bool | None = None,
     ) -> bool:
         """Update an existing chat.
 
@@ -765,6 +771,12 @@ class ChatOperationsMixin:
 
             if pinned is not None:
                 chat.pinned = pinned
+
+            if archived is not None:
+                chat.archived = archived
+                if archived:
+                    # A pin would keep an archived chat in the sidebar.
+                    chat.pinned = False
 
             should_update_timestamp = False
 
@@ -1289,7 +1301,9 @@ class ChatOperationsMixin:
         if chat_ids == []:
             return []
         with self._session() as session:
-            statement = select(ChatModel.id, ChatModel.title)
+            statement = select(ChatModel.id, ChatModel.title).where(
+                ChatModel.archived.is_(False)
+            )
             if chat_ids is not None:
                 statement = statement.where(ChatModel.id.in_(chat_ids))
             else:
@@ -1322,11 +1336,14 @@ class ChatOperationsMixin:
         platform: str = None,
         project_id: str = None,
         pinned: bool | None = None,
+        archived: bool | None = None,
     ) -> List[ChatSummaryModel]:
         """List chat summaries ordered by last updated.
 
         Args:
             project_id: Optional filter — only return chats in this project.
+            archived: ``False`` hides archived chats, ``True`` lists only them,
+                ``None`` lists both.
             platform: Optional ``"social"`` / ``"personal"`` filter on the legacy
                 ``config.platform`` field. Retained for backward compatibility;
                 new code should prefer ``project_id``.
@@ -1342,6 +1359,7 @@ class ChatOperationsMixin:
                     ChatModel.last_result_at,
                     ChatModel.project_id,
                     ChatModel.pinned,
+                    ChatModel.archived,
                 )
                 .order_by(ChatModel.updated_at.desc())
                 .offset(offset)
@@ -1352,7 +1370,12 @@ class ChatOperationsMixin:
                 statement = statement.where(ChatModel.pinned == pinned)
 
             statement = _apply_chat_filters(
-                statement, search, platform, project_id, self._search_fts_ids(search)
+                statement,
+                search,
+                platform,
+                project_id,
+                self._search_fts_ids(search),
+                archived,
             )
 
             # Build a slug/name lookup so each summary row can carry project info
@@ -1374,6 +1397,7 @@ class ChatOperationsMixin:
                     last_result_at,
                     row_project_id,
                     row_pinned,
+                    row_archived,
                 ) = row
                 config = config or {}
                 visible_count = config.get(SUMMARY_VISIBLE_COUNT_KEY)
@@ -1391,6 +1415,7 @@ class ChatOperationsMixin:
                     ChatSummaryModel(
                         id=chat_id,
                         pinned=row_pinned,
+                        archived=row_archived,
                         title=title,
                         createdAt=created_at.isoformat(),
                         updatedAt=updated_at.isoformat(),
@@ -1439,18 +1464,31 @@ class ChatOperationsMixin:
             ]
 
     def get_chat_count(
-        self, search: str = None, platform: str = None, project_id: str = None
+        self,
+        search: str = None,
+        platform: str = None,
+        project_id: str = None,
+        archived: bool | None = None,
     ) -> int:
         """Get total number of chats."""
         with self._session() as session:
             statement = select(func.count()).select_from(ChatModel)
             statement = _apply_chat_filters(
-                statement, search, platform, project_id, self._search_fts_ids(search)
+                statement,
+                search,
+                platform,
+                project_id,
+                self._search_fts_ids(search),
+                archived,
             )
             return session.exec(statement).one()
 
     def get_chat_kind_counts(
-        self, search: str = None, platform: str = None, project_id: str = None
+        self,
+        search: str = None,
+        platform: str = None,
+        project_id: str = None,
+        archived: bool | None = None,
     ) -> Dict[str, int]:
         """Get chat totals for the sidebar kind tabs."""
         fts_ids = self._search_fts_ids(search)
@@ -1458,7 +1496,7 @@ class ChatOperationsMixin:
         def count(extra_filter=None) -> int:
             statement = select(func.count()).select_from(ChatModel)
             statement = _apply_chat_filters(
-                statement, search, platform, project_id, fts_ids
+                statement, search, platform, project_id, fts_ids, archived
             )
             if extra_filter is not None:
                 statement = statement.where(extra_filter)
