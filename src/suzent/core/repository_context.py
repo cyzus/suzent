@@ -114,6 +114,8 @@ def resolve_repository_context(
     configured_cwd = cwd or (chat.working_directory if chat else None)
     if not configured_cwd and chat:
         configured_cwd = (chat.config or {}).get("cwd")
+    if not configured_cwd and getattr(chat, "project_id", None):
+        configured_cwd = database.resolve_chat_working_directory(chat)
 
     from suzent.config import get_effective_volumes
     from suzent.tools.filesystem.path_resolver import PathResolver

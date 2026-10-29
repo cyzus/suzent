@@ -392,6 +392,18 @@ export const zhCN = {
     replyFailed: '回复失败',
     untitledChat: 'Suzent',
   },
+  projectSettings: {
+    title: '{name} 设置',
+    name: '名称',
+    workingDirectory: '工作目录',
+    workingDirectoryPlaceholder: '未设置',
+    workingDirectoryHelp:
+      '该项目的对话默认在这个文件夹里工作：命令从这里启动，相对路径从这里解析，agent 修改这里的文件无需确认。单个对话自己设了工作目录的，仍以对话的为准。项目库和 context.md 位置不变。',
+    browse: '浏览',
+    clear: '清除',
+    save: '保存',
+    saveFailed: '无法保存项目设置',
+  },
   hostPicker: {
     title: '选择文件夹',
     roots: '驱动器',
@@ -1578,6 +1590,7 @@ export const zhCN = {
     },
     menu: {
       title: '操作',
+      settings: '设置',
       rename: '重命名',
       moveToProject: '移动到项目',
       delete: '删除',

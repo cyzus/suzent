@@ -14,6 +14,14 @@ from .permissions import PERMISSION_QUEUE_KEY, get_permission_broker
 from .registry import ACPAgentRegistry
 
 
+def _project_working_directory(chat_id: str) -> str | None:
+    """The working directory set in the chat's project settings, if any."""
+    from suzent.database import get_database
+
+    database = get_database()
+    return database.resolve_chat_working_directory(database.get_chat(chat_id))
+
+
 def _resolve_project_dir(chat_id: str) -> str:
     """Return the sandbox project directory for *chat_id*.
 
@@ -204,7 +212,10 @@ class ACPManager:
         if not agent_id:
             raise ValueError("ACP chat config requires acp_agent_id")
         cwd = str(
-            config.get("acp_cwd") or config.get("cwd") or _resolve_project_dir(chat_id)
+            config.get("acp_cwd")
+            or config.get("cwd")
+            or _project_working_directory(chat_id)
+            or _resolve_project_dir(chat_id)
         )
         session_id = str(config.get("acp_session_id") or "").strip()
         permission_mode = str(config.get("permission_mode") or "")

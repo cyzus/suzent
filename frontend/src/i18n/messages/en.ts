@@ -413,6 +413,18 @@ export const en = {
     replyFailed: 'Reply failed',
     untitledChat: 'Suzent',
   },
+  projectSettings: {
+    title: '{name} settings',
+    name: 'Name',
+    workingDirectory: 'Working directory',
+    workingDirectoryPlaceholder: 'Not set',
+    workingDirectoryHelp:
+      'Chats in this project work in this folder by default: commands start here, relative paths resolve here, and the agent can edit files here without asking. A chat with its own working directory keeps it. The project library and context.md stay where they are.',
+    browse: 'Browse',
+    clear: 'Clear',
+    save: 'Save',
+    saveFailed: 'Could not save project settings',
+  },
   hostPicker: {
     title: 'Choose a folder',
     roots: 'Drives',
@@ -1658,6 +1670,7 @@ export const en = {
     },
     menu: {
       title: 'Actions',
+      settings: 'Settings',
       rename: 'Rename',
       moveToProject: 'Move to project',
       delete: 'Delete',

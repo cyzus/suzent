@@ -70,6 +70,9 @@ class ProjectModel(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     archived: bool = Field(default=False)
+    # Default working directory for every chat in the project. A chat's own
+    # working directory still wins; see resolve_chat_working_directory().
+    working_directory: Optional[str] = None
 
     chats: List["ChatModel"] = Relationship(back_populates="project")
     goals: List["GoalModel"] = Relationship(

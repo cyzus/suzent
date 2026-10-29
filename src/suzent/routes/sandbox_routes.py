@@ -129,12 +129,7 @@ def _get_resolver_for_request(
             config = (
                 chat.get("config") if isinstance(chat, dict) else chat.config
             ) or {}
-            working_directory = (
-                chat.get("working_directory")
-                if isinstance(chat, dict)
-                else chat.working_directory
-            )
-            cwd = working_directory or config.get("cwd")
+            cwd = get_database().resolve_chat_working_directory(chat)
             sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
             configured_volumes = config.get("sandbox_volumes", [])
     except Exception as e:

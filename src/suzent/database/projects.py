@@ -404,8 +404,13 @@ class ProjectOperationsMixin:
         project_id: str,
         name: Optional[str] = None,
         archived: Optional[bool] = None,
+        working_directory: Optional[str] = None,
     ) -> Optional[ProjectModel]:
-        """Update a project's name and/or archived flag."""
+        """Update a project's name, archived flag and/or working directory.
+
+        ``working_directory=""`` clears the project's working directory;
+        ``None`` leaves it unchanged.
+        """
         with self._session() as session:
             project = session.get(ProjectModel, project_id)
             if not project:
@@ -414,6 +419,8 @@ class ProjectOperationsMixin:
                 project.name = name
             if archived is not None:
                 project.archived = archived
+            if working_directory is not None:
+                project.working_directory = working_directory or None
             session.add(project)
             session.commit()
             session.refresh(project)
@@ -461,6 +468,30 @@ class ProjectOperationsMixin:
             if project:
                 return project.slug
         return self.DEFAULT_PROJECT_SLUG
+
+    def resolve_chat_working_directory(self, chat: Any) -> Optional[str]:
+        """The working directory a chat runs in, if one is configured.
+
+        The chat's own working directory wins, then the legacy ``cwd`` in its
+        config, then the default set in its project's settings. Accepts a
+        ``ChatModel`` or the dict form some callers hold.
+        """
+        if chat is None:
+            return None
+        if isinstance(chat, dict):
+            own = chat.get("working_directory")
+            config = chat.get("config") or {}
+            project_id = chat.get("project_id")
+        else:
+            own = getattr(chat, "working_directory", None)
+            config = getattr(chat, "config", None) or {}
+            project_id = getattr(chat, "project_id", None)
+        if own or config.get("cwd"):
+            return own or config.get("cwd")
+        if not project_id:
+            return None
+        project = self.get_project(project_id)
+        return project.working_directory if project else None
 
     def get_project_dir(self, chat_id: str) -> Path:
         """Host path for the project a chat belongs to.
