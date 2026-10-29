@@ -181,7 +181,7 @@ private struct ChatSidebarRow: View {
 
 struct ContentView: View {
     @Bindable var model: MobileModel
-    @State private var showSidebar = false
+    @State private var showSidebar = true
     @State private var transcriptCache = ChatPresentationCache()
     @State private var showSettings = false
     @State private var repairScanner = false
@@ -233,7 +233,7 @@ struct ContentView: View {
             ZStack(alignment: .leading) {
                 HStack(spacing: 0) {
                     if wide && model.connected {
-                        sidebar.frame(width: PresentationTokens.sidebarWidth)
+                        sidebar(home: false).frame(width: PresentationTokens.sidebarWidth)
                         Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
                             .ignoresSafeArea(edges: .bottom)
                     }
@@ -241,8 +241,8 @@ struct ContentView: View {
                         HStack {
                             if model.connected && !wide {
                                 Button { composing = false; withAnimation { showSidebar = true } } label: {
-                                    Image(systemName: "line.3.horizontal")
-                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Open sidebar")
+                                    Image(systemName: "chevron.left")
+                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Back to chats")
                             }
                             Group {
                                 if model.connected && showSettings {
@@ -315,17 +315,12 @@ struct ContentView: View {
                         }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .accessibilityHidden(!wide && model.connected && showSidebar)
                 if !wide && model.connected {
-                    Color.black.opacity(showSidebar ? 0.3 : 0).ignoresSafeArea()
-                        .allowsHitTesting(showSidebar)
-                        .onTapGesture { withAnimation { showSidebar = false } }
-                    sidebar.frame(width: min(geometry.size.width - 48, PresentationTokens.sidebarWidth), height: geometry.size.height)
+                    sidebar(home: true)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                         .background(Color.suzentSurface)
-                        .overlay(alignment: .trailing) {
-                            Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy).ignoresSafeArea(edges: .bottom)
-                        }
-                        .compositingGroup()
-                        .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, PresentationTokens.sidebarWidth) - 2)
+                        .offset(x: showSidebar ? 0 : -geometry.size.width)
                         .allowsHitTesting(showSidebar)
                         .accessibilityHidden(!showSidebar)
                 }
@@ -351,14 +346,14 @@ struct ContentView: View {
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
-        .onChange(of: model.connected) { _, connected in showModelPicker = false; showProjectPicker = false; showSidebar = false; if !connected { showSettings = false } }
+        .onChange(of: model.connected) { _, connected in showModelPicker = false; showProjectPicker = false; showSidebar = true; if !connected { showSettings = false } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
         .accessibilityHidden(showModelPicker || showProjectPicker)
         .overlay { selectionOverlay }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showModelPicker || showProjectPicker)
         .onChange(of: model.isDemo) { _, _ in
-            showSettings = false; showSidebar = false; showModelPicker = false; showProjectPicker = false; composing = false
+            showSettings = false; showSidebar = true; showModelPicker = false; showProjectPicker = false; composing = false
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
@@ -399,35 +394,47 @@ struct ContentView: View {
         showProjectPicker = false
     }
 
-    private var sidebar: some View {
+    private func sidebar(home: Bool) -> some View {
         let scheduledIDs = scheduledChatIDs(model.chats)
         let normalRows = sidebarChats(model.chats.filter { !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
         let visibleProjects = projects.filter { project in search.isEmpty || normalRows.contains(where: { $0.root.projectId == project.id }) }
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                HStack(spacing: 10) {
+            HStack(spacing: 12) {
+                if home {
+                    SuzentWordmark()
+                    Spacer()
+                } else {
                     SuzentLogoMark().frame(width: 24, height: 24)
                     Text("SUZENT").font(.system(size: 14, weight: .bold)).tracking(2)
+                    Spacer()
                 }
-                Spacer()
-                Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark") }
-                    .buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Close sidebar")
-            }.padding(.horizontal, 16)
-            Divider().padding(.top, 8)
+            }.padding(.horizontal, 20).padding(.top, home ? 20 : 8).padding(.bottom, home ? 16 : 8)
+            if model.isDemo && home {
+                HStack {
+                    Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
+                    Spacer()
+                    Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).disabled(model.busy)
+                }.padding(.horizontal, 16).padding(.vertical, 8)
+            }
+            if home, let error = model.error {
+                SuzentNotice(message: error) { model.error = nil }
+            }
             Button { composing = false; Task { await model.createChat(); showSidebar = false; showSettings = false } } label: {
                 Label("New conversation", systemImage: "square.and.pencil")
-                    .font(.system(size: PresentationTokens.typeCaption, weight: .medium))
-                    .foregroundStyle(Color.suzentMuted)
-            }.buttonStyle(SuzentRowButtonStyle())
+                    .font(.system(size: home ? 16 : PresentationTokens.typeCaption, weight: .semibold))
+                    .foregroundStyle(home ? Color.black : Color.suzentMuted)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, home ? 12 : 0)
+                    .background(home ? Color(presentation: PresentationTokens.yellow) : Color.clear, in: Rectangle())
+            }.buttonStyle(.plain)
                 .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
-                TextField("Search chats", text: $search).font(.system(size: 14))
+                TextField("Search chats", text: $search).font(.system(size: home ? 16 : 14))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(height: 40)
-                .background(Color.suzentText.opacity(0.04))
-                .overlay(Rectangle().strokeBorder(Color.suzentText.opacity(0.12), lineWidth: 1))
+            }.padding(.horizontal, 12).frame(height: home ? 48 : 40)
+                .background(Color.suzentText.opacity(0.04), in: Rectangle())
                 .padding(.horizontal, 16).padding(.vertical, 12)
             ScrollViewReader { reader in
             ScrollView {

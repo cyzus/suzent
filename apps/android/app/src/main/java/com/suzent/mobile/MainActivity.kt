@@ -1,6 +1,8 @@
 package com.suzent.mobile
 
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -68,38 +70,36 @@ private fun MobileScreen(model: MobileModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
-    val drawer = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+    var showHome by rememberSaveable { mutableStateOf(true) }
+    val pageState = rememberSaveableStateHolder()
     val focus = LocalFocusManager.current
     LaunchedEffect(Unit) { if (model.canReconnect && !model.connected) model.connect() }
     LaunchedEffect(model.connected, model.isDemo) {
         showSettings = false
-        if (model.connected) { drawer.close(); model.watchNavigation() }
-        else { showSettings = false; drawer.close() }
+        showHome = true
+        if (model.connected) model.watchNavigation()
     }
-    ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = model.connected, drawerContent = {
-        if (model.connected) {
-            val edge = suzentShadow
-            ModalDrawerSheet(modifier = Modifier.width(PresentationTokens.sidebarWidth.dp), drawerShape = RectangleShape,
-                drawerContainerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
-            Box(Modifier.fillMaxSize()) {
-            Sidebar(model, showSettings,
-                close = { scope.launch { drawer.close() } },
-                open = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; scope.launch { drawer.close() } },
-                create = { projectId -> model.create(projectId); showSettings = false; scope.launch { drawer.close() } },
-                settings = { focus.clearFocus(); showSettings = true; scope.launch { drawer.close() } })
-            Box(Modifier.align(androidx.compose.ui.Alignment.CenterEnd).fillMaxHeight().width(PresentationTokens.borderWidthHeavy.dp).background(edge))
-            }
+    BackHandler(enabled = model.connected && !showHome) {
+        focus.clearFocus()
+        showHome = true
+    }
+    if (model.connected && showHome) {
+        pageState.SaveableStateProvider("home") {
+            Surface(Modifier.fillMaxSize()) {
+                Sidebar(model, showSettings,
+                    open = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; showHome = false },
+                    create = { projectId -> focus.clearFocus(); model.create(projectId); showSettings = false; showHome = false },
+                    settings = { focus.clearFocus(); showSettings = true; showHome = false })
             }
         }
-    }) {
+    } else {
         Scaffold(topBar = {
             Column(Modifier.statusBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     if (model.connected) {
-                        val label = stringResource(R.string.open_sidebar)
-                        SuzentIconButton(onClick = { focus.clearFocus(); scope.launch { drawer.open() } }, label = label) {
-                            Icon(painterResource(R.drawable.ic_menu), contentDescription = null, modifier = Modifier.size(20.dp))
+                        val label = stringResource(R.string.back_to_chats)
+                        SuzentIconButton(onClick = { focus.clearFocus(); showHome = true }, label = label) {
+                            Icon(painterResource(R.drawable.ic_chat_back), contentDescription = null, modifier = Modifier.size(20.dp))
                         }
                     }
                     Box(Modifier.weight(1f), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -187,7 +187,7 @@ private fun MobileScreen(model: MobileModel) {
 }
 
 @Composable
-private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> Unit, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
+private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     var observedPinVersion by remember { mutableIntStateOf(model.pinnedVersion) }
@@ -231,18 +231,30 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
     // Matches the desktop automation preview: five rows, then View all.
     val scheduledPreview = 5
     val visibleScheduledGroups = if (showAllScheduled || search.isNotEmpty()) scheduledGroups else scheduledGroups.take(scheduledPreview)
-    val headerShadow = suzentShadow
-    Column(Modifier.fillMaxHeight().statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("SUZENT", letterSpacing = 2.sp, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            val label = stringResource(R.string.close_sidebar)
-            SuzentIconButton(onClick = close, label = label) { Text("×", fontSize = 20.sp, lineHeight = 20.sp) }
+    Column(Modifier.fillMaxHeight().statusBarsPadding().imePadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            SuzentWordmark()
         }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
-        SuzentRowButton(label = stringResource(R.string.new_chat), onClick = { create(null) }, leadingIcon = R.drawable.ic_new_chat,
+        if (model.isDemo) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.demo_banner), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = model::exitDemo, enabled = !model.busy) { Text(stringResource(R.string.demo_exit)) }
+            }
+        }
+        model.error?.let { message -> SuzentNotice(message) { model.error = null } }
+        Button(onClick = { create(null) },
             enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true,
-            modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp))
-        SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp).padding(top = 12.dp))
+            shape = RectangleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(PresentationTokens.yellow), contentColor = Color.Black),
+            modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().heightIn(min = 48.dp)) {
+            Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(stringResource(R.string.new_chat), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+        OutlinedTextField(value = search, onValueChange = { search = it },
+            placeholder = { Text(stringResource(R.string.search_chats)) },
+            singleLine = true, shape = RectangleShape,
+            modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth())
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
             if (scheduledGroups.isNotEmpty()) {
                 item(key = "scheduled-heading") { SidebarSectionHeading(stringResource(R.string.scheduled_tasks), scheduledGroups.size) }

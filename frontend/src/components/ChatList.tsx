@@ -104,6 +104,8 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
 export type SidebarView = 'chat' | 'memory' | 'skills';
 
 interface ChatListProps {
+  mobile?: boolean;
+  onOpenChat?: () => void;
   onOpenAutomation?: () => void;
   /** The main area's current view, so its sidebar entry reads as selected. */
   activeView?: string;
@@ -123,6 +125,8 @@ function sidebarNavRowClass(selected: boolean): string {
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
+  mobile = false,
+  onOpenChat,
   onOpenAutomation,
   activeView,
   onOpenView,
@@ -1385,6 +1389,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           pickedInSidebarRef.current = chat.id;
           loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
           if (switchToView) switchToView('chat');
+          onOpenChat?.();
         }}
         onMouseDown={(e) => {
           // Keeps Shift-click from also selecting the row text.
@@ -1511,6 +1516,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     const chat = chats.find((item) => item.id === chatId);
     loadChat(chatId, { authoritative: !isChatRunning(chatId, chat?.isRunning) });
     if (switchToView) switchToView('chat');
+    onOpenChat?.();
   };
 
   return (
@@ -1614,7 +1620,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                       onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
                                     >
                                       <input
-                                        autoFocus
+                                        autoFocus={!mobile}
                                         value={taskRenameValue}
                                         onChange={(event) => setTaskRenameValue(event.target.value)}
                                         onKeyDown={(event) => {
@@ -1789,12 +1795,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                 while Regent's chat dims the rest. Search opens right under its row,
                 and this block keeps its place while results replace the list, so
                 the input keeps focus as the first keystroke turns searching on. */}
-          <div className="order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
+          <div className="chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
             <button
               type="button"
               onClick={() => {
                 beginNewChat();
                 if (switchToView) switchToView('chat');
+                onOpenChat?.();
               }}
               className={sidebarNavRowClass(false)}
             >
@@ -1804,17 +1811,19 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={() => onSearchOpenChange?.(true)}
-              className={sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))}
+              className={
+                mobile ? 'hidden' : sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))
+              }
             >
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="flex-1 truncate">{t('chatList.search')}</span>
             </button>
-            {(searchOpen || localSearchQuery) && (
+            {(mobile || searchOpen || localSearchQuery) && (
               <div className="px-0.5 pt-1 pb-1">
                 <div className="relative">
                   <input
                     type="text"
-                    autoFocus
+                    autoFocus={!mobile}
                     value={localSearchQuery}
                     onChange={(e) => setLocalSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -1933,6 +1942,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         if (organization === 'list') {
                           beginNewChat();
                           if (switchToView) switchToView('chat');
+                          onOpenChat?.();
                           return;
                         }
                         setCreatingProjectInline(true);
@@ -1987,7 +1997,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         className="flex items-center gap-1 px-3 pb-2"
                       >
                         <input
-                          autoFocus
+                          autoFocus={!mobile}
                           type="text"
                           value={newProjectName}
                           onChange={(event) => setNewProjectName(event.target.value)}
@@ -2041,7 +2051,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   }}
                                 >
                                   <input
-                                    autoFocus
+                                    autoFocus={!mobile}
                                     value={projectRenameValue}
                                     onChange={(event) => setProjectRenameValue(event.target.value)}
                                     onKeyDown={(event) => {

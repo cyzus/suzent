@@ -477,6 +477,7 @@ export const en = {
   },
   sidebar: {
     resizeLeft: 'Resize left sidebar',
+    backToChats: 'Back to chats',
     resizeRight: 'Resize right sidebar',
     resizeHint:
       'Drag to resize; keep dragging narrower to collapse. Keep holding to pull back; release to confirm. Double-click to reset. Arrow keys adjust width.',

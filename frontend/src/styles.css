@@ -2859,3 +2859,58 @@ button.activity-turn-duration:focus-visible {
 .regent-conversation-list {
   padding-inline-end: 1.25rem;
 }
+
+/* Mobile conversations are a destination, with room for touch and safe areas. */
+@media (max-width: 1023px) {
+  .mobile-home {
+    border-right: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-home > div:first-child {
+    height: 88px;
+    padding: 20px;
+    border-bottom: 0;
+  }
+
+  .mobile-home .chat-list-actions {
+    order: -1;
+    padding: 0 16px 12px;
+    border-top: 0;
+  }
+
+  .mobile-home .chat-list-actions > button:first-child {
+    min-height: 44px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    border-radius: 0;
+    background: #facc15;
+    color: #171717;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .mobile-home .chat-list-actions input {
+    height: 44px;
+    border-color: transparent;
+    border-radius: 0;
+    background: rgb(128 128 128 / 10%);
+    font-size: 16px;
+  }
+
+  .mobile-home [data-chat-row] {
+    min-height: 60px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .mobile-home nav > button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .mobile-home .regent-dimmed {
+    opacity: 1;
+  }
+}
