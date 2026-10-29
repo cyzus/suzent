@@ -129,9 +129,16 @@ def _get_resolver_for_request(
             config = (
                 chat.get("config") if isinstance(chat, dict) else chat.config
             ) or {}
-            cwd = get_database().resolve_chat_working_directory(chat)
+            working_directory = (
+                chat.get("working_directory")
+                if isinstance(chat, dict)
+                else chat.working_directory
+            )
+            cwd = working_directory or config.get("cwd")
             sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
             configured_volumes = config.get("sandbox_volumes", [])
+            if not cwd:
+                cwd = get_database().resolve_chat_working_directory(chat)
     except Exception as e:
         logger.warning(f"Failed to fetch chat config for file access: {e}")
 

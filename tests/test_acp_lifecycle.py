@@ -88,7 +88,9 @@ async def test_an_acp_subagent_is_refused_when_the_parent_denies_tools():
 
     db = MagicMock()
     db.get_chat.return_value = MagicMock(
-        config={"denied_tools": ["RunCommandTool"]}, working_directory=None
+        config={"denied_tools": ["RunCommandTool"]},
+        working_directory=None,
+        project_id=None,
     )
     turn = AsyncMock(return_value="done")
 
