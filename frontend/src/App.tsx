@@ -1204,13 +1204,42 @@ async function isBackendPortReachable(port: number): Promise<boolean> {
   }
 }
 
-async function waitForBackendPort(options?: { attempts?: number }): Promise<number | null> {
-  // Tauri may spend up to 45 seconds waiting for the port file and health
-  // check. Keep polling beyond that window so a persisted startup error is
-  // surfaced even when the original backend-error event fired before React
-  // registered its listener.
+interface StartupFailure {
+  message: string;
+  /** False when starting again cannot succeed until the user acts on `message`. */
+  recoverable: boolean;
+}
+
+class BackendStartupError extends Error {
+  constructor(readonly failure: StartupFailure) {
+    super(failure.message);
+  }
+}
+
+function toStartupFailure(error: unknown): StartupFailure {
+  if (error instanceof BackendStartupError) return error.failure;
+  return { message: String(error), recoverable: true };
+}
+
+async function isBackendStarting(): Promise<boolean> {
+  try {
+    return await invoke<boolean>('is_backend_starting');
+  } catch {
+    return false;
+  }
+}
+
+async function waitForBackendPort(options?: {
+  attempts?: number;
+  isCancelled?: () => boolean;
+}): Promise<number | null> {
+  // A first start on Windows can take minutes while dependencies compile under
+  // antivirus scanning. After the attempt budget, keep polling for as long as
+  // Tauri still reports an attempt in flight: giving up early would offer a
+  // retry that only discards that progress.
   const attempts = options?.attempts ?? 24;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for (let attempt = 0; ; attempt += 1) {
+    if (options?.isCancelled?.()) return null;
     try {
       const tauriPort = await invoke<number>('get_backend_port');
       if (Number.isFinite(tauriPort) && tauriPort > 0) {
@@ -1230,19 +1259,20 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
       return remembered;
     }
 
+    let startupError: StartupFailure | null = null;
     try {
-      const startupError = await invoke<string | null>('get_backend_startup_error');
-      if (startupError) throw new Error(startupError);
-    } catch (error) {
-      if (error instanceof Error && error.message) throw error;
+      startupError = await invoke<StartupFailure | null>('get_backend_startup_error');
+    } catch {
       // Older/dev shells may not expose startup error persistence yet.
     }
+    if (startupError) throw new BackendStartupError(startupError);
+
+    if (attempt >= attempts - 1 && !(await isBackendStarting())) return null;
 
     await new Promise((resolve) =>
       window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500))
     );
   }
-  return null;
 }
 
 // Web mode has no Tauri port handshake: the backend is simply already there, at
@@ -1294,7 +1324,7 @@ export default function App({ children }: AppProps = {}) {
   // Gate rendering until bootstrap_status answers, so the chat UI cannot flash
   // before the installer/onboarding decision is known.
   const [backendReady, setBackendReady] = React.useState<boolean>(false);
-  const [backendError, setBackendError] = React.useState<string | null>(null);
+  const [backendError, setBackendError] = React.useState<StartupFailure | null>(null);
   const [backendCompatible, setBackendCompatible] = React.useState(false);
   const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(
     null
@@ -1302,6 +1332,37 @@ export default function App({ children }: AppProps = {}) {
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
   const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
   const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
+
+  const waitForDesktopBackend = React.useCallback((isCancelled: () => boolean) => {
+    setBackendStartingAtStartup(true);
+    waitForBackendPort({ isCancelled })
+      .then((port) => {
+        if (isCancelled()) return;
+        setBackendStartingAtStartup(false);
+        if (port === null) {
+          setBackendError({
+            message: tForLocale(getInitialLocale(), 'app.backendStartTimeout'),
+            recoverable: true,
+          });
+          return;
+        }
+        setBackendReady(true);
+        setBackendError(null);
+      })
+      .catch((error: unknown) => {
+        if (isCancelled()) return;
+        setBackendStartingAtStartup(false);
+        setBackendError(toStartupFailure(error));
+      });
+  }, []);
+
+  const retryBackendStart = React.useCallback(async () => {
+    await invoke('retry_backend_start');
+    setBackendError(null);
+    // Dropping readiness re-runs the compatibility check once the port is back.
+    setBackendReady(false);
+    waitForDesktopBackend(() => false);
+  }, [waitForDesktopBackend]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1319,14 +1380,17 @@ export default function App({ children }: AppProps = {}) {
             setBackendReady(true);
             setBackendError(null);
           } else {
-            setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
+            setBackendError({
+              message: tForLocale(getInitialLocale(), 'app.backendStartTimeout'),
+              recoverable: true,
+            });
           }
         })
         .catch((error: unknown) => {
           if (cancelled) return;
           setBackendStartingAtStartup(false);
           setBootstrapChecked(true);
-          setBackendError(String(error));
+          setBackendError(toStartupFailure(error));
         });
       return () => {
         cancelled = true;
@@ -1345,24 +1409,7 @@ export default function App({ children }: AppProps = {}) {
           setBackendReady(true);
           setBackendStartingAtStartup(false);
         } else {
-          setBackendStartingAtStartup(true);
-          waitForBackendPort()
-            .then((port) => {
-              if (cancelled) return;
-              if (port === null) {
-                setBackendStartingAtStartup(false);
-                setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
-                return;
-              }
-              setBackendReady(true);
-              setBackendError(null);
-              setBackendStartingAtStartup(false);
-            })
-            .catch((error: unknown) => {
-              if (cancelled) return;
-              setBackendStartingAtStartup(false);
-              setBackendError(String(error));
-            });
+          waitForDesktopBackend(() => cancelled);
         }
         setBootstrapChecked(true);
       })
@@ -1373,7 +1420,7 @@ export default function App({ children }: AppProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [waitForDesktopBackend]);
 
   React.useEffect(() => {
     if (backendReady || isWeb()) return;
@@ -1385,7 +1432,7 @@ export default function App({ children }: AppProps = {}) {
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
     // If we have a persisted port, probe backend health and continue without waiting forever.
     if (hasPersistedBackendPort()) {
-      waitForBackendPort({ attempts: 8 })
+      waitForBackendPort({ attempts: 8, isCancelled: () => cancelled })
         .then((port) => {
           if (!cancelled && port !== null) {
             setBackendReady(true);
@@ -1398,7 +1445,7 @@ export default function App({ children }: AppProps = {}) {
           if (!cancelled) {
             setBackendStartingAtStartup(false);
             setBackendStartingAfterInstall(false);
-            setBackendError(String(error));
+            setBackendError(toStartupFailure(error));
           }
         });
     }
@@ -1414,7 +1461,7 @@ export default function App({ children }: AppProps = {}) {
       }).then((fn) => {
         unlisten = fn;
       });
-      listen<string>('backend-error', (event) => {
+      listen<StartupFailure>('backend-error', (event) => {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
@@ -1451,13 +1498,16 @@ export default function App({ children }: AppProps = {}) {
         if (cancelled) return;
         const compatibilityIssue = getBackendCompatibilityIssue(identity);
         if (compatibilityIssue) {
-          setBackendError(
-            tForLocale(
+          setBackendError({
+            message: tForLocale(
               getInitialLocale(),
               `app.backendCompatibility.${compatibilityIssue.kind}`,
               compatibilityIssue
-            )
-          );
+            ),
+            // The desktop shell reattaches to the same backend; a browser reload
+            // fetches the bundle the backend now serves.
+            recoverable: isWeb(),
+          });
           setBackendCompatible(false);
           return;
         }
@@ -1466,15 +1516,16 @@ export default function App({ children }: AppProps = {}) {
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setBackendError(
-            tForLocale(
+          setBackendError({
+            message: tForLocale(
               getInitialLocale(),
               error instanceof BackendVersionTimeoutError
                 ? 'app.backendCompatibility.verifyTimeout'
                 : 'app.backendCompatibility.verifyFailed',
               error instanceof BackendVersionTimeoutError ? undefined : { error: String(error) }
-            )
-          );
+            ),
+            recoverable: true,
+          });
           setBackendCompatible(false);
         }
       });
@@ -1497,7 +1548,11 @@ export default function App({ children }: AppProps = {}) {
           }}
         />
       ) : backendError ? (
-        <BackendLoadingScreen error={backendError} />
+        <BackendLoadingScreen
+          error={backendError.message}
+          recoverable={backendError.recoverable}
+          onRetry={isWeb() ? undefined : retryBackendStart}
+        />
       ) : backendStartingAfterInstall || backendStartingAtStartup ? (
         <BackendLoadingScreen status={t('app.startingBackend')} progressHint={45} />
       ) : !backendReady ? (

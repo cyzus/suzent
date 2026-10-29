@@ -386,12 +386,14 @@ export const en = {
       'Backend startup timed out. Check ~/.suzent/runtime/server.log for details.',
     startingBackend: 'Starting and checking the backend service',
     verifyingBackend: 'Verifying backend compatibility',
-    recoverStartup: 'Restart and retry',
+    recoverStartup: 'Retry startup',
     reconnectStartup: 'Reconnect',
     recovering: 'Retrying…',
-    recoveryHintDesktop: 'Stuck loading? Restart Suzent and retry startup. Your data is kept.',
+    recoveryHintDesktop: 'Starts the backend again. Your data is kept.',
     recoveryHintWeb: 'Reload this page and try connecting again.',
-    recoveryFailed: 'Could not restart. Please try again or close and reopen Suzent.',
+    recoveryFailed: 'Could not retry. Please try again or close and reopen Suzent.',
+    blockedStartupHint:
+      'Retrying will not help until this is fixed. Follow the steps above, then reopen Suzent.',
     startupElapsed: 'Elapsed {seconds}s',
     logoAriaLabel: 'Suzent logo',
     backendCompatibility: {
