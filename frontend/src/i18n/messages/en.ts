@@ -427,6 +427,7 @@ export const en = {
     makePrimary: 'Set as working directory',
     removeFolder: 'Remove',
     addFolder: 'Add folder',
+    suggestions: 'Add a recent folder',
     noFolders: 'No folders yet. Chats work in the project’s scratch folder.',
     chatOverrideNote:
       'A chat that picks its own Working Dir keeps it. context.md and the project library stay in the project folder.',

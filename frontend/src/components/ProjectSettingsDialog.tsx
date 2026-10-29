@@ -1,11 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderIcon, HomeIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+  ClockIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  HomeIcon,
+  PlusIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import type { Project } from '../types/api';
 import { useI18n } from '../i18n';
 import { isImeComposing } from '../lib/ime';
 import { getApiBase } from '../lib/api';
-import { FolderContextPicker } from './chat/FolderContextPicker';
+import { pickHostDirectory } from '../lib/hostPathPicker';
+import { readFolderHistory, rememberFolders } from '../lib/folderHistory';
 
 export interface ProjectSettingsUpdate {
   name?: string;
@@ -27,6 +35,8 @@ const SECTION_LABEL_CLASS =
   'block text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400';
 const ADD_BUTTON_CLASS =
   'flex items-center justify-center gap-1.5 w-full px-3 py-2.5 text-xs font-black uppercase border-2 border-dashed border-brutal-black dark:border-zinc-500 text-brutal-black dark:text-white bg-white dark:bg-zinc-900 hover:bg-brutal-yellow/40 dark:hover:bg-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue';
+
+const MAX_SUGGESTIONS = 5;
 
 const folderName = (path: string): string => path.split(/[/\\]/).filter(Boolean).pop() || path;
 
@@ -83,8 +93,31 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
     };
   }, [onClose]);
 
-  const addFolders = (paths: string[]) =>
+  const addFolders = (paths: string[]) => {
+    rememberFolders(paths);
     setFolders((prev) => [...prev, ...paths.filter((path) => path && !prev.includes(path))]);
+  };
+  const chooseFolders = async () => {
+    try {
+      const selected = await pickHostDirectory({ multiple: true });
+      if (!selected) return;
+      addFolders(Array.isArray(selected) ? selected : [selected]);
+    } catch (err) {
+      console.error('Failed to pick a host folder', err);
+    }
+  };
+
+  // Folders to offer for adding: ones this project's chats used, then recent
+  // picks from anywhere, leaving out what the project already has.
+  const [recentFolders] = useState(() => readFolderHistory().map((item) => item.path));
+  const suggestions = [
+    ...projectFolders.map((path) => ({ path, recent: false })),
+    ...recentFolders
+      .filter((path) => !projectFolders.includes(path))
+      .map((path) => ({ path, recent: true })),
+  ]
+    .filter(({ path }) => !folders.includes(path))
+    .slice(0, MAX_SUGGESTIONS);
   const removeFolder = (index: number) => setFolders((prev) => prev.filter((_, i) => i !== index));
   const makePrimary = (index: number) =>
     setFolders((prev) => [prev[index], ...prev.filter((_, i) => i !== index)]);
@@ -234,18 +267,52 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
               </ul>
             )}
 
-            <FolderContextPicker
-              activeFolders={folders}
-              projectFolders={projectFolders}
-              onMount={addFolders}
-              onRemoveVolume={removeFolder}
-              activeTitle={t('projectSettings.folders')}
-              emptyActiveText={t('projectSettings.noFolders')}
-              buttonLabel={t('projectSettings.addFolder')}
-              buttonClassName={ADD_BUTTON_CLASS}
-              buttonIcon={PlusIcon}
-              dropUp={false}
-            />
+            {suggestions.length > 0 && (
+              <div className="pt-2">
+                <span className={SECTION_LABEL_CLASS}>{t('projectSettings.suggestions')}</span>
+                <ul className="mt-1.5 divide-y divide-neutral-200 dark:divide-zinc-700 border-y border-neutral-200 dark:border-zinc-700">
+                  {suggestions.map(({ path, recent }) => {
+                    const Icon = recent ? ClockIcon : FolderIcon;
+                    return (
+                      <li key={path}>
+                        <button
+                          type="button"
+                          onClick={() => addFolders([path])}
+                          title={
+                            recent
+                              ? t('folderContext.recentFolders')
+                              : t('folderContext.projectFolders')
+                          }
+                          className="group flex w-full items-center gap-2.5 px-1 py-2 text-left hover:bg-brutal-yellow/40 dark:hover:bg-zinc-800 focus:outline-none focus-visible:bg-brutal-yellow/40"
+                        >
+                          <Icon className="h-4 w-4 shrink-0 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white" />
+                          <span className="shrink-0 text-xs font-bold text-brutal-black dark:text-white">
+                            {folderName(path)}
+                          </span>
+                          <span
+                            className="min-w-0 flex-1 truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-400"
+                            dir="rtl"
+                          >
+                            <bdi>{path}</bdi>
+                          </span>
+                          <PlusIcon
+                            className="h-4 w-4 shrink-0 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white"
+                            strokeWidth={2.5}
+                          />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            <button type="button" onClick={chooseFolders} className={ADD_BUTTON_CLASS}>
+              <FolderPlusIcon className="h-4 w-4" strokeWidth={2} />
+              {suggestions.length > 0
+                ? t('folderContext.chooseDifferent')
+                : t('projectSettings.addFolder')}
+            </button>
 
             <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {t('projectSettings.chatOverrideNote')}

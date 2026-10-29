@@ -3,52 +3,24 @@ import { createPortal } from 'react-dom';
 import { CheckIcon, ClockIcon, FolderIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { pickHostDirectory } from '../../lib/hostPathPicker';
 import { useI18n } from '../../i18n';
-
-interface RecentFolder {
-  path: string;
-  timestamp: number;
-}
+import { readFolderHistory, rememberFolders, type RecentFolder } from '../../lib/folderHistory';
 
 interface FolderContextPickerProps {
   onMount: (paths: string[]) => void;
   activeVolumes?: string[];
-  /** Host paths to show as active, in place of parsing `activeVolumes`. */
-  activeFolders?: string[];
   onRemoveVolume?: (index: number) => void;
-  /** Folders already used in the current project, listed above recent ones. */
-  projectFolders?: string[];
-  /** Pick one folder at a time (e.g. a working directory) instead of mounting several. */
-  multiple?: boolean;
-  activeTitle?: string;
-  emptyActiveText?: string;
   disabled?: boolean;
   dropUp?: boolean;
   buttonLabel?: string;
-  /**
-   * Replaces the toolbar look of the trigger: it then shows only its icon and
-   * label, styled by this class.
-   */
-  buttonClassName?: string;
-  buttonIcon?: typeof FolderIcon;
 }
-
-const HISTORY_KEY = 'suzent_folder_history';
-const MAX_HISTORY = 5;
 
 export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   onMount,
   activeVolumes = [],
-  activeFolders,
   onRemoveVolume,
-  projectFolders = [],
-  multiple = true,
-  activeTitle,
-  emptyActiveText,
   disabled = false,
   dropUp = true,
   buttonLabel,
-  buttonClassName,
-  buttonIcon: ButtonIcon = FolderIcon,
 }) => {
   const { t } = useI18n();
   const [history, setHistory] = useState<RecentFolder[]>([]);
@@ -57,42 +29,22 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     top: number;
     left: number;
     width: number;
-    maxHeight: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(HISTORY_KEY);
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error('Failed to load folder history', e);
-    }
+    setHistory(readFolderHistory());
   }, []);
 
   const addToHistory = (paths: string[]) => {
-    const now = Date.now();
-    const newItems = paths.map((p) => ({ path: p, timestamp: now }));
-
-    setHistory((prev) => {
-      const combined = [...newItems, ...prev];
-      const unique = combined.filter(
-        (item, index, self) => index === self.findIndex((t) => t.path === item.path)
-      );
-      const trimmed = unique.slice(0, MAX_HISTORY);
-
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-      return trimmed;
-    });
+    setHistory((prev) => rememberFolders(paths, prev));
   };
 
   const handleNativePick = async () => {
     try {
-      const selected = await pickHostDirectory({ multiple });
+      const selected = await pickHostDirectory({ multiple: true });
 
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
@@ -106,32 +58,33 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     }
   };
 
-  const activePaths =
-    activeFolders ?? activeVolumes.map((volume) => volume.substring(0, volume.lastIndexOf(':')));
-
   const handleRecentClick = (path: string) => {
-    const existingIndex = activePaths.indexOf(path);
+    // Check if already active
+    const existingIndex = activeVolumes.findIndex(
+      (v) => v.substring(0, v.lastIndexOf(':')) === path
+    );
     if (existingIndex !== -1) {
       onRemoveVolume?.(existingIndex);
     } else {
       addToHistory([path]);
       onMount([path]);
-      if (!multiple) setIsOpen(false);
     }
   };
 
   // Calculate active count for badge
-  const activeCount = activePaths.length;
+  const activeCount = activeVolumes.length;
 
   const getDynamicLabel = (): string | null => {
-    if (!activePaths.length) return null;
-    return activePaths[0].split(/[\\/]/).filter(Boolean).pop() ?? activePaths[0];
+    if (!activeVolumes.length) return null;
+    const firstName = activeVolumes[0].split(/[\\/]/).filter(Boolean).pop() ?? activeVolumes[0];
+    if (activeVolumes.length === 1) return firstName;
+    return firstName;
   };
 
   const dynamicLabel = getDynamicLabel();
-  const inactiveProjectFolders = projectFolders.filter((path) => !activePaths.includes(path));
   const inactiveHistory = history.filter(
-    (item) => !activePaths.includes(item.path) && !projectFolders.includes(item.path)
+    (item) =>
+      !activeVolumes.some((volume) => volume.substring(0, volume.lastIndexOf(':')) === item.path)
   );
 
   const [effectiveDropUp, setEffectiveDropUp] = useState(dropUp);
@@ -156,28 +109,21 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         shouldDropUp = false;
       } else if (!dropUp && spaceBelow < height && spaceAbove > height) {
         shouldDropUp = true;
-      } else if (spaceAbove < height && spaceBelow < height) {
-        // Neither side fits the full panel (e.g. opened from a centered
-        // dialog): use the roomier side and shrink the panel to fit it.
-        shouldDropUp = spaceAbove > spaceBelow;
       }
 
       setEffectiveDropUp(shouldDropUp);
-      const maxHeight = Math.min(height, (shouldDropUp ? spaceAbove : spaceBelow) - 16);
 
       if (shouldDropUp) {
         setDropdownPosition({
           top: rect.top - 4,
           left,
           width,
-          maxHeight,
         });
       } else {
         setDropdownPosition({
           top: rect.bottom + 4,
           left,
           width,
-          maxHeight,
         });
       }
     }
@@ -217,31 +163,6 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     };
   }, [isOpen]);
 
-  const renderFolderList = (paths: string[], Icon: typeof FolderIcon) => (
-    <div className="border-y border-neutral-200 dark:border-zinc-700 divide-y divide-neutral-200 dark:divide-zinc-700">
-      {paths.map((path) => (
-        <button
-          type="button"
-          key={path}
-          onClick={() => handleRecentClick(path)}
-          className="group w-full text-left px-1 py-2 flex items-center gap-2.5 text-xs text-brutal-black dark:text-white transition-colors hover:bg-brutal-yellow/40 dark:hover:bg-zinc-700 focus:outline-none focus-visible:bg-brutal-yellow/40"
-        >
-          <Icon className="w-4 h-4 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-bold">{path.split(/[/\\]/).pop()}</div>
-            <div
-              className="truncate text-[10px] font-mono text-neutral-500 dark:text-neutral-400"
-              title={path}
-            >
-              {path}
-            </div>
-          </div>
-          <PlusIcon className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-        </button>
-      ))}
-    </div>
-  );
-
   const dropdown =
     isOpen &&
     dropdownPosition &&
@@ -261,7 +182,6 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           // path, running off the right edge. A definite width is also what
           // lets the `truncate` on those paths take effect.
           width: dropdownPosition.width,
-          maxHeight: dropdownPosition.maxHeight,
         }}
       >
         <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900">
@@ -269,7 +189,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <FolderIcon className="w-4 h-4 shrink-0 text-brutal-black dark:text-white" />
               <span className="text-xs font-black uppercase tracking-wide text-brutal-black dark:text-white">
-                {activeTitle ?? t('folderContext.activeContexts')}
+                {t('folderContext.activeContexts')}
               </span>
             </div>
             <span
@@ -281,11 +201,13 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
 
           {activeCount === 0 ? (
             <div className="text-xs text-neutral-500 dark:text-neutral-400 py-2">
-              {emptyActiveText ?? t('folderContext.noFoldersMounted')}
+              {t('folderContext.noFoldersMounted')}
             </div>
           ) : (
             <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 divide-y-2 divide-brutal-black">
-              {activePaths.map((hostPath, idx) => {
+              {activeVolumes.map((vol, idx) => {
+                const lastSemi = vol.lastIndexOf(':');
+                const hostPath = vol.substring(0, lastSemi);
                 const folderName = hostPath.split(/[/\\]/).pop() || hostPath;
 
                 return (
@@ -320,15 +242,6 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           )}
         </div>
 
-        {inactiveProjectFolders.length > 0 && (
-          <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
-            <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
-              {t('folderContext.projectFolders')}
-            </div>
-            {renderFolderList(inactiveProjectFolders, FolderIcon)}
-          </div>
-        )}
-
         <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
           <div className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
             {t('folderContext.recentFolders')}
@@ -340,10 +253,28 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 : t('folderContext.noRecentFolders')}
             </div>
           ) : (
-            renderFolderList(
-              inactiveHistory.map((item) => item.path),
-              ClockIcon
-            )
+            <div className="border-y border-neutral-200 dark:border-zinc-700 divide-y divide-neutral-200 dark:divide-zinc-700">
+              {inactiveHistory.map((item) => (
+                <button
+                  type="button"
+                  key={item.path}
+                  onClick={() => handleRecentClick(item.path)}
+                  className="group w-full text-left px-1 py-2 flex items-center gap-2.5 text-xs text-brutal-black dark:text-white transition-colors hover:bg-brutal-yellow/40 dark:hover:bg-zinc-700 focus:outline-none focus-visible:bg-brutal-yellow/40"
+                >
+                  <ClockIcon className="w-4 h-4 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-bold">{item.path.split(/[/\\]/).pop()}</div>
+                    <div
+                      className="truncate text-[10px] font-mono text-neutral-500 dark:text-neutral-400"
+                      title={item.path}
+                    >
+                      {item.path}
+                    </div>
+                  </div>
+                  <PlusIcon className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
@@ -370,39 +301,30 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        className={
-          buttonClassName ??
-          `
+        className={`
                     flex items-center gap-1.5 px-2 h-9 w-full min-w-0 border-0 shadow-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue
                     bg-transparent text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700
-                `
-        }
+                `}
       >
-        <ButtonIcon className="w-4 h-4 shrink-0" />
-        {buttonClassName ? (
-          <span className="truncate min-w-0">{buttonLabel}</span>
-        ) : (
-          <>
-            <span className="hidden sm:inline truncate min-w-0">
-              {buttonLabel || dynamicLabel || t('folderContext.context')}
-            </span>
-            {activeCount > 1 && (
-              <span className="min-w-5 h-5 px-1 inline-flex items-center justify-center bg-white/80 border border-brutal-black text-[9px] leading-none">
-                {activeCount}
-              </span>
-            )}
-            <svg
-              className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </>
+        <FolderIcon className="w-4 h-4 shrink-0" />
+        <span className="hidden sm:inline truncate min-w-0">
+          {buttonLabel || dynamicLabel || t('folderContext.context')}
+        </span>
+        {activeCount > 1 && (
+          <span className="min-w-5 h-5 px-1 inline-flex items-center justify-center bg-white/80 border border-brutal-black text-[9px] leading-none">
+            {activeCount}
+          </span>
         )}
+        <svg
+          className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
       </button>
       {dropdown}
     </div>

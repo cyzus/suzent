@@ -55,9 +55,10 @@ without asking. The other folders are mounted for every chat in the project,
 alongside any the chat mounts itself. Use **Set as working directory** on a
 folder to make it the first one.
 
-**Add folder** works like **Working Dir** in the chat box: pick a folder this
-project's chats already used, a recent folder, or **Choose a different
-folder**. With no folders, chats work in the project's `scratch/` folder.
+Under the list, Suzent offers folders this project's chats already used and
+folders you picked recently; click one to add it, or use **Choose a different
+folder** to browse. With no folders, chats work in the project's `scratch/`
+folder.
 
 A chat that already has its own working directory, for example one opened from
 an editor, keeps it. The project library, including `context.md`, stays in the

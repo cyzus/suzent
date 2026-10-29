@@ -404,6 +404,7 @@ export const zhCN = {
     makePrimary: '设为工作目录',
     removeFolder: '移除',
     addFolder: '添加文件夹',
+    suggestions: '添加最近用过的文件夹',
     noFolders: '还没有文件夹，对话默认在项目的 scratch 文件夹里工作。',
     chatOverrideNote:
       '单个对话自己选了工作目录的，以对话为准。context.md 和项目库仍在项目文件夹里。',

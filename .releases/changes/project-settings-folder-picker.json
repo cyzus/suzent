@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "minor"},
-  "summary": "Give projects several folders, the first being the working directory, picked with the same folder picker as the chat box; open project settings by right-clicking a project."
+  "summary": "Give projects several folders, the first being the working directory, with folders the project already used offered for adding; open project settings by right-clicking a project."
 }
