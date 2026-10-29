@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
 - Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
 - Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
+- Soften Regent message bubbles and align the copy action beneath replies.
 - Keep waiting while a slow first start is still in progress, retry startup without restarting the app, and show guidance instead of a retry button for errors a retry cannot fix.
 - The voice call animation keeps showing Suzent speaking until its reply has finished playing, instead of stopping early with fast realtime models such as Qwen-Omni.
 
