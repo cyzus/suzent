@@ -236,6 +236,16 @@ class DatabaseMigrationMixin:
                     )
                     conn.commit()
 
+        # Migration: Add per-project default working directory.
+        if "projects" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("projects")]
+            if "working_directory" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(
+                        text("ALTER TABLE projects ADD COLUMN working_directory TEXT")
+                    )
+                    conn.commit()
+
         # Migration: PlanningTool v2 — drop legacy plans/tasks tables and recreate
         # with new schema (tasks gets project_id FK; goals table is new).
         # create_all() already ran before _run_migrations(), so we call it again

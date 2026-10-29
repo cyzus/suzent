@@ -323,3 +323,61 @@ def test_a_kept_worktree_becomes_the_followup_working_directory(monkeypatch):
     assert merged == [
         ("subagent-sub_1", {"cwd": "/repo/.git/worktrees-tmp/subagent-1"})
     ]
+
+
+def test_project_working_directory_is_the_default_for_its_chats(
+    monkeypatch, temp_db, tmp_path, target_folder
+):
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Work", "work")
+    temp_db.update_project(project_id, working_directory=str(target_folder))
+    chat_id = temp_db.create_chat("in project", config={})
+    temp_db.link_chat_to_project(chat_id, project_id)
+
+    from suzent.core.context_injection import build_agent_deps
+
+    deps = build_agent_deps(
+        chat_id=chat_id,
+        user_id="user-1",
+        config={
+            "sandbox_enabled": False,
+            "workspace_root": str(tmp_path / "workspace"),
+            "memory_enabled": False,
+        },
+    )
+
+    assert deps.cwd == str(target_folder)
+    assert deps.path_resolver.get_working_dir() == target_folder.resolve()
+    assert inherited_working_directory(temp_db.get_chat(chat_id)) == str(target_folder)
+
+
+def test_a_chat_working_directory_overrides_the_project_default(
+    temp_db, tmp_path, target_folder
+):
+    own = tmp_path / "Documents" / "own"
+    own.mkdir(parents=True)
+    project_id = temp_db.create_project("Work", "work")
+    temp_db.update_project(project_id, working_directory=str(target_folder))
+    chat_id = temp_db.create_chat("in project", config={})
+    temp_db.link_chat_to_project(chat_id, project_id)
+    temp_db.update_chat(chat_id, working_directory=str(own))
+
+    assert temp_db.resolve_chat_working_directory(temp_db.get_chat(chat_id)) == str(own)
+
+    temp_db.update_chat(chat_id, working_directory="")
+    temp_db.update_project(project_id, working_directory="")
+    assert temp_db.resolve_chat_working_directory(temp_db.get_chat(chat_id)) is None
+
+
+def test_acp_sessions_start_in_the_project_working_directory(
+    monkeypatch, temp_db, target_folder
+):
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Work", "work")
+    temp_db.update_project(project_id, working_directory=str(target_folder))
+    chat_id = temp_db.create_chat("acp", config={})
+    temp_db.link_chat_to_project(chat_id, project_id)
+
+    from suzent.acp.manager import default_acp_cwd
+
+    assert default_acp_cwd(chat_id) == str(target_folder)

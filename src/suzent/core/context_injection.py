@@ -81,7 +81,7 @@ def build_agent_deps(
     if is_focal_chat(_chat_obj):
         cwd = None
     elif not cwd and _chat_obj is not None:
-        cwd = _chat_obj.working_directory or (_chat_obj.config or {}).get("cwd")
+        cwd = _gdb().resolve_chat_working_directory(_chat_obj)
 
     # Merge layers: later layers win on conflict; command_rules are unioned by pattern
     def _merge_perm(base: dict, overlay: dict) -> dict:

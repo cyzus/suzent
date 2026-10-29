@@ -44,10 +44,12 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
+import { ProjectSettingsDialog } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
 
 const ALL_PROJECTS_FILTER = '__all__';
+const SYSTEM_PROJECT_SLUGS = new Set(['default', 'social']);
 const AUTOMATION_PREVIEW_LIMIT = 5;
 const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
@@ -163,6 +165,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     setCurrentProjectId,
     createProject,
     renameProject,
+    updateProjectSettings,
     deleteProject,
     moveChat,
     moveAllChats,
@@ -205,6 +208,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     anchor: { rect: DOMRect };
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState('');
   const [taskMenu, setTaskMenu] = useState<{
     jobId: number;
@@ -2019,7 +2023,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <div className="space-y-0.5 px-2 pb-2">
                       {sortedProjects.map((project) => {
                         const isOpen = filterId === project.id;
-                        const isSystem = project.slug === 'default' || project.slug === 'social';
                         const isRenaming = renamingProjectId === project.id;
                         return (
                           <div key={project.id}>
@@ -2082,30 +2085,28 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   </button>
                                   <span className="relative flex items-center justify-center">
                                     <span
-                                      className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
+                                      className={`flex transition-opacity ${projectMenu?.projectId === project.id ? 'opacity-0' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
                                     >
                                       <RunningMark
                                         running={!isOpen && runningProjectIds.has(project.id)}
                                       />
                                     </span>
-                                    {!isSystem && (
-                                      <button
-                                        type="button"
-                                        aria-label={t('chatList.menu.title')}
-                                        title={t('chatList.menu.title')}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          const rect = event.currentTarget.getBoundingClientRect();
-                                          setProjectMenu({
-                                            projectId: project.id,
-                                            anchor: { rect },
-                                          });
-                                        }}
-                                        className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
-                                      >
-                                        <MoreActionsIcon />
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.menu.title')}
+                                      title={t('chatList.menu.title')}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        setProjectMenu({
+                                          projectId: project.id,
+                                          anchor: { rect },
+                                        });
+                                      }}
+                                      className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                    >
+                                      <MoreActionsIcon />
+                                    </button>
                                   </span>
                                 </>
                               )}
@@ -2309,82 +2310,111 @@ export const ChatList: React.FC<ChatListProps> = ({
         (() => {
           const p = projects.find((pr) => pr.id === projectMenu.projectId);
           if (!p) return null;
+          const isSystem = SYSTEM_PROJECT_SLUGS.has(p.slug);
           return (
             <ProjectRowMenu
               anchor={projectMenu.anchor}
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
               rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
-              onRename={() => {
-                setProjectRenameValue(p.name);
-                setRenamingProjectId(p.id);
-              }}
-              onDelete={() => {
-                // Always allow delete. If the project has chats, prompt the user
-                // to confirm — chats will be moved to the default project first.
-                const fallback = projects.find((pr) => pr.slug === 'default');
-                const finalizeDelete = async () => {
-                  const result = await deleteProject(p.id);
-                  if (!result.success) {
-                    setDialog({
-                      title: p.name,
-                      message: result.error || t('chatList.menu.deleteFailed'),
-                      actions: [{ label: t('common.ok'), tone: 'primary' }],
-                    });
-                    return;
-                  }
-                  if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
-                  await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
-                };
-
-                if (p.chatCount === 0) {
-                  setDialog({
-                    title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                    message: t('chatList.menu.deleteConfirmEmpty'),
-                    actions: [
-                      { label: t('common.cancel') },
-                      { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
-                    ],
-                  });
-                  return;
-                }
-
-                if (!fallback) {
-                  setDialog({
-                    title: p.name,
-                    message: t('chatList.menu.deleteFailed'),
-                    actions: [{ label: t('common.ok'), tone: 'primary' }],
-                  });
-                  return;
-                }
-
-                setDialog({
-                  title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                  message: t('chatList.menu.deleteConfirmWithChats', {
-                    count: p.chatCount,
-                    target: fallback.name,
-                  }),
-                  actions: [
-                    { label: t('common.cancel') },
-                    {
-                      label: t('chatList.menu.delete'),
-                      tone: 'danger',
-                      onClick: async () => {
-                        const moveResult = await moveAllChats(p.id, fallback.id);
-                        if (!moveResult.success) {
+              onSettings={() => setSettingsProjectId(p.id)}
+              onRename={
+                isSystem
+                  ? undefined
+                  : () => {
+                      setProjectRenameValue(p.name);
+                      setRenamingProjectId(p.id);
+                    }
+              }
+              onDelete={
+                isSystem
+                  ? undefined
+                  : () => {
+                      // Always allow delete. If the project has chats, prompt the user
+                      // to confirm — chats will be moved to the default project first.
+                      const fallback = projects.find((pr) => pr.slug === 'default');
+                      const finalizeDelete = async () => {
+                        const result = await deleteProject(p.id);
+                        if (!result.success) {
                           setDialog({
                             title: p.name,
-                            message: moveResult.error || t('chatList.menu.deleteFailed'),
+                            message: result.error || t('chatList.menu.deleteFailed'),
                             actions: [{ label: t('common.ok'), tone: 'primary' }],
                           });
                           return;
                         }
-                        await finalizeDelete();
-                      },
-                    },
-                  ],
-                });
-              }}
+                        if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
+                        await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+                      };
+
+                      if (p.chatCount === 0) {
+                        setDialog({
+                          title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                          message: t('chatList.menu.deleteConfirmEmpty'),
+                          actions: [
+                            { label: t('common.cancel') },
+                            {
+                              label: t('chatList.menu.delete'),
+                              tone: 'danger',
+                              onClick: finalizeDelete,
+                            },
+                          ],
+                        });
+                        return;
+                      }
+
+                      if (!fallback) {
+                        setDialog({
+                          title: p.name,
+                          message: t('chatList.menu.deleteFailed'),
+                          actions: [{ label: t('common.ok'), tone: 'primary' }],
+                        });
+                        return;
+                      }
+
+                      setDialog({
+                        title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                        message: t('chatList.menu.deleteConfirmWithChats', {
+                          count: p.chatCount,
+                          target: fallback.name,
+                        }),
+                        actions: [
+                          { label: t('common.cancel') },
+                          {
+                            label: t('chatList.menu.delete'),
+                            tone: 'danger',
+                            onClick: async () => {
+                              const moveResult = await moveAllChats(p.id, fallback.id);
+                              if (!moveResult.success) {
+                                setDialog({
+                                  title: p.name,
+                                  message: moveResult.error || t('chatList.menu.deleteFailed'),
+                                  actions: [{ label: t('common.ok'), tone: 'primary' }],
+                                });
+                                return;
+                              }
+                              await finalizeDelete();
+                            },
+                          },
+                        ],
+                      });
+                    }
+              }
               onClose={() => setProjectMenu(null)}
+            />
+          );
+        })()}
+
+      {settingsProjectId &&
+        (() => {
+          const p = projects.find((pr) => pr.id === settingsProjectId);
+          if (!p) return null;
+          return (
+            <ProjectSettingsDialog
+              project={p}
+              canRename={!SYSTEM_PROJECT_SLUGS.has(p.slug)}
+              onSave={(update) => updateProjectSettings(p.id, update)}
+              onClose={() => setSettingsProjectId(null)}
+              rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
             />
           );
         })()}

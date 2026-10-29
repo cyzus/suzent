@@ -498,7 +498,12 @@ def inherited_working_directory(parent_chat) -> Optional[str]:
     """
     if parent_chat is None:
         return None
-    return parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
+    own = parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
+    if own or not getattr(parent_chat, "project_id", None):
+        return own
+    from suzent.database import get_database
+
+    return get_database().resolve_chat_working_directory(parent_chat)
 
 
 # Permission state the user granted on the parent chat. A sub-agent works on the

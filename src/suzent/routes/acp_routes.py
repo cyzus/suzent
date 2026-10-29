@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.acp import get_acp_manager
-from suzent.acp.manager import _resolve_project_dir
+from suzent.acp.manager import default_acp_cwd
 from suzent.acp.permissions import get_permission_broker
 from suzent.database import get_database
 
@@ -92,7 +92,7 @@ async def create_acp_session(request: Request) -> JSONResponse:
             )
             created_chat = True
 
-        cwd = str(explicit_cwd) if explicit_cwd else _resolve_project_dir(chat_id)
+        cwd = str(explicit_cwd) if explicit_cwd else default_acp_cwd(chat_id)
         config["acp_cwd"] = cwd
         if previous_config is not None:
             db.merge_chat_config(chat_id, config)
@@ -197,7 +197,7 @@ async def resume_acp_session(request: Request) -> JSONResponse:
             data.get("cwd")
             or config.get("acp_cwd")
             or config.get("cwd")
-            or _resolve_project_dir(chat_id)
+            or default_acp_cwd(chat_id)
         )
         managed = await get_acp_manager().resume(chat_id, agent_id, session_id, cwd)
         db.merge_chat_config(
