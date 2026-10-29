@@ -2712,31 +2712,31 @@ button.activity-turn-duration:focus-visible {
   width: fit-content;
   max-width: 100%;
   padding: 0.45rem 0.7rem;
-  border: 1px solid rgb(0 0 0 / 65%);
-  border-radius: 0.375rem;
-  background: rgb(255 255 255 / 70%);
+  border: 1px solid rgb(0 0 0 / 16%);
+  border-radius: 0.5rem;
+  background: #fff;
   overflow-wrap: anywhere;
 }
 .dark .regent-message-bubble {
   background: rgb(255 255 255 / 4%);
-  border-color: rgb(255 255 255 / 28%);
+  border-color: rgb(255 255 255 / 14%);
 }
 .regent-reaction {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2rem;
-  min-height: 1.75rem;
-  padding: 0.15rem 0.5rem;
-  border: 1px solid rgb(0 0 0 / 15%);
+  min-width: 1.75rem;
+  min-height: 1.5rem;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid rgb(0 0 0 / 12%);
   border-radius: 999px;
-  background: #fff;
-  font-size: 1rem;
+  background: #f5f5f5;
+  font-size: 0.875rem;
   line-height: 1.25;
 }
 .dark .regent-reaction {
   background: #27272a;
-  border-color: rgb(255 255 255 / 20%);
+  border-color: rgb(255 255 255 / 14%);
 }
 .regent-reaction:focus-visible {
   outline: 2px solid currentColor;
@@ -2786,12 +2786,14 @@ button.activity-turn-duration:focus-visible {
 }
 .regent-user-bubble {
   border-width: 1px;
-  border-color: rgb(0 0 0 / 65%);
-  border-radius: 0.375rem;
+  border-color: rgb(0 0 0 / 18%);
+  border-radius: 0.5rem;
+  background: #f5f5f5;
   box-shadow: none;
 }
 .dark .regent-user-message .regent-user-bubble {
-  border-color: rgb(255 255 255 / 28%);
+  background: #27272a;
+  border-color: rgb(255 255 255 / 14%);
   box-shadow: none;
 }
 
