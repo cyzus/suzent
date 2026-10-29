@@ -20,7 +20,7 @@ A memory it curates in files you own · 16 model providers, cloud or your own ha
 
 **[Website](https://suzent.com)** • **[Quickstart](docs/01-getting-started/quickstart.md)** • **[Docs](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[Contributing](./CONTRIBUTING.md)**
 
-<img src="docs/assets/readme/hero.svg" alt="The Suzent cube at the centre of an orrery. A ring of sixteen model providers turns around it, from OpenAI, ChatGPT and Claude to DeepSeek, Qwen, Kimi and GLM and models you host yourself, while its memory, permissions, phone, schedules, chat apps and folders circle closer in." width="880" />
+<img src="docs/assets/readme/hero.svg" alt="The Suzent cube at the centre of an orrery. A ring of sixteen model providers turns around it, from OpenAI, ChatGPT and Claude to DeepSeek, Qwen, Kimi and GLM and models you host yourself, while its memory, permissions, phone, schedules, chat apps and folders circle closer in." width="640" />
 
 </div>
 

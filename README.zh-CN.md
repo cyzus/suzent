@@ -20,7 +20,7 @@
 
 **[官方网站](https://suzent.com/zh-Hans/)** • **[快速开始](docs/01-getting-started/quickstart.md)** • **[文档](docs/README.md)** • **[Discord](https://discord.gg/MkBDDbwPBK)** • **[贡献指南](./CONTRIBUTING.md)**
 
-<img src="docs/assets/readme/hero.zh-CN.svg" alt="Suzent 方块位于星轨中心。外圈转动着十六家模型提供商，从 OpenAI、ChatGPT、Claude 到 DeepSeek、通义千问、Kimi、GLM，以及你自己部署的模型；内圈环绕着记忆、权限、手机、定时任务、聊天应用和文件夹。" width="880" />
+<img src="docs/assets/readme/hero.zh-CN.svg" alt="Suzent 方块位于星轨中心。外圈转动着十六家模型提供商，从 OpenAI、ChatGPT、Claude 到 DeepSeek、通义千问、Kimi、GLM，以及你自己部署的模型；内圈环绕着记忆、权限、手机、定时任务、聊天应用和文件夹。" width="640" />
 
 </div>
 
