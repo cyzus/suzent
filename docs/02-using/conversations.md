@@ -99,7 +99,7 @@ done, the voice reads you a short summary and leaves code, links, and long
 lists in the chat. Click the **✕** on the voice bar to end the call; switching
 to another chat ends it too.
 
-Voice mode needs an OpenAI, Google Gemini, or xAI API key. Under
+Voice mode needs an OpenAI, Google Gemini, xAI, or DashScope (Qwen) API key. Under
 **Settings → Voice & audio → Realtime voice** you can pick the model, its
 voice, and how sensitive it is to speech. If Suzent hears its own voice from
 your speakers, set sensitivity to **Low** (Gemini only), or use headphones.
