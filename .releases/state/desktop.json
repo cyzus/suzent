@@ -99,6 +99,7 @@
     ".releases/changes/prevent-viewport-overscroll.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/project-library.json",
+    ".releases/changes/project-settings-working-directory.json",
     ".releases/changes/prompt-cache-routing.json",
     ".releases/changes/prompt-prefix-hash-logging.json",
     ".releases/changes/prompt-prefix-stability.json",

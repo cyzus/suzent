@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
+- Add project settings with a default working directory that every chat in the project uses unless it has its own.
 - Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
 - Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
