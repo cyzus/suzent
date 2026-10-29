@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
+- Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
 - Add project settings with a default working directory that every chat in the project uses unless it has its own.
