@@ -21,6 +21,7 @@
     ".releases/changes/canvas-page-dropdown.json",
     ".releases/changes/canvas-render-ui-schema.json",
     ".releases/changes/chat-activity-duration-approval.json",
+    ".releases/changes/chat-archiving.json",
     ".releases/changes/chat-file-card-layout.json",
     ".releases/changes/chat-jsonl-store.json",
     ".releases/changes/chat-math-rendering.json",
