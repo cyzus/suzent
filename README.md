@@ -123,7 +123,7 @@ Or re-run the install command above — it detects an existing installation and 
 Sovereignty is not merely local execution. It is ownership of the agent's **mind, authority, vessel, and continuity**.
 
 <div align="center">
-<img src="docs/assets/readme/pillars.svg" alt="The four sovereignty pillars. I Sovereign Mind, model is not identity: memory, skills and notebook are files, the model is a swappable engine. II Sovereign Authority, action within your law: Ask, Smart or Full Access, where in Smart mode a reviewer model lets an action run, asks you, or blocks it. III Sovereign Vessel, runtime in your domain: your computer, folders, laptop and phone, no vendor cloud. IV Sovereign Continuity, self over platform: memory and skills move to a new machine while keys stay local." width="880" />
+<img src="docs/assets/readme/pillars.svg" alt="The four sovereignty pillars. I Sovereign Mind, model is not identity: memory, skills and notes are files, the model is a swappable engine. II Sovereign Authority, action within your law: Ask, Smart or Full Access, where in Smart mode a reviewer model lets an action run, asks you, or blocks it. III Sovereign Vessel, runtime in your domain: your computer, folders, laptop and phone, no vendor cloud. IV Sovereign Continuity, self over platform: memory and skills move to a new machine while keys stay local." width="880" />
 </div>
 
 | Question | SUZENT's answer |
@@ -158,17 +158,17 @@ Keys live in your operating system's keychain, never in plain-text config. [Mode
 Memory is where a sovereign agent keeps its self, so Suzent treats it as a curated knowledge base, not a chat log.
 
 <div align="center">
-<img src="docs/assets/readme/memory.svg" alt="Suzent's memory pipeline. Each chat's facts are captured with the words they came from, appended to a dated Markdown log, folded overnight by the organizer into an Obsidian-compatible notebook with a MEMORY.md map, and recalled in every chat by hybrid search over meaning, keywords, recency and importance. Lessons come from failures that were fixed; facts fade instead of being deleted; the search index rebuilds from the files." width="880" />
+<img src="docs/assets/readme/memory.svg" alt="Suzent's memory pipeline. Each chat's facts are captured with the words they came from, appended to a plain file for that day, folded overnight by the organizer into one notebook page per topic with a map the agent always reads, and recalled in every chat by hybrid search over meaning, keywords, recency and importance. Lessons come from failures that were fixed; facts fade instead of being deleted; the search index rebuilds from the files." width="880" />
 </div>
 
 - **It captures with evidence.** Every few exchanges, facts are extracted and typed (a preference, a project detail, a lesson), each with the exact words it came from. A fact about you is kept only when you said it yourself, never when the agent guessed it.
 - **It learns from what went wrong.** When a command fails or you correct the agent, and the same exchanges show the fix, it saves what to do next time and where it applies. A lesson that keeps recurring for a repository is offered as a change to that repository's agent instructions.
 - **It tidies overnight.** An organizer reads the new daily logs and, for each fact, confirms, sharpens, supersedes, or adds it on a topic page. Contradictions become questions for you instead of guesses, and the old value is kept under a History heading.
-- **It keeps a notebook.** Pages live in an Obsidian-compatible vault the agent also researches and writes into, with a short `MEMORY.md` map loaded into every chat that points to them.
+- **It keeps a notebook.** One page per topic, in a folder of plain notes the agent also researches and writes into (it opens as an Obsidian vault if you use Obsidian). A short map of those pages is loaded into every chat.
 - **It recalls with hybrid search.** Meaning, keywords, recency, and importance are scored together, so a fact you repeat often ranks above one you mentioned once.
 - **It forgets gently.** Each fact gets a review date by kind (a year for preferences, three weeks for passing context). Expired facts fade in search; nothing is deleted behind your back.
 
-All of it is plain Markdown on your disk: read it, edit it, version it in Git. The LanceDB search index is rebuilt from those files at any time. [How memory works →](docs/03-features/memory/README.md)
+All of it is plain text files (Markdown) on your disk: open them in any editor, change them, keep them in Git. The LanceDB search index is rebuilt from those files at any time. [How memory works →](docs/03-features/memory/README.md)
 
 ---
 
