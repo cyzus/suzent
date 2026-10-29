@@ -470,6 +470,11 @@ reports into a one-page brief in `brief.md`" gets better results than
 - **One job per chat.** A chat keeps its whole history in view, so unrelated
   work in the same chat only adds noise. Start a new chat for a new job, and
   group related chats into a [project](https://suzent.com/zh-Hans/docs/using/projects).
+- **Archive what's finished.** Right-click a chat (or a selection of chats)
+  and choose **Archive chat** to clear it out of the sidebar without deleting
+  it. Archived chats collect under **Archived** at the bottom of the sidebar
+  and still show up in search; choose **Unarchive chat** to bring one back.
+  The mobile app doesn't list archived chats.
 - **Tell it what you know.** Mention constraints, preferences, and where things
   are. What it learns about you is kept in [memory](https://suzent.com/zh-Hans/docs/features/memory),
   so you don't have to repeat yourself next time.
@@ -5167,7 +5172,7 @@ checkpoint, which has no row.
 | `type` | `data` |
 |---|---|
 | `chat.created` / `chat.imported` | The projection with both lists empty; their items follow as appends. `imported` marks a chat that existed before its log. |
-| `meta.set` | Changed values among `title`, `pinned`, `project_id`, `working_directory`, `created_at`, `updated_at`, `last_active_at`, `turn_count`, `context_usage`. |
+| `meta.set` | Changed values among `title`, `pinned`, `archived`, `project_id`, `working_directory`, `created_at`, `updated_at`, `last_active_at`, `turn_count`, `context_usage`. |
 | `config.merge` | `{"set": {...}, "unset": [...]}` for changed config keys. |
 | `message.append` | One display message added at the end. |
 | `messages.splice` | `{"start", "delete", "insert"}` applied to the display messages, for any change other than appending. |
