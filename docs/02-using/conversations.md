@@ -19,6 +19,11 @@ reports into a one-page brief in `brief.md`" gets better results than
 - **One job per chat.** A chat keeps its whole history in view, so unrelated
   work in the same chat only adds noise. Start a new chat for a new job, and
   group related chats into a [project](./projects.md).
+- **Archive what's finished.** Right-click a chat (or a selection of chats)
+  and choose **Archive chat** to clear it out of the sidebar without deleting
+  it. Archived chats collect under **Archived** at the bottom of the sidebar
+  and still show up in search; choose **Unarchive chat** to bring one back.
+  The mobile app doesn't list archived chats.
 - **Tell it what you know.** Mention constraints, preferences, and where things
   are. What it learns about you is kept in [memory](../03-features/memory/README.md),
   so you don't have to repeat yourself next time.
