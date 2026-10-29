@@ -367,3 +367,17 @@ def test_a_chat_working_directory_overrides_the_project_default(
     temp_db.update_chat(chat_id, working_directory="")
     temp_db.update_project(project_id, working_directory="")
     assert temp_db.resolve_chat_working_directory(temp_db.get_chat(chat_id)) is None
+
+
+def test_acp_sessions_start_in_the_project_working_directory(
+    monkeypatch, temp_db, target_folder
+):
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Work", "work")
+    temp_db.update_project(project_id, working_directory=str(target_folder))
+    chat_id = temp_db.create_chat("acp", config={})
+    temp_db.link_chat_to_project(chat_id, project_id)
+
+    from suzent.acp.manager import default_acp_cwd
+
+    assert default_acp_cwd(chat_id) == str(target_folder)

@@ -220,7 +220,6 @@ async def update_project(request: Request) -> JSONResponse:
             return JSONResponse({"error": error}, status_code=400)
 
     db = get_database()
-    previous = db.get_project(project_id)
     project = db.update_project(
         project_id=project_id,
         name=name,
@@ -229,11 +228,6 @@ async def update_project(request: Request) -> JSONResponse:
     )
     if not project:
         return JSONResponse({"error": "Project not found"}, status_code=404)
-    if has_working_directory and previous.working_directory != (
-        project.working_directory
-    ):
-        # Sandbox sessions keep the cwd they started with.
-        _invalidate_sandbox_sessions(db.get_chat_ids_in_project(project_id))
 
     return JSONResponse(
         _project_to_dict(project, db.count_chats_in_project(project_id))
