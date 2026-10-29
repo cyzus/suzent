@@ -122,6 +122,8 @@ interface ChatCoreContextValue {
   currentChatMessagesLoaded: boolean;
   chats: ChatSummary[];
   pinnedChats: ChatSummary[];
+  /** Archived chats are left out of `chats`; this counts them for the sidebar. */
+  archivedCount: number;
   currentChatProjectId: string | null;
   loadingChats: boolean;
   refreshingChats: boolean;
@@ -410,6 +412,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [pinnedChats, setPinnedChats] = useState<ChatSummary[]>([]);
+  const [archivedCount, setArchivedCount] = useState(0);
   const [loadedChatProjects, setLoadedChatProjects] = useState<Record<string, string | null>>({});
   const currentChatProjectId = currentChatId
     ? ((
@@ -737,6 +740,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const data = await res.json();
           const serverList: ChatSummary[] = data.chats || [];
           setPinnedChats(data.pinnedChats || []);
+          setArchivedCount(data.archivedCount ?? 0);
           setChatTotal(data.total ?? serverList.length);
           setChatKindTotals(
             data.kindCounts ?? {
@@ -1957,6 +1961,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatMessagesLoaded,
       chats,
       pinnedChats,
+      archivedCount,
       currentChatProjectId,
       chatTotal,
       chatKindTotals,
@@ -2005,6 +2010,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatMessagesLoaded,
       chats,
       pinnedChats,
+      archivedCount,
       currentChatProjectId,
       chatTotal,
       chatKindTotals,
