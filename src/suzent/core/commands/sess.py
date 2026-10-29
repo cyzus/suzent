@@ -181,7 +181,7 @@ async def _cmd_info(ctx: CommandContext) -> str:
         return "Active session no longer exists. Reverted to default."
 
     msg_count = len(chat.messages or [])
-    wd = chat.working_directory or "(none)"
+    wd = db.resolve_chat_working_directory(chat) or "(none)"
     return (
         f"📁 Active session:\n"
         f"  ID: {active_id[-8:]}\n"

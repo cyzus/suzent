@@ -27,7 +27,7 @@ description: 智能体能访问哪些文件夹、文件保存在哪里、如何�
 | 文件夹 | 说明 | 沙盒路径 | 主机模式路径 |
 |---|---|---|---|
 | 项目库 | 项目的文件：项目上下文、笔记、交付物和上传的文件。 | `/workspace` | `$PROJECT_PATH` |
-| Scratch | 临时文件，比如辅助脚本和下载的文件。如果对话没有设置自己的 **Working Dir**，它就是智能体的工作文件夹。它不算项目库的一部分，超过 `scratch_max_mb` 后会自动清理。 | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
+| Scratch | 临时文件，比如辅助脚本和下载的文件。如果对话和所在项目都没有设置工作目录，它就是智能体的工作文件夹（项目的工作目录在项目设置里改）。它不算项目库的一部分，超过 `scratch_max_mb` 后会自动清理。 | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
 | 上传文件 | 你在聊天中附加的文件，或从[聊天应用](../05-chat-apps/README.md)发来的文件。 | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | 共享文件夹 | 所有项目共享。记忆也存放在这里。 | `/shared` | `$SHARED_PATH` |
 | 挂载的文件夹 | 你从电脑上挂载的文件夹（见下文）。 | 你设定的路径，例如 `/data` | 以该路径命名的变量，例如 `$DATA` |

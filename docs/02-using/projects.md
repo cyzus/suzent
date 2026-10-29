@@ -41,6 +41,24 @@ files on your computer:
 Selected chats are highlighted. Right-click any of them to move or delete them
 all together. A plain click or Esc clears the selection.
 
+## Project settings
+
+Open a project's settings from the **⋯** menu next to it in the sidebar's
+**Projects** list. **Home** and **Social** have settings too, though they
+can't be renamed.
+
+**Working directory** points every chat in the project at a folder on your
+computer, such as the codebase the project is about. Chats in the project then
+work there by default: commands start in that folder, relative paths resolve
+inside it, and the agent can edit files there without asking. Choose a folder
+with **Browse**, or paste its full path. **Clear** goes back to the default,
+the project's `scratch/` folder.
+
+A chat that already has its own working directory, for example one opened from
+an editor, keeps it. The project library, including `context.md`, stays in the
+project folder whichever working directory is set. Changing the setting
+applies from each chat's next message.
+
 ## Give it standing instructions
 
 Project context is the place for anything every chat should know: the goal,

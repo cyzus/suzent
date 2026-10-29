@@ -128,3 +128,49 @@ def test_project_activity_compares_utc_creation_with_local_chat_time(
     fresh = datetime.fromisoformat(projects[fresh_project]["lastActivityAt"])
     idle = datetime.fromisoformat(projects[idle_project]["lastActivityAt"])
     assert fresh - idle == timedelta(hours=1)
+
+
+def test_project_working_directory_can_be_set_and_cleared(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from suzent.routes import project_routes
+
+    monkeypatch.setattr(project_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(
+            routes=[
+                Route("/projects", project_routes.list_projects),
+                Route(
+                    "/projects/{project_id}",
+                    project_routes.update_project,
+                    methods=["PATCH"],
+                ),
+            ]
+        )
+    )
+    project_id = temp_db.create_project("Work", "work")
+    folder = tmp_path / "repo"
+    folder.mkdir()
+
+    response = client.patch(
+        f"/projects/{project_id}", json={"working_directory": str(folder)}
+    )
+    assert response.status_code == 200
+    assert response.json()["workingDirectory"] == str(folder.resolve())
+    listed = {p["id"]: p for p in client.get("/projects").json()}
+    assert listed[project_id]["workingDirectory"] == str(folder.resolve())
+
+    missing = client.patch(
+        f"/projects/{project_id}",
+        json={"working_directory": str(tmp_path / "missing")},
+    )
+    assert missing.status_code == 400
+    relative = client.patch(
+        f"/projects/{project_id}", json={"working_directory": "relative/dir"}
+    )
+    assert relative.status_code == 400
+    assert temp_db.get_project(project_id).working_directory == str(folder.resolve())
+
+    cleared = client.patch(f"/projects/{project_id}", json={"working_directory": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["workingDirectory"] is None

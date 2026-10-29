@@ -30,7 +30,7 @@ project's conversations, plus one folder shared by every project:
 | Folder | What it is | Sandbox path | Host-mode path |
 |---|---|---|---|
 | Project library | The project's files: its context note, notes, deliverables, and uploads. | `/workspace` | `$PROJECT_PATH` |
-| Scratch | Throwaway files such as helper scripts and downloads. The agent's working folder unless the chat has its own **Working Dir**. Not part of the library, and trimmed once it passes `scratch_max_mb`. | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
+| Scratch | Throwaway files such as helper scripts and downloads. The agent's working folder unless the chat or its project has a working directory (see [Project settings](../02-using/projects.md#project-settings)). Not part of the library, and trimmed once it passes `scratch_max_mb`. | `/workspace/scratch` | `$PROJECT_PATH/scratch` |
 | Uploads | Files you attach in the chat or send from a [chat app](../05-chat-apps/README.md). | `/workspace/uploads` | `$PROJECT_PATH/uploads` |
 | Shared | Shared by all projects. Memory lives here. | `/shared` | `$SHARED_PATH` |
 | Mounted folders | Folders from your computer that you've mounted (see below). | the path you chose, e.g. `/data` | A variable named after that path, e.g. `$DATA` |
