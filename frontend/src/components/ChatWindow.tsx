@@ -37,6 +37,7 @@ import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useVoiceSession } from '../hooks/useVoiceSession';
+import { useProjects } from '../hooks/useProjects';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import {
@@ -1719,11 +1720,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       [loadChat, refreshChatListSilently]
     )
   );
+  // A call from a new chat files it in the open project, like typing would.
+  const { currentProjectId: voiceProjectId } = useProjects();
   const voice: typeof voiceSession = {
     ...voiceSession,
     start: (chatId: string | null) => {
       voiceChatIdRef.current = chatId;
-      voiceSession.start(chatId);
+      voiceSession.start(chatId, voiceProjectId);
     },
   };
   // Voice is bound to one chat; leaving it ends the session, including while

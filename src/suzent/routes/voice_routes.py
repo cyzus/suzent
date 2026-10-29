@@ -28,9 +28,22 @@ async def voice_websocket_endpoint(websocket: WebSocket) -> None:
     if db.get_chat(chat_id) is None:
         from suzent.permissions.context import seed_default_permission_mode
 
+        # A call started from a project's new-chat view lands in that project,
+        # like a typed first message; unknown ids fall back to the default.
+        requested_project_id = (websocket.query_params.get("project_id") or "").strip()
+        project_id = (
+            requested_project_id
+            if requested_project_id and db.get_project(requested_project_id)
+            else None
+        )
         config: dict = {}
         seed_default_permission_mode(config)
-        db.create_chat(title="Voice conversation", config=config, chat_id=chat_id)
+        db.create_chat(
+            title="Voice conversation",
+            config=config,
+            chat_id=chat_id,
+            project_id=project_id,
+        )
 
     await websocket.accept()
     bridge_factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)

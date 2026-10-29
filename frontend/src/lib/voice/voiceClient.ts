@@ -21,13 +21,15 @@ export class VoiceClient {
     private readonly Socket: WebSocketConstructor = WebSocket
   ) {}
 
-  connect(chatId: string | null): void {
+  connect(chatId: string | null, projectId: string | null = null): void {
     this.stopping = false;
     const url = new URL(getApiBase() || window.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/voice';
     url.search = '';
     if (chatId) url.searchParams.set('chat_id', chatId);
+    // Only a new chat needs it: the server files it in this project.
+    else if (projectId) url.searchParams.set('project_id', projectId);
     const socket = new this.Socket(withAuthQuery(url.toString()));
     socket.binaryType = 'arraybuffer';
     socket.onmessage = (event: MessageEvent<string | ArrayBuffer | Blob>) => {

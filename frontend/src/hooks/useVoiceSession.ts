@@ -311,7 +311,7 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
   );
 
   const start = useCallback(
-    (chatId: string | null) => {
+    (chatId: string | null, projectId: string | null = null) => {
       if (!voiceSupported()) {
         dispatch({ type: 'error', key: 'voice.errors.micUnavailable' });
         return;
@@ -341,7 +341,7 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
         },
       });
       clientRef.current = client;
-      client.connect(chatId);
+      client.connect(chatId, projectId);
     },
     [cleanup, handleMessage]
   );

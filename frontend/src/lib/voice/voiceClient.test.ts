@@ -73,6 +73,16 @@ describe('VoiceClient', () => {
     expect(socket.binaryType).toBe('arraybuffer');
   });
 
+  it('sends project_id only for a new chat', () => {
+    const fresh = setup();
+    fresh.client.connect(null, 'proj-1');
+    const freshUrl = new URL(FakeSocket.instances[0].url);
+    expect(freshUrl.searchParams.get('project_id')).toBe('proj-1');
+    const bound = setup();
+    bound.client.connect('abc', 'proj-1');
+    expect(new URL(FakeSocket.instances[1].url).searchParams.has('project_id')).toBe(false);
+  });
+
   it('omits chat_id when none is given', () => {
     const { client } = setup();
     client.connect(null);

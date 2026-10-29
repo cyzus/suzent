@@ -62,6 +62,10 @@ class FakeSession:
 class FakeDatabase:
     def __init__(self):
         self.chats = {}
+        self.projects = {"proj-1"}
+
+    def get_project(self, project_id):
+        return project_id if project_id in self.projects else None
 
     def get_chat(self, chat_id):
         return self.chats.get(chat_id)
@@ -154,3 +158,30 @@ def test_voice_websocket_rejects_bad_origin(monkeypatch):
             ):
                 pass
         assert excinfo.value.code == 1008
+
+
+class _ClosingBridge:
+    def __init__(self, websocket, chat_id):
+        self.websocket = websocket
+
+    async def run(self):
+        await self.websocket.close()
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [("?project_id=proj-1", "proj-1"), ("?project_id=missing", None), ("", None)],
+)
+def test_voice_websocket_files_new_chat_in_project(monkeypatch, query, expected):
+    db = FakeDatabase()
+    monkeypatch.setattr("suzent.routes.voice_routes.get_database", lambda: db)
+    app = Starlette(routes=[WebSocketRoute("/ws/voice", voice_websocket_endpoint)])
+    app.state.voice_bridge_factory = _ClosingBridge
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                f"/ws/voice{query}", headers={"origin": "tauri://localhost"}
+            ) as websocket:
+                websocket.receive_json()
+    (chat,) = db.chats.values()
+    assert chat["project_id"] == expected
