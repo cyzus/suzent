@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "minor"},
+  "reason": "Desktop only gains unused shared presentation tokens; its UI does not change.",
+  "summary": "Use native navigation, menus, swipe actions, settings, sheets, sharing and haptics on iOS and Android, unify the mobile visual rules, pin approvals above the composer, and make activity disclosures expand and collapse smoothly."
+}
