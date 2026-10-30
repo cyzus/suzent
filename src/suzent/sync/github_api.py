@@ -174,10 +174,6 @@ def parse_owner_repo(value: str) -> tuple[str | None, str]:
     return None, raw
 
 
-def authed_clone_url(owner: str, repo: str, token: str) -> str:
-    return f"https://x-access-token:{token}@github.com/{owner}/{repo}.git"
-
-
 def public_clone_url(owner: str, repo: str) -> str:
     return f"https://github.com/{owner}/{repo}.git"
 

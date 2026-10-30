@@ -1,20 +1,17 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from suzent.logger import get_logger
+from suzent.sync.git_transport import is_github_https_url, run_git
 from suzent.sync.github_api import resolve_github_token
-from suzent.sync.github_token import (
-    _redact_git_credentials,
-    authed_remote_for_push,
-    git_fetch_with_token,
-    git_pull_with_token,
-    git_push_with_token,
-)
 from suzent.sync.payload import PAYLOAD_DIR_NAME
 
 logger = get_logger(__name__)
+
+
+class SyncConflictError(RuntimeError):
+    """Local and remote payload commits touch the same files and cannot be rebased."""
 
 
 class GitHubSyncProvider:
@@ -24,6 +21,8 @@ class GitHubSyncProvider:
         self.repo_path = repo_path.expanduser().resolve()
         self.remote = remote
         self.branch = branch
+        self._token: str | None = None
+        self._token_resolved = False
 
     def validate(self, *, require_clean: bool = False) -> dict[str, str | bool]:
         if not self.repo_path.exists():
@@ -128,14 +127,37 @@ class GitHubSyncProvider:
             pass  # nothing untracked to clean — fine either way
 
     def commit_and_push_payload(self) -> str:
+        base = self.head()
+        if not self.commit_payload():
+            return "No sync payload changes to push."
+        try:
+            return self.push_payload()
+        except SyncConflictError:
+            # Drop our commit so the payload matches the last synced state again.
+            # The live files still hold the local edits, so the next plan shows
+            # them as outgoing next to the conflicting incoming files.
+            self.reset_hard(base)
+            raise
+
+    def commit_payload(self) -> bool:
+        """Commit the payload directory locally. Returns False if nothing changed."""
         self.validate(require_clean=False)
         self._git("add", PAYLOAD_DIR_NAME)
         self._ensure_no_unrelated_staged_changes()
         staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
         if not staged:
-            return "No sync payload changes to push."
+            return False
         self._git("commit", "-m", "sync: update portable files")
+        return True
+
+    def push_payload(self) -> str:
         return self._push_with_rebase()
+
+    def head(self) -> str:
+        return self._git("rev-parse", "HEAD").strip()
+
+    def reset_hard(self, ref: str) -> None:
+        self._git("reset", "--hard", ref)
 
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
@@ -155,49 +177,46 @@ class GitHubSyncProvider:
         return self._git("remote", "get-url", self.remote).strip()
 
     def _fetch(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_fetch_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-                self.remote,
-            )
-        return self._git("fetch", self.remote, self.branch)
+        return self._git_remote("fetch", self.remote, self.branch)
 
     def _pull(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_pull_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-            )
-        return self._git("pull", "--ff-only", self.remote, self.branch)
+        return self._git_remote("pull", "--ff-only", self.remote, self.branch)
 
     def _push(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_push_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-            )
-        return self._git("push", self.remote, self.branch)
+        return self._git_remote("push", self.remote, self.branch)
+
+    def _git_remote(self, *args: str) -> str:
+        """Run a git command that talks to the remote, authenticated if GitHub."""
+        token = (
+            self._github_token() if is_github_https_url(self._remote_url()) else None
+        )
+        return run_git(self.repo_path, *args, token=token)
+
+    def _github_token(self) -> str | None:
+        # Resolve once per provider (one sync operation): resolving may refresh
+        # the token over HTTP, and a sync makes several remote calls.
+        if not self._token_resolved:
+            self._token = resolve_github_token()
+            self._token_resolved = True
+        return self._token
 
     def _rebase_onto(self, remote_ref: str) -> None:
-        """Rebase current branch onto remote_ref, hard-resetting on conflict."""
+        """Rebase current branch onto remote_ref, raising SyncConflictError on conflict.
+
+        Never hard-reset to the remote here: that silently drops the local
+        commit, and a following apply would overwrite the live files with the
+        remote version.
+        """
         try:
             self._git("rebase", remote_ref)
-        except RuntimeError:
+        except RuntimeError as exc:
             try:
                 self._git("rebase", "--abort")
             except RuntimeError:
                 pass
-            self._git("reset", "--hard", remote_ref)
+            raise SyncConflictError(
+                f"Local and remote sync changes conflict on {remote_ref}"
+            ) from exc
 
     def _push_with_rebase(self) -> str:
         """Push, rebasing on top of any remote commits that arrived since we committed."""
@@ -209,51 +228,8 @@ class GitHubSyncProvider:
             logger.info("Push rejected (non-fast-forward) — fetching and rebasing")
 
         self._fetch()
-        remote_ref = f"{self.remote}/{self.branch}"
-        before = self._git("rev-parse", "HEAD").strip()
-        self._rebase_onto(remote_ref)
-        after = self._git("rev-parse", "HEAD").strip()
-
-        if before == after:
-            # Hard-reset discarded our commit — re-stage and recommit the payload
-            self._git("add", PAYLOAD_DIR_NAME)
-            staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
-            if not staged:
-                return "No changes after rebase — nothing to push."
-            self._git("commit", "-m", "sync: update portable files")
-
+        self._rebase_onto(f"{self.remote}/{self.branch}")
         return self._push()
 
     def _git(self, *args: str) -> str:
-        completed = subprocess.run(
-            ["git", *args],
-            cwd=self.repo_path,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            detail = _redact_git_credentials(
-                completed.stderr.strip() or completed.stdout.strip()
-            )
-            command = " ".join(_redact_git_credentials(arg) for arg in args)
-            raise RuntimeError(f"git {command} failed: {detail}")
-        return completed.stdout
-
-
-def git_remote_names(repo_path: Path) -> list[str]:
-    """List the remotes configured in ``repo_path``; empty list if git fails."""
-    completed = subprocess.run(
-        ["git", "remote"],
-        cwd=repo_path,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return []
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+        return run_git(self.repo_path, *args)
