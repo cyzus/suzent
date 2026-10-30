@@ -664,8 +664,16 @@ async def get_chat_memory_activity(request: Request) -> JSONResponse:
         manager = get_memory_manager()
         if manager and manager.markdown_store:
             since = _as_utc(chat.created_at).strftime("%Y-%m-%d")
+            sharing_prefix = [
+                other
+                for other in await run_in_threadpool(db.chat_log.chat_ids)
+                if other != chat_id and other.startswith(chat_id[:8])
+            ]
             saved = await run_in_threadpool(
-                manager.markdown_store.find_chat_facts, chat_id, since
+                manager.markdown_store.find_chat_facts,
+                chat_id,
+                since,
+                include_legacy=not sharing_prefix,
             )
         return JSONResponse(
             {

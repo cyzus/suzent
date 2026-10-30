@@ -40,7 +40,9 @@ def _store(tmp_path) -> MarkdownMemoryStore:
 
 
 def test_chat_facts_come_from_its_own_headings_newest_first(tmp_path):
-    facts = _store(tmp_path).find_chat_facts(CHAT, since="2026-10-20")
+    facts = _store(tmp_path).find_chat_facts(
+        CHAT, since="2026-10-20", include_legacy=True
+    )
 
     assert [(f["time"], f["content"], f["kind"], f["revision"]) for f in facts] == [
         ("14:02", "Prefers warm grey themes after all", "user", True),
@@ -52,8 +54,27 @@ def test_chat_facts_come_from_its_own_headings_newest_first(tmp_path):
 def test_chat_facts_reach_back_to_since_and_stop_at_limit(tmp_path):
     store = _store(tmp_path)
 
-    assert len(store.find_chat_facts(CHAT, since="2026-10-01")) == 4
-    assert len(store.find_chat_facts(CHAT, since="2026-10-01", limit=2)) == 2
+    assert len(store.find_chat_facts(CHAT, "2026-10-01", include_legacy=True)) == 4
+    assert len(store.find_chat_facts(CHAT, "2026-10-01", 2, include_legacy=True)) == 2
+
+
+async def test_new_logs_name_the_full_chat_so_shared_prefixes_stay_apart(tmp_path):
+    store = MarkdownMemoryStore(base_dir=tmp_path, notebook_dir=str(tmp_path / "nb"))
+    for chat_id, fact in [
+        ("social-telegram-111", "Likes tea"),
+        ("social-telegram-222", "Likes coffee"),
+    ]:
+        await store.append_daily_log(
+            chat_id, [{"content": fact, "category": "preference"}], date="2026-10-20"
+        )
+
+    facts = store.find_chat_facts("social-telegram-111", since="2026-10-20")
+
+    assert [f["content"] for f in facts] == ["Likes tea"]
+
+
+def test_legacy_prefix_headings_count_only_when_the_caller_vouches(tmp_path):
+    assert _store(tmp_path).find_chat_facts(CHAT, since="2026-10-01") == []
 
 
 def test_recall_items_keep_what_the_sidebar_shows():
@@ -129,6 +150,7 @@ async def test_activity_route_returns_recall_and_saved_facts(tmp_path, monkeypat
     db = SimpleNamespace(
         get_chat=lambda chat_id: chat if chat_id == CHAT else None,
         get_memory_recall=lambda chat_id: recall,
+        chat_log=SimpleNamespace(chat_ids=lambda: [CHAT, "77aa0e11-other"]),
     )
     monkeypatch.setattr(memory_routes, "get_database", lambda: db)
     manager = SimpleNamespace(markdown_store=_store(tmp_path))
@@ -145,6 +167,26 @@ async def test_activity_route_returns_recall_and_saved_facts(tmp_path, monkeypat
     }
     # The 2026-10-19 fact predates the chat, so the prefix match is not trusted there.
     assert [f["date"] for f in body["saved"]] == ["2026-10-20"] * 3
+
+
+async def test_activity_route_skips_legacy_prefixes_another_chat_shares(
+    tmp_path, monkeypatch
+):
+    chat = SimpleNamespace(id=CHAT, created_at=datetime(2026, 10, 20, 8, 0))
+    db = SimpleNamespace(
+        get_chat=lambda chat_id: chat,
+        get_memory_recall=lambda chat_id: None,
+        chat_log=SimpleNamespace(chat_ids=lambda: [CHAT, "3f2a9c1b-another"]),
+    )
+    monkeypatch.setattr(memory_routes, "get_database", lambda: db)
+    manager = SimpleNamespace(markdown_store=_store(tmp_path))
+    monkeypatch.setattr(memory_routes, "get_memory_manager", lambda: manager)
+
+    response = await memory_routes.get_chat_memory_activity(
+        SimpleNamespace(path_params={"chat_id": CHAT})
+    )
+
+    assert json.loads(response.body)["saved"] == []
 
 
 async def test_activity_route_without_memory_or_recall(monkeypatch):
