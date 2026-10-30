@@ -390,8 +390,9 @@ export const ChatList: React.FC<ChatListProps> = ({
   // On Regent's chat the rest of the sidebar steps back behind its card.
   const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
   // On desktop the sidebar becomes Regent's queue instead: what waits on the
-  // user and what runs, with projects folded away and the rest as icons.
-  const regentConsole = regentOpen && !mobile;
+  // user and what runs, with projects folded away and the rest as icons. It
+  // stays while memory or skills fill the main area; only leaving Regent ends it.
+  const regentConsole = currentChatId === FOCAL_CHAT_ID && !mobile;
   const [regentProjectsOpen, setRegentProjectsOpen] = useState(false);
   // Leaving Regent returns to the chat the user came from.
   const chatBeforeRegentRef = useRef<string | null>(null);
@@ -1556,6 +1557,14 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   exitRegentRef.current = () => {
     const previous = chatBeforeRegentRef.current;
+    // Off the chat view, leaving Regent only changes the sidebar.
+    if (!regentOpen) {
+      if (previous) {
+        const chat = chats.find((item) => item.id === previous);
+        loadChat(previous, { authoritative: !isChatRunning(previous, chat?.isRunning) });
+      } else beginNewChat();
+      return;
+    }
     if (previous) openChatById(previous);
     else openNewChat();
   };
@@ -1587,9 +1596,12 @@ export const ChatList: React.FC<ChatListProps> = ({
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
               <FocalAgentCardView
                 status={focalStatus}
-                active={regentOpen}
+                active={regentOpen || regentConsole}
                 onOpen={openChatById}
                 onExit={regentConsole ? () => exitRegentRef.current() : undefined}
+                onReturn={
+                  regentConsole && !regentOpen ? () => openChatById(FOCAL_CHAT_ID) : undefined
+                }
               />
             </div>
           )}
@@ -2374,16 +2386,23 @@ export const ChatList: React.FC<ChatListProps> = ({
                 label: t('nav.memory'),
                 Icon: CircleStackIcon,
                 onClick: () => onOpenView?.('memory'),
+                selected: activeView === 'memory',
               },
-              { label: t('nav.skills'), Icon: SparklesIcon, onClick: () => onOpenView?.('skills') },
-            ].map(({ label, Icon, onClick }) => (
+              {
+                label: t('nav.skills'),
+                Icon: SparklesIcon,
+                onClick: () => onOpenView?.('skills'),
+                selected: activeView === 'skills',
+              },
+            ].map(({ label, Icon, onClick, selected }) => (
               <button
                 key={label}
                 type="button"
                 onClick={onClick}
                 aria-label={label}
+                aria-current={selected ? 'page' : undefined}
                 title={label}
-                className="flex h-8 w-8 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
+                className={`flex h-8 w-8 items-center justify-center transition-colors hover:bg-neutral-100 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:hover:bg-zinc-700 dark:hover:text-white ${selected ? 'bg-neutral-200/70 text-brutal-black dark:bg-zinc-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </button>
