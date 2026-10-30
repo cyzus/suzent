@@ -84,7 +84,8 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
 public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
-    public init(id: String, name: String) { self.id = id; self.name = name }
+    public let chatCount: Int?
+    public init(id: String, name: String, chatCount: Int? = nil) { self.id = id; self.name = name; self.chatCount = chatCount }
 }
 
 public struct FileAttachment: Decodable, Sendable, Equatable {

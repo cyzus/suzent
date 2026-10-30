@@ -404,9 +404,9 @@ struct ContentView: View {
     }
 
     private func sidebar(home: Bool) -> some View {
-        let scheduledIDs = scheduledChatIDs(model.chats)
-        let normalRows = sidebarChats(model.chats.filter { !$0.isRegent && !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
-        let visibleProjects = projects.filter { project in search.isEmpty || normalRows.contains(where: { $0.root.projectId == project.id }) }
+        let searchQuery = ChatPageQuery("search", value: search.trimmingCharacters(in: .whitespacesAndNewlines))
+        let recentRows = sidebarChats(model.pageChats(ChatPageQuery()), search: "", expanded: expandedAgents)
+        let pinnedRows = sidebarChats(model.pageChats(ChatPageQuery("pinned")), search: "", expanded: expandedAgents)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 if home {
@@ -462,37 +462,53 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Color.clear.frame(height: 0).id("sidebar-top")
-                    if normalRows.contains(where: { $0.root.pinned == true }) {
-                        sidebarHeading("Pinned")
-                        conversationRows(normalRows.filter { $0.root.pinned == true })
-                    }
-                    if search.isEmpty {
-                        let recent = normalRows.filter { $0.depth == 0 && $0.root.pinned != true }
+                    if !search.isEmpty {
+                        sidebarHeading("Search results")
+                        let rows = sidebarChats(model.pageChats(searchQuery), search: search, expanded: expandedAgents)
+                        conversationRows(rows)
+                        pageFooter(searchQuery)
+                        if rows.isEmpty && model.chatPages[searchQuery] != nil {
+                            Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted)
+                        }
+                    } else {
+                        if !pinnedRows.isEmpty {
+                            sidebarHeading("Pinned")
+                            conversationRows(pinnedRows)
+                            pageFooter(ChatPageQuery("pinned"))
+                        }
+                        let recent = recentRows.filter { $0.depth == 0 }
                         if !recent.isEmpty {
                             HStack {
                                 sidebarHeading("Recent")
                                 Spacer()
-                                if recent.count > 3 {
+                                if (model.chatPages[ChatPageQuery()]?.total ?? 0) > 3 {
                                     Button(showAllRecent ? "Show fewer" : "View all") { showAllRecent.toggle() }
                                         .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
                                 }
                             }
                             let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
-                            conversationRows(normalRows.filter { recentIDs.contains($0.root.id) })
+                            conversationRows(recentRows.filter { recentIDs.contains($0.root.id) })
+                        }
+                        if showAllRecent { pageFooter(ChatPageQuery()) }
+                        if !projects.isEmpty { sidebarHeading("Projects") }
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(projects) { project in
+                                projectSection(project, rows: sidebarChats(model.pageChats(ChatPageQuery("project", value: project.id)), search: "", expanded: expandedAgents))
+                            }
+                        }
+                        if pinnedRows.isEmpty && recentRows.isEmpty {
+                            Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24)
                         }
                     }
-                    if !visibleProjects.isEmpty { sidebarHeading("Projects") }
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(visibleProjects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
-                    }
-                    let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
-                    if !search.isEmpty && !unassigned.isEmpty { sidebarHeading("Chats"); conversationRows(unassigned) }
                     scheduledSection
-                    if normalRows.isEmpty && scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents).isEmpty {
-                        Text(search.isEmpty ? String(localized: "No chats yet") : String(localized: "No matching chats"))
-                            .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24)
-                    }
                 }.padding(.horizontal, 16)
+            }
+            .refreshable { await model.refresh() }
+            .task(id: "\(search):\(model.navigationVersion)") {
+                guard !search.isEmpty else { return }
+                do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
+                catch { return }
+                await model.loadPage(searchQuery)
             }
             .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
             .onChange(of: model.chats.map(\.id)) { _, _ in expandSelectedAgents() }
@@ -502,6 +518,15 @@ struct ContentView: View {
                 }
             }
             }
+        }
+    }
+
+    @ViewBuilder private func pageFooter(_ query: ChatPageQuery) -> some View {
+        if model.loadingPages.contains(query) {
+            ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Loading conversations")
+        } else if model.chatPages[query]?.nextOffset != nil || model.chatPages[query] == nil {
+            Button("Load more") { Task { await model.loadPage(query, more: model.chatPages[query] != nil) } }
+                .font(.caption).foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, minHeight: 44)
         }
     }
 
@@ -516,7 +541,7 @@ struct ContentView: View {
                     Image(systemName: "folder").font(.system(size: 17)).padding(.trailing, 6)
                     Text(project.name).lineLimit(1).truncationMode(.tail)
                     Spacer()
-                    Text("\(rows.filter { $0.depth == 0 }.count)").font(.caption).foregroundStyle(Color.suzentMuted)
+                    Text("\(project.chatCount ?? rows.count)").font(.caption).foregroundStyle(Color.suzentMuted)
                     Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
                 }
                 .font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
@@ -524,7 +549,12 @@ struct ContentView: View {
                 .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             }.buttonStyle(SuzentRowButtonStyle())
-            if isOpen { conversationRows(rows) }
+            if isOpen {
+                conversationRows(rows)
+                pageFooter(ChatPageQuery("project", value: project.id))
+            }
+        }.task(id: "\(isOpen):\(model.navigationVersion)") {
+            if isOpen { await model.loadPage(ChatPageQuery("project", value: project.id)) }
         }
     }
 

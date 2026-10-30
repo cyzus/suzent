@@ -115,6 +115,7 @@ async def session(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "attachments": 1,
             "scheduled_tasks": 1,
+            "chat_pagination": 1,
         }
     )
 
@@ -146,36 +147,98 @@ async def chats(request: Request) -> JSONResponse:
     records = [
         (chat_id, title) for chat_id, title in records if chat_id != FOCAL_CHAT_ID
     ]
+    return reply(
+        {
+            "chats": ([regent_summary()] if grant.permissions.all_chats else [])
+            + chat_summaries(records, grant)
+        }
+    )
+
+
+def chat_summaries(
+    records: list[tuple[str, str]], grant: ClientGrant
+) -> list[dict[str, object]]:
+    db = get_database()
     projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
     pinned = db.get_pinned_chat_ids([chat_id for chat_id, _ in records])
     navigation = db.get_chat_navigation([chat_id for chat_id, _ in records])
     from suzent.core.stream_registry import is_background_streaming
 
+    return [
+        {
+            "id": chat_id,
+            "title": title,
+            "pinned": chat_id in pinned,
+            "isRunning": is_background_streaming(chat_id),
+            "projectId": projects_by_chat.get(chat_id, (None, None))[0],
+            "projectName": projects_by_chat.get(chat_id, (None, None))[1],
+            "platform": navigation.get(chat_id, {}).get("platform"),
+            "parentChatId": parent
+            if (parent := navigation.get(chat_id, {}).get("parentChatId"))
+            and grant.permissions.permits_chat(parent)
+            else None,
+        }
+        for chat_id, title in records
+    ]
+
+
+class ChatPageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["recent", "pinned", "project", "search"] = "recent"
+    value: str = Field(default="", max_length=200)
+    offset: int = Field(default=0, ge=0, le=10_000_000)
+    limit: int = Field(default=30, ge=1, le=100)
+
+
+class ChatStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        max_length=100
+    )
+
+
+async def chat_page(request: Request) -> JSONResponse:
+    grant = authorize(request)
+    query = await parse(request, ChatPageRequest)
+    records, total = get_database().mobile_chat_page(
+        None if grant.permissions.all_chats else grant.permissions.chat_ids,
+        **query.model_dump(),
+    )
+    next_offset = query.offset + len(records)
     return reply(
         {
-            "chats": ([regent_summary()] if grant.permissions.all_chats else [])
-            + [
-                {
-                    "id": chat_id,
-                    "title": title,
-                    "pinned": chat_id in pinned,
-                    "isRunning": is_background_streaming(chat_id),
-                    "projectId": projects_by_chat.get(chat_id, (None, None))[0],
-                    "projectName": projects_by_chat.get(chat_id, (None, None))[1],
-                    "platform": navigation.get(chat_id, {}).get("platform"),
-                    "parentChatId": (
-                        parent_id
-                        if (
-                            parent_id := navigation.get(chat_id, {}).get("parentChatId")
-                        )
-                        and grant.permissions.permits_chat(parent_id)
-                        else None
-                    ),
-                }
-                for chat_id, title in records
-            ]
+            "chats": chat_summaries(records, grant),
+            "total": total,
+            "nextOffset": next_offset if next_offset < total else None,
         }
     )
+
+
+async def navigation(request: Request) -> JSONResponse:
+    grant = authorize(request)
+    counts = get_database().mobile_project_counts(
+        None if grant.permissions.all_chats else grant.permissions.chat_ids
+    )
+    return reply(
+        {
+            "regent": regent_summary() if grant.permissions.all_chats else None,
+            "projects": [
+                {**project, "chatCount": counts.get(project["id"], 0)}
+                for project in allowed_projects(grant)
+            ],
+        }
+    )
+
+
+async def chat_status(request: Request) -> JSONResponse:
+    grant = authorize(request)
+    query = await parse(request, ChatStatusRequest)
+    ids = [chat_id for chat_id in query.ids if grant.permissions.permits_chat(chat_id)]
+    records, _ = get_database().mobile_chat_page(ids, kind="status", limit=100)
+    result = chat_summaries(records, grant)
+    if FOCAL_CHAT_ID in ids:
+        result.insert(0, regent_summary())
+    return reply({"chats": result})
 
 
 async def mark_read(request: Request) -> JSONResponse:
@@ -671,6 +734,9 @@ client_routes = [
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),
     Route("/mobile/client/chats", chats, methods=["GET"]),
+    Route("/mobile/client/chat-page", chat_page, methods=["POST"]),
+    Route("/mobile/client/navigation", navigation, methods=["GET"]),
+    Route("/mobile/client/chat-status", chat_status, methods=["POST"]),
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/read", mark_read, methods=["POST"]),
