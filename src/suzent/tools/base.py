@@ -76,6 +76,7 @@ class ToolCapability(str, Enum):
     INTERACTION = "Interaction"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
+    EMAIL = "Email"
 
     # Deprecated: the old "Agent" capability mixed delegation with talking to the
     # user. It stays as an alias so third-party tools that set ``ToolGroup.AGENT``

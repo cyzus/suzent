@@ -476,6 +476,95 @@ export async function setMcpServerEnabled(name: string, enabled: boolean): Promi
 }
 
 // -----------------------------------------------------------------------------
+// Mail accounts
+// -----------------------------------------------------------------------------
+
+export interface MailProvider {
+  id: string;
+  label: string;
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: 'ssl' | 'starttls';
+  oauth_only: boolean;
+  password_help_url: string;
+  domains: string[];
+}
+
+export interface MailAccount {
+  id: string;
+  email: string;
+  display_name: string;
+  provider: string;
+  imap_host: string;
+  smtp_host: string;
+  allow_send: boolean;
+  append_sent: boolean;
+  has_password: boolean;
+}
+
+export interface MailAccountInput {
+  email: string;
+  password: string;
+  provider: string;
+  display_name?: string;
+  imap_host?: string;
+  imap_port?: number;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_security?: 'ssl' | 'starttls';
+}
+
+export interface MailProbeResult {
+  ok: boolean;
+  folders?: string[];
+  error?: string;
+}
+
+async function postMail<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${getApiBase()}/mail/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data as T;
+}
+
+export async function fetchMailProviders(): Promise<MailProvider[]> {
+  const res = await fetch(`${getApiBase()}/mail/providers`);
+  if (!res.ok) throw new Error('Failed to fetch mail providers');
+  return (await res.json()).providers;
+}
+
+export async function fetchMailAccounts(): Promise<MailAccount[]> {
+  const res = await fetch(`${getApiBase()}/mail/accounts`);
+  if (!res.ok) throw new Error('Failed to fetch mail accounts');
+  return (await res.json()).accounts;
+}
+
+export async function addMailAccount(input: MailAccountInput): Promise<MailAccount> {
+  return (await postMail<{ account: MailAccount }>('accounts', input)).account;
+}
+
+export async function updateMailAccount(
+  id: string,
+  changes: Partial<Pick<MailAccount, 'allow_send' | 'append_sent'>> & { password?: string }
+): Promise<MailAccount> {
+  return (await postMail<{ account: MailAccount }>('accounts/update', { id, ...changes })).account;
+}
+
+export async function testMailAccount(id: string): Promise<MailProbeResult> {
+  return postMail<MailProbeResult>('accounts/test', { id });
+}
+
+export async function removeMailAccount(id: string): Promise<void> {
+  await postMail('accounts/remove', { id });
+}
+
+// -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 

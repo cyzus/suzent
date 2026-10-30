@@ -19,6 +19,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](../03-features/memory/README.md) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](../03-features/automation.md) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](../05-chat-apps/README.md) |
+| **Email** | Connect mailboxes with an app password, and choose whether the agent may send. | [Email](../03-features/tools/email.md) |
 | **MCP Servers** | Add and test servers that give the agent extra tools. | [MCP servers](../03-features/tools/mcp.md) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](../03-features/tools/browser.md) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](../02-using/conversations.md#bring-in-another-coding-agent) |

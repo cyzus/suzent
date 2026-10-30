@@ -125,3 +125,18 @@ key.
 - [ ] `list_peers` recomputes each peer's outbound status via a live `whoami`
       round-trip on every poll (~4s); cache/debounce so an open Devices tab
       doesn't fan out N requests per tick (also a mild self-DoS surface).
+
+## Email
+
+The mail tools (`src/suzent/mail/`, `src/suzent/tools/mail/`) sign in over
+IMAP/SMTP with app passwords. Remaining work:
+
+- Microsoft sign-in (device-code OAuth, then XOAUTH2 over the same IMAP/SMTP
+  code) for Outlook, Hotmail and Microsoft 365, which no longer accept passwords.
+  Needs a registered Entra public-client app.
+- Gmail OAuth is deferred: Gmail's read scopes are restricted, and a public app
+  needs Google verification plus a yearly CASA assessment. App passwords cover
+  personal Gmail meanwhile.
+- Saving attachments to the workspace.
+- Email as a chat channel (IMAP IDLE in, SMTP replies out), gated on the
+  sender's SPF/DKIM result so a forged From cannot command the agent.

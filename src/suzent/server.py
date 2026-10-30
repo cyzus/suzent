@@ -149,6 +149,14 @@ from suzent.routes.goal_task_routes import (
     update_project_task,
     delete_project_task,
 )
+from suzent.routes.mail_routes import (
+    list_mail_providers,
+    list_mail_accounts,
+    add_mail_account,
+    update_mail_account,
+    remove_mail_account,
+    test_mail_account,
+)
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
     add_mcp_server,
@@ -1336,6 +1344,12 @@ app = Starlette(
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
         Route("/mcp_servers/enabled", set_mcp_server_enabled, methods=["POST"]),
         Route("/mcp_servers/test", test_mcp_server, methods=["POST"]),
+        Route("/mail/providers", list_mail_providers, methods=["GET"]),
+        Route("/mail/accounts", list_mail_accounts, methods=["GET"]),
+        Route("/mail/accounts", add_mail_account, methods=["POST"]),
+        Route("/mail/accounts/update", update_mail_account, methods=["POST"]),
+        Route("/mail/accounts/remove", remove_mail_account, methods=["POST"]),
+        Route("/mail/accounts/test", test_mail_account, methods=["POST"]),
         Route("/sandbox/files", list_sandbox_files, methods=["GET"]),
         Route("/sandbox/mentions", search_file_mentions, methods=["GET"]),
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),
