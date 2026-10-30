@@ -475,7 +475,15 @@ pub fn find_install_workspace_dir() -> PathBuf {
 }
 
 fn saved_install_workspace(marker: &Path) -> Option<PathBuf> {
-    let path = PathBuf::from(std::fs::read_to_string(marker).ok()?.trim());
+    let text = std::fs::read_to_string(marker).ok()?;
+    let text = text.trim();
+    // Older installers saved the `\\?\C:\...` form `fs::canonicalize` returns
+    // on Windows; Git and child processes cannot use it.
+    let text = match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest,
+        _ => text,
+    };
+    let path = PathBuf::from(text);
     // Preserve the chosen location even when it needs repair or is offline.
     path.is_absolute().then_some(path)
 }
