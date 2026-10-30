@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
 - Turn the sidebar into Regent's queue while its chat is open, with a back button and Esc to leave, waiting and running chats with a right-click menu, folded projects, and the board starting closed.
 - Soften Regent message bubbles and align the copy action beneath replies.
+- Redesign the right sidebar as an expandable overview with context usage, the chat's environment and heartbeat, and Regent's task board, and shrink the composer's folder button to an icon inside existing chats.
 - Style scheduled-task and heartbeat rows in the sidebar like chat rows, and keep chat titles aligned when a chat-app icon is shown.
 - Keep waiting while a slow first start is still in progress, retry startup without restarting the app, and show guidance instead of a retry button for errors a retry cannot fix.
 - The voice call animation keeps showing Suzent speaking until its reply has finished playing, instead of stopping early with fast realtime models such as Qwen-Omni.

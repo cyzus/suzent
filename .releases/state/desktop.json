@@ -138,6 +138,7 @@
     ".releases/changes/restructure-user-docs.json",
     ".releases/changes/resume-keeps-approved-card.json",
     ".releases/changes/resume-without-empty-prompt.json",
+    ".releases/changes/right-sidebar-overview.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/shell-command-yield.json",
     ".releases/changes/shell-noninteractive-stdin.json",
