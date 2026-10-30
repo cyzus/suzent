@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
+- Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
 - Give projects several folders, the first being the working directory, with folders the project already used offered for adding; open project settings by right-clicking a project.
