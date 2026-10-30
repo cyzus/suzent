@@ -2677,7 +2677,7 @@ export const zhCN = {
     recent: {
       title: '本周',
       added: {
-        user: '新增 {count} 条关于你',
+        user: '关于你新增 {count} 条',
         experience: '新增 {count} 条经验',
         world: '新增 {count} 条事实',
       },
