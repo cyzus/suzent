@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
+- Add plugins, managed from Settings > Plugins or `suzent plugin`. Each chat app (Telegram, Slack, Discord, Feishu/Lark) is now its own plugin, so only the apps you use download packages; setting one up under Social Channels installs it, and apps you already use stay on. Plugins can also add tools, slash commands and skills, and installing or removing one takes effect without a restart.
 - Give projects several folders, the first being the working directory, with folders the project already used offered for adding; open project settings by right-clicking a project.
 - Add project settings with a default working directory that every chat in the project uses unless it has its own.
 - Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
