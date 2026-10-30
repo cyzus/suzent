@@ -66,6 +66,7 @@
     ".releases/changes/inline-canvas-default.json",
     ".releases/changes/input-suggestion-persist.json",
     ".releases/changes/input-suggestion.json",
+    ".releases/changes/install-dir-verbatim-path.json",
     ".releases/changes/interrupted-install-repair.json",
     ".releases/changes/litellm-proxy-discovery.json",
     ".releases/changes/live-trigger-on-wake.json",
