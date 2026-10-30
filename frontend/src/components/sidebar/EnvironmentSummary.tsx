@@ -19,7 +19,6 @@ function useEnvironment() {
   return {
     model: config?.model || prefs?.model || backendConfig?.models?.[0] || null,
     sandbox: !!(config?.sandbox_enabled ?? prefs?.sandbox_enabled ?? backendConfig?.sandboxEnabled),
-    memory: !!(config?.memory_enabled ?? prefs?.memory_enabled),
     permissionMode: config?.permission_mode ?? 'default',
     // Volumes are "host:container"; the host side is what the user picked.
     volumes: (config?.sandbox_volumes ?? []).map((volume) =>
@@ -131,9 +130,6 @@ export function EnvironmentSummary(): JSX.Element {
       )}
       <Row label={t('sidebar.environment.permissions')}>
         {t(`chatWindow.permissionModeInputLabels.${env.permissionMode}`)}
-      </Row>
-      <Row label={t('sidebar.environment.memory')}>
-        {t(env.memory ? 'common.on' : 'common.off')}
       </Row>
       <div className="flex items-center justify-between gap-3 py-1 text-xs">
         <span className="text-neutral-500 dark:text-neutral-400">

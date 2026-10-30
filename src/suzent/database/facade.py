@@ -6,6 +6,7 @@ from .chats import ChatOperationsMixin
 from .cron import CronOperationsMixin
 from .goals import GoalOperationsMixin
 from .inbox import AgentInboxOperationsMixin
+from .memory_recalls import MemoryRecallOperationsMixin
 from .migrations import DatabaseMigrationMixin
 from .notifications import BackgroundNotificationOperationsMixin
 from .postprocess import PostprocessOperationsMixin
@@ -28,6 +29,7 @@ class ChatDatabase(
     SettingsOperationsMixin,
     InputSuggestionOperationsMixin,
     ChatStatusOperationsMixin,
+    MemoryRecallOperationsMixin,
     BackgroundNotificationOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,

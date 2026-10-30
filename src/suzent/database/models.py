@@ -161,6 +161,16 @@ class ChatStatusModel(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class MemoryRecallModel(SQLModel, table=True):
+    """The memories retrieved for a chat's latest turn, kept for display only."""
+
+    __tablename__ = "memory_recalls"
+
+    chat_id: str = Field(primary_key=True)
+    items: list = Field(default_factory=list, sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentInboxMessageModel(SQLModel, table=True):
     """Durable local or cross-device message awaiting agent delivery."""
 

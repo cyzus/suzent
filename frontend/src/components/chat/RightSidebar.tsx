@@ -34,6 +34,7 @@ import {
   DocumentTextIcon,
   Squares2X2Icon,
   ServerStackIcon,
+  CircleStackIcon,
   EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
@@ -58,6 +59,8 @@ import {
   EnvironmentProjectName,
   EnvironmentSummary,
 } from '../sidebar/EnvironmentSummary';
+import { MemoryCount, MemoryDetails, MemoryPreview } from '../sidebar/MemorySummary';
+import { useMemorySection } from '../../hooks/useMemorySection';
 import { useContextUsageStats } from '../../hooks/useContextUsageStats';
 import {
   RegentBoardCounts,
@@ -77,6 +80,7 @@ export type TabId =
   | 'plan'
   | 'project'
   | 'environment'
+  | 'memory'
   | 'tools';
 
 export interface AutoOpenFlags {
@@ -348,6 +352,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const hasAgentContent =
     backgroundTasks.length > 0 || hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId;
   const isFocal = currentChatId === FOCAL_CHAT_ID;
+  const memorySection = useMemorySection(currentChatId);
   const tabs: TabConfig[] = [
     {
       id: 'overview',
@@ -426,6 +431,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       fallbackLabel: 'Environment',
       hasContent: Boolean(currentChatId),
       hasActivity: false,
+      pinned: false,
+    },
+    {
+      id: 'memory',
+      icon: CircleStackIcon,
+      labelKey: 'sidebar.tabs.memory',
+      fallbackLabel: 'Memory',
+      hasContent: Boolean(currentChatId),
+      hasActivity: memorySection.extracting,
+      activityClass: 'bg-brutal-blue animate-pulse',
       pinned: false,
     },
     {
@@ -670,6 +685,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       summary: expandedSections.has('environment') ? undefined : <EnvironmentProjectName />,
       preview: <EnvironmentPreview />,
       body: <EnvironmentSummary />,
+      fullView: false,
+    },
+    memory: {
+      summary: <MemoryCount section={memorySection} />,
+      preview: <MemoryPreview section={memorySection} />,
+      body: <MemoryDetails section={memorySection} />,
       fullView: false,
     },
   };

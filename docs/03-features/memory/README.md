@@ -91,6 +91,11 @@ not belong there, and other facts about you go on a `3_Personal/` page.
 The **Memory** panel in the app lets you browse, search, and delete what has
 been saved.
 
+To see what memory did in the chat you are in, open the overview in the right
+sidebar and expand **Memory**. It lists the memories the last reply drew on,
+the facts saved from this chat (corrections are marked **Updated**), and
+whether organizing is caught up. **Open memory** takes you to the full panel.
+
 - **To forget something,** delete it in the panel. It disappears from search
   for good, even after a rebuild. The original daily log keeps the line as
   history.
