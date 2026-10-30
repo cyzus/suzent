@@ -16,24 +16,21 @@ import MarkdownUI
     }
 }
 
-private struct ChatMenuPresentation {
-    let anchor: Anchor<CGRect>
-    let content: AnyView
-    let preferredHeight: CGFloat
-    let dismiss: () -> Void
-}
-
-private struct ChatMenuPreferenceKey: PreferenceKey {
-    static var defaultValue: [ChatMenuPresentation] { [] }
-    static func reduce(value: inout [ChatMenuPresentation], nextValue: () -> [ChatMenuPresentation]) {
-        value.append(contentsOf: nextValue())
-    }
-}
+private enum Route: Hashable { case conversation, settings }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
         value = value ?? nextValue()
+    }
+}
+
+private extension View {
+    /// Keeps the Suzent sidebar look inside a plain List: no separators or row fill, page gutters.
+    func sidebarListRow(_ vertical: CGFloat = 6) -> some View {
+        listRowInsets(EdgeInsets(top: vertical, leading: 16, bottom: vertical, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
     }
 }
 
@@ -48,11 +45,44 @@ private struct SidebarFoldControl: View {
                 Text("\(count) sub-agents")
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
-            }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium)).foregroundStyle(Color.suzentMuted)
+            }.suzentFont(PresentationTokens.typeSidebarSection, weight: .medium).foregroundStyle(Color.suzentMuted)
                 .padding(.horizontal, 4)
                 .frame(minHeight: 16).contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityLabel(expanded ? Text("Collapse sub-agents: \(count)") : Text("Expand sub-agents: \(count)"))
+    }
+}
+
+/// Single-field text entry presented as a sheet with Cancel and Save in the toolbar.
+private struct TextEntrySheet: View {
+    let title: LocalizedStringKey
+    let placeholder: LocalizedStringKey
+    @Binding var text: String
+    let save: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
+    private var valid: Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed.count <= 200
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading) {
+                TextField(placeholder, text: $text).suzentFont(PresentationTokens.typeControl)
+                    .focused($focused).submitLabel(.done)
+                    .onSubmit { if valid { save(); dismiss() } }
+                    .padding(PresentationTokens.spaceMedium).frame(minHeight: PresentationTokens.controlHeight)
+                    .overlay(Rectangle().stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                Spacer()
+            }.padding(20)
+                .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Save") { save(); dismiss() }.disabled(!valid) }
+                }
+                .onAppear { focused = true }
+        }.presentationDetents([.medium]).presentationCornerRadius(PresentationTokens.radius)
     }
 }
 
@@ -69,11 +99,12 @@ private struct ChatSidebarRow: View {
     let projects: [Project]
     let manage: (String, String?) -> Void
     let open: () -> Void
-    @State private var menu = false
-    @State private var moving = false
     @State private var renaming = false
     @State private var deleting = false
     @State private var title = ""
+    private var pinned: Bool { chat.pinned == true }
+    private var running: Bool { chat.isRunning == true }
+    private var swipeable: Bool { enabled && canManage && !running }
 
     private var meta: Text? {
         if chat.isSubagent && !nested { return parentTitle.map { Text("Sub-agent of \($0)") } ?? Text("Sub-agent") }
@@ -82,11 +113,11 @@ private struct ChatSidebarRow: View {
     }
 
     var body: some View {
-        Button { if !menu { open() } } label: {
+        Button(action: open) {
             HStack(spacing: 6) {
-                if chat.pinned == true { Image(systemName: "pin.fill").font(.system(size: 10)) }
+                if pinned { Image(systemName: "pin.fill").font(.system(size: 10)) }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(chat.title).font(.system(size: PresentationTokens.typeCaption, weight: .medium))
+                    Text(chat.title).suzentFont(PresentationTokens.typeCaption, weight: .medium)
                         .lineLimit(1).truncationMode(.tail)
                     HStack(spacing: 0) {
                         if let meta { meta.lineLimit(1).truncationMode(.tail) }
@@ -95,13 +126,13 @@ private struct ChatSidebarRow: View {
                             SidebarFoldControl(count: childCount, expanded: childrenExpanded, toggle: {}).hidden()
                                 .anchorPreference(key: SidebarFoldAnchorKey.self, value: .bounds) { $0 }
                         }
-                    }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
+                    }.suzentFont(PresentationTokens.typeSidebarSection, weight: .medium)
                         .foregroundStyle(Color.suzentMuted)
-                        .frame(height: meta != nil || childCount > 0 ? 16 : 0)
+                        .frame(minHeight: meta != nil || childCount > 0 ? 16 : 0)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Spacer(minLength: 0)
-                if chat.isRunning == true { Image(systemName: "ellipsis") }
+                if running { Image(systemName: "ellipsis") }
             }.padding(.leading, nested ? 32 : 12).padding(.trailing, 12).padding(.vertical, PresentationTokens.spaceRow)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
@@ -116,19 +147,31 @@ private struct ChatSidebarRow: View {
                     }
                 }
             }
-            .simultaneousGesture(LongPressGesture().onEnded { _ in
-                guard enabled else { return }
-                moving = false; menu = true
-            })
-            .accessibilityAction(named: Text("Conversation actions")) { moving = false; menu = true }
-            .anchorPreference(key: ChatMenuPreferenceKey.self, value: .bounds) { anchor in
-                menu ? [ChatMenuPresentation(anchor: anchor, content: AnyView(menuPanel), preferredHeight: !canManage ? 120 : moving ? 305 : 178, dismiss: { menu = false })] : []
+            .contentShape(.contextMenuPreview, Rectangle())
+            .contextMenu { if enabled { menuItems } }
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if swipeable {
+                    Button { manage(pinned ? "unpin" : "pin", nil) } label: {
+                        Label(pinned ? LocalizedStringKey("Unpin") : LocalizedStringKey("Pin"), systemImage: pinned ? "pin.slash" : "pin")
+                    }.tint(Color(presentation: PresentationTokens.blue))
+                }
             }
-            .alert("Rename", isPresented: $renaming) {
-                TextField("Conversation title", text: $title)
-                Button("Cancel", role: .cancel) {}
-                Button("Save") { manage("rename", title.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if swipeable {
+                    // Not role: .destructive, which would animate the row away before the confirmation.
+                    Button { deleting = true } label: { Label("Delete", systemImage: "trash") }
+                        .tint(Color.suzentDanger)
+                }
+            }
+            .accessibilityActions {
+                if enabled && canManage {
+                    Button("Rename") { startRename() }
+                }
+            }
+            .sheet(isPresented: $renaming) {
+                TextEntrySheet(title: "Rename", placeholder: "Conversation title", text: $title) {
+                    manage("rename", title.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
             }
             .alert("Delete conversation?", isPresented: $deleting) {
                 Button("Cancel", role: .cancel) {}
@@ -136,56 +179,42 @@ private struct ChatSidebarRow: View {
             } message: { Text("This deletes the conversation on all devices and cannot be undone.") }
     }
 
-    private var menuPanel: some View {
-        VStack(spacing: 0) {
-            if !canManage {
-                Text("Enable Manage conversations in desktop Settings → Mobile access.")
-                    .font(.footnote).padding(16)
-            } else if moving {
-                menuItem("Move to project", icon: "chevron.left") { moving = false }
-                Divider()
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(projects) { project in
-                            Button { menu = false; manage("move", project.id) } label: {
-                                HStack { Text(project.name); Spacer(); if project.id == chat.projectId { Image(systemName: "checkmark") } }
-                                    .padding(12).frame(minHeight: 44)
-                            }.buttonStyle(ChatRowButtonStyle(selected: false)).disabled(project.id == chat.projectId)
-                        }
-                    }
-                }.frame(maxHeight: 260)
-            } else {
-                menuItem(chat.pinned == true ? "Unpin" : "Pin", icon: "pin") { menu = false; manage(chat.pinned == true ? "unpin" : "pin", nil) }
-                menuItem("Rename", icon: "pencil") { menu = false; title = chat.title; renaming = true }
-                menuItem("Move to project", icon: "folder") { moving = true }
-                    .disabled(chat.isRunning == true || projects.isEmpty)
-                Divider()
-                menuItem("Delete conversation", icon: "trash", danger: true) { menu = false; deleting = true }
-                    .disabled(chat.isRunning == true)
+    @ViewBuilder private var menuItems: some View {
+        if !canManage {
+            Button("Enable Manage conversations in desktop Settings → Mobile access.") {}.disabled(true)
+        } else {
+            Button { manage(pinned ? "unpin" : "pin", nil) } label: {
+                Label(pinned ? LocalizedStringKey("Unpin") : LocalizedStringKey("Pin"), systemImage: pinned ? "pin.slash" : "pin")
             }
-        }.frame(width: 260).background(Color.suzentSurface)
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background {
-                Rectangle().fill(Color.black).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay)
-                    .allowsHitTesting(false).accessibilityHidden(true)
-            }
+            Button { startRename() } label: { Label("Rename", systemImage: "pencil") }
+            Menu {
+                ForEach(projects) { project in
+                    Button { manage("move", project.id) } label: {
+                        if project.id == chat.projectId { Label(project.name, systemImage: "checkmark") } else { Text(project.name) }
+                    }.disabled(project.id == chat.projectId)
+                }
+            } label: { Label("Move to project", systemImage: "folder") }
+                .disabled(running || projects.isEmpty)
+            Divider()
+            Button(role: .destructive) { deleting = true } label: { Label("Delete conversation", systemImage: "trash") }
+                .disabled(running)
+        }
     }
 
-    private func menuItem(_ title: LocalizedStringKey, icon: String, danger: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon).font(.system(size: 13, weight: .bold))
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(minHeight: 44)
-        }.buttonStyle(ChatRowButtonStyle(selected: false, destructive: danger))
+    private func startRename() {
+        title = chat.title
+        renaming = true
     }
 }
 
 struct ContentView: View {
     @Bindable var model: MobileModel
-    @State private var showSidebar = true
+    @State private var path: [Route] = []
     @State private var transcriptCache = ChatPresentationCache()
     @State private var showSettings = false
     @State private var repairScanner = false
     @State private var showConnectionHelp = false
+    @State private var confirmForget = false
     @State private var search = ""
     @State private var expandedProject: String? = nil
     @State private var showAllScheduled = false
@@ -197,7 +226,15 @@ struct ContentView: View {
     @State private var attachmentsExpanded = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
+    @State private var sends = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var wide: Bool { sizeClass == .regular }
+
+    private var conversationVisible: Bool {
+        model.connected && !showSettings && model.selected != nil && (wide || path.last == .conversation)
+    }
 
     private var projects: [Project] {
         // Android dedupes the merged list; keep the same guarantee so duplicate ids
@@ -230,177 +267,214 @@ struct ContentView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let wide = geometry.size.width >= 760
-            ZStack(alignment: .leading) {
-                HStack(spacing: 0) {
-                    if wide && model.connected {
-                        sidebar(home: false).frame(width: PresentationTokens.sidebarWidth)
-                        Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
-                            .ignoresSafeArea(edges: .bottom)
-                    }
-                    VStack(spacing: 0) {
-                        HStack {
-                            if model.connected && !wide {
-                                Button { composing = false; withAnimation { showSidebar = true } } label: {
-                                    Image(systemName: "chevron.left")
-                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("Back to chats")
-                            }
-                            Group {
-                                if model.connected && showSettings {
-                                    Text("Settings").font(.headline).lineLimit(1)
-                                } else if model.connected, let chat = model.selected, !chat.id.isEmpty {
-                                    if chat.isRegent {
-                                        RegentIdentity(working: model.streaming || chat.isRunning == true, waiting: chat.regent?.waiting ?? 0)
-                                    } else {
-                                    VStack(spacing: 2) {
-                                        if let project = chat.projectName {
-                                            Text(project).font(.caption).foregroundStyle(Color.suzentMuted).lineLimit(1)
-                                        }
-                                        Text(chat.title).font(.system(size: PresentationTokens.typeControl, weight: .semibold))
-                                            .lineLimit(1).truncationMode(.tail)
-                                    }.padding(.horizontal, 8).multilineTextAlignment(.center)
-                                    }
-                                } else if !model.connected && model.canReconnect {
-                                    Text("SUZENT").font(.system(size: 13, weight: .semibold)).tracking(2)
-                                        .foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
-                                } else { SuzentWordmark() }
-                            }.frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
-                            if model.connected {
-                                Button { composing = false; Task { await model.createChat(); showSettings = false; showSidebar = false } } label: {
-                                    Image(systemName: "square.and.pencil")
-                                }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("New conversation")
-                                    .disabled(model.busy || model.device?.permissions.createChats != true)
-                            }
-                        }.padding(.horizontal, 12).padding(.vertical, 6)
-                        if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
-                        if model.isDemo {
-                            HStack {
-                                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
-                                Spacer()
-                                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).disabled(model.busy)
-                            }.padding(.horizontal, 16).padding(.vertical, 8)
-                                .background(Color(presentation: PresentationTokens.yellow)).foregroundStyle(.black)
+        Group {
+            if !model.connected { unconnected }
+            else if wide {
+                NavigationSplitView(columnVisibility: .constant(.all)) {
+                    sidebar(home: false)
+                        .navigationSplitViewColumnWidth(PresentationTokens.sidebarWidth)
+                        .toolbar(removing: .sidebarToggle)
+                        .overlay(alignment: .trailing) {
+                            Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
+                                .ignoresSafeArea().accessibilityHidden(true)
                         }
-                        if let error = model.error {
-                            SuzentNotice(message: error) { model.error = nil }
-                        }
-                        if !model.connected && model.canReconnect {
-                            VStack {
-                                Spacer(minLength: 20)
-                                VStack(spacing: 21) {
-                                    ReconnectIndicator(active: model.busy)
-                                    Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
-                                        .font(.system(size: 21, weight: .medium)).multilineTextAlignment(.center)
-                                    Group {
-                                        if model.busy {
-                                            if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
-                                        } else { Button("Reconnect to desktop") { Task { await model.connect() } } }
-                                    }.font(.system(size: 13)).foregroundStyle(Color.suzentMuted)
-                                        .buttonStyle(.plain).frame(minHeight: 44)
-                                }
-                                Spacer(minLength: 20)
-                                Button("Connection help") { showConnectionHelp = true }
-                                    .font(.system(size: 12)).foregroundStyle(Color.suzentMuted)
-                                    .frame(minHeight: 44).buttonStyle(.plain)
-                            }.padding(.horizontal, 24).padding(.bottom, 20)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
-                                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
-                                    Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
-                                    Button("Cancel", role: .cancel) { }
-                                } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
-
-                        }
-                        else if !model.connected { PairingView(model: model) }
-                        else if showSettings { settings }
-                        else if let chat = model.selected { conversation(chat) }
-                        else {
-                            if model.busy { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
-                            else { Text("Select a conversation or start a new one.").foregroundStyle(Color.suzentMuted).padding().frame(maxWidth: .infinity, maxHeight: .infinity) }
-                        }
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .accessibilityHidden(!wide && model.connected && showSidebar)
-                if !wide && model.connected {
+                } detail: {
+                    NavigationStack { detail }
+                }.navigationSplitViewStyle(.balanced)
+            } else {
+                NavigationStack(path: $path) {
                     sidebar(home: true)
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .background(Color.suzentSurface)
-                        .offset(x: showSidebar ? 0 : -geometry.size.width)
-                        .allowsHitTesting(showSidebar)
-                        .accessibilityHidden(!showSidebar)
-                }
-            }.background(Color.suzentBackground).clipped()
-                .onChange(of: model.selected?.isRegent == true && !showSettings && (wide || !showSidebar), initial: true) { _, visible in
-                    model.regentVisible = visible
-                }
-                .foregroundStyle(Color.suzentText)
-                .overlayPreferenceValue(ChatMenuPreferenceKey.self) { menus in
-                    GeometryReader { proxy in
-                        if let menu = menus.last {
-                            let row = proxy[menu.anchor]
-                            let height = min(menu.preferredHeight, proxy.size.height - 32)
-                            let top = row.maxY + 4 + height <= proxy.size.height - 16 ? row.maxY + 4 : max(16, row.minY - height - 4)
-                            ZStack(alignment: .topLeading) {
-                                Color.black.opacity(0.001).ignoresSafeArea()
-                                    .onTapGesture { menu.dismiss() }.accessibilityHidden(true)
-                                menu.content.frame(maxHeight: height, alignment: .top)
-                                    .offset(x: max(16, min(row.minX, proxy.size.width - 276)), y: top)
-                            }.accessibilityAddTraits(.isModal)
-                                .accessibilityAction(.escape) { menu.dismiss() }
+                        .navigationDestination(for: Route.self) { route in
+                            switch route {
+                            case .conversation: detail
+                            case .settings: settingsPage
+                            }
                         }
-                    }
                 }
+            }
         }
+        .background(Color.suzentBackground)
+        .foregroundStyle(Color.suzentText)
+        .overlay(alignment: .bottom) { toastHost(!conversationVisible) }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
-        .onChange(of: model.connected) { _, connected in showModelPicker = false; showProjectPicker = false; showSidebar = true; if !connected { showSettings = false } }
+        .task(id: model.error) {
+            guard let error = model.error else { return }
+            AccessibilityNotification.Announcement(error).post()
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled && model.error == error { model.error = nil }
+        }
+        .onChange(of: model.selected?.isRegent == true && conversationVisible, initial: true) { _, visible in
+            model.regentVisible = visible
+        }
+        .onChange(of: model.connected) { _, connected in
+            showModelPicker = false; showProjectPicker = false; path = []
+            if !connected { showSettings = false }
+        }
+        .onChange(of: path) { _, path in
+            if !path.contains(.settings) { showSettings = false }
+            if path.isEmpty { composing = false; attachmentsExpanded = false }
+        }
+        .onChange(of: model.selected == nil) { _, missing in
+            if missing && path.last == .conversation { path = [] }
+        }
+        .onChange(of: wide) { _, wide in
+            if !wide { path = showSettings ? [.settings] : model.selected != nil ? [.conversation] : [] }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
-        .accessibilityHidden(showModelPicker || showProjectPicker)
-        .overlay { selectionOverlay }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showModelPicker || showProjectPicker)
+        .sheet(isPresented: $showModelPicker) {
+            SuzentSelectionPanel(title: String(localized: "Desktop model"),
+                options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
+                selected: model.selectedModel ?? "", dismiss: { showModelPicker = false }) {
+                    model.selectModel($0.isEmpty ? nil : $0)
+                }
+        }
+        .sheet(isPresented: $showProjectPicker) {
+            SuzentSelectionPanel(title: String(localized: "Creating in"),
+                options: model.projects.map { (id: $0.id, title: $0.name) },
+                selected: model.selected?.projectId ?? "", dismiss: { showProjectPicker = false }) { id in
+                    model.selected?.projectId = id
+                    model.selected?.projectName = model.projects.first { $0.id == id }?.name
+                }
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
-            showSettings = false; showSidebar = true; showModelPicker = false; showProjectPicker = false; composing = false
+            showSettings = false; path = []; showModelPicker = false; showProjectPicker = false; composing = false
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
     }
 
-    private var selectionOverlay: some View {
-            GeometryReader { geometry in
-                if showModelPicker || showProjectPicker {
-                    ZStack(alignment: .bottom) {
-                        Color.black.opacity(0.32).ignoresSafeArea()
-                            .onTapGesture { dismissSelection() }.accessibilityHidden(true)
-                        Group {
-                            if showModelPicker {
-                                SuzentSelectionPanel(title: String(localized: "Desktop model"),
-                                    options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
-                                    selected: model.selectedModel ?? "", dismiss: dismissSelection) {
-                                        model.selectModel($0.isEmpty ? nil : $0)
-                                    }
-                            } else {
-                                SuzentSelectionPanel(title: String(localized: "Creating in"),
-                                    options: model.projects.map { (id: $0.id, title: $0.name) },
-                                    selected: model.selected?.projectId ?? "", dismiss: dismissSelection) { id in
-                                        model.selected?.projectId = id
-                                        model.selected?.projectName = model.projects.first { $0.id == id }?.name
-                                    }
-                            }
-                        }.frame(maxWidth: 560).frame(maxHeight: geometry.size.height * 0.65)
-                            .padding(16)
-                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                    }.accessibilityAddTraits(.isModal)
-                        .accessibilityAction(.escape) { dismissSelection() }
-                }
+    @ViewBuilder private func toastHost(_ visible: Bool) -> some View {
+        ZStack {
+            if visible, let error = model.error {
+                SuzentErrorToast(message: error) { model.error = nil }
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
+        }.animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.error)
     }
 
-    private func dismissSelection() {
-        showModelPicker = false
-        showProjectPicker = false
+    private func showConversation() {
+        composing = false
+        showSettings = false
+        if !wide && path != [.conversation] { path = [.conversation] }
+    }
+
+    private func openSettings() {
+        composing = false
+        showSettings = true
+        if !wide { path = [.settings] }
+    }
+
+    private func newConversation() {
+        composing = false
+        Task {
+            await model.createChat()
+            if model.selected != nil { showConversation() }
+        }
+    }
+
+    private var unconnected: some View {
+        VStack(spacing: 0) {
+            Group {
+                if model.canReconnect {
+                    Text("SUZENT").tracking(2).suzentFont(13, weight: .semibold)
+                        .foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
+                } else { SuzentWordmark() }
+            }.frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+            if model.canReconnect {
+                VStack {
+                    Spacer(minLength: 20)
+                    VStack(spacing: 21) {
+                        ReconnectIndicator(active: model.busy)
+                        Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
+                            .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
+                        Group {
+                            if model.busy {
+                                if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
+                            } else { Button("Reconnect to desktop") { Task { await model.connect() } } }
+                        }.suzentFont(PresentationTokens.typeCaption).foregroundStyle(Color.suzentMuted)
+                            .buttonStyle(.plain).frame(minHeight: 44)
+                    }
+                    Spacer(minLength: 20)
+                    Button("Connection help") { showConnectionHelp = true }
+                        .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                        .frame(minHeight: 44).buttonStyle(.plain)
+                }.padding(.horizontal, 24).padding(.bottom, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
+                        Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                        Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
+                        Button("Cancel", role: .cancel) { }
+                    } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
+            } else {
+                Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+                PairingView(model: model)
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
+    }
+
+    @ViewBuilder private var demoBanner: some View {
+        if model.isDemo {
+            HStack {
+                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
+                Spacer()
+                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).buttonStyle(.plain)
+                    .frame(minHeight: 44).disabled(model.busy)
+            }.padding(.horizontal, 16)
+                .background(Color(presentation: PresentationTokens.yellow), ignoresSafeAreaEdges: []).foregroundStyle(.black)
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        Group {
+            if showSettings { settings.navigationTitle("Settings") }
+            else if let chat = model.selected { conversation(chat) }
+            else if model.busy { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else {
+                Text("Select a conversation or start a new one.").foregroundStyle(Color.suzentMuted)
+                    .padding().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color.suzentBackground)
+        .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarRole(.editor)
+        .toolbar {
+            if !showSettings {
+                ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: newConversation) { Image(systemName: "square.and.pencil") }
+                        .accessibilityLabel("New conversation")
+                        .disabled(model.busy || model.device?.permissions.createChats != true)
+                }
+            }
+        }
+    }
+
+    private var settingsPage: some View {
+        settings.navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
+            .toolbarRole(.editor)
+    }
+
+    @ViewBuilder private var conversationTitle: some View {
+        if let chat = model.selected, !chat.id.isEmpty {
+            if chat.isRegent {
+                RegentIdentity(working: model.streaming || chat.isRunning == true, waiting: chat.regent?.waiting ?? 0)
+            } else {
+                VStack(spacing: 2) {
+                    if let project = chat.projectName {
+                        Text(project).font(.caption).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                    }
+                    Text(chat.title).suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                        .lineLimit(1).truncationMode(.tail)
+                }.padding(.horizontal, 8).multilineTextAlignment(.center)
+            }
+        } else { SuzentWordmark() }
     }
 
     private func sidebar(home: Bool) -> some View {
@@ -411,26 +485,17 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 if home {
                     SuzentWordmark()
-                    Spacer()
                 } else {
                     SuzentLogoMark().frame(width: 24, height: 24)
-                    Text("SUZENT").font(.system(size: 14, weight: .bold)).tracking(2)
-                    Spacer()
+                    Text("SUZENT").tracking(2).suzentFont(14, weight: .bold)
                 }
-                Button { composing = false; showSettings = true; showSidebar = false } label: {
+                Spacer()
+                Button(action: openSettings) {
                     Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
                 }.buttonStyle(.plain).accessibilityLabel("Settings")
             }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
-            if model.isDemo && home {
-                HStack {
-                    Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
-                    Spacer()
-                    Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).disabled(model.busy)
-                }.padding(.horizontal, 16).padding(.vertical, 8)
-            }
-            if home, let error = model.error {
-                SuzentNotice(message: error) { model.error = nil }
-            }
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            if home { demoBanner }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
                     RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
@@ -441,38 +506,37 @@ struct ContentView: View {
                         .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
                 }.buttonStyle(.plain).disabled(model.busy).padding(.horizontal, 16)
             }
-            Button { composing = false; Task { await model.createChat(); showSidebar = false; showSettings = false } } label: {
+            Button(action: newConversation) {
                 Label("New conversation", systemImage: "square.and.pencil")
-                    .font(.system(size: home ? 16 : PresentationTokens.typeCaption, weight: .semibold))
+                    .suzentFont(home ? 16 : PresentationTokens.typeCaption, weight: .semibold)
                     .foregroundStyle(Color.black)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .padding(.horizontal, 12)
-                    .background(Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color(presentation: PresentationTokens.yellow))
             }.buttonStyle(.plain)
                 .disabled(model.busy || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
-                TextField("Search chats", text: $search).font(.system(size: home ? 16 : 14))
+                TextField("Search chats", text: $search).suzentFont(home ? 16 : 14)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(height: 42)
-                .background(Color.suzentText.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            }.padding(.horizontal, 12).frame(minHeight: 42)
+                .background(Color.suzentText.opacity(0.04))
                 .padding(.horizontal, 16).padding(.vertical, 12)
             ScrollViewReader { reader in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Color.clear.frame(height: 0).id("sidebar-top")
+                List {
+                    Color.clear.frame(height: 0).id("sidebar-top").sidebarListRow(0).accessibilityHidden(true)
                     if !search.isEmpty {
-                        sidebarHeading("Search results")
+                        sidebarHeading("Search results").sidebarListRow()
                         let rows = sidebarChats(model.pageChats(searchQuery), search: search, expanded: expandedAgents)
                         conversationRows(rows)
                         pageFooter(searchQuery)
                         if rows.isEmpty && model.chatPages[searchQuery] != nil {
-                            Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted)
+                            Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
                         }
                     } else {
                         if !pinnedRows.isEmpty {
-                            sidebarHeading("Pinned")
+                            sidebarHeading("Pinned").sidebarListRow()
                             conversationRows(pinnedRows)
                             pageFooter(ChatPageQuery("pinned"))
                         }
@@ -483,106 +547,108 @@ struct ContentView: View {
                                 Spacer()
                                 if (model.chatPages[ChatPageQuery()]?.total ?? 0) > 3 {
                                     Button(showAllRecent ? "Show fewer" : "View all") { showAllRecent.toggle() }
-                                        .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                                        .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44).buttonStyle(.plain)
                                 }
-                            }
+                            }.sidebarListRow()
                             let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
                             conversationRows(recentRows.filter { recentIDs.contains($0.root.id) })
                         }
                         if showAllRecent { pageFooter(ChatPageQuery()) }
-                        if !projects.isEmpty { sidebarHeading("Projects") }
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(projects) { project in
-                                projectSection(project, rows: sidebarChats(model.pageChats(ChatPageQuery("project", value: project.id)), search: "", expanded: expandedAgents))
-                            }
-                        }
+                        if !projects.isEmpty { sidebarHeading("Projects").sidebarListRow() }
+                        ForEach(projects) { project in projectSection(project) }
                         if pinnedRows.isEmpty && recentRows.isEmpty {
-                            Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24)
+                            Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
                         }
                     }
                     scheduledSection
-                }.padding(.horizontal, 16)
-            }
-            .refreshable { await model.refresh() }
-            .task(id: "\(search):\(model.navigationVersion)") {
-                guard !search.isEmpty else { return }
-                do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
-                catch { return }
-                await model.loadPage(searchQuery)
-            }
-            .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
-            .onChange(of: model.chats.map(\.id)) { _, _ in expandSelectedAgents() }
-            .onChange(of: model.pinnedVersion) { _, _ in
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
-                    reader.scrollTo("sidebar-top", anchor: .top)
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                .refreshable { await model.refresh() }
+                .task(id: "\(search):\(model.navigationVersion)") {
+                    guard !search.isEmpty else { return }
+                    do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
+                    catch { return }
+                    await model.loadPage(searchQuery)
+                }
+                .onChange(of: model.selected?.id) { _, _ in expandSelectedAgents() }
+                .onChange(of: model.chats.map(\.id)) { _, _ in expandSelectedAgents() }
+                .onChange(of: model.pinnedVersion) { _, _ in
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                        reader.scrollTo("sidebar-top", anchor: .top)
+                    }
                 }
             }
-            }
         }
+        .background(Color.suzentSurface)
+        // The list keeps its branded header; pushed pages use the system bar and its back gesture.
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     @ViewBuilder private func pageFooter(_ query: ChatPageQuery) -> some View {
         if model.loadingPages.contains(query) {
-            ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Loading conversations")
+            ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Loading conversations").sidebarListRow()
         } else if model.chatPages[query]?.nextOffset != nil || model.chatPages[query] == nil {
             Button("Load more") { Task { await model.loadPage(query, more: model.chatPages[query] != nil) } }
                 .font(.caption).foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle()).buttonStyle(.plain).sidebarListRow()
         }
     }
 
-    private func projectSection(_ project: Project, rows: [SidebarChatEntry]) -> some View {
+    @ViewBuilder private func projectSection(_ project: Project) -> some View {
+        let query = ChatPageQuery("project", value: project.id)
+        let rows = sidebarChats(model.pageChats(query), search: "", expanded: expandedAgents)
         let projectOpen = expandedProject == project.id
         let isOpen = projectOpen || !search.isEmpty
-        return VStack(alignment: .leading, spacing: 0) {
-            Button {
-                expandedProject = projectOpen ? nil : project.id
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder").font(.system(size: 17)).padding(.trailing, 6)
-                    Text(project.name).lineLimit(1).truncationMode(.tail)
-                    Spacer()
-                    Text("\(project.chatCount ?? rows.count)").font(.caption).foregroundStyle(Color.suzentMuted)
-                    Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
-                }
-                .font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
-                .foregroundStyle(Color.suzentText)
-                .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            }.buttonStyle(SuzentRowButtonStyle())
-            if isOpen {
-                conversationRows(rows)
-                pageFooter(ChatPageQuery("project", value: project.id))
+        Button {
+            expandedProject = projectOpen ? nil : project.id
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "folder").font(.system(size: 18)).padding(.trailing, 6)
+                Text(project.name).lineLimit(1).truncationMode(.tail)
+                Spacer()
+                Text("\(project.chatCount ?? rows.count)").font(.caption).foregroundStyle(Color.suzentMuted)
+                Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
             }
-        }.task(id: "\(isOpen):\(model.navigationVersion)") {
-            if isOpen { await model.loadPage(ChatPageQuery("project", value: project.id)) }
+            .suzentFont(PresentationTokens.typeCaption, weight: .semibold)
+            .foregroundStyle(Color.suzentText)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }.buttonStyle(SuzentRowButtonStyle())
+            .accessibilityValue(isOpen ? Text("Expanded") : Text("Collapsed"))
+            .sidebarListRow(1)
+            .task(id: "\(isOpen):\(model.navigationVersion)") {
+                if isOpen { await model.loadPage(query) }
+            }
+        if isOpen {
+            conversationRows(rows, spacing: 0)
+            pageFooter(query)
         }
     }
 
-    private func conversationRows(_ entries: [SidebarChatEntry]) -> some View {
+    private func conversationRows(_ entries: [SidebarChatEntry], spacing: CGFloat = 6) -> some View {
         ForEach(entries) { entry in
             let chat = entry.chat
-            VStack(alignment: .leading, spacing: 0) {
-                ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
-                               parentTitle: model.chats.first { $0.id == chat.parentChatId }?.title,
-                               nested: entry.depth > 0, childCount: entry.childCount, childrenExpanded: expandedAgents.contains(chat.id),
-                               toggleChildren: {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
-                        if expandedAgents.contains(chat.id) { expandedAgents.remove(chat.id) }
-                        else { expandedAgents.insert(chat.id) }
-                    }
-                },
-                               enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
-                               projects: model.projects, manage: { action, value in
-                    Task { await model.manageChat(chat, action: action, value: value) }
-                }) { openSidebarChat(chat) }
-            }
+            ChatSidebarRow(chat: chat, selected: wide && model.selected?.id == chat.id && !showSettings,
+                           parentTitle: model.chats.first { $0.id == chat.parentChatId }?.title,
+                           nested: entry.depth > 0, childCount: entry.childCount, childrenExpanded: expandedAgents.contains(chat.id),
+                           toggleChildren: {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                    if expandedAgents.contains(chat.id) { expandedAgents.remove(chat.id) }
+                    else { expandedAgents.insert(chat.id) }
+                }
+            },
+                           enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
+                           projects: model.projects, manage: { action, value in
+                Task { await model.manageChat(chat, action: action, value: value) }
+            }) { openSidebarChat(chat) }
+                .sidebarListRow(spacing)
         }
     }
 
     private func openSidebarChat(_ chat: Chat) {
-        composing = false
-        showSettings = false
-        showSidebar = false
+        showConversation()
         Task { await model.open(chat) }
     }
 
@@ -595,32 +661,28 @@ struct ContentView: View {
         expandedAgents.formUnion(parents)
     }
 
-    private func sidebarHeading(_ title: LocalizedStringKey, count: Int? = nil) -> some View {
-        HStack(spacing: 8) {
-            Text(title).font(.system(size: 11, weight: .semibold))
-                .textCase(.uppercase).tracking(0.8).foregroundStyle(Color.suzentMuted)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let count {
-                Text("\(count)").font(.system(size: PresentationTokens.typeSidebarSection, weight: .bold))
-                    .foregroundStyle(Color.suzentMuted)
-            }
-        }
+    private func sidebarHeading(_ title: LocalizedStringKey) -> some View {
+        Text(title).textCase(.uppercase).tracking(1.6)
+            .suzentFont(PresentationTokens.typeSidebarSection, weight: .heavy)
+            .foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// Desktop status line order: paused (with failure) → failed → next run → active;
     /// a running task keeps the marker and still reports the schedule.
     private func scheduledTaskStatus(_ task: ScheduledTask) -> String {
-        if !task.active { return task.unresolvedError ? "Paused · Failed" : "Paused" }
-        if task.unresolvedError { return "Last run failed" }
-        if let raw = task.nextRunAt, let date = taskDate(raw) {
-            return "Next run \(date.formatted(date: .abbreviated, time: .shortened))"
+        if !task.active { return task.unresolvedError ? String(localized: "Paused · Failed") : String(localized: "Paused") }
+        if task.unresolvedError { return String(localized: "Last run failed") }
+        if let raw = task.nextRunAt, let date = suzentParseDate(raw) {
+            return String(localized: "Next run: \(date.suzentStamp)")
         }
-        return "Active"
+        return String(localized: "Active")
     }
 
     private func scheduledTaskActivity(_ task: ScheduledTask) -> String {
         let raw = task.failureHandled ? task.chatUpdatedAt : task.lastRunAt
-        return raw.flatMap(taskDate)?.formatted(date: .abbreviated, time: .shortened) ?? "Not yet"
+        return raw.flatMap(suzentParseDate)?.suzentStamp ?? String(localized: "Not yet")
     }
 
     @ViewBuilder private var scheduledSection: some View {
@@ -636,103 +698,125 @@ struct ContentView: View {
                     Spacer()
                     Text("\(groups.count)").font(.caption).foregroundStyle(Color.suzentMuted)
                     Image(systemName: scheduledExpanded || !search.isEmpty ? "chevron.down" : "chevron.right").font(.caption)
-                }.font(.system(size: 14, weight: .medium)).frame(minHeight: 48)
+                }.suzentFont(14, weight: .medium).frame(minHeight: 48).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityValue(scheduledExpanded ? Text("Expanded") : Text("Collapsed"))
+                .sidebarListRow()
             ForEach(scheduledExpanded || !search.isEmpty ? visible : []) { group in
-                VStack(alignment: .leading, spacing: 0) {
-                    if let task = group.task {
-                        Button {
-                            if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
-                        } label: {
-                            HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(task.name).font(.system(size: PresentationTokens.typeCaption, weight: .medium))
-                                        .lineLimit(1).truncationMode(.tail)
-                                    HStack(spacing: 6) {
-                                        if task.isRunning { Rectangle().fill(Color.suzentLink).frame(width: 8, height: 8) }
-                                        Text(scheduledTaskStatus(task)).lineLimit(1).truncationMode(.tail)
-                                        if let root = group.root, root.childCount > 0 {
-                                            Text("·")
-                                            SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id), toggle: {}).hidden()
-                                                .anchorPreference(key: SidebarFoldAnchorKey.self, value: .bounds) { $0 }
-                                        }
-                                    }.font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
-                                        .foregroundStyle(Color.suzentMuted)
-                                    if task.chatId == nil {
-                                        Text("No conversation yet").font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium))
-                                            .foregroundStyle(Color.suzentMuted)
-                                    }
-                                }.frame(maxWidth: .infinity, alignment: .leading)
-                                Text(scheduledTaskActivity(task))
-                                    .font(.system(size: PresentationTokens.typeSidebarSection, weight: .medium)).monospacedDigit()
-                                    .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.leading, 8)
-                            }.padding(.horizontal, 12).padding(.vertical, PresentationTokens.spaceRow).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }.buttonStyle(ChatRowButtonStyle(selected: task.chatId != nil && model.selected?.id == task.chatId && !showSettings))
-                            .disabled(model.busy || task.chatId == nil)
-                            .overlayPreferenceValue(SidebarFoldAnchorKey.self) { anchor in
-                                GeometryReader { proxy in
-                                    if let anchor, let root = group.root {
-                                        let rect = proxy[anchor]
-                                        SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id)) {
-                                            if expandedAgents.contains(root.id) { expandedAgents.remove(root.id) }
-                                            else { expandedAgents.insert(root.id) }
-                                        }
-                                        .frame(width: rect.width, height: rect.height)
-                                        .offset(x: rect.minX, y: rect.minY)
-                                    }
-                                }
-                            }
-                    } else if let root = group.root { conversationRows([root]) }
-                    conversationRows(group.children)
-                }
+                if let task = group.task {
+                    scheduledTaskRow(task, root: group.root).sidebarListRow()
+                } else if let root = group.root { conversationRows([root]) }
+                conversationRows(group.children, spacing: 0)
             }
             if scheduledExpanded && search.isEmpty && groups.count > previewLimit {
                 Button { showAllScheduled.toggle() } label: {
                     Text(showAllScheduled ? "Show fewer" : "View all \(groups.count) scheduled tasks")
-                        .font(.system(size: PresentationTokens.typeCaption, weight: .bold))
+                        .suzentFont(PresentationTokens.typeCaption, weight: .bold)
                         .frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).sidebarListRow()
             }
         }
     }
 
-    private func taskDate(_ raw: String) -> Date? {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    private func scheduledTaskRow(_ task: ScheduledTask, root: SidebarChatEntry?) -> some View {
+        Button {
+            if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
+        } label: {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(task.name).suzentFont(PresentationTokens.typeCaption, weight: .medium)
+                        .lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: 6) {
+                        if task.isRunning { Rectangle().fill(Color.suzentLink).frame(width: 8, height: 8) }
+                        Text(scheduledTaskStatus(task)).lineLimit(1).truncationMode(.tail)
+                        if let root, root.childCount > 0 {
+                            Text("·")
+                            SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id), toggle: {}).hidden()
+                                .anchorPreference(key: SidebarFoldAnchorKey.self, value: .bounds) { $0 }
+                        }
+                    }.suzentFont(PresentationTokens.typeSidebarSection, weight: .medium)
+                        .foregroundStyle(Color.suzentMuted)
+                    if task.chatId == nil {
+                        Text("No conversation yet").suzentFont(PresentationTokens.typeSidebarSection, weight: .medium)
+                            .foregroundStyle(Color.suzentMuted)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Text(scheduledTaskActivity(task))
+                    .suzentFont(PresentationTokens.typeSidebarSection, weight: .medium).monospacedDigit()
+                    .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.leading, 8)
+            }.padding(.horizontal, 12).padding(.vertical, PresentationTokens.spaceRow).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }.buttonStyle(ChatRowButtonStyle(selected: wide && task.chatId != nil && model.selected?.id == task.chatId && !showSettings))
+            .disabled(model.busy || task.chatId == nil)
+            .overlayPreferenceValue(SidebarFoldAnchorKey.self) { anchor in
+                GeometryReader { proxy in
+                    if let anchor, let root {
+                        let rect = proxy[anchor]
+                        SidebarFoldControl(count: root.childCount, expanded: expandedAgents.contains(root.id)) {
+                            if expandedAgents.contains(root.id) { expandedAgents.remove(root.id) }
+                            else { expandedAgents.insert(root.id) }
+                        }
+                        .frame(width: rect.width, height: rect.height)
+                        .offset(x: rect.minX, y: rect.minY)
+                    }
+                }
+            }
     }
 
     private var settings: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Settings").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                if model.isDemo {
-                    Text("Explore with sample data. No desktop, API key, or internet required.")
-                    Text("Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.")
-                        .font(.footnote).foregroundStyle(Color.suzentMuted)
-                    Button("Reset demo") { Task { await model.resetDemo() } }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
-                    Button("Exit demo") { model.exitDemo() }.buttonStyle(SuzentButtonStyle()).disabled(model.busy)
-                } else {
-                    SuzentDisclosure(title: "Desktop access") {
-                        if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
-                        Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
-                        Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(Color.suzentMuted)
-                    }.padding(16).overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                    Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
-                    Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(Color.suzentMuted)
-                    SuzentDisclosure(title: "About") {
-                        Button("Try offline demo") { Task { await model.startDemo() } }
-                            .font(.system(size: PresentationTokens.typeCaption))
-                            .foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
-                            .buttonStyle(.plain).disabled(model.busy || model.streaming)
-                    }
+        Form {
+            if model.isDemo {
+                Section {
+                    Button("Reset demo") { Task { await model.resetDemo() } }.disabled(model.busy)
+                    Button("Exit demo") { model.exitDemo() }.disabled(model.busy)
+                } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Explore with sample data. No desktop, API key, or internet required.")
+                        Text("Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.")
+                    }.foregroundStyle(Color.suzentMuted)
                 }
-            }.padding(PresentationTokens.spacePage)
+            } else {
+                Section {
+                    NavigationLink {
+                        ScrollView {
+                            if let device = model.device {
+                                ClientPermissionsView(device: device, origin: model.origin)
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(PresentationTokens.spacePage)
+                            }
+                        }.background(Color.suzentBackground)
+                            .navigationTitle("Desktop access").navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.device?.displayName ?? String(localized: "Desktop access"))
+                            Text(model.origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                        }
+                    }.disabled(model.device == nil)
+                } header: { settingsHeader("Desktop access") }
+                Section {
+                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
+                        .tint(Color(presentation: PresentationTokens.blue))
+                } header: { settingsHeader("This phone as a Node") } footer: {
+                    Text(model.nodeStatus).foregroundStyle(Color.suzentMuted)
+                }
+                Section {
+                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                    Button("Forget connection", role: .destructive) { confirmForget = true }
+                        .foregroundStyle(Color.suzentDanger).disabled(model.busy)
+                } header: { settingsHeader("Connection") } footer: {
+                    Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
+                }
+                Section {
+                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
+                } header: { settingsHeader("About") }
+            }
         }
+        .formStyle(.grouped)
+        .alert("Forget connection?", isPresented: $confirmForget) {
+            Button("Cancel", role: .cancel) {}
+            Button("Forget connection", role: .destructive) { model.forget() }
+        } message: { Text("This phone will need to pair again before it can reach your desktop.") }
+    }
+
+    private func settingsHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title).foregroundStyle(Color.suzentMuted)
     }
 
     private func conversation(_ chat: Chat) -> some View {
@@ -749,14 +833,14 @@ struct ContentView: View {
                                     Text(session.title).lineLimit(1)
                                     Spacer()
                                     Image(systemName: "chevron.right")
-                                }.font(.system(size: 13)).frame(minHeight: 44)
+                                }.suzentFont(PresentationTokens.typeCaption).frame(minHeight: 44)
                             }.buttonStyle(.plain).disabled(model.busy)
                         }
-                    }.font(.system(size: 12)).padding(.horizontal, 16).padding(.vertical, 8)
+                    }.suzentFont(PresentationTokens.typeLabel).padding(.horizontal, 16).padding(.vertical, 8)
                 }
             }
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
-                                   startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
+                                   startsAtBottom: !chat.id.isEmpty, live: model.streaming || !model.liveParts.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
                         let savedMessages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
@@ -779,48 +863,19 @@ struct ContentView: View {
                                              live: model.streaming, regent: chat.isRegent)
                             }
                         }
-                        ApprovalCards(model: model)
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16)
             }.id(chat.id)
-            VStack(alignment: .leading, spacing: 8) {
-                PendingAttachmentStrip(model: model)
-                HStack(alignment: .center) {
-                    if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
-                        Button {
-                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                                attachmentsExpanded.toggle()
-                                if attachmentsExpanded { composing = false }
-                            }
-                        } label: {
-                            Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44)
-                        }.buttonStyle(.plain).accessibilityLabel("Attach")
-                            .disabled(model.busy || model.attachments.count >= maxAttachments)
-                    }
-                    TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
-                        .tint(Color.suzentLink)
-                        .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                    if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
-                }
-                if composing { HStack(spacing: 8) {
-                    Button {
-                        composing = false; showModelPicker = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1).truncationMode(.middle)
-                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-                        }.font(.system(size: 12, weight: .medium)).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
-                    }.buttonStyle(.plain)
-                    .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
-                    Spacer(minLength: 8)
-                    sendAction(chat)
-                } }
-            }.padding(10).background(Color.suzentSurface)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
-                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
-                .padding(.trailing, 2).padding(.bottom, 2)
-                .padding(.horizontal, 12).padding(.bottom, 8)
+            if !model.pendingApprovals.isEmpty {
+                // Pinned above the composer so a pending decision never scrolls out of reach.
+                ViewThatFits(in: .vertical) {
+                    ApprovalCards(model: model)
+                    ScrollView { ApprovalCards(model: model) }
+                }.frame(maxHeight: viewport.size.height * 0.4)
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+            }
+            toastHost(conversationVisible)
+            composer(chat)
         }.frame(width: viewport.size.width, height: viewport.size.height)
             .offset(y: attachmentsExpanded ? -200 : 0)
         if !chat.isRegent { AttachmentPanel(model: model, expanded: $attachmentsExpanded)
@@ -832,13 +887,56 @@ struct ContentView: View {
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
     }
+
+    private func composer(_ chat: Chat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PendingAttachmentStrip(model: model)
+            HStack(alignment: .center) {
+                if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                            attachmentsExpanded.toggle()
+                            if attachmentsExpanded { composing = false }
+                        }
+                    } label: {
+                        Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Attach")
+                        .disabled(model.busy || model.attachments.count >= maxAttachments)
+                }
+                TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
+                    .tint(Color.suzentLink)
+                    .suzentFont(PresentationTokens.typeChat).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
+                if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
+            }
+            if composing { HStack(spacing: 8) {
+                Button {
+                    composing = false; showModelPicker = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1).truncationMode(.middle)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }.suzentFont(PresentationTokens.typeLabel, weight: .medium).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                }.buttonStyle(.plain)
+                .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
+                Spacer(minLength: 8)
+                sendAction(chat)
+            } }
+        }.padding(10).background(Color.suzentSurface)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
+            .padding(.trailing, 2).padding(.bottom, 2)
+            .padding(.horizontal, 12).padding(.bottom, 8)
+    }
+
     private func startPage(_ chat: Chat) -> some View {
         VStack(spacing: 28) {
             GreetingCube(engaged: keyboardVisible).frame(width: keyboardVisible ? 90 : 160, height: keyboardVisible ? 90 : 160)
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 let hour = Calendar.current.component(.hour, from: context.date)
                 let greeting: LocalizedStringKey = hour < 5 ? "Night owl?" : hour < 12 ? "Good morning." : hour < 17 ? "Keep building." : hour < 21 ? "Good evening." : "Bed time? Or maybe late night coding?"
-                Text(greeting).textCase(.uppercase).font(.system(size: 30, weight: .black))
+                Text(greeting).textCase(.uppercase).suzentFont(30, weight: .black)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
             SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
@@ -846,7 +944,7 @@ struct ContentView: View {
             }.disabled(model.busy || model.projects.isEmpty)
             if model.isDemo {
                 ForEach(model.demoPrompts, id: \.self) { prompt in
-                    Button(prompt) { model.draft = prompt; Task { await model.send() } }
+                    Button(prompt) { model.draft = prompt; sends += 1; Task { await model.send() } }
                         .buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
                 }
             }
@@ -859,15 +957,16 @@ struct ContentView: View {
             !model.busy && model.device?.permissions.send == true &&
             (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
         return Button {
+            if !stopping { sends += 1 }
             Task { if stopping { await model.stop() } else { await model.send() } }
         } label: {
             Image(systemName: stopping ? "stop.fill" : "arrow.up")
                 .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 36, height: 36)
-                .background(stopping ? Color.red : Color.suzentLink)
+                .background(stopping ? Color.suzentDanger : Color.suzentLink)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : 0.45)
+        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
             .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
     }
 

@@ -213,4 +213,11 @@
     <string name="recent_view_all">View all</string>
     <string name="search_results">Search results</string>
     <string name="load_more_chats">Load more</string>
+    <string name="connection_section">Connection</string>
+    <string name="forget_warning">This phone will disconnect from your desktop. Pair again to reconnect.</string>
+    <string name="message_share">Share</string>
+    <string name="message_actions">Message actions</string>
+    <string name="approval_show_all">Show all</string>
+    <string name="approval_show_less">Show less</string>
+    <string name="demo_section">Offline demo</string>
 </resources>

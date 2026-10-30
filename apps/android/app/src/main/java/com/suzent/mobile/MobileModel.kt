@@ -421,7 +421,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun refresh() { viewModelScope.launch { refreshNow() } }
+    fun refresh(): Job = viewModelScope.launch { refreshNow() }
 
     private suspend fun refreshNow(poll: Boolean = false) {
         val api = client ?: return
