@@ -221,7 +221,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 |---|---|---|---|
 | **桌面应用** | 本地后端 | 完整界面、Canvas、记忆与技能浏览器 | `suzent start` |
 | **网页控制台** | 本地后端 | 在浏览器里使用同一套界面 | `suzent web` |
-| **移动应用**（预览） | 与桌面端配对 | 共享对话 | [指南](docs/03-features/nodes.md#pair-your-phone) |
+| **移动应用**（预览） | 与桌面端配对 | 共享对话 | [指南](docs/03-features/mobile.md) |
 | **你的编辑器** | ACP | 在 Zed 等 ACP 客户端里把 Suzent 当作智能体使用 | [指南](docs/03-features/nodes.md#use-suzent-from-your-editor-acp) |
 | **其他智能体** | A2A | 把工作委派给其他智能体，或接受你授权的工作 | [指南](docs/03-features/nodes.md#work-with-other-agents-a2a) |
 | **Telegram** | Bot API | 文字、图片、文件 | [指南](docs/05-chat-apps/telegram.md) |
