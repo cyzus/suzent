@@ -26,17 +26,6 @@ import {
 } from '../../lib/providerVisuals';
 import { isImeComposing } from '../../lib/ime';
 
-const API_TYPES = [
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'openrouter',
-  'ollama',
-  'litellm_proxy',
-  'bedrock',
-] as const;
-
 // Shared styling for the trailing action buttons attached to credential inputs
 // (Change / Save / Cancel). Color denotes hierarchy; everything else stays consistent.
 const FIELD_ACTION_BASE =
@@ -219,172 +208,230 @@ function RegionPicker({ provider, selected, custom, onSelect, onCustom }: Region
 
 // ─── AddProviderForm ─────────────────────────────────────────────────────────
 
+const CUSTOM_PROTOCOLS = ['openai', 'anthropic'] as const;
+type CustomProtocol = (typeof CUSTOM_PROTOCOLS)[number];
+
+/** An id the backend accepts, derived from the display name. */
+export function slugifyProviderId(label: string): string {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!slug) return '';
+  return (/^[a-z]/.test(slug) ? slug : `p_${slug}`).slice(0, 40);
+}
+
+/**
+ * The provider a custom endpoint becomes: an API key field and a Base URL
+ * field of its own, so both stay editable on its card afterwards.
+ */
+export function buildCustomProvider(form: {
+  id: string;
+  label: string;
+  protocol: CustomProtocol;
+  baseUrl: string;
+  apiKey: string;
+}): { payload: CustomProviderPayload; keyField: string; baseUrlField: string } {
+  const prefix = `CUSTOM_${form.id.toUpperCase()}`;
+  const keyField = `${prefix}_API_KEY`;
+  const baseUrlFieldKey = `${prefix}_BASE_URL`;
+  const baseUrl = form.baseUrl.trim().replace(/\/+$/, '');
+  return {
+    keyField,
+    baseUrlField: baseUrlFieldKey,
+    payload: {
+      id: form.id,
+      label: form.label.trim(),
+      api_type: form.protocol,
+      base_url: baseUrl,
+      env_keys: [keyField],
+      fields: [
+        { key: keyField, label: 'API Key', placeholder: 'sk-...', type: 'secret' },
+        { key: baseUrlFieldKey, label: 'Base URL', placeholder: baseUrl, type: 'text' },
+      ],
+      default_models: [],
+      ...(!form.apiKey.trim() && { api_key_optional: true }),
+    },
+  };
+}
+
 interface AddProviderFormProps {
-  onSave: (payload: CustomProviderPayload) => Promise<void>;
+  onSave: (payload: CustomProviderPayload, keys: Record<string, string>) => Promise<void>;
   onCancel: () => void;
 }
 
 function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
   const { t } = useI18n();
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    id: '',
-    label: '',
-    api_type: 'openai' as string,
-    base_url: '',
-    key_env: '',
-    key_label: 'API Key',
-    key_placeholder: '',
-  });
+  const [label, setLabel] = useState('');
+  const [id, setId] = useState('');
+  const [idEdited, setIdEdited] = useState(false);
+  const [protocol, setProtocol] = useState<CustomProtocol>('openai');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
+  const providerId = idEdited ? id : slugifyProviderId(label);
+  const inputClass =
+    'w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500';
+  const labelClass =
+    'block text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider';
 
   const handleSave = async () => {
-    if (!form.id.trim() || !form.label.trim()) {
-      setError(t('settings.providers.addForm.requiredFields'));
+    if (!label.trim()) {
+      setError(t('settings.providers.addForm.nameRequired'));
+      return;
+    }
+    if (!/^[a-z][a-z0-9_]{0,39}$/.test(providerId)) {
+      setError(t('settings.providers.addForm.idInvalid'));
+      return;
+    }
+    if (!/^https?:\/\/\S+$/.test(baseUrl.trim())) {
+      setError(t('settings.providers.addForm.baseUrlInvalid'));
       return;
     }
     setSaving(true);
     setError('');
-    const payload: CustomProviderPayload = {
-      id: form.id.trim(),
-      label: form.label.trim(),
-      api_type: form.api_type,
-      ...(form.base_url.trim() && { base_url: form.base_url.trim() }),
-      ...(form.key_env.trim() && {
-        env_keys: [form.key_env.trim()],
-        fields: [
-          {
-            key: form.key_env.trim(),
-            label: form.key_label.trim() || 'API Key',
-            placeholder: form.key_placeholder.trim() || '...',
-            type: 'secret',
-          },
-        ],
-      }),
-      default_models: [],
-    };
+    const custom = buildCustomProvider({ id: providerId, label, protocol, baseUrl, apiKey });
     try {
-      await onSave(payload);
+      await onSave(custom.payload, {
+        [custom.baseUrlField]: custom.payload.base_url ?? '',
+        ...(apiKey.trim() && { [custom.keyField]: apiKey.trim() }),
+      });
     } catch (e: any) {
-      setError(e.message || 'Failed to save provider');
+      setError(e.message || t('settings.providers.addForm.saveFailed'));
       setSaving(false);
     }
   };
 
   return (
     <div className="space-y-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-800 sm:p-5">
-      <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">
-        {t('settings.providers.addForm.title')}
-      </h3>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-            {t('settings.providers.addForm.id')} *
-          </label>
-          <input
-            type="text"
-            value={form.id}
-            onChange={(e) => set('id', e.target.value.replace(/\s/g, '_').toLowerCase())}
-            placeholder="my_provider"
-            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-            {t('settings.providers.addForm.label')} *
-          </label>
-          <input
-            type="text"
-            value={form.label}
-            onChange={(e) => set('label', e.target.value)}
-            placeholder="My Provider"
-            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-            {t('settings.providers.addForm.apiType')}
-          </label>
-          <select
-            value={form.api_type}
-            onChange={(e) => set('api_type', e.target.value)}
-            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-          >
-            {API_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-            {t('settings.providers.addForm.baseUrl')}
-          </label>
-          <input
-            type="text"
-            value={form.base_url}
-            onChange={(e) => set('base_url', e.target.value)}
-            placeholder="https://api.example.com/v1"
-            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-          />
-        </div>
-      </div>
-
-      <div className="border-t-2 border-neutral-200 dark:border-zinc-700 pt-4 space-y-3">
-        <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-          {t('settings.providers.addForm.apiKeySection')}
+      <div>
+        <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">
+          {t('settings.providers.addForm.title')}
+        </h3>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          {t('settings.providers.addForm.subtitle')}
         </p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-              {t('settings.providers.addForm.envVar')}
-            </label>
-            <input
-              type="text"
-              value={form.key_env}
-              onChange={(e) => set('key_env', e.target.value.toUpperCase().replace(/\s/g, '_'))}
-              placeholder="MY_PROVIDER_API_KEY"
-              className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-              {t('settings.providers.addForm.fieldLabel')}
-            </label>
-            <input
-              type="text"
-              value={form.key_label}
-              onChange={(e) => set('key_label', e.target.value)}
-              placeholder="API Key"
-              className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-              {t('settings.providers.addForm.placeholder')}
-            </label>
-            <input
-              type="text"
-              value={form.key_placeholder}
-              onChange={(e) => set('key_placeholder', e.target.value)}
-              placeholder="sk-..."
-              className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
-            />
-          </div>
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="custom-provider-name" className={labelClass}>
+          {t('settings.providers.addForm.name')} *
+        </label>
+        <input
+          id="custom-provider-name"
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="My Relay"
+          className={inputClass}
+        />
+        <p className="flex flex-wrap items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <span>{t('settings.providers.addForm.id')}</span>
+          <input
+            type="text"
+            aria-label={t('settings.providers.addForm.id')}
+            value={providerId}
+            onChange={(e) => {
+              setIdEdited(true);
+              setId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+            }}
+            placeholder="my_relay"
+            className="min-w-0 flex-1 border-b border-dashed border-neutral-400 bg-transparent font-mono text-[10px] focus:outline-none dark:text-white"
+          />
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className={labelClass}>{t('settings.providers.addForm.protocol')}</span>
+        <div role="radiogroup" className="grid gap-2 sm:grid-cols-2">
+          {CUSTOM_PROTOCOLS.map((option) => {
+            const active = protocol === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setProtocol(option)}
+                className={`border-2 border-brutal-black p-2.5 text-left transition-colors ${
+                  active
+                    ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                    : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-700'
+                }`}
+              >
+                <span className="block text-xs font-black uppercase">
+                  {t(`settings.providers.addForm.protocols.${option}`)}
+                </span>
+                <span className="block font-mono text-[10px] opacity-70">
+                  {option === 'openai' ? '/chat/completions' : '/messages'}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {error && <p className="text-red-600 text-xs font-bold">{error}</p>}
+      <div className="space-y-1">
+        <label htmlFor="custom-provider-base-url" className={labelClass}>
+          {t('settings.providers.addForm.baseUrl')} *
+        </label>
+        <input
+          id="custom-provider-base-url"
+          type="url"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder={
+            protocol === 'openai' ? 'https://api.example.com/v1' : 'https://api.example.com'
+          }
+          className={inputClass}
+        />
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          {t(`settings.providers.addForm.baseUrlHint.${protocol}`)}
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="custom-provider-api-key" className={labelClass}>
+          {t('settings.providers.addForm.apiKey')}
+        </label>
+        <div className="flex">
+          <input
+            id="custom-provider-api-key"
+            type={showApiKey ? 'text' : 'password'}
+            autoComplete="off"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            className={`${inputClass} ${apiKey ? 'border-r-0' : ''}`}
+          />
+          {apiKey && (
+            <button
+              type="button"
+              onClick={() => setShowApiKey((v) => !v)}
+              title={t(`settings.providers.${showApiKey ? 'hideKey' : 'showKey'}`)}
+              className="w-9 shrink-0 border-2 border-brutal-black bg-white font-mono text-xs hover:bg-neutral-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-800"
+            >
+              {showApiKey ? '○' : '●'}
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          {t('settings.providers.addForm.apiKeyHint')}
+        </p>
+      </div>
+
+      {error && (
+        <p role="alert" className="text-red-600 text-xs font-bold">
+          {error}
+        </p>
+      )}
 
       <div className="flex gap-3 justify-end pt-2">
         <button
+          type="button"
           onClick={onCancel}
           className="px-4 py-2 text-xs font-black uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white"
         >
@@ -671,6 +718,101 @@ function ChatGPTProviderCard({
   );
 }
 
+// ─── ProviderCatalog ─────────────────────────────────────────────────────────
+
+const CATALOG_GROUPS = ['global', 'china', 'relay', 'local'] as const;
+
+interface ProviderCatalogProps {
+  providers: ApiProvider[];
+  showCustom: boolean;
+  customOpen: boolean;
+  customForm: React.ReactNode;
+  onPick: (provider: ApiProvider) => void;
+  onCustom: () => void;
+}
+
+const ProviderCatalog = React.forwardRef<HTMLElement, ProviderCatalogProps>(
+  function ProviderCatalog(
+    { providers, showCustom, customOpen, customForm, onPick, onCustom },
+    ref
+  ) {
+    const { t } = useI18n();
+    // The backend already puts China first for Chinese users.
+    const order = [...new Set([...providers.map((p) => p.group ?? 'global'), ...CATALOG_GROUPS])];
+    const tile =
+      'flex min-w-0 items-center gap-3 border-2 border-brutal-black bg-white p-2.5 text-left transition-colors hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-700';
+    return (
+      <section
+        ref={ref}
+        aria-labelledby="provider-catalog-title"
+        className="space-y-4 border-2 border-brutal-black bg-neutral-50 p-4 shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:shadow-none"
+      >
+        <div>
+          <h3
+            id="provider-catalog-title"
+            className="font-black uppercase text-lg tracking-wide dark:text-white"
+          >
+            {t('settings.providers.catalog.title')}
+          </h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t('settings.providers.catalog.subtitle')}
+          </p>
+        </div>
+        {order.map((group) => {
+          const members = providers.filter((p) => (p.group ?? 'global') === group);
+          if (members.length === 0) return null;
+          return (
+            <div key={group} className="space-y-2">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                {t(`settings.providers.catalog.groups.${group}`)}
+              </h4>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {members.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() => onPick(provider)}
+                    className={tile}
+                  >
+                    <ProviderIcon provider={provider} />
+                    <span className="min-w-0 text-xs font-black uppercase leading-tight">
+                      {provider.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {showCustom && (
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              {t('settings.providers.catalog.groups.custom')}
+            </h4>
+            {customOpen ? (
+              customForm
+            ) : (
+              <button type="button" onClick={onCustom} className={`${tile} w-full`}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-dashed border-brutal-black text-lg font-black dark:border-zinc-500">
+                  +
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-black uppercase">
+                    {t('settings.providers.catalog.customTitle')}
+                  </span>
+                  <span className="block text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {t('settings.providers.catalog.customHint')}
+                  </span>
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
+);
+
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
@@ -773,9 +915,47 @@ export function ProvidersTab({
     });
   };
 
-  const handleSaveProvider = async (payload: CustomProviderPayload) => {
+  // Providers picked from the catalog this session stay listed while being set up.
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const catalogRef = useRef<HTMLElement | null>(null);
+
+  const isConfigured = (provider: ApiProvider) =>
+    provider.user_defined ||
+    added.has(provider.id) ||
+    ((userConfigs[provider.id] || provider.user_config)?.enabled_models?.length ?? 0) > 0 ||
+    provider.fields.some((field) => field.isSet || !!apiKeys[field.key]);
+  const matches = (provider: ApiProvider) =>
+    `${provider.label} ${provider.id}`.toLowerCase().includes(query.trim().toLowerCase());
+  // Onboarding keeps the flat list; Settings lists only what is in use.
+  const listed = onboarding ? providers : providers.filter(isConfigured);
+  const catalog = onboarding ? [] : providers.filter((provider) => !isConfigured(provider));
+  const showCatalog =
+    !onboarding &&
+    (catalogOpen || listed.length === 0 || (!!query.trim() && catalog.some(matches)));
+
+  const pickFromCatalog = (provider: ApiProvider) => {
+    setAdded((prev) => new Set(prev).add(provider.id));
+    setCatalogOpen(false);
+    setQuery('');
+    setJumpTarget(provider.id);
+  };
+
+  const openCatalog = () => {
+    setCatalogOpen(true);
+    requestAnimationFrame(() => catalogRef.current?.scrollIntoView({ block: 'start' }));
+  };
+
+  const handleSaveProvider = async (
+    payload: CustomProviderPayload,
+    keys: Record<string, string>
+  ) => {
     await onAddProvider(payload);
+    for (const [key, value] of Object.entries(keys)) onKeyChange(key, value);
     setShowAddForm(false);
+    setCatalogOpen(false);
+    setQuery('');
+    setJumpTarget(payload.id);
   };
 
   const handleDelete = async (providerId: string) => {
@@ -831,17 +1011,22 @@ export function ProvidersTab({
                 >
                   {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
                 </BrutalButton>
-                <BrutalButton onClick={() => setShowAddForm((v) => !v)} variant="light" size="sm">
-                  {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
+                <BrutalButton
+                  onClick={() =>
+                    showCatalog && listed.length > 0 ? setCatalogOpen(false) : openCatalog()
+                  }
+                  variant="light"
+                  size="sm"
+                  aria-expanded={showCatalog}
+                >
+                  {showCatalog && listed.length > 0
+                    ? t('common.cancel')
+                    : t('settings.providers.addProvider')}
                 </BrutalButton>
               </>
             )
           }
         />
-      )}
-
-      {showAddForm && (
-        <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
       )}
 
       <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
@@ -896,14 +1081,12 @@ export function ProvidersTab({
         placeholder={t('settings.providers.searchProviders')}
         className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-400"
       />
-      {!providers.some((provider) =>
-        `${provider.label} ${provider.id}`.toLowerCase().includes(query.trim().toLowerCase())
-      ) && <p className="text-sm dark:text-white">{t('settings.providers.noMatchingProviders')}</p>}
+      {!providers.some(matches) && (
+        <p className="text-sm dark:text-white">{t('settings.providers.noMatchingProviders')}</p>
+      )}
       <div className="space-y-3">
-        {providers.map((provider) => {
-          const visible = `${provider.label} ${provider.id}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase());
+        {listed.map((provider) => {
+          const visible = matches(provider);
           const activeTab = activeTabs[provider.id] || 'credentials';
           const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
           const isEnabled = conf.enabled_models.length > 0;
@@ -1355,6 +1538,22 @@ export function ProvidersTab({
           );
         })}
       </div>
+      {showCatalog && (
+        <ProviderCatalog
+          ref={catalogRef}
+          providers={catalog.filter(matches)}
+          showCustom={!query.trim() || 'custom'.includes(query.trim().toLowerCase())}
+          customOpen={showAddForm}
+          onPick={pickFromCatalog}
+          onCustom={() => setShowAddForm(true)}
+          customForm={
+            <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
+          }
+        />
+      )}
+      {onboarding && showAddForm && (
+        <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
+      )}
       {onboarding && (
         <BrutalButton variant="ghost" size="sm" onClick={() => setShowAddForm((v) => !v)}>
           {t(showAddForm ? 'common.cancel' : 'onboarding.otherProvider')}
