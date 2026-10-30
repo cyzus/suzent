@@ -7,6 +7,7 @@
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Use native navigation, menus, swipe actions, settings, sheets, sharing and haptics on iOS and Android, unify the mobile visual rules, pin approvals above the composer, and make activity disclosures expand and collapse smoothly.
 - Simplify the mobile pairing screen before scanning: a centered welcome, the scan button within thumb reach, a one-line hint for where to find the QR code on desktop, and pasting an invitation in a sheet.
+- Keep the project order on the mobile home screen steady when projects are expanded, and stop iOS from shuffling chat rows that appear in both Recent and an expanded project.
 - Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
 
 ## [mobile-v0.4.1] - 2026-10-26
