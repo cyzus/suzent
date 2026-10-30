@@ -131,43 +131,18 @@ agent.
 | | What it is | Start here |
 |---|---|---|
 | **Desktop app** | The main app for Windows, macOS, and Linux. | [Quickstart](https://suzent.com/docs/getting-started/quickstart) |
-| **Phone** | The Suzent app for Android and iOS, paired with your computer. | [Pair your phone](#phone) |
+| **Phone** | The Suzent app for Android and iOS, paired with your computer. | [Mobile app](https://suzent.com/docs/features/mobile) |
 | **Browser** | The same interface in a web browser, served by Suzent itself. | [Browser](#browser) |
 | **Headless server** | Suzent running as a background service with no window. | [Headless server](#headless-server) |
 | **Chat apps** | Telegram, Slack, Discord, Feishu, or WeChat. | [Chat apps](https://suzent.com/docs/chat-apps) |
 
 ## Phone
 
-The mobile app (currently in preview) is a remote control for the agent on your
-computer. Your live agent runs on that computer, where its memory and model API
-keys stay; the offline demo runs locally on your phone.
-
-1. Get the app. Download the [latest Android APK](https://suzent.com/download/android/)
-   or browse the `mobile-v...` versions on [GitHub Releases](https://github.com/cyzus/suzent/releases). The iOS app is
-   available through the [iOS TestFlight beta](https://suzent.com/download/ios/).
-   On your iPhone or iPad, install Apple’s TestFlight app, open the invitation,
-   and follow the steps to accept the beta and install Suzent. Availability
-   depends on an approved build and open places in the test group.
-2. On your computer, open **Settings → Devices → Mobile access**, choose what
-   the phone may do, and click **Pair a phone**.
-3. Scan the QR code with the app and confirm.
-
-See [Pair your phone](https://suzent.com/docs/features/nodes#pair-your-phone) for the details
-and how to revoke access.
-
-### Try it without a desktop
-
-Choose **Try offline demo** at the bottom of the phone's connection screen to
-explore with sample data. If already paired, use **Settings → About → Try offline
-demo**. No computer, API key, account, or internet connection is required. You can
-send messages, try a trip-planning example, approve or reject a simulated tool,
-attach files, and manage conversations.
-
-Replies are scripted, tools are simulated, and attachments stay on your phone
-without being uploaded or analysed. The banner always identifies the demo.
-**Settings → Reset demo** restores the examples; **Exit demo** returns to the
-connection screen. Existing desktop pairing is retained. To use your own agent,
-exit the demo and pair with your computer.
+The Suzent app for Android and iOS (currently in preview) is a remote control
+for the agent on your computer. Nothing runs on the phone itself, so your
+memory and keys stay home. To get it and pair it, see
+[Mobile app](https://suzent.com/docs/features/mobile). To look around before you pair, the app
+has an [offline demo](https://suzent.com/docs/features/mobile#try-it-without-a-computer).
 
 ## Browser
 
@@ -1831,6 +1806,150 @@ your files. See [Command line](https://suzent.com/docs/reference/cli#memory).
 
 ---
 
+# Mobile app
+
+Source: https://suzent.com/docs/features/mobile
+
+
+
+
+The Suzent app for Android and iOS is a remote control for the agent on your
+computer. Your memory, files, and keys stay on that computer: the phone only
+shows your conversations and sends your messages, under permissions you choose
+for each phone.
+
+<Callout type="info" title="note">
+
+The mobile app is a preview. It works, but it isn't in the App Store or Google
+Play yet, and some desktop features are missing (see [Limits](#limits)).
+
+</Callout>
+
+## Get the app
+
+| | Requirement | Where to get it |
+|---|---|---|
+| **Android** | Android 8 or later | Download the [latest APK](https://suzent.com/download/android/) and install it. Earlier versions are on [GitHub Releases](https://github.com/cyzus/suzent/releases) under `mobile-v...`. |
+| **iOS** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+
+## Try it without a computer
+
+Tap **Try offline demo** at the bottom of the app's connection screen to look
+around with sample data. On a paired phone it's under **Settings → About**. You
+don't need a computer, an API key, or an internet connection: you can send
+messages, try a trip-planning example, approve or reject a pretend tool request,
+attach files, and organize chats.
+
+Replies are scripted and nothing reaches an AI model; a banner says so the whole
+time. Attachments stay on the phone. **Reset demo** in Settings restores the
+examples, and **Exit demo** takes you back to the connection screen. An existing
+pairing is kept while you're in the demo.
+
+## Pair your phone
+
+1. **Make your computer reachable.** Open **Settings → Mesh → Network access**,
+   turn it on, and restart Suzent. See
+   [Make this computer reachable](https://suzent.com/docs/features/nodes#step-1-make-this-computer-reachable).
+2. **Choose what the phone may do.** Open **Settings → Devices → Mobile access**
+   and expand **Phone permissions**. Everything is on except managing
+   conversations:
+
+   | Permission | Lets the phone |
+   |---|---|
+   | **Read all conversations, including future ones** | See every chat. Untick it to pick chats one by one under **Conversations this phone can read**. |
+   | **Create conversations** | Start new chats, and branch a conversation. |
+   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. Off by default. |
+   | **Send messages** | Write to the agent, which can then use its tools under the chat's usual [permission mode](https://suzent.com/docs/features/tools/human-in-the-loop). |
+   | **Stop responses** | Stop a reply in progress. |
+   | **Approve tool requests** | Answer the agent's approval requests. |
+
+3. **Check the address.** Under **Connection settings**, **Backend address
+   reachable from your phone** is filled in for your home network. Connections on your home network are
+   encrypted automatically; you don't need a certificate.
+4. **Click Pair a phone.** In the app, tap **Scan desktop QR code** (or
+   **Paste an invitation instead** after **Copy invitation** on the
+   computer), check the permissions it shows, and tap **Confirm connection**.
+   You don't need to approve anything again on the computer.
+
+The QR code works once and expires after a few minutes; click **New QR code**
+for another. Anyone who scans it gets the permissions you picked, so don't
+share it.
+
+### Using it away from home
+
+The phone talks to your computer directly; there's no Suzent cloud in between.
+On your home Wi-Fi that just works. To use it elsewhere, put both devices on
+[Tailscale](https://tailscale.com/), or give Suzent a public HTTPS address of
+your own. Your computer has to be on and running Suzent; the
+[background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background)
+keeps it running when the window is closed.
+
+## What you can do on the phone
+
+- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
+  **New conversation** are at the top, then pinned chats, your three most
+  recent with **View all**, your projects (tap one to open it, and **Load
+  more** for older chats), and your scheduled tasks. Search looks through the
+  titles of every chat the phone may read, not only the ones already loaded.
+  **Settings** is in the top toolbar.
+- **Talk to the agent.** Send messages, watch replies stream in with their
+  sources and an activity summary you can expand for each tool's details, and
+  stop a reply. Long-press a message to copy or share it, edit and resend your
+  last message, retry a reply, or branch a conversation. Edit and retry also
+  need the manage permission.
+- **Talk to Regent.** If the phone may read all conversations, you can talk to
+  [Suzent Regent](https://suzent.com/docs/using/regent) as on the computer, see when it's
+  working or needs you, and open the conversations it handed work to. You
+  can't attach files, edit, retry, or branch in Regent's chat from the phone.
+- **Attach things.** Tap **+** next to the message box and choose **Camera**,
+  **Photos and videos**, or **Files**. Up to 10 items go with one message, up
+  to 200 MB in all. They're saved in the conversation's workspace on your
+  computer, under `uploads/`. If the model reads images, it sees photos
+  directly; other files are handed to the agent to open with its tools.
+  Attaching needs the **Send messages** permission.
+- **Pick the model.** **Desktop model** lists the models you've enabled on
+  your computer.
+- **Answer approvals.** When the agent needs permission, **Approval required**
+  appears above the message box with **Allow once** and **Reject** for each
+  request.
+- **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
+  it to pin or delete, if the phone may manage conversations.
+- **Follow background work.** Sub-agent chats fold under the chat that
+  started them. **Scheduled tasks** shows failed tasks first, then active and
+  paused ones, with their status and next run. You can open a task's chat but
+  not change the task from the phone.
+
+The app is in English and Simplified Chinese, and follows your phone's light
+or dark mode. If the connection drops, it reconnects when you open it again and
+picks up a reply where it left off. If it can't, **Connection help** has
+**Pair again** and **Forget connection**.
+
+## Change or remove access
+
+On your computer, **Paired phones** under **Mobile access** lists each phone
+by name with what it may do. Click **Edit permissions** to change any of them
+and **Save**; the phone keeps working with the new permissions straight away.
+**Revoke access** cuts the phone off immediately: the next time it connects, it
+signs out and asks you to pair again.
+
+**Forget connection** in the app only removes the connection from the phone.
+Also click **Revoke access** on the computer so its access is gone too.
+
+## Limits
+
+The preview doesn't yet have:
+
+- notifications, so the phone stays quiet until you open the app;
+- voice input, or the agent's interactive forms and buttons;
+- memory, settings, or tool permissions, which stay on the computer;
+- offline access to your conversations.
+
+For the technical design, see the
+[mobile architecture](https://suzent.com/docs/developing/architecture/mobile).
+
+
+---
+
 # Devices & other agents
 
 Source: https://suzent.com/docs/features/nodes
@@ -1875,18 +1994,9 @@ your computer.
 
 ## Pair your phone
 
-In **Settings → Devices → Mobile access**, choose what the phone may do (read
-conversations, send messages, approve tool requests), click **Pair a phone**,
-and scan the QR code with the Suzent mobile app (currently in preview). Confirm that the code on your
-phone matches the one on screen. Each phone gets its own access, which you can
-restrict or revoke at any time.
-
-A phone that may send messages can also attach things to them: tap **+** next
-to the message box to take a photo or video, pick from your photo library, or
-choose a file. Attachments are saved in the conversation's workspace on your
-computer, under `uploads/`, never on a cloud service. Up to 10 items go with one
-message. If the model reads images, it sees photos directly; videos and other
-files are handed to the agent to open with its tools.
+The Suzent app for Android and iOS pairs from **Settings → Devices → Mobile
+access**, with its own permissions for each phone. See
+[Mobile app](https://suzent.com/docs/features/mobile).
 
 ## Connect another device
 
@@ -2155,6 +2265,7 @@ on a computer you own: that is what makes it a
 
 | Page | What you'll learn |
 |---|---|
+| [Mobile app](https://suzent.com/docs/features/mobile) | Chatting with your agent and answering its approvals from your phone. |
 | [Devices & other agents](https://suzent.com/docs/features/nodes) | Your phone and other computers, other Suzents, A2A agents, and your editor. |
 | [GitHub Sync](https://suzent.com/docs/features/github-sync) | Carrying your agent's settings, skills, and memory to another computer. |
 | [Chat apps](https://suzent.com/docs/chat-apps) | Telegram, Slack, Discord, Feishu, and WeChat. |
@@ -6602,7 +6713,7 @@ packages/SuzentCore/       Foundation-only Swift protocol/client package
 Use a backend with mobile pairing/client protocol 1 and snapshot/cursor protocol 1.
 The phone checks capabilities before connecting and reports incompatible versions.
 
-Enable desktop **Reachable by other devices**, restart, and use its LAN/Tailscale
+Enable desktop **Settings → Mesh → Network access**, restart, and use its LAN/Tailscale
 address on port 25314 (never the phone's localhost) in the desktop pairing card.
 The QR includes the preferred origin plus discovered LAN/Tailscale candidates.
 Updated phones check candidate capabilities without credentials, then display the
@@ -6770,7 +6881,7 @@ choices give haptic feedback, and iOS text follows Dynamic Type.
 
 ### Mobile tool approvals and activity rail
 
-New desktop invitations default to Full access; expand Restrict access for individual scopes. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
+New desktop invitations grant every scope except `manage_chats`; tick it under **Phone permissions** to allow managing conversations. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
 
 Both native clients use the same activity fixtures in `packages/mobile-contract/activity-fixtures.json`. They retain text/activity order, group consecutive reasoning and tools into expandable rails, replace replayed arguments, and clear the entire transient state on stream reset. Pending approvals use the desktop queue and show tool arguments with allow/reject actions. All requests in a batch must be decided before the native run resumes; ACP uses its existing live broker. Foreground polling reflects decisions made on desktop.
 
@@ -11332,7 +11443,7 @@ five-question ownership test, see
 - [Memory](https://suzent.com/docs/features/memory), [Notebook](https://suzent.com/docs/features/memory/llm-wiki), [Advanced memory settings](https://suzent.com/docs/features/memory/configuration)
 - [Tools](https://suzent.com/docs/features/tools), [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop), [Browser](https://suzent.com/docs/features/tools/browser)
 - [Skills](https://suzent.com/docs/features/skills), [Workspace & sandbox](https://suzent.com/docs/features/filesystem), [Automation](https://suzent.com/docs/features/automation)
-- [Devices & other agents](https://suzent.com/docs/features/nodes), [GitHub Sync](https://suzent.com/docs/features/github-sync)
+- [Mobile app](https://suzent.com/docs/features/mobile), [Devices & other agents](https://suzent.com/docs/features/nodes), [GitHub Sync](https://suzent.com/docs/features/github-sync)
 
 ## Models
 

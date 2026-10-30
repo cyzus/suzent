@@ -18,6 +18,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Advanced memory settings](https://suzent.com/docs/features/memory/configuration)
 - [Notebook](https://suzent.com/docs/features/memory/llm-wiki)
 - [Memory](https://suzent.com/docs/features/memory)
+- [Mobile app](https://suzent.com/docs/features/mobile)
 - [Devices & other agents](https://suzent.com/docs/features/nodes)
 - [Plugins](https://suzent.com/docs/features/plugins)
 - [Features](https://suzent.com/docs/features)
