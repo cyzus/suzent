@@ -1,0 +1,6 @@
+id: telegram
+name: Telegram
+version: 1.0.0
+description: Chat with Suzent from Telegram.
+channel: telegram
+extras: [telegram]

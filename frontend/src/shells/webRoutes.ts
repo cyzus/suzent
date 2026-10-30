@@ -29,6 +29,7 @@ import {
   CpuChipIcon,
   InformationCircleIcon,
   PaintBrushIcon,
+  PuzzlePieceIcon,
   ServerStackIcon,
   ShareIcon,
   ShieldCheckIcon,
@@ -135,6 +136,13 @@ export const WEB_DESTINATION_GROUPS: WebDestinationGroup[] = [
         labelKey: 'settings.categories.acpAgents',
         icon: BoltIcon,
         category: 'acp-agents',
+        framed: true,
+      },
+      {
+        path: '/plugins',
+        labelKey: 'settings.categories.plugins',
+        icon: PuzzlePieceIcon,
+        category: 'plugins',
         framed: true,
       },
       {
