@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "patch"},
+  "reason": "Only the iOS and Android Regent sidebar row changes.",
+  "summary": "Match the desktop Regent row on mobile: it rests as the plain Suzent head and puts on its circlet with the desktop coronation while pressed."
+}
