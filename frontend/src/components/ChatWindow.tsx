@@ -787,6 +787,7 @@ let queuedMessageStore: Record<string, QueuedMessage[]> = {};
 
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
+  rightSidebarHeaderSlot?: HTMLElement | null;
   onRightSidebarToggle?: (isOpen: boolean) => void;
   onRightSidebarWidthChange?: (width: number | null) => void;
   rightSidebarMaxWidthPx?: number;
@@ -802,6 +803,7 @@ const isAbortError = (err: unknown) =>
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
+  rightSidebarHeaderSlot,
   onRightSidebarToggle = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
@@ -3568,6 +3570,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Right Sidebar */}
         <RightSidebar
           isOpen={isRightSidebarOpen}
+          headerSlot={rightSidebarHeaderSlot}
           onClose={() => onRightSidebarToggle(false)}
           onOpen={() => onRightSidebarToggle(true)}
           onWidthChange={onRightSidebarWidthChange}

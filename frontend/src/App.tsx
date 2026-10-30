@@ -358,6 +358,7 @@ function AppInner(): React.ReactElement {
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [rightSidebarHeaderSlot, setRightSidebarHeaderSlot] = useState<HTMLDivElement | null>(null);
   const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
@@ -376,7 +377,7 @@ function AppInner(): React.ReactElement {
       MAX_LEFT_SIDEBAR_WIDTH_PX,
       viewportWidth -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
-        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 44)
+        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 0)
     )
   );
   const leftSidebarWidth = Math.max(
@@ -386,7 +387,7 @@ function AppInner(): React.ReactElement {
       MAX_LEFT_SIDEBAR_WIDTH_PX,
       viewportWidth -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
-        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 44)
+        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 0)
     )
   );
   const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(
@@ -829,25 +830,12 @@ function AppInner(): React.ReactElement {
                 />
                 <UpdateButton />
 
-                {mainView === 'chat' && !isSettingsOpen ? (
-                  <button
-                    onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
-                    className={`
-                    h-10 w-10 flex items-center justify-center rounded-md transition-colors
-                    ${
-                      isRightSidebarOpen
-                        ? 'bg-neutral-200 dark:bg-zinc-700 text-brutal-black dark:text-white'
-                        : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
-                    }
-                  `}
-                    aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                    title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                  >
-                    <SidebarToggleIcon side="right" open={isRightSidebarOpen} />
-                  </button>
-                ) : (
-                  <div className="h-10 w-10" aria-hidden="true" />
-                )}
+                <div
+                  ref={setRightSidebarHeaderSlot}
+                  className={
+                    mainView === 'chat' && !isSettingsOpen ? 'flex items-center' : 'hidden'
+                  }
+                />
 
                 {showWindowsWindowControls ? (
                   <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
@@ -919,6 +907,7 @@ function AppInner(): React.ReactElement {
               >
                 <ChatWindow
                   isRightSidebarOpen={isRightSidebarOpen}
+                  rightSidebarHeaderSlot={rightSidebarHeaderSlot}
                   onRightSidebarToggle={handleRightSidebarToggle}
                   onRightSidebarWidthChange={setRightSidebarWidth}
                   rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
