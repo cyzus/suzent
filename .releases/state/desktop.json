@@ -58,6 +58,7 @@
     ".releases/changes/focal-session-request-visible.json",
     ".releases/changes/focal-tools-package.json",
     ".releases/changes/header-title-gap.json",
+    ".releases/changes/hover-tooltip-length.json",
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/ime-safe-keyboard.json",

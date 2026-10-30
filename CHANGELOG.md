@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
+- Keep hover tooltips to one short line instead of showing whole commands, prompts, results and errors, and shorten the longest hover hints.
 - Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
