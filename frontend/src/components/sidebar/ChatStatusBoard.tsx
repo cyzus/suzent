@@ -124,14 +124,14 @@ export function ChatStatusBoard({
             {onOpenChat ? (
               <button
                 type="button"
-                className="min-w-0 flex-1 truncate text-left text-[13px] font-bold leading-snug hover:underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+                className="min-w-0 flex-1 truncate text-left text-[13px] font-medium leading-snug hover:underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
                 title={`${row.title} · ${t('chatBoard.menu.open')}`}
                 onClick={() => onOpenChat(row.chatId)}
               >
                 {row.title}
               </button>
             ) : (
-              <h2 className="min-w-0 flex-1 truncate text-[13px] font-bold leading-snug">
+              <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug">
                 {row.title}
               </h2>
             )}
@@ -145,7 +145,7 @@ export function ChatStatusBoard({
             {row.projectName && <span className="min-w-0 truncate">{row.projectName}</span>}
             {row.projectName && row.waitingKind && <span aria-hidden="true">·</span>}
             {row.waitingKind && (
-              <span className="shrink-0 font-bold uppercase text-brutal-black dark:text-white">
+              <span className="shrink-0 uppercase text-neutral-600 dark:text-zinc-300">
                 {t(`chatBoard.reason.${row.waitingKind}`)}
               </span>
             )}
@@ -239,7 +239,7 @@ export function ChatStatusBoard({
                     {group.length}
                   </span>
                 </summary>
-                <div className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
+                <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800">
                   {group.map(renderRow)}
                 </div>
               </details>
