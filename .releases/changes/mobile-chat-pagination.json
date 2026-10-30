@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor", "mobile": "minor"},
+  "summary": "Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index."
+}

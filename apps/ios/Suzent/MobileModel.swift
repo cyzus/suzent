@@ -14,6 +14,89 @@ import SuzentCore
     var reconnecting = false
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
+    var chatPages: [ChatPageQuery: ChatPage] = [:]
+    var loadingPages: Set<ChatPageQuery> = []
+    private var navigationRevision = UUID()
+    var navigationVersion = 0
+    private var lastNavigationRefresh = Date.distantPast
+
+    func pageChats(_ query: ChatPageQuery) -> [Chat] {
+        let byID = Dictionary(chats.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        return (chatPages[query]?.chats ?? []).compactMap { byID[$0.id] }
+    }
+
+    func loadPage(_ query: ChatPageQuery, more: Bool = false) async {
+        guard let client, !loadingPages.contains(query) else { return }
+        if !more && chatPages[query] != nil { return }
+        let offset = more ? chatPages[query]?.nextOffset : 0
+        guard let offset else { return }
+        let current = generation
+        let revision = navigationRevision
+        loadingPages.insert(query)
+        defer { if revision == navigationRevision { loadingPages.remove(query) } }
+        do {
+            let page = try await client.chatPage(query, offset: offset, limit: 30)
+            guard current == generation, revision == navigationRevision, !Task.isCancelled else { return }
+            if query.kind == "search" {
+                chatPages = chatPages.filter { $0.key.kind != "search" || $0.key == query }
+            }
+            chatPages[query] = more ? chatPages[query]?.appending(page) ?? page : page
+            mergeNavigationChats(page.chats)
+            let retained = Set(chatPages.values.flatMap { $0.chats.map(\.id) })
+            chats.removeAll { !$0.isRegent && $0.id != selected?.id && !retained.contains($0.id) }
+        } catch is CancellationError { }
+        catch { if current == generation && revision == navigationRevision { handle(error) } }
+    }
+
+    private func mergeNavigationChats(_ updates: [Chat]) {
+        let ids = Set(updates.map(\.id))
+        chats = chats.filter { !ids.contains($0.id) } + updates
+    }
+
+    private func applyNavigation(_ initial: InitialNavigation) {
+        navigationRevision = UUID()
+        navigationVersion += 1
+        loadingPages = []
+        chatPages = [ChatPageQuery(): initial.recent, ChatPageQuery("pinned"): initial.pinned]
+        chats = initial.chats
+        projects = initial.metadata.projects
+        lastNavigationRefresh = Date()
+    }
+
+    private func refreshNavigation(_ client: any MobileClient, poll: Bool) async throws {
+        let current = generation
+        let revision = navigationRevision
+        if !poll || chatPages.isEmpty {
+            let initial = try await client.initialNavigation()
+            guard current == generation, revision == navigationRevision else { return }
+            applyNavigation(initial)
+        } else {
+            let requested = Set(chats.map(\.id))
+            let updates = try await client.chatStatuses(Array(requested))
+            guard current == generation, revision == navigationRevision else { return }
+            chats = chats.filter { !requested.contains($0.id) } + updates
+            if Date().timeIntervalSince(lastNavigationRefresh) >= 60 {
+                let recentIDs = chatPages[ChatPageQuery()]?.chats.map(\.id)
+                let pinnedIDs = chatPages[ChatPageQuery("pinned")]?.chats.map(\.id)
+                let metadata = try await client.navigationMetadata()
+                let recent = chatPages[ChatPageQuery()].map { $0.chats.count <= 30 } == true
+                    ? try await client.chatPage(ChatPageQuery(), offset: 0, limit: 30) : nil
+                let pinned = (chatPages[ChatPageQuery("pinned")]?.chats.count ?? 0) <= 30
+                    ? try await client.chatPage(ChatPageQuery("pinned"), offset: 0, limit: 30) : nil
+                guard current == generation, revision == navigationRevision else { return }
+                projects = metadata.projects
+                if let regent = metadata.regent { mergeNavigationChats([regent]) }
+                if let recent, !loadingPages.contains(ChatPageQuery()), chatPages[ChatPageQuery()]?.chats.map(\.id) == recentIDs {
+                    chatPages[ChatPageQuery()] = recent; mergeNavigationChats(recent.chats)
+                }
+                if let pinned, !loadingPages.contains(ChatPageQuery("pinned")), chatPages[ChatPageQuery("pinned")]?.chats.map(\.id) == pinnedIDs {
+                    chatPages[ChatPageQuery("pinned")] = pinned; mergeNavigationChats(pinned.chats)
+                }
+                lastNavigationRefresh = Date()
+            }
+        }
+    }
+
     var chats: [Chat] = []
     var projects: [Project] = []
     var scheduledTasks: [ScheduledTask] = []
@@ -76,8 +159,7 @@ import SuzentCore
                                                        appropriateFor: nil, create: true)
             let demo = try DemoClient(storageURL: directory.appendingPathComponent("OfflineDemo/workspace.json"))
             let session = try await demo.clientSession()
-            let listing = try await demo.chats()
-            let projectList = try await demo.projects()
+            let navigation = try await demo.initialNavigation()
             let taskList = try await demo.scheduledTasks()
             let composer = try await demo.composer()
             clearSession(removeCredentials: false)
@@ -89,7 +171,7 @@ import SuzentCore
             canReconnect = false
             device = session.device
             attachmentsSupported = true
-            chats = listing; projects = projectList; scheduledTasks = taskList
+            applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
             openedVersion += 1
@@ -254,8 +336,7 @@ import SuzentCore
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
-            let listing = try await candidate.chats()
-            let projectList = try await candidate.projects()
+            let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
@@ -266,8 +347,7 @@ import SuzentCore
             client = candidate
             device = session.device
             attachmentsSupported = session.supportsAttachments
-            chats = listing
-            projects = projectList
+            applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
@@ -310,25 +390,23 @@ import SuzentCore
     func watchNavigation() async {
         while !Task.isCancelled && connected {
             if foreground && !busy {
-                await refresh()
+                await refresh(poll: true)
             }
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
         }
     }
 
-    func refresh() async {
+    func refresh(poll: Bool = false) async {
         guard let client else { return }
         let current = generation
         do {
             let session = try await client.clientSession()
-            let listing = try await client.chats()
-            let projectList = try await client.projects()
+            let scopeChanged = device?.permissions.allChats != session.device.permissions.allChats || device?.permissions.chatIds != session.device.permissions.chatIds
+            try await refreshNavigation(client, poll: poll && !scopeChanged)
             let taskList = session.supportsScheduledTasks ? try await client.scheduledTasks() : []
             guard generation == current else { return }
             device = session.device
             attachmentsSupported = session.supportsAttachments
-            chats = listing
-            projects = projectList
             scheduledTasks = taskList
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
@@ -360,9 +438,9 @@ import SuzentCore
                     liveParts = []; pendingApprovals = []; draft = ""; discardAttachments()
                 }
             }
-            let listing = try await client.chats()
+            try await refreshNavigation(client, poll: false)
             guard generation == current else { return }
-            chats = listing
+            let listing = chats
             if action == "pin", listing.contains(where: { $0.id == chat.id && $0.pinned == true }) { pinnedVersion += 1 }
             if let updated = listing.first(where: { $0.id == selected?.id }) {
                 selected?.title = updated.title
@@ -743,6 +821,7 @@ import SuzentCore
         busy = false
         selected = nil
         chats = []
+        chatPages = [:]; loadingPages = []; navigationRevision = UUID()
         canReconnect = connection?.clientProtocol == 1
         device = nil
         pairingInvitation = nil

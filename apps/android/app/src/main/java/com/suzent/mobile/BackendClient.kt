@@ -87,11 +87,14 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsScheduledTasks = false
         private set
 
+    private var supportsPagination = false
+
     override suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
         validateMobileCapabilities(value)
         supportsAttachments = value.optInt("attachments") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
+        supportsPagination = value.optInt("chat_pagination") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
@@ -104,6 +107,29 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         JSONObject().put("pairing_id", id).put("pickup_secret", pickupSecret))
 
     suspend fun confirmPairing() { json("mobile/client/pairing/confirm", JSONObject()) }
+
+    override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
+        if (!supportsPagination) return super.chatPage(query, offset, limit)
+        return ChatPage.parse(json("mobile/client/chat-page", JSONObject().put("kind", query.kind)
+            .put("value", query.value).put("offset", offset).put("limit", limit)))
+    }
+    override suspend fun navigationMetadata(): NavigationMetadata {
+        if (!supportsPagination) return super.navigationMetadata()
+        val value = json("mobile/client/navigation")
+        val array = value.getJSONArray("projects")
+        return NavigationMetadata(value.optJSONObject("regent")?.let(Chat::parse), (0 until array.length()).map {
+            val project = array.getJSONObject(it)
+            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"))
+        })
+    }
+    override suspend fun chatStatuses(ids: List<String>): List<Chat> {
+        if (ids.isEmpty()) return emptyList()
+        if (!supportsPagination) return super.chatStatuses(ids)
+        return ids.chunked(100).flatMap { batch ->
+            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch))).getJSONArray("chats")
+            (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
+        }
+    }
 
     override suspend fun chats(): List<Chat> {
         val array = json("mobile/client/chats").getJSONArray("chats")

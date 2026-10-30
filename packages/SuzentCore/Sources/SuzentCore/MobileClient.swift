@@ -5,6 +5,9 @@ public protocol MobileClient: Sendable {
     func close()
     func clientSession() async throws -> ClientSession
     func chats() async throws -> [Chat]
+    func chatPage(_ query: ChatPageQuery, offset: Int, limit: Int) async throws -> ChatPage
+    func navigationMetadata() async throws -> NavigationMetadata
+    func chatStatuses(_ ids: [String]) async throws -> [Chat]
     func projects() async throws -> [Project]
     func scheduledTasks() async throws -> [ScheduledTask]
     func composer() async throws -> Chat
