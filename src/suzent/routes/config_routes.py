@@ -844,6 +844,36 @@ async def get_social_config(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def _apply_social_config(app, social_config: dict) -> None:
+    """Turn on the plugin of each chat app that is now set up, install its
+    packages, then restart the chat apps with the new settings."""
+    from suzent.plugins import get_plugin_manager
+    from suzent.plugins.deps import DependencyError
+    from suzent.plugins.manager import channel_configured
+    from suzent.server import reload_social
+
+    from suzent.config import PROJECT_DIR
+
+    manager = get_plugin_manager()
+    for platform, settings in social_config.items():
+        if not channel_configured(settings):
+            continue
+        record = manager.for_channel(platform)
+        if record is None or record.status == "error":
+            continue
+        if not record.enabled:
+            manager.set_enabled(record.id, True, requested_as=platform)
+        if manager.missing_packages(record):
+            try:
+                await asyncio.to_thread(
+                    manager.install_dependencies, record, PROJECT_DIR
+                )
+            except DependencyError as exc:
+                logger.warning(f"Installing packages for {platform} failed: {exc}")
+        manager.activate(record.id)
+    await reload_social(app, social_config)
+
+
 async def save_social_config(request: Request) -> JSONResponse:
     """Save the social configuration."""
     try:
@@ -864,9 +894,7 @@ async def save_social_config(request: Request) -> JSONResponse:
         with open(config_path, "w") as f:
             json.dump(existing_config, f, indent=4)
 
-        from suzent.server import reload_social
-
-        asyncio.create_task(reload_social(request.app, existing_config))
+        asyncio.create_task(_apply_social_config(request.app, existing_config))
 
         return JSONResponse({"success": True})
     except Exception as e:

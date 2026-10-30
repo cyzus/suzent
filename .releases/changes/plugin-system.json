@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Add plugins, managed from Settings > Plugins or `suzent plugin`. Each chat app (Telegram, Slack, Discord, Feishu/Lark) is now its own plugin, so only the apps you use download packages; setting one up under Social Channels installs it, and apps you already use stay on. Plugins can also add tools, slash commands and skills, and installing or removing one takes effect without a restart."
+}

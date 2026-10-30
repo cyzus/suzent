@@ -263,6 +263,25 @@ class SkillsAPI:
         return await self.client.post("/skills/reload")
 
 
+class PluginsAPI:
+    # Installing a plugin may run `uv sync`, which can take minutes.
+    INSTALL_TIMEOUT = 600.0
+
+    def __init__(self, client: AsyncBaseClient):
+        self.client = client
+
+    async def list(self) -> list:
+        return await self.client.get("/plugins")
+
+    async def install(self, name: str) -> dict:
+        return await self.client.post(
+            f"/plugins/{name}/install", timeout=self.INSTALL_TIMEOUT
+        )
+
+    async def remove(self, name: str) -> dict:
+        return await self.client.post(f"/plugins/{name}/remove")
+
+
 class ChatAPI:
     def __init__(self, client: AsyncBaseClient):
         self.client = client
@@ -301,6 +320,7 @@ class SuzentAsyncClient(AsyncBaseClient):
         self.chat = ChatAPI(self)
         self.mcp = MCPAPI(self)
         self.skill = SkillsAPI(self)
+        self.plugins = PluginsAPI(self)
 
 
 @lru_cache(maxsize=1)

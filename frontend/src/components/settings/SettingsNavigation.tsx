@@ -15,6 +15,7 @@ import {
   GlobeAltIcon,
   InformationCircleIcon,
   PaintBrushIcon,
+  PuzzlePieceIcon,
   ServerStackIcon,
   ShareIcon,
   ShieldCheckIcon,
@@ -36,6 +37,7 @@ export type SettingsCategory =
   | 'social'
   | 'mcp'
   | 'acp-agents'
+  | 'plugins'
   | 'devices'
   | 'mesh'
   | 'appearance'
@@ -57,6 +59,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'social',
   'mcp',
   'acp-agents',
+  'plugins',
   'devices',
   'mesh',
   'appearance',
@@ -111,6 +114,7 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
         desktopOnly: true,
       },
       { id: 'acp-agents', labelKey: 'settings.categories.acpAgents', icon: BoltIcon },
+      { id: 'plugins', labelKey: 'settings.categories.plugins', icon: PuzzlePieceIcon },
       { id: 'devices', labelKey: 'settings.categories.devices', icon: ComputerDesktopIcon },
       { id: 'mesh', labelKey: 'settings.categories.mesh', icon: ShareIcon },
     ],

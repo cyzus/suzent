@@ -10,6 +10,10 @@ class ClientError(Exception):
     pass
 
 
+class ServerUnavailableError(ClientError):
+    """No Suzent server answered at the configured address."""
+
+
 def get_server_url() -> str:
     """Get the server URL from environment or default."""
 
@@ -79,7 +83,9 @@ class AsyncBaseClient:
             res.raise_for_status()
             return res.json()
         except httpx.ConnectError:
-            raise ClientError("Cannot connect to Suzent server. Is it running?")
+            raise ServerUnavailableError(
+                "Cannot connect to Suzent server. Is it running?"
+            )
         except httpx.HTTPStatusError as e:
             try:
                 detail = e.response.json().get("error", str(e))
@@ -93,7 +99,9 @@ class AsyncBaseClient:
             res.raise_for_status()
             return res.json()
         except httpx.ConnectError:
-            raise ClientError("Cannot connect to Suzent server. Is it running?")
+            raise ServerUnavailableError(
+                "Cannot connect to Suzent server. Is it running?"
+            )
         except httpx.HTTPStatusError as e:
             try:
                 detail = e.response.json().get("error", str(e))
@@ -107,7 +115,9 @@ class AsyncBaseClient:
             res.raise_for_status()
             return res.json()
         except httpx.ConnectError:
-            raise ClientError("Cannot connect to Suzent server. Is it running?")
+            raise ServerUnavailableError(
+                "Cannot connect to Suzent server. Is it running?"
+            )
         except httpx.HTTPStatusError as e:
             try:
                 detail = e.response.json().get("error", str(e))
@@ -121,7 +131,9 @@ class AsyncBaseClient:
             res.raise_for_status()
             return res.json()
         except httpx.ConnectError:
-            raise ClientError("Cannot connect to Suzent server. Is it running?")
+            raise ServerUnavailableError(
+                "Cannot connect to Suzent server. Is it running?"
+            )
         except httpx.HTTPStatusError as e:
             try:
                 detail = e.response.json().get("error", str(e))
@@ -144,6 +156,8 @@ class AsyncBaseClient:
                 async for chunk in resp.aiter_bytes():
                     yield chunk
         except httpx.ConnectError:
-            raise ClientError("Cannot connect to Suzent server. Is it running?")
+            raise ServerUnavailableError(
+                "Cannot connect to Suzent server. Is it running?"
+            )
         except httpx.HTTPStatusError as e:
             raise ClientError(f"Server streaming error: {e}")
