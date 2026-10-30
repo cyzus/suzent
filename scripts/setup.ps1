@@ -544,6 +544,20 @@ if ($IsUpdate) {
 
 Set-Location $SuzentDir
 
+# Record the channel now, not at the end: if setup stops halfway, the
+# installer must still see a release install to repair, not a dev checkout.
+$ChannelDir = Join-Path $SuzentDir ".suzent"
+if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
+$Channel = if ($ReleaseTag) { "stable" } else { "dev" }
+Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
+# `suzent web` and `suzent repair` read the installed release from here.
+$ReleaseFile = Join-Path $ChannelDir "release-tag"
+if ($ReleaseTag) {
+    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
+} elseif (Test-Path $ReleaseFile) {
+    Remove-Item -Force $ReleaseFile
+}
+
 # -- Setup .env ----------------------------------------------------------------
 if (-not (Test-Path ".env")) {
     if (Test-Path ".env.example") {
@@ -733,17 +747,6 @@ Write-Ok "CLI shim written to $ShimPath"
 # PROTOCOL_VERSION in apps/suzent-installer.
 $MarkerPath = Join-Path $SuzentDir ".suzent-bootstrap-complete"
 Set-Content -Path $MarkerPath -Value "protocol=1`n" -NoNewline -Encoding ASCII
-$ChannelDir = Join-Path $SuzentDir ".suzent"
-if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
-$Channel = if ($ReleaseTag) { "stable" } else { "dev" }
-Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
-# `suzent web` and `suzent repair` read the installed release from here.
-$ReleaseFile = Join-Path $ChannelDir "release-tag"
-if ($ReleaseTag) {
-    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
-} elseif (Test-Path $ReleaseFile) {
-    Remove-Item -Force $ReleaseFile
-}
 Write-Ok "Workspace marked as bootstrapped"
 
 # -- Launcher shortcuts --------------------------------------------------------
