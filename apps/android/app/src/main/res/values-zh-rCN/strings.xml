@@ -39,6 +39,7 @@
     <string name="pairing_heading">随时连接你的 Suzent。</string>
     <string name="pairing_intro">连接桌面端，随时继续你的对话。</string>
     <string name="pairing_steps">在桌面端打开「设置 → 设备 → 移动端访问」，选择「配对手机」。</string>
+    <string name="pairing_where">桌面端：设置 → 设备 → 移动端访问</string>
     <string name="scan_desktop">扫描桌面二维码</string>
     <string name="paste_invitation">粘贴配对邀请</string>
     <string name="pairing_invitation">配对邀请</string>
