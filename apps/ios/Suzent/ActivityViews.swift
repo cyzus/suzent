@@ -49,7 +49,7 @@ struct ActivityTurn: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 if regent { RegentIdentity(working: live, showStatus: false) }
-                else if live { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live)) }
+                else if live || !compact || pending { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
                 else { SuzentAssistantBadge(compact: compact) }
                 if !live && !work.isEmpty {
                     Button {
@@ -98,8 +98,15 @@ struct ActivityRail: View {
             case "read": format = String(localized: "Files read: %d")
             case "changed": format = String(localized: "Files modified: %d")
             case "searches": format = String(localized: "Searches: %d")
+            case "web": format = String(localized: "Pages visited: %d")
+            case "delegated": format = String(localized: "Tasks delegated: %d")
+            case "agents": format = String(localized: "Agent check-ins: %d")
+            case "tasks": format = String(localized: "Task updates: %d")
+            case "memory": format = String(localized: "Memory updates: %d")
+            case "skills": format = String(localized: "Skills used: %d")
+            case "tools": format = String(localized: "Tool calls: %d")
             case "failed": format = String(localized: "Failed calls: %d")
-            default: format = String(localized: "Other tool calls: %d")
+            default: format = String(localized: "Other actions: %d")
             }
             return String(format: format, entry.count)
         }.joined(separator: " · ")
@@ -116,7 +123,7 @@ struct ActivityRail: View {
                 withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { userExpanded = !expanded }
             } label: {
                 HStack(spacing: 8) {
-                    if let latest = parts.last { ActivityToolIcon(kind: activityKind(latest), active: running, pending: waiting, color: accent).frame(width: 20, height: 20) }
+                    if let tool = parts.last(where: { $0.type == "tool" }) { ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20) }
                     Text(summary).lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: 0)
                     Text("\(activityStepCount(parts)) steps").suzentFont(PresentationTokens.typeSidebarSection, design: .monospaced).fixedSize()
@@ -158,7 +165,7 @@ struct ToolActivityBlock: View {
                     withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
                 } label: {
                     HStack(spacing: 8) {
-                        ActivityToolIcon(kind: activityKind(part), active: active, pending: pending, color: color).frame(width: 18, height: 18)
+                        ActivityToolIcon(part: part, running: active, color: color).frame(width: 18, height: 18)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(part.type == "reasoning" ? String(localized: "Reasoning") : canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " "))
                                 .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted).lineLimit(1)
@@ -226,39 +233,43 @@ private struct ActivityDetailView: View {
     }
 }
 
+/// Desktop's ToolGroupIcon: the tool's Heroicon, moving while it runs; reasoning keeps its sparkles.
 struct ActivityToolIcon: View {
-    let kind: String
-    let active: Bool
-    let pending: Bool
+    let part: MessagePart
+    let running: Bool
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    private var symbol: String {
-        switch kind {
-        case "terminal": "terminal"
-        case "read": "doc.text"
-        case "edit": "square.and.pencil"
-        case "search": "magnifyingglass"
-        case "agent": "person.2"
-        case "reasoning": "sparkles"
-        default: "wrench.and.screwdriver"
-        }
+    private var approval: String? {
+        if part.state == "approval-requested" && (part.output ?? "").isEmpty { return "pending" }
+        return ["denied", "rejected"].contains(part.state ?? "") ? "denied" : nil
+    }
+    private var animation: String {
+        part.type == "tool" ? activityToolAnimation(part.toolName ?? "", approval: approval, running: running, hasOutput: !(part.output ?? "").isEmpty) : "none"
     }
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion || scenePhase != .active || (!active && !pending))) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-            ZStack {
-                Image(systemName: pending ? "hand.raised" : symbol).font(.system(size: 14)).foregroundStyle(color)
-                    .opacity(active || pending ? 0.7 + 0.3 * sin(t * 3) : 1)
-                    .rotationEffect(.degrees(active && kind == "search" && !reduceMotion ? sin(t * 3) * 12 : 0))
-                if active && !reduceMotion {
-                    if kind == "read" || kind == "edit" {
-                        Rectangle().fill(color.opacity(0.35)).frame(width: 17, height: 2).offset(y: sin(t * 3) * 7)
-                    } else if kind == "terminal" {
-                        Rectangle().fill(color).frame(width: 4, height: 2).offset(x: 5, y: 5).opacity(sin(t * 5) > 0 ? 1 : 0)
+        if part.type != "tool" {
+            Image(systemName: "sparkles").font(.system(size: 14)).foregroundStyle(color).accessibilityHidden(true)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active || animation == "none")) { context in
+                let pose = reduceMotion || animation == "none" ? ToolIconPose() : toolIconPose(animation, seconds: context.date.timeIntervalSinceReferenceDate)
+                GeometryReader { geometry in
+                    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
+                    let unit = geometry.size.width / 14
+                    ZStack {
+                        Image("Tools/\(activityToolIcon(part.toolName ?? "", approval: approval))").resizable().renderingMode(.template)
+                            .foregroundStyle(color)
+                            .scaleEffect(pose.scale)
+                            .rotationEffect(.degrees(pose.rotation))
+                            .offset(x: pose.dx * unit, y: pose.dy * unit)
+                            .opacity(pose.alpha)
+                        if pose.sweepAlpha > 0 {
+                            Capsule().fill(color).frame(height: 1.5).padding(.horizontal, 1)
+                                .offset(y: pose.sweepY * unit).opacity(pose.sweepAlpha)
+                        }
                     }
                 }
-            }
-        }.accessibilityHidden(true)
+            }.accessibilityHidden(true)
+        }
     }
 }

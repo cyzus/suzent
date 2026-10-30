@@ -186,7 +186,14 @@
     <string name="rail_summary_read">Files read: %1$d</string>
     <string name="rail_summary_changed">Files modified: %1$d</string>
     <string name="rail_summary_searches">Searches: %1$d</string>
-    <string name="rail_summary_other">Other tool calls: %1$d</string>
+    <string name="rail_summary_web">Pages visited: %1$d</string>
+    <string name="rail_summary_delegated">Tasks delegated: %1$d</string>
+    <string name="rail_summary_agents">Agent check-ins: %1$d</string>
+    <string name="rail_summary_tasks">Task updates: %1$d</string>
+    <string name="rail_summary_memory">Memory updates: %1$d</string>
+    <string name="rail_summary_skills">Skills used: %1$d</string>
+    <string name="rail_summary_tools">Tool calls: %1$d</string>
+    <string name="rail_summary_other">Other actions: %1$d</string>
     <string name="rail_summary_failed">Failed calls: %1$d</string>
     <string name="sidebar_projects">Projects</string>
     <string name="sidebar_empty">No chats yet</string>

@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "minor"},
+  "reason": "Only the iOS and Android chat views change.",
+  "summary": "Bring the desktop chat animations to mobile: the robot badge with its personalities and reactions (startled by failures, skeptical while approval waits, a face per tool, dozing when idle), the desktop tool icons and their running animations, and the activity rail's summary categories such as pages visited, tasks delegated and skills used."
+}

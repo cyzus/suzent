@@ -19,6 +19,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -67,7 +68,7 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.weight(1f, fill = false)) {
                 if (regent) RegentIdentity(working = live, showStatus = false)
-                else if (live) AssemblyBadge(thinking = showAssemblyBadge(parts, live))
+                else if (live || !compact || pending) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
                 else SuzentAssistantBadge(compact = compact)
             }
             if (!live && work.isNotEmpty()) {
@@ -126,6 +127,13 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
             "read" -> R.string.rail_summary_read
             "changed" -> R.string.rail_summary_changed
             "searches" -> R.string.rail_summary_searches
+            "web" -> R.string.rail_summary_web
+            "delegated" -> R.string.rail_summary_delegated
+            "agents" -> R.string.rail_summary_agents
+            "tasks" -> R.string.rail_summary_tasks
+            "memory" -> R.string.rail_summary_memory
+            "skills" -> R.string.rail_summary_skills
+            "tools" -> R.string.rail_summary_tools
             "failed" -> R.string.rail_summary_failed
             else -> R.string.rail_summary_other
         }, count)
@@ -141,7 +149,7 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
     val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
     Column(Modifier.fillMaxWidth()) {
         SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
-            if (latest != null) { ActivityToolIcon(activityKind(latest), running, waiting, accent); Spacer(Modifier.width(8.dp)) }
+            parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
             Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
             Text(stringResource(R.string.activity_steps, activityStepCount(parts)), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = accent)
             ActivityChevron(expanded)
@@ -182,7 +190,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
         Column(Modifier.weight(1f)) {
             val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
             SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp).semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                ActivityToolIcon(activityKind(part), active, pending, color)
+                ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else canonicalActivityTool(part.toolName).replace('_', ' '), fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -222,13 +230,34 @@ private fun ActivityDetailView(label: Int, value: String, code: Boolean) {
     }
 }
 
+private val toolIconDrawables = mapOf(
+    "arrow-down-on-square" to R.drawable.ic_tool_arrow_down_on_square, "bolt" to R.drawable.ic_tool_bolt, "calendar-days" to R.drawable.ic_tool_calendar_days,
+    "chat-bubble-left-right" to R.drawable.ic_tool_chat_bubble_left_right, "circle-stack" to R.drawable.ic_tool_circle_stack, "clipboard-document-check" to R.drawable.ic_tool_clipboard_document_check,
+    "clipboard-document-list" to R.drawable.ic_tool_clipboard_document_list, "clock" to R.drawable.ic_tool_clock, "command-line" to R.drawable.ic_tool_command_line,
+    "cpu-chip" to R.drawable.ic_tool_cpu_chip, "cursor-arrow-rays" to R.drawable.ic_tool_cursor_arrow_rays, "document-plus" to R.drawable.ic_tool_document_plus,
+    "document-text" to R.drawable.ic_tool_document_text, "eye" to R.drawable.ic_tool_eye, "film" to R.drawable.ic_tool_film,
+    "flag" to R.drawable.ic_tool_flag, "folder" to R.drawable.ic_tool_folder, "folder-open" to R.drawable.ic_tool_folder_open,
+    "globe-alt" to R.drawable.ic_tool_globe_alt, "magnifying-glass" to R.drawable.ic_tool_magnifying_glass, "no-symbol" to R.drawable.ic_tool_no_symbol,
+    "paint-brush" to R.drawable.ic_tool_paint_brush, "paper-airplane" to R.drawable.ic_tool_paper_airplane, "pencil-square" to R.drawable.ic_tool_pencil_square,
+    "photo" to R.drawable.ic_tool_photo, "play" to R.drawable.ic_tool_play, "question-mark-circle" to R.drawable.ic_tool_question_mark_circle,
+    "signal" to R.drawable.ic_tool_signal, "speaker-wave" to R.drawable.ic_tool_speaker_wave, "squares-2x2" to R.drawable.ic_tool_squares_2x2,
+    "stop" to R.drawable.ic_tool_stop, "user-group" to R.drawable.ic_tool_user_group, "wrench-screwdriver" to R.drawable.ic_tool_wrench_screwdriver,
+)
+
+/** Desktop's ToolGroupIcon: the tool's Heroicon, moving while it runs; reasoning keeps the spark. */
 @Composable
-private fun ActivityToolIcon(kind: String, active: Boolean, pending: Boolean, color: Color) {
+private fun ActivityToolIcon(part: MessagePart, running: Boolean, color: Color) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val approval = when {
+        part.state == "approval-requested" && part.output.isEmpty() -> "pending"
+        part.state in listOf("denied", "rejected") -> "denied"
+        else -> null
+    }
+    val animation = if (part.type == "tool") activityToolAnimation(part.toolName, approval, running, part.output.isNotEmpty()) else "none"
     var seconds by remember { mutableDoubleStateOf(0.0) }
-    LaunchedEffect(active, pending, reduced, lifecycle) {
-        if (!reduced && (active || pending)) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(animation, reduced, lifecycle) {
+        if (!reduced && animation != "none") lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var previous = 0L
             while (true) withFrameNanos { now ->
                 if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
@@ -236,35 +265,25 @@ private fun ActivityToolIcon(kind: String, active: Boolean, pending: Boolean, co
             }
         }
     }
-    Canvas(Modifier.size(18.dp)) {
-        val t = if (reduced) 0.0 else seconds
-        val ink = color.copy(alpha = if ((active || pending) && !reduced) (.7 + .3 * sin(t * 3)).toFloat() else 1f)
-        scale(size.width / 24, size.height / 24, pivot = Offset.Zero) {
-            fun line(x: Float, y: Float, x2: Float, y2: Float) = drawLine(ink, Offset(x,y), Offset(x2,y2), strokeWidth = 1.5f)
-            when {
-                pending -> { drawCircle(ink, 8f, Offset(12f,12f), style = Stroke(1.5f)); line(12f,7f,12f,13f); drawCircle(ink, 1f, Offset(12f,17f)) }
-                kind == "terminal" -> {
-                    drawRect(ink, Offset(2f,4f), Size(20f,16f), style = Stroke(1.5f))
-                    line(6f,9f,9f,12f); line(9f,12f,6f,15f)
-                    if (!active || reduced || sin(t*5)>0) line(12f,15f,17f,15f)
-                }
-                kind == "search" -> {
-                    val shift = if (active && !reduced) sin(t*3).toFloat() else 0f
-                    drawCircle(ink, 6f, Offset(10f+shift,10f), style = Stroke(1.5f)); line(15f+shift,15f,21f,21f)
-                }
-                kind == "read" || kind == "edit" -> {
-                    drawRect(ink, Offset(5f,2f), Size(14f,20f), style = Stroke(1.5f))
-                    line(8f,7f,16f,7f); line(8f,11f,16f,11f); line(8f,15f,13f,15f)
-                    if (active && !reduced) drawRect(color.copy(alpha = .35f), Offset(4f, (11+sin(t*3)*7).toFloat()), Size(16f,2f))
-                }
-                kind == "agent" -> {
-                    drawCircle(ink,3f,Offset(8f,7f),style=Stroke(1.5f)); drawCircle(ink,3f,Offset(17f,8f),style=Stroke(1.5f))
-                    drawArc(ink,180f,180f,false,Offset(2f,12f),Size(12f,12f),style=Stroke(1.5f)); drawArc(ink,180f,180f,false,Offset(12f,13f),Size(10f,10f),style=Stroke(1.5f))
-                }
-                else -> {
-                    drawPath(Path().apply { moveTo(12f,2f); lineTo(15f,9f); lineTo(22f,12f); lineTo(15f,15f); lineTo(12f,22f); lineTo(9f,15f); lineTo(2f,12f); lineTo(9f,9f); close() },ink,style=Stroke(1.5f))
-                }
+    if (part.type != "tool") {
+        Canvas(Modifier.size(18.dp)) {
+            scale(size.width / 24, size.height / 24, pivot = Offset.Zero) {
+                drawPath(Path().apply { moveTo(12f,2f); lineTo(15f,9f); lineTo(22f,12f); lineTo(15f,15f); lineTo(12f,22f); lineTo(9f,15f); lineTo(2f,12f); lineTo(9f,9f); close() }, color, style = Stroke(1.5f))
             }
         }
+        return
+    }
+    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
+    val unit = 18f / 14f
+    val pose = if (reduced || animation == "none") ToolIconPose() else toolIconPose(animation, seconds)
+    Box(Modifier.size(18.dp)) {
+        Icon(painterResource(toolIconDrawables[activityToolIcon(part.toolName, approval)] ?: R.drawable.ic_tool_wrench_screwdriver), contentDescription = null, tint = color,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                translationX = (pose.dx * unit).dp.toPx(); translationY = (pose.dy * unit).dp.toPx()
+                rotationZ = pose.rotation.toFloat(); scaleX = pose.scale.toFloat(); scaleY = pose.scale.toFloat(); alpha = pose.alpha.toFloat()
+            })
+        if (pose.sweepAlpha > 0) Box(Modifier.align(Alignment.Center).padding(horizontal = 1.dp).fillMaxWidth().height(1.5.dp)
+            .graphicsLayer { translationY = (pose.sweepY * unit).dp.toPx(); alpha = pose.sweepAlpha.toFloat() }
+            .background(color, RoundedCornerShape(50)))
     }
 }

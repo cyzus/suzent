@@ -89,20 +89,49 @@ public func activityDuration(_ seconds: Int) -> String {
 }
 
 public func activityFailed(_ part: MessagePart) -> Bool {
-    if ["error", "denied", "rejected"].contains(part.state ?? "") || !(part.outcome ?? "").isEmpty { return true }
+    ["error", "denied", "rejected"].contains(part.state ?? "") || toolCallFailed(part)
+}
+
+/// Desktop's toolCallFailed: the tool itself reported failure; a denial is not one.
+public func toolCallFailed(_ part: MessagePart) -> Bool {
+    if !(part.outcome ?? "").isEmpty { return true }
     guard let data = part.output?.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
     return object["success"] as? Bool == false || (object["error"] as? String)?.isEmpty == false
 }
 
-public func activityKind(_ part: MessagePart) -> String {
-    if part.type == "reasoning" { return "reasoning" }
-    let name = canonicalActivityTool(part.toolName ?? "")
-    if name.contains("command") || name.contains("shell") { return "terminal" }
-    if name.contains("search") || name.contains("fetch") { return "search" }
-    if name.contains("write") || name.contains("edit") { return "edit" }
-    if name.contains("read") { return "read" }
-    if name.contains("agent") || name.contains("dispatch") { return "agent" }
-    return "tool"
+/// Desktop's AgentBadge BADGE_WEIGHTS: the resting personality, picked once per badge from `roll` in 0...1.
+public func robotPersonality(_ roll: Double) -> RobotVariant {
+    let weights: [(RobotVariant, Double)] = [(.idle, 20), (.observer, 20), (.peeker, 10), (.jumper, 5), (.party, 5), (.love, 2), (.dj, 2)]
+    var left = roll * weights.reduce(0) { $0 + $1.1 }
+    for (variant, weight) in weights {
+        left -= weight
+        if left <= 0 { return variant }
+    }
+    return .idle
+}
+
+/// The tool the badge reacts to: the first still without output, else the turn's last part when it is a tool.
+public func robotCurrentTool(_ parts: [MessagePart]) -> String? {
+    let tool = parts.first { $0.type == "tool" && ($0.output ?? "").isEmpty } ?? parts.last.flatMap { $0.type == "tool" ? $0 : nil }
+    return tool?.toolName
+}
+
+/// Desktop's AgentBadge variant: a fresh failure startles it, approval makes it skeptical, each tool has its face.
+public func robotBadgeVariant(base: RobotVariant, startled: Bool, pending: Bool, streaming: Bool, tool: String?) -> RobotVariant {
+    if startled { return .shaker }
+    if pending { return .skeptic }
+    if let tool {
+        switch canonicalActivityTool(tool) {
+        case "read_file", "webpage_fetch": return .eater
+        case "glob_search", "grep_search": return .scanner
+        case "web_search": return .peeker
+        case "run_command", "start_command", "write_file", "edit_file": return .workout
+        case "agent": return .portal
+        case "skill_execute": return .dj
+        default: return .observer
+        }
+    }
+    return streaming ? .observer : base
 }
 
 public func activityDetail(_ raw: String?, output: Bool = false) -> String {
@@ -132,4 +161,78 @@ public func activityRows(_ parts: [MessagePart]) -> [MessagePart] {
         } else { rows.append(part) }
     }
     return rows
+}
+
+private let exactToolIcons: [String: String] = [
+    "read_file": "document-text", "write_file": "document-plus", "edit_file": "pencil-square", "glob_search": "folder-open",
+    "grep_search": "magnifying-glass", "run_command": "command-line", "start_command": "play", "check_command": "signal",
+    "stop_command": "stop", "web_search": "globe-alt", "webpage_fetch": "arrow-down-on-square", "browser_action": "cursor-arrow-rays",
+    "memory_search": "cpu-chip", "memory_update": "cpu-chip", "session_search": "chat-bubble-left-right", "manage_goal": "flag",
+    "create_tasks": "clipboard-document-list", "update_task": "clipboard-document-check", "list_tasks": "clipboard-document-list", "schedule_cron": "calendar-days",
+    "skill_execute": "bolt", "search_tools": "magnifying-glass", "render_ui": "squares-2x2", "ask_question": "question-mark-circle",
+    "generate_image": "photo", "edit_image": "paint-brush", "analyze_image": "eye", "analyze_visual": "eye",
+    "generate_video": "film", "check_video_status": "film", "speak": "speaker-wave", "social_message": "paper-airplane",
+    "agent": "user-group", "agent_list": "user-group", "agent_read": "user-group", "agent_send": "user-group",
+    "agent_dispatch": "user-group", "agent_stop": "user-group",
+]
+
+private let fallbackToolIcons: [(keys: [String], icon: String)] = [
+    (["agent", "subagent"], "user-group"),
+    (["memory"], "cpu-chip"),
+    (["session", "chat"], "chat-bubble-left-right"),
+    (["browser"], "cursor-arrow-rays"),
+    (["fetch", "scrape"], "arrow-down-on-square"),
+    (["web"], "globe-alt"),
+    (["glob", "dir"], "folder-open"),
+    (["search", "grep", "find"], "magnifying-glass"),
+    (["edit", "patch", "replace"], "pencil-square"),
+    (["write", "create_file"], "document-plus"),
+    (["read"], "document-text"),
+    (["file", "folder"], "folder"),
+    (["bash", "shell", "python", "command", "cmd", "exec"], "command-line"),
+    (["database", "sql", "db"], "circle-stack"),
+    (["goal"], "flag"),
+    (["task", "plan", "todo"], "clipboard-document-list"),
+    (["schedule", "cron"], "calendar-days"),
+    (["skill"], "bolt"),
+    (["image", "photo"], "photo"),
+    (["video"], "film"),
+    (["speak", "audio", "voice"], "speaker-wave"),
+]
+
+/// Desktop's pickToolIcon (toolGroupIcon.tsx): the Heroicon each tool row shows. `approval` is "pending" or "denied".
+public func activityToolIcon(_ toolName: String, approval: String? = nil) -> String {
+    if approval == "pending" { return "clock" }
+    if approval == "denied" { return "no-symbol" }
+    let name = canonicalActivityTool(toolName)
+    if let icon = exactToolIcons[name] { return icon }
+    return fallbackToolIcons.first { $0.keys.contains(where: name.contains) }?.icon ?? "wrench-screwdriver"
+}
+
+private let fallbackToolAnimations: [(keys: [String], kind: String)] = [
+    (["bash", "shell", "command", "cmd"], "terminal"),
+    (["read", "fetch"], "scan"),
+    (["write", "edit"], "typewriter"),
+    (["search", "grep", "glob"], "radar"),
+    (["memory"], "memory"),
+    (["browser"], "cursor"),
+]
+
+/// Desktop's pickToolAnimationKind: how a running tool's icon moves; "none" once it has output.
+public func activityToolAnimation(_ toolName: String, approval: String? = nil, running: Bool = false, hasOutput: Bool = false) -> String {
+    if approval == "denied" { return "none" }
+    if approval == "pending" { return "pending" }
+    if !running || hasOutput { return "none" }
+    let name = canonicalActivityTool(toolName)
+    switch name {
+    case "run_command", "start_command", "stop_command": return "terminal"
+    case "check_command", "speak", "social_message": return "signal"
+    case "read_file", "webpage_fetch", "analyze_image", "analyze_visual", "agent_read": return "scan"
+    case "write_file", "edit_file", "create_tasks", "update_task", "manage_goal", "edit_image", "generate_image", "generate_video", "render_ui": return "typewriter"
+    case "glob_search", "grep_search", "web_search", "search_tools", "list_tasks", "agent_list": return "radar"
+    case "memory_search", "session_search", "agent", "agent_send", "agent_dispatch": return "memory"
+    case "skill_execute", "schedule_cron": return "snap"
+    case "browser_action": return "cursor"
+    default: return fallbackToolAnimations.first { $0.keys.contains(where: name.contains) }?.kind ?? "terminal"
+    }
 }
