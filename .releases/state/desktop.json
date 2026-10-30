@@ -93,6 +93,7 @@
     ".releases/changes/mobile-project-order.json",
     ".releases/changes/mobile-reconnect-animation.json",
     ".releases/changes/mobile-regent-activity.json",
+    ".releases/changes/mobile-regent-coronation.json",
     ".releases/changes/mobile-send-idempotency.json",
     ".releases/changes/mobile-sidebar-agents-schedules.json",
     ".releases/changes/mobile-sidebar-align.json",
