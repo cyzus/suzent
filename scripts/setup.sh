@@ -468,6 +468,17 @@ fi
 
 # We must be in the repo dir from here on
 cd "$SUZENT_DIR"
+# Record the channel now, not at the end: if setup stops halfway, the
+# installer must still see a release install to repair, not a dev checkout.
+mkdir -p "$SUZENT_DIR/.suzent"
+printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
+    > "$SUZENT_DIR/.suzent/update-channel"
+# `suzent web` and `suzent repair` read the installed release from here.
+if [ -n "$RELEASE_TAG" ]; then
+    printf '%s' "$RELEASE_TAG" > "$SUZENT_DIR/.suzent/release-tag"
+else
+    rm -f "$SUZENT_DIR/.suzent/release-tag"
+fi
 
 # ── Setup .env ────────────────────────────────────────────────────────────────
 if [ ! -f ".env" ]; then
@@ -644,15 +655,6 @@ ok "CLI shim written to $SHIM"
 # screen and fails with "installer helper was not found". protocol=1 matches
 # PROTOCOL_VERSION in apps/suzent-installer.
 printf 'protocol=1\n' > "$SUZENT_DIR/.suzent-bootstrap-complete"
-mkdir -p "$SUZENT_DIR/.suzent"
-printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
-    > "$SUZENT_DIR/.suzent/update-channel"
-# `suzent web` and `suzent repair` read the installed release from here.
-if [ -n "$RELEASE_TAG" ]; then
-    printf '%s' "$RELEASE_TAG" > "$SUZENT_DIR/.suzent/release-tag"
-else
-    rm -f "$SUZENT_DIR/.suzent/release-tag"
-fi
 ok "Workspace marked as bootstrapped"
 
 # ── Launcher shortcuts ────────────────────────────────────────────────────────

@@ -166,7 +166,17 @@ fn inspect_destination_path(root: &Path) -> DestinationInfo {
     if git(&["rev-parse", "HEAD"]).is_none() {
         return info("invalid", None);
     }
-    if !root.join(".suzent-bootstrap-complete").is_file() && channel.trim() != "stable" {
+    // An install interrupted before it recorded its channel (setup.ps1 and
+    // setup.sh used to write it last) is still a detached release-tag clone,
+    // not a development checkout: repair it instead of asking for cargo.
+    let at_release_tag = || {
+        git(&["tag", "--points-at", "HEAD"])
+            .is_some_and(|tags| tags.lines().any(|tag| is_release_tag(tag.trim())))
+    };
+    if !root.join(".suzent-bootstrap-complete").is_file()
+        && channel.trim() != "stable"
+        && !at_release_tag()
+    {
         return info("development", branch);
     }
     let kind = if !root.join(".suzent-bootstrap-complete").is_file()
@@ -2119,6 +2129,12 @@ mod tests {
         assert_eq!(super::inspect_destination_path(root).kind, "development");
         git(&["checkout", "--detach"]);
         assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "development");
+        git(&["tag", "v0.18.0"]);
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        git(&["tag", "-d", "v0.18.0"]);
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
         fs::create_dir_all(root.join(".suzent")).unwrap();
         fs::write(root.join(".suzent/update-channel"), "stable").unwrap();
         fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
