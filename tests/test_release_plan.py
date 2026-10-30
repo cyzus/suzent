@@ -226,6 +226,24 @@ def test_no_release_requires_explicit_reason_for_app_changes(repo: Path) -> None
     assert not release.plan(repo, "mobile", "HEAD")["releasable"]
 
 
+def test_dependency_update_needs_no_declaration_only_for_manifests(
+    repo: Path,
+) -> None:
+    base = adopt(repo)
+    (repo / "uv.lock").write_text("bumped lock")
+    (repo / "frontend").mkdir()
+    (repo / "frontend/package-lock.json").write_text("{}")
+    release.git(repo, "add", ".")
+    with pytest.raises(ValueError, match="desktop"):
+        release.check(repo, base)
+    release.check(repo, base, dependency_update=True)
+    (repo / "src").mkdir()
+    (repo / "src/app.py").write_text("changed code")
+    release.git(repo, "add", ".")
+    with pytest.raises(ValueError, match="desktop"):
+        release.check(repo, base, dependency_update=True)
+
+
 def test_docs_need_no_declaration_and_merged_notes_are_immutable(repo: Path) -> None:
     adopt(repo)
     note(repo, "fix", mobile="patch")

@@ -30,6 +30,15 @@ MOBILE_FILES = (
     "apps/ios/Config/Version.xcconfig",
     "apps/android/version.properties",
 )
+# Files a dependency bot rewrites. Its PRs ship with the next declared release.
+DEPENDENCY_FILES = {
+    "pyproject.toml",
+    "uv.lock",
+    "package.json",
+    "package-lock.json",
+    "Cargo.toml",
+    "Cargo.lock",
+}
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
 
 
@@ -365,7 +374,10 @@ def affected_products(paths: list[str]) -> set[str]:
 
 
 def check(
-    root: Path, base: str | None = None, release_product: str | None = None
+    root: Path,
+    base: str | None = None,
+    release_product: str | None = None,
+    dependency_update: bool = False,
 ) -> None:
     if load(root, ".releases/config.json") != {"schema": 1}:
         raise ValueError("Unsupported release policy")
@@ -434,6 +446,8 @@ def check(
     declared = set().union(
         *(set(n["products"]) for p, n in notes.items() if p not in before)
     )
+    if dependency_update:
+        paths = [p for p in paths if Path(p).name not in DEPENDENCY_FILES]
     missing = affected_products(paths) - declared
     if missing:
         raise ValueError(
@@ -455,13 +469,18 @@ def main() -> None:
     parser.add_argument("--source", default="HEAD")
     parser.add_argument("--base")
     parser.add_argument("--release-product", choices=PRODUCTS)
+    parser.add_argument(
+        "--dependency-update",
+        action="store_true",
+        help="Dependency bot PR: manifest and lockfile changes need no declaration",
+    )
     parser.add_argument("--version")
     parser.add_argument("--reason")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     try:
         if args.command == "check":
-            check(root, args.base, args.release_product)
+            check(root, args.base, args.release_product, args.dependency_update)
         elif args.command == "notes":
             print(release_notes(root, args.product), end="")
         elif args.command == "files":
