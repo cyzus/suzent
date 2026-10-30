@@ -78,7 +78,7 @@ private struct ChatSidebarRow: View {
     private var meta: Text? {
         if chat.isSubagent && !nested { return parentTitle.map { Text("Sub-agent of \($0)") } ?? Text("Sub-agent") }
         if chat.isScheduled { return Text("Scheduled task") }
-        return nil
+        return chat.projectName.map { Text($0) }
     }
 
     var body: some View {
@@ -189,6 +189,8 @@ struct ContentView: View {
     @State private var search = ""
     @State private var expandedProject: String? = nil
     @State private var showAllScheduled = false
+    @State private var scheduledExpanded = false
+    @State private var showAllRecent = false
     @State private var expandedAgents: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
@@ -248,6 +250,9 @@ struct ContentView: View {
                                 if model.connected && showSettings {
                                     Text("Settings").font(.headline).lineLimit(1)
                                 } else if model.connected, let chat = model.selected, !chat.id.isEmpty {
+                                    if chat.isRegent {
+                                        RegentIdentity(working: model.streaming || chat.isRunning == true, waiting: chat.regent?.waiting ?? 0)
+                                    } else {
                                     VStack(spacing: 2) {
                                         if let project = chat.projectName {
                                             Text(project).font(.caption).foregroundStyle(Color.suzentMuted).lineLimit(1)
@@ -255,6 +260,7 @@ struct ContentView: View {
                                         Text(chat.title).font(.system(size: PresentationTokens.typeControl, weight: .semibold))
                                             .lineLimit(1).truncationMode(.tail)
                                     }.padding(.horizontal, 8).multilineTextAlignment(.center)
+                                    }
                                 } else if !model.connected && model.canReconnect {
                                     Text("SUZENT").font(.system(size: 13, weight: .semibold)).tracking(2)
                                         .foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
@@ -264,7 +270,7 @@ struct ContentView: View {
                                 Button { composing = false; Task { await model.createChat(); showSettings = false; showSidebar = false } } label: {
                                     Image(systemName: "square.and.pencil")
                                 }.buttonStyle(SuzentIconButtonStyle()).accessibilityLabel("New conversation")
-                                    .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
+                                    .disabled(model.busy || model.device?.permissions.createChats != true)
                             }
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         if model.connected || !model.canReconnect { Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth) }
@@ -325,6 +331,9 @@ struct ContentView: View {
                         .accessibilityHidden(!showSidebar)
                 }
             }.background(Color.suzentBackground).clipped()
+                .onChange(of: model.selected?.isRegent == true && !showSettings && (wide || !showSidebar), initial: true) { _, visible in
+                    model.regentVisible = visible
+                }
                 .foregroundStyle(Color.suzentText)
                 .overlayPreferenceValue(ChatMenuPreferenceKey.self) { menus in
                     GeometryReader { proxy in
@@ -396,7 +405,7 @@ struct ContentView: View {
 
     private func sidebar(home: Bool) -> some View {
         let scheduledIDs = scheduledChatIDs(model.chats)
-        let normalRows = sidebarChats(model.chats.filter { !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
+        let normalRows = sidebarChats(model.chats.filter { !$0.isRegent && !scheduledIDs.contains($0.id) }, search: search, expanded: expandedAgents)
         let visibleProjects = projects.filter { project in search.isEmpty || normalRows.contains(where: { $0.root.projectId == project.id }) }
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
@@ -408,7 +417,10 @@ struct ContentView: View {
                     Text("SUZENT").font(.system(size: 14, weight: .bold)).tracking(2)
                     Spacer()
                 }
-            }.padding(.horizontal, 20).padding(.top, home ? 20 : 8).padding(.bottom, home ? 16 : 8)
+                Button { composing = false; showSettings = true; showSidebar = false } label: {
+                    Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
+                }.buttonStyle(.plain).accessibilityLabel("Settings")
+            }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
             if model.isDemo && home {
                 HStack {
                     Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
@@ -419,38 +431,63 @@ struct ContentView: View {
             if home, let error = model.error {
                 SuzentNotice(message: error) { model.error = nil }
             }
+            if let regent = model.chats.first(where: { $0.isRegent }) {
+                Button { openSidebarChat(regent) } label: {
+                    RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
+                                   waiting: regent.regent?.waiting ?? 0, unread: model.selected?.isRegent == true ? 0 : regent.regent?.unread ?? 0,
+                                   lastMessageAt: regent.regent?.lastMessageAt, expanded: false)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14).padding(.horizontal, 4)
+                        .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Color.suzentMuted) }
+                        .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
+                }.buttonStyle(.plain).disabled(model.busy).padding(.horizontal, 16)
+            }
             Button { composing = false; Task { await model.createChat(); showSidebar = false; showSettings = false } } label: {
                 Label("New conversation", systemImage: "square.and.pencil")
                     .font(.system(size: home ? 16 : PresentationTokens.typeCaption, weight: .semibold))
-                    .foregroundStyle(home ? Color.black : Color.suzentMuted)
+                    .foregroundStyle(Color.black)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, home ? 12 : 0)
-                    .background(home ? Color(presentation: PresentationTokens.yellow) : Color.clear, in: Rectangle())
+                    .padding(.horizontal, 12)
+                    .background(Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: 6))
             }.buttonStyle(.plain)
-                .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
+                .disabled(model.busy || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
                 TextField("Search chats", text: $search).font(.system(size: home ? 16 : 14))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(height: home ? 48 : 40)
-                .background(Color.suzentText.opacity(0.04), in: Rectangle())
+            }.padding(.horizontal, 12).frame(height: 42)
+                .background(Color.suzentText.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                 .padding(.horizontal, 16).padding(.vertical, 12)
             ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Color.clear.frame(height: 0).id("sidebar-top")
-                    scheduledSection
                     if normalRows.contains(where: { $0.root.pinned == true }) {
                         sidebarHeading("Pinned")
                         conversationRows(normalRows.filter { $0.root.pinned == true })
+                    }
+                    if search.isEmpty {
+                        let recent = normalRows.filter { $0.depth == 0 && $0.root.pinned != true }
+                        if !recent.isEmpty {
+                            HStack {
+                                sidebarHeading("Recent")
+                                Spacer()
+                                if recent.count > 3 {
+                                    Button(showAllRecent ? "Show fewer" : "View all") { showAllRecent.toggle() }
+                                        .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44)
+                                }
+                            }
+                            let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
+                            conversationRows(normalRows.filter { recentIDs.contains($0.root.id) })
+                        }
                     }
                     if !visibleProjects.isEmpty { sidebarHeading("Projects") }
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(visibleProjects) { project in projectSection(project, rows: normalRows.filter { $0.root.pinned != true && $0.root.projectId == project.id }) }
                     }
                     let unassigned = normalRows.filter { $0.root.projectId == nil && $0.root.pinned != true }
-                    if !unassigned.isEmpty { sidebarHeading("Chats"); conversationRows(unassigned) }
+                    if !search.isEmpty && !unassigned.isEmpty { sidebarHeading("Chats"); conversationRows(unassigned) }
+                    scheduledSection
                     if normalRows.isEmpty && scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents).isEmpty {
                         Text(search.isEmpty ? String(localized: "No chats yet") : String(localized: "No matching chats"))
                             .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24)
@@ -465,10 +502,6 @@ struct ContentView: View {
                 }
             }
             }
-            Divider()
-            Button { composing = false; showSettings = true; showSidebar = false } label: {
-                Label("Settings", systemImage: "gearshape").font(.system(size: 15, weight: .medium)).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 20)
-            }.buttonStyle(.plain)
         }
     }
 
@@ -480,13 +513,16 @@ struct ContentView: View {
                 expandedProject = projectOpen ? nil : project.id
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "folder").font(.system(size: 17)).padding(.trailing, 6)
                     Text(project.name).lineLimit(1).truncationMode(.tail)
+                    Spacer()
+                    Text("\(rows.filter { $0.depth == 0 }.count)").font(.caption).foregroundStyle(Color.suzentMuted)
+                    Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
                 }
                 .font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
                 .foregroundStyle(Color.suzentText)
                 .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             }.buttonStyle(SuzentRowButtonStyle())
             if isOpen { conversationRows(rows) }
         }
@@ -563,8 +599,16 @@ struct ContentView: View {
         let previewLimit = 5
         let visible = showAllScheduled || !search.isEmpty ? groups : Array(groups.prefix(previewLimit))
         if !groups.isEmpty {
-            sidebarHeading("Scheduled tasks", count: groups.count)
-            ForEach(visible) { group in
+            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { scheduledExpanded.toggle() } } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "clock")
+                    Text("Scheduled tasks")
+                    Spacer()
+                    Text("\(groups.count)").font(.caption).foregroundStyle(Color.suzentMuted)
+                    Image(systemName: scheduledExpanded || !search.isEmpty ? "chevron.down" : "chevron.right").font(.caption)
+                }.font(.system(size: 14, weight: .medium)).frame(minHeight: 48)
+            }.buttonStyle(.plain).accessibilityValue(scheduledExpanded ? Text("Expanded") : Text("Collapsed"))
+            ForEach(scheduledExpanded || !search.isEmpty ? visible : []) { group in
                 VStack(alignment: .leading, spacing: 0) {
                     if let task = group.task {
                         Button {
@@ -612,7 +656,7 @@ struct ContentView: View {
                     conversationRows(group.children)
                 }
             }
-            if search.isEmpty && groups.count > previewLimit {
+            if scheduledExpanded && search.isEmpty && groups.count > previewLimit {
                 Button { showAllScheduled.toggle() } label: {
                     Text(showAllScheduled ? "Show fewer" : "View all \(groups.count) scheduled tasks")
                         .font(.system(size: PresentationTokens.typeCaption, weight: .bold))
@@ -665,26 +709,44 @@ struct ContentView: View {
         GeometryReader { viewport in
         ZStack(alignment: .bottom) {
         VStack(spacing: 0) {
+            if chat.isRegent {
+                let sessions = Array(model.chats.filter { $0.parentChatId == chat.id }.prefix(5))
+                if !sessions.isEmpty {
+                    DisclosureGroup("Recent delegated conversations") {
+                        ForEach(sessions) { session in
+                            Button { Task { await model.open(session) } } label: {
+                                HStack {
+                                    Text(session.title).lineLimit(1)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                }.font(.system(size: 13)).frame(minHeight: 44)
+                            }.buttonStyle(.plain).disabled(model.busy)
+                        }
+                    }.font(.system(size: 12)).padding(.horizontal, 16).padding(.vertical, 8)
+                }
+            }
             FollowingChatScrollView(openedVersion: model.openedVersion, sentVersion: model.sentVersion,
                                    startsAtBottom: !chat.id.isEmpty, dismissKeyboard: { composing = false; attachmentsExpanded = false }) {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
-                        let messages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
+                        let savedMessages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
+                        let messages = chat.isRegent ? regentMessages(savedMessages, liveParts: model.liveParts) : savedMessages
+                        if chat.isRegent && messages.isEmpty && !model.streaming { RegentGreeting() }
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
                         let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
                         let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
-                        let canReplay = idle && !(chat.models ?? []).isEmpty && lastUser != nil && model.device?.permissions.send == true && model.device?.permissions.manageChats == true
+                        let canReplay = !chat.isRegent && idle && !(chat.models ?? []).isEmpty && lastUser != nil && model.device?.permissions.send == true && model.device?.permissions.manageChats == true
                         ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
-                            MessageView(message: message, isLatest: !hasLiveMessage && index == messages.count - 1, fallbackModel: chat.model,
+                            MessageView(message: message, regent: chat.isRegent, isLatest: !hasLiveMessage && index == messages.count - 1, fallbackModel: chat.model,
                                 canRetry: canReplay && (message.messageIndex == lastUser || (index == messages.count - 1 && message.role == "assistant")),
                                 canEdit: canReplay && message.role == "user" && message.messageIndex == lastUser,
-                                canFork: idle && message.role == "assistant" && model.device?.permissions.createChats == true,
+                                canFork: !chat.isRegent && idle && message.role == "assistant" && model.device?.permissions.createChats == true,
                                 onAction: { action, text in Task { await model.messageAction(message, action: action, text: text) } })
                         }
                         if hasLiveMessage {
                             VStack(alignment: .leading, spacing: 10) {
-                                AssemblyBadge(thinking: showAssemblyBadge(model.liveParts, streaming: model.streaming))
-                                if !model.liveParts.isEmpty { ActivityContent(parts: model.liveParts, live: model.streaming) }
+                                ActivityTurn(parts: chat.isRegent ? regentDisplayParts(model.liveParts, live: model.streaming) : model.liveParts,
+                                             live: model.streaming, regent: chat.isRegent)
                             }
                         }
                         ApprovalCards(model: model)
@@ -694,7 +756,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 PendingAttachmentStrip(model: model)
                 HStack(alignment: .center) {
-                    if model.attachmentsSupported && model.device?.permissions.send == true {
+                    if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
                         Button {
                             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                                 attachmentsExpanded.toggle()
@@ -731,9 +793,9 @@ struct ContentView: View {
                 .padding(.horizontal, 12).padding(.bottom, 8)
         }.frame(width: viewport.size.width, height: viewport.size.height)
             .offset(y: attachmentsExpanded ? -200 : 0)
-        AttachmentPanel(model: model, expanded: $attachmentsExpanded)
+        if !chat.isRegent { AttachmentPanel(model: model, expanded: $attachmentsExpanded)
             .frame(height: 200).offset(y: attachmentsExpanded ? 0 : 200)
-            .allowsHitTesting(attachmentsExpanded).accessibilityHidden(!attachmentsExpanded)
+            .allowsHitTesting(attachmentsExpanded).accessibilityHidden(!attachmentsExpanded) }
         }.clipped()
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }

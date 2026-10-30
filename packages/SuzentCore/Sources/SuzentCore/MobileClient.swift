@@ -10,6 +10,7 @@ public protocol MobileClient: Sendable {
     func composer() async throws -> Chat
     func createChat(title: String, projectID: String?) async throws -> Chat
     func chat(_ id: String) async throws -> Chat
+    func markRead(_ id: String) async throws
     func manageChat(_ id: String, action: String, value: String?) async throws
     func messageAction(_ id: String, index: Int, action: String, text: String?, model: String?) async throws -> String
     func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String]

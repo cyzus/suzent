@@ -1,0 +1,197 @@
+[
+  {
+    "name": "recorded run uses active seconds instead of approval wait",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "_streaming_run_id": "one",
+        "run_started_at": "2026-10-30T00:00:00Z",
+        "run_finished_at": "2026-10-30T00:01:05Z",
+        "run_active_seconds": 8.8
+      }
+    ],
+    "seconds": 8
+  },
+  {
+    "name": "unknown question wait has no duration",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "_streaming_run_id": "one",
+        "run_started_at": "2026-10-30T00:00:00Z",
+        "run_finished_at": "2026-10-30T00:01:05Z",
+        "run_timings": [
+          {
+            "run_id": "one",
+            "started_at": "2026-10-30T00:00:00Z",
+            "finished_at": "2026-10-30T00:01:05Z",
+            "unknown_wait": true
+          }
+        ]
+      }
+    ],
+    "seconds": null
+  },
+  {
+    "name": "replayed timings deduplicate and resumptions sum",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "run_timings": [
+          {
+            "run_id": "one",
+            "started_at": "2026-10-30T00:00:00Z",
+            "finished_at": "2026-10-30T00:01:05Z",
+            "active_seconds": 3.7
+          },
+          {
+            "run_id": "one",
+            "started_at": "2026-10-30T00:00:00Z",
+            "finished_at": "2026-10-30T00:01:05Z"
+          },
+          {
+            "run_id": "two",
+            "started_at": "2026-10-30T00:00:00Z",
+            "finished_at": "2026-10-30T00:01:05Z",
+            "active_seconds": 4.5
+          }
+        ]
+      }
+    ],
+    "seconds": 8
+  },
+  {
+    "name": "legacy boundary to latest activity",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Work",
+        "timestamp": "2026-10-30T00:00:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "timestamp": "2026-10-30T00:00:02Z",
+        "turn_last_activity_at": "2026-10-30T00:01:05Z"
+      }
+    ],
+    "seconds": 65
+  },
+  {
+    "name": "missing start does not invent zero",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "timestamp": "2026-10-30T00:01:05Z"
+      }
+    ],
+    "seconds": null
+  },
+  {
+    "name": "legacy streaming start is not completion",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Work",
+        "timestamp": "2026-10-30T00:00:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "timestamp": "2026-10-30T00:00:02Z",
+        "_streaming_run_id": "old"
+      }
+    ],
+    "seconds": null
+  },
+  {
+    "name": "clock skew produces no duration",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Work",
+        "timestamp": "2026-10-30T00:01:05Z"
+      },
+      {
+        "role": "assistant",
+        "content": "Done",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Work"
+          },
+          {
+            "type": "text",
+            "text": "Done"
+          }
+        ],
+        "timestamp": "2026-10-30T00:00:00Z"
+      }
+    ],
+    "seconds": null
+  }
+]

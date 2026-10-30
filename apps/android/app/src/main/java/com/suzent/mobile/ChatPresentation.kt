@@ -8,11 +8,11 @@ data class CitationSource(
 data class MessagePart(
     val type: String, val text: String = "", val toolName: String = "",
     val args: String = "", val output: String = "", val toolCallId: String = "",
-    val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(),
+    val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(), val outcome: String = "", val regentBubble: Boolean = false,
 )
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
-    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList()) {
+    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList(), val reaction: String? = null, val workedSeconds: Int? = null, val firstMessageIndex: Int? = null) {
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
@@ -98,10 +98,14 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
                 normalizeParts(previous.parts + row.parts), (previous.citationSources + row.citationSources).distinctBy { it.id },
-                row.model ?: previous.model, row.timestamp ?: previous.timestamp, row.messageIndex)
+                row.model ?: previous.model, row.timestamp ?: previous.timestamp, row.messageIndex, firstMessageIndex = previous.firstMessageIndex ?: previous.messageIndex)
         } else grouped.add(row)
     }
-    return grouped
+    val legacy = legacyWorkedSeconds(messages)
+    return grouped.map { row ->
+        val span = messages.subList(row.firstMessageIndex ?: row.messageIndex, row.messageIndex + 1)
+        if (row.role in listOf("assistant", "tool")) row.copy(workedSeconds = if (hasRecordedTiming(span)) recordedWorkedSeconds(span) else legacy[row.messageIndex]) else row
+    }
 }
 
 fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
@@ -113,7 +117,7 @@ fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
         val index = if (part.type == "tool" && part.toolCallId.isNotEmpty()) result.indexOfFirst { it.type == "tool" && it.toolCallId == part.toolCallId } else -1
         if (index < 0) result.add(part) else {
             val old = result[index]
-            result[index] = part.copy(toolName = part.toolName.ifEmpty { old.toolName }, args = part.args.ifEmpty { old.args }, output = part.output.ifEmpty { old.output }, state = part.state.ifEmpty { old.state })
+            result[index] = part.copy(toolName = part.toolName.ifEmpty { old.toolName }, args = part.args.ifEmpty { old.args }, output = part.output.ifEmpty { old.output }, state = part.state.ifEmpty { old.state }, outcome = part.outcome.ifEmpty { old.outcome })
         }
     }
     return result
@@ -148,7 +152,7 @@ fun activitySummary(parts: List<MessagePart>, live: Boolean): List<Pair<String, 
     for (part in parts.filter { it.type == "tool" }) {
         val name = canonicalActivityTool(part.toolName)
         val category = when {
-            part.state in listOf("error", "denied", "rejected") -> "failed"
+            activityFailed(part) -> "failed"
             live && part.state == "running" -> "running"
             name in listOf("run_command", "start_command") -> "commands"
             name in listOf("web_search", "glob_search", "grep_search", "memory_search", "session_search") -> "searches"
@@ -223,7 +227,7 @@ class LiveActivityBuffer {
             }
             "TOOL_CALL_START" -> { startedArgs.remove(id); tool { it.copy(toolName = event.optString("toolCallName"), state = "running") } }
             "TOOL_CALL_ARGS" -> tool { it.copy(args = (if (startedArgs.add(id)) "" else it.args) + delta) }
-            "TOOL_CALL_RESULT" -> tool { it.copy(output = (event.opt("content") ?: event.opt("output") ?: event.opt("result") ?: "").toString(), state = "completed") }
+            "TOOL_CALL_RESULT" -> tool { it.copy(output = (event.opt("content") ?: event.opt("output") ?: event.opt("result") ?: "").toString(), state = "completed", outcome = event.opt("outcome") as? String ?: "") }
             "CUSTOM" -> {
                 val value = event.optJSONObject("value") ?: return
                 when (event.optString("name")) {

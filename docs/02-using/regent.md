@@ -178,3 +178,36 @@ project session, where you can see and steer it.
 Regent only knows about a project's sessions through their tasks and what's
 running. A chat in a project that never made a task and isn't running doesn't
 show up for it.
+
+## Regent on your phone
+
+The iOS and Android apps show Regent above your other conversations when your
+phone has **All conversations** access. It is the same Regent conversation as on
+your computer, with the same history and project context. Opening Regent for the
+first time also sets up its usual check-ins.
+
+The crowned mark moves while Regent works. An orange gem means something needs
+you, and a badge shows unread messages. Regent's separate replies and reactions
+appear in the conversation, alongside expandable activity and tool approvals.
+Animations pause in the background and respect reduced-motion settings. Expand
+**Recent delegated conversations** to jump to one of the latest project sessions
+Regent started.
+
+Phones restricted to selected conversations cannot open Regent, because Regent
+can read and coordinate work across projects. Sending, stopping and approving
+still require their corresponding phone permissions. Your computer must be
+running and reachable. Background phone push notifications are not provided by
+this integration; return to the app to refresh progress.
+
+Regent's phone conversation accepts text. Attachments and ordinary conversation
+actions such as moving, deleting or branching Regent are unavailable. Use the
+project conversation when you need those actions. The offline demo includes a
+Regent example with scripted replies.
+
+**New conversation** opens an independent chat even while Regent is working or
+waiting for approval. Its existing work continues; return to Regent to follow up.
+
+Completed replies keep the answer visible and fold the process under **Worked
+for…** (or **Activity** when timing is unavailable). Expand it to inspect the
+activity timeline, then open individual tools for their input, output and status.
+Running tools animate while the app is visible.

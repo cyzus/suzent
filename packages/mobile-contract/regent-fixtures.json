@@ -1,0 +1,208 @@
+[
+  {
+    "name": "replayed deliveries produce separate bubbles outside activity",
+    "parts": [
+      {
+        "type": "reasoning",
+        "text": "Checking"
+      },
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "delivery",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"I started the project session.\", \"I will tell you if it needs you.\"]}}"
+      },
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "delivery",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"I started the project session.\", \"I will tell you if it needs you.\"]}}"
+      },
+      {
+        "type": "text",
+        "text": "HEARTBEAT_OK"
+      }
+    ],
+    "texts": [
+      "I started the project session.",
+      "I will tell you if it needs you."
+    ],
+    "activities": 1,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "reaction is not activity",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "react_to_message",
+        "toolCallId": "reaction",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_reaction\": \"\\ud83d\\udc40\"}}"
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": "👀",
+    "live": false
+  },
+  {
+    "name": "reaction removal wins",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "react_to_message",
+        "toolCallId": "reaction",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_reaction\": \"\\ud83d\\udc40\"}}"
+      },
+      {
+        "type": "tool",
+        "toolName": "react_to_message",
+        "toolCallId": "remove",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_reaction\": \"\"}}"
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": "",
+    "live": true
+  },
+  {
+    "name": "failed delivery remains inspectable",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "delivery",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"I started the project session.\", \"I will tell you if it needs you.\"]}}",
+        "outcome": "error"
+      }
+    ],
+    "texts": [],
+    "activities": 1,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "malformed payload remains inspectable",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "delivery",
+        "state": "completed",
+        "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"ok\", 42]}}"
+      }
+    ],
+    "texts": [],
+    "activities": 1,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "partial quiet token is hidden while streaming",
+    "parts": [
+      {
+        "type": "text",
+        "text": "HEART"
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": null,
+    "live": true
+  },
+  {
+    "name": "ordinary text prefix survives history",
+    "parts": [
+      {
+        "type": "text",
+        "text": "HEART"
+      }
+    ],
+    "texts": [
+      "HEART"
+    ],
+    "activities": 0,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "failed envelope remains inspectable",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "delivery",
+        "state": "completed",
+        "output": "{\"success\": false, \"metadata\": {\"regent_messages\": [\"not delivered\"]}}"
+      }
+    ],
+    "texts": [],
+    "activities": 1,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "running delivery is hidden",
+    "parts": [
+      {
+        "type": "tool",
+        "toolName": "send_message",
+        "toolCallId": "pending",
+        "state": "running"
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": null,
+    "live": true
+  },
+  {
+    "name": "short quiet aside matches desktop",
+    "parts": [
+      {
+        "type": "text",
+        "text": "HEARTBEAT_OK Nothing needs you."
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "suffix quiet aside matches desktop",
+    "parts": [
+      {
+        "type": "text",
+        "text": "All checked. HEARTBEAT_OK"
+      }
+    ],
+    "texts": [],
+    "activities": 0,
+    "reaction": null,
+    "live": false
+  },
+  {
+    "name": "long report is retained",
+    "parts": [
+      {
+        "type": "text",
+        "text": "HEARTBEAT_OK xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    ],
+    "texts": [
+      "HEARTBEAT_OK xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "activities": 0,
+    "reaction": null,
+    "live": false
+  }
+]

@@ -154,6 +154,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                                 if (details) {
                                     val p = preview.permissions
                                     Text(if (p.allChats) stringResource(R.string.all_conversations) else stringResource(R.string.shared_conversations, p.chatIds.size))
+                                    if (p.allChats) Text(stringResource(R.string.regent_permission), style = MaterialTheme.typography.bodySmall)
                                     listOf(R.string.create_conversations to p.createChats, R.string.send_messages to p.send,
                                         R.string.stop_responses to p.stop, R.string.approve_tools to p.approveTools).forEach { (label, enabled) ->
                                         Text(stringResource(label) + ": " + stringResource(if (enabled) R.string.allowed else R.string.not_allowed), style = MaterialTheme.typography.bodySmall)

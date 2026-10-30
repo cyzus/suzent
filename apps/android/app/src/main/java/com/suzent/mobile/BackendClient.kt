@@ -133,6 +133,10 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         return result.optString("chat_id", id)
     }
 
+    override suspend fun markRead(id: String) {
+        require(!id.contains('/') && id != "." && id != "..")
+        json("mobile/client/chats/$id/read", JSONObject())
+    }
     override suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))

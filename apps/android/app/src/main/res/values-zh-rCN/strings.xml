@@ -194,4 +194,20 @@
     <string name="pairing_finishing">正在完成连接…</string>
     <string name="pairing_network_help">请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。</string>
     <string name="back_to_chats">返回会话列表</string>
+    <string name="regent_name">SUZENT Regent</string>
+    <string name="regent_working">Regent 正在工作</string>
+    <string name="regent_waiting">需要你处理</string>
+    <string name="regent_scope">统筹你的所有项目</string>
+    <string name="regent_greeting">在一个对话里统筹所有项目。问问有什么需要你处理，或把下一个任务交给我。</string>
+    <string name="regent_unread">%1$d 条未读消息</string>
+    <string name="regent_reaction">Regent 的回应：%1$s</string>
+    <string name="regent_permission">Regent 可以统筹你所有项目中的工作。</string>
+    <string name="regent_sessions">最近委派的对话</string>
+    <string name="activity_worked_for">用时 %1$s</string>
+    <string name="activity_label">活动记录</string>
+    <string name="activity_thinking">思考中</string>
+    <string name="activity_copy_details">复制详情</string>
+    <string name="activity_full_details">显示完整详情</string>
+    <string name="recent_chats">最近对话</string>
+    <string name="recent_view_all">查看全部</string>
 </resources>

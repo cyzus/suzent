@@ -49,3 +49,30 @@ This requires a backend with protocol 1 (main after #227). It does not fall back
 to the consume-once protocol. Recovery survives client reloads, not backend
 restarts; no durable event journal is introduced. Structured live tool rendering
 is a follow-up; persisted tool activities are rendered from chat history.
+
+### Regent (optional)
+
+Updated servers prepend the singleton Regent to the chat index for `all_chats`
+grants, with `platform: "focal"` and an optional
+`regent: { waiting: Int, unread: Int, lastMessageAt: String | null }` object.
+Its hidden system project is not exposed as a navigation group. Listing does not
+initialize Regent; opening its detail does. Clients without this metadata remain
+compatible. Explicit chat-ID grants do not authorize Regent's global context.
+Sending/stopping/approving continue to require their respective action grants.
+
+`POST /mobile/client/chats/{chat_id}/read` (empty JSON body) acknowledges the
+conversation's unread messages using the same shared-chat authorization.
+Clients use it for discovered Regent conversations on open and while visible.
+Regent does not support mobile attachments, management, retry/edit or fork.
+
+Regent delivery and reaction rendering cases are shared by both native test
+suites in `regent-fixtures.json`; these transformations never change saved history.
+
+### Activity timing (optional)
+
+Native history presentation reads `run_timings`, `_streaming_run_id`,
+`run_started_at`, `run_finished_at`, `run_active_seconds` and
+`turn_last_activity_at`. Recorded active durations take precedence over wall time;
+replayed run IDs are counted once and unknown waiting durations are not shown as
+worked time. Missing fields remain compatible with older history. Cross-platform
+cases are in `activity-timing-fixtures.json`.

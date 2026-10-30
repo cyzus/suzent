@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from suzent.auth_boundary import extract_token
+from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
 from suzent.database import get_database
 from suzent.mobile.attachments import attachment_registry
 from suzent.mobile.pairing import ClientGrant, PairingStore
@@ -118,6 +119,23 @@ async def session(request: Request) -> JSONResponse:
     )
 
 
+def regent_summary() -> dict[str, object]:
+    """Discover Regent without activating its heartbeat until the user opens it."""
+    exists = get_database().get_chat(FOCAL_CHAT_ID) is not None
+    status = focal_status() if exists else {}
+    return {
+        "id": FOCAL_CHAT_ID,
+        "title": FOCAL_TITLE,
+        "platform": "focal",
+        "isRunning": bool(status.get("running", False)),
+        "regent": {
+            "waiting": status.get("waiting", 0),
+            "unread": status.get("unread", 0),
+            "lastMessageAt": status.get("lastMessageAt"),
+        },
+    }
+
+
 async def chats(request: Request) -> JSONResponse:
     grant = authorize(request)
     db = get_database()
@@ -125,6 +143,9 @@ async def chats(request: Request) -> JSONResponse:
         chat_ids=None if grant.permissions.all_chats else grant.permissions.chat_ids,
         limit=1000,
     )
+    records = [
+        (chat_id, title) for chat_id, title in records if chat_id != FOCAL_CHAT_ID
+    ]
     projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
     pinned = db.get_pinned_chat_ids([chat_id for chat_id, _ in records])
     navigation = db.get_chat_navigation([chat_id for chat_id, _ in records])
@@ -132,7 +153,8 @@ async def chats(request: Request) -> JSONResponse:
 
     return reply(
         {
-            "chats": [
+            "chats": ([regent_summary()] if grant.permissions.all_chats else [])
+            + [
                 {
                     "id": chat_id,
                     "title": title,
@@ -156,6 +178,13 @@ async def chats(request: Request) -> JSONResponse:
     )
 
 
+async def mark_read(request: Request) -> JSONResponse:
+    chat_id = request.path_params["chat_id"]
+    authorize(request, chat_id)
+    get_database().mark_chat_read(chat_id)
+    return reply({"ok": True})
+
+
 async def chat(request: Request) -> JSONResponse:
     chat_id = request.path_params["chat_id"]
     grant = authorize(request, chat_id)
@@ -173,6 +202,7 @@ async def chat(request: Request) -> JSONResponse:
         raise HTTPException(404, "Conversation unavailable")
     # The lightweight transcript deliberately excludes configuration.
     config = stored_chat.config or {}
+    regent = chat_id == FOCAL_CHAT_ID
     native = str(config.get("runtime", "native")).lower() != "acp"
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
     return reply(
@@ -182,8 +212,9 @@ async def chat(request: Request) -> JSONResponse:
                 for key in ("id", "title", "messages", "isRunning")
                 if key in data
             },
-            "projectId": metadata[0],
-            "projectName": metadata[1],
+            **({"regent": regent_summary()["regent"]} if regent else {}),
+            "projectId": None if regent else metadata[0],
+            "projectName": None if regent else metadata[1],
             "pinned": chat_id in get_database().get_pinned_chat_ids([chat_id]),
             "platform": config.get("platform"),
             "parentChatId": (
@@ -312,6 +343,8 @@ async def upload(request: Request) -> JSONResponse:
     if not chat_id or "/" in chat_id or len(chat_id) > 200:
         raise HTTPException(400, "Invalid mobile request")
     grant = authorize(request, chat_id, "send")
+    if chat_id == FOCAL_CHAT_ID:
+        raise HTTPException(400, "Regent does not accept attachments")
     try:
         declared = int(request.headers.get("content-length", ""))
     except ValueError:
@@ -361,6 +394,8 @@ async def send(request: Request) -> JSONResponse:
     config = dict(chat.config or {})
     native = str(config.get("runtime", "native")).lower() != "acp"
     payload = body.model_dump(exclude={"model", "attachments"}, exclude_none=True)
+    if body.attachments and body.chat_id == FOCAL_CHAT_ID:
+        raise HTTPException(400, "Regent does not accept attachments")
     if body.attachments:
         files = attachment_registry.resolve(
             grant.device_id, body.chat_id, body.attachments
@@ -399,6 +434,8 @@ async def stop(request: Request) -> JSONResponse:
 
 async def message_action(request: Request) -> JSONResponse:
     body = await parse(request, MessageActionRequest)
+    if body.chat_id == FOCAL_CHAT_ID:
+        raise HTTPException(403, "Regent conversation actions are unavailable")
     grant = authorize(request, body.chat_id)
     db = get_database()
     stored = db.get_chat(body.chat_id)
@@ -511,6 +548,8 @@ async def message_action(request: Request) -> JSONResponse:
 
 async def manage(request: Request) -> JSONResponse:
     body = await parse(request, ManageRequest)
+    if body.chat_id == FOCAL_CHAT_ID:
+        raise HTTPException(403, "Regent cannot be managed as an ordinary chat")
     grant = authorize(request, body.chat_id, "manage_chats")
     db = get_database()
     if db.get_chat(body.chat_id) is None:
@@ -634,6 +673,7 @@ client_routes = [
     Route("/mobile/client/chats", chats, methods=["GET"]),
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
+    Route("/mobile/client/chats/{chat_id}/read", mark_read, methods=["POST"]),
     Route("/mobile/client/upload", upload, methods=["POST"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),

@@ -18,6 +18,8 @@ public struct MessagePart: Decodable, Sendable, Equatable {
     public var toolCallId: String?
     public var state: String?
     public var messageId: String?
+    public var outcome: String?
+    public var regentBubble: Bool? = nil
     public var citationSources: [CitationSource]?
     public init(type: String, text: String? = nil, toolName: String? = nil, args: String? = nil,
                 output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil,
@@ -37,6 +39,9 @@ public struct DisplayMessage: Sendable {
     public var timestamp: String? = nil
     public var messageIndex: Int = 0
     public var files: [FileAttachment] = []
+    public var reaction: String? = nil
+    public var workedSeconds: Int? = nil
+    public var firstMessageIndex: Int? = nil
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
@@ -105,10 +110,18 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
                 citationSources: (previous.citationSources + row.citationSources).reduce(into: [CitationSource]()) { sources, source in
                     if !sources.contains(where: { $0.id == source.id }) { sources.append(source) }
                 },
-                model: row.model ?? previous.model, timestamp: row.timestamp ?? previous.timestamp, messageIndex: row.messageIndex)
+                model: row.model ?? previous.model, timestamp: row.timestamp ?? previous.timestamp, messageIndex: row.messageIndex, firstMessageIndex: previous.firstMessageIndex ?? previous.messageIndex)
         } else { grouped.append(row) }
     }
-    return grouped
+    let legacy = legacyWorkedSeconds(messages)
+    return grouped.map { row in
+        var result = row
+        if row.role == "assistant" || row.role == "tool" {
+            let span = Array(messages[(row.firstMessageIndex ?? row.messageIndex)...row.messageIndex])
+            result.workedSeconds = hasRecordedTiming(span) ? recordedWorkedSeconds(span) : legacy[row.messageIndex]
+        }
+        return result
+    }
 }
 
 public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {
@@ -124,6 +137,7 @@ public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {
             if (merged.args ?? "").isEmpty { merged.args = result[index].args }
             if (merged.output ?? "").isEmpty { merged.output = result[index].output }
             if (merged.state ?? "").isEmpty { merged.state = result[index].state }
+            if merged.outcome == nil { merged.outcome = result[index].outcome }
             result[index] = merged
         } else { result.append(part) }
     }
@@ -163,7 +177,7 @@ public func activitySummary(_ parts: [MessagePart], live: Bool) -> [(kind: Strin
     for part in parts where part.type == "tool" {
         let name = canonicalActivityTool(part.toolName ?? "")
         var category = "other"
-        if ["error", "denied", "rejected"].contains(part.state ?? "") { category = "failed" }
+        if activityFailed(part) { category = "failed" }
         else if live && part.state == "running" { category = "running" }
         else if ["run_command", "start_command"].contains(name) { category = "commands" }
         else if ["web_search", "glob_search", "grep_search", "memory_search", "session_search"].contains(name) { category = "searches" }
@@ -231,7 +245,7 @@ public struct LiveActivityBuffer: Sendable {
             case "TOOL_CALL_ARGS":
                 if startedArgs.insert(id).inserted { parts[index].args = "" }
                 parts[index].args = (parts[index].args ?? "") + delta
-            default: parts[index].output = (fields["content"] ?? fields["output"] ?? fields["result"])?.text; parts[index].state = "completed"
+            default: parts[index].output = (fields["content"] ?? fields["output"] ?? fields["result"])?.text; parts[index].state = "completed"; parts[index].outcome = fields["outcome"]?.text
             }
         case "CUSTOM":
             guard let value = fields["value"], let toolId = value["toolCallId"]?.text, !toolId.isEmpty else { return }
