@@ -569,7 +569,9 @@ function ChatGPTProviderCard({
     : t('settings.providers.chatgpt.signIn');
 
   return (
-    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
+    <details
+      className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none"
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProviderIcon provider={provider} />
@@ -725,22 +727,22 @@ const CATALOG_GROUPS = ['global', 'china', 'relay', 'local'] as const;
 interface ProviderCatalogProps {
   providers: ApiProvider[];
   showCustom: boolean;
-  customOpen: boolean;
+  renderProvider: (provider: ApiProvider) => React.ReactNode;
   customForm: React.ReactNode;
-  onPick: (provider: ApiProvider) => void;
+  customOpen: boolean;
   onCustom: () => void;
 }
 
 const ProviderCatalog = React.forwardRef<HTMLElement, ProviderCatalogProps>(
   function ProviderCatalog(
-    { providers, showCustom, customOpen, customForm, onPick, onCustom },
+    { providers, showCustom, renderProvider, customForm, customOpen, onCustom },
     ref
   ) {
     const { t } = useI18n();
     // The backend already puts China first for Chinese users.
     const order = [...new Set([...providers.map((p) => p.group ?? 'global'), ...CATALOG_GROUPS])];
     const tile =
-      'flex min-w-0 items-center gap-3 border-2 border-brutal-black bg-white p-2.5 text-left transition-colors hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-700';
+      'flex min-w-0 cursor-pointer items-center gap-3 border-2 border-brutal-black bg-white p-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-black dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:focus-visible:outline-white';
     return (
       <section
         ref={ref}
@@ -766,29 +768,12 @@ const ProviderCatalog = React.forwardRef<HTMLElement, ProviderCatalogProps>(
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {t(`settings.providers.catalog.groups.${group}`)}
               </h4>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {members.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    onClick={() => onPick(provider)}
-                    className={tile}
-                  >
-                    <ProviderIcon provider={provider} />
-                    <span className="min-w-0 text-xs font-black uppercase leading-tight">
-                      {provider.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <div className="space-y-2">{members.map(renderProvider)}</div>
             </div>
           );
         })}
         {showCustom && (
           <div className="space-y-2">
-            <h4 className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              {t('settings.providers.catalog.groups.custom')}
-            </h4>
             {customOpen ? (
               customForm
             ) : (
@@ -915,14 +900,8 @@ export function ProvidersTab({
     });
   };
 
-  // Providers picked from the catalog this session stay listed while being set up.
-  const [added, setAdded] = useState<Set<string>>(new Set());
-  const [catalogOpen, setCatalogOpen] = useState(false);
-  const catalogRef = useRef<HTMLElement | null>(null);
-
   const isConfigured = (provider: ApiProvider) =>
     provider.user_defined ||
-    added.has(provider.id) ||
     ((userConfigs[provider.id] || provider.user_config)?.enabled_models?.length ?? 0) > 0 ||
     provider.fields.some((field) => field.isSet || !!apiKeys[field.key]);
   const matches = (provider: ApiProvider) =>
@@ -930,21 +909,7 @@ export function ProvidersTab({
   // Onboarding keeps the flat list; Settings lists only what is in use.
   const listed = onboarding ? providers : providers.filter(isConfigured);
   const catalog = onboarding ? [] : providers.filter((provider) => !isConfigured(provider));
-  const showCatalog =
-    !onboarding &&
-    (catalogOpen || listed.length === 0 || (!!query.trim() && catalog.some(matches)));
-
-  const pickFromCatalog = (provider: ApiProvider) => {
-    setAdded((prev) => new Set(prev).add(provider.id));
-    setCatalogOpen(false);
-    setQuery('');
-    setJumpTarget(provider.id);
-  };
-
-  const openCatalog = () => {
-    setCatalogOpen(true);
-    requestAnimationFrame(() => catalogRef.current?.scrollIntoView({ block: 'start' }));
-  };
+  const showCatalog = !onboarding;
 
   const handleSaveProvider = async (
     payload: CustomProviderPayload,
@@ -953,7 +918,6 @@ export function ProvidersTab({
     await onAddProvider(payload);
     for (const [key, value] of Object.entries(keys)) onKeyChange(key, value);
     setShowAddForm(false);
-    setCatalogOpen(false);
     setQuery('');
     setJumpTarget(payload.id);
   };
@@ -988,6 +952,453 @@ export function ProvidersTab({
     }
   };
 
+  const renderProvider = (provider: ApiProvider): React.ReactNode => {
+    const visible = matches(provider);
+    const activeTab = activeTabs[provider.id] || 'credentials';
+    const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
+    const isEnabled = conf.enabled_models.length > 0;
+    const regionField = provider.regions?.length ? baseUrlField(provider) : undefined;
+    const savedBaseUrl = regionField
+      ? (keyDrafts[regionField.key] ?? apiKeys[regionField.key] ?? '')
+      : '';
+    const region = regionField ? activeRegion(provider, savedBaseUrl) : undefined;
+    // A saved URL that is none of the regions' was typed by hand.
+    const customBaseUrl =
+      !!regionField && (customRegion.has(provider.id) || (!!savedBaseUrl.trim() && !region));
+    const keyUrl = (!customBaseUrl && region?.key_url) || provider.key_url;
+
+    if (provider.id === 'chatgpt') {
+      return (
+        <div
+          key={provider.id}
+          ref={(element) => {
+            providerPanels.current[provider.id] = element;
+          }}
+          className={visible ? '' : 'hidden'}
+        >
+          <ChatGPTProviderCard
+            provider={provider}
+            config={conf}
+            onConfigChange={onConfigChange}
+            onAuthChanged={onChatGPTAuthChanged}
+            onVerify={onVerify}
+            verifying={!!verifying[provider.id]}
+            verification={verification[provider.id]}
+          />
+        </div>
+      );
+    }
+
+    const allModels =
+      provider.models.length > 0 ? [...provider.models] : [...(provider.default_models || [])];
+
+    for (const model of provider.models || []) {
+      const index = allModels.findIndex((x) => x.id === model.id);
+      if (index === -1) allModels.push(model);
+      else allModels[index] = { ...allModels[index], ...model };
+    }
+
+    for (const modelId of conf.custom_models) {
+      if (!allModels.find((x) => x.id === modelId)) {
+        allModels.push({ id: modelId, name: modelId });
+      }
+    }
+
+    for (const modelId of conf.enabled_models) {
+      if (!allModels.find((x) => x.id === modelId)) {
+        allModels.push({ id: modelId, name: modelId });
+      }
+    }
+
+    return (
+      <details
+        ref={(element) => {
+          providerPanels.current[provider.id] = element;
+        }}
+        key={provider.id}
+        className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none`}
+      >
+        {/* Provider Header */}
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+          <div className="flex flex-1 items-center gap-3 min-w-0">
+            <ProviderIcon provider={provider} />
+            <div className="flex flex-col min-w-0">
+              <span
+                className={`block max-w-full whitespace-normal break-normal [overflow-wrap:normal] font-black uppercase tracking-wide leading-tight dark:text-white ${getProviderTitleClass(provider.label)}`}
+                title={provider.label}
+              >
+                {provider.label}
+              </span>
+              {provider.user_defined && !onboarding && (
+                <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
+                  {t('settings.providers.customProvider')}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <KeyStatusBadge
+              fields={provider.fields.map((field) => ({
+                ...field,
+                isSet: field.isSet || !!apiKeys[field.key],
+              }))}
+            />
+            <span className="text-[10px] font-bold">
+              {t('settings.providers.enabledCount', { count: conf.enabled_models.length })}
+            </span>
+            <span aria-hidden="true">▾</span>
+            <div
+              className={`w-4 h-4 rounded-full border-2 border-brutal-black dark:border-zinc-500 ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
+            ></div>
+          </div>
+        </summary>
+
+        {/* Tabs */}
+        <div className="flex border-b-2 border-brutal-black bg-brutal-black">
+          <button
+            onClick={() => onTabChange(provider.id, 'credentials')}
+            className={`flex-1 border-r-2 border-brutal-black p-2 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+          >
+            {t('settings.providers.apiKeysTab')}
+          </button>
+          <button
+            onClick={() => onTabChange(provider.id, 'models')}
+            className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+          >
+            {t('settings.providers.modelsTab')}
+          </button>
+        </div>
+
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          {activeTab === 'credentials' && (
+            <div className="space-y-4">
+              {regionField && (
+                <RegionPicker
+                  provider={provider}
+                  selected={region}
+                  custom={customBaseUrl}
+                  onSelect={(picked) => {
+                    setCustomRegion((prev) => {
+                      const next = new Set(prev);
+                      next.delete(provider.id);
+                      return next;
+                    });
+                    onKeyChange(regionField.key, picked.base_url);
+                  }}
+                  onCustom={() => {
+                    setCustomRegion((prev) => new Set(prev).add(provider.id));
+                    startEditing(regionField.key);
+                  }}
+                />
+              )}
+              {keyUrl && (
+                <a
+                  href={keyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
+                >
+                  {t('settings.providers.getKey', { provider: provider.label })}
+                </a>
+              )}
+              {provider.fields.map((field) => {
+                // A picked region already says where requests go.
+                if (field.key === regionField?.key && !customBaseUrl) return null;
+                const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
+                const isConfigured =
+                  (field.isSet || !!apiKeys[field.key]) &&
+                  !editingFields.has(field.key) &&
+                  keyDrafts[field.key] === undefined;
+                const isEnvKey = field.source === 'env'; // display-only hint
+
+                return (
+                  <div key={field.key} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
+                        {field.label}
+                      </label>
+                      {isConfigured && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                          {t(`settings.providers.${isEnvKey ? 'environmentValue' : 'savedValue'}`)}
+                        </span>
+                      )}
+                    </div>
+
+                    {isConfigured ? (
+                      /* Locked/display state */
+                      <div className="flex gap-0 min-w-0">
+                        <div className="flex-1 min-w-0 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
+                          <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                            {field.type === 'secret' ? '••••••••' : val}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => startEditing(field.key)}
+                          className={`border-l-0 ${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
+                        >
+                          {t('settings.providers.changeKey')}
+                        </button>
+                      </div>
+                    ) : (
+                      /* Edit state */
+                      (() => {
+                        const isEditing = editingFields.has(field.key);
+                        const showToggle = field.type === 'secret' && val.length > 0;
+                        // Confirm/Cancel pair only when actively editing a previously-set field
+                        const showConfirm = keyDrafts[field.key] !== undefined;
+                        const showCancel = isEditing || keyDrafts[field.key] !== undefined;
+                        const canConfirm = val.trim().length > 0;
+                        const hasRight = showToggle || showConfirm || showCancel;
+                        return (
+                          <div className="flex gap-0">
+                            <div className="relative flex-1">
+                              <input
+                                type={
+                                  field.type === 'secret'
+                                    ? showKey[field.key]
+                                      ? 'text'
+                                      : 'password'
+                                    : 'text'
+                                }
+                                aria-label={field.label}
+                                autoComplete="off"
+                                value={val}
+                                onChange={(e) =>
+                                  setKeyDrafts((prev) => ({
+                                    ...prev,
+                                    [field.key]: e.target.value,
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (isImeComposing(e)) return;
+                                  if (e.key === 'Enter' && canConfirm) confirmEditing(field);
+                                }}
+                                placeholder={field.placeholder}
+                                autoFocus={isEditing}
+                                className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${hasRight ? 'border-r-0' : ''}`}
+                              />
+                            </div>
+                            {showToggle && (
+                              <button
+                                onClick={() => onToggleShowKey(field.key)}
+                                className={`w-9 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-mono text-xs dark:text-white select-none ${showConfirm || showCancel ? 'border-r-0' : ''}`}
+                                title={
+                                  showKey[field.key]
+                                    ? t('settings.providers.hideKey')
+                                    : t('settings.providers.showKey')
+                                }
+                              >
+                                {showKey[field.key] ? '○' : '●'}
+                              </button>
+                            )}
+                            {showConfirm && (
+                              <button
+                                onClick={() => confirmEditing(field)}
+                                disabled={!canConfirm}
+                                className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_PRIMARY} ${showCancel ? 'border-r-0' : ''}`}
+                              >
+                                {t('common.save')}
+                              </button>
+                            )}
+                            {showCancel && (
+                              <button
+                                onClick={() => cancelEditing(field)}
+                                className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
+                              >
+                                {t('common.cancel')}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                );
+              })}
+              {provider.fields.length === 0 && (
+                <p className="text-xs text-neutral-400 italic">
+                  {t('settings.providers.noCredentials')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'credentials' && (
+            <div className="space-y-2">
+              <BrutalButton
+                size="sm"
+                variant="primary"
+                disabled={
+                  verifying[provider.id] ||
+                  provider.fields.some(
+                    (field) => keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                  )
+                }
+                onClick={() => onVerify(provider)}
+              >
+                {verifying[provider.id]
+                  ? t('settings.providers.fetching')
+                  : t('settings.providers.testConnection')}
+              </BrutalButton>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                {t('settings.providers.connectionHint')}
+              </p>
+            </div>
+          )}
+          {verification[provider.id] && (
+            <p
+              role="status"
+              className={`border-l-4 px-3 py-2 text-xs ${verification[provider.id].success ? 'border-brutal-green' : 'border-brutal-red'}`}
+            >
+              {verification[provider.id].message}
+            </p>
+          )}
+          {provider.fields.some(
+            (field) => keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+          ) && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              {t('settings.providers.unsavedCredentials')}
+            </p>
+          )}
+          {activeTab === 'models' && (
+            <div className="flex flex-col h-full pt-2">
+              {/* Input Row with Fetch Button */}
+              <div className="flex flex-col sm:flex-row gap-2 mb-4 min-w-0">
+                <div className="flex flex-1 min-w-0 gap-0">
+                  <input
+                    type="text"
+                    aria-label={t('settings.providers.addModelIdPlaceholder')}
+                    value={modelDrafts[provider.id] || ''}
+                    onChange={(event) =>
+                      setModelDrafts((prev) => ({
+                        ...prev,
+                        [provider.id]: event.target.value,
+                      }))
+                    }
+                    placeholder={t('settings.providers.addModelIdPlaceholder')}
+                    className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+                    onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
+                      if (e.key === 'Enter') {
+                        onAddCustomModel(provider.id, e.currentTarget.value);
+                        setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={t('settings.providers.addModelIdPlaceholder')}
+                    disabled={!modelDrafts[provider.id]?.trim()}
+                    onClick={() => {
+                      onAddCustomModel(provider.id, modelDrafts[provider.id]);
+                      setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
+                    }}
+                    className="disabled:opacity-40 bg-brutal-black text-white w-10 font-bold border-2 border-brutal-black hover:bg-neutral-800 flex items-center justify-center text-lg"
+                  >
+                    +
+                  </button>
+                </div>
+                <BrutalButton
+                  variant="primary"
+                  onClick={() => onVerify(provider)}
+                  disabled={
+                    verifying[provider.id] ||
+                    provider.fields.some(
+                      (field) => keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                    )
+                  }
+                  className="text-xs px-4 py-2 font-black uppercase shrink-0"
+                >
+                  {verifying[provider.id]
+                    ? t('settings.providers.fetching')
+                    : t('settings.providers.fetch')}
+                </BrutalButton>
+              </div>
+
+              <input
+                type="search"
+                value={modelQueries[provider.id] || ''}
+                onChange={(event) =>
+                  setModelQueries((prev) => ({
+                    ...prev,
+                    [provider.id]: event.target.value,
+                  }))
+                }
+                placeholder={t('settings.providers.searchModels')}
+                aria-label={t('settings.providers.searchModels')}
+                className="mb-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs dark:bg-zinc-900 dark:text-white"
+              />
+              <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.providers.enabledCount', {
+                  count: conf.enabled_models.length,
+                })}
+              </p>
+              {/* Models List (Scrollable) */}
+              <BrutalMultiSelect
+                variant="list"
+                value={conf.enabled_models}
+                onChange={(newVal) =>
+                  onConfigChange(provider.id, { ...conf, enabled_models: newVal })
+                }
+                options={allModels
+                  .filter((m) =>
+                    `${m.name} ${m.id}`
+                      .toLowerCase()
+                      .includes((modelQueries[provider.id] || '').trim().toLowerCase())
+                  )
+                  .map((m) => ({
+                    value: m.id,
+                    label: m.name || m.id,
+                    description: modelDetails(m, t),
+                  }))}
+                emptyMessage={t('settings.providers.noModelsFound')}
+                emptyAction={
+                  !(modelQueries[provider.id] || '').trim() && (
+                    <button
+                      disabled={
+                        verifying[provider.id] ||
+                        provider.fields.some(
+                          (field) =>
+                            keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                        )
+                      }
+                      onClick={() => onVerify(provider)}
+                      className="underline hover:text-black"
+                    >
+                      {t('settings.providers.fetchModels')}
+                    </button>
+                  )
+                }
+                dropdownClassName="max-h-80"
+              />
+
+              {/* Footer */}
+              <div className="flex justify-between items-center px-1 mt-2">
+                <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
+                  {t('settings.providers.modelsAvailable', {
+                    count: String(allModels.length),
+                  })}
+                </span>
+              </div>
+            </div>
+          )}
+          {provider.user_defined && !onboarding && (
+            <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
+              <BrutalButton
+                size="xs"
+                variant="danger"
+                disabled={deletingId === provider.id}
+                onClick={() => handleDelete(provider.id)}
+              >
+                {t('settings.providers.deleteProvider')}
+              </BrutalButton>
+            </div>
+          )}
+        </div>
+      </details>
+    );
+  };
+
   return (
     <SettingsPage>
       {!onboarding && (
@@ -1010,18 +1421,6 @@ export function ProvidersTab({
                   size="sm"
                 >
                   {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-                </BrutalButton>
-                <BrutalButton
-                  onClick={() =>
-                    showCatalog && listed.length > 0 ? setCatalogOpen(false) : openCatalog()
-                  }
-                  variant="light"
-                  size="sm"
-                  aria-expanded={showCatalog}
-                >
-                  {showCatalog && listed.length > 0
-                    ? t('common.cancel')
-                    : t('settings.providers.addProvider')}
                 </BrutalButton>
               </>
             )
@@ -1084,471 +1483,19 @@ export function ProvidersTab({
       {!providers.some(matches) && (
         <p className="text-sm dark:text-white">{t('settings.providers.noMatchingProviders')}</p>
       )}
-      <div className="space-y-3">
-        {listed.map((provider) => {
-          const visible = matches(provider);
-          const activeTab = activeTabs[provider.id] || 'credentials';
-          const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
-          const isEnabled = conf.enabled_models.length > 0;
-          const regionField = provider.regions?.length ? baseUrlField(provider) : undefined;
-          const savedBaseUrl = regionField
-            ? (keyDrafts[regionField.key] ?? apiKeys[regionField.key] ?? '')
-            : '';
-          const region = regionField ? activeRegion(provider, savedBaseUrl) : undefined;
-          // A saved URL that is none of the regions' was typed by hand.
-          const customBaseUrl =
-            !!regionField && (customRegion.has(provider.id) || (!!savedBaseUrl.trim() && !region));
-          const keyUrl = (!customBaseUrl && region?.key_url) || provider.key_url;
-
-          if (provider.id === 'chatgpt') {
-            return (
-              <div
-                key={provider.id}
-                ref={(element) => {
-                  providerPanels.current[provider.id] = element;
-                }}
-                className={visible ? '' : 'hidden'}
-              >
-                <ChatGPTProviderCard
-                  provider={provider}
-                  config={conf}
-                  onConfigChange={onConfigChange}
-                  onAuthChanged={onChatGPTAuthChanged}
-                  onVerify={onVerify}
-                  verifying={!!verifying[provider.id]}
-                  verification={verification[provider.id]}
-                />
-              </div>
-            );
-          }
-
-          const allModels =
-            provider.models.length > 0
-              ? [...provider.models]
-              : [...(provider.default_models || [])];
-
-          for (const model of provider.models || []) {
-            const index = allModels.findIndex((x) => x.id === model.id);
-            if (index === -1) allModels.push(model);
-            else allModels[index] = { ...allModels[index], ...model };
-          }
-
-          for (const modelId of conf.custom_models) {
-            if (!allModels.find((x) => x.id === modelId)) {
-              allModels.push({ id: modelId, name: modelId });
-            }
-          }
-
-          for (const modelId of conf.enabled_models) {
-            if (!allModels.find((x) => x.id === modelId)) {
-              allModels.push({ id: modelId, name: modelId });
-            }
-          }
-
-          return (
-            <details
-              ref={(element) => {
-                providerPanels.current[provider.id] = element;
-              }}
-              key={provider.id}
-              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none`}
-            >
-              {/* Provider Header */}
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
-                <div className="flex flex-1 items-center gap-3 min-w-0">
-                  <ProviderIcon provider={provider} />
-                  <div className="flex flex-col min-w-0">
-                    <span
-                      className={`block max-w-full whitespace-normal break-normal [overflow-wrap:normal] font-black uppercase tracking-wide leading-tight dark:text-white ${getProviderTitleClass(provider.label)}`}
-                      title={provider.label}
-                    >
-                      {provider.label}
-                    </span>
-                    {provider.user_defined && !onboarding && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
-                        {t('settings.providers.customProvider')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <KeyStatusBadge
-                    fields={provider.fields.map((field) => ({
-                      ...field,
-                      isSet: field.isSet || !!apiKeys[field.key],
-                    }))}
-                  />
-                  <span className="text-[10px] font-bold">
-                    {t('settings.providers.enabledCount', { count: conf.enabled_models.length })}
-                  </span>
-                  <span aria-hidden="true">▾</span>
-                  <div
-                    className={`w-4 h-4 rounded-full border-2 border-brutal-black dark:border-zinc-500 ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
-                  ></div>
-                </div>
-              </summary>
-
-              {/* Tabs */}
-              <div className="flex border-b-2 border-brutal-black bg-brutal-black">
-                <button
-                  onClick={() => onTabChange(provider.id, 'credentials')}
-                  className={`flex-1 border-r-2 border-brutal-black p-2 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
-                >
-                  {t('settings.providers.apiKeysTab')}
-                </button>
-                <button
-                  onClick={() => onTabChange(provider.id, 'models')}
-                  className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
-                >
-                  {t('settings.providers.modelsTab')}
-                </button>
-              </div>
-
-              <div className="flex flex-1 flex-col gap-4 p-4">
-                {activeTab === 'credentials' && (
-                  <div className="space-y-4">
-                    {regionField && (
-                      <RegionPicker
-                        provider={provider}
-                        selected={region}
-                        custom={customBaseUrl}
-                        onSelect={(picked) => {
-                          setCustomRegion((prev) => {
-                            const next = new Set(prev);
-                            next.delete(provider.id);
-                            return next;
-                          });
-                          onKeyChange(regionField.key, picked.base_url);
-                        }}
-                        onCustom={() => {
-                          setCustomRegion((prev) => new Set(prev).add(provider.id));
-                          startEditing(regionField.key);
-                        }}
-                      />
-                    )}
-                    {keyUrl && (
-                      <a
-                        href={keyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
-                      >
-                        {t('settings.providers.getKey', { provider: provider.label })}
-                      </a>
-                    )}
-                    {provider.fields.map((field) => {
-                      // A picked region already says where requests go.
-                      if (field.key === regionField?.key && !customBaseUrl) return null;
-                      const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
-                      const isConfigured =
-                        (field.isSet || !!apiKeys[field.key]) &&
-                        !editingFields.has(field.key) &&
-                        keyDrafts[field.key] === undefined;
-                      const isEnvKey = field.source === 'env'; // display-only hint
-
-                      return (
-                        <div key={field.key} className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-                              {field.label}
-                            </label>
-                            {isConfigured && (
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                                {t(
-                                  `settings.providers.${isEnvKey ? 'environmentValue' : 'savedValue'}`
-                                )}
-                              </span>
-                            )}
-                          </div>
-
-                          {isConfigured ? (
-                            /* Locked/display state */
-                            <div className="flex gap-0 min-w-0">
-                              <div className="flex-1 min-w-0 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
-                                <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                                  {field.type === 'secret' ? '••••••••' : val}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => startEditing(field.key)}
-                                className={`border-l-0 ${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
-                              >
-                                {t('settings.providers.changeKey')}
-                              </button>
-                            </div>
-                          ) : (
-                            /* Edit state */
-                            (() => {
-                              const isEditing = editingFields.has(field.key);
-                              const showToggle = field.type === 'secret' && val.length > 0;
-                              // Confirm/Cancel pair only when actively editing a previously-set field
-                              const showConfirm = keyDrafts[field.key] !== undefined;
-                              const showCancel = isEditing || keyDrafts[field.key] !== undefined;
-                              const canConfirm = val.trim().length > 0;
-                              const hasRight = showToggle || showConfirm || showCancel;
-                              return (
-                                <div className="flex gap-0">
-                                  <div className="relative flex-1">
-                                    <input
-                                      type={
-                                        field.type === 'secret'
-                                          ? showKey[field.key]
-                                            ? 'text'
-                                            : 'password'
-                                          : 'text'
-                                      }
-                                      aria-label={field.label}
-                                      autoComplete="off"
-                                      value={val}
-                                      onChange={(e) =>
-                                        setKeyDrafts((prev) => ({
-                                          ...prev,
-                                          [field.key]: e.target.value,
-                                        }))
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (isImeComposing(e)) return;
-                                        if (e.key === 'Enter' && canConfirm) confirmEditing(field);
-                                      }}
-                                      placeholder={field.placeholder}
-                                      autoFocus={isEditing}
-                                      className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${hasRight ? 'border-r-0' : ''}`}
-                                    />
-                                  </div>
-                                  {showToggle && (
-                                    <button
-                                      onClick={() => onToggleShowKey(field.key)}
-                                      className={`w-9 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-mono text-xs dark:text-white select-none ${showConfirm || showCancel ? 'border-r-0' : ''}`}
-                                      title={
-                                        showKey[field.key]
-                                          ? t('settings.providers.hideKey')
-                                          : t('settings.providers.showKey')
-                                      }
-                                    >
-                                      {showKey[field.key] ? '○' : '●'}
-                                    </button>
-                                  )}
-                                  {showConfirm && (
-                                    <button
-                                      onClick={() => confirmEditing(field)}
-                                      disabled={!canConfirm}
-                                      className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_PRIMARY} ${showCancel ? 'border-r-0' : ''}`}
-                                    >
-                                      {t('common.save')}
-                                    </button>
-                                  )}
-                                  {showCancel && (
-                                    <button
-                                      onClick={() => cancelEditing(field)}
-                                      className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
-                                    >
-                                      {t('common.cancel')}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          )}
-                        </div>
-                      );
-                    })}
-                    {provider.fields.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">
-                        {t('settings.providers.noCredentials')}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === 'credentials' && (
-                  <div className="space-y-2">
-                    <BrutalButton
-                      size="sm"
-                      variant="primary"
-                      disabled={
-                        verifying[provider.id] ||
-                        provider.fields.some(
-                          (field) =>
-                            keyDrafts[field.key] !== undefined || editingFields.has(field.key)
-                        )
-                      }
-                      onClick={() => onVerify(provider)}
-                    >
-                      {verifying[provider.id]
-                        ? t('settings.providers.fetching')
-                        : t('settings.providers.testConnection')}
-                    </BrutalButton>
-                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                      {t('settings.providers.connectionHint')}
-                    </p>
-                  </div>
-                )}
-                {verification[provider.id] && (
-                  <p
-                    role="status"
-                    className={`border-l-4 px-3 py-2 text-xs ${verification[provider.id].success ? 'border-brutal-green' : 'border-brutal-red'}`}
-                  >
-                    {verification[provider.id].message}
-                  </p>
-                )}
-                {provider.fields.some(
-                  (field) => keyDrafts[field.key] !== undefined || editingFields.has(field.key)
-                ) && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    {t('settings.providers.unsavedCredentials')}
-                  </p>
-                )}
-                {activeTab === 'models' && (
-                  <div className="flex flex-col h-full pt-2">
-                    {/* Input Row with Fetch Button */}
-                    <div className="flex flex-col sm:flex-row gap-2 mb-4 min-w-0">
-                      <div className="flex flex-1 min-w-0 gap-0">
-                        <input
-                          type="text"
-                          aria-label={t('settings.providers.addModelIdPlaceholder')}
-                          value={modelDrafts[provider.id] || ''}
-                          onChange={(event) =>
-                            setModelDrafts((prev) => ({
-                              ...prev,
-                              [provider.id]: event.target.value,
-                            }))
-                          }
-                          placeholder={t('settings.providers.addModelIdPlaceholder')}
-                          className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                          onKeyDown={(e) => {
-                            if (isImeComposing(e)) return;
-                            if (e.key === 'Enter') {
-                              onAddCustomModel(provider.id, e.currentTarget.value);
-                              setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          aria-label={t('settings.providers.addModelIdPlaceholder')}
-                          disabled={!modelDrafts[provider.id]?.trim()}
-                          onClick={() => {
-                            onAddCustomModel(provider.id, modelDrafts[provider.id]);
-                            setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
-                          }}
-                          className="disabled:opacity-40 bg-brutal-black text-white w-10 font-bold border-2 border-brutal-black hover:bg-neutral-800 flex items-center justify-center text-lg"
-                        >
-                          +
-                        </button>
-                      </div>
-                      <BrutalButton
-                        variant="primary"
-                        onClick={() => onVerify(provider)}
-                        disabled={
-                          verifying[provider.id] ||
-                          provider.fields.some(
-                            (field) =>
-                              keyDrafts[field.key] !== undefined || editingFields.has(field.key)
-                          )
-                        }
-                        className="text-xs px-4 py-2 font-black uppercase shrink-0"
-                      >
-                        {verifying[provider.id]
-                          ? t('settings.providers.fetching')
-                          : t('settings.providers.fetch')}
-                      </BrutalButton>
-                    </div>
-
-                    <input
-                      type="search"
-                      value={modelQueries[provider.id] || ''}
-                      onChange={(event) =>
-                        setModelQueries((prev) => ({
-                          ...prev,
-                          [provider.id]: event.target.value,
-                        }))
-                      }
-                      placeholder={t('settings.providers.searchModels')}
-                      aria-label={t('settings.providers.searchModels')}
-                      className="mb-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs dark:bg-zinc-900 dark:text-white"
-                    />
-                    <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
-                      {t('settings.providers.enabledCount', {
-                        count: conf.enabled_models.length,
-                      })}
-                    </p>
-                    {/* Models List (Scrollable) */}
-                    <BrutalMultiSelect
-                      variant="list"
-                      value={conf.enabled_models}
-                      onChange={(newVal) =>
-                        onConfigChange(provider.id, { ...conf, enabled_models: newVal })
-                      }
-                      options={allModels
-                        .filter((m) =>
-                          `${m.name} ${m.id}`
-                            .toLowerCase()
-                            .includes((modelQueries[provider.id] || '').trim().toLowerCase())
-                        )
-                        .map((m) => ({
-                          value: m.id,
-                          label: m.name || m.id,
-                          description: modelDetails(m, t),
-                        }))}
-                      emptyMessage={t('settings.providers.noModelsFound')}
-                      emptyAction={
-                        !(modelQueries[provider.id] || '').trim() && (
-                          <button
-                            disabled={
-                              verifying[provider.id] ||
-                              provider.fields.some(
-                                (field) =>
-                                  keyDrafts[field.key] !== undefined || editingFields.has(field.key)
-                              )
-                            }
-                            onClick={() => onVerify(provider)}
-                            className="underline hover:text-black"
-                          >
-                            {t('settings.providers.fetchModels')}
-                          </button>
-                        )
-                      }
-                      dropdownClassName="max-h-80"
-                    />
-
-                    {/* Footer */}
-                    <div className="flex justify-between items-center px-1 mt-2">
-                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
-                        {t('settings.providers.modelsAvailable', {
-                          count: String(allModels.length),
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {provider.user_defined && !onboarding && (
-                  <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
-                    <BrutalButton
-                      size="xs"
-                      variant="danger"
-                      disabled={deletingId === provider.id}
-                      onClick={() => handleDelete(provider.id)}
-                    >
-                      {t('settings.providers.deleteProvider')}
-                    </BrutalButton>
-                  </div>
-                )}
-              </div>
-            </details>
-          );
-        })}
-      </div>
+      <div className="space-y-3">{listed.map(renderProvider)}</div>
       {showCatalog && (
         <ProviderCatalog
-          ref={catalogRef}
           providers={catalog.filter(matches)}
           showCustom={!query.trim() || 'custom'.includes(query.trim().toLowerCase())}
+          renderProvider={renderProvider}
           customOpen={showAddForm}
-          onPick={pickFromCatalog}
-          onCustom={() => setShowAddForm(true)}
           customForm={
             <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
           }
+          onCustom={() => {
+            setShowAddForm(true);
+          }}
         />
       )}
       {onboarding && showAddForm && (

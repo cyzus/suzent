@@ -1613,13 +1613,17 @@ code {
 
 /* Settings keeps its hard-edged visual language, but focus should be clear
    without moving controls or collapsing their shadows. */
-.settings-content :is(button, a, input, textarea, select):focus-visible {
+.settings-content :is(button, a):focus-visible {
   outline: 3px solid #0b6ef3;
   outline-offset: 2px;
 }
 
-.dark .settings-content :is(button, a, input, textarea, select):focus-visible {
+.dark .settings-content :is(button, a):focus-visible {
   outline-color: #ffe66d;
+}
+
+.settings-content :is(input, textarea, select):focus-visible {
+  outline: none;
 }
 
 .thinking-assembly {
