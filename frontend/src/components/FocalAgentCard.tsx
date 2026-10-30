@@ -128,7 +128,7 @@ export function FocalAgentCardView({
       onClick={() => onOpen(status?.chatId ?? FOCAL_CHAT_ID)}
       aria-current={active ? 'page' : undefined}
       aria-label={t('chatList.focal.open')}
-      className={`w-full px-2 py-2 min-h-9 flex items-center gap-2 text-left transition-colors text-brutal-black dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${active ? 'bg-neutral-200/70 dark:bg-zinc-700' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+      className={`regent-crown-on-hover w-full px-2 py-2 min-h-9 flex items-center gap-2 text-left transition-colors text-brutal-black dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${active ? 'bg-neutral-200/70 dark:bg-zinc-700' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
     >
       {/* The mark itself shows Regent's state: scanning, a lit gem, or a nod. */}
       <span
@@ -136,7 +136,7 @@ export function FocalAgentCardView({
         className={`flex w-7 h-7 shrink-0 items-end justify-center ${retreating ? 'regent-row-mark-retreat' : nod > 0 ? 'regent-nod' : ''}`}
         aria-hidden="true"
       >
-        <RegentMark size={24} state={regentState(status)} />
+        <RegentMark size={26} state={regentState(status)} />
       </span>
       <span className={`min-w-0 flex-1 ${retreating ? 'regent-row-text-retreat' : ''}`}>
         <span className="flex items-baseline gap-1.5 min-w-0">
