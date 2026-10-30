@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Redesign the right sidebar as an expandable overview with context usage, the chat's environment and heartbeat, and Regent's task board, and shrink the composer's folder button to an icon inside existing chats."
+}
