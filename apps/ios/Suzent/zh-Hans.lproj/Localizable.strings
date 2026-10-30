@@ -223,3 +223,21 @@
 "Keep Suzent open on your desktop and check Wi-Fi or Tailscale." = "请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。";
 
 "Back to chats" = "返回会话列表";
+
+"Regent is working" = "Regent 正在工作";
+"Needs your attention" = "需要你处理";
+"Across all your projects" = "统筹你的所有项目";
+"One conversation for all your projects. Ask what needs you, or hand me your next task." = "在一个对话里统筹所有项目。问问有什么需要你处理，或把下一个任务交给我。";
+"%lld unread messages" = "%lld 条未读消息";
+"Regent reacted %@" = "Regent 的回应：%@";
+"Regent can coordinate work across all your projects." = "Regent 可以统筹你所有项目中的工作。";
+"Recent delegated conversations" = "最近委派的对话";
+
+"Worked for %@" = "用时 %@";
+"Thinking" = "思考中";
+"Copy activity details" = "复制活动详情";
+"Show full details" = "显示完整详情";
+
+"Recent" = "最近对话";
+
+"View all" = "查看全部";

@@ -11,6 +11,7 @@ extension Color {
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
     static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let regentUserBackground = Color(uiColor: .suzentAdaptive(light: 0xF5F5F5, dark: 0x27272A))
     static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
@@ -37,6 +38,7 @@ private extension UIColor {
 
 struct MessageView: View {
     let message: DisplayMessage
+    var regent = false
     var isLatest = false
     var fallbackModel: String?
     var canRetry = false
@@ -44,6 +46,7 @@ struct MessageView: View {
     var canFork = false
     var onAction: (String, String?) -> Void = { _, _ in }
     private var user: Bool { message.role == "user" }
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 10) {
@@ -61,18 +64,26 @@ struct MessageView: View {
                     if !message.text.isEmpty { Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled) }
                 }
                     .padding(PresentationTokens.spaceMedium)
-                    .foregroundStyle(.black)
-                    .background(Color(presentation: PresentationTokens.yellow))
-                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
+                    .foregroundStyle(regent ? Color.suzentText : Color.black)
+                    .background(regent ? Color.regentUserBackground : Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: regent ? 8 : 0))
+                    .overlay(RoundedRectangle(cornerRadius: regent ? 8 : 0).strokeBorder(
+                        regent ? Color.suzentText.opacity(colorScheme == .dark ? 0.14 : 0.18) : Color.suzentOutline,
+                        lineWidth: regent ? 1 : PresentationTokens.borderWidth))
+                    .background {
+                        if !regent { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
+                    }
                     .frame(maxWidth: 320, alignment: .trailing)
-                    .padding(.trailing, PresentationTokens.shadowOffset).padding(.bottom, PresentationTokens.shadowOffset)
+                    .padding(.trailing, regent ? 0 : PresentationTokens.shadowOffset).padding(.bottom, regent ? 0 : PresentationTokens.shadowOffset)
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                SuzentAssistantBadge(compact: !isLatest)
-                ActivityContent(parts: message.parts, live: false, citationSources: message.citationSources)
+                ActivityTurn(parts: message.parts, regent: regent, compact: !isLatest,
+                             workedSeconds: message.workedSeconds, citationSources: message.citationSources)
             }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if let reaction = message.reaction, !reaction.isEmpty {
+            Text(reaction).padding(.horizontal, 8).padding(.vertical, 4).background(Color.suzentSelection, in: Capsule())
+                .frame(maxWidth: .infinity, alignment: .trailing).accessibilityLabel(Text("Regent reacted \(reaction)"))
         }
         if ["user", "assistant"].contains(message.role) {
             MessageFooter(message: message, fallbackModel: fallbackModel, canRetry: canRetry, canEdit: canEdit, canFork: canFork, onAction: onAction)
@@ -766,134 +777,17 @@ struct ActivityContent: View {
     let parts: [MessagePart]
     var live = false
     var citationSources: [CitationSource] = []
+    var regent = false
     var body: some View {
         let chunks = activityChunks(parts)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
-                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
+                if chunk.first?.type == "text" {
+                    SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources)
+                        .padding(regent ? 12 : 0)
+                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+                }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
-            }
-        }
-    }
-}
-
-struct ActivityRail: View {
-    let parts: [MessagePart]
-    let live: Bool
-    @State private var expanded: Bool
-    let current: Bool
-    init(parts: [MessagePart], live: Bool, current: Bool) {
-        self.parts = parts; self.live = live; self.current = current; _expanded = State(initialValue: false)
-    }
-    private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
-    private var running: Bool { live && ((current && parts.last?.type == "reasoning") || parts.contains { $0.state == "running" }) }
-    private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
-    private var accent: Color { failed ? .red : running ? Color.suzentLink : .secondary }
-    private var totals: String {
-        activitySummary(parts, live: live).map { entry in
-            let format: String
-            switch entry.kind {
-            case "running": format = String(localized: "In progress: %d")
-            case "commands": format = String(localized: "Commands run: %d")
-            case "read": format = String(localized: "Files read: %d")
-            case "changed": format = String(localized: "Files modified: %d")
-            case "searches": format = String(localized: "Searches: %d")
-            case "other": format = String(localized: "Other tool calls: %d")
-            case "failed": format = String(localized: "Failed calls: %d")
-            default: format = String(localized: "Other tool calls: %d")
-            }
-            return String(format: format, entry.count)
-        }.joined(separator: " · ")
-    }
-    private var summary: String {
-        if waiting { return String(localized: "Approval required") }
-        if (!live || !current || expanded) && !totals.isEmpty { return totals }
-        guard let part = parts.last else { return String(localized: "Completed") }
-        if part.type == "reasoning" {
-            let firstLine = (part.text ?? "").split(separator: "\n").first.map(String.init) ?? ""
-            return String(localized: "Reasoning") + ": " + String(firstLine.prefix(80))
-        }
-        return activityToolLabel(part)
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button { expanded.toggle() } label: {
-                HStack(spacing: 10) {
-                    Text(summary).lineLimit(1).truncationMode(.tail)
-                        .foregroundStyle(waiting || failed ? accent : .secondary)
-                    if running { StreamingPulse() }
-                    if totals.isEmpty || (live && current && !expanded) || waiting {
-                        Text("|").foregroundStyle(.tertiary)
-                        Text("\(activityStepCount(parts)) steps").fixedSize()
-                    }
-                    Image(systemName: expanded || waiting ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
-                    Spacer(minLength: 0)
-                }.font(.system(size: 13, weight: .medium)).foregroundStyle(Color.suzentMuted)
-                    .padding(.vertical, 12).padding(.horizontal, 12).contentShape(Rectangle())
-            }.buttonStyle(.plain)
-            if expanded || waiting {
-                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
-                VStack(spacing: 0) {
-                    ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-                        ToolActivityBlock(part: part, live: live, last: index == parts.count - 1, current: current)
-                    }
-                }.padding(.horizontal, 12).padding(.vertical, 8)
-            }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.025))
-            .overlay(alignment: .leading) { Rectangle().fill(waiting ? Color(presentation: PresentationTokens.yellow) : accent.opacity(0.3)).frame(width: 2) }
-    }
-}
-
-struct ToolActivityBlock: View {
-    let part: MessagePart
-    let live: Bool
-    var last = true
-    var current = true
-    @State private var expanded = false
-    private var running: Bool { live && (part.state == "running" || (current && last && part.type == "reasoning")) }
-    private var failed: Bool { ["error", "denied"].contains(part.state ?? "") }
-    private var color: Color { failed ? .red : running ? Color.suzentLink : .secondary }
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(spacing: 0) {
-                Text(part.state == "approval-requested" ? "!" : failed ? "×" : running ? "·" : "✓")
-                    .font(.system(size: 7, weight: .bold)).frame(width: 10, height: 10)
-                    .foregroundStyle(part.state == "approval-requested" ? .black : color)
-                    .background(part.state == "approval-requested" ? Color(presentation: PresentationTokens.yellow) : color.opacity(0.08))
-                Rectangle().fill(last ? Color.clear : Color.primary.opacity(0.12)).frame(width: 1)
-            }.frame(width: 16).padding(.top, 17)
-            VStack(alignment: .leading, spacing: 0) {
-                Button { expanded.toggle() } label: {
-                    HStack(spacing: 8) {
-                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? activityToolLabel(part).nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
-                            .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
-                        Spacer(minLength: 4)
-                        if running { StreamingPulse() }
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.suzentMuted)
-                    }.frame(minHeight: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                if !expanded, failed, let preview = part.output?.nonEmpty {
-                    Text(preview).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Color.suzentMuted).lineLimit(1).padding(.bottom, 10)
-                }
-                if expanded {
-                    VStack(alignment: .leading, spacing: 12) {
-                        detail("Input", value: part.args, code: true)
-                        detail("Output", value: part.output, code: true)
-                        detail("Reasoning", value: part.text, code: false)
-                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                        .overlay(Rectangle().stroke(Color.primary.opacity(0.12), lineWidth: 1))
-                        .background(Color.primary.opacity(0.04)).padding(.bottom, 12)
-                }
-            }
-        }.fixedSize(horizontal: false, vertical: true)
-    }
-    @ViewBuilder private func detail(_ title: LocalizedStringKey, value: String?, code: Bool) -> some View {
-        if let value, !value.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.system(size: 10, weight: .bold)).textCase(.uppercase).foregroundStyle(Color.suzentMuted)
-                Text(value).font(.system(size: 12, design: code ? .monospaced : .default)).textSelection(.enabled)
             }
         }
     }

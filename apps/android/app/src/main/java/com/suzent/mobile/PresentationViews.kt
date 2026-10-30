@@ -324,7 +324,7 @@ private data class MarkdownBinding(
 )
 
 @Composable
-fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackModel: String? = null,
+fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Boolean = false, fallbackModel: String? = null,
                 canRetry: Boolean = false, canEdit: Boolean = false, canFork: Boolean = false,
                 onAction: (String, String?) -> Unit = { _, _ -> }) {
     val outline = MaterialTheme.colorScheme.outline
@@ -333,18 +333,28 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false, fallbackMode
     if (message.role in listOf("system_triggered", "trigger")) {
         systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
     } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
-        Box(Modifier.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)
-            .widthIn(max = 320.dp).drawBehind {
-                drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
-            }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline).padding(PresentationTokens.spaceMedium.dp)) {
+        val dark = isSystemInDarkTheme()
+        val bubble = if (regent) Modifier
+            .background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), RoundedCornerShape(8.dp))
+            .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), RoundedCornerShape(8.dp))
+        else Modifier.drawBehind {
+            drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
+        }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline)
+        Box(Modifier.padding(end = if (regent) 0.dp else PresentationTokens.shadowOffset.dp,
+            bottom = if (regent) 0.dp else PresentationTokens.shadowOffset.dp)
+            .widthIn(max = 320.dp).then(bubble).padding(PresentationTokens.spaceMedium.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
                 message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
-                if (message.text.isNotEmpty()) SelectionContainer { Text(message.text, color = Color.Black, fontSize = PresentationTokens.typeChat.sp) }
+                if (message.text.isNotEmpty()) SelectionContainer { Text(message.text, color = if (regent) MaterialTheme.colorScheme.onSurface else Color.Black, fontSize = PresentationTokens.typeChat.sp) }
             }
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SuzentAssistantBadge(compact = !isLatest)
-        ActivityContent(message.parts, live = false, citationSources = message.citationSources)
+        ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources)
+    }
+    message.reaction?.takeIf { it.isNotEmpty() }?.let { reaction ->
+        val label = stringResource(R.string.regent_reaction, reaction)
+        Text(reaction, modifier = Modifier.align(androidx.compose.ui.Alignment.End).background(suzentSelection, RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 4.dp).semantics { contentDescription = label })
     }
     if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork, onAction)
     }
@@ -625,118 +635,19 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
-fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList()) {
+fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
+                if (chunk.first().type == "text") {
+                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(14.dp)).padding(12.dp) else Modifier) {
+                        MarkdownText(chunk.first().text, citationSources)
+                    }
+                }
                 else ActivityRail(chunk, live, index == chunks.lastIndex)
             }
         }
-    }
-}
-
-@Composable
-private fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
-    var expanded by remember { mutableStateOf(false) }
-    val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
-    val running = live && ((current && parts.lastOrNull()?.type == "reasoning") || parts.any { it.state == "running" })
-    val failed = parts.any { it.state in listOf("error", "denied") }
-    val ink = MaterialTheme.colorScheme.onSurface
-    val accent = if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
-    val totals = activitySummary(parts, live).map { (kind, count) ->
-        stringResource(when (kind) {
-            "running" -> R.string.rail_summary_running
-            "commands" -> R.string.rail_summary_commands
-            "read" -> R.string.rail_summary_read
-            "changed" -> R.string.rail_summary_changed
-            "searches" -> R.string.rail_summary_searches
-            "other" -> R.string.rail_summary_other
-            "failed" -> R.string.rail_summary_failed
-            else -> R.string.rail_summary_other
-        }, count)
-    }.joinToString(" · ")
-    val latest = parts.lastOrNull()
-    val status = when {
-        waiting -> stringResource(R.string.approval_required)
-        (!live || !current || expanded) && totals.isNotEmpty() -> totals
-        latest?.type == "reasoning" -> stringResource(R.string.reasoning) + ": " + latest.text.lineSequence().firstOrNull().orEmpty().take(80)
-        latest != null -> activityToolLabel(latest)
-        else -> stringResource(R.string.activity_completed)
-    }
-    Column(Modifier.fillMaxWidth().background(ink.copy(alpha = 0.025f)).drawBehind {
-        drawRect(if (waiting) Color(PresentationTokens.yellow) else accent.copy(alpha = 0.3f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
-    }) {
-        SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
-            Text(status, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
-            if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
-            if (totals.isEmpty() || (live && current && !expanded) || waiting) {
-                Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
-                Text(stringResource(R.string.activity_steps, activityStepCount(parts)).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(if (expanded || waiting) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-        }
-        if (expanded || waiting) {
-            HorizontalDivider(color = ink.copy(alpha = 0.12f))
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                parts.forEachIndexed { index, part ->
-                    key(part.toolCallId.ifEmpty { "reason-$index" }) {
-                        ToolActivityBlock(part, live, index == parts.lastIndex, current)
-                    }
-                }
-            }
-        }
-        HorizontalDivider(color = ink.copy(alpha = 0.12f))
-    }
-}
-
-@Composable
-fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, current: Boolean = true) {
-    val ink = MaterialTheme.colorScheme.onSurface
-    var details by remember { mutableStateOf(false) }
-    val active = live && (part.state == "running" || (current && last && part.type == "reasoning"))
-    val error = part.state in listOf("error", "denied")
-    val pending = part.state == "approval-requested"
-    val color = if (error) MaterialTheme.colorScheme.error else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 17.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-            Box(Modifier.size(10.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 7.sp, lineHeight = 9.sp, color = if (pending) Color.Black else color)
-            }
-            Box(Modifier.width(1.dp).weight(1f).background(if (last) Color.Transparent else ink.copy(alpha = 0.12f)))
-        }
-        Column(Modifier.weight(1f)) {
-            SuzentTextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
-                Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") activityToolLabel(part).ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
-                    color = ink, fontSize = 13.sp, maxLines = 2, fontWeight = FontWeight.Medium,
-                    fontFamily = if (part.type == "tool") FontFamily.Monospace else FontFamily.Default, modifier = Modifier.weight(1f))
-                if (active) StreamingPulse()
-                Text(if (details) "⌄" else "›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-            }
-            val preview = part.output
-            if (!details && error && preview.isNotEmpty()) {
-                Text(preview, modifier = Modifier.padding(bottom = 10.dp), fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            }
-            if (details) Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().background(ink.copy(alpha = 0.04f)).border(1.dp, ink.copy(alpha = 0.12f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActivityDetail(R.string.activity_input, part.args, true)
-                ActivityDetail(R.string.activity_output, part.output, true)
-                ActivityDetail(R.string.reasoning, part.text, false)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ActivityDetail(label: Int, value: String, code: Boolean) {
-    if (value.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(stringResource(label).uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SelectionContainer { Text(value, fontSize = 12.sp, lineHeight = 18.sp, fontFamily = if (code) FontFamily.Monospace else FontFamily.Default) }
     }
 }
 

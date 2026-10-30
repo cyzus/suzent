@@ -21,9 +21,14 @@ data class Backend(val origin: HttpUrl) {
 data class FileAttachment(val filename: String, val mimeType: String)
 data class ChatMessage(val role: String, val content: String, val parts: List<MessagePart> = emptyList(),
     val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null,
-    val files: List<FileAttachment> = emptyList())
+    val files: List<FileAttachment> = emptyList(), val runTimings: List<RunTiming> = emptyList(),
+    val runID: String? = null, val runStartedAt: String? = null, val runFinishedAt: String? = null,
+    val runActiveSeconds: Double? = null, val lastActivityAt: String? = null)
+data class RegentStatus(val waiting: Int = 0, val unread: Int = 0, val lastMessageAt: String? = null)
+
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
-    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null) {
+    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null, val regent: RegentStatus? = null) {
+    val isRegent: Boolean get() = platform == "focal"
     companion object {
         fun parse(json: JSONObject): Chat {
             val messages = json.optJSONArray("messages") ?: JSONArray()
@@ -38,6 +43,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                             val sources = part.optJSONArray("citationSources") ?: JSONArray()
                             MessagePart(part.optString("type"), part.optString("text"), part.optString("toolName"),
                                 part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"),
+                                outcome = part.opt("outcome") as? String ?: "",
                                 citationSources = (0 until sources.length()).mapNotNull { sourceIndex ->
                                     sources.optJSONObject(sourceIndex)?.let { source -> CitationSource(
                                         source.optString("id"), source.optString("type"), source.optString("title"),
@@ -46,8 +52,12 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                         }, item.optString("name"), item.optString("tool_call_id"), item.opt("model") as? String, item.opt("timestamp") as? String,
                         (0 until files.length()).mapNotNull { fileIndex ->
                             files.optJSONObject(fileIndex)?.let { file -> FileAttachment(file.optString("filename"), file.optString("mime_type")) }
-                        })
+                        }, runTimings = item.optJSONArray("run_timings")?.let { runs -> (0 until runs.length()).mapNotNull { runs.optJSONObject(it)?.let(RunTiming::parse) } } ?: emptyList(),
+                        runID = item.opt("_streaming_run_id") as? String, runStartedAt = item.opt("run_started_at") as? String,
+                        runFinishedAt = item.opt("run_finished_at") as? String, runActiveSeconds = (item.opt("run_active_seconds") as? Number)?.toDouble(),
+                        lastActivityAt = item.opt("turn_last_activity_at") as? String)
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
+                regent = json.optJSONObject("regent")?.let { RegentStatus(it.optInt("waiting"), it.optInt("unread"), it.opt("lastMessageAt") as? String) },
                 platform = json.opt("platform") as? String, parentChatId = json.opt("parentChatId") as? String,
                 pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }

@@ -190,6 +190,11 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: body))
     }
 
+    public func markRead(_ id: String) async throws {
+        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
+        _ = try await data("mobile/client/chats/\(id)/read", body: [:])
+    }
+
     public func chat(_ id: String) async throws -> Chat {
         // IDs are backend-issued. Reject path separators instead of treating them as routes.
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }

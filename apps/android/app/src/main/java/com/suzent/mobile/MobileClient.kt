@@ -15,6 +15,7 @@ interface MobileClient {
     suspend fun composer(): Chat
     suspend fun create(title: String, projectId: String? = null): Chat
     suspend fun chat(id: String): Chat
+    suspend fun markRead(id: String)
     suspend fun manageChat(id: String, action: String, value: String? = null)
     suspend fun messageAction(id: String, index: Int, action: String, text: String? = null, model: String? = null): String
     suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String>
