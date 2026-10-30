@@ -9444,6 +9444,8 @@ For a change to application code that needs no release, explicitly document why:
 ```
 
 A PR with only documentation, tests, or CI/tooling changes needs no declaration.
+Dependabot PRs that only touch dependency manifests and lockfiles need none either;
+the bump ships with the next declared release.
 CI requires product coverage for application changes. Shared presentation assets
 require a decision for desktop and mobile. Backend changes count as desktop changes;
 reviewers must also declare mobile impact if client changes are necessary. Path
