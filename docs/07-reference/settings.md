@@ -15,7 +15,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 |---|---|---|
 | **Providers** | Add API keys, sign in to providers, and choose which models are available. | [Models & Providers](../04-models/README.md) |
 | **Model Roles** | Pick which model handles each kind of work, with backups. | [Model roles](../04-models/model-roles.md) |
-| **Voice & audio** | Choose how the agent's speech sounds and plays. | [Images, video and speech](../03-features/tools/media.md) |
+| **Voice & audio** | Choose how the agent's speech sounds and plays, and the model and voice for voice mode. | [Speech](../03-features/tools/media.md#speech), [Voice mode](../02-using/conversations.md#talk-instead-of-typing) |
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](../03-features/memory/README.md) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](../03-features/automation.md) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](../05-chat-apps/README.md) |
@@ -24,6 +24,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](../02-using/conversations.md#bring-in-another-coding-agent) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](../03-features/nodes.md) |
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](../03-features/nodes.md) |
+| **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
 | **Appearance** | Theme, color scheme, and language. | [Making it yours](../02-using/make-it-yours.md#look-and-language) |
 | **Background Service** | Keep Suzent running after you close the window. | [Automation](../03-features/automation.md#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](../03-features/filesystem.md), [Permissions & approvals](../03-features/tools/human-in-the-loop.md) |
@@ -44,3 +45,15 @@ there:
 - **Browser** isn't shown.
 - **Background Service** is replaced by **Operations**, which shows the
   background service's status, lets you restart it, and shows its log.
+
+## Notifications
+
+When a chat finishes while you're looking elsewhere, Suzent can tell you.
+Under **When to notify**, choose **Always**, **Only in background** (only when
+the Suzent window isn't in front), or **Never**. Under **Sound**, choose
+**Chime**, **Ping**, **Bell**, **Resonance**, **Success**, or **None**.
+**Resonance** uses a different cue depending on how the reply ended, for
+example when it needs your approval or failed.
+
+Clicking a notification brings Suzent to the front. In a web browser only the
+sound plays.
