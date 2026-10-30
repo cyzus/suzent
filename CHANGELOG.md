@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On Windows, reinstalling no longer fails at the clone step because an earlier install saved its folder as a \\?\ path.
 - The installer repairs a release install that stopped halfway, instead of treating it as a development checkout that needs cargo.
 - Show only the latest facts a chat saved in the sidebar Memory section, with a count of the rest.
+- Tidy the sidebar Memory section: one quiet line when a reply used no memories, and saved facts wrap to two lines.
 - The overview gets its own Memory section showing what the last turn used, what this chat saved, and how organizing is going.
 - Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.

@@ -75,6 +75,7 @@
     ".releases/changes/memory-curated-view.json",
     ".releases/changes/memory-extraction-context.json",
     ".releases/changes/memory-recent-saved.json",
+    ".releases/changes/memory-sidebar-polish.json",
     ".releases/changes/memory-sidebar-section.json",
     ".releases/changes/memory-typed-capture.json",
     ".releases/changes/mobile-attachments.json",
