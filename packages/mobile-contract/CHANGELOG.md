@@ -6,6 +6,7 @@
 - Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Use native navigation, menus, swipe actions, settings, sheets, sharing and haptics on iOS and Android, unify the mobile visual rules, pin approvals above the composer, and make activity disclosures expand and collapse smoothly.
+- Simplify the mobile pairing screen before scanning: a centered welcome, the scan button within thumb reach, a one-line hint for where to find the QR code on desktop, and pasting an invitation in a sheet.
 - Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
 
 ## [mobile-v0.4.1] - 2026-10-26
