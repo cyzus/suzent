@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "patch"},
+  "reason": "Only the iOS and Android home sidebars change.",
+  "summary": "Keep the project order on the mobile home screen steady when projects are expanded, and stop iOS from shuffling chat rows that appear in both Recent and an expanded project."
+}
