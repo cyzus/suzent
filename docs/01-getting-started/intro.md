@@ -38,6 +38,7 @@ definition, with a five-question test for any agent, is at
 | **Use any model** | GPT, Claude, Gemini, DeepSeek, local models through Ollama, and more. Switch any time. |
 | **Remember you** | Learns your preferences and projects across conversations, stored as Markdown you own. |
 | **Get things done** | Searches the web, works with your files, runs code, and drives a browser, asking first before risky steps. |
+| **Keep track for you** | Suzent Regent watches all your projects, hands work to them, and tells you when something needs you. |
 | **Work on a schedule** | Daily reports, reminders, regular check-ins, and long-running goals. |
 | **Learn new skills** | Portable `SKILL.md` packages you can install, share, or write yourself. |
 | **Meet you anywhere** | The desktop app, your phone, Telegram, Slack, Discord, Feishu, and WeChat. |
