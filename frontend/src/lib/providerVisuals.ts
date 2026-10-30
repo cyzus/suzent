@@ -1,6 +1,11 @@
 import openaiIcon from '../assets/provider-icons/openai.svg';
 import anthropicIcon from '../assets/provider-icons/anthropic.svg';
 import geminiIcon from '../assets/provider-icons/gemini.svg';
+import stepfunIcon from '../assets/provider-icons/stepfun.svg';
+import baiducloudIcon from '../assets/provider-icons/baiducloud.svg';
+import huaweicloudIcon from '../assets/provider-icons/huaweicloud.svg';
+import opencodeIcon from '../assets/provider-icons/opencode.svg';
+import clineIcon from '../assets/provider-icons/cline.svg';
 import qwenIcon from '../assets/provider-icons/qwen.svg';
 import xaiIcon from '../assets/provider-icons/xai.svg';
 import bailianIcon from '../assets/provider-icons/bailian.svg';
@@ -110,11 +115,47 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
     color: '1664FF',
     logoUrl: volcengineIcon,
   },
+  stepfun: {
+    id: 'stepfun',
+    label: 'StepFun',
+    color: '1A5CFF',
+    logoUrl: stepfunIcon,
+  },
+  qianfan: {
+    id: 'qianfan',
+    label: 'Baidu Qianfan',
+    color: '2932E1',
+    logoUrl: baiducloudIcon,
+  },
+  huaweicloud: {
+    id: 'huaweicloud',
+    label: 'Huawei Cloud MaaS',
+    color: 'C7000B',
+    logoUrl: huaweicloudIcon,
+  },
   openrouter: {
     id: 'openrouter',
     label: 'OpenRouter',
     color: '6467F2',
     logoUrl: openrouterIcon,
+  },
+  opencode_go: {
+    id: 'opencode_go',
+    label: 'OpenCode Go',
+    color: '000000',
+    logoUrl: opencodeIcon,
+  },
+  clinepass: {
+    id: 'clinepass',
+    label: 'ClinePass',
+    color: '000000',
+    logoUrl: clineIcon,
+  },
+  ollama_cloud: {
+    id: 'ollama_cloud',
+    label: 'Ollama Cloud',
+    color: '000000',
+    logoUrl: ollamaIcon,
   },
   vllm: {
     id: 'vllm',
