@@ -569,9 +569,7 @@ function ChatGPTProviderCard({
     : t('settings.providers.chatgpt.signIn');
 
   return (
-    <details
-      className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none"
-    >
+    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProviderIcon provider={provider} />
