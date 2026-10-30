@@ -3,7 +3,6 @@ package com.suzent.mobile
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
@@ -25,6 +24,7 @@ import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -50,9 +51,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.ui.graphics.RectangleShape
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.View
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.withTimeoutOrNull
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.Markwon
@@ -74,13 +87,15 @@ fun SuzentTheme(content: @Composable () -> Unit) {
         surfaceContainerHighest = Color(PresentationTokens.gray), surfaceTint = Color.Transparent,
         outline = Color(PresentationTokens.outline_dark), outlineVariant = Color(PresentationTokens.outline_subtle_dark),
         onSurface = Color(PresentationTokens.text_dark), onBackground = Color(PresentationTokens.text_dark),
-        onSurfaceVariant = Color(PresentationTokens.muted_dark)
+        onSurfaceVariant = Color(PresentationTokens.muted_dark),
+        error = Color(PresentationTokens.danger_dark), onError = Color.Black
     ) else lightColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
         surface = Color.White, background = Color.White, outline = Color.Black,
         onSurface = Color.Black, onBackground = Color.Black, onSurfaceVariant = Color(PresentationTokens.muted_light),
-        outlineVariant = Color(0xFFE0E0E0)
+        outlineVariant = Color(0xFFE0E0E0),
+        error = Color(PresentationTokens.danger), onError = Color.White
     )
     val typography = Typography()
     MaterialTheme(colorScheme = colors, typography = typography.copy(
@@ -108,6 +123,41 @@ val suzentRowDivider: Color
 
 val suzentLink: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.link_dark else PresentationTokens.blue)
+
+val PressedAlpha = PresentationTokens.pressedAlpha.toFloat()
+val DisabledAlpha = PresentationTokens.disabledAlpha.toFloat()
+
+enum class SuzentHaptic { Light, LongPress, Confirm, Reject }
+
+fun View.suzentHaptic(kind: SuzentHaptic) {
+    performHapticFeedback(when (kind) {
+        SuzentHaptic.Light -> HapticFeedbackConstants.VIRTUAL_KEY
+        SuzentHaptic.LongPress -> HapticFeedbackConstants.LONG_PRESS
+        SuzentHaptic.Confirm -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY
+        SuzentHaptic.Reject -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+    })
+}
+
+fun shareText(context: android.content.Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    try { context.startActivity(Intent.createChooser(send, null)) } catch (_: android.content.ActivityNotFoundException) {}
+}
+
+@Composable
+fun formattedTimestamp(raw: String): String {
+    val context = LocalContext.current
+    val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+    return remember(raw, is24Hour) {
+        val locale = java.util.Locale.getDefault()
+        formatTimestamp(raw, java.time.ZonedDateTime.now(), locale, is24Hour) { android.text.format.DateFormat.getBestDateTimePattern(locale, it) }
+    }
+}
+
+@Composable
+fun SuzentChevron(expanded: Boolean, modifier: Modifier = Modifier, size: Dp = 16.dp, tint: Color = LocalContentColor.current) {
+    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = tint,
+        modifier = modifier.size(size).rotate(if (expanded) 90f else 0f))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,20 +198,22 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         }).usePlugin(tablePlugin).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val latestText by rememberUpdatedState(renderedText)
-    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer) {
+    fun renderBlocks(markdown: String) = synchronized(renderer) {
+        markdownSections(renderer.parse(markdown)).map { section ->
+            when (section) {
+                is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
+                is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+            }
+        }
+    }
+    // The first render is synchronous so a message has its real height on the frame it scrolls into view;
+    // rendering it a frame later made everything below jump by the height of the text.
+    val first = remember(renderer) { renderedText to renderBlocks(renderedText) }
+    val blocks by produceState(initialValue = first.second, renderer) {
         // Finish the current parse, then render the newest pending text. Cancelling on
         // every token can starve publication when a long document takes >50 ms to parse.
-        snapshotFlow { latestText }.conflate().collect { markdown ->
-            value = withContext(Dispatchers.Default) {
-                synchronized(renderer) {
-                    markdownSections(renderer.parse(markdown)).map { section ->
-                        when (section) {
-                            is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
-                            is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
-                        }
-                    }
-                }
-            }
+        snapshotFlow { latestText }.filter { it != first.first }.conflate().collect { markdown ->
+            value = withContext(Dispatchers.Default) { renderBlocks(markdown) }
         }
     }
     fun binding(body: CharSequence) =
@@ -189,22 +241,23 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         val ids = Uri.parse(link).path.orEmpty().removePrefix("/").split(',')
         val sources = if (link.startsWith("suzent-citation://")) ids.mapNotNull { id -> citationSources.firstOrNull { it.id == id } }
             else listOf(citationSources.firstOrNull { it.url == link } ?: CitationSource("", "webpage", Uri.parse(link).host.orEmpty(), link))
-        ModalBottomSheet(onDismissRequest = { pendingLink = null }, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+        ModalBottomSheet(onDismissRequest = { pendingLink = null }, shape = RectangleShape) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 sources.forEach { source ->
                     val uri = Uri.parse(source.url)
-                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val icon = icons[source.favicon]
                             if (icon != null) Image(icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(18.dp))
-                            else Text("↗", Modifier.size(18.dp), style = MaterialTheme.typography.labelMedium)
+                            else Icon(painterResource(R.drawable.ic_globe), contentDescription = null, modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(source.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (source.snippet.isNotBlank()) Text(source.snippet, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         if (uri.scheme in listOf("http", "https")) {
-                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }, shape = RoundedCornerShape(50)) {
+                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }, shape = RectangleShape) {
                                 Text(stringResource(R.string.citation_read))
                             }
                             Row {
@@ -329,20 +382,28 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
                 onAction: (String, String?) -> Unit = { _, _ -> }) {
     val outline = MaterialTheme.colorScheme.outline
     val shadowColor = suzentShadow
+    val view = LocalView.current
+    var menu by remember { mutableStateOf(false) }
+    val actionsLabel = stringResource(R.string.message_actions)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role in listOf("system_triggered", "trigger")) {
         systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
     } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         val dark = isSystemInDarkTheme()
+        val bubbleShape = RoundedCornerShape(PresentationTokens.radiusBubble.dp)
         val bubble = if (regent) Modifier
-            .background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), RoundedCornerShape(8.dp))
-            .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), RoundedCornerShape(8.dp))
+            .background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), bubbleShape)
+            .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), bubbleShape)
         else Modifier.drawBehind {
             drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
         }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline)
+        // The text inside keeps long-press for selection; the bubble's padding opens the actions menu.
         Box(Modifier.padding(end = if (regent) 0.dp else PresentationTokens.shadowOffset.dp,
             bottom = if (regent) 0.dp else PresentationTokens.shadowOffset.dp)
-            .widthIn(max = 320.dp).then(bubble).padding(PresentationTokens.spaceMedium.dp)) {
+            .widthIn(max = 320.dp).then(bubble)
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) }
+            .semantics { onLongClick(actionsLabel) { menu = true; true } }
+            .padding(PresentationTokens.spaceMedium.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
                 message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
                 if (message.text.isNotEmpty()) SelectionContainer { Text(message.text, color = if (regent) MaterialTheme.colorScheme.onSurface else Color.Black, fontSize = PresentationTokens.typeChat.sp) }
@@ -353,10 +414,22 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     }
     message.reaction?.takeIf { it.isNotEmpty() }?.let { reaction ->
         val label = stringResource(R.string.regent_reaction, reaction)
-        Text(reaction, modifier = Modifier.align(androidx.compose.ui.Alignment.End).background(suzentSelection, RoundedCornerShape(50))
-            .padding(horizontal = 8.dp, vertical = 4.dp).semantics { contentDescription = label })
+        val dark = isSystemInDarkTheme()
+        // Tucked over the bubble's bottom edge like the desktop tapback.
+        Text(reaction, fontSize = PresentationTokens.typeCaption.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.align(androidx.compose.ui.Alignment.End).padding(end = 12.dp)
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val overlap = 18.dp.roundToPx()
+                layout(placeable.width, (placeable.height - overlap).coerceAtLeast(0)) { placeable.place(0, -overlap) }
+            }
+            .background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), RoundedCornerShape(50))
+            .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .12f), RoundedCornerShape(50))
+            .widthIn(min = 28.dp).heightIn(min = 24.dp).padding(horizontal = 6.dp, vertical = 2.dp)
+            .semantics { contentDescription = label })
     }
-    if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork, onAction)
+    if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork,
+        showActions = isLatest, menu = menu, onMenu = { menu = it }, onAction = onAction)
     }
 }
 
@@ -374,20 +447,22 @@ private fun SystemReminderView(reminder: SystemReminder, sources: List<CitationS
             .clickable(role = androidx.compose.ui.semantics.Role.Button) { expanded = !expanded }
             .semantics { stateDescription = if (expanded) expandedLabel else collapsedLabel }
             .heightIn(min = 44.dp) else Modifier), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("◷", color = muted, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+            Icon(painterResource(R.drawable.ic_clock), contentDescription = null, tint = muted, modifier = Modifier.padding(end = 8.dp).size(14.dp))
             Text(reminder.title, color = muted, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (reminder.body.isNotEmpty()) Text(if (expanded) "−" else "+", color = muted, modifier = Modifier.padding(horizontal = 8.dp))
+                fontSize = PresentationTokens.typeMeta.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (reminder.body.isNotEmpty()) SuzentChevron(expanded, Modifier.padding(horizontal = 8.dp), tint = muted)
         }
-        if (expanded && reminder.body.isNotEmpty()) MarkdownText(reminder.body, citationSources = sources, textSize = 12f)
+        if (expanded && reminder.body.isNotEmpty()) MarkdownText(reminder.body, citationSources = sources, textSize = PresentationTokens.typeLabel.toFloat())
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRetry: Boolean, canEdit: Boolean,
-                          canFork: Boolean, onAction: (String, String?) -> Unit) {
+                          canFork: Boolean, showActions: Boolean, menu: Boolean, onMenu: (Boolean) -> Unit,
+                          onAction: (String, String?) -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
     var copied by remember(message.text) { mutableStateOf(false) }
     var action by remember { mutableStateOf<String?>(null) }
     var edited by remember(message.text) { mutableStateOf(message.text) }
@@ -395,38 +470,63 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
     var modelDetails by remember { mutableStateOf<String?>(null) }
     val user = message.role == "user"
     val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    val hasText = message.text.isNotBlank()
+    val hasSources = !user && message.citationSources.isNotEmpty()
+    val hasMenu = hasText || canEdit || canRetry || canFork || hasSources
+    val actionsLabel = stringResource(R.string.message_actions)
     LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1800); copied = false } }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    fun copy() {
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", message.text)); copied = true
+        view.suzentHaptic(SuzentHaptic.Light)
+    }
+    Box(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth()
+            .pointerInput(hasMenu) { if (hasMenu) detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); onMenu(true) }) }
+            .semantics { if (hasMenu) onLongClick(actionsLabel) { onMenu(true); true } },
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (user) Spacer(Modifier.weight(1f))
-            if (message.text.isNotBlank()) IconButton(modifier = Modifier.size(32.dp), onClick = {
-                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", message.text)); copied = true
-            }) { Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink) }
-            if (canEdit) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "edit" }) { Icon(painterResource(R.drawable.ic_chat_rename), stringResource(R.string.message_edit), Modifier.size(18.dp), tint = ink) }
-            if (canRetry) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "retry" }) { Icon(painterResource(R.drawable.ic_message_retry), stringResource(R.string.message_retry), Modifier.size(18.dp), tint = ink) }
-            if (canFork) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "fork" }) { Icon(painterResource(R.drawable.ic_message_fork), stringResource(R.string.message_fork), Modifier.size(18.dp), tint = ink) }
-            if (!user && message.citationSources.isNotEmpty()) TextButton(onClick = { sourcesOpen = true }, contentPadding = PaddingValues(horizontal = 4.dp),
-                modifier = Modifier.widthIn(min = 32.dp).height(32.dp)
-                    .semantics { contentDescription = context.getString(R.string.message_sources, message.citationSources.size) }) {
-                Text("↗ ${message.citationSources.size}", fontSize = 11.sp, color = ink, maxLines = 1)
+            if (showActions) {
+                if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { copy() }) {
+                    Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink)
+                }
+                if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { shareText(context, message.text) }) {
+                    Icon(painterResource(R.drawable.ic_share), stringResource(R.string.message_share), Modifier.size(18.dp), tint = ink)
+                }
+                if (canEdit) IconButton(modifier = Modifier.size(32.dp), onClick = { edited = message.text; action = "edit" }) { Icon(painterResource(R.drawable.ic_chat_rename), stringResource(R.string.message_edit), Modifier.size(18.dp), tint = ink) }
+                if (canRetry) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "retry" }) { Icon(painterResource(R.drawable.ic_message_retry), stringResource(R.string.message_retry), Modifier.size(18.dp), tint = ink) }
+                if (canFork) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "fork" }) { Icon(painterResource(R.drawable.ic_message_fork), stringResource(R.string.message_fork), Modifier.size(18.dp), tint = ink) }
             }
-            if (!user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
+            if (hasSources) TextButton(onClick = { sourcesOpen = true }, contentPadding = PaddingValues(horizontal = 4.dp), shape = RectangleShape,
+                modifier = Modifier.widthIn(min = 32.dp).height(32.dp)
+                    .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.message_sources, message.citationSources.size) }) {
+                Icon(painterResource(R.drawable.ic_globe), contentDescription = null, modifier = Modifier.size(14.dp), tint = ink)
+                Spacer(Modifier.width(4.dp))
+                Text("${message.citationSources.size}", fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
+            }
+            if (showActions && !user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
                 Text(model.substringAfter('/'), Modifier.weight(1f, fill = false)
                     .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model }
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant).padding(horizontal = 6.dp, vertical = 3.dp),
-                    fontSize = 11.sp, fontWeight = FontWeight.Medium, color = ink,
-                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    fontSize = PresentationTokens.typeMeta.sp, fontWeight = FontWeight.Medium, color = ink,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             message.timestamp?.let { raw ->
-                val formatted = remember(raw) { runCatching {
-                    val parsed = java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault())
-                    parsed.format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.getDefault()))
-                }.getOrDefault(raw) }
-                Text(formatted, Modifier.widthIn(max = 100.dp), fontSize = 11.sp, color = ink,
-                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(formattedTimestamp(raw), Modifier.widthIn(max = 120.dp), fontSize = PresentationTokens.typeMeta.sp, color = ink,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (user) Text(stringResource(R.string.you), fontSize = 11.sp, color = ink, maxLines = 1)
+            if (showActions && user) Text(stringResource(R.string.you), fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
+        }
+        SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }) {
+            if (hasText) {
+                SuzentMenuItem(stringResource(R.string.message_copy), R.drawable.ic_message_copy) { onMenu(false); copy() }
+                SuzentMenuItem(stringResource(R.string.message_share), R.drawable.ic_share) { onMenu(false); shareText(context, message.text) }
+            }
+            if (canEdit) SuzentMenuItem(stringResource(R.string.message_edit), R.drawable.ic_chat_rename) { onMenu(false); edited = message.text; action = "edit" }
+            if (canRetry) SuzentMenuItem(stringResource(R.string.message_retry), R.drawable.ic_message_retry) { onMenu(false); action = "retry" }
+            if (canFork) SuzentMenuItem(stringResource(R.string.message_fork), R.drawable.ic_message_fork) { onMenu(false); action = "fork" }
+            if (hasSources) SuzentMenuItem(stringResource(R.string.message_sources, message.citationSources.size), R.drawable.ic_globe) { onMenu(false); sourcesOpen = true }
+        }
     }
     modelDetails?.let { model ->
         AlertDialog(onDismissRequest = { modelDetails = null }, title = { Text(stringResource(R.string.message_model)) },
@@ -434,25 +534,111 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
             confirmButton = { TextButton(onClick = { modelDetails = null }) { Text(stringResource(android.R.string.ok)) } })
     }
     action?.let { selected ->
-        val title = stringResource(when (selected) { "edit" -> R.string.message_edit; "fork" -> R.string.message_fork; else -> R.string.message_retry })
-        AlertDialog(onDismissRequest = { action = null }, title = { Text(title) }, text = {
-            if (selected == "edit") OutlinedTextField(edited, { edited = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 8)
-            else Text(stringResource(if (selected == "fork") R.string.message_fork_help else R.string.message_retry_help))
-        }, confirmButton = { TextButton(enabled = selected != "edit" || edited.isNotBlank(), onClick = {
-            onAction(selected, if (selected == "edit") edited else null); action = null
-        }) { Text(title) } }, dismissButton = { TextButton(onClick = { action = null }) { Text(stringResource(R.string.cancel_link)) } })
+        if (selected == "edit") SuzentInputSheet(title = stringResource(R.string.message_edit), value = edited, onValueChange = { edited = it },
+            placeholder = stringResource(R.string.message), saveLabel = stringResource(R.string.send), saveEnabled = edited.isNotBlank(),
+            dismiss = { action = null }, save = { onAction("edit", edited); action = null }, multiline = true)
+        else {
+            val title = stringResource(if (selected == "fork") R.string.message_fork else R.string.message_retry)
+            AlertDialog(onDismissRequest = { action = null }, title = { Text(title) },
+                text = { Text(stringResource(if (selected == "fork") R.string.message_fork_help else R.string.message_retry_help)) },
+                confirmButton = { TextButton(onClick = { onAction(selected, null); action = null }) { Text(title) } },
+                dismissButton = { TextButton(onClick = { action = null }) { Text(stringResource(R.string.cancel_link)) } })
+        }
     }
-    if (sourcesOpen) ModalBottomSheet(onDismissRequest = { sourcesOpen = false }) {
+    if (sourcesOpen) ModalBottomSheet(onDismissRequest = { sourcesOpen = false }, shape = RectangleShape) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge)
             message.citationSources.distinctBy { it.id }.forEach { source ->
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(source.title, fontWeight = FontWeight.SemiBold)
                     if (source.snippet.isNotBlank()) Text(source.snippet, maxLines = 5, style = MaterialTheme.typography.bodySmall)
                     if (Uri.parse(source.url).scheme in listOf("http", "https")) TextButton(onClick = {
                         androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(source.url))
-                    }) { Text(stringResource(R.string.citation_read)) }
+                    }, shape = RectangleShape) { Text(stringResource(R.string.citation_read)) }
                 }
+            }
+        }
+    }
+}
+
+/** Long-press menu in the Suzent style: square panel, 2 px rule, hard offset shadow. */
+@Composable
+fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val outline = MaterialTheme.colorScheme.outline
+    val menuShadow = suzentShadow
+    val menuSurface = MaterialTheme.colorScheme.surface
+    val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, shape = RectangleShape,
+        containerColor = Color.Transparent, tonalElevation = 0.dp, shadowElevation = 0.dp,
+        modifier = Modifier.width(260.dp)) {
+        // The popup's scroll container clips anything drawn outside its bounds, so the offset is
+        // reserved inside the content: shadow first, opaque panel over it.
+        Box(Modifier.fillMaxWidth().drawBehind {
+            val offset = menuShadowSize.toPx()
+            drawRect(menuShadow, topLeft = Offset(offset, offset), size = size)
+        }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
+            Column(Modifier.fillMaxWidth().background(menuSurface).border(PresentationTokens.borderWidth.dp, outline), content = content)
+        }
+    }
+}
+
+@Composable
+fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Boolean = false, action: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val error = MaterialTheme.colorScheme.error
+    val background = if (pressed) { if (danger) error else Color(PresentationTokens.yellow) } else Color.Transparent
+    val foreground = (if (pressed) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
+        .copy(alpha = if (enabled) 1f else DisabledAlpha)
+    Row(Modifier.fillMaxWidth().background(background).clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
+        .heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Icon(painterResource(icon), null, tint = foreground, modifier = Modifier.padding(end = 10.dp).size(18.dp))
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = foreground)
+    }
+}
+
+/** Text-input flow (rename, edit and resend): square sheet with title, field and Cancel/Save. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SuzentInputSheet(title: String, value: String, onValueChange: (String) -> Unit, placeholder: String, saveLabel: String,
+                     saveEnabled: Boolean, dismiss: () -> Unit, save: () -> Unit, multiline: Boolean = false) {
+    val focus = remember { FocusRequester() }
+    ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = RectangleShape, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = PresentationTokens.spacePage.dp).padding(bottom = PresentationTokens.spacePage.dp),
+            verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp)) {
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            SuzentTextInput(value, onValueChange, placeholder, Modifier.focusRequester(focus), multiline = multiline)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                SuzentTextButton(onClick = dismiss) { Text(stringResource(android.R.string.cancel)) }
+                SuzentTextButton(onClick = save, enabled = saveEnabled) { Text(saveLabel, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+/** Transient error toast: square, 2 px rule, error surface, Dismiss, gone after 6 s (longer if accessibility asks). */
+@Composable
+fun SuzentErrorHost(model: MobileModel, modifier: Modifier = Modifier) {
+    val host = remember { SnackbarHostState() }
+    val accessibility = LocalAccessibilityManager.current
+    val dismissLabel = stringResource(R.string.dismiss)
+    LaunchedEffect(model.error) {
+        val message = model.error ?: return@LaunchedEffect
+        val timeout = accessibility?.calculateRecommendedTimeoutMillis(6000L, false, true, true) ?: 6000L
+        withTimeoutOrNull(timeout) { host.showSnackbar(message, actionLabel = dismissLabel, duration = SnackbarDuration.Indefinite) }
+        if (model.error == message) model.error = null
+    }
+    val surface = Color(if (isSystemInDarkTheme()) PresentationTokens.error_surface_dark else PresentationTokens.error_surface)
+    SnackbarHost(host, modifier) { data ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).background(surface)
+            .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(start = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(data.visuals.message, Modifier.weight(1f).padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface,
+                fontSize = PresentationTokens.typeCaption.sp)
+            SuzentTextButton(onClick = { data.dismiss() }, modifier = Modifier.heightIn(min = PresentationTokens.controlHeight.dp)) {
+                Text(data.visuals.actionLabel ?: dismissLabel, fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -469,17 +655,18 @@ fun SuzentTextButton(
 ) {
     TextButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = RectangleShape, contentPadding = contentPadding,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
-            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .45f)), content = content)
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DisabledAlpha)), content = content)
 }
 
 @Composable
-fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false, quiet: Boolean = false, destructive: Boolean = false) {
+fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false, quiet: Boolean = false,
+                 destructive: Boolean = false, leadingIcon: Int? = null) {
     val outline = MaterialTheme.colorScheme.outline
     val shadowColor = suzentShadow
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val shadow = if (quiet) 0.dp else PresentationTokens.shadowOffset.dp
-    Box((if (compact) Modifier else Modifier.fillMaxWidth()).alpha(if (enabled) 1f else .45f).drawBehind {
+    Box((if (compact) Modifier else Modifier.fillMaxWidth()).alpha(if (enabled) 1f else DisabledAlpha).drawBehind {
         val offset = shadow.toPx()
         if (!quiet && !pressed) drawRect(shadowColor, topLeft = Offset(offset, offset),
             size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
@@ -492,8 +679,10 @@ fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false,
             .heightIn(min = PresentationTokens.controlHeight.dp)
             .padding(horizontal = (if (compact) PresentationTokens.spaceMedium else PresentationTokens.spacePage).dp, vertical = PresentationTokens.spaceSmall.dp),
             horizontalArrangement = Arrangement.Center, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold,
-                color = if (destructive) MaterialTheme.colorScheme.error else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface)
+            val foreground = if (destructive) MaterialTheme.colorScheme.error else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface
+            if (leadingIcon != null) Icon(painterResource(leadingIcon), contentDescription = null, tint = foreground,
+                modifier = Modifier.padding(end = 6.dp).size(18.dp))
+            Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold, color = foreground)
         }
     }
 }
@@ -504,8 +693,8 @@ fun SuzentIconButton(onClick: () -> Unit, label: String, modifier: Modifier = Mo
                      content: @Composable () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    Box(modifier.size(PresentationTokens.controlHeight.dp).alpha(if (enabled) 1f else .45f)
-        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+    Box(modifier.size(PresentationTokens.controlHeight.dp).alpha(if (enabled) 1f else DisabledAlpha)
+        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = PressedAlpha) else Color.Transparent)
         .clickable(interactionSource = interaction, indication = null, enabled = enabled,
             role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .semantics { contentDescription = label },
@@ -520,8 +709,8 @@ fun SuzentRowButton(label: String, onClick: () -> Unit, modifier: Modifier = Mod
                     leadingIcon: Int? = null) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else .45f)
-        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else DisabledAlpha)
+        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = PressedAlpha) else Color.Transparent)
         .clickable(interactionSource = interaction, indication = null, enabled = enabled,
             role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .heightIn(min = 40.dp)
@@ -532,34 +721,6 @@ fun SuzentRowButton(label: String, onClick: () -> Unit, modifier: Modifier = Mod
             tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         Text(label, fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-    }
-}
-
-/** Dialog frame matching the desktop BrutalDialog: 2 px rule, hard shadow, ruled header. */
-@Composable
-fun SuzentDialog(onDismissRequest: () -> Unit, title: String, content: @Composable ColumnScope.() -> Unit) {
-    val outline = MaterialTheme.colorScheme.outline
-    val shadowColor = suzentShadow
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 40.dp).drawBehind {
-            val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
-            drawRect(shadowColor, topLeft = Offset(offset, offset),
-                size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
-        }.padding(end = PresentationTokens.shadowOffsetOverlay.dp, bottom = PresentationTokens.shadowOffsetOverlay.dp)) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-                .border(PresentationTokens.borderWidth.dp, outline)) {
-                Row(Modifier.fillMaxWidth().drawBehind {
-                    drawLine(outline, Offset(0f, size.height), Offset(size.width, size.height),
-                        PresentationTokens.borderWidth.dp.toPx())
-                }.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text(title.uppercase(java.util.Locale.getDefault()), fontWeight = FontWeight.ExtraBold,
-                        fontSize = PresentationTokens.typeCaption.sp, letterSpacing = 1.sp,
-                        color = MaterialTheme.colorScheme.onSurface)
-                }
-                Column(Modifier.fillMaxWidth().padding(PresentationTokens.spacePage.dp), content = content)
-            }
-        }
     }
 }
 
@@ -574,31 +735,6 @@ fun SuzentTextInput(value: String, onValueChange: (String) -> Unit, placeholder:
         modifier = modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, if (focused) suzentLink else MaterialTheme.colorScheme.outline)
             .heightIn(min = PresentationTokens.controlHeight.dp).padding(PresentationTokens.spaceMedium.dp),
         decorationBox = { input -> Box { if (value.isEmpty()) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = PresentationTokens.typeControl.sp); input() } })
-}
-
-@Composable
-fun SuzentNotice(message: String, dismiss: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(message, Modifier.weight(1f), color = Color.Black, fontSize = PresentationTokens.typeCaption.sp)
-        Text(stringResource(R.string.dismiss), Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = dismiss)
-            .heightIn(min = PresentationTokens.controlHeight.dp).wrapContentHeight(), color = Color.Black,
-            fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-fun SuzentToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val position by animateDpAsState(if (checked) 22.dp else 4.dp, tween(150), label = "toggle")
-    Row(Modifier.fillMaxWidth().toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onCheckedChange)
-        .heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp)
-        Box(Modifier.size(44.dp, 26.dp).background(if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = .2f))
-            .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
-            Box(Modifier.offset(x = position, y = 4.dp).size(18.dp).background(if (checked) Color.White else MaterialTheme.colorScheme.onSurface))
-        }
-    }
 }
 
 @Composable
@@ -626,7 +762,8 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
         Box(Modifier.padding(end = PresentationTokens.shadowOffsetOverlay.dp,
             bottom = PresentationTokens.shadowOffsetOverlay.dp).drawBehind {
             val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
-            drawRect(shadowColor, topLeft = Offset(offset, offset))
+            // Full-size rect offset into the reserved padding; without `size` it stayed inside the face and was painted over.
+            drawRect(shadowColor, topLeft = Offset(offset, offset), size = size)
         }.size(90.dp, 40.dp).background(MaterialTheme.colorScheme.surface)
             .border(PresentationTokens.borderWidth.dp, outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Image(painterResource(R.drawable.suzent_logo), contentDescription = "Suzent", modifier = Modifier.size(26.dp))
@@ -641,7 +778,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") {
-                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(14.dp)).padding(12.dp) else Modifier) {
+                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp)).padding(12.dp) else Modifier) {
                         MarkdownText(chunk.first().text, citationSources)
                     }
                 }
@@ -653,25 +790,43 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
 
 @Composable
 fun ApprovalCards(model: MobileModel) {
+    val view = LocalView.current
+    Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
     model.pendingApprovals.forEach { request ->
         key(request.id) {
-            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            var showAll by remember { mutableStateOf(false) }
+            var overflowing by remember { mutableStateOf(false) }
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(request.toolName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(stringResource(R.string.approval_backend), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SelectionContainer { Text(request.args, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                    SelectionContainer {
+                        Text(request.args, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                            maxLines = if (showAll) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { if (!showAll) overflowing = it.hasVisualOverflow })
+                    }
+                    if (overflowing || showAll) SuzentTextButton(onClick = { showAll = !showAll }, contentPadding = PaddingValues(vertical = 4.dp)) {
+                        Text(stringResource(if (showAll) R.string.approval_show_less else R.string.approval_show_all),
+                            fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.SemiBold, color = suzentLink)
+                    }
                     if (request.reason.isNotEmpty()) Text(request.reason, style = MaterialTheme.typography.bodySmall)
                     if (model.device?.permissions?.approveTools == true && request.actions.isNotEmpty()) {
                         request.actions.forEach { action ->
-                            SuzentAction((if (model.approvalChoices[request.id] == action.id) "✓ " else "") + stringResource(if (action.behavior == "allow") R.string.allow_once else R.string.reject_tool),
-                                { model.chooseApproval(request, action) }, prominent = action.behavior == "allow", enabled = !model.approvalBusy, compact = true)
+                            val allow = action.behavior == "allow"
+                            SuzentAction(stringResource(if (allow) R.string.allow_once else R.string.reject_tool), {
+                                view.suzentHaptic(if (allow) SuzentHaptic.Confirm else SuzentHaptic.Reject)
+                                model.chooseApproval(request, action)
+                            }, prominent = allow, enabled = !model.approvalBusy, compact = true,
+                                leadingIcon = if (model.approvalChoices[request.id] == action.id) R.drawable.ic_message_check else null)
                         }
                         Text(stringResource(R.string.approval_batch), style = MaterialTheme.typography.bodySmall)
                     } else Text(stringResource(R.string.approval_desktop_only), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
+    }
     }
 }
 
@@ -711,7 +866,7 @@ fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val offset = PresentationTokens.shadowOffset.dp
-    Row(Modifier.alpha(if (enabled) 1f else .45f).padding(end = offset, bottom = offset)
+    Row(Modifier.alpha(if (enabled) 1f else DisabledAlpha).padding(end = offset, bottom = offset)
         .drawBehind { if (!pressed) drawRect(shadowColor, topLeft = Offset(offset.toPx(), offset.toPx()), size = size) }
         .offset(x = if (pressed) offset else 0.dp, y = if (pressed) offset else 0.dp)
         .background(MaterialTheme.colorScheme.surface).border(PresentationTokens.borderWidth.dp, outline)
@@ -720,10 +875,7 @@ fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean 
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (prefix != null) Text(prefix, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         Text(value, Modifier.weight(1f, fill = false), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis)
-        Canvas(Modifier.size(12.dp)) {
-            val path = androidx.compose.ui.graphics.Path().apply { moveTo(size.width * .15f, size.height * .35f); lineTo(size.width * .5f, size.height * .7f); lineTo(size.width * .85f, size.height * .35f) }
-            drawPath(path, outline, style = Stroke(width = 1.5.dp.toPx()))
-        }
+        Icon(painterResource(R.drawable.ic_chevron_down), contentDescription = null, tint = outline, modifier = Modifier.size(14.dp))
     }
 }
 
@@ -741,7 +893,9 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
             val dismissLabel = stringResource(R.string.dismiss)
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                SuzentTextButton(onClick = dismiss, modifier = Modifier.size(44.dp)) { Text("×", color = Color.White, modifier = Modifier.semantics { contentDescription = dismissLabel }) }
+                SuzentIconButton(onClick = dismiss, label = dismissLabel) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
             }
             androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
                 items(options.size) { index ->
@@ -752,7 +906,7 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
                         .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
-                        if (active) Text("✓", color = Color.Black)
+                        if (active) Icon(painterResource(R.drawable.ic_message_check), contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }

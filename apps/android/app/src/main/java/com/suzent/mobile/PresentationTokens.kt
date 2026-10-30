@@ -23,12 +23,17 @@ object PresentationTokens {
     const val code_header_dark: Long = 0xFF2B2B2B
     const val selection_light: Long = 0xFFE5E5E5
     const val selection_dark: Long = 0xFF3F3F46
+    const val danger: Long = 0xFFD70000
+    const val danger_dark: Long = 0xFFFF6B6B
+    const val error_surface: Long = 0xFFFFE1E1
+    const val error_surface_dark: Long = 0xFF4A1D1D
     const val borderWidth = 2
     const val shadowOffset = 2
     const val borderWidthHeavy = 3
     const val shadowOffsetHeavy = 4
     const val shadowOffsetOverlay = 3
     const val radius = 0
+    const val radiusBubble = 14
     const val spaceSmall = 8
     const val spaceRow = 10
     const val spaceMedium = 12
@@ -41,8 +46,12 @@ object PresentationTokens {
     const val typeControl = 15
     const val typeSection = 20
     const val typeSidebarSection = 10
+    const val typeMeta = 11
+    const val typeLabel = 12
     const val controlHeight = 44
     const val sidebarWidth = 320
+    const val pressedAlpha = 0.08
+    const val disabledAlpha = 0.45
     val ignoredToolNames = listOf("final_answer", "final answer")
     val compactionSummaryMarkers = listOf("[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---")
 }

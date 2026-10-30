@@ -85,11 +85,11 @@ fun RegentIdentity(working: Boolean = false, waiting: Int = 0, unread: Int = 0, 
         Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(R.string.regent_name), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             if (showStatus) Text(stringResource(if (working) R.string.regent_working else if (waiting > 0) R.string.regent_waiting else R.string.regent_scope),
-                fontSize = 12.sp, color = if (waiting > 0 && !working) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant)
+                fontSize = PresentationTokens.typeLabel.sp, color = if (waiting > 0 && !working) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (unread > 0) {
             val label = stringResource(R.string.regent_unread, unread)
-            Text("$unread", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            Text("$unread", fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.background(suzentSelection).padding(6.dp).semantics { contentDescription = label })
         }
     }

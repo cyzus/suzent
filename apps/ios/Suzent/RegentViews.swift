@@ -67,10 +67,10 @@ struct RegentIdentity: View {
         HStack(spacing: 12) {
             RegentMark(working: working, waiting: waiting > 0, size: expanded ? 44 : 24, lastMessageAt: lastMessageAt)
             VStack(alignment: .leading, spacing: 4) {
-                Text("SUZENT Regent").font(.system(size: 14, weight: .semibold))
+                Text("SUZENT Regent").suzentFont(14, weight: .semibold)
                 if showStatus {
                     Text(working ? String(localized: "Regent is working") : waiting > 0 ? String(localized: "Needs your attention") : String(localized: "Across all your projects"))
-                        .font(.system(size: 12)).foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
+                        .suzentFont(PresentationTokens.typeLabel).foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
                 }
             }
             if unread > 0 { Text("\(unread)").font(.caption.bold()).padding(6).background(Color.suzentSelection).accessibilityLabel(Text("\(unread) unread messages")) }

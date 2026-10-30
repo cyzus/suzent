@@ -24,6 +24,7 @@ def outputs() -> dict[Path, str]:
         "shadowOffsetHeavy",
         "shadowOffsetOverlay",
         "radius",
+        "radiusBubble",
         "spaceSmall",
         "spaceRow",
         "spaceMedium",
@@ -36,8 +37,12 @@ def outputs() -> dict[Path, str]:
         "typeControl",
         "typeSection",
         "typeSidebarSection",
+        "typeMeta",
+        "typeLabel",
         "controlHeight",
         "sidebarWidth",
+        "pressedAlpha",
+        "disabledAlpha",
     ):
         kotlin += f"    const val {key} = {data[key]}\n"
         swift += f"    public static let {key}: Double = {data[key]}\n"

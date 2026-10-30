@@ -7,7 +7,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -30,9 +35,8 @@ fun PairingView(model: MobileModel) {
         val invitation = model.pairingInvitation
         val code = model.pairingCode
         if (code != null) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(stringResource(R.string.waiting_approval), style = MaterialTheme.typography.titleLarge)
-            Text(code, style = MaterialTheme.typography.headlineLarge)
+            PairingProgress(stringResource(R.string.waiting_approval))
+            PairingCode(code)
             Text(stringResource(R.string.compare_code))
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else if (invitation != null) {
@@ -59,16 +63,12 @@ fun PairingView(model: MobileModel) {
             }
             Text(invitation.origin)
             Text(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection_help else R.string.confirm_desktop_help))
-            if (model.busy) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(model.pairingStatus ?: stringResource(R.string.pairing_finishing))
-            }
+            if (model.busy) PairingProgress(model.pairingStatus ?: stringResource(R.string.pairing_finishing))
             SuzentAction(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection else R.string.request_pairing),
                 model::approveDestination, prominent = true, enabled = !model.busy)
             SuzentTextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
         } else if (model.busy) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(model.pairingStatus ?: stringResource(R.string.checking_addresses))
+            PairingProgress(model.pairingStatus ?: stringResource(R.string.checking_addresses))
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else {
             Text(stringResource(R.string.pairing_steps))
@@ -95,6 +95,21 @@ fun PairingView(model: MobileModel) {
         }
         Spacer(Modifier.height(PresentationTokens.spaceLarge.dp))
     }
+}
+
+@Composable
+fun PairingProgress(status: String, color: Color = MaterialTheme.colorScheme.onSurface) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp),
+        modifier = Modifier.semantics(mergeDescendants = true) {}) {
+        CircularProgressIndicator(Modifier.size(20.dp), color = color, strokeWidth = 2.dp)
+        Text(status, color = color)
+    }
+}
+
+@Composable
+fun PairingCode(code: String) {
+    Text(code, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+        letterSpacing = 4.sp)
 }
 
 @Composable

@@ -247,3 +247,18 @@
 "Load more" = "加载更多";
 
 "Loading conversations" = "正在加载对话";
+
+// Native polish
+"Copy" = "复制";
+"Share" = "分享";
+"Show all" = "显示全部";
+"Show less" = "收起";
+"Show fewer" = "收起";
+"Projects" = "项目";
+"Confirm" = "确认";
+"View all %lld scheduled tasks" = "查看全部 %lld 个定时任务";
+"Connection" = "连接";
+"Forget connection?" = "忘记连接？";
+"This phone will need to pair again before it can reach your desktop." = "这台手机需要重新配对才能访问你的桌面端。";
+"Paused · Failed" = "已暂停 · 失败";
+"Not yet" = "尚未运行";

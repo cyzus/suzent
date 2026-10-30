@@ -107,7 +107,7 @@ struct PairingScanner: View {
                 else if let invitation = model.pairingInvitation {
                     if let preview = model.pairingPreview { DisclosureGroup("Desktop access") { PairingPermissionsView(permissions: preview.permissions) } }
                     Text(invitation.phoneConfirmation ? String(localized: "Confirm to connect with the permissions shown above. You do not need to approve again on desktop.") : String(localized: "Your desktop will ask you to approve this phone. Node access stays separate.")).font(.footnote).foregroundStyle(.secondary)
-                    if let error = model.error { Text(error).font(.footnote).foregroundStyle(.red) }
+                    if let error = model.error { Text(error).font(.footnote).foregroundStyle(Color.suzentDanger) }
                     if model.busy { ProgressView(model.pairingStatus ?? String(localized: "Finishing connection…")) }
                     Button(invitation.phoneConfirmation ? String(localized: "Confirm connection") : String(localized: "Request pairing"), action: model.approveDestination).buttonStyle(SuzentButtonStyle(prominent: true)).disabled(model.busy)
                 }
