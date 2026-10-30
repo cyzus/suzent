@@ -218,8 +218,13 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
         expandedAgents = expandedAgents + parents
     }
     fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
-    val scheduledIds = remember(model.chats) { scheduledChatIds(model.chats) }
-    val normalRows = sidebarChats(model.chats.filter { !it.isRegent && it.id !in scheduledIds }, search, expandedAgents)
+    val searchQuery = ChatPageQuery("search", search.trim())
+    val recentRows = sidebarChats(model.pageChats(ChatPageQuery()), "", expandedAgents)
+    val pinnedRows = sidebarChats(model.pageChats(ChatPageQuery("pinned")), "", expandedAgents)
+    LaunchedEffect(search, model.navigationVersion) {
+        if (search.isNotEmpty()) { kotlinx.coroutines.delay(300); model.loadPage(searchQuery) }
+    }
+    LaunchedEffect(expandedProject, model.navigationVersion) { expandedProject?.let { model.loadPage(ChatPageQuery("project", it)) } }
     // The backend lists chats newest-first (updated_at desc), so a project's earliest chat
     // index is its latest activity. Mirrors the desktop sidebar's sortedProjects ordering
     // without adding a timestamp to the mobile payload.
@@ -233,7 +238,7 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
         }
         merged.sortedWith(compareBy({ activity[it.id] ?: Int.MAX_VALUE }, { serverOrder.getValue(it.id) }))
     }
-    val visibleProjects = projects.filter { project -> search.isEmpty() || normalRows.any { it.root.projectId == project.id } }
+    val visibleProjects = if (search.isEmpty()) projects else emptyList()
     val scheduledGroups = scheduledSidebarGroups(model.chats, model.scheduledTasks, search, expandedAgents)
     // Matches the desktop automation preview: five rows, then View all.
     val scheduledPreview = 5
@@ -242,6 +247,7 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             SuzentWordmark()
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = model::refresh, enabled = !model.busy) { Icon(painterResource(R.drawable.ic_message_retry), contentDescription = stringResource(R.string.refresh), modifier = Modifier.size(20.dp)) }
             IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(22.dp)) }
         }
         if (model.isDemo) {
@@ -280,31 +286,44 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
                 unfocusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f)),
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth())
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
-            if (normalRows.any { it.root.pinned }) {
-                item(key = "pinned-heading") { SidebarSectionHeading(stringResource(R.string.pinned_chats)) }
-                items(normalRows.filter { it.root.pinned }, key = { it.chat.id }) {
+            if (search.isNotEmpty()) {
+                item(key = "search-heading") { SidebarSectionHeading(stringResource(R.string.search_results)) }
+                val results = sidebarChats(model.pageChats(searchQuery), search, expandedAgents)
+                items(results, key = { "search:${it.chat.id}" }) {
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
-            }
-            if (search.isEmpty()) {
-                val recent = normalRows.filter { it.depth == 0 && !it.root.pinned }
+                item(key = "search-more") { ChatPageFooter(model, searchQuery) }
+                if (results.isEmpty() && searchQuery in model.chatPages) item(key = "search-empty") {
+                    Text(stringResource(R.string.sidebar_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                if (pinnedRows.isNotEmpty()) {
+                    item(key = "pinned-heading") { SidebarSectionHeading(stringResource(R.string.pinned_chats)) }
+                    items(pinnedRows, key = { "pinned:${it.chat.id}" }) {
+                        SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
+                    }
+                    item(key = "pinned-more") { ChatPageFooter(model, ChatPageQuery("pinned")) }
+                }
+                val recent = recentRows.filter { it.depth == 0 }
                 if (recent.isNotEmpty()) {
                     item(key = "recent-heading") {
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) { SidebarSectionHeading(stringResource(R.string.recent_chats)) }
-                            if (recent.size > 3) SuzentTextButton(onClick = { showAllRecent = !showAllRecent }) {
+                            if ((model.chatPages[ChatPageQuery()]?.total ?: 0) > 3) SuzentTextButton(onClick = { showAllRecent = !showAllRecent }) {
                                 Text(stringResource(if (showAllRecent) R.string.task_show_fewer else R.string.recent_view_all), fontSize = 12.sp)
                             }
                         }
                     }
                     val recentIds = (if (showAllRecent) recent else recent.take(3)).map { it.chat.id }.toSet()
-                    items(normalRows.filter { it.root.id in recentIds }, key = { "recent:${it.chat.id}" }) {
+                    items(recentRows.filter { it.root.id in recentIds }, key = { "recent:${it.chat.id}" }) {
                         SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                     }
                 }
+                if (showAllRecent) item(key = "recent-more") { ChatPageFooter(model, ChatPageQuery()) }
             }
             if (visibleProjects.isNotEmpty()) item(key = "projects-heading") { SidebarSectionHeading(stringResource(R.string.sidebar_projects)) }
             visibleProjects.forEach { project ->
+                val projectRows = sidebarChats(model.pageChats(ChatPageQuery("project", project.id)), "", expandedAgents)
                 val projectOpen = expandedProject == project.id
                 val isOpen = projectOpen || search.isNotEmpty()
                 item(key = "project:${project.id}") {
@@ -321,20 +340,17 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
                         Spacer(Modifier.width(10.dp))
                         Text(project.name, fontWeight = FontWeight.Medium,
                             fontSize = PresentationTokens.typeCaption.sp, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
-                        Text("${normalRows.count { it.depth == 0 && !it.root.pinned && it.root.projectId == project.id }}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${project.chatCount ?: projectRows.size}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(if (isOpen) "⌄" else "›", modifier = Modifier.padding(start = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (isOpen) items(normalRows.filter { !it.root.pinned && it.root.projectId == project.id }, key = { it.chat.id }) {
+                if (isOpen) items(projectRows, key = { "project:${project.id}:${it.chat.id}" }) {
                     SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
                 }
+                if (isOpen) item(key = "project-more:${project.id}") { ChatPageFooter(model, ChatPageQuery("project", project.id)) }
             }
-            if (search.isNotEmpty() && normalRows.any { !it.root.pinned && it.root.projectId == null }) item(key = "chats-heading") { SidebarSectionHeading(stringResource(R.string.chats)) }
-            if (normalRows.isEmpty() && scheduledGroups.isEmpty()) item(key = "empty") {
-                Text(stringResource(if (search.isEmpty()) R.string.sidebar_empty else R.string.sidebar_no_results), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            items(normalRows.filter { search.isNotEmpty() && !it.root.pinned && it.root.projectId == null }, key = { it.chat.id }) {
-                SidebarEntry(it, model.selected?.id == it.chat.id && !settingsSelected, model, open, it.chat.id in expandedAgents) { toggleAgents(it.chat.id) }
+            if (search.isEmpty() && recentRows.isEmpty() && pinnedRows.isEmpty()) item(key = "empty") {
+                Text(stringResource(R.string.sidebar_empty), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (scheduledGroups.isNotEmpty()) {
                 item(key = "scheduled-heading") {
@@ -371,6 +387,20 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, open: (Chat) 
 
         }
         Spacer(Modifier.navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun ChatPageFooter(model: MobileModel, query: ChatPageQuery) {
+    val scope = rememberCoroutineScope()
+    if (query in model.loadingPages) {
+        Box(Modifier.fillMaxWidth().height(44.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        }
+    } else if (model.chatPages[query]?.nextOffset != null || query !in model.chatPages) {
+        SuzentTextButton(onClick = { scope.launch { model.loadPage(query, more = query in model.chatPages) } }, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.load_more_chats), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

@@ -75,7 +75,7 @@ data class ScheduledTask(val id: String, val name: String, val chatId: String?, 
     }
 }
 
-data class Project(val id: String, val name: String)
+data class Project(val id: String, val name: String, val chatCount: Int? = null)
 
 class SSEDecoder {
     private val lines = mutableListOf<String>()

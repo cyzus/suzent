@@ -10,6 +10,14 @@ interface MobileClient {
     fun cancelLive()
     suspend fun session(): ClientDevice
     suspend fun chats(): List<Chat>
+    suspend fun chatPage(query: ChatPageQuery, offset: Int = 0, limit: Int = 30): ChatPage = localChatPage(chats(), query, offset, limit)
+    suspend fun navigationMetadata(): NavigationMetadata {
+        val rows = chats()
+        return NavigationMetadata(rows.firstOrNull { it.isRegent }, projects().map { project ->
+            project.copy(chatCount = rows.count { it.projectId == project.id && !it.isRegent && !it.isScheduled && !it.pinned })
+        })
+    }
+    suspend fun chatStatuses(ids: List<String>): List<Chat> = chats().filter { it.id in ids.toSet() }
     suspend fun projects(): List<Project>
     suspend fun scheduledTasks(): List<ScheduledTask>
     suspend fun composer(): Chat

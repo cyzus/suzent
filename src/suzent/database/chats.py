@@ -1294,6 +1294,65 @@ class ChatOperationsMixin:
             )
             return set(session.exec(statement).all())
 
+    def mobile_chat_page(
+        self,
+        chat_ids: list[str] | None,
+        *,
+        kind: str = "recent",
+        value: str = "",
+        offset: int = 0,
+        limit: int = 30,
+    ) -> tuple[list[tuple[str, str]], int]:
+        """Page authorized navigation columns without reading conversation bodies."""
+        with self._session() as session:
+            statement = select(ChatModel.id, ChatModel.title).where(
+                ChatModel.archived.is_(False), ChatModel.id != "focal-suzent"
+            )
+            if chat_ids is not None:
+                statement = statement.where(ChatModel.id.in_(chat_ids))
+            else:
+                statement = _apply_chat_filters(statement, None, None, None)
+            if kind == "search":
+                statement = statement.where(
+                    ChatModel.title.icontains(value, autoescape=True)
+                )
+            elif kind != "status":
+                platform = func.json_extract(ChatModel.config, "$.platform")
+                statement = statement.where(or_(platform.is_(None), platform != "cron"))
+                statement = statement.where(ChatModel.pinned == (kind == "pinned"))
+                if kind == "project":
+                    statement = statement.where(ChatModel.project_id == value)
+            total = session.exec(
+                select(func.count()).select_from(statement.subquery())
+            ).one()
+            rows = session.exec(
+                statement.order_by(ChatModel.updated_at.desc(), ChatModel.id.desc())
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return [(row[0], row[1]) for row in rows], total
+
+    def mobile_project_counts(self, chat_ids: list[str] | None) -> dict[str, int]:
+        with self._session() as session:
+            platform = func.json_extract(ChatModel.config, "$.platform")
+            statement = select(ChatModel.project_id, func.count()).where(
+                ChatModel.archived.is_(False),
+                ChatModel.id != "focal-suzent",
+                ChatModel.pinned.is_(False),
+                or_(platform.is_(None), platform != "cron"),
+            )
+            if chat_ids is not None:
+                statement = statement.where(ChatModel.id.in_(chat_ids))
+            else:
+                statement = _apply_chat_filters(statement, None, None, None)
+            return {
+                project: count
+                for project, count in session.exec(
+                    statement.group_by(ChatModel.project_id)
+                ).all()
+                if project is not None
+            }
+
     def list_chat_titles(
         self, chat_ids: list[str] | None = None, limit: int = 1000
     ) -> list[tuple[str, str]]:

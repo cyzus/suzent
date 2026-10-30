@@ -47,6 +47,84 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pinnedVersion by mutableStateOf(0)
     var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
+    var chatPages by mutableStateOf<Map<ChatPageQuery, ChatPage>>(emptyMap())
+        private set
+    var loadingPages by mutableStateOf<Set<ChatPageQuery>>(emptySet())
+        private set
+    private var navigationRevision = 0
+    var navigationVersion by mutableStateOf(0)
+        private set
+    private var lastNavigationRefresh = 0L
+
+    fun pageChats(query: ChatPageQuery): List<Chat> {
+        val byId = chats.associateBy { it.id }
+        return chatPages[query]?.chats.orEmpty().mapNotNull { byId[it.id] }
+    }
+    suspend fun loadPage(query: ChatPageQuery, more: Boolean = false) {
+        val api = client ?: return
+        if (query in loadingPages || !more && query in chatPages) return
+        val offset = if (more) chatPages[query]?.nextOffset ?: return else 0
+        val current = generation
+        val revision = navigationRevision
+        loadingPages = loadingPages + query
+        try {
+            val page = api.chatPage(query, offset, 30)
+            currentCoroutineContext().ensureActive()
+            if (current != generation || revision != navigationRevision) return
+            if (query.kind == "search") chatPages = chatPages.filterKeys { it.kind != "search" || it == query }
+            chatPages = chatPages + (query to if (more) chatPages[query]?.appending(page) ?: page else page)
+            mergeNavigationChats(page.chats)
+            val retained = chatPages.values.flatMap { it.chats.map { chat -> chat.id } }.toSet()
+            chats = chats.filter { it.isRegent || it.id == selected?.id || it.id in retained }
+        } catch (failure: CancellationException) { throw failure }
+        catch (failure: Exception) { if (current == generation && revision == navigationRevision) handle(failure) }
+        finally { if (revision == navigationRevision) loadingPages = loadingPages - query }
+    }
+    private fun mergeNavigationChats(updates: List<Chat>) {
+        val ids = updates.map { it.id }.toSet()
+        chats = chats.filterNot { it.id in ids } + updates
+    }
+    private fun applyNavigation(initial: InitialNavigation) {
+        navigationRevision++
+        navigationVersion++
+        loadingPages = emptySet()
+        chatPages = mapOf(ChatPageQuery() to initial.recent, ChatPageQuery("pinned") to initial.pinned)
+        chats = initial.chats
+        projects = initial.metadata.projects
+        lastNavigationRefresh = System.currentTimeMillis()
+    }
+    private suspend fun refreshNavigation(api: MobileClient, poll: Boolean) {
+        val current = generation
+        val revision = navigationRevision
+        if (!poll || chatPages.isEmpty()) {
+            val initial = api.initialNavigation()
+            if (current != generation || revision != navigationRevision) return
+            applyNavigation(initial)
+        } else {
+            val requested = chats.map { it.id }.toSet()
+            val updates = api.chatStatuses(requested.toList())
+            if (current != generation || revision != navigationRevision) return
+            chats = chats.filterNot { it.id in requested } + updates
+            if (System.currentTimeMillis() - lastNavigationRefresh >= 60_000) {
+                val recentIds = chatPages[ChatPageQuery()]?.chats?.map { it.id }
+                val pinnedIds = chatPages[ChatPageQuery("pinned")]?.chats?.map { it.id }
+                val metadata = api.navigationMetadata()
+                val recent = if ((chatPages[ChatPageQuery()]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery()) else null
+                val pinned = if ((chatPages[ChatPageQuery("pinned")]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery("pinned")) else null
+                if (current != generation || revision != navigationRevision) return
+                projects = metadata.projects
+                metadata.regent?.let { mergeNavigationChats(listOf(it)) }
+                if (recent != null && ChatPageQuery() !in loadingPages && chatPages[ChatPageQuery()]?.chats?.map { it.id } == recentIds) {
+                    chatPages = chatPages + (ChatPageQuery() to recent); mergeNavigationChats(recent.chats)
+                }
+                if (pinned != null && ChatPageQuery("pinned") !in loadingPages && chatPages[ChatPageQuery("pinned")]?.chats?.map { it.id } == pinnedIds) {
+                    chatPages = chatPages + (ChatPageQuery("pinned") to pinned); mergeNavigationChats(pinned.chats)
+                }
+                lastNavigationRefresh = System.currentTimeMillis()
+            }
+        }
+    }
+
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
     var draft by mutableStateOf("")
@@ -97,8 +175,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         java.io.File(app.filesDir, "offline-demo/workspace.json"))
                 }
                 val session = demo.session()
-                val listing = demo.chats()
-                val projectList = demo.projects()
+                val navigation = demo.initialNavigation()
                 val taskList = demo.scheduledTasks()
                 val composer = demo.composer()
                 clearSession(removeCredentials = false)
@@ -110,7 +187,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 canReconnect = false
                 device = session
                 attachmentsSupported = true
-                chats = listing; projects = projectList; scheduledTasks = taskList
+                applyNavigation(navigation); scheduledTasks = taskList
                 selected = composer
                 connected = true
                 openedVersion++
@@ -282,8 +359,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             }
             candidate.capabilities()
             val session = candidate.session()
-            val listing = candidate.chats()
-            val projectList = candidate.projects()
+            val navigation = candidate.initialNavigation()
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
@@ -292,8 +368,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             client = candidate
             device = session
             attachmentsSupported = candidate.supportsAttachments
-            chats = listing
-            projects = projectList
+            applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
@@ -341,26 +416,24 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun watchNavigation() {
         while (currentCoroutineContext().isActive && connected) {
-            if (foreground && !busy) refreshNow()
+            if (foreground && !busy) refreshNow(poll = true)
             delay(10000)
         }
     }
 
     fun refresh() { viewModelScope.launch { refreshNow() } }
 
-    private suspend fun refreshNow() {
+    private suspend fun refreshNow(poll: Boolean = false) {
         val api = client ?: return
         val current = generation
         try {
             val session = api.session()
-            val listing = api.chats()
-            val projectList = api.projects()
+            val scopeChanged = device?.permissions?.allChats != session.permissions.allChats || device?.permissions?.chatIds != session.permissions.chatIds
+            refreshNavigation(api, poll && !scopeChanged)
             val taskList = api.scheduledTasks()
             if (current != generation) return
             device = session
             attachmentsSupported = api.supportsAttachments
-            chats = listing
-            projects = projectList
             scheduledTasks = taskList
             val id = selected?.id
             if (!id.isNullOrEmpty() && !streaming) {
@@ -401,9 +474,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         liveParts = emptyList(); pendingApprovals = emptyList(); draft = ""; discardAttachments()
                     }
                 }
-                val listing = api.chats()
+                refreshNavigation(api, false)
                 if (generation != current) return@launch
-                chats = listing
+                val listing = chats
                 if (action == "pin" && listing.any { it.id == chat.id && it.pinned }) pinnedVersion++
                 listing.firstOrNull { it.id == selected?.id }?.let { updated ->
                     selected = selected?.copy(title = updated.title, projectId = updated.projectId, projectName = updated.projectName, pinned = updated.pinned)
@@ -796,6 +869,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         busy = false
         selected = null
         chats = emptyList()
+        chatPages = emptyMap(); loadingPages = emptySet(); navigationRevision++
         canReconnect = connection?.clientProtocol == 1
         device = null
         pairingInvitation = null
