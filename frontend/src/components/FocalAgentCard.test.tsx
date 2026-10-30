@@ -28,6 +28,8 @@ describe('Regent contact card', () => {
     const html = render(status());
     expect(html).toContain('chatList.focal.name');
     expect(html).toContain('data-regent-state="idle"');
+    expect(html).toContain('regent-crown-on-hover');
+    expect(html).toContain('regent-mark-circlet');
     expect(text(html)).toContain('chatList.focal.allClear');
     expect(text(html)).not.toContain('chatList.focal.role');
   });
