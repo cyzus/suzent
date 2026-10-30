@@ -672,6 +672,7 @@ impl InstallConfig {
                     .filter(|value| !value.trim().is_empty())
                     .map(PathBuf::from)
             })
+            .map(without_verbatim_prefix)
             .unwrap_or_else(default_install_dir);
         let configured_branch = flag_value(args, "--branch").or_else(|| {
             env::var("SUZENT_BRANCH")
@@ -1874,7 +1875,7 @@ fn install_dir_marker_path() -> PathBuf {
 }
 
 fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
-    let path = PathBuf::from(fs::read_to_string(marker).ok()?.trim());
+    let path = without_verbatim_prefix(PathBuf::from(fs::read_to_string(marker).ok()?.trim()));
     // A missing drive or broken environment needs repair, not a second install.
     path.is_absolute().then_some(path)
 }
@@ -1882,7 +1883,26 @@ fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
 fn write_install_dir_marker(dir: &Path) -> io::Result<()> {
     let marker = install_dir_marker_path();
     fs::create_dir_all(marker.parent().expect("install marker parent"))?;
-    fs::write(marker, fs::canonicalize(dir)?.display().to_string())
+    fs::write(
+        marker,
+        without_verbatim_prefix(fs::canonicalize(dir)?)
+            .display()
+            .to_string(),
+    )
+}
+
+/// `fs::canonicalize` on Windows returns `\\?\C:\...`, which Git cannot clone
+/// into. Earlier installers saved that form as the install directory, so a
+/// reinstall failed in the clone step within a second.
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
 }
 
 fn dirs_home() -> PathBuf {
@@ -2281,6 +2301,21 @@ mod tests {
         for invalid in ["", "relative/install"] {
             fs::write(&marker, invalid).unwrap();
             assert_eq!(saved_install_dir(&marker), None);
+        }
+    }
+
+    #[test]
+    fn strips_the_windows_verbatim_prefix_git_cannot_use() {
+        for (verbatim, plain) in [
+            (r"\\?\C:\Users\a\suzent", r"C:\Users\a\suzent"),
+            (r"\\?\UNC\server\share\suzent", r"\\server\share\suzent"),
+            (r"\\?\Volume{1234}\suzent", r"\\?\Volume{1234}\suzent"),
+            ("/home/a/suzent", "/home/a/suzent"),
+        ] {
+            assert_eq!(
+                super::without_verbatim_prefix(std::path::PathBuf::from(verbatim)),
+                std::path::PathBuf::from(plain)
+            );
         }
     }
 }
