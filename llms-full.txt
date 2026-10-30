@@ -6667,8 +6667,23 @@ flat conversation rows and an outlined composer. Assistant messages carry the
 robot badge; inline code uses yellow highlights and top-level code blocks have
 black language headers with horizontally scrollable light bodies. User messages
 use a neutral surface so yellow retains its emphasis role. Keyboard and camera
-permission prompts stay native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
-scanner saves an image. Both apps provide English and Simplified Chinese strings.
+permission prompts stay native. iOS uses VisionKit QR recognition; Android uses Google
+Code Scanner when Google Play services is available and falls back to ZXing embedded
+(devices without Play services, or when the scanner module fails). Neither scanner
+saves an image. Both apps provide English and Simplified Chinese strings.
+
+Platform interactions stay native where the system already defines them. On iOS the
+conversation list is the root of a `NavigationStack` (edge swipe back), and regular
+width uses `NavigationSplitView`; Android animates list to detail under
+`PredictiveBackHandler` and shows both panes from 840 dp. Conversation rows have a
+context menu plus swipe actions (pin/unpin, delete with confirmation). Settings is a
+native grouped list. Destructive confirmations use system alerts; rename and
+edit-and-resend use sheets. Errors appear as a transient toast above the composer
+(or at the bottom elsewhere), while pending approvals are pinned above the composer.
+Only the latest message shows its action row; every message offers the same actions
+(copy, share, edit, retry, branch, sources) from a long-press menu on its footer or
+bubble, so message text keeps native selection. Send, copy, long press and approval
+choices give haptic feedback, and iOS text follows Dynamic Type.
 
 ### Mobile tool approvals and activity rail
 
