@@ -646,6 +646,55 @@ async def get_recent_memory_changes(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Could not read recent changes"}, status_code=500)
 
 
+async def get_chat_memory_activity(request: Request) -> JSONResponse:
+    """What memory did in one chat.
+
+    `recalled` holds the memories retrieved for its latest turn (null before any
+    turn was recorded); `saved` lists facts captured from it, newest first.
+    """
+    try:
+        chat_id = request.path_params["chat_id"]
+        db = get_database()
+        chat = await run_in_threadpool(db.get_chat, chat_id)
+        if chat is None:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+        recall = await run_in_threadpool(db.get_memory_recall, chat_id)
+        saved: list[dict[str, Any]] = []
+        manager = get_memory_manager()
+        if manager and manager.markdown_store:
+            since = _as_utc(chat.created_at).strftime("%Y-%m-%d")
+            sharing_prefix = [
+                other
+                for other in await run_in_threadpool(db.chat_log.chat_ids)
+                if other != chat_id and other.startswith(chat_id[:8])
+            ]
+            saved = await run_in_threadpool(
+                manager.markdown_store.find_chat_facts,
+                chat_id,
+                since,
+                include_legacy=not sharing_prefix,
+            )
+        return JSONResponse(
+            {
+                "recalled": (
+                    {
+                        "items": recall.items,
+                        "updated_at": _as_utc(recall.updated_at).isoformat(),
+                    }
+                    if recall
+                    else None
+                ),
+                "saved": saved,
+            }
+        )
+    except Exception:
+        logger.error(f"Error reading chat memory activity: {traceback.format_exc()}")
+        return JSONResponse(
+            {"error": "Could not read chat memory activity"}, status_code=500
+        )
+
+
 def _as_utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 

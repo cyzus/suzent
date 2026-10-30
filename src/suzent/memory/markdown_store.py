@@ -17,7 +17,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from suzent.logger import get_logger
 
@@ -583,8 +583,8 @@ class MarkdownMemoryStore:
         path = self._daily_log_path(date)
         now = datetime.now(timezone.utc).strftime("%H:%M")
 
-        # Build lean markdown entry (OpenClaw-style: scannable, not verbose)
-        lines = [f"\n## {now} — {chat_id[:8]}\n"]
+        # The full id, not a prefix: ids like social-telegram-111/-222 share one.
+        lines = [f"\n## {now} — {chat_id}\n"]
 
         for fact in facts:
             content = fact.get("content", "")
@@ -653,6 +653,62 @@ class MarkdownMemoryStore:
                     "chat_prefix": heading.group(2),
                 }
         return None
+
+    def find_chat_facts(
+        self,
+        chat_id: str,
+        since: str,
+        limit: int = 50,
+        include_legacy: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Facts captured from *chat_id* in daily logs dated *since* or later, newest first.
+
+        The inverse of :meth:`find_fact_origin`: entries are matched by the chat id
+        in their `## HH:MM — <chat id>` heading. Older logs wrote only the first
+        eight characters; those count only with *include_legacy*, which the caller
+        sets when no other chat shares that prefix.
+        """
+        owners = {chat_id}
+        if include_legacy:
+            owners.add(chat_id[:8])
+        facts: list[dict[str, Any]] = []
+        if not self.archive_dir.exists():
+            return facts
+        logs = sorted(
+            (
+                path
+                for path in self.archive_dir.glob("*.md")
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.stem) and path.stem >= since
+            ),
+            reverse=True,
+        )
+        for path in logs:
+            entries: list[dict[str, Any]] = []
+            time: Optional[str] = None
+            for line in _read_text(path).splitlines():
+                if m := re.match(r"^##\s+(\d{2}:\d{2})\s+—\s+(\S+)\s*$", line):
+                    time = m.group(1) if m.group(2) in owners else None
+                elif time and (
+                    m := re.match(r"^- \[([^\]]*)\]\s+(.*?)(?:\s+`([^`]*)`)?\s*$", line)
+                ):
+                    tags = (m.group(3) or "").split()
+                    kind = next(
+                        (tag[5:] for tag in tags if tag.startswith("kind:")), None
+                    )
+                    entries.append(
+                        {
+                            "date": path.stem,
+                            "time": time,
+                            "category": m.group(1),
+                            "kind": kind,
+                            "content": m.group(2),
+                            "revision": "revision" in tags,
+                        }
+                    )
+            facts.extend(reversed(entries))
+            if len(facts) >= limit:
+                break
+        return facts[:limit]
 
     async def get_recent_logs(self, days: int = 2) -> str:
         """
