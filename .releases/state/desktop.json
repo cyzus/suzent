@@ -124,6 +124,7 @@
     ".releases/changes/regent-no-repeated-session-answers.json",
     ".releases/changes/regent-quiet-wakes.json",
     ".releases/changes/regent-return-order.json",
+    ".releases/changes/regent-sidebar-queue.json",
     ".releases/changes/regent-soft-bubbles.json",
     ".releases/changes/regent-transitions.json",
     ".releases/changes/remove-dead-compat-shims.json",
