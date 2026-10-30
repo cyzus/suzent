@@ -304,14 +304,16 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
         if (search.isNotEmpty()) { kotlinx.coroutines.delay(300); model.loadPage(searchQuery) }
     }
     LaunchedEffect(expandedProject, model.navigationVersion) { expandedProject?.let { model.loadPage(ChatPageQuery("project", it)) } }
-    // The backend lists chats newest-first (updated_at desc), so a project's earliest chat
-    // index is its latest activity. Mirrors the desktop sidebar's sortedProjects ordering
-    // without adding a timestamp to the mobile payload.
-    val projects = remember(model.projects, model.chats) {
+    // The recent page is newest-first (updated_at desc), so a project's earliest chat index there
+    // is its latest activity. Mirrors the desktop sidebar's sortedProjects ordering without adding
+    // a timestamp to the mobile payload. model.chats is not ranked: opening a project appends its
+    // page there, which would reorder the projects on every expand.
+    val recentChats = model.pageChats(ChatPageQuery())
+    val projects = remember(model.projects, model.chats, recentChats) {
         val merged = (model.projects + model.chats.filterNot { it.isRegent }.mapNotNull { chat -> chat.projectId?.let { Project(it, chat.projectName ?: it) } }).distinctBy { it.id }
         val serverOrder = merged.withIndex().associate { (index, project) -> project.id to index }
         val activity = mutableMapOf<String, Int>()
-        model.chats.forEachIndexed { index, chat ->
+        recentChats.forEachIndexed { index, chat ->
             val id = chat.projectId ?: return@forEachIndexed
             if (id in serverOrder && id !in activity) activity[id] = index
         }
