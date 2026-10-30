@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
+- Settings > Providers now lists only the providers you have set up. The rest are in an Add a provider catalog grouped into model vendors, China vendors and coding plans, relays and local runtimes, with search. Adding a custom provider now asks for a name, OpenAI or Anthropic protocol, Base URL and API key, keeps its Base URL and key editable afterwards, rejects IDs and key names that clash with built-in providers, and saves it in ~/.suzent/config with your other settings instead of the install folder.
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
 - Add Chinese coding and token plans to Settings > Providers: Kimi Code, Bailian Plan, Tencent Cloud, Volcengine Ark, StepFun, Baidu Qianfan and Huawei Cloud MaaS, plus OpenCode Go, ClinePass and Ollama Cloud, each with a picker for the plan or China/Global endpoint, which Kimi, Qwen, MiniMax, Zhipu GLM / Z.ai and Xiaomi MiMo now have too. Moonshot keys from platform.moonshot.cn now work for chat, DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app.
