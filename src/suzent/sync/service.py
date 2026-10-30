@@ -14,7 +14,11 @@ from suzent.sync.models import (
     SyncProfile,
 )
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
-from suzent.sync.provider import GitHubSyncProvider, git_remote_names
+from suzent.sync.provider import (
+    GitHubSyncProvider,
+    SyncConflictError,
+    git_remote_names,
+)
 from suzent.sync.quickstart import (
     DEFAULT_REPO_NAME,
     default_repo_path,
@@ -365,10 +369,12 @@ class GitHubSyncService:
                 profile.id,
                 refresh_remote=False,
             )
-            if _has_mixed_file_changes(plan):
+            overlapping = _overlapping_paths(plan)
+            if overlapping:
                 plan.requires_confirmation = True
                 plan.warnings.append(
-                    "Incoming and outgoing files must be resolved before auto-sync."
+                    "Changed on both devices, resolve before auto-sync: "
+                    + ", ".join(overlapping)
                 )
                 return {
                     "success": False,
@@ -391,6 +397,30 @@ class GitHubSyncService:
                 )
                 await asyncio.to_thread(_reload_runtime)
                 git_output = "Pulled incoming portable files."
+            elif directions == {"incoming", "outgoing"}:
+                # Each side changed different files. HEAD is the last synced
+                # state, so commit the local side, rebase it onto the remote
+                # (no shared files, so no conflicts), apply the merged payload
+                # locally and push it.
+                try:
+                    await asyncio.to_thread(
+                        self._merge_disjoint_changes, provider, repo_path
+                    )
+                except SyncConflictError:
+                    plan.requires_confirmation = True
+                    plan.warnings.append(
+                        "Local and remote changes conflict; review before syncing."
+                    )
+                    return {
+                        "success": False,
+                        "blocked_review_required": True,
+                        "plan": plan.model_dump(mode="json"),
+                    }
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local, payload_dir
+                )
+                await asyncio.to_thread(_reload_runtime)
+                git_output = await asyncio.to_thread(provider.push_payload)
             elif directions == {"outgoing"}:
                 await asyncio.to_thread(provider.pull_ff_only)
                 await asyncio.to_thread(self.payload_builder.build, repo_path)
@@ -412,6 +442,29 @@ class GitHubSyncService:
                 "git": git_output,
                 "restored": restored,
             }
+
+    def _merge_disjoint_changes(
+        self, provider: GitHubSyncProvider, repo_path: Path
+    ) -> None:
+        """Commit local payload changes and rebase them onto the remote.
+
+        On conflict the payload is reset to the last synced commit, leaving the
+        live files untouched, and SyncConflictError is raised.
+        """
+        base = provider.head()
+        self.payload_builder.build(repo_path)
+        forbidden = self.payload_builder.validate_no_forbidden_paths(
+            repo_path / PAYLOAD_DIR_NAME
+        )
+        if forbidden:
+            provider.reset_hard(base)
+            raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
+        provider.commit_payload()
+        try:
+            provider.pull_ff_only()
+        except SyncConflictError:
+            provider.reset_hard(base)
+            raise
 
     def _lock(self, profile: SyncProfile) -> asyncio.Lock:
         if profile.id not in self._locks:
@@ -635,9 +688,11 @@ def _merge_plans(operation: str, plans: list[SyncPlan]) -> SyncPlan:
     return merged
 
 
-def _has_mixed_file_changes(plan: SyncPlan) -> bool:
-    directions = {change.direction for change in plan.files}
-    return directions == {"incoming", "outgoing"}
+def _overlapping_paths(plan: SyncPlan) -> list[str]:
+    """Paths changed both locally and on the remote since the last sync."""
+    incoming = {c.path for c in plan.files if c.direction == "incoming"}
+    outgoing = {c.path for c in plan.files if c.direction == "outgoing"}
+    return sorted(incoming & outgoing)
 
 
 def _incoming_tracking_plan(

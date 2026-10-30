@@ -6,7 +6,7 @@ import pytest
 
 from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
-from suzent.sync.provider import GitHubSyncProvider
+from suzent.sync.provider import GitHubSyncProvider, SyncConflictError
 from suzent.sync.service import GitHubSyncService
 
 
@@ -219,3 +219,100 @@ def test_fetch_with_token_builds_refspec_from_remote_name(tmp_path, monkeypatch)
         tmp_path, "https://github.com/alice/brain.git", "main"
     )
     assert "main:refs/remotes/origin/main" in captured["args"]
+
+
+def _device(tmp_path: Path, name: str, repo: Path, monkeypatch) -> GitHubSyncService:
+    from suzent.sync import service as service_module
+
+    monkeypatch.setattr(service_module, "_reload_runtime", lambda: None)
+    root = tmp_path / name
+    builder = SyncPayloadBuilder(
+        data_dir=root,
+        user_config_dir=root / "config",
+        user_skills_dir=root / "skills",
+        sandbox_data_path=root / "sandbox",
+    )
+    service = GitHubSyncService(
+        profiles_path=root / "profiles.json", payload_builder=builder
+    )
+    service.save_profile(SyncProfile(repo_path=str(repo), branch="master"))
+    return service
+
+
+def _clone_device(tmp_path: Path, name: str) -> Path:
+    clone = tmp_path / f"{name}-repo"
+    git(tmp_path, "clone", str(tmp_path / "remote.git"), str(clone))
+    git(clone, "config", "user.email", "test@example.com")
+    git(clone, "config", "user.name", "Test User")
+    git(clone, "checkout", "master")
+    return clone
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _two_synced_devices(tmp_path: Path, monkeypatch):
+    repo_a = make_repo(tmp_path)
+    a = _device(tmp_path, "a", repo_a, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "v1\n")
+    _write(tmp_path / "a" / "sandbox" / "shared" / "memory" / "MEMORY.md", "m1\n")
+    asyncio.run(a.push(confirm_destructive=True))
+
+    repo_b = _clone_device(tmp_path, "b")
+    b = _device(tmp_path, "b", repo_b, monkeypatch)
+    asyncio.run(b.pull(confirm_destructive=True))
+    return a, b, repo_a, repo_b
+
+
+def test_auto_sync_merges_changes_to_different_files_on_both_devices(
+    tmp_path: Path, monkeypatch
+):
+    a, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "v2\n")
+    asyncio.run(a.push())
+    _write(tmp_path / "b" / "sandbox" / "shared" / "memory" / "notes.md", "from b\n")
+
+    result = asyncio.run(b.auto_sync())
+
+    assert result["success"] is True
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "v2\n"
+    remote_files = git(repo_b, "ls-tree", "-r", "--name-only", "origin/master")
+    assert f"{PAYLOAD_DIR_NAME}/memory/notes.md" in remote_files
+    assert git(repo_b, "rev-parse", "HEAD") == git(repo_b, "rev-parse", "origin/master")
+
+
+def test_auto_sync_blocks_when_both_devices_change_the_same_file(
+    tmp_path: Path, monkeypatch
+):
+    a, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "from a\n")
+    asyncio.run(a.push())
+    _write(tmp_path / "b" / "config" / "config.yaml", "from b\n")
+    head_before = git(repo_b, "rev-parse", "HEAD")
+
+    result = asyncio.run(b.auto_sync())
+
+    assert result["success"] is False
+    assert result["blocked_review_required"] is True
+    assert any("config/config.yaml" in w for w in result["plan"]["warnings"])
+    assert git(repo_b, "rev-parse", "HEAD") == head_before
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "from b\n"
+
+
+def test_conflicting_push_raises_instead_of_reporting_success(
+    tmp_path: Path, monkeypatch
+):
+    a, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "from a\n")
+    asyncio.run(a.push())
+    _write(tmp_path / "b" / "config" / "config.yaml", "from b\n")
+    head_before = git(repo_b, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncConflictError):
+        asyncio.run(b.push())
+
+    assert git(repo_b, "rev-parse", "HEAD") == head_before
+    assert git(repo_b, "status", "--porcelain") == ""
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "from b\n"

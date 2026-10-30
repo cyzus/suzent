@@ -17,6 +17,10 @@ from suzent.sync.payload import PAYLOAD_DIR_NAME
 logger = get_logger(__name__)
 
 
+class SyncConflictError(RuntimeError):
+    """Local and remote payload commits touch the same files and cannot be rebased."""
+
+
 class GitHubSyncProvider:
     def __init__(
         self, repo_path: Path, *, remote: str = "origin", branch: str = "main"
@@ -128,14 +132,37 @@ class GitHubSyncProvider:
             pass  # nothing untracked to clean — fine either way
 
     def commit_and_push_payload(self) -> str:
+        base = self.head()
+        if not self.commit_payload():
+            return "No sync payload changes to push."
+        try:
+            return self.push_payload()
+        except SyncConflictError:
+            # Drop our commit so the payload matches the last synced state again.
+            # The live files still hold the local edits, so the next plan shows
+            # them as outgoing next to the conflicting incoming files.
+            self.reset_hard(base)
+            raise
+
+    def commit_payload(self) -> bool:
+        """Commit the payload directory locally. Returns False if nothing changed."""
         self.validate(require_clean=False)
         self._git("add", PAYLOAD_DIR_NAME)
         self._ensure_no_unrelated_staged_changes()
         staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
         if not staged:
-            return "No sync payload changes to push."
+            return False
         self._git("commit", "-m", "sync: update portable files")
+        return True
+
+    def push_payload(self) -> str:
         return self._push_with_rebase()
+
+    def head(self) -> str:
+        return self._git("rev-parse", "HEAD").strip()
+
+    def reset_hard(self, ref: str) -> None:
+        self._git("reset", "--hard", ref)
 
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
@@ -189,15 +216,22 @@ class GitHubSyncProvider:
         return self._git("push", self.remote, self.branch)
 
     def _rebase_onto(self, remote_ref: str) -> None:
-        """Rebase current branch onto remote_ref, hard-resetting on conflict."""
+        """Rebase current branch onto remote_ref, raising SyncConflictError on conflict.
+
+        Never hard-reset to the remote here: that silently drops the local
+        commit, and a following apply would overwrite the live files with the
+        remote version.
+        """
         try:
             self._git("rebase", remote_ref)
-        except RuntimeError:
+        except RuntimeError as exc:
             try:
                 self._git("rebase", "--abort")
             except RuntimeError:
                 pass
-            self._git("reset", "--hard", remote_ref)
+            raise SyncConflictError(
+                f"Local and remote sync changes conflict on {remote_ref}"
+            ) from exc
 
     def _push_with_rebase(self) -> str:
         """Push, rebasing on top of any remote commits that arrived since we committed."""
@@ -209,19 +243,7 @@ class GitHubSyncProvider:
             logger.info("Push rejected (non-fast-forward) — fetching and rebasing")
 
         self._fetch()
-        remote_ref = f"{self.remote}/{self.branch}"
-        before = self._git("rev-parse", "HEAD").strip()
-        self._rebase_onto(remote_ref)
-        after = self._git("rev-parse", "HEAD").strip()
-
-        if before == after:
-            # Hard-reset discarded our commit — re-stage and recommit the payload
-            self._git("add", PAYLOAD_DIR_NAME)
-            staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
-            if not staged:
-                return "No changes after rebase — nothing to push."
-            self._git("commit", "-m", "sync: update portable files")
-
+        self._rebase_onto(f"{self.remote}/{self.branch}")
         return self._push()
 
     def _git(self, *args: str) -> str:

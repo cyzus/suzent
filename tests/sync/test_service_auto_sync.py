@@ -62,6 +62,20 @@ class FakeProvider:
         self.calls.append("push")
         return self.git_output
 
+    def head(self) -> str:
+        return "base"
+
+    def commit_payload(self) -> bool:
+        self.calls.append("commit")
+        return True
+
+    def push_payload(self) -> str:
+        self.calls.append("push")
+        return self.git_output
+
+    def reset_hard(self, ref: str) -> None:
+        self.calls.append(f"reset:{ref}")
+
     def refresh_remote(self) -> None:
         self.calls.append("fetch")
 
@@ -199,14 +213,12 @@ def test_auto_sync_blocks_destructive_memory_deletes(
     ]
 
 
-def test_auto_sync_blocks_mixed_incoming_and_outgoing_changes(
+def test_auto_sync_blocks_files_changed_on_both_sides(
     tmp_path: Path, monkeypatch
 ) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
-    FakeProvider.payload_remote_status_output = (
-        "M\tsuzent-sync/skills/remote/SKILL.md\n"
-    )
+    FakeProvider.payload_remote_status_output = "M\tsuzent-sync/config/default.yaml\n"
     FakePayloadBuilder.current_hashes = {"config/default.yaml": "cloud"}
     FakePayloadBuilder.preview_hashes = {"config/default.yaml": "local"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
@@ -223,14 +235,46 @@ def test_auto_sync_blocks_mixed_incoming_and_outgoing_changes(
     assert result["blocked_review_required"] is True
     assert result["plan"]["requires_confirmation"] is True
     assert result["plan"]["warnings"] == [
-        "Incoming and outgoing files must be resolved before auto-sync."
+        "Changed on both devices, resolve before auto-sync: config/default.yaml"
     ]
-    assert {item["direction"] for item in result["plan"]["files"]} == {
-        "incoming",
-        "outgoing",
-    }
     assert "pull" not in calls
     assert "push" not in calls
+
+
+def test_auto_sync_merges_disjoint_incoming_and_outgoing_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[str] = []
+    FakeProvider.calls = calls
+    FakeProvider.git_output = "pushed"
+    FakeProvider.payload_remote_status_output = (
+        "M\tsuzent-sync/skills/remote/SKILL.md\n"
+    )
+    FakePayloadBuilder.current_hashes = {"config/default.yaml": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"config/default.yaml": "local"}
+    monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
+    monkeypatch.setattr(
+        service_module, "_reload_runtime", lambda: calls.append("reload")
+    )
+
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json",
+        payload_builder=FakePayloadBuilder(calls),
+    )
+    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+
+    result = asyncio.run(service.auto_sync(profile.id))
+
+    assert result["success"] is True
+    assert calls[4:] == [
+        "build",
+        "validate",
+        "commit",
+        "pull",
+        "apply",
+        "reload",
+        "push",
+    ]
 
 
 def test_discard_outgoing_restores_local_from_cloud_payload(
