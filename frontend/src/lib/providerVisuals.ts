@@ -7,13 +7,14 @@ import deepseekIcon from '../assets/provider-icons/deepseek.svg';
 import minimaxIcon from '../assets/provider-icons/minimax.svg';
 import moonshotIcon from '../assets/provider-icons/moonshot.svg';
 import kimiIcon from '../assets/provider-icons/kimi.svg';
-import zhipuIcon from '../assets/provider-icons/zhipu.svg';
+import zaiIcon from '../assets/provider-icons/zai.svg';
 import openrouterIcon from '../assets/provider-icons/openrouter.svg';
 import vllmIcon from '../assets/provider-icons/vllm.svg';
 import ollamaIcon from '../assets/provider-icons/ollama.svg';
 import xiaomimimoIcon from '../assets/provider-icons/xiaomimimo.svg';
 import bedrockIcon from '../assets/provider-icons/bedrock.svg';
 import tencentcloudIcon from '../assets/provider-icons/tencentcloud.svg';
+import litellmIcon from '../assets/provider-icons/litellm.png';
 import volcengineIcon from '../assets/provider-icons/volcengine.svg';
 
 export interface ProviderVisual {
@@ -82,7 +83,7 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
     id: 'zhipuai',
     label: 'Zhipu AI',
     color: '2B60D6',
-    logoUrl: zhipuIcon,
+    logoUrl: zaiIcon,
   },
   kimi_code: {
     id: 'kimi_code',
@@ -118,7 +119,7 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
     id: 'glm_coding',
     label: 'GLM Coding Plan',
     color: '2B60D6',
-    logoUrl: zhipuIcon,
+    logoUrl: zaiIcon,
   },
   volcengine_agent: {
     id: 'volcengine_agent',
@@ -152,7 +153,9 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
   litellm_proxy: {
     id: 'litellm_proxy',
     label: 'LiteLLM Proxy',
-    color: '7C3AED',
+    // The circle the bullet-train logo sits in, so the tile reads as one mark.
+    color: '87CEEA',
+    logoUrl: litellmIcon,
   },
   ollama: {
     id: 'ollama',
