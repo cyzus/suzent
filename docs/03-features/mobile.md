@@ -77,12 +77,21 @@ keeps it running when the window is closed.
 
 ## What you can do on the phone
 
-- **Chats.** The sidebar works like the desktop's: pinned chats first, then
-  your projects, most recently active first, one open at a time. Search to
-  find a chat, and start a new one in any project.
+- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
+  **New conversation** are at the top, then pinned chats, your three most
+  recent with **View all**, your projects (tap one to open it, and **Load
+  more** for older chats), and your scheduled tasks. Search looks through the
+  titles of every chat the phone may read, not only the ones already loaded.
+  **Settings** is in the top toolbar.
 - **Talk to the agent.** Send messages, watch replies stream in with their
-  sources, stop a reply, edit and resend your last message, retry a reply, or
-  branch a conversation. Edit and retry also need the manage permission.
+  sources and an activity summary you can expand for each tool's details, and
+  stop a reply. Long-press a message to copy or share it, edit and resend your
+  last message, retry a reply, or branch a conversation. Edit and retry also
+  need the manage permission.
+- **Talk to Regent.** If the phone may read all conversations, you can talk to
+  [Suzent Regent](../02-using/regent.md) as on the computer, see when it's
+  working or needs you, and open the conversations it handed work to. You
+  can't attach files, edit, retry, or branch in Regent's chat from the phone.
 - **Attach things.** Tap **+** next to the message box and choose **Camera**,
   **Photos and videos**, or **Files**. Up to 10 items go with one message, up
   to 200 MB in all. They're saved in the conversation's workspace on your
@@ -91,15 +100,15 @@ keeps it running when the window is closed.
   Attaching needs the **Send messages** permission.
 - **Pick the model.** **Desktop model** lists the models you've enabled on
   your computer.
-- **Answer approvals.** When the agent needs permission, the app shows
-  **Approval required** with **Allow once** and **Reject** for each request.
-- **Organize.** Long-press a chat to pin, rename, move, or delete it, if the
-  phone may manage conversations.
+- **Answer approvals.** When the agent needs permission, **Approval required**
+  appears above the message box with **Allow once** and **Reject** for each
+  request.
+- **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
+  it to pin or delete, if the phone may manage conversations.
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Scheduled tasks**, at the top of the sidebar, shows failed
-  tasks first, then active and paused ones, with their status and next run;
-  **View all** opens the full list. You can open a task's chat but not change
-  the task from the phone.
+  started them. **Scheduled tasks** shows failed tasks first, then active and
+  paused ones, with their status and next run. You can open a task's chat but
+  not change the task from the phone.
 
 The app is in English and Simplified Chinese, and follows your phone's light
 or dark mode. If the connection drops, it reconnects when you open it again and
