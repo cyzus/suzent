@@ -114,3 +114,19 @@ public func runningSurfaceFrame(_ kind: String, seconds: Double) -> RunningSurfa
     default: return RunningSurfaceFrame(wave: u, gridShift: 12 * u, stops: [0, 0.35, 0.5, 0.65, 1], alphas: [0, 0.05, 0.12, 0.05, 0])
     }
 }
+
+/// One frame of desktop's reasoning-thinking-label: the sweep image's background-position and the ink bar's span, both as fractions of the word.
+public struct ThinkingLabelFrame: Sendable, Equatable {
+    public let sweep: Double, barStart: Double, barEnd: Double
+}
+
+/// Desktop's reasoning-thinking-sweep and -redact (1.8s): the bar wipes on in six steps, holds, wipes off, then the
+/// sweep's pale notch, parked off the right edge until then, runs back over the word.
+public func thinkingLabelFrame(seconds: Double) -> ThinkingLabelFrame {
+    let u = cycle(seconds, 1.8)
+    let sweep = u < 0.6 ? 0.2 : 0.8 - (u - 0.6) / 0.4 * 0.6
+    if u < 0.24 { return ThinkingLabelFrame(sweep: sweep, barStart: 0, barEnd: (u / 0.24 * 6).rounded(.down) / 6) }
+    if u < 0.36 { return ThinkingLabelFrame(sweep: sweep, barStart: 0, barEnd: 1) }
+    if u < 0.56 { return ThinkingLabelFrame(sweep: sweep, barStart: ((u - 0.36) / 0.2 * 6).rounded(.down) / 6, barEnd: 1) }
+    return ThinkingLabelFrame(sweep: sweep, barStart: 1, barEnd: 1)
+}

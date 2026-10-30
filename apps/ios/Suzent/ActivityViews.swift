@@ -130,7 +130,9 @@ struct ActivityRail: View {
             } label: {
                 HStack(spacing: 8) {
                     if let tool = parts.last(where: { $0.type == "tool" }) { ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20) }
-                    Text(summary).lineLimit(1).truncationMode(.tail)
+                    // Desktop's collapsed header carries a streaming thought on the word itself.
+                    if running && !expanded && !waiting && parts.last?.type == "reasoning" { ThinkingLabel(text: summary) }
+                    else { Text(summary).lineLimit(1).truncationMode(.tail) }
                     Spacer(minLength: 0)
                     Text("\(activityStepCount(parts)) steps").suzentFont(PresentationTokens.typeSidebarSection, design: .monospaced).fixedSize()
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).rotationEffect(.degrees(expanded ? 90 : 0))
@@ -175,8 +177,13 @@ struct ToolActivityBlock: View {
                     HStack(spacing: 8) {
                         ActivityToolIcon(part: part, running: active, color: color).frame(width: 18, height: 18)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(part.type == "reasoning" ? String(localized: "Reasoning") : canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " "))
-                                .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            // Desktop names a thought "Thinking" while it streams and "Thought" once it lands.
+                            if part.type == "reasoning" && active {
+                                ThinkingLabel(text: String(localized: "Thinking")).suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentText)
+                            } else {
+                                Text(part.type == "reasoning" ? String(localized: "Thought") : canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " "))
+                                    .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            }
                             if part.type == "tool" {
                                 Text(activityToolLabel(part)).suzentFont(PresentationTokens.typeSidebarSection, design: .monospaced).foregroundStyle(Color.suzentMuted).lineLimit(1)
                             }
@@ -326,6 +333,43 @@ struct RunningSurface: View {
             }
             .clipped()
             .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Desktop's reasoning-thinking-label: a pale notch sweeping across the word while an ink bar wipes over it.
+/// Ink is the surrounding foreground style, so callers colour it the way they colour plain text.
+struct ThinkingLabel: View {
+    let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        if reduceMotion {
+            Text(text).lineLimit(1).truncationMode(.tail)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: scenePhase != .active)) { timeline in
+                let frame = thinkingLabelFrame(seconds: timeline.date.timeIntervalSinceReferenceDate)
+                // The sweep image is four words wide; background-position p puts its left edge at -3p of the word.
+                let start = -3 * frame.sweep
+                Text(text).lineLimit(1).truncationMode(.tail)
+                    .hidden()
+                    .overlay {
+                        Rectangle().foregroundStyle(.foreground)
+                            .mask(Text(text).lineLimit(1).truncationMode(.tail))
+                            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.4),
+                                                         .init(color: .black.opacity(0.15), location: 0.47), .init(color: .black.opacity(0.15), location: 0.53),
+                                                         .init(color: .black, location: 0.6), .init(color: .black, location: 1)],
+                                                 startPoint: UnitPoint(x: start, y: 0.5), endPoint: UnitPoint(x: start + 4, y: 0.5)))
+                    }
+                    .overlay {
+                        GeometryReader { proxy in
+                            Rectangle().foregroundStyle(.foreground)
+                                .frame(width: proxy.size.width * (frame.barEnd - frame.barStart), height: proxy.size.height * 1.3)
+                                .offset(x: proxy.size.width * frame.barStart, y: -proxy.size.height * 0.15)
+                        }
+                    }
+            }
         }
     }
 }

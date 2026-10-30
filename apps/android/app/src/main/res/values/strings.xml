@@ -215,6 +215,7 @@
     <string name="activity_worked_for">Worked for %1$s</string>
     <string name="activity_label">Activity</string>
     <string name="activity_thinking">Thinking</string>
+    <string name="activity_thought">Thought</string>
     <string name="activity_copy_details">Copy details</string>
     <string name="activity_full_details">Show full details</string>
     <string name="recent_chats">Recent</string>

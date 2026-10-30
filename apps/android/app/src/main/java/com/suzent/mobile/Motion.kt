@@ -105,3 +105,21 @@ internal fun runningSurfaceFrame(kind: String, seconds: Double): RunningSurfaceF
         else -> RunningSurfaceFrame(u, 12 * u, listOf(0.0, .35, .5, .65, 1.0), listOf(0.0, .05, .12, .05, 0.0))
     }
 }
+
+/** One frame of desktop's reasoning-thinking-label: the sweep image's background-position and the ink bar's span, both as fractions of the word. */
+internal data class ThinkingLabelFrame(val sweep: Double, val barStart: Double, val barEnd: Double)
+
+/**
+ * Desktop's reasoning-thinking-sweep and -redact (1.8s): the bar wipes on in six steps, holds, wipes off, then the
+ * sweep's pale notch, parked off the right edge until then, runs back over the word.
+ */
+internal fun thinkingLabelFrame(seconds: Double): ThinkingLabelFrame {
+    val u = cycle(seconds, 1.8)
+    val sweep = if (u < .6) .2 else .8 - (u - .6) / .4 * .6
+    return when {
+        u < .24 -> ThinkingLabelFrame(sweep, 0.0, floor(u / .24 * 6) / 6)
+        u < .36 -> ThinkingLabelFrame(sweep, 0.0, 1.0)
+        u < .56 -> ThinkingLabelFrame(sweep, floor((u - .36) / .2 * 6) / 6, 1.0)
+        else -> ThinkingLabelFrame(sweep, 1.0, 1.0)
+    }
+}

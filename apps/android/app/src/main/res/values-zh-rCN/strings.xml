@@ -214,6 +214,7 @@
     <string name="activity_worked_for">用时 %1$s</string>
     <string name="activity_label">活动记录</string>
     <string name="activity_thinking">思考中</string>
+    <string name="activity_thought">思考</string>
     <string name="activity_copy_details">复制详情</string>
     <string name="activity_full_details">显示完整详情</string>
     <string name="recent_chats">最近对话</string>

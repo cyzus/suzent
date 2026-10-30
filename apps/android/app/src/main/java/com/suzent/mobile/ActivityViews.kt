@@ -33,28 +33,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -166,7 +172,9 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
         }
         SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
             parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
-            Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
+            // Desktop's collapsed header carries a streaming thought on the word itself.
+            if (running && !expanded && !waiting && latest?.type == "reasoning") ThinkingLabel(status, accent, PresentationTokens.typeLabel.sp, FontWeight.Medium, Modifier.weight(1f))
+            else Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
             Text(stringResource(R.string.activity_steps, activityStepCount(parts)), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = accent)
             ActivityChevron(expanded)
         }
@@ -215,7 +223,9 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
                 ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else canonicalActivityTool(part.toolName).replace('_', ' '), fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Desktop names a thought "Thinking" while it streams and "Thought" once it lands.
+                    if (part.type == "reasoning" && active) ThinkingLabel(stringResource(R.string.activity_thinking), ink, PresentationTokens.typeLabel.sp, FontWeight.Normal)
+                    else Text(if (part.type == "reasoning") stringResource(R.string.activity_thought) else canonicalActivityTool(part.toolName).replace('_', ' '), fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (part.type == "tool") Text(activityToolLabel(part), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active || pending || failed) Text(status, fontSize = 9.sp, color = color, maxLines = 1)
@@ -353,4 +363,36 @@ private fun Modifier.runningSurface(kind: String?, ink: Color): Modifier {
             drawRect(Brush.horizontalGradient(*stops, startX = start, endX = start + span), Offset(start, 0f), Size(span, size.height))
         }
     }
+}
+
+/** Desktop's reasoning-thinking-label: a pale notch sweeping across the word while an ink bar wipes over it. */
+@Composable
+private fun ThinkingLabel(text: String, color: Color, fontSize: TextUnit, fontWeight: FontWeight, modifier: Modifier = Modifier) {
+    val reduced = !ValueAnimator.areAnimatorsEnabled()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var seconds by remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced, lifecycle) {
+        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var previous = 0L
+            while (true) withFrameNanos { now ->
+                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                previous = now
+            }
+        }
+    }
+    if (reduced) { Text(text, modifier, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis); return }
+    var width by remember { mutableFloatStateOf(0f) }
+    val frame = thinkingLabelFrame(seconds)
+    // The sweep image is four words wide; background-position p puts its left edge at -3p of the word.
+    val start = (-3 * frame.sweep).toFloat() * width
+    val faint = color.copy(alpha = color.alpha * .15f)
+    val brush = if (width <= 0f) SolidColor(color) else Brush.horizontalGradient(
+        0f to color, .4f to color, .47f to faint, .53f to faint, .6f to color, 1f to color, startX = start, endX = start + 4 * width)
+    Text(text, modifier.onSizeChanged { width = it.width.toFloat() }.drawWithContent {
+        drawContent()
+        if (frame.barEnd > frame.barStart) {
+            val bleed = fontSize.toPx() * .15f
+            drawRect(color, Offset(size.width * frame.barStart.toFloat(), -bleed), Size(size.width * (frame.barEnd - frame.barStart).toFloat(), size.height + 2 * bleed))
+        }
+    }, style = TextStyle(brush = brush, fontSize = fontSize, fontWeight = fontWeight), maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
