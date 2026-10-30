@@ -1314,6 +1314,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     ) : null;
+    const hangKindIcon = kindIcon !== null && (nested || chatKind === 'subagent');
     const rowContent = compact ? (
       <div className="flex min-w-0 items-center gap-2">
         <h3
@@ -1334,8 +1335,10 @@ export const ChatList: React.FC<ChatListProps> = ({
       </div>
     ) : (
       <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-1.5 overflow-hidden">
-          {kindIcon}
+        <div className={`flex items-center gap-1.5 ${hangKindIcon ? '' : 'overflow-hidden'}`}>
+          {/* Indented rows hang the icon in their left padding so titles stay aligned. */}
+          {kindIcon &&
+            (hangKindIcon ? <span className="-ml-5 flex shrink-0">{kindIcon}</span> : kindIcon)}
           <h3
             className={`text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${isUnread(chat) ? 'font-extrabold' : 'font-medium'} ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white'}`}
           >
@@ -1566,16 +1569,16 @@ export const ChatList: React.FC<ChatListProps> = ({
                 )}
               </button>
               {showAutomation && automationOpen && (
-                <section className="mt-1 border-y border-neutral-200 dark:border-zinc-700">
+                <section className="pb-1">
                   {loadingAutomation ? (
-                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    <div>
                       <SidebarRowSkeleton compact />
                       <SidebarRowSkeleton compact />
                     </div>
                   ) : (
-                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    <div>
                       {scheduledJobs.length > 0 && (
-                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
                           <div>
                             {visibleCronJobs.map((job) => {
                               const { chatId, canOpen } = getScheduledTaskChat(job);
@@ -1608,15 +1611,15 @@ export const ChatList: React.FC<ChatListProps> = ({
                                       anchor: { rect: event.currentTarget.getBoundingClientRect() },
                                     });
                                   }}
-                                  className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                  className={`group/task relative transition-colors ${
                                     currentChatId === chatId
                                       ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                      : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                      : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                                   }`}
                                 >
                                   {renamingTaskId === job.id ? (
                                     <form
-                                      className="flex min-h-11 items-center gap-1 px-2"
+                                      className="flex items-center gap-1 py-1 pl-6 pr-2"
                                       onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
                                     >
                                       <input
@@ -1652,29 +1655,44 @@ export const ChatList: React.FC<ChatListProps> = ({
                                           canOpen ? openChatById(chatId) : onOpenAutomation?.()
                                         }
                                         title={unresolvedError ?? job.last_result ?? undefined}
-                                        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
+                                        className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-2 text-left disabled:cursor-default"
                                       >
-                                        <span className="min-w-0">
+                                        <span className="flex items-center gap-1.5 overflow-hidden">
                                           <span
-                                            className={`block truncate text-xs leading-tight text-brutal-black dark:text-white ${currentChatId !== chatId && job.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
+                                            className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
+                                              currentChatId !== chatId && job.unread_count > 0
+                                                ? 'font-extrabold text-neutral-950 dark:text-white'
+                                                : currentChatId === chatId
+                                                  ? 'font-medium text-brutal-black dark:text-white'
+                                                  : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/task:text-brutal-black dark:group-hover/task:text-white'
+                                            }`}
                                           >
                                             {job.name}
                                           </span>
-                                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                            <RunningMark
-                                              running={isChatRunning(chatId, job.is_running)}
-                                            />
-                                            <span
-                                              className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
-                                            >
-                                              {subtitle}
-                                            </span>
+                                          <span
+                                            className={`flex min-w-6 shrink-0 items-center justify-end transition-opacity ${
+                                              taskMenu?.jobId === job.id
+                                                ? 'opacity-0'
+                                                : 'group-hover/task:opacity-0 group-focus-within/task:opacity-0'
+                                            }`}
+                                          >
+                                            {isChatRunning(chatId, job.is_running) ? (
+                                              <RunningMark running />
+                                            ) : (
+                                              <span
+                                                className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chatId ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+                                              >
+                                                {latestActivityAt
+                                                  ? formatDate(latestActivityAt)
+                                                  : t('chatList.automation.notYet')}
+                                              </span>
+                                            )}
                                           </span>
                                         </span>
-                                        <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                                          {latestActivityAt
-                                            ? formatDate(latestActivityAt)
-                                            : t('chatList.automation.notYet')}
+                                        <span
+                                          className={`block truncate text-[10px] ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
+                                        >
+                                          {subtitle}
                                         </span>
                                       </button>
                                       <button
@@ -1690,7 +1708,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                             },
                                           });
                                         }}
-                                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                        className={`absolute right-1 top-1.5 flex items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
                                           taskMenu?.jobId === job.id
                                             ? 'opacity-100'
                                             : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
@@ -1708,7 +1726,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 <button
                                   type="button"
                                   onClick={onOpenAutomation}
-                                  className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
+                                  className="w-full py-1.5 pl-8 pr-2 text-left text-[10px] text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700/80 dark:hover:text-white"
                                 >
                                   {t('chatList.automation.viewAllScheduled', {
                                     count: scheduledJobs.length,
@@ -1720,45 +1738,52 @@ export const ChatList: React.FC<ChatListProps> = ({
                       )}
 
                       {heartbeatSessions.length > 0 && (
-                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
                           <div>
                             {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
                               <button
                                 key={session.chat_id}
                                 type="button"
                                 onClick={() => openChatById(session.chat_id)}
-                                className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                className={`group/beat block w-full space-y-0.5 py-1.5 pl-8 pr-2 text-left transition-colors ${
                                   currentChatId === session.chat_id
                                     ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                    : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                    : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                                 }`}
                               >
-                                <span className="min-w-0">
+                                <span className="flex items-center gap-1.5 overflow-hidden">
                                   <span
-                                    className={`block text-xs leading-tight truncate text-brutal-black dark:text-white ${currentChatId !== session.chat_id && session.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
+                                    className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
+                                      currentChatId !== session.chat_id && session.unread_count > 0
+                                        ? 'font-extrabold text-neutral-950 dark:text-white'
+                                        : currentChatId === session.chat_id
+                                          ? 'font-medium text-brutal-black dark:text-white'
+                                          : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/beat:text-brutal-black dark:group-hover/beat:text-white'
+                                    }`}
                                   >
                                     {session.title}
                                   </span>
-                                  <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                    <RunningMark
-                                      running={isChatRunning(session.chat_id, session.is_running)}
-                                    />
-                                    <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
-                                      {t('chatList.automation.everyMinutes', {
-                                        minutes: session.interval_minutes,
-                                      })}
+                                  {isChatRunning(session.chat_id, session.is_running) ? (
+                                    <RunningMark running />
+                                  ) : (
+                                    <span
+                                      className={`shrink-0 text-[10px] font-medium uppercase tabular-nums ${currentChatId === session.chat_id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+                                    >
+                                      {session.last_run_at
+                                        ? formatDate(session.last_run_at)
+                                        : t('chatList.automation.notYet')}
                                     </span>
-                                  </span>
+                                  )}
                                 </span>
-                                <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
-                                  {session.last_run_at
-                                    ? formatDate(session.last_run_at)
-                                    : t('chatList.automation.notYet')}
+                                <span className="block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  {t('chatList.automation.everyMinutes', {
+                                    minutes: session.interval_minutes,
+                                  })}
                                 </span>
                               </button>
                             ))}
                             {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
-                              <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                              <div className="py-1.5 pl-8 pr-2 text-[10px] text-neutral-500 dark:text-neutral-400">
                                 {t('chatList.automation.moreHeartbeat', {
                                   count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
                                 })}
