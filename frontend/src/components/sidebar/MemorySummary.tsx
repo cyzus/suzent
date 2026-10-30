@@ -139,15 +139,21 @@ export function MemoryDetails({ section }: { section: MemorySection }): JSX.Elem
 
   return (
     <div>
-      <Group title={t('sidebar.memory.thisTurn')}>
-        <OverviewList
-          items={recalled}
-          empty={t('sidebar.memory.noneUsed')}
-          getKey={(item) => item.id}
-          renderMarker={() => <Dot />}
-          renderLabel={(item) => <span title={item.content}>{item.content}</span>}
-        />
-      </Group>
+      {recalled.length > 0 ? (
+        <Group title={t('sidebar.memory.thisTurn')}>
+          <OverviewList
+            items={recalled}
+            empty=""
+            getKey={(item) => item.id}
+            renderMarker={() => <Dot />}
+            renderLabel={(item) => <span title={item.content}>{item.content}</span>}
+          />
+        </Group>
+      ) : (
+        <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">
+          {t('sidebar.memory.noneUsed')}
+        </p>
+      )}
       <Group title={t('sidebar.memory.savedHere')}>
         {section.extracting && (
           <p className="py-0.5 text-xs text-neutral-500 dark:text-neutral-400">
@@ -159,6 +165,7 @@ export function MemoryDetails({ section }: { section: MemorySection }): JSX.Elem
             items={saved.slice(0, RECENT_SAVED)}
             empty={t('sidebar.memory.noneSaved')}
             getKey={savedFactKey}
+            wrap
             renderMarker={(fact) => <Dot fresh={section.fresh.has(savedFactKey(fact))} />}
             renderLabel={(fact) => (
               <span title={fact.content}>
