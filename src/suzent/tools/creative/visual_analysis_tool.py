@@ -171,7 +171,7 @@ class VisualAnalysisTool(Tool):
             # Through the shared resolution rather than straight to LiteLLM: a
             # self-hosted vision endpoint needs its api_base and its thinking
             # switched off, and neither is visible from here.
-            litellm_model, call_kwargs = chat_completion_args(model)
+            litellm_model, call_kwargs = chat_completion_args(model, multimodal=True)
             response = await litellm.acompletion(
                 model=litellm_model,
                 messages=messages,

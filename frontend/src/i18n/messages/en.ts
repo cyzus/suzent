@@ -847,6 +847,13 @@ export const en = {
       modelReasoning: 'Reasoning',
       modelTools: 'Tools',
       noCredentials: 'No credential fields — configure via environment variables.',
+      regionPicker: {
+        region: 'Region',
+        plan: 'Plan',
+        custom: 'Custom URL',
+        splitAccounts:
+          'China and Global accounts are separate: pick the one your API key was created on.',
+      },
       getKey: 'Get a {provider} API key →',
       changeKey: 'Change',
       showKey: 'Show',

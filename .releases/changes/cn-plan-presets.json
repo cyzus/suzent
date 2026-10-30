@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add Chinese coding and token plans to Settings > Providers: Kimi Code, Bailian Plan, Tencent Cloud, Volcengine Ark, StepFun, Baidu Qianfan and Huawei Cloud MaaS, plus OpenCode Go, ClinePass and Ollama Cloud, each with a picker for the plan or China/Global endpoint, which Kimi, Qwen, MiniMax, Zhipu GLM / Z.ai and Xiaomi MiMo now have too. Moonshot keys from platform.moonshot.cn now work for chat, DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app."
+}

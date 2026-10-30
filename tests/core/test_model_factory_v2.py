@@ -102,6 +102,40 @@ def test_native_openai_compatible_provider_uses_v2_chat_model() -> None:
     assert isinstance(model, OpenAIChatModel)
 
 
+def test_native_provider_honours_the_registry_base_url() -> None:
+    """MoonshotAIProvider hard-codes the international endpoint, which rejects
+    a mainland key; the registry's api.moonshot.cn has to reach the client."""
+    model = model_factory._create_via_native_provider(
+        "kimi-k2.6",
+        "test-key",
+        PROVIDER_REGISTRY_BY_ID["moonshot"],
+    )
+
+    assert isinstance(model, OpenAIChatModel)
+    assert str(model.client.base_url).rstrip("/") == "https://api.moonshot.cn/v1"
+
+
+def test_kimi_code_keeps_the_moonshot_profile_on_its_own_endpoint() -> None:
+    model = model_factory._create_via_native_provider(
+        "k3",
+        "test-key",
+        PROVIDER_REGISTRY_BY_ID["kimi_code"],
+    )
+
+    assert str(model.client.base_url).rstrip("/") == "https://api.kimi.com/coding/v1"
+    assert model.profile.get("openai_chat_thinking_field") == "reasoning_content"
+
+
+def test_native_provider_without_base_url_keeps_its_default() -> None:
+    model = model_factory._create_via_native_provider(
+        "deepseek-chat",
+        "test-key",
+        PROVIDER_REGISTRY_BY_ID["deepseek"],
+    )
+
+    assert str(model.client.base_url).rstrip("/") == "https://api.deepseek.com"
+
+
 def test_litellm_proxy_handler_uses_v2_chat_model(monkeypatch) -> None:
     monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
     model = model_factory._create_litellm_proxy_model(
