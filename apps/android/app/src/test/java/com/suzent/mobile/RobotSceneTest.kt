@@ -25,6 +25,14 @@ class RobotSceneTest {
         assertTrue(RobotScene.clips(RobotVariant.PEEKER))
     }
 
+    @Test fun reducedMotionHoldsAVisibleFrameForEveryFace() {
+        for (variant in RobotVariant.entries) {
+            val body = RobotScene.frame(variant, 0.0, reduced = true).filterIsInstance<RobotMark.Shape>()
+                .first { it.role == RobotRole.BODY && it.alpha > .9 && it.points.size > 8 }
+            assertTrue("$variant", body.points.any { it.y in 0.0..RobotScene.SLOT })
+        }
+    }
+
     @Test fun badgeMoodFollowsDesktop() {
         assertEquals(RobotVariant.IDLE, robotPersonality(0.0))
         assertEquals(RobotVariant.OBSERVER, robotPersonality(.4))

@@ -58,7 +58,12 @@ internal object RobotScene {
     fun clips(variant: RobotVariant) = variant == RobotVariant.PEEKER
 
     fun frame(variant: RobotVariant, seconds: Double, reduced: Boolean = false): List<RobotMark> {
-        val t = if (reduced) 0.0 else seconds
+        // Reduced motion holds one frame; the peeker and the portal start hidden, so they hold a moment they are in view.
+        val t = if (!reduced) seconds else when (variant) {
+            RobotVariant.PEEKER -> 1.8
+            RobotVariant.PORTAL -> .7
+            else -> 0.0
+        }
         val marks = mutableListOf<RobotMark>()
         fun about(origin: Pair<Double, Double>, transform: Affine) = Affine.about(origin.first, origin.second, transform)
         fun rect(x: Double, y: Double, w: Double, h: Double, r: Double, m: Affine, role: RobotRole, alpha: Double = 1.0) {

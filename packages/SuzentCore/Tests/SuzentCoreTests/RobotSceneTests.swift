@@ -37,3 +37,13 @@ import Testing
     #expect(robotCurrentTool([MessagePart(type: "tool", toolName: "grep_search", output: "done"), MessagePart(type: "text", text: "Hi")]) == nil)
     #expect(!toolCallFailed(MessagePart(type: "tool", toolName: "Bash", state: "error")))
 }
+
+@Test func reducedMotionHoldsAVisibleFrameForEveryFace() {
+    for variant in RobotVariant.allCases {
+        let bodies = RobotScene.frame(variant, seconds: 0, reduced: true).compactMap { mark -> [RobotPoint]? in
+            if case let .shape(points, .body, alpha, _) = mark, alpha > 0.9, points.count > 8 { return points }
+            return nil
+        }
+        #expect(bodies.contains { $0.contains { $0.y >= 0 && $0.y <= RobotScene.slot } }, "\(variant)")
+    }
+}

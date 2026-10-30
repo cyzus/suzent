@@ -53,7 +53,13 @@ public enum RobotScene {
     public static func clips(_ variant: RobotVariant) -> Bool { variant == .peeker }
 
     public static func frame(_ variant: RobotVariant, seconds: Double, reduced: Bool = false) -> [RobotMark] {
-        let t = reduced ? 0 : seconds
+        // Reduced motion holds one frame; the peeker and the portal start hidden, so they hold a moment they are in view.
+        let rest: Double = switch variant {
+        case .peeker: 1.8
+        case .portal: 0.7
+        default: 0
+        }
+        let t = reduced ? rest : seconds
         var marks: [RobotMark] = []
         func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double, _ r: Double, _ m: Affine, _ role: RobotRole, alpha: Double = 1) {
             marks.append(.shape(points: roundedRect(x, y, w, h, r).map { (toSlot * m).apply($0) }, role: role, alpha: alpha, stroke: 0))
