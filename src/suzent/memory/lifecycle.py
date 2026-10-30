@@ -11,6 +11,7 @@ from typing import Any
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
+from suzent.memory.memory_context import format_retrieved_memories_section
 
 logger = get_logger(__name__)
 
@@ -129,7 +130,7 @@ async def _memory_rag_hook(chat_id: str, deps: Any, user_message: str) -> str | 
         return None
     try:
         t0 = time.monotonic()
-        result = await mm.retrieve_relevant_memories(
+        memories = await mm.find_relevant_memories(
             query=user_message,
             chat_id=chat_id,
             user_id=getattr(deps, "user_id", None),
@@ -137,12 +138,42 @@ async def _memory_rag_hook(chat_id: str, deps: Any, user_message: str) -> str | 
         )
         elapsed = time.monotonic() - t0
         logger.debug(
-            f"[memory-rag-hook] chat={chat_id} elapsed={elapsed:.3f}s result={'yes' if result else 'empty'}"
+            f"[memory-rag-hook] chat={chat_id} elapsed={elapsed:.3f}s results={len(memories)}"
         )
-        return result
+        await _remember_recall(chat_id, memories)
+        return format_retrieved_memories_section(memories) or None
     except Exception as e:
         logger.debug(f"RAG hook failed: {e}")
         return None
+
+
+def recall_items(memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The fields of each retrieved memory the sidebar shows."""
+    items = []
+    for memory in memories:
+        meta = memory.get("metadata")
+        meta = meta if isinstance(meta, dict) else {}
+        items.append(
+            {
+                "id": str(memory.get("id", "")),
+                "content": memory.get("content", ""),
+                "category": meta.get("category"),
+                "kind": meta.get("kind"),
+            }
+        )
+    return items
+
+
+async def _remember_recall(chat_id: str, memories: list[dict[str, Any]]) -> None:
+    """Save what this turn retrieved; display only, so a failure is never fatal."""
+    from suzent.database import get_database
+
+    try:
+        await asyncio.to_thread(
+            get_database().set_memory_recall, chat_id, recall_items(memories)
+        )
+    except Exception as e:
+        logger.warning(f"Could not save memory recall for chat {chat_id[:8]}: {e}")
 
 
 async def _core_file_watch_loop(mgr, user_id: str, interval: int = 300) -> None:

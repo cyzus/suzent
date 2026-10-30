@@ -11,6 +11,7 @@ import type {
   SessionStateResponse,
   MemoryOrigin,
   RecentMemoryChanges,
+  ChatMemoryActivity,
   DailyLogResponse,
   DailyLogListResponse,
   MemoryFileResponse,
@@ -273,6 +274,14 @@ export const memoryApi = {
   /**
    * Get background dream consolidation status
    */
+  async getChatMemoryActivity(chatId: string): Promise<ChatMemoryActivity> {
+    const response = await fetch(`${memoryEndpoint()}/chat/${encodeURIComponent(chatId)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load chat memory activity: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
   async getDreamStatus(): Promise<DreamStatus> {
     const response = await fetch(`${memoryEndpoint()}/dream/status`);
     if (!response.ok) {
