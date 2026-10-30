@@ -4,48 +4,63 @@ import android.animation.ValueAnimator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -67,7 +82,7 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.weight(1f, fill = false)) {
                 if (regent) RegentIdentity(working = live, showStatus = false)
-                else if (live) AssemblyBadge(thinking = showAssemblyBadge(parts, live))
+                else if (live || !compact || pending) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
                 else SuzentAssistantBadge(compact = compact)
             }
             if (!live && work.isNotEmpty()) {
@@ -126,6 +141,13 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
             "read" -> R.string.rail_summary_read
             "changed" -> R.string.rail_summary_changed
             "searches" -> R.string.rail_summary_searches
+            "web" -> R.string.rail_summary_web
+            "delegated" -> R.string.rail_summary_delegated
+            "agents" -> R.string.rail_summary_agents
+            "tasks" -> R.string.rail_summary_tasks
+            "memory" -> R.string.rail_summary_memory
+            "skills" -> R.string.rail_summary_skills
+            "tools" -> R.string.rail_summary_tools
             "failed" -> R.string.rail_summary_failed
             else -> R.string.rail_summary_other
         }, count)
@@ -140,9 +162,19 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
     }
     val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
     Column(Modifier.fillMaxWidth()) {
-        SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
-            if (latest != null) { ActivityToolIcon(activityKind(latest), running, waiting, accent); Spacer(Modifier.width(8.dp)) }
-            Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
+        // Desktop's collapsed current header: a running tool's surface, or the plain moving ruler before any tool.
+        val runningTool = parts.lastOrNull { it.type == "tool" && it.state == "running" && it.output.isEmpty() }
+        val headerSurface = when {
+            !live || !current || expanded || waiting || parts.lastOrNull()?.type == "reasoning" -> null
+            runningTool != null -> activityRunningSurface(runningTool.toolName)
+            parts.none { it.type == "tool" } -> "mono"
+            else -> null
+        }
+        SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
+            parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
+            // Desktop's collapsed header carries a streaming thought on the word itself.
+            if (running && !expanded && !waiting && latest?.type == "reasoning") ThinkingLabel(status, accent, PresentationTokens.typeLabel.sp, FontWeight.Medium, Modifier.weight(1f))
+            else Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
             Text(stringResource(R.string.activity_steps, activityStepCount(parts)), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = accent)
             ActivityChevron(expanded)
         }
@@ -168,6 +200,8 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
     val ink = MaterialTheme.colorScheme.onSurface
     val status = stringResource(if (failed) R.string.activity_failed else if (pending) R.string.approval_required else if (active) R.string.activity_running else R.string.activity_completed)
     val dot = color.copy(alpha = if (active || pending || failed) 1f else .35f)
+    val pulse = if (active) rememberInfiniteTransition(label = "rail dot").animateFloat(1f, 0f,
+        infiniteRepeatable(tween(600, easing = CubicBezierEasing(.42f, 0f, .58f, 1f)), RepeatMode.Reverse), label = "rail dot pulse").value else 1f
     // Drawn over the row's real (animating) height so neighbouring rows join into one rail without intrinsic measurement.
     Row(Modifier.fillMaxWidth().drawBehind {
         val x = 5.dp.toPx()
@@ -176,16 +210,22 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
         val line = ink.copy(alpha = .13f)
         if (!first) drawLine(line, Offset(x, 0f), Offset(x, center), stroke)
         if (!last) drawLine(line, Offset(x, center), Offset(x, size.height), stroke)
-        drawCircle(dot, 3.dp.toPx(), Offset(x, center))
+        // Desktop's activity-rail-dot-pulse: fades to .45 and shrinks to .88 and back.
+        drawCircle(dot.copy(alpha = dot.alpha * (.45f + .55f * pulse)), 3.dp.toPx() * (.88f + .12f * pulse), Offset(x, center))
     }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
-            SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp).semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                ActivityToolIcon(activityKind(part), active, pending, color)
+            val surface = if (part.type == "tool" && active && part.output.isEmpty()) activityRunningSurface(part.toolName) else null
+            SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
+                .then(if (surface != null) Modifier.border(2.dp, ink) else Modifier).runningSurface(surface, ink)
+                .semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else canonicalActivityTool(part.toolName).replace('_', ' '), fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Desktop names a thought "Thinking" while it streams and "Thought" once it lands.
+                    if (part.type == "reasoning" && active) ThinkingLabel(stringResource(R.string.activity_thinking), ink, PresentationTokens.typeLabel.sp, FontWeight.Normal)
+                    else Text(if (part.type == "reasoning") stringResource(R.string.activity_thought) else canonicalActivityTool(part.toolName).replace('_', ' '), fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (part.type == "tool") Text(activityToolLabel(part), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active || pending || failed) Text(status, fontSize = 9.sp, color = color, maxLines = 1)
@@ -222,13 +262,34 @@ private fun ActivityDetailView(label: Int, value: String, code: Boolean) {
     }
 }
 
+private val toolIconDrawables = mapOf(
+    "arrow-down-on-square" to R.drawable.ic_tool_arrow_down_on_square, "bolt" to R.drawable.ic_tool_bolt, "calendar-days" to R.drawable.ic_tool_calendar_days,
+    "chat-bubble-left-right" to R.drawable.ic_tool_chat_bubble_left_right, "circle-stack" to R.drawable.ic_tool_circle_stack, "clipboard-document-check" to R.drawable.ic_tool_clipboard_document_check,
+    "clipboard-document-list" to R.drawable.ic_tool_clipboard_document_list, "clock" to R.drawable.ic_tool_clock, "command-line" to R.drawable.ic_tool_command_line,
+    "cpu-chip" to R.drawable.ic_tool_cpu_chip, "cursor-arrow-rays" to R.drawable.ic_tool_cursor_arrow_rays, "document-plus" to R.drawable.ic_tool_document_plus,
+    "document-text" to R.drawable.ic_tool_document_text, "eye" to R.drawable.ic_tool_eye, "film" to R.drawable.ic_tool_film,
+    "flag" to R.drawable.ic_tool_flag, "folder" to R.drawable.ic_tool_folder, "folder-open" to R.drawable.ic_tool_folder_open,
+    "globe-alt" to R.drawable.ic_tool_globe_alt, "magnifying-glass" to R.drawable.ic_tool_magnifying_glass, "no-symbol" to R.drawable.ic_tool_no_symbol,
+    "paint-brush" to R.drawable.ic_tool_paint_brush, "paper-airplane" to R.drawable.ic_tool_paper_airplane, "pencil-square" to R.drawable.ic_tool_pencil_square,
+    "photo" to R.drawable.ic_tool_photo, "play" to R.drawable.ic_tool_play, "question-mark-circle" to R.drawable.ic_tool_question_mark_circle,
+    "signal" to R.drawable.ic_tool_signal, "speaker-wave" to R.drawable.ic_tool_speaker_wave, "squares-2x2" to R.drawable.ic_tool_squares_2x2,
+    "stop" to R.drawable.ic_tool_stop, "user-group" to R.drawable.ic_tool_user_group, "wrench-screwdriver" to R.drawable.ic_tool_wrench_screwdriver,
+)
+
+/** Desktop's ToolGroupIcon: the tool's Heroicon, moving while it runs; reasoning keeps the spark. */
 @Composable
-private fun ActivityToolIcon(kind: String, active: Boolean, pending: Boolean, color: Color) {
+private fun ActivityToolIcon(part: MessagePart, running: Boolean, color: Color) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val approval = when {
+        part.state == "approval-requested" && part.output.isEmpty() -> "pending"
+        part.state in listOf("denied", "rejected") -> "denied"
+        else -> null
+    }
+    val animation = if (part.type == "tool") activityToolAnimation(part.toolName, approval, running, part.output.isNotEmpty()) else "none"
     var seconds by remember { mutableDoubleStateOf(0.0) }
-    LaunchedEffect(active, pending, reduced, lifecycle) {
-        if (!reduced && (active || pending)) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(animation, reduced, lifecycle) {
+        if (!reduced && animation != "none") lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var previous = 0L
             while (true) withFrameNanos { now ->
                 if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
@@ -236,35 +297,102 @@ private fun ActivityToolIcon(kind: String, active: Boolean, pending: Boolean, co
             }
         }
     }
-    Canvas(Modifier.size(18.dp)) {
-        val t = if (reduced) 0.0 else seconds
-        val ink = color.copy(alpha = if ((active || pending) && !reduced) (.7 + .3 * sin(t * 3)).toFloat() else 1f)
-        scale(size.width / 24, size.height / 24, pivot = Offset.Zero) {
-            fun line(x: Float, y: Float, x2: Float, y2: Float) = drawLine(ink, Offset(x,y), Offset(x2,y2), strokeWidth = 1.5f)
-            when {
-                pending -> { drawCircle(ink, 8f, Offset(12f,12f), style = Stroke(1.5f)); line(12f,7f,12f,13f); drawCircle(ink, 1f, Offset(12f,17f)) }
-                kind == "terminal" -> {
-                    drawRect(ink, Offset(2f,4f), Size(20f,16f), style = Stroke(1.5f))
-                    line(6f,9f,9f,12f); line(9f,12f,6f,15f)
-                    if (!active || reduced || sin(t*5)>0) line(12f,15f,17f,15f)
-                }
-                kind == "search" -> {
-                    val shift = if (active && !reduced) sin(t*3).toFloat() else 0f
-                    drawCircle(ink, 6f, Offset(10f+shift,10f), style = Stroke(1.5f)); line(15f+shift,15f,21f,21f)
-                }
-                kind == "read" || kind == "edit" -> {
-                    drawRect(ink, Offset(5f,2f), Size(14f,20f), style = Stroke(1.5f))
-                    line(8f,7f,16f,7f); line(8f,11f,16f,11f); line(8f,15f,13f,15f)
-                    if (active && !reduced) drawRect(color.copy(alpha = .35f), Offset(4f, (11+sin(t*3)*7).toFloat()), Size(16f,2f))
-                }
-                kind == "agent" -> {
-                    drawCircle(ink,3f,Offset(8f,7f),style=Stroke(1.5f)); drawCircle(ink,3f,Offset(17f,8f),style=Stroke(1.5f))
-                    drawArc(ink,180f,180f,false,Offset(2f,12f),Size(12f,12f),style=Stroke(1.5f)); drawArc(ink,180f,180f,false,Offset(12f,13f),Size(10f,10f),style=Stroke(1.5f))
-                }
-                else -> {
-                    drawPath(Path().apply { moveTo(12f,2f); lineTo(15f,9f); lineTo(22f,12f); lineTo(15f,15f); lineTo(12f,22f); lineTo(9f,15f); lineTo(2f,12f); lineTo(9f,9f); close() },ink,style=Stroke(1.5f))
-                }
+    if (part.type != "tool") {
+        Canvas(Modifier.size(18.dp)) {
+            scale(size.width / 24, size.height / 24, pivot = Offset.Zero) {
+                drawPath(Path().apply { moveTo(12f,2f); lineTo(15f,9f); lineTo(22f,12f); lineTo(15f,15f); lineTo(12f,22f); lineTo(9f,15f); lineTo(2f,12f); lineTo(9f,9f); close() }, color, style = Stroke(1.5f))
+            }
+        }
+        return
+    }
+    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
+    val unit = 18f / 14f
+    val pose = if (reduced || animation == "none") ToolIconPose() else toolIconPose(animation, seconds)
+    Box(Modifier.size(18.dp)) {
+        Icon(painterResource(toolIconDrawables[activityToolIcon(part.toolName, approval)] ?: R.drawable.ic_tool_wrench_screwdriver), contentDescription = null, tint = color,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                translationX = (pose.dx * unit).dp.toPx(); translationY = (pose.dy * unit).dp.toPx()
+                rotationZ = pose.rotation.toFloat(); scaleX = pose.scale.toFloat(); scaleY = pose.scale.toFloat(); alpha = pose.alpha.toFloat()
+            })
+        if (pose.sweepAlpha > 0) Box(Modifier.align(Alignment.Center).padding(horizontal = 1.dp).fillMaxWidth().height(1.5.dp)
+            .graphicsLayer { translationY = (pose.sweepY * unit).dp.toPx(); alpha = pose.sweepAlpha.toFloat() }
+            .background(color, RoundedCornerShape(50)))
+    }
+}
+
+/** Desktop's brutal-running-* background: a sliding grid (ruler ticks for "mono", dots for "dots") under a sweeping wave. */
+@Composable
+private fun Modifier.runningSurface(kind: String?, ink: Color): Modifier {
+    if (kind == null) return this
+    val reduced = !ValueAnimator.areAnimatorsEnabled()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var seconds by remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced, lifecycle) {
+        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var previous = 0L
+            while (true) withFrameNanos { now ->
+                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                previous = now
             }
         }
     }
+    return clipToBounds().drawBehind {
+        val frame = runningSurfaceFrame(kind, seconds)
+        val px = 1.dp.toPx()
+        val shift = (frame.gridShift % 6).toFloat() * px
+        when (kind) {
+            "mono" -> {
+                var x = shift - 6 * px
+                while (x < size.width) { drawRect(ink.copy(alpha = .05f), Offset(x, 0f), Size(px, size.height)); x += 6 * px }
+            }
+            "dots" -> {
+                var x = shift - 3 * px
+                while (x < size.width) {
+                    var y = 3 * px
+                    while (y < size.height) { drawCircle(ink.copy(alpha = .09f), px, Offset(x, y)); y += 6 * px }
+                    x += 6 * px
+                }
+            }
+        }
+        // The wave is twice the block's width and tiles, so its peak crosses the block every other half cycle.
+        val span = size.width * 2
+        val peak = frame.wave.toFloat() * span
+        val stops = frame.stops.zip(frame.alphas).map { (stop, alpha) -> stop.toFloat() to ink.copy(alpha = alpha.toFloat()) }.toTypedArray()
+        for (center in listOf(peak, peak - span)) {
+            val start = center - size.width
+            drawRect(Brush.horizontalGradient(*stops, startX = start, endX = start + span), Offset(start, 0f), Size(span, size.height))
+        }
+    }
+}
+
+/** Desktop's reasoning-thinking-label: a pale notch sweeping across the word while an ink bar wipes over it. */
+@Composable
+private fun ThinkingLabel(text: String, color: Color, fontSize: TextUnit, fontWeight: FontWeight, modifier: Modifier = Modifier) {
+    val reduced = !ValueAnimator.areAnimatorsEnabled()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var seconds by remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced, lifecycle) {
+        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var previous = 0L
+            while (true) withFrameNanos { now ->
+                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                previous = now
+            }
+        }
+    }
+    if (reduced) { Text(text, modifier, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis); return }
+    var width by remember { mutableFloatStateOf(0f) }
+    val frame = thinkingLabelFrame(seconds)
+    // The sweep image is four words wide; background-position p puts its left edge at -3p of the word.
+    val start = (-3 * frame.sweep).toFloat() * width
+    val faint = color.copy(alpha = color.alpha * .15f)
+    val brush = if (width <= 0f) SolidColor(color) else Brush.horizontalGradient(
+        0f to color, .4f to color, .47f to faint, .53f to faint, .6f to color, 1f to color, startX = start, endX = start + 4 * width)
+    Text(text, modifier.onSizeChanged { width = it.width.toFloat() }.drawWithContent {
+        drawContent()
+        if (frame.barEnd > frame.barStart) {
+            val bleed = fontSize.toPx() * .15f
+            drawRect(color, Offset(size.width * frame.barStart.toFloat(), -bleed), Size(size.width * (frame.barEnd - frame.barStart).toFloat(), size.height + 2 * bleed))
+        }
+    }, style = TextStyle(brush = brush, fontSize = fontSize, fontWeight = fontWeight), maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
