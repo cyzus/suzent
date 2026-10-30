@@ -81,6 +81,7 @@ Suzent 是一个**主权 AI 智能体**：一个身份、记忆、技能、工�
 | **使用任何模型** | GPT、Claude、Gemini、DeepSeek，通过 Ollama 运行的本地模型等，随时切换。 |
 | **记住你** | 跨对话记住你的偏好和项目，以你拥有的 Markdown 文件保存。 |
 | **把事办成** | 搜索网页、处理文件、运行代码、操作浏览器，遇到有风险的步骤会先征求你的同意。 |
+| **替你盯进度** | Suzent Regent 关注你所有的项目，把工作交给对应项目，有需要你决定的事就告诉你。 |
 | **按计划工作** | 每日报告、提醒、定期检查和长期目标。 |
 | **学习新技能** | 可安装、分享或自己编写的 `SKILL.md` 技能包。 |
 | **随处可用** | 桌面应用、手机、Telegram、Slack、Discord、飞书和微信。 |
@@ -505,9 +506,30 @@ When it does ask, you can allow once, for the session, or always. See
 ## Steer while it works
 
 You don't have to wait for a turn to finish. Type while the agent is working
-and send it as a **Redirect**: the agent keeps what it has done so far and
-continues with your correction. You can redirect or stop a single sub-agent the
+and press Enter to send it as a **Redirect**: the agent keeps what it has done
+so far and continues with your correction.
+
+If it isn't a correction, just the next thing to do, press Cmd+Enter (Ctrl+Enter
+on Windows and Linux) instead. The message waits under **Queued messages** and
+is sent when the turn ends. You can cancel it, or click **Steer** to send it
+right away as a redirect. You can redirect or stop a single sub-agent the
 same way, from its box in the chat.
+
+## Talk instead of typing
+
+Click the microphone next to the paperclip in the message box to start voice
+mode, and just speak. A fast voice model answers you out loud and hands
+anything that needs real work to your agent, which does it in the chat as
+usual, with its tools, memory, and the chat's permission mode. While it works
+you can keep talking: add to the request, correct it, or say "stop". When it's
+done, the voice reads you a short summary and leaves code, links, and long
+lists in the chat. Click the **✕** on the voice bar to end the call; switching
+to another chat ends it too.
+
+Voice mode needs an OpenAI, Google Gemini, xAI, or DashScope (Qwen) API key. Under
+**Settings → Voice & audio → Realtime voice** you can pick the model, its
+voice, and how sensitive it is to speech. If Suzent hears its own voice from
+your speakers, set sensitivity to **Low** (Gemini only), or use headphones.
 
 ## When a turn goes wrong
 
@@ -2927,8 +2949,8 @@ A helper:
   and anything the reviewer can't clear is denied. See
   [When nobody is watching](https://suzent.com/zh-Hans/docs/features/tools/human-in-the-loop#when-nobody-is-watching).
 
-Unless the agent picks one of your enabled models, a helper runs on Suzent's
-default model, which may not be the one your chat uses. A helper can also be a
+A helper uses the same model as your chat, unless the agent picks another of
+your enabled models for it. A helper can also be a
 coding agent such as Claude Code or Codex, set up under **Settings → ACP
 Agents** (see [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes#use-suzent-from-your-editor-acp)).
 
@@ -4753,7 +4775,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 |---|---|---|
 | **Providers** | Add API keys, sign in to providers, and choose which models are available. | [Models & Providers](https://suzent.com/zh-Hans/docs/models) |
 | **Model Roles** | Pick which model handles each kind of work, with backups. | [Model roles](https://suzent.com/zh-Hans/docs/models/model-roles) |
-| **Voice & audio** | Choose how the agent's speech sounds and plays. | [Images, video and speech](https://suzent.com/zh-Hans/docs/features/tools/media) |
+| **Voice & audio** | Choose how the agent's speech sounds and plays, and the model and voice for voice mode. | [Speech](https://suzent.com/zh-Hans/docs/features/tools/media#speech), [Voice mode](https://suzent.com/zh-Hans/docs/using/conversations#talk-instead-of-typing) |
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](https://suzent.com/zh-Hans/docs/features/memory) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](https://suzent.com/zh-Hans/docs/features/automation) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](https://suzent.com/zh-Hans/docs/chat-apps) |
@@ -4762,6 +4784,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](https://suzent.com/zh-Hans/docs/using/conversations#bring-in-another-coding-agent) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes) |
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes) |
+| **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
 | **Appearance** | Theme, color scheme, and language. | [Making it yours](https://suzent.com/zh-Hans/docs/using/make-it-yours#look-and-language) |
 | **Background Service** | Keep Suzent running after you close the window. | [Automation](https://suzent.com/zh-Hans/docs/features/automation#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](https://suzent.com/zh-Hans/docs/features/filesystem), [Permissions & approvals](https://suzent.com/zh-Hans/docs/features/tools/human-in-the-loop) |
@@ -4782,6 +4805,18 @@ there:
 - **Browser** isn't shown.
 - **Background Service** is replaced by **Operations**, which shows the
   background service's status, lets you restart it, and shows its log.
+
+## Notifications
+
+When a chat finishes while you're looking elsewhere, Suzent can tell you.
+Under **When to notify**, choose **Always**, **Only in background** (only when
+the Suzent window isn't in front), or **Never**. Under **Sound**, choose
+**Chime**, **Ping**, **Bell**, **Resonance**, **Success**, or **None**.
+**Resonance** uses a different cue depending on how the reply ended, for
+example when it needs your approval or failed.
+
+Clicking a notification brings Suzent to the front. In a web browser only the
+sound plays.
 
 
 ---
@@ -11254,7 +11289,7 @@ five-question ownership test, see
 
 ## Using Suzent
 
-- [Working with your agent](https://suzent.com/zh-Hans/docs/using/conversations), [Organizing work into projects](https://suzent.com/zh-Hans/docs/using/projects), [Making it yours](https://suzent.com/zh-Hans/docs/using/make-it-yours)
+- [Working with your agent](https://suzent.com/zh-Hans/docs/using/conversations), [Organizing work into projects](https://suzent.com/zh-Hans/docs/using/projects), [Suzent Regent](https://suzent.com/zh-Hans/docs/using/regent), [Making it yours](https://suzent.com/zh-Hans/docs/using/make-it-yours)
 
 ## Features
 
