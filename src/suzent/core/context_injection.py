@@ -115,6 +115,12 @@ def build_agent_deps(
     requested_volumes = _get_config_value(config, "sandbox_volumes", None)
     if requested_volumes is None and _chat_obj is not None:
         requested_volumes = (_chat_obj.config or {}).get("sandbox_volumes")
+    if _chat_obj is not None:
+        from suzent.database import get_database
+
+        requested_volumes = get_database().with_project_folders(
+            _chat_obj, requested_volumes
+        )
     custom_volumes = get_effective_volumes(requested_volumes)
 
     # Skills are loaded from their canonical source directories. Reuse an

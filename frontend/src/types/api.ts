@@ -177,6 +177,8 @@ export interface Project {
   unreadChatCounts?: Record<string, number>;
   /** Default working directory for the project's chats, if set. */
   workingDirectory?: string | null;
+  /** More folders mounted for every chat in the project. */
+  extraFolders?: string[];
 }
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';
