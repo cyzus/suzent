@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.19.0] - 2026-10-29
+## [v0.19.0] - 2026-10-30
 
 ### Release notes
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
 - Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
+- Give projects several folders, the first being the working directory, with folders the project already used offered for adding; open project settings by right-clicking a project.
 - Add project settings with a default working directory that every chat in the project uses unless it has its own.
 - Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
