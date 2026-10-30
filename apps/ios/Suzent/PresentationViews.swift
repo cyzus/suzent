@@ -18,6 +18,8 @@ extension Color {
     static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
     static let suzentCodeHeader = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.code_header_dark))
+    static let suzentDanger = Color(uiColor: .suzentAdaptive(light: PresentationTokens.danger, dark: PresentationTokens.danger_dark))
+    static let suzentErrorSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.error_surface, dark: PresentationTokens.error_surface_dark))
 
     init(presentation value: UInt32) {
         self.init(.sRGB, red: Double((value >> 16) & 255) / 255,
@@ -36,6 +38,59 @@ private extension UIColor {
     }
 }
 
+/// Token-sized text that still follows Dynamic Type, scaled against the nearest text style.
+private struct SuzentScaledFont: ViewModifier {
+    @ScaledMetric private var size: Double
+    let weight: Font.Weight
+    let design: Font.Design
+
+    init(size: Double, weight: Font.Weight, design: Font.Design, relativeTo style: Font.TextStyle?) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: style ?? Self.style(for: size))
+        self.weight = weight
+        self.design = design
+    }
+
+    static func style(for size: Double) -> Font.TextStyle {
+        switch size {
+        case ..<11.5: .caption2
+        case ..<12.5: .caption
+        case ..<13.5: .footnote
+        case ..<15.5: .subheadline
+        case ..<18: .body
+        case ..<21: .title3
+        case ..<26: .title2
+        case ..<32: .title
+        default: .largeTitle
+        }
+    }
+
+    func body(content: Content) -> some View { content.font(.system(size: size, weight: weight, design: design)) }
+}
+
+extension View {
+    func suzentFont(_ size: Double, weight: Font.Weight = .regular, design: Font.Design = .default, relativeTo style: Font.TextStyle? = nil) -> some View {
+        modifier(SuzentScaledFont(size: size, weight: weight, design: design, relativeTo: style))
+    }
+}
+
+func suzentParseDate(_ raw: String) -> Date? {
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+}
+
+extension Date {
+    /// Same day → time; same year → month, day and time; otherwise a short date. 12/24 h follows the system.
+    var suzentStamp: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(self) { return formatted(date: .omitted, time: .shortened) }
+        if calendar.isDate(self, equalTo: .now, toGranularity: .year) {
+            return formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        }
+        return formatted(date: .numeric, time: .omitted)
+    }
+}
+
 struct MessageView: View {
     let message: DisplayMessage
     var regent = false
@@ -47,6 +102,13 @@ struct MessageView: View {
     var onAction: (String, String?) -> Void = { _, _ in }
     private var user: Bool { message.role == "user" }
     @Environment(\.colorScheme) private var colorScheme
+    @State private var copies = 0
+    @State private var copied = false
+    @State private var editing = false
+    @State private var edited = ""
+    @State private var confirming: String?
+    @State private var sourcesOpen = false
+    @State private var modelDetails: String?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -59,19 +121,21 @@ struct MessageView: View {
                 Spacer(minLength: 40)
                 VStack(alignment: .trailing, spacing: PresentationTokens.spaceSmall) {
                     ForEach(Array(message.files.enumerated()), id: \.offset) { _, file in
-                        AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: .black)
+                        AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: regent ? Color.suzentText : .black)
                     }
-                    if !message.text.isEmpty { Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled) }
+                    if !message.text.isEmpty { Text(message.text).suzentFont(PresentationTokens.typeChat) }
                 }
                     .padding(PresentationTokens.spaceMedium)
                     .foregroundStyle(regent ? Color.suzentText : Color.black)
-                    .background(regent ? Color.regentUserBackground : Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: regent ? 8 : 0))
-                    .overlay(RoundedRectangle(cornerRadius: regent ? 8 : 0).strokeBorder(
+                    .background(regent ? Color.regentUserBackground : Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
+                    .overlay(RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius).strokeBorder(
                         regent ? Color.suzentText.opacity(colorScheme == .dark ? 0.14 : 0.18) : Color.suzentOutline,
                         lineWidth: regent ? 1 : PresentationTokens.borderWidth))
                     .background {
                         if !regent { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
                     }
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
+                    .contextMenu { menuItems }
                     .frame(maxWidth: 320, alignment: .trailing)
                     .padding(.trailing, regent ? 0 : PresentationTokens.shadowOffset).padding(.bottom, regent ? 0 : PresentationTokens.shadowOffset)
             }
@@ -82,13 +146,149 @@ struct MessageView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         if let reaction = message.reaction, !reaction.isEmpty {
-            Text(reaction).padding(.horizontal, 8).padding(.vertical, 4).background(Color.suzentSelection, in: Capsule())
+            // Tucked over the bubble's bottom edge like the desktop tapback.
+            Text(reaction).suzentFont(PresentationTokens.typeCaption).padding(.horizontal, 6).padding(.vertical, 2)
+                .frame(minWidth: 28, minHeight: 24)
+                .background(Color.regentUserBackground, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.suzentText.opacity(colorScheme == .dark ? 0.14 : 0.12), lineWidth: 1))
+                .padding(.trailing, 12).padding(.top, -18)
                 .frame(maxWidth: .infinity, alignment: .trailing).accessibilityLabel(Text("Regent reacted \(reaction)"))
         }
         if ["user", "assistant"].contains(message.role) {
-            MessageFooter(message: message, fallbackModel: fallbackModel, canRetry: canRetry, canEdit: canEdit, canFork: canFork, onAction: onAction)
+            // Reply text stays selectable, so assistant replies take the long-press menu on this row instead.
+            footer.contentShape(Rectangle()).contentShape(.contextMenuPreview, Rectangle()).contextMenu { menuItems }
         }
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: copies)
+        .task(id: copies) {
+            guard copies > 0 else { return }
+            copied = true
+            try? await Task.sleep(for: .seconds(1.8))
+            copied = false
+        }
+        .alert("Model", isPresented: Binding(get: { modelDetails != nil }, set: { if !$0 { modelDetails = nil } })) {
+            Button("Dismiss") { modelDetails = nil }
+        } message: { Text(modelDetails ?? "") }
+        .alert(confirming == "fork" ? String(localized: "Branch conversation") : String(localized: "Retry reply"),
+               isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+            Button("Cancel", role: .cancel) { confirming = nil }
+            Button("Confirm") {
+                if let confirming { onAction(confirming, nil) }
+                confirming = nil
+            }
+        } message: {
+            Text(confirming == "fork" ? String(localized: "Create a new conversation from this message.") : String(localized: "Replace the latest reply by running the last user message again."))
+        }
+        .sheet(isPresented: $editing) {
+            NavigationStack {
+                TextEditor(text: $edited).suzentFont(PresentationTokens.typeChat)
+                    .padding(PresentationTokens.spaceMedium)
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    .padding(20)
+                    .navigationTitle("Edit and resend").navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editing = false } }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Send") { onAction("edit", edited); editing = false }
+                                .disabled(edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+            }.presentationDetents([.medium, .large]).presentationCornerRadius(PresentationTokens.radius)
+        }
+        .sheet(isPresented: $sourcesOpen) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(message.citationSources) { source in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(source.title).font(.headline)
+                                if let snippet = source.snippet, !snippet.isEmpty { Text(snippet).font(.subheadline).lineLimit(5) }
+                                if let raw = source.url, let url = URL(string: raw), ["http", "https"].contains(url.scheme) {
+                                    Link("Read article", destination: url)
+                                }
+                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                        }
+                    }.padding(20)
+                }.navigationTitle("Sources").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Dismiss") { sourcesOpen = false } } }
+            }.presentationDetents([.medium, .large]).presentationCornerRadius(PresentationTokens.radius)
+        }
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        if !message.text.isEmpty {
+            Button { copy() } label: { Label("Copy", systemImage: "doc.on.doc") }
+            ShareLink(item: message.text) { Label("Share", systemImage: "square.and.arrow.up") }
+        }
+        if canEdit { Button { startEditing() } label: { Label("Edit and resend", systemImage: "pencil") } }
+        if canRetry { Button { confirming = "retry" } label: { Label("Retry reply", systemImage: "arrow.clockwise") } }
+        if canFork { Button { confirming = "fork" } label: { Label("Branch conversation", systemImage: "arrow.triangle.branch") } }
+        if !user && !message.citationSources.isEmpty {
+            Button { sourcesOpen = true } label: { Label("Sources", systemImage: "globe") }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 5) {
+            if user { Spacer(minLength: 0) }
+            if isLatest {
+                if !message.text.isEmpty {
+                    Button { copy() } label: { footerIcon(copied ? "checkmark" : "doc.on.doc") }
+                        .accessibilityLabel(copied ? String(localized: "Copied") : String(localized: "Copy message"))
+                    ShareLink(item: message.text) { footerIcon("square.and.arrow.up") }
+                        .accessibilityLabel(String(localized: "Share"))
+                }
+                if canEdit {
+                    Button { startEditing() } label: { footerIcon("pencil") }.accessibilityLabel(String(localized: "Edit and resend"))
+                }
+                if canRetry {
+                    Button { confirming = "retry" } label: { footerIcon("arrow.clockwise") }.accessibilityLabel(String(localized: "Retry reply"))
+                }
+                if canFork {
+                    Button { confirming = "fork" } label: { footerIcon("arrow.triangle.branch") }.accessibilityLabel(String(localized: "Branch conversation"))
+                }
+            }
+            if !user && !message.citationSources.isEmpty {
+                Button { sourcesOpen = true } label: {
+                    Label("\(message.citationSources.count)", systemImage: "globe")
+                        .suzentFont(PresentationTokens.typeMeta).lineLimit(1).fixedSize().frame(minHeight: 36)
+                }.accessibilityLabel(Text("Sources")).accessibilityValue(Text("\(message.citationSources.count)"))
+            }
+            if isLatest, !user, let model = message.model ?? fallbackModel, !model.isEmpty {
+                Button { modelDetails = model } label: {
+                    Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
+                        .suzentFont(PresentationTokens.typeMeta, weight: .medium).lineLimit(1).truncationMode(.tail)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .frame(maxWidth: 180, alignment: .leading)
+                        .overlay(Rectangle().strokeBorder(Color.secondary.opacity(0.3)))
+                }.layoutPriority(-1).accessibilityLabel(model)
+                    .accessibilityHint(String(localized: "View full model name"))
+            }
+            HStack(spacing: 8) {
+                if let raw = message.timestamp {
+                    if let date = suzentParseDate(raw) { Text(date.suzentStamp) } else { Text(raw) }
+                }
+                if user { Text("You") }
+            }.suzentFont(PresentationTokens.typeMeta).lineLimit(1).layoutPriority(1)
+            if !user { Spacer(minLength: 0) }
+        }.buttonStyle(.plain).foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, minHeight: isLatest ? 36 : 20, alignment: user ? .trailing : .leading)
+    }
+
+    private func footerIcon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 13, weight: .regular))
+            .frame(width: 32, height: 36).contentShape(Rectangle())
+    }
+
+    private func copy() {
+        UIPasteboard.general.string = message.text
+        copies += 1
+    }
+
+    private func startEditing() {
+        edited = message.text
+        editing = true
     }
 }
 
@@ -116,7 +316,7 @@ private struct SystemReminderView: View {
                 }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
             }
             if expanded && !reminder.body.isEmpty {
-                SuzentMarkdown(text: reminder.body, citationSources: citationSources, textSize: 12)
+                SuzentMarkdown(text: reminder.body, citationSources: citationSources, textSize: PresentationTokens.typeLabel)
             }
         }.foregroundStyle(Color.suzentMuted).padding(.leading, 14).padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,125 +327,8 @@ private struct SystemReminderView: View {
         HStack(spacing: 8) {
             Image(systemName: "clock").accessibilityHidden(true)
             Text(reminder.title).lineLimit(2).multilineTextAlignment(.leading)
-        }.font(.system(size: 11, weight: .semibold, design: .monospaced))
+        }.suzentFont(PresentationTokens.typeMeta, weight: .semibold, design: .monospaced)
     }
-}
-
-private struct MessageFooter: View {
-    let message: DisplayMessage
-    var fallbackModel: String?
-    var canRetry: Bool
-    var canEdit: Bool
-    var canFork: Bool
-    var onAction: (String, String?) -> Void
-    @State private var copied = false
-    @State private var action: String?
-    @State private var edited = ""
-    @State private var sourcesOpen = false
-    @State private var modelDetails: String?
-    private var user: Bool { message.role == "user" }
-
-    var body: some View {
-        HStack(spacing: 5) {
-                if user { Spacer(minLength: 0) }
-                if !message.text.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = message.text
-                        copied = true
-                    } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 13, weight: .regular))
-                        .frame(width: 32, height: 36).contentShape(Rectangle()) }
-                    .accessibilityLabel(copied ? String(localized: "Copied") : String(localized: "Copy message"))
-                }
-                if canEdit { actionButton("pencil", title: String(localized: "Edit and resend"), action: "edit") }
-                if canRetry { actionButton("arrow.clockwise", title: String(localized: "Retry reply"), action: "retry") }
-                if canFork { actionButton("arrow.triangle.branch", title: String(localized: "Branch conversation"), action: "fork") }
-                if !user && !message.citationSources.isEmpty {
-                    Button { sourcesOpen = true } label: {
-                        Label("\(message.citationSources.count)", systemImage: "globe")
-                            .font(.caption2).lineLimit(1).fixedSize().frame(minHeight: 36)
-                    }
-                }
-                if !user, let model = message.model ?? fallbackModel, !model.isEmpty {
-                    Button { modelDetails = model } label: {
-                        Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
-                            .font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.tail)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .frame(maxWidth: 180, alignment: .leading)
-                            .overlay(Rectangle().strokeBorder(Color.secondary.opacity(0.3)))
-                    }.layoutPriority(-1).accessibilityLabel(model)
-                        .accessibilityHint(String(localized: "View full model name"))
-                }
-                HStack(spacing: 8) {
-                    if let raw = message.timestamp {
-                        if let date = messageDate(raw) { Text(date, format: .dateTime.day().month(.abbreviated).hour().minute()) }
-                        else { Text(raw) }
-                    }
-                    if user { Text("You") }
-                }.font(.system(size: 11)).lineLimit(1).layoutPriority(1)
-        }.buttonStyle(.plain).foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
-            .alert("Model", isPresented: Binding(get: { modelDetails != nil }, set: { if !$0 { modelDetails = nil } })) {
-                Button("Dismiss") { modelDetails = nil }
-            } message: { Text(modelDetails ?? "") }
-            .task(id: copied) {
-                if copied { try? await Task.sleep(for: .seconds(1.8)); copied = false }
-            }
-            .sheet(isPresented: Binding(get: { action != nil }, set: { if !$0 { action = nil } })) {
-                NavigationStack {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if action == "edit" { TextEditor(text: $edited).frame(minHeight: 140).border(Color.secondary.opacity(0.3)) }
-                        else { Text(action == "fork" ? String(localized: "Create a new conversation from this message.") : String(localized: "Replace the latest reply by running the last user message again.")) }
-                        Spacer()
-                    }.padding(20)
-                        .navigationTitle(action == "edit" ? String(localized: "Edit and resend") : action == "fork" ? String(localized: "Branch conversation") : String(localized: "Retry reply"))
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { action = nil } }
-                            ToolbarItem(placement: .confirmationAction) { Button("Confirm") {
-                                if let action { onAction(action, action == "edit" ? edited : nil) }
-                                action = nil
-                            }.disabled(action == "edit" && edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-                        }
-                }.presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $sourcesOpen) {
-                NavigationStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            ForEach(message.citationSources) { source in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(source.title).font(.headline)
-                                    if let snippet = source.snippet, !snippet.isEmpty { Text(snippet).font(.subheadline).lineLimit(5) }
-                                    if let raw = source.url, let url = URL(string: raw), ["http", "https"].contains(url.scheme) {
-                                        Link("Read article", destination: url)
-                                    }
-                                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                            }
-                        }.padding(20)
-                    }.navigationTitle("Sources").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Dismiss") { sourcesOpen = false } } }
-                }.presentationDetents([.medium, .large])
-            }
-    }
-
-    private func actionButton(_ icon: String, title: String, action value: String) -> some View {
-        Button { edited = message.text; action = value } label: {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .regular))
-                .frame(width: 32, height: 36).contentShape(Rectangle())
-        }.accessibilityLabel(title)
-    }
-
-    private func messageDate(_ raw: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
-    }
-}
-
-private extension String {
-    var nonEmpty: String? { isEmpty ? nil : self }
 }
 
 struct ChatRowButtonStyle: ButtonStyle {
@@ -256,12 +339,12 @@ struct ChatRowButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.red : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.red : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
+            .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.suzentDanger : Color.primary))
+            .background(configuration.isPressed ? (destructive ? Color.suzentDanger : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
             .overlay(alignment: .bottom) {
                 if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
             }
-            .opacity(enabled ? 1 : 0.4)
+            .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
 
@@ -275,11 +358,11 @@ struct SuzentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let outline = Color.suzentOutline
         return configuration.label
-            .font(.system(size: PresentationTokens.typeControl, weight: .semibold))
+            .suzentFont(PresentationTokens.typeControl, weight: .semibold)
             .padding(.horizontal, compact ? PresentationTokens.spaceMedium : PresentationTokens.spacePage)
             .padding(.vertical, PresentationTokens.spaceSmall)
             .frame(maxWidth: compact ? nil : .infinity, minHeight: PresentationTokens.controlHeight)
-            .foregroundStyle(destructive ? Color.red : prominent ? .white : Color.suzentText)
+            .foregroundStyle(destructive ? Color.suzentDanger : prominent ? .white : Color.suzentText)
             .background(prominent ? Color(presentation: PresentationTokens.blue)
                 : Color.suzentSurface)
             .overlay(Rectangle().strokeBorder(quiet ? .clear : outline, lineWidth: PresentationTokens.borderWidth))
@@ -289,7 +372,7 @@ struct SuzentButtonStyle: ButtonStyle {
             .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
             .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
             .padding(.bottom, quiet ? 0 : PresentationTokens.shadowOffset)
-            .opacity(enabled ? 1 : 0.45)
+            .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
 
@@ -301,8 +384,8 @@ struct SuzentIconButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(Color.suzentText)
             .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
-            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
-            .opacity(enabled ? 1 : 0.45)
+            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear)
+            .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
 
@@ -315,28 +398,8 @@ struct SuzentRowButtonStyle: ButtonStyle {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            .background(configuration.isPressed ? Color.suzentText.opacity(0.08) : Color.clear)
-            .opacity(enabled ? 1 : 0.45)
-    }
-}
-
-struct SuzentDisclosure<Content: View>: View {
-    let title: LocalizedStringKey
-    @ViewBuilder let content: () -> Content
-    @State private var expanded = false
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button { expanded.toggle() } label: {
-                HStack {
-                    Text(title)
-                    Spacer()
-                    Text(expanded ? "−" : "+")
-                }.font(.system(size: PresentationTokens.typeControl, weight: .semibold))
-                    .frame(minHeight: PresentationTokens.controlHeight).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
-            if expanded { content().padding(.top, PresentationTokens.spaceMedium) }
-        }.padding(PresentationTokens.spacePage)
-            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear)
+            .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
 
@@ -347,7 +410,7 @@ struct SuzentTextInput: View {
     @FocusState private var focused: Bool
     var body: some View {
         TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
-            .font(.system(size: PresentationTokens.typeControl))
+            .suzentFont(PresentationTokens.typeControl)
             .lineLimit(multiline ? 3...6 : 1...1)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .focused($focused).padding(PresentationTokens.spaceMedium)
@@ -356,35 +419,21 @@ struct SuzentTextInput: View {
     }
 }
 
-struct SuzentNotice: View {
+/// Transient error: square, outlined, on the error surface. Never yellow, which is reserved for accents.
+struct SuzentErrorToast: View {
     let message: String
     let dismiss: () -> Void
     var body: some View {
         HStack(spacing: 12) {
-            Text(message).font(.system(size: PresentationTokens.typeCaption))
-            Spacer(minLength: 0)
-            Button("Dismiss", action: dismiss).font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
-                .frame(minWidth: 44, minHeight: PresentationTokens.controlHeight).buttonStyle(.plain)
-        }.padding(.horizontal, 12).padding(.vertical, 4)
-            .foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
-    }
-}
-
-struct SuzentToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button { withAnimation(.easeOut(duration: 0.15)) { configuration.isOn.toggle() } } label: {
-            HStack(spacing: 12) {
-                configuration.label.font(.system(size: PresentationTokens.typeControl))
-                Spacer(minLength: 12)
-                Rectangle().fill(configuration.isOn ? Color(presentation: PresentationTokens.blue) : Color.secondary.opacity(0.2))
-                    .frame(width: 44, height: 26)
-                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
-                        Rectangle().fill(configuration.isOn ? .white : .primary).frame(width: 18, height: 18).padding(4)
-                    }
-            }.frame(minHeight: PresentationTokens.controlHeight).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
+            Text(message).suzentFont(PresentationTokens.typeCaption)
+                .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+            Button("Dismiss", action: dismiss).suzentFont(PresentationTokens.typeCaption, weight: .semibold)
+                .frame(minWidth: 44, minHeight: PresentationTokens.controlHeight).contentShape(Rectangle()).buttonStyle(.plain)
+        }.padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 2)
+            .foregroundStyle(Color.suzentText).background(Color.suzentErrorSurface)
+            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .padding(.horizontal, 12).padding(.bottom, 8)
+            .accessibilityElement(children: .contain)
     }
 }
 
@@ -392,7 +441,7 @@ struct SuzentWordmark: View {
     var body: some View {
         HStack(spacing: 10) {
             Rectangle().frame(width: 10, height: 10)
-            Text("SUZENT").font(.system(size: PresentationTokens.typeTitle, weight: .black))
+            Text("SUZENT").suzentFont(PresentationTokens.typeTitle, weight: .black)
             Rectangle().frame(width: 10, height: 10)
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
@@ -480,6 +529,7 @@ private struct CitationParagraph: UIViewRepresentable {
     let icons: [String: UIImage]
     let onOpen: (URL) -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func makeCoordinator() -> Coordinator { Coordinator(onOpen: onOpen) }
     func makeUIView(context: Context) -> UITextView {
@@ -496,11 +546,13 @@ private struct CitationParagraph: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onOpen = onOpen
         let dark = colorScheme == .dark
+        let pointSize = UIFontMetrics(forTextStyle: .body).scaledValue(for: CGFloat(PresentationTokens.typeChat),
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize)))
         let iconVersions = coordinator.iconURLs.reduce(into: [String: ObjectIdentifier]()) { result, url in
             if let image = icons[url] { result[url] = ObjectIdentifier(image) }
         }
         if coordinator.markdown == markdown, coordinator.sources == sources, coordinator.dark == dark,
-           coordinator.iconVersions == iconVersions {
+           coordinator.pointSize == pointSize, coordinator.iconVersions == iconVersions {
             if coordinator.selectedURL != selectedURL {
                 for url in [coordinator.selectedURL, selectedURL].compactMap({ $0 }) {
                     guard let badge = coordinator.badges[url] else { continue }
@@ -518,12 +570,13 @@ private struct CitationParagraph: UIViewRepresentable {
         coordinator.markdown = markdown
         coordinator.sources = sources
         coordinator.dark = dark
+        coordinator.pointSize = pointSize
         coordinator.selectedURL = selectedURL
         coordinator.badges = [:]
         coordinator.iconURLs = []
         let result = NSMutableAttributedString(parsed)
         let all = NSRange(location: 0, length: result.length)
-        let font = UIFont.systemFont(ofSize: CGFloat(PresentationTokens.typeChat))
+        let font = UIFont.systemFont(ofSize: pointSize)
         result.addAttributes([.font: font, .foregroundColor: UIColor.suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark)], range: all)
         for run in parsed.runs {
             let range = NSRange(run.range, in: parsed)
@@ -613,6 +666,7 @@ private struct CitationParagraph: UIViewRepresentable {
         var parsed: AttributedString?
         var sources: [CitationSource] = []
         var dark = false
+        var pointSize: CGFloat = 0
         var selectedURL: URL?
         var iconURLs: Set<String> = []
         var iconVersions: [String: ObjectIdentifier] = [:]
@@ -652,6 +706,7 @@ struct SuzentMarkdown: View {
     @State private var browserLink: URL?
     @StateObject private var icons = CitationIcons()
     @State private var contentCache = CitationContentCache()
+    @ScaledMetric(relativeTo: .body) private var scale: Double = 100
     var body: some View {
         Markdown(contentCache.content(text, sources: citationSources))
             .markdownTheme(suzentMarkdownTheme)
@@ -679,18 +734,19 @@ struct SuzentMarkdown: View {
                                 }.font(.caption).foregroundStyle(Color.suzentMuted)
                                 Text(source.title).font(.headline)
                                 if !source.snippet.isEmpty { Text(source.snippet).font(.subheadline).lineLimit(6) }
-                                Button("Read article") { browserLink = source.url }.buttonStyle(.borderedProminent).clipShape(Capsule())
+                                Button("Read article") { browserLink = source.url }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
                                 HStack {
                                     Button("Copy link") { UIPasteboard.general.url = source.url }
                                     Spacer()
                                     Button("Open externally") { UIApplication.shared.open(source.url) }
                                 }.font(.caption)
                             }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                                .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                         }
                     }.padding(24)
                 }
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                .presentationCornerRadius(PresentationTokens.radius)
                 .sheet(isPresented: Binding(get: { browserLink != nil }, set: { if !$0 { browserLink = nil } })) {
                     if let browserLink { CitationBrowser(url: browserLink).ignoresSafeArea() }
                 }
@@ -720,7 +776,7 @@ struct SuzentMarkdown: View {
                 .text {
                     ForegroundColor(Color.suzentText)
                     BackgroundColor(.clear)
-                    FontSize(textSize)
+                    FontSize(textSize * scale / 100)
                 }
                 .code {
                     FontFamilyVariant(.monospaced)
@@ -741,7 +797,7 @@ struct SuzentMarkdown: View {
                             configuration.label
                                 .markdownTextStyle {
                                     FontFamilyVariant(.monospaced)
-                                    FontSize(14)
+                                    FontSize(14 * scale / 100)
                                     ForegroundColor(Color.suzentCodeText)
                                     BackgroundColor(.clear)
                                 }
@@ -760,7 +816,7 @@ struct SuzentAssistantBadge: View {
             if compact {
                 HStack(spacing: 6) {
                     SuzentLogoMark().frame(width: 16, height: 16).opacity(0.5)
-                    Text("SUZENT").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Color.suzentMuted)
+                    Text("SUZENT").suzentFont(PresentationTokens.typeSidebarSection, weight: .bold, design: .monospaced).foregroundStyle(Color.suzentMuted)
                 }
             } else {
                 SuzentLogoMark().frame(width: 26, height: 26)
@@ -785,7 +841,7 @@ struct ActivityContent: View {
                 if chunk.first?.type == "text" {
                     SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources)
                         .padding(regent ? 12 : 0)
-                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble))
                 }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
             }
@@ -796,28 +852,59 @@ struct ActivityContent: View {
 struct ApprovalCards: View {
     let model: MobileModel
     var body: some View {
-        ForEach(model.pendingApprovals) { request in
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Approval required").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12).foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(request.toolName).font(.system(.headline, design: .monospaced))
-                    Text("Via connected desktop").font(.caption).foregroundStyle(Color.suzentMuted)
-                    Text(request.args).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
-                    if !request.reason.isEmpty { Text(request.reason).font(.footnote) }
-                    if model.device?.permissions.approveTools == true && !request.actions.isEmpty {
-                        ForEach(request.actions) { action in
-                            Button { Task { await model.chooseApproval(request, action: action) } } label: {
-                                HStack {
-                                    if model.approvalChoices[request.id] == action.id { Image(systemName: "checkmark") }
-                                    Text(action.behavior == "allow" ? String(localized: "Allow once") : String(localized: "Reject"))
-                                }
-                            }.buttonStyle(SuzentButtonStyle(prominent: action.behavior == "allow", compact: true)).disabled(model.approvalBusy)
-                        }
-                        Text("Choose for each pending tool to continue.").font(.caption).foregroundStyle(Color.suzentMuted)
-                    } else { Text("Approve on desktop, or pair again with tool approval access.").font(.footnote) }
-                }.padding(12)
-            }.overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+        VStack(spacing: 8) {
+            ForEach(model.pendingApprovals) { request in ApprovalCard(model: model, request: request) }
+        }
+    }
+}
+
+private struct ApprovalCard: View {
+    let model: MobileModel
+    let request: ApprovalRequest
+    @State private var showAll = false
+    @State private var choices = 0
+    @State private var allowed = false
+    private var long: Bool { request.args.count > 160 || request.args.split(separator: "\n", omittingEmptySubsequences: false).count > 3 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Approval required").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12).foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
+            VStack(alignment: .leading, spacing: 10) {
+                Text(request.toolName).font(.system(.headline, design: .monospaced))
+                Text("Via connected desktop").font(.caption).foregroundStyle(Color.suzentMuted)
+                Text(request.args).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                    .lineLimit(showAll ? nil : 3)
+                if long {
+                    Button(showAll ? String(localized: "Show less") : String(localized: "Show all")) { showAll.toggle() }
+                        .font(.caption.bold()).foregroundStyle(Color.suzentText).buttonStyle(.plain).frame(minHeight: 44)
+                }
+                if !request.reason.isEmpty { Text(request.reason).font(.footnote) }
+                if model.device?.permissions.approveTools == true && !request.actions.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { choiceButtons }
+                        VStack(alignment: .leading, spacing: 12) { choiceButtons }
+                    }
+                    Text("Choose for each pending tool to continue.").font(.caption).foregroundStyle(Color.suzentMuted)
+                } else { Text("Approve on desktop, or pair again with tool approval access.").font(.footnote) }
+            }.padding(12)
+        }.background(Color.suzentSurface)
+            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .sensoryFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
+    }
+
+    private var choiceButtons: some View {
+        ForEach(request.actions) { action in
+            Button {
+                allowed = action.behavior == "allow"
+                choices += 1
+                Task { await model.chooseApproval(request, action: action) }
+            } label: {
+                HStack {
+                    if model.approvalChoices[request.id] == action.id { Image(systemName: "checkmark") }
+                    Text(action.behavior == "allow" ? String(localized: "Allow once") : String(localized: "Reject"))
+                }
+            }.buttonStyle(SuzentButtonStyle(prominent: action.behavior == "allow", compact: true)).disabled(model.approvalBusy)
         }
     }
 }
@@ -866,6 +953,7 @@ struct SuzentSelectionTrigger: View {
     }
 }
 
+/// Picker content for a bottom sheet: black header, yellow selected row, 48 minimum rows.
 struct SuzentSelectionPanel: View {
     let title: String
     let options: [(id: String, title: String)]
@@ -876,17 +964,17 @@ struct SuzentSelectionPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(title).font(.system(size: 15, weight: .bold, design: .monospaced))
+                Text(title).suzentFont(15, weight: .bold, design: .monospaced)
                     .accessibilityAddTraits(.isHeader).accessibilityFocused($titleFocused)
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("Dismiss")
-            }.padding(.leading, 16).foregroundStyle(.white).background(.black)
+            }.padding(.leading, 16).padding(.top, 12).foregroundStyle(.white).background(.black)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(options, id: \.id) { option in
                         Button { choose(option.id); dismiss() } label: {
                             HStack(spacing: 12) {
-                                Text(option.title).font(.system(size: 15, weight: option.id == selected ? .semibold : .regular)).multilineTextAlignment(.leading)
+                                Text(option.title).suzentFont(15, weight: option.id == selected ? .semibold : .regular).multilineTextAlignment(.leading)
                                 Spacer(minLength: 8)
                                 Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
                             }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
@@ -898,10 +986,11 @@ struct SuzentSelectionPanel: View {
                 }
             }
         }.background(Color.suzentSurface)
-            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetHeavy, y: PresentationTokens.shadowOffsetHeavy) }
-            .padding(.trailing, 4).padding(.bottom, 4)
             .onAppear { titleFocused = true }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(PresentationTokens.radius)
+            .presentationBackground(Color.suzentSurface)
     }
 }
 
@@ -1048,10 +1137,25 @@ private final class ChatScrollTracking {
     var contentFrame = CGRect.zero
 }
 
+private extension View {
+    /// Opens at the bottom, but keeps the top fixed when content resizes so a toggled disclosure
+    /// grows and shrinks below its header instead of pulling the transcript after it.
+    @ViewBuilder func chatScrollAnchor(startsAtBottom: Bool) -> some View {
+        if #available(iOS 18, *) {
+            defaultScrollAnchor(startsAtBottom ? .bottom : .top, for: .initialOffset)
+                .defaultScrollAnchor(.top, for: .sizeChanges)
+        } else {
+            defaultScrollAnchor(startsAtBottom ? .bottom : .top)
+        }
+    }
+}
+
 struct FollowingChatScrollView<Content: View>: View {
     let openedVersion: Int
     let sentVersion: Int
     let startsAtBottom: Bool
+    /// Follow height growth only while a reply streams; a disclosure the user toggles must stay where they tapped.
+    var live = false
     let dismissKeyboard: () -> Void
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1070,7 +1174,7 @@ struct FollowingChatScrollView<Content: View>: View {
                 .coordinateSpace(name: "chat-viewport")
                 .contentShape(Rectangle())
                 .scrollDismissesKeyboard(.interactively)
-                .defaultScrollAnchor(startsAtBottom ? .bottom : .top)
+                .chatScrollAnchor(startsAtBottom: startsAtBottom)
                 .simultaneousGesture(TapGesture().onEnded(dismissKeyboard))
                 .simultaneousGesture(DragGesture(minimumDistance: 4)
                     .onChanged { _ in
@@ -1088,7 +1192,7 @@ struct FollowingChatScrollView<Content: View>: View {
                         tracking.following = true
                     }
                     // Scroll only after layout adds height, never for each received token.
-                    if heightChanged && tracking.following && !tracking.dragging && startsAtBottom {
+                    if heightChanged && live && tracking.following && !tracking.dragging && startsAtBottom {
                         reader.scrollTo("bottom", anchor: .bottom)
                     }
                 }
