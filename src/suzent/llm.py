@@ -65,7 +65,18 @@ def _chat_template_kwargs(model: Optional[str]) -> Dict[str, Any]:
     return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
 
 
-def chat_completion_args(model: Optional[str]) -> tuple[Optional[str], Dict[str, Any]]:
+#: Providers whose LiteLLM adapter flattens a list ``content`` into a string,
+#: mapped to the OpenAI-compatible endpoint that takes the list as sent.
+#: Flattening keeps the text parts and drops every image, so a vision request
+#: reaches the model as the bare prompt and it answers that no image was given.
+_CONTENT_FLATTENING_PROVIDERS: Dict[str, str] = {
+    "deepseek": "https://api.deepseek.com",
+}
+
+
+def chat_completion_args(
+    model: Optional[str], *, multimodal: bool = False
+) -> tuple[Optional[str], Dict[str, Any]]:
     """Model id and kwargs for a chat completion issued outside this module.
 
     One-off ``litellm.acompletion`` calls elsewhere in the codebase were reaching
@@ -74,11 +85,20 @@ def chat_completion_args(model: Optional[str]) -> tuple[Optional[str], Dict[str,
     token budget went to reasoning and the caller got an empty string back). The
     fix is to route them through the same resolution the rest of the module uses,
     not to restate it at each call site.
+
+    Pass ``multimodal=True`` when the messages carry images or video, so a
+    provider whose adapter would drop them is sent the list as written.
     """
     litellm_model, kwargs = _litellm_model_and_kwargs(model)
     # Keyed off the original id: _litellm_model_and_kwargs may have rewritten the
     # provider prefix to ``openai/`` for a self-hosted server.
     kwargs.update(_chat_template_kwargs(model))
+    if multimodal and model:
+        provider, _, model_name = model.partition("/")
+        api_base = _CONTENT_FLATTENING_PROVIDERS.get(provider)
+        if api_base and model_name and litellm_model == model:
+            litellm_model = f"openai/{model_name}"
+            kwargs.setdefault("api_base", api_base)
     return litellm_model, kwargs
 
 
@@ -132,8 +152,12 @@ def _litellm_model_and_kwargs(
         if base_url:
             kwargs["api_base"] = base_url
 
-        if spec.base_url and spec.api_type == "openai" and _model_name:
-            litellm_model = f"openai/{_model_name}"
+        if spec.base_url and _model_name:
+            # A custom prefix means nothing to LiteLLM; route by protocol.
+            if spec.api_type == "openai":
+                litellm_model = f"openai/{_model_name}"
+            elif spec.api_type == "anthropic":
+                litellm_model = f"anthropic/{_model_name}"
 
     return litellm_model, kwargs
 

@@ -114,4 +114,58 @@ describe('Provider settings overview', () => {
     expect(html).toContain('Tools');
     expect(html).toContain('example/model');
   });
+  it('picks a region instead of showing the Base URL field', () => {
+    const regional: ApiProvider = {
+      ...provider,
+      key_url: 'https://keys.example.test/cn',
+      regions: [
+        { id: 'cn', name: 'China', base_url: 'https://cn.example.test/v1' },
+        {
+          id: 'global',
+          name: 'Global',
+          base_url: 'https://global.example.test/v1',
+          key_url: 'https://keys.example.test/global',
+        },
+      ],
+      split_accounts: true,
+      fields: [
+        ...provider.fields,
+        {
+          key: 'EXAMPLE_BASE_URL',
+          label: 'Base URL',
+          type: 'text',
+          placeholder: '',
+          value: 'https://global.example.test/v1',
+          isSet: true,
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <ProvidersTab
+          providers={[regional]}
+          apiKeys={{ EXAMPLE_BASE_URL: 'https://global.example.test/v1/' }}
+          userConfigs={{}}
+          showKey={{}}
+          activeTabs={{ example: 'credentials' }}
+          verifying={{}}
+          onKeyChange={vi.fn()}
+          onToggleShowKey={vi.fn()}
+          onTabChange={vi.fn()}
+          onConfigChange={vi.fn()}
+          onAddCustomModel={vi.fn()}
+          onVerify={vi.fn()}
+          onAddProvider={async () => {}}
+          onDeleteProvider={async () => {}}
+        />
+      </I18nProvider>
+    );
+    expect(html).toContain('Region');
+    expect(html).toMatch(/aria-checked="true"[^>]*>Global</);
+    expect(html).toMatch(/aria-checked="false"[^>]*>China</);
+    expect(html).toContain('https://keys.example.test/global');
+    expect(html).toContain('pick the one your API key was created on');
+    expect(html).not.toContain('aria-label="Base URL"');
+    expect(html).not.toContain('>https://global.example.test/v1/<');
+  });
 });

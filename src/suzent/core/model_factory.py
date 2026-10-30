@@ -303,15 +303,12 @@ class _LocalOpenAIHTTPClient(httpx.AsyncClient):
 # Each handler lazily imports the pydantic-ai classes it needs.
 
 
-def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> object:
-    from pydantic_ai.models.openai import OpenAIChatModel
-    from pydantic_ai.providers.openai import OpenAIProvider
-
-    # Resolve base_url: Check SecretManager / Env for provider-specific base_url override
-    resolved_base_url = None
+def _resolve_base_url(spec: ProviderSpec) -> str | None:
+    """The provider's ``*_BASE_URL`` override if the user set one, else its default."""
     for field in spec.fields:
         if "BASE_URL" in field.get("key", ""):
             env_key = field["key"]
+            resolved_base_url = None
             try:
                 from suzent.core.secrets import get_secret_manager
 
@@ -320,9 +317,17 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
                 pass
             if not resolved_base_url:
                 resolved_base_url = os.environ.get(env_key)
+            if resolved_base_url:
+                return resolved_base_url
             break
+    return spec.base_url
 
-    base_url = resolved_base_url or spec.base_url or os.environ.get("OPENAI_BASE_URL")
+
+def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> object:
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    base_url = _resolve_base_url(spec) or os.environ.get("OPENAI_BASE_URL")
     if spec.id in {"vllm", "sglang"}:
         from openai import AsyncOpenAI
 
@@ -374,11 +379,12 @@ def _create_anthropic_model(
     from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
+    base_url = _resolve_base_url(spec)
     kwargs: dict[str, Any] = {"api_key": api_key}
-    if spec.base_url:
-        kwargs["base_url"] = spec.base_url
-    settings = anthropic_cache_settings(spec.base_url)
-    if not spec.base_url:
+    if base_url:
+        kwargs["base_url"] = base_url
+    settings = anthropic_cache_settings(base_url)
+    if not base_url:
         # Without it the API buffers each tool argument until it is complete, so
         # writing a large file goes silent for minutes and trips the idle
         # timeout. Compatible proxies may reject the field, so only first party.
@@ -561,7 +567,18 @@ def _create_via_native_provider(
     assert native is not None
     module = importlib.import_module(native["module"])
     provider_cls = getattr(module, native["class"])
-    return OpenAIChatModel(model_name, provider=provider_cls(api_key=api_key))
+    base_url = _resolve_base_url(spec)
+    if not base_url:
+        return OpenAIChatModel(model_name, provider=provider_cls(api_key=api_key))
+
+    # The native classes hard-code one endpoint (MoonshotAIProvider points at
+    # the international api.moonshot.ai, which rejects a mainland key), so a
+    # registry base_url goes in through the client while the class still
+    # supplies the model profile.
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    return OpenAIChatModel(model_name, provider=provider_cls(openai_client=client))
 
 
 # ---------------------------------------------------------------------------

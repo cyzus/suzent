@@ -924,6 +924,12 @@ export const zhCN = {
       modelReasoning: '推理',
       modelTools: '工具调用',
       noCredentials: '无凭据字段，请通过环境变量配置。',
+      regionPicker: {
+        region: '地域',
+        plan: '套餐',
+        custom: '自定义地址',
+        splitAccounts: '国内和国际账号互不通用，请选择创建 API 密钥时所在的站点。',
+      },
       getKey: '去 {provider} 申请 API 密钥 →',
       changeKey: '修改',
       showKey: '显示',
