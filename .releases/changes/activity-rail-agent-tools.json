@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines."
+}
