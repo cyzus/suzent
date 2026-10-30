@@ -170,19 +170,29 @@ public func activityStepCount(_ parts: [MessagePart]) -> Int {
     }.count
 }
 
+private let activityCategories: [String: String] = [
+    "run_command": "commands", "start_command": "commands",
+    "web_search": "searches", "glob_search": "searches", "grep_search": "searches", "memory_search": "searches", "session_search": "searches",
+    "webpage_fetch": "web", "browser_action": "web",
+    "agent": "delegated", "agent_list": "agents", "agent_read": "agents", "agent_send": "agents", "agent_stop": "agents",
+    "create_tasks": "tasks", "update_task": "tasks", "list_tasks": "tasks", "manage_goal": "tasks",
+    "memory_update": "memory", "update_notes": "memory", "skill_execute": "skills",
+]
+
+/// Desktop's summarizeActivity (activitySummary.ts): one count per category, in first-seen order.
 public func activitySummary(_ parts: [MessagePart], live: Bool) -> [(kind: String, count: Int)] {
     var counts: [String: Int] = [:]
     var order: [String] = []
     var files: [String: Set<String>] = ["read": [], "changed": []]
     for part in parts where part.type == "tool" {
         let name = canonicalActivityTool(part.toolName ?? "")
+        let args = (part.args?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         var category = "other"
         if activityFailed(part) { category = "failed" }
         else if live && part.state == "running" { category = "running" }
-        else if ["run_command", "start_command"].contains(name) { category = "commands" }
-        else if ["web_search", "glob_search", "grep_search", "memory_search", "session_search"].contains(name) { category = "searches" }
+        else if name == "agent_dispatch" { category = args["agent_id"] as? String == "new" ? "delegated" : "agents" }
+        else if let known = activityCategories[name] { category = known }
         else if ["read_file", "write_file", "edit_file"].contains(name) {
-            let args = (part.args?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
             if let path = ["file_path", "path", "filePath", "filename"].compactMap({ args[$0] as? String })
                 .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }).first(where: { !$0.isEmpty }) {
                 category = name == "read_file" ? "read" : "changed"
@@ -195,6 +205,11 @@ public func activitySummary(_ parts: [MessagePart], live: Bool) -> [(kind: Strin
         if counts[category] == nil { order.append(category) }
         counts[category, default: 0] += 1
     }
+    // "Other" only reads right beside something it is other than.
+    if let others = counts["other"], order.allSatisfy({ ["other", "failed", "running"].contains($0) }) {
+        order = order.filter { $0 != "other" } + ["tools"]
+        counts["tools"] = others
+    }
     return order.map { ($0, counts[$0] ?? 0) }
 }
 
@@ -203,7 +218,9 @@ public func canonicalActivityTool(_ tool: String) -> String {
         .replacingOccurrences(of: "([a-z0-9])([A-Z])", with: "$1_$2", options: .regularExpression)
         .replacingOccurrences(of: "[\\s-]+", with: "_", options: .regularExpression).lowercased()
     let aliases = ["read": "read_file", "write": "write_file", "edit": "edit_file", "multiedit": "edit_file", "notebookedit": "edit_file",
-                   "bash": "run_command", "bash_execute": "run_command", "shell": "run_command", "glob": "glob_search", "grep": "grep_search", "websearch": "web_search"]
+                   "bash": "run_command", "bash_execute": "run_command", "shell": "run_command", "glob": "glob_search", "grep": "grep_search", "websearch": "web_search",
+                   "bashoutput": "check_command", "process_manage": "check_command", "killshell": "stop_command", "webfetch": "webpage_fetch",
+                   "web_fetch": "webpage_fetch", "task": "agent", "todowrite": "create_tasks"]
     return aliases[name] ?? name
 }
 

@@ -1076,6 +1076,8 @@ struct StreamingPulse: View {
 
 struct AssemblyBadge: View {
     let thinking: Bool
+    var parts: [MessagePart] = []
+    var streaming = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var started = Date()
@@ -1100,7 +1102,7 @@ struct AssemblyBadge: View {
                         }
                     }
                 }.padding(2).opacity(expanded ? 1 : 0)
-                SuzentLogoMark().frame(width: 26, height: 26).opacity(expanded ? 0 : 1)
+                RobotBadge(parts: parts, streaming: streaming).opacity(expanded ? 0 : 1)
             }
             .frame(width: expanded ? min(320, max(90, geometry.size.width - 3)) : 90, height: expanded ? 108 : 40)
             .background(Color.suzentSurface)
@@ -1121,6 +1123,93 @@ struct AssemblyBadge: View {
             expanded = thinking
         }
         .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+    }
+}
+
+private let robotDrop = Curve(0.175, 0.885, 0.32, 1.275)
+
+/// Desktop's AgentBadge: a robot whose mood follows the turn. It keeps a random personality at rest, dozes off
+/// after ten idle seconds, is startled for a moment by each new failure, turns skeptical while approval waits,
+/// and wears a face per tool. Every change drops the new face in.
+struct RobotBadge: View {
+    let parts: [MessagePart]
+    let streaming: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var base = robotPersonality(Double.random(in: 0..<1))
+    @State private var seenErrors: Int?
+    @State private var flash = 0
+    @State private var startled = false
+    @State private var dropped = Date.distantPast
+
+    private var pending: Bool { parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
+    private var errors: Int { parts.filter { $0.type == "tool" && toolCallFailed($0) }.count }
+    private var variant: RobotVariant {
+        robotBadgeVariant(base: base, startled: startled, pending: pending, streaming: streaming, tool: robotCurrentTool(parts))
+    }
+
+    private func color(_ role: RobotRole) -> Color {
+        switch role {
+        case .body: .black
+        case .eye: .white
+        case .ink: .suzentText
+        case .gray: Color(white: 0.4)
+        case .dark: Color(white: 0.15)
+        }
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+            let variant = variant
+            let drop = reduceMotion ? 1 : min(timeline.date.timeIntervalSince(dropped) / 0.3, 1)
+            Canvas { context, size in
+                context.scaleBy(x: size.width / RobotScene.slot, y: size.height / RobotScene.slot)
+                if RobotScene.clips(variant) { context.clip(to: Path(CGRect(x: 0, y: 0, width: RobotScene.slot, height: RobotScene.slot))) }
+                for mark in RobotScene.frame(variant, seconds: timeline.date.timeIntervalSinceReferenceDate, reduced: reduceMotion) {
+                    switch mark {
+                    case let .shape(points, role, alpha, stroke):
+                        var path = Path()
+                        for (index, point) in points.enumerated() {
+                            if index == 0 { path.move(to: CGPoint(x: point.x, y: point.y)) } else { path.addLine(to: CGPoint(x: point.x, y: point.y)) }
+                        }
+                        if stroke > 0 { context.stroke(path, with: .color(color(role).opacity(alpha)), style: StrokeStyle(lineWidth: stroke, lineCap: .round)) }
+                        else { path.closeSubpath(); context.fill(path, with: .color(color(role).opacity(alpha))) }
+                    case let .glyph(text, x, y, size, matrix, role, alpha):
+                        var glyph = context
+                        glyph.concatenate(CGAffineTransform(a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d, tx: matrix.e, ty: matrix.f))
+                        let resolved = glyph.resolve(Text(text).font(.system(size: size, weight: .bold)).foregroundStyle(color(role).opacity(alpha)))
+                        let measured = resolved.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
+                        glyph.draw(resolved, in: CGRect(x: x, y: y - resolved.firstBaseline(in: measured), width: measured.width, height: measured.height))
+                    }
+                }
+            }
+            .frame(width: 32, height: 32)
+            .scaleEffect(keyframe(drop, [0, 0.5, 1], [0.5, 1.05, 1], robotDrop))
+            .offset(y: keyframe(drop, [0, 0.5, 1], [15, -3, 0], robotDrop))
+            .opacity(min(max(keyframe(drop, [0, 0.5, 1], [0, 1, 1], robotDrop), 0), 1))
+        }
+        .onChange(of: errors, initial: true) { _, count in
+            if let seen = seenErrors, count > seen { flash += 1 }
+            seenErrors = count
+        }
+        // Keyed on the flash alone: a count that drops when parts reconcile must not cancel the reset and leave it shaking.
+        .task(id: flash) {
+            guard flash > 0 else { return }
+            startled = true
+            try? await Task.sleep(for: .milliseconds(2600))
+            guard !Task.isCancelled else { return }
+            startled = false
+        }
+        .task(id: "\(streaming):\(pending):\(base.rawValue)") {
+            if streaming || pending { if base == .snoozer { base = .idle } }
+            else if base == .idle {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled else { return }
+                base = .snoozer
+            }
+        }
+        .onChange(of: variant) { _, _ in dropped = Date() }
+        .accessibilityHidden(true)
     }
 }
 

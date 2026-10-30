@@ -49,7 +49,7 @@ struct ActivityTurn: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 if regent { RegentIdentity(working: live, showStatus: false) }
-                else if live { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live)) }
+                else if live || !compact || pending { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
                 else { SuzentAssistantBadge(compact: compact) }
                 if !live && !work.isEmpty {
                     Button {
@@ -89,6 +89,12 @@ struct ActivityRail: View {
     private var running: Bool { live && current && parts.contains { $0.state == "running" || $0.type == "reasoning" } }
     private var failed: Bool { parts.contains(where: activityFailed) }
     private var accent: Color { waiting ? .orange : failed ? Color.suzentDanger : running ? Color.suzentLink : Color.suzentMuted }
+    /// Desktop's collapsed current header: a running tool's surface, or the plain moving ruler before any tool.
+    private var headerSurface: String? {
+        guard live, current, !expanded, !waiting, parts.last?.type != "reasoning" else { return nil }
+        if let tool = parts.last(where: { $0.type == "tool" && $0.state == "running" && ($0.output ?? "").isEmpty }) { return activityRunningSurface(tool.toolName ?? "") }
+        return parts.contains { $0.type == "tool" } ? nil : "mono"
+    }
     private var totals: String {
         activitySummary(parts, live: live).map { entry in
             let format: String
@@ -98,8 +104,15 @@ struct ActivityRail: View {
             case "read": format = String(localized: "Files read: %d")
             case "changed": format = String(localized: "Files modified: %d")
             case "searches": format = String(localized: "Searches: %d")
+            case "web": format = String(localized: "Pages visited: %d")
+            case "delegated": format = String(localized: "Tasks delegated: %d")
+            case "agents": format = String(localized: "Agent check-ins: %d")
+            case "tasks": format = String(localized: "Task updates: %d")
+            case "memory": format = String(localized: "Memory updates: %d")
+            case "skills": format = String(localized: "Skills used: %d")
+            case "tools": format = String(localized: "Tool calls: %d")
             case "failed": format = String(localized: "Failed calls: %d")
-            default: format = String(localized: "Other tool calls: %d")
+            default: format = String(localized: "Other actions: %d")
             }
             return String(format: format, entry.count)
         }.joined(separator: " · ")
@@ -116,13 +129,16 @@ struct ActivityRail: View {
                 withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { userExpanded = !expanded }
             } label: {
                 HStack(spacing: 8) {
-                    if let latest = parts.last { ActivityToolIcon(kind: activityKind(latest), active: running, pending: waiting, color: accent).frame(width: 20, height: 20) }
-                    Text(summary).lineLimit(1).truncationMode(.tail)
+                    if let tool = parts.last(where: { $0.type == "tool" }) { ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20) }
+                    // Desktop's collapsed header carries a streaming thought on the word itself.
+                    if running && !expanded && !waiting && parts.last?.type == "reasoning" { ThinkingLabel(text: summary) }
+                    else { Text(summary).lineLimit(1).truncationMode(.tail) }
                     Spacer(minLength: 0)
                     Text("\(activityStepCount(parts)) steps").suzentFont(PresentationTokens.typeSidebarSection, design: .monospaced).fixedSize()
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).rotationEffect(.degrees(expanded ? 90 : 0))
                 }.suzentFont(PresentationTokens.typeLabel, weight: .medium).foregroundStyle(accent)
                     .padding(.horizontal, 2).frame(minHeight: 44).contentShape(Rectangle())
+                    .background { RunningSurface(kind: headerSurface) }
             }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.1)).frame(height: 1) }
             ActivityReveal(expanded: expanded) {
@@ -149,6 +165,7 @@ struct ToolActivityBlock: View {
     private var pending: Bool { part.state == "approval-requested" && (part.output ?? "").isEmpty }
     private var active: Bool { !failed && !pending && live && current && (part.state == "running" || (last && part.type == "reasoning")) }
     private var color: Color { failed ? Color.suzentDanger : pending ? .orange : active ? Color.suzentLink : Color.suzentMuted }
+    private var surface: String? { part.type == "tool" && active && (part.output ?? "").isEmpty ? activityRunningSurface(part.toolName ?? "") : nil }
     private var status: String { failed ? String(localized: "Failed") : pending ? String(localized: "Approval required") : active ? String(localized: "Running") : String(localized: "Completed") }
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -158,10 +175,15 @@ struct ToolActivityBlock: View {
                     withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
                 } label: {
                     HStack(spacing: 8) {
-                        ActivityToolIcon(kind: activityKind(part), active: active, pending: pending, color: color).frame(width: 18, height: 18)
+                        ActivityToolIcon(part: part, running: active, color: color).frame(width: 18, height: 18)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(part.type == "reasoning" ? String(localized: "Reasoning") : canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " "))
-                                .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            // Desktop names a thought "Thinking" while it streams and "Thought" once it lands.
+                            if part.type == "reasoning" && active {
+                                ThinkingLabel(text: String(localized: "Thinking")).suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentText)
+                            } else {
+                                Text(part.type == "reasoning" ? String(localized: "Thought") : canonicalActivityTool(part.toolName ?? "").replacingOccurrences(of: "_", with: " "))
+                                    .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            }
                             if part.type == "tool" {
                                 Text(activityToolLabel(part)).suzentFont(PresentationTokens.typeSidebarSection, design: .monospaced).foregroundStyle(Color.suzentMuted).lineLimit(1)
                             }
@@ -172,6 +194,8 @@ struct ToolActivityBlock: View {
                         }
                         Image(systemName: "chevron.right").font(.system(size: 9)).rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Color.suzentMuted)
                     }.padding(.horizontal, 8).frame(minHeight: 46).contentShape(Rectangle())
+                        .background { RunningSurface(kind: surface) }
+                        .overlay { if surface != nil { Rectangle().strokeBorder(Color.suzentText, lineWidth: 2) } }
                 }.buttonStyle(.plain).accessibilityValue(Text(status))
                 if !expanded && failed {
                     Text(String(activityDetail(part.output, output: true).prefix(180))).suzentFont(PresentationTokens.typeMeta, design: .monospaced)
@@ -194,8 +218,13 @@ struct ToolActivityBlock: View {
                         if !first { path.move(to: CGPoint(x: 5, y: 0)); path.addLine(to: CGPoint(x: 5, y: center)) }
                         if !last { path.move(to: CGPoint(x: 5, y: center)); path.addLine(to: CGPoint(x: 5, y: proxy.size.height)) }
                     }.stroke(Color.suzentText.opacity(0.13), lineWidth: 1)
-                    Circle().fill(color.opacity(active || pending || failed ? 1 : 0.35)).frame(width: 6, height: 6)
-                        .position(x: 5, y: center)
+                    // Desktop's activity-rail-dot-pulse: fades to .45 and shrinks to .88 and back.
+                    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active || reduceMotion)) { timeline in
+                        let pulse = active && !reduceMotion ? keyframe(cycle(timeline.date.timeIntervalSinceReferenceDate, 1.2), [0, 0.5, 1], [1, 0, 1], .easeInOut) : 1
+                        Circle().fill(color.opacity((active || pending || failed ? 1 : 0.35) * (0.45 + 0.55 * pulse))).frame(width: 6, height: 6)
+                            .scaleEffect(0.88 + 0.12 * pulse)
+                            .position(x: 5, y: center)
+                    }
                 }.accessibilityHidden(true)
             }
     }
@@ -226,39 +255,121 @@ private struct ActivityDetailView: View {
     }
 }
 
+/// Desktop's ToolGroupIcon: the tool's Heroicon, moving while it runs; reasoning keeps its sparkles.
 struct ActivityToolIcon: View {
-    let kind: String
-    let active: Bool
-    let pending: Bool
+    let part: MessagePart
+    let running: Bool
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    private var symbol: String {
-        switch kind {
-        case "terminal": "terminal"
-        case "read": "doc.text"
-        case "edit": "square.and.pencil"
-        case "search": "magnifyingglass"
-        case "agent": "person.2"
-        case "reasoning": "sparkles"
-        default: "wrench.and.screwdriver"
-        }
+    private var approval: String? {
+        if part.state == "approval-requested" && (part.output ?? "").isEmpty { return "pending" }
+        return ["denied", "rejected"].contains(part.state ?? "") ? "denied" : nil
+    }
+    private var animation: String {
+        part.type == "tool" ? activityToolAnimation(part.toolName ?? "", approval: approval, running: running, hasOutput: !(part.output ?? "").isEmpty) : "none"
     }
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion || scenePhase != .active || (!active && !pending))) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-            ZStack {
-                Image(systemName: pending ? "hand.raised" : symbol).font(.system(size: 14)).foregroundStyle(color)
-                    .opacity(active || pending ? 0.7 + 0.3 * sin(t * 3) : 1)
-                    .rotationEffect(.degrees(active && kind == "search" && !reduceMotion ? sin(t * 3) * 12 : 0))
-                if active && !reduceMotion {
-                    if kind == "read" || kind == "edit" {
-                        Rectangle().fill(color.opacity(0.35)).frame(width: 17, height: 2).offset(y: sin(t * 3) * 7)
-                    } else if kind == "terminal" {
-                        Rectangle().fill(color).frame(width: 4, height: 2).offset(x: 5, y: 5).opacity(sin(t * 5) > 0 ? 1 : 0)
+        if part.type != "tool" {
+            Image(systemName: "sparkles").font(.system(size: 14)).foregroundStyle(color).accessibilityHidden(true)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active || animation == "none")) { context in
+                let pose = reduceMotion || animation == "none" ? ToolIconPose() : toolIconPose(animation, seconds: context.date.timeIntervalSinceReferenceDate)
+                GeometryReader { geometry in
+                    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
+                    let unit = geometry.size.width / 14
+                    ZStack {
+                        Image("Tools/\(activityToolIcon(part.toolName ?? "", approval: approval))").resizable().renderingMode(.template)
+                            .foregroundStyle(color)
+                            .scaleEffect(pose.scale)
+                            .rotationEffect(.degrees(pose.rotation))
+                            .offset(x: pose.dx * unit, y: pose.dy * unit)
+                            .opacity(pose.alpha)
+                        if pose.sweepAlpha > 0 {
+                            Capsule().fill(color).frame(height: 1.5).padding(.horizontal, 1)
+                                .offset(y: pose.sweepY * unit).opacity(pose.sweepAlpha)
+                        }
+                    }
+                }
+            }.accessibilityHidden(true)
+        }
+    }
+}
+
+/// Desktop's brutal-running-* background: a sliding grid (ruler ticks for "mono", dots for "dots") under a sweeping wave.
+struct RunningSurface: View {
+    let kind: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        if let kind {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+                Canvas { context, size in
+                    let frame = runningSurfaceFrame(kind, seconds: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
+                    let ink = Color.suzentText
+                    let shift = frame.gridShift.truncatingRemainder(dividingBy: 6)
+                    if kind == "mono" {
+                        for x in stride(from: shift - 6, to: size.width, by: 6) {
+                            context.fill(Path(CGRect(x: x, y: 0, width: 1, height: size.height)), with: .color(ink.opacity(0.05)))
+                        }
+                    } else if kind == "dots" {
+                        for x in stride(from: shift - 3, to: size.width, by: 6) {
+                            for y in stride(from: 3.0, to: size.height, by: 6) {
+                                context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)), with: .color(ink.opacity(0.09)))
+                            }
+                        }
+                    }
+                    // The wave is twice the block's width and tiles, so its peak crosses the block every other half cycle.
+                    let span = size.width * 2
+                    let peak = frame.wave * span
+                    let gradient = Gradient(stops: zip(frame.stops, frame.alphas).map { .init(color: ink.opacity($1), location: $0) })
+                    for center in [peak, peak - span] {
+                        let start = center - size.width
+                        context.fill(Path(CGRect(x: start, y: 0, width: span, height: size.height)),
+                                     with: .linearGradient(gradient, startPoint: CGPoint(x: start, y: 0), endPoint: CGPoint(x: start + span, y: 0)))
                     }
                 }
             }
-        }.accessibilityHidden(true)
+            .clipped()
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Desktop's reasoning-thinking-label: a pale notch sweeping across the word while an ink bar wipes over it.
+/// Ink is the surrounding foreground style, so callers colour it the way they colour plain text.
+struct ThinkingLabel: View {
+    let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        if reduceMotion {
+            Text(text).lineLimit(1).truncationMode(.tail)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: scenePhase != .active)) { timeline in
+                let frame = thinkingLabelFrame(seconds: timeline.date.timeIntervalSinceReferenceDate)
+                // The sweep image is four words wide; background-position p puts its left edge at -3p of the word.
+                let start = -3 * frame.sweep
+                Text(text).lineLimit(1).truncationMode(.tail)
+                    .hidden()
+                    .overlay {
+                        Rectangle().foregroundStyle(.foreground)
+                            .mask(Text(text).lineLimit(1).truncationMode(.tail))
+                            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.4),
+                                                         .init(color: .black.opacity(0.15), location: 0.47), .init(color: .black.opacity(0.15), location: 0.53),
+                                                         .init(color: .black, location: 0.6), .init(color: .black, location: 1)],
+                                                 startPoint: UnitPoint(x: start, y: 0.5), endPoint: UnitPoint(x: start + 4, y: 0.5)))
+                    }
+                    .overlay {
+                        GeometryReader { proxy in
+                            Rectangle().foregroundStyle(.foreground)
+                                .frame(width: proxy.size.width * (frame.barEnd - frame.barStart), height: proxy.size.height * 1.3)
+                                .offset(x: proxy.size.width * frame.barStart, y: -proxy.size.height * 0.15)
+                        }
+                    }
+            }
+        }
     }
 }

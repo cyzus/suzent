@@ -187,6 +187,15 @@ import Testing
     #expect(summary.map(\.kind) == ["read", "changed", "commands", "searches", "running", "failed"])
     #expect(summary.map(\.count) == [1, 1, 1, 1, 1, 1])
     #expect(activitySummary(parts, live: false)[4].kind == "other")
+    let named = [
+        MessagePart(type: "tool", toolName: "webpage_fetch"), MessagePart(type: "tool", toolName: "agent_dispatch", args: #"{"agent_id":"new"}"#),
+        MessagePart(type: "tool", toolName: "agent_dispatch", args: #"{"agent_id":"a1"}"#), MessagePart(type: "tool", toolName: "update_task"),
+        MessagePart(type: "tool", toolName: "memory_update"), MessagePart(type: "tool", toolName: "skill_execute"), MessagePart(type: "tool", toolName: "speak")]
+    #expect(activitySummary(named, live: false).map(\.kind) == ["web", "delegated", "agents", "tasks", "memory", "skills", "other"])
+    let alone = activitySummary([MessagePart(type: "tool", toolName: "speak"), MessagePart(type: "tool", toolName: "render_ui"),
+                                 MessagePart(type: "tool", toolName: "speak", state: "error")], live: false)
+    #expect(alone.map(\.kind) == ["failed", "tools"])
+    #expect(alone.map(\.count) == [1, 2])
     #expect(canonicalActivityTool("ReadFile") == "read_file")
     #expect(activityToolLabel(parts[0]) == "read file: ./src/main.py")
     #expect(activityToolLabel(MessagePart(type: "tool", toolName: "Read", args: "{")) == "read file")
