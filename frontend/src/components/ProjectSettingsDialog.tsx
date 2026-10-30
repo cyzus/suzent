@@ -38,6 +38,9 @@ const ADD_BUTTON_CLASS =
 
 const MAX_SUGGESTIONS = 5;
 
+/** System projects keep their name. */
+export const SYSTEM_PROJECT_SLUGS: ReadonlySet<string> = new Set(['default', 'social']);
+
 const folderName = (path: string): string => path.split(/[/\\]/).filter(Boolean).pop() || path;
 
 const sameFolders = (a: string[], b: string[]): boolean =>
