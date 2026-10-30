@@ -1,17 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useChatCoreStore, useChatStore } from '../hooks/useChatStore';
-import { selectContextLimit } from '../lib/contextLimit';
+import { useChatCoreStore } from '../hooks/useChatStore';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
+import { useHeartbeatToggle } from '../hooks/useHeartbeatToggle';
+import { useHeartbeatPulse } from '../hooks/useHeartbeatPulse';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
-import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
 import { useEventBus } from '../hooks/useEventBus';
-import { CompactionCube, CompactionSweep } from './chat/CompactionCube';
 import {
-  disableHeartbeat,
-  enableHeartbeat,
   fetchHeartbeatMd,
   fetchServiceRuntimeStatus,
   saveHeartbeatMd,
@@ -19,6 +15,7 @@ import {
   type ServiceRuntimeStatus,
 } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
+import { HeartbeatPulse } from './HeartbeatPulse';
 import { InformationPopover } from './InformationPopover';
 import { isImeComposing } from '../lib/ime';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
@@ -27,24 +24,7 @@ import { RegentMark } from './regent/RegentMark';
 import { ResolveChatButton } from './chat/ResolveChatButton';
 import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 
-const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
-
-function formatRelativeTime(iso: string | null): string | null {
-  if (!iso) return null;
-  const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return null;
-  const deltaMs = Date.now() - ts;
-  if (deltaMs < 0) return null;
-  const deltaSec = Math.floor(deltaMs / 1000);
-  if (deltaSec < 10) return 'just now';
-  if (deltaSec < 60) return `${deltaSec}s ago`;
-  const deltaMin = Math.floor(deltaSec / 60);
-  if (deltaMin < 60) return `${deltaMin}m ago`;
-  const deltaHours = Math.floor(deltaMin / 60);
-  if (deltaHours < 24) return `${deltaHours}h ago`;
-  return `${Math.floor(deltaHours / 24)}d ago`;
-}
 
 const HEARTBEAT_INTERVAL_PRESETS = [5, 15, 30, 60, 120] as const;
 
@@ -133,11 +113,11 @@ function useStatusHoverPopover() {
 function HeartbeatWidget() {
   const { currentChatId, config, setConfig } = useChatCoreStore();
   const { t } = useI18n();
-  const { inFlight, inFlightChatId, lastPingAt, statusError } = useHeartbeatRunning();
+  const pulse = useHeartbeatPulse();
   const chatStatus = useHeartbeatRunning((s) =>
     currentChatId ? s.chatStatus[currentChatId] : undefined
   );
-  const [toggling, setToggling] = useState(false);
+  const { enabled, toggling, toggle: handleToggle } = useHeartbeatToggle();
   const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
 
   // heartbeat.md instructions editor
@@ -148,8 +128,6 @@ function HeartbeatWidget() {
   // Track which chat the current draft was loaded for, so we don't clobber edits.
   const loadedForChatRef = useRef<string | null>(null);
 
-  const enabled = !!(currentChatId && config?.heartbeat_enabled);
-  const inFlightForChat = enabled && inFlight && inFlightChatId === currentChatId;
   const intervalMinutes = config?.heartbeat_interval_minutes || 30;
 
   useEffect(() => {
@@ -158,24 +136,6 @@ function HeartbeatWidget() {
       loadedForChatRef.current = null;
     }
   }, [open]);
-
-  const handleToggle = async () => {
-    if (!currentChatId || toggling) return;
-    const newEnabled = !enabled;
-    setToggling(true);
-    setConfig((prev) => ({ ...prev, heartbeat_enabled: newEnabled }));
-    try {
-      if (newEnabled) {
-        await enableHeartbeat(currentChatId);
-      } else {
-        await disableHeartbeat(currentChatId);
-      }
-    } catch {
-      setConfig((prev) => ({ ...prev, heartbeat_enabled: !newEnabled }));
-    } finally {
-      setToggling(false);
-    }
-  };
 
   const handleSetInterval = async (mins: number) => {
     if (!currentChatId || mins < 1) return;
@@ -245,54 +205,10 @@ function HeartbeatWidget() {
     }
   };
 
-  // This chat's own last failure, kept until a check-in succeeds again. The
-  // runner-wide error named whichever chat failed last and vanished on restart.
-  const failure = currentChatId ? (chatStatus?.last_error ?? null) : statusError;
-  const lastPingMs = lastPingAt ? new Date(lastPingAt).getTime() : 0;
-  const fresh = enabled && lastPingMs > 0 && Date.now() - lastPingMs <= HEARTBEAT_HEALTHY_WINDOW_MS;
-  const relative = formatRelativeTime(lastPingAt);
+  const { failure, inFlightForChat, text } = pulse;
 
-  type EkgMode = 'fast' | 'active' | 'slow' | 'flat';
-  let ekg: EkgMode;
-  let heartClass: string;
-  let text: string;
-
-  if (!enabled) {
-    ekg = 'flat';
-    heartClass = '';
-    text = t('chatWindow.heartbeatOff');
-  } else if (inFlightForChat) {
-    ekg = 'fast';
-    heartClass = 'pixel-heart-beat-fast';
-    text = t('chatWindow.heartbeatRunning');
-  } else if (failure) {
-    ekg = 'slow';
-    heartClass = '';
-    text = t('chatWindow.heartbeatFailed');
-  } else if (fresh) {
-    ekg = 'active';
-    heartClass = 'pixel-heart-beat';
-    text = t('chatWindow.heartbeatHealthy');
-  } else if (relative) {
-    ekg = 'slow';
-    heartClass = '';
-    text = t('chatWindow.heartbeatLastRun', { time: relative });
-  } else {
-    ekg = 'slow';
-    heartClass = '';
-    text = t('chatWindow.heartbeatEnabled');
-  }
-
-  const ekgClass =
-    ekg === 'fast'
-      ? 'ekg-active-wave [animation-duration:1.5s]'
-      : ekg === 'active'
-        ? 'ekg-active-wave [animation-duration:3s]'
-        : ekg === 'slow'
-          ? 'ekg-active-wave [animation-duration:6s] opacity-50'
-          : 'ekg-flatline';
-  const ekgPath =
-    ekg !== 'flat' ? 'M 0 25 L 10 25 L 14 30 L 22 5 L 28 45 L 34 25 L 100 25' : 'M 0 25 L 100 25';
+  // Off is the default; the overview's environment section is where it gets turned on.
+  if (!enabled && !open) return null;
 
   return (
     <div
@@ -311,26 +227,7 @@ function HeartbeatWidget() {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <svg
-          className={`w-3 h-3 flex-shrink-0 ${heartClass}`}
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </svg>
-        <div className="hidden md:block w-8 h-3 flex-shrink-0">
-          <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full">
-            <path
-              className={ekgClass}
-              pathLength="100"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="6"
-              d={ekgPath}
-            />
-          </svg>
-        </div>
+        <HeartbeatPulse pulse={pulse} lineClassName="hidden md:block" />
         {/* Spelled out only when it needs attention: running, or failing. */}
         <span
           className={`${(failure && enabled) || inFlightForChat ? 'hidden md:inline' : 'sr-only'} text-[10px] font-bold uppercase tracking-wider ${failure && enabled && !inFlightForChat ? 'text-red-600 dark:text-red-400' : ''}`}
@@ -440,285 +337,6 @@ function HeartbeatWidget() {
   );
 }
 
-function ContextWidget() {
-  const { usage } = useContextUsageStore();
-  const { backendConfig, config } = useChatCoreStore();
-
-  // Mirror what actually runs when a chat carries no model of its own: the
-  // backend falls back to the user's preferred model, then to the first enabled
-  // one. Reading only `config.model` sized those chats against nothing.
-  const selectedModel =
-    config?.model || backendConfig?.userPreferences?.model || backendConfig?.models?.[0];
-
-  const limit = selectContextLimit({
-    selectedModel,
-    contextWindows: backendConfig?.contextWindows,
-    turnLimit: usage?.context_limit,
-    fallback: backendConfig?.maxContextTokens,
-  });
-
-  if (!usage || !limit) return null;
-
-  return <ContextWidgetBody usage={usage} limit={limit} />;
-}
-
-function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number }) {
-  const { compaction, clearCompaction } = useContextUsageStore();
-  const { currentChatId, isStreaming } = useChatStore();
-  const { compact, progress } = useCompact();
-  const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
-  const hintTimerRef = useRef<number | null>(null);
-
-  const contextTokens = usage.context_tokens ?? usage.total_tokens ?? 0;
-  const pct = Math.min(100, (contextTokens / limit) * 100);
-  const barColor =
-    pct >= 80
-      ? 'bg-brutal-red'
-      : pct >= 60
-        ? 'bg-brutal-yellow'
-        : 'bg-neutral-400 dark:bg-neutral-500';
-
-  const inputTokens = usage.input_tokens ?? 0;
-  const outputTokens = usage.output_tokens ?? 0;
-  const cacheRead = usage.cache_read_tokens ?? 0;
-  const cacheWrite = usage.cache_write_tokens ?? 0;
-  const details = usage.details ?? {};
-  const extraDetails = Object.entries(details).filter(([, v]) => Number(v) > 0) as Array<
-    [string, number]
-  >;
-  const compactRecommended = pct >= 80;
-  // A pass started from this button reports through `useCompact`; one the agent
-  // starts mid-run arrives on the event bus and lands in the store. The panel has
-  // to watch both, or agent-triggered compaction looks like nothing is happening.
-  const manualCompacting = ['loading', 'analyzing', 'summarizing', 'saving'].includes(
-    progress.stage
-  );
-  const compacting = manualCompacting || compaction?.active === true;
-
-  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-  // Keep a sliver visible rather than rounding it away to a flat "0%".
-  const formatPct = (value: number) =>
-    value >= 10 || value === 0 ? `${Math.round(value)}%` : `${value.toFixed(1)}%`;
-  const pctLabel = formatPct(pct);
-  // Cache tokens are a share of input, not of the window: pydantic-ai normalizes
-  // input_tokens to include cache reads and writes on every provider.
-  const shareOfInput = (n: number) =>
-    inputTokens > 0 ? formatPct(Math.min(100, (n / inputTokens) * 100)) : null;
-  const clearHintTimer = () => {
-    if (hintTimerRef.current != null) {
-      window.clearTimeout(hintTimerRef.current);
-      hintTimerRef.current = null;
-    }
-  };
-  useEffect(() => {
-    return () => clearHintTimer();
-  }, []);
-  useEffect(() => {
-    // Keep a finished/failed pass on screen briefly, then drop it. A running one
-    // stays until its own terminal event arrives.
-    if (!compaction || compaction.active) return;
-    clearHintTimer();
-    hintTimerRef.current = window.setTimeout(() => {
-      clearCompaction();
-      hintTimerRef.current = null;
-    }, 10_000);
-  }, [compaction, clearCompaction]);
-  const compactStageLabel: Record<string, string> = {
-    loading: 'Compacting...',
-    analyzing: 'Compaction analyzing...',
-    summarizing: 'Compaction summarizing...',
-    saving: 'Compaction saving...',
-  };
-
-  const handleManualCompact = async () => {
-    if (!currentChatId || isStreaming || compacting) return;
-
-    await compact(currentChatId);
-  };
-
-  const canManualCompact = !!currentChatId && !isStreaming && !compacting;
-  const compactLabel = manualCompacting
-    ? compactStageLabel[progress.stage] || 'Compacting...'
-    : (compaction?.label ?? null);
-  const compactFailed = progress.stage === 'error' || compaction?.stage === 'error';
-
-  return (
-    <div
-      ref={rootRef}
-      className="relative ml-3 min-w-0"
-      onBlur={handleBlur}
-      onMouseEnter={openPopover}
-      onMouseLeave={closePopoverWithDelay}
-    >
-      <button
-        type="button"
-        onFocus={openPopover}
-        className="flex min-w-0 items-center gap-1.5 transition-opacity hover:opacity-80"
-        title="Context usage"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        <div className="h-1.5 w-12 min-w-0 flex-shrink overflow-hidden rounded-full bg-neutral-300 dark:bg-zinc-600">
-          <div
-            className={`h-full rounded-full transition-all ${barColor}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider">
-          {pctLabel}
-        </span>
-        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 xl:inline">
-          {fmt(contextTokens)}
-        </span>
-        {compacting && (
-          <>
-            <CompactionCube size={12} />
-            <span className="hidden flex-shrink-0 text-[9px] font-bold uppercase tracking-wider md:inline">
-              Compacting
-            </span>
-          </>
-        )}
-        {compactRecommended && !compacting && (
-          <span className="hidden flex-shrink-0 text-[9px] font-bold uppercase tracking-wider text-brutal-red md:inline">
-            Compact?
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <InformationPopover
-          role="dialog"
-          className="absolute top-6 right-0 z-50 w-56 space-y-1.5 font-mono normal-case tracking-normal font-normal"
-        >
-          <div className="flex items-center justify-between mb-1">
-            <div className="font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider text-[10px]">
-              Context Window
-            </div>
-            <button
-              type="button"
-              onClick={handleManualCompact}
-              disabled={!canManualCompact}
-              className="px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[9px] font-bold uppercase tracking-wider bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={
-                canManualCompact ? 'Compact context now' : 'Compaction unavailable while streaming'
-              }
-            >
-              {compacting ? '...' : 'Compact'}
-            </button>
-          </div>
-          {compactLabel && (
-            <div
-              className={`overflow-hidden rounded border text-[10px] font-bold ${compactFailed ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}
-            >
-              <div className="flex items-center gap-1.5 px-1.5 py-1">
-                {compacting && <CompactionCube size={16} />}
-                <span className="min-w-0 flex-1">{compactLabel}</span>
-              </div>
-              {compacting && <CompactionSweep className="text-neutral-500 dark:text-neutral-400" />}
-            </div>
-          )}
-
-          {/* Total bar */}
-          <div className="space-y-0.5">
-            <div className="flex justify-between">
-              <span className="text-neutral-500 dark:text-neutral-400">Total</span>
-              <span>
-                {fmt(contextTokens)} / {fmt(limit)}
-                <span className="ml-1.5 font-bold">{pctLabel}</span>
-              </span>
-            </div>
-            <div className="w-full h-1 rounded-full bg-neutral-100 dark:bg-zinc-800">
-              <div
-                className={`h-full rounded-full transition-all ${barColor}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Input / Output */}
-          <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5 space-y-1">
-            <div className="flex justify-between">
-              <span>Input</span>
-              <span>{fmt(inputTokens)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Output</span>
-              <span>{fmt(outputTokens)}</span>
-            </div>
-          </div>
-
-          {/* Cache */}
-          {(cacheRead > 0 || cacheWrite > 0) && (
-            <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5 space-y-1">
-              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">
-                Cache
-              </div>
-              {cacheRead > 0 && (
-                <div
-                  className="flex justify-between"
-                  title="Share of input tokens served from cache"
-                >
-                  <span>Cache Read</span>
-                  <span>
-                    <span className="text-green-600 dark:text-green-400">{fmt(cacheRead)}</span>
-                    {shareOfInput(cacheRead) && (
-                      <span className="ml-1.5 text-neutral-400 dark:text-neutral-500">
-                        {shareOfInput(cacheRead)}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              {cacheWrite > 0 && (
-                <div
-                  className="flex justify-between"
-                  title="Share of input tokens written to cache"
-                >
-                  <span>Cache Write</span>
-                  <span>
-                    <span className="text-blue-500 dark:text-blue-400">{fmt(cacheWrite)}</span>
-                    {shareOfInput(cacheWrite) && (
-                      <span className="ml-1.5 text-neutral-400 dark:text-neutral-500">
-                        {shareOfInput(cacheWrite)}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Extra details from model */}
-          {extraDetails.length > 0 && (
-            <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5 space-y-1">
-              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">
-                Details
-              </div>
-              {extraDetails.map(([key, val]) => (
-                <div key={key} className="flex justify-between">
-                  <span className="text-neutral-500 dark:text-neutral-400 truncate mr-2">
-                    {key.replace(/_/g, ' ')}
-                  </span>
-                  <span className="flex-shrink-0">{fmt(Number(val))}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {usage.requests > 1 && (
-            <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5">
-              <div className="flex justify-between text-neutral-500 dark:text-neutral-400">
-                <span>API Requests</span>
-                <span>{usage.requests}</span>
-              </div>
-            </div>
-          )}
-        </InformationPopover>
-      )}
-    </div>
-  );
-}
-
 function SubAgentWidget() {
   const { t } = useI18n();
   const { activeTasks } = useSubAgentStatus();
@@ -749,6 +367,8 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
   const pending = status?.pending_count ?? 0;
   const failed = !!error || status?.last_result?.advanced === false;
   const running = extracting || !!status?.running;
+  // Idle memory is shown in the overview's environment section, not the header.
+  if (!running && !failed && pending === 0 && !open) return null;
 
   const label = extracting
     ? t('backgroundTasks.memoryProcessing')
@@ -1004,7 +624,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     return (
       <div className="hidden sm:flex min-w-0 items-center font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
         <BackendServiceWidget />
-        <ContextWidget />
         <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
         <HeartbeatWidget />
       </div>
@@ -1033,7 +652,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
       {/* Right: context usage + sub-agent indicator + heartbeat */}
       <div className="flex flex-shrink-0 items-center justify-end">
-        <ContextWidget />
         <SubAgentWidget />
         <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
         <HeartbeatWidget />

@@ -887,6 +887,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               onRemoveVolume={removeVolume}
               disabled={!configReady || streamingForCurrentChat || isUploading}
               dropUp={modelSelectDropUp}
+              compact={!!currentChatId}
             />
           )}
           <input

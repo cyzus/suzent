@@ -12,6 +12,8 @@ interface FolderContextPickerProps {
   disabled?: boolean;
   dropUp?: boolean;
   buttonLabel?: string;
+  /** Icon only: once a chat exists, its folders are shown in the environment section. */
+  compact?: boolean;
 }
 
 export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
@@ -21,6 +23,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   disabled = false,
   dropUp = true,
   buttonLabel,
+  compact = false,
 }) => {
   const { t } = useI18n();
   const [history, setHistory] = useState<RecentFolder[]>([]);
@@ -301,22 +304,32 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
+        aria-label={compact ? t('folderContext.context') : undefined}
+        title={
+          compact
+            ? activeVolumes
+                .map((volume) => volume.substring(0, volume.lastIndexOf(':')) || volume)
+                .join('\n') || t('folderContext.context')
+            : undefined
+        }
         className={`
                     flex items-center gap-1.5 px-2 h-9 w-full min-w-0 border-0 shadow-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue
                     bg-transparent text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700
                 `}
       >
         <FolderIcon className="w-4 h-4 shrink-0" />
-        <span className="hidden sm:inline truncate min-w-0">
-          {buttonLabel || dynamicLabel || t('folderContext.context')}
-        </span>
+        {!compact && (
+          <span className="hidden sm:inline truncate min-w-0">
+            {buttonLabel || dynamicLabel || t('folderContext.context')}
+          </span>
+        )}
         {activeCount > 1 && (
           <span className="min-w-5 h-5 px-1 inline-flex items-center justify-center bg-white/80 border border-brutal-black text-[9px] leading-none">
             {activeCount}
           </span>
         )}
         <svg
-          className={`w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
+          className={`${compact ? 'hidden' : ''} w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

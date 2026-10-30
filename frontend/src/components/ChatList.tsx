@@ -44,12 +44,11 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
-import { ProjectSettingsDialog } from './ProjectSettingsDialog';
+import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
 
 const ALL_PROJECTS_FILTER = '__all__';
-const SYSTEM_PROJECT_SLUGS = new Set(['default', 'social']);
 const AUTOMATION_PREVIEW_LIMIT = 5;
 const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
