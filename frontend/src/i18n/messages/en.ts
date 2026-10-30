@@ -416,16 +416,21 @@ export const en = {
     untitledChat: 'Suzent',
   },
   projectSettings: {
-    title: '{name} settings',
     name: 'Name',
     workingDirectory: 'Working directory',
-    workingDirectoryPlaceholder: 'Not set',
-    workingDirectoryHelp:
-      'Chats in this project work in this folder by default: commands start here, relative paths resolve here, and the agent can edit files here without asking. A chat with its own working directory keeps it. The project library and context.md stay where they are.',
-    browse: 'Browse',
-    clear: 'Clear',
     save: 'Save',
     saveFailed: 'Could not save project settings',
+    title: 'Project settings',
+    folders: 'Folders',
+    foldersHelp:
+      'Every chat in this project can read and edit these folders, and starts in the working directory.',
+    makePrimary: 'Set as working directory',
+    removeFolder: 'Remove',
+    addFolder: 'Add folder',
+    suggestions: 'Add a recent folder',
+    noFolders: 'No folders yet. Chats work in the project’s scratch folder.',
+    chatOverrideNote:
+      'A chat that picks its own Working Dir keeps it. context.md and the project library stay in the project folder.',
   },
   hostPicker: {
     title: 'Choose a folder',
@@ -2637,6 +2642,7 @@ export const en = {
     details: 'Error details',
   },
   folderContext: {
+    projectFolders: 'Used in this project',
     activeContexts: 'Active contexts',
     noFoldersMounted: 'No folders mounted',
     remove: 'Remove',

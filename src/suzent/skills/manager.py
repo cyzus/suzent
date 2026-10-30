@@ -375,12 +375,20 @@ def get_skill_manager_for_chat(
     )
 
     configured_volumes = custom_volumes
-    if configured_volumes is None and chat_id:
+    if chat_id:
         from suzent.database import get_database
 
-        chat = get_database().get_chat(chat_id)
+        database = get_database()
+        chat = database.get_chat(chat_id)
         if chat:
-            configured_volumes = list((chat.config or {}).get("sandbox_volumes") or [])
+            if configured_volumes is None:
+                configured_volumes = list(
+                    (chat.config or {}).get("sandbox_volumes") or []
+                )
+            if getattr(chat, "project_id", None):
+                configured_volumes = database.with_project_folders(
+                    chat, configured_volumes
+                )
     effective_volumes = get_effective_volumes(configured_volumes or [])
     roots = resolve_repository_context(
         chat_id,

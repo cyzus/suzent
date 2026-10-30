@@ -209,7 +209,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   // Project context menu (kebab on each project row).
   const [projectMenu, setProjectMenu] = useState<{
     projectId: string;
-    anchor: { rect: DOMRect };
+    anchor: { x: number; y: number } | { rect: DOMRect };
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
@@ -2037,6 +2037,16 @@ export const ChatList: React.FC<ChatListProps> = ({
                         return (
                           <div key={project.id}>
                             <div
+                              onContextMenu={(event) => {
+                                if (isRenaming) return;
+                                event.preventDefault();
+                                // Keep the open menu's own contextmenu listener from closing it.
+                                event.stopPropagation();
+                                setProjectMenu({
+                                  projectId: project.id,
+                                  anchor: { x: event.clientX, y: event.clientY },
+                                });
+                              }}
                               className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
                             >
                               {isRenaming ? (
