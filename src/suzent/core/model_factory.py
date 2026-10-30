@@ -306,7 +306,7 @@ class _LocalOpenAIHTTPClient(httpx.AsyncClient):
 def _resolve_base_url(spec: ProviderSpec) -> str | None:
     """The provider's ``*_BASE_URL`` override if the user set one, else its default."""
     for field in spec.fields:
-        if "BASE_URL" in field.get("key", ""):
+        if field.get("key", "").endswith("BASE_URL"):
             env_key = field["key"]
             resolved_base_url = None
             try:
@@ -380,7 +380,11 @@ def _create_anthropic_model(
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     base_url = _resolve_base_url(spec)
-    kwargs: dict[str, Any] = {"api_key": api_key}
+    # A keyless endpoint still needs a key here, or the SDK falls back to
+    # ANTHROPIC_API_KEY and sends the first-party secret to that endpoint.
+    kwargs: dict[str, Any] = {
+        "api_key": api_key or ("local" if spec.api_key_optional else "")
+    }
     if base_url:
         kwargs["base_url"] = base_url
     settings = anthropic_cache_settings(base_url)

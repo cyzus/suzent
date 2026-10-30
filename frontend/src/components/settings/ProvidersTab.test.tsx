@@ -2,7 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n';
-import { ProvidersTab } from './ProvidersTab';
+import { buildCustomProvider, ProvidersTab, slugifyProviderId } from './ProvidersTab';
 import type { ApiProvider } from '../../lib/api';
 
 const provider: ApiProvider = {
@@ -58,6 +58,7 @@ describe('Provider settings overview', () => {
       id: 'chatgpt',
       label: 'ChatGPT Subscription',
       fields: [],
+      user_config: { enabled_models: ['chatgpt/gpt-5'], custom_models: [] },
     });
     expect(html).toContain('<details');
     expect(html).not.toContain('open=""');
@@ -167,5 +168,113 @@ describe('Provider settings overview', () => {
     expect(html).toContain('pick the one your API key was created on');
     expect(html).not.toContain('aria-label="Base URL"');
     expect(html).not.toContain('>https://global.example.test/v1/<');
+  });
+  it('lists set-up providers as cards and the rest in a grouped catalog', () => {
+    const unset = (id: string, label: string, group: ApiProvider['group']): ApiProvider => ({
+      ...provider,
+      id,
+      label,
+      group,
+      fields: [{ ...provider.fields[0], key: `${id.toUpperCase()}_KEY`, isSet: false }],
+    });
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <ProvidersTab
+          providers={[
+            provider,
+            unset('kimi_code', 'Kimi Code', 'china'),
+            unset('ollama', 'Ollama', 'local'),
+          ]}
+          apiKeys={{}}
+          userConfigs={{}}
+          showKey={{}}
+          activeTabs={{}}
+          verifying={{}}
+          onKeyChange={vi.fn()}
+          onToggleShowKey={vi.fn()}
+          onTabChange={vi.fn()}
+          onConfigChange={vi.fn()}
+          onAddCustomModel={vi.fn()}
+          onVerify={vi.fn()}
+          onAddProvider={async () => {}}
+          onDeleteProvider={async () => {}}
+        />
+      </I18nProvider>
+    );
+    // Only the provider with a saved key gets a card.
+    expect(html.match(/<details/g)?.length).toBe(2); // the enabled summary and Example
+    expect(html).toContain('title="Example"');
+    // The catalog stays closed while something is set up.
+    expect(html).not.toContain('China vendors');
+    expect(html).not.toContain('Kimi Code');
+  });
+  it('opens the catalog when nothing is set up yet', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <ProvidersTab
+          providers={[
+            { ...provider, id: 'kimi_code', label: 'Kimi Code', group: 'china', fields: [] },
+            { ...provider, id: 'ollama', label: 'Ollama', group: 'local', fields: [] },
+          ]}
+          apiKeys={{}}
+          userConfigs={{}}
+          showKey={{}}
+          activeTabs={{}}
+          verifying={{}}
+          onKeyChange={vi.fn()}
+          onToggleShowKey={vi.fn()}
+          onTabChange={vi.fn()}
+          onConfigChange={vi.fn()}
+          onAddCustomModel={vi.fn()}
+          onVerify={vi.fn()}
+          onAddProvider={async () => {}}
+          onDeleteProvider={async () => {}}
+        />
+      </I18nProvider>
+    );
+    expect(html).toContain('Add a provider');
+    expect(html.indexOf('China vendors')).toBeLessThan(html.indexOf('Kimi Code'));
+    expect(html.indexOf('Local &amp; self-hosted')).toBeLessThan(html.indexOf('Ollama'));
+    expect(html).toContain('Custom endpoint');
+    expect(html.match(/<details/g)?.length).toBe(1); // only the enabled summary
+  });
+});
+
+describe('Custom provider', () => {
+  it('derives an id the backend accepts from the name', () => {
+    expect(slugifyProviderId('My Relay')).toBe('my_relay');
+    expect(slugifyProviderId('  One-API (prod) ')).toBe('one_api_prod');
+    expect(slugifyProviderId('302.AI')).toBe('p_302_ai');
+    expect(slugifyProviderId('中转站')).toBe('');
+  });
+  it('gives the provider its own key and Base URL fields', () => {
+    const { payload, keyField, baseUrlField } = buildCustomProvider({
+      id: 'my_relay',
+      label: ' My Relay ',
+      protocol: 'anthropic',
+      baseUrl: 'https://relay.example.test/',
+      apiKey: 'sk-test',
+    });
+    expect(keyField).toBe('CUSTOM_MY_RELAY_API_KEY');
+    expect(baseUrlField).toBe('CUSTOM_MY_RELAY_BASE_URL');
+    expect(payload).toMatchObject({
+      id: 'my_relay',
+      label: 'My Relay',
+      api_type: 'anthropic',
+      base_url: 'https://relay.example.test',
+      env_keys: ['CUSTOM_MY_RELAY_API_KEY'],
+    });
+    expect(payload.fields?.map((field) => field.key)).toEqual([keyField, baseUrlField]);
+    expect(payload.api_key_optional).toBeUndefined();
+  });
+  it('marks a keyless endpoint as not needing a key', () => {
+    const { payload } = buildCustomProvider({
+      id: 'local_gw',
+      label: 'Gateway',
+      protocol: 'openai',
+      baseUrl: 'http://localhost:4000/v1',
+      apiKey: '',
+    });
+    expect(payload.api_key_optional).toBe(true);
   });
 });

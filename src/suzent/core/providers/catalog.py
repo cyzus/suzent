@@ -60,6 +60,9 @@ class ProviderSpec:
     # base_url; picking another writes the provider's *_BASE_URL field.
     regions: list[dict[str, str]] = field(default_factory=list)
     region_label: str = "region"  # "region" | "plan": what the picker is called
+    # Where the provider sits in Settings' add list: "global" | "china" |
+    # "relay" | "local". User-defined providers have none.
+    group: Optional[str] = None
     # China and Global accounts don't work at each other's endpoints, so the
     # picker tells the user to choose by where the key was made.
     split_accounts: bool = False
@@ -107,6 +110,7 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
         ),
         regions=regions,
         region_label=raw.get("region_label", "region"),
+        group=raw.get("group"),
         split_accounts=raw.get("split_accounts", False),
     )
 
@@ -123,10 +127,39 @@ def _load_json_file(path: Path) -> list[dict[str, Any]]:
         return []
 
 
+def user_providers_path() -> Path:
+    """Where user-defined providers are kept: the data dir, beside the user's
+    other config, so an app update that replaces the install keeps them."""
+    from suzent.config.paths import USER_CONFIG_DIR
+
+    return USER_CONFIG_DIR / "providers.user.json"
+
+
+def load_user_provider_entries() -> list[dict[str, Any]]:
+    """User-defined provider entries.
+
+    Older versions wrote them into the install's ``config/``; that file is read
+    until the first save to the data dir, which then supersedes it.
+    """
+    path = user_providers_path()
+    if path.exists():
+        return _load_json_file(path)
+    return _load_json_file(_CONFIG_DIR / "providers.user.json")
+
+
+def save_user_provider_entries(entries: list[dict[str, Any]]) -> None:
+    path = user_providers_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"providers": entries}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def load_provider_registry() -> list[ProviderSpec]:
     """Load and merge base + user provider definitions."""
     base_entries = _load_json_file(_CONFIG_DIR / "providers.json")
-    user_entries = _load_json_file(_CONFIG_DIR / "providers.user.json")
+    user_entries = load_user_provider_entries()
 
     specs: list[ProviderSpec] = [_parse_provider(e) for e in base_entries]
     defaults_path = _CONFIG_DIR / "provider_defaults.json"

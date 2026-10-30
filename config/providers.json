@@ -5,6 +5,7 @@
     {
       "id": "openai",
       "label": "OpenAI",
+      "group": "global",
       "logo_url": "https://api.iconify.design/simple-icons:openai.svg?color=white",
       "key_url": "https://platform.openai.com/api-keys",
       "api_type": "openai",
@@ -23,6 +24,7 @@
     {
       "id": "chatgpt",
       "label": "ChatGPT Subscription",
+      "group": "global",
       "logo_url": "https://api.iconify.design/simple-icons:openai.svg?color=white",
       "api_type": "chatgpt_subscription",
       "env_keys": [],
@@ -36,6 +38,7 @@
     {
       "id": "anthropic",
       "label": "Anthropic",
+      "group": "global",
       "logo_url": "https://cdn.simpleicons.org/anthropic",
       "key_url": "https://console.anthropic.com/settings/keys",
       "api_type": "anthropic",
@@ -52,6 +55,7 @@
     {
       "id": "gemini",
       "label": "Google Gemini",
+      "group": "global",
       "stream_idle_timeout_seconds": 300,
       "logo_url": "https://cdn.simpleicons.org/googlegemini",
       "key_url": "https://aistudio.google.com/apikey",
@@ -71,6 +75,7 @@
     {
       "id": "xai",
       "label": "xAI (Grok)",
+      "group": "global",
       "logo_url": "https://api.iconify.design/bxl:grok.svg?color=white",
       "key_url": "https://console.x.ai/",
       "api_type": "xai",
@@ -87,6 +92,7 @@
     {
       "id": "dashscope",
       "label": "Qwen (DashScope)",
+      "group": "china",
       "logo_url": "https://cdn.simpleicons.org/alibabacloud",
       "key_url": "https://bailian.console.aliyun.com/",
       "api_type": "openai",
@@ -106,6 +112,7 @@
     {
       "id": "deepseek",
       "label": "DeepSeek",
+      "group": "china",
       "logo_url": "https://api.iconify.design/simple-icons:deepseek.svg?color=white",
       "key_url": "https://platform.deepseek.com/api_keys",
       "api_type": "openai",
@@ -122,6 +129,7 @@
     {
       "id": "minimax",
       "label": "MiniMax",
+      "group": "china",
       "logo_url": "https://cdn.simpleicons.org/minimax",
       "key_url": "https://platform.minimaxi.com/",
       "api_type": "openai",
@@ -144,6 +152,7 @@
     {
       "id": "moonshot",
       "label": "Kimi (Moonshot)",
+      "group": "china",
       "logo_url": "https://cdn.simpleicons.org/moonshotai",
       "key_url": "https://platform.moonshot.cn/console/api-keys",
       "api_type": "openai",
@@ -168,6 +177,7 @@
     {
       "id": "zhipuai",
       "label": "Zhipu GLM / Z.ai",
+      "group": "china",
       "logo_url": "https://github.com/zai-org.png",
       "key_url": "https://open.bigmodel.cn/usercenter/apikeys",
       "api_type": "openai",
@@ -194,6 +204,7 @@
     {
       "id": "kimi_code",
       "label": "Kimi Code",
+      "group": "china",
       "key_url": "https://www.kimi.com/code/console",
       "api_type": "openai",
       "base_url": "https://api.kimi.com/coding/v1",
@@ -217,6 +228,7 @@
     {
       "id": "bailian_plan",
       "label": "Bailian Plan",
+      "group": "china",
       "key_url": "https://bailian.console.aliyun.com/",
       "api_type": "openai",
       "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
@@ -247,6 +259,7 @@
     {
       "id": "tencent",
       "label": "Tencent Cloud",
+      "group": "china",
       "key_url": "https://console.cloud.tencent.com/tokenhub",
       "api_type": "openai",
       "base_url": "https://api.lkeap.cloud.tencent.com/plan/v3",
@@ -272,6 +285,7 @@
     {
       "id": "volcengine",
       "label": "Volcengine Ark",
+      "group": "china",
       "key_url": "https://console.volcengine.com/ark",
       "api_type": "openai",
       "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
@@ -297,6 +311,7 @@
     {
       "id": "stepfun",
       "label": "StepFun",
+      "group": "china",
       "key_url": "https://platform.stepfun.com/interface-key",
       "api_type": "openai",
       "base_url": "https://api.stepfun.com/step_plan/v1",
@@ -321,6 +336,7 @@
     {
       "id": "qianfan",
       "label": "Baidu Qianfan",
+      "group": "china",
       "key_url": "https://console.bce.baidu.com/qianfan/resource/token-plan",
       "api_type": "openai",
       "base_url": "https://qianfan.baidubce.com/v2/tokenplan/personal",
@@ -346,6 +362,7 @@
     {
       "id": "huaweicloud",
       "label": "Huawei Cloud MaaS",
+      "group": "china",
       "key_url": "https://console.huaweicloud.com/modelarts/?#/model-studio/authmanage",
       "api_type": "openai",
       "base_url": "https://api.modelarts-maas.com/plan/v2",
@@ -370,6 +387,7 @@
     {
       "id": "openrouter",
       "label": "OpenRouter",
+      "group": "relay",
       "logo_url": "https://cdn.simpleicons.org/openrouter",
       "key_url": "https://openrouter.ai/keys",
       "api_type": "openrouter",
@@ -382,6 +400,7 @@
     {
       "id": "opencode_go",
       "label": "OpenCode Go",
+      "group": "relay",
       "key_url": "https://opencode.ai/auth",
       "api_type": "openai",
       "base_url": "https://opencode.ai/zen/go/v1",
@@ -394,6 +413,7 @@
     {
       "id": "clinepass",
       "label": "ClinePass",
+      "group": "relay",
       "key_url": "https://app.cline.bot",
       "api_type": "openai",
       "base_url": "https://api.cline.bot/api/v1",
@@ -413,6 +433,7 @@
     {
       "id": "ollama_cloud",
       "label": "Ollama Cloud",
+      "group": "relay",
       "key_url": "https://ollama.com/settings/keys",
       "api_type": "openai",
       "base_url": "https://ollama.com/v1",
@@ -425,6 +446,7 @@
     {
       "id": "vllm",
       "label": "vLLM",
+      "group": "local",
       "logo_url": "https://github.com/vllm-project.png",
       "api_type": "openai",
       "base_url": "http://127.0.0.1:8000/v1",
@@ -439,6 +461,7 @@
     {
       "id": "sglang",
       "label": "SGLang",
+      "group": "local",
       "logo_url": "https://github.com/sgl-project.png",
       "api_type": "openai",
       "base_url": "http://127.0.0.1:30000/v1",
@@ -453,6 +476,7 @@
     {
       "id": "litellm_proxy",
       "label": "LiteLLM Proxy",
+      "group": "relay",
       "logo_url": "https://github.com/BerriAI.png",
       "api_type": "litellm_proxy",
       "env_keys": ["LITELLM_MASTER_KEY", "LITELLM_PROXY_API_KEY"],
@@ -465,6 +489,7 @@
     {
       "id": "ollama",
       "label": "Ollama",
+      "group": "local",
       "logo_url": "https://cdn.simpleicons.org/ollama",
       "api_type": "ollama",
       "env_keys": ["OLLAMA_BASE_URL"],
@@ -477,6 +502,7 @@
     {
       "id": "xiaomi_mimo",
       "label": "Xiaomi MiMo",
+      "group": "china",
       "logo_url": "https://cdn.simpleicons.org/xiaomi",
       "api_type": "openai",
       "base_url": "https://api.xiaomimimo.com/v1",
