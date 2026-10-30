@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "GitHub sync no longer gets stuck when both devices changed different files: auto-sync merges them. A real conflict on the same file now stops for review instead of silently dropping the local change."
+}

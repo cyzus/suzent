@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import difflib
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from suzent.config import get_data_dir
 from suzent.logger import get_logger
-from suzent.sync.models import (
-    SyncFileChange,
-    SyncPlan,
-    SyncProfile,
-)
+from suzent.sync.models import SyncPlan, SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
-from suzent.sync.provider import GitHubSyncProvider, git_remote_names
+from suzent.sync.planner import (
+    finalize_plan,
+    merge_plans,
+    overlapping_paths,
+    plan_incoming,
+    plan_outgoing,
+)
+from suzent.sync.profile_store import SyncProfileStore
+from suzent.sync.provider import GitHubSyncProvider, SyncConflictError
 from suzent.sync.quickstart import (
     DEFAULT_REPO_NAME,
     default_repo_path,
@@ -44,31 +47,21 @@ class GitHubSyncService:
         self.profiles_path = (
             profiles_path or get_data_dir() / "config" / "sync_profiles.json"
         )
+        self.profiles = SyncProfileStore(self.profiles_path)
         self.payload_builder = payload_builder or SyncPayloadBuilder()
         self._locks: dict[str, asyncio.Lock] = {}
 
     def list_profiles(self) -> list[SyncProfile]:
-        return list(self._load_profiles().values())
+        return self.profiles.list_all()
 
     def save_profile(self, profile: SyncProfile) -> SyncProfile:
-        profiles = self._load_profiles()
-        profiles[profile.id] = profile
-        self._save_profiles(profiles)
-        return profile
+        return self.profiles.save(profile)
 
     def create_profile(self, profile: SyncProfile) -> SyncProfile:
         return self.save_profile(profile)
 
     def get_profile(self, profile_id: str | None = None) -> SyncProfile:
-        profiles = self._load_profiles()
-        if profile_id:
-            try:
-                return profiles[profile_id]
-            except KeyError as exc:
-                raise ValueError(f"Unknown sync profile: {profile_id}") from exc
-        if not profiles:
-            raise ValueError("No sync profile configured")
-        return next(iter(profiles.values()))
+        return self.profiles.get(profile_id)
 
     def status(self, profile_id: str | None = None) -> dict:
         try:
@@ -143,18 +136,18 @@ class GitHubSyncService:
             payload_dir = repo_path / PAYLOAD_DIR_NAME
             current_hashes = self.payload_builder.content_hashes(payload_dir)
             preview_hashes = self.payload_builder.preview_content_hashes(payload_dir)
-            plan = _plan_from_hashes(operation, current_hashes, preview_hashes)
+            plan = plan_outgoing(operation, current_hashes, preview_hashes)
             if operation == "auto":
                 if refresh_remote:
                     provider.refresh_remote()
                 incoming = _incoming_tracking_plan(provider, profile, "auto")
-                plan = _merge_plans("auto", [plan, incoming])
+                plan = merge_plans("auto", [plan, incoming])
             return plan
 
         provider.refresh_remote()
         remote_ref = f"{profile.remote}/{profile.branch}"
         diff = provider.payload_diff_name_status("HEAD", remote_ref)
-        return _plan_from_name_status("pull", diff)
+        return plan_incoming("pull", diff)
 
     async def preview_sync_plan_safe(
         self,
@@ -365,10 +358,12 @@ class GitHubSyncService:
                 profile.id,
                 refresh_remote=False,
             )
-            if _has_mixed_file_changes(plan):
+            overlapping = overlapping_paths(plan)
+            if overlapping:
                 plan.requires_confirmation = True
                 plan.warnings.append(
-                    "Incoming and outgoing files must be resolved before auto-sync."
+                    "Changed on both devices, resolve before auto-sync: "
+                    + ", ".join(overlapping)
                 )
                 return {
                     "success": False,
@@ -391,6 +386,30 @@ class GitHubSyncService:
                 )
                 await asyncio.to_thread(_reload_runtime)
                 git_output = "Pulled incoming portable files."
+            elif directions == {"incoming", "outgoing"}:
+                # Each side changed different files. HEAD is the last synced
+                # state, so commit the local side, rebase it onto the remote
+                # (no shared files, so no conflicts), apply the merged payload
+                # locally and push it.
+                try:
+                    await asyncio.to_thread(
+                        self._merge_disjoint_changes, provider, repo_path
+                    )
+                except SyncConflictError:
+                    plan.requires_confirmation = True
+                    plan.warnings.append(
+                        "Local and remote changes conflict; review before syncing."
+                    )
+                    return {
+                        "success": False,
+                        "blocked_review_required": True,
+                        "plan": plan.model_dump(mode="json"),
+                    }
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local, payload_dir
+                )
+                await asyncio.to_thread(_reload_runtime)
+                git_output = await asyncio.to_thread(provider.push_payload)
             elif directions == {"outgoing"}:
                 await asyncio.to_thread(provider.pull_ff_only)
                 await asyncio.to_thread(self.payload_builder.build, repo_path)
@@ -413,123 +432,33 @@ class GitHubSyncService:
                 "restored": restored,
             }
 
+    def _merge_disjoint_changes(
+        self, provider: GitHubSyncProvider, repo_path: Path
+    ) -> None:
+        """Commit local payload changes and rebase them onto the remote.
+
+        On conflict the payload is reset to the last synced commit, leaving the
+        live files untouched, and SyncConflictError is raised.
+        """
+        base = provider.head()
+        self.payload_builder.build(repo_path)
+        forbidden = self.payload_builder.validate_no_forbidden_paths(
+            repo_path / PAYLOAD_DIR_NAME
+        )
+        if forbidden:
+            provider.reset_hard(base)
+            raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
+        provider.commit_payload()
+        try:
+            provider.pull_ff_only()
+        except SyncConflictError:
+            provider.reset_hard(base)
+            raise
+
     def _lock(self, profile: SyncProfile) -> asyncio.Lock:
         if profile.id not in self._locks:
             self._locks[profile.id] = asyncio.Lock()
         return self._locks[profile.id]
-
-    def _load_profiles(self) -> dict[str, SyncProfile]:
-        if not self.profiles_path.exists():
-            return {}
-        data = json.loads(self.profiles_path.read_text(encoding="utf-8"))
-        profiles = data.get("profiles", [])
-        loaded = {item["id"]: SyncProfile.model_validate(item) for item in profiles}
-        if self._heal_profiles(loaded):
-            self._save_profiles(loaded)
-        return loaded
-
-    def _heal_profiles(self, profiles: dict[str, SyncProfile]) -> bool:
-        """Repair profiles that can no longer address their repo.
-
-        Runs repo_path healing first: a profile pointing at a missing directory
-        has no remotes to inspect, so remote healing would be meaningless until
-        the path is corrected. Returns True if any profile was changed.
-        """
-        healed_paths = self._heal_repo_paths(profiles)
-        healed_remotes = self._heal_remotes(profiles)
-        return healed_paths or healed_remotes
-
-    def _heal_repo_paths(self, profiles: dict[str, SyncProfile]) -> bool:
-        """Self-heal profiles whose repo_path no longer points at a git repo.
-
-        A stray path (e.g. a pytest temp dir that leaked into a real profile, or
-        a repo moved/deleted) breaks every sync op with "not a Git repository".
-        If the canonical <data_dir>/github-sync is a valid repo, redirect there
-        and persist. Returns True if any profile was changed.
-        """
-        from suzent.config import get_data_dir
-
-        canonical = get_data_dir() / "github-sync"
-        canonical_ok = (canonical / ".git").is_dir()
-        changed = False
-        for prof in profiles.values():
-            if (Path(prof.repo_path) / ".git").is_dir():
-                continue  # healthy
-            if canonical_ok and Path(prof.repo_path) != canonical:
-                logger.warning(
-                    "Sync profile %s had a stale repo_path (%s); redirecting to %s",
-                    prof.id,
-                    prof.repo_path,
-                    canonical,
-                )
-                prof.repo_path = str(canonical)
-                changed = True
-            else:
-                logger.warning(
-                    "Sync profile %s points at a missing repo (%s) and no "
-                    "canonical repo exists — sync will fail until reconfigured.",
-                    prof.id,
-                    prof.repo_path,
-                )
-        return changed
-
-    def _heal_remotes(self, profiles: dict[str, SyncProfile]) -> bool:
-        """Self-heal profiles whose ``remote`` names a remote the repo lacks.
-
-        Every sync op starts with ``git remote get-url <remote>``, so a profile
-        naming a remote that was never created (e.g. a leaked test profile that
-        set remote="upstream") fails with "No such remote" and no amount of
-        retrying helps. Repoint at the repo's real remote, but *only* when there
-        is exactly one — then it is the unambiguous sync destination.
-
-        A repo with several remotes is left alone even when one is called
-        "origin": the conventional name does not establish that it is the
-        intended destination (``origin`` is often a fork while another remote is
-        the real target), and picking it would silently push the user's brain to
-        the wrong GitHub repository. Being stuck with a clear "No such remote"
-        error is recoverable; a sync to the wrong repo is not.
-        """
-        changed = False
-        for prof in profiles.values():
-            repo_path = Path(prof.repo_path)
-            if not (repo_path / ".git").is_dir():
-                continue  # already reported by _heal_repo_paths
-            remotes = git_remote_names(repo_path)
-            if not remotes or prof.remote in remotes:
-                continue
-            if len(remotes) != 1:
-                logger.warning(
-                    "Sync profile %s names remote %r which %s does not have, "
-                    "and its remotes (%s) are ambiguous — sync will fail until "
-                    "reconfigured.",
-                    prof.id,
-                    prof.remote,
-                    repo_path,
-                    ", ".join(remotes),
-                )
-                continue
-            replacement = remotes[0]
-            logger.warning(
-                "Sync profile %s named missing remote %r; repointing to %r",
-                prof.id,
-                prof.remote,
-                replacement,
-            )
-            prof.remote = replacement
-            changed = True
-        return changed
-
-    def _save_profiles(self, profiles: dict[str, SyncProfile]) -> None:
-        self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "profiles": [
-                profile.model_dump(mode="json")
-                for profile in sorted(profiles.values(), key=lambda p: p.id)
-            ]
-        }
-        self.profiles_path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
-        )
 
 
 def _reload_runtime() -> None:
@@ -587,59 +516,6 @@ def _unified_file_diff(path: str, before: str | None, after: str | None) -> str:
     return _trim_diff_preview("\n".join(patch))
 
 
-def _plan_from_hashes(
-    operation: str,
-    current_hashes: dict[str, str],
-    preview_hashes: dict[str, str],
-) -> SyncPlan:
-    changes: list[SyncFileChange] = []
-    for path in sorted(current_hashes.keys() | preview_hashes.keys()):
-        before = current_hashes.get(path)
-        after = preview_hashes.get(path)
-        if before == after:
-            continue
-        if before is None:
-            change_type = "added"
-        elif after is None:
-            change_type = "deleted"
-        else:
-            change_type = "modified"
-        changes.append(_make_change(path, change_type, "outgoing"))
-    return _finalize_plan(operation, changes)
-
-
-def _plan_from_name_status(operation: str, diff_output: str) -> SyncPlan:
-    changes: list[SyncFileChange] = []
-    for line in diff_output.splitlines():
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        if len(parts) < 2:
-            continue
-        status = parts[0]
-        path = parts[-1].replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
-        changes.append(
-            _make_change(path, _change_type_from_name_status(status), "incoming")
-        )
-    return _finalize_plan(operation, changes)
-
-
-def _merge_plans(operation: str, plans: list[SyncPlan]) -> SyncPlan:
-    changes: list[SyncFileChange] = []
-    warnings: list[str] = []
-    for plan in plans:
-        changes.extend(plan.files)
-        warnings.extend(plan.warnings)
-    merged = _finalize_plan(operation, changes)
-    merged.warnings = list(dict.fromkeys([*merged.warnings, *warnings]))
-    return merged
-
-
-def _has_mixed_file_changes(plan: SyncPlan) -> bool:
-    directions = {change.direction for change in plan.files}
-    return directions == {"incoming", "outgoing"}
-
-
 def _incoming_tracking_plan(
     provider: GitHubSyncProvider,
     profile: SyncProfile,
@@ -647,14 +523,14 @@ def _incoming_tracking_plan(
 ) -> SyncPlan:
     remote_ref = f"{profile.remote}/{profile.branch}"
     try:
-        plan = _plan_from_name_status(
+        plan = plan_incoming(
             operation,
             provider.payload_diff_name_status("HEAD", remote_ref),
         )
         return plan
     except Exception as exc:
         logger.debug("Unable to preview incoming sync changes: %s", exc)
-        return _finalize_plan(operation, [])
+        return finalize_plan(operation, [])
 
 
 def _trim_diff_preview(patch: str) -> str:
@@ -666,75 +542,3 @@ def _trim_diff_preview(patch: str) -> str:
     if len(preview) > 12000:
         preview = preview[:12000] + "\n... diff truncated ..."
     return preview
-
-
-def _change_type_from_name_status(status: str) -> str:
-    if status.startswith("D"):
-        return "deleted"
-    if status.startswith("A"):
-        return "added"
-    return "modified"
-
-
-def _make_change(path: str, change_type: str, direction: str) -> SyncFileChange:
-    category = _sync_category(path)
-    risk = _risk_for_change(path, category, change_type)
-    return SyncFileChange(
-        path=path,
-        category=category,
-        change_type=change_type,
-        risk=risk,
-        direction=direction,
-    )
-
-
-def _sync_category(path: str) -> str:
-    if path.startswith("config/"):
-        return "config"
-    if path.startswith("skills/"):
-        return "skills"
-    if path.startswith("memory/"):
-        return "memory"
-    return "other"
-
-
-def _risk_for_change(path: str, category: str, change_type: str) -> str:
-    if category == "memory" and change_type == "deleted":
-        return "high"
-    if category == "memory" and path in {
-        "memory/MEMORY.md",
-        "memory/persona.md",
-        "memory/user.md",
-    }:
-        return "high"
-    if change_type == "deleted":
-        return "medium"
-    return "low"
-
-
-def _finalize_plan(operation: str, changes: list[SyncFileChange]) -> SyncPlan:
-    summary = {"added": 0, "modified": 0, "deleted": 0, "high_risk": 0}
-    for change in changes:
-        summary[change.change_type] += 1
-        if change.risk == "high":
-            summary["high_risk"] += 1
-
-    memory_deletes = [
-        change
-        for change in changes
-        if change.category == "memory" and change.change_type == "deleted"
-    ]
-    warnings: list[str] = []
-    if memory_deletes:
-        warnings.append(f"{len(memory_deletes)} memory file(s) would be deleted.")
-    if len(memory_deletes) >= 5:
-        warnings.append("Large memory deletion detected; review before syncing.")
-    destructive = bool(memory_deletes or any(c.risk == "high" for c in changes))
-    return SyncPlan(
-        operation=operation,
-        files=changes,
-        summary=summary,
-        destructive=destructive,
-        requires_confirmation=destructive,
-        warnings=warnings,
-    )
