@@ -137,6 +137,22 @@ export interface RecentMemoryChanges {
   confirmed: { content: string; count: number; last: string }[];
 }
 
+/** What one chat did with memory: the latest turn's recall and the facts it saved. */
+export interface ChatMemoryActivity {
+  recalled: {
+    items: { id: string; content: string; category?: string | null; kind?: string | null }[];
+    updated_at: string | null;
+  } | null;
+  saved: {
+    date: string;
+    time: string;
+    category: string;
+    kind: string | null;
+    content: string;
+    revision: boolean;
+  }[];
+}
+
 export interface SessionStateResponse {
   session_id: string;
   state: Record<string, unknown>;

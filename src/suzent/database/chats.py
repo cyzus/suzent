@@ -33,6 +33,7 @@ from .models import (
     ChatStatusModel,
     ChatSummaryModel,
     InputSuggestionModel,
+    MemoryRecallModel,
     ProjectModel,
     _postprocess_metrics,
     messages_search_filter,
@@ -1192,7 +1193,7 @@ class ChatOperationsMixin:
         return True
 
     def _delete_chat_rows(self, session: Session, chat_ids: List[str]) -> None:
-        """Delete chats with their suggestions, status and search rows, uncommitted."""
+        """Delete chats with their suggestions, status, recall and search rows, uncommitted."""
         for chat_id in chat_ids:
             chat = session.get(ChatModel, chat_id)
             if chat is not None:
@@ -1205,6 +1206,11 @@ class ChatOperationsMixin:
         )
         session.exec(
             delete(ChatStatusModel).where(col(ChatStatusModel.chat_id).in_(chat_ids))
+        )
+        session.exec(
+            delete(MemoryRecallModel).where(
+                col(MemoryRecallModel.chat_id).in_(chat_ids)
+            )
         )
 
     def _reindex_in_session(self, session, chat_id: str, messages) -> None:

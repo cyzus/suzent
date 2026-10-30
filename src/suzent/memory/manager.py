@@ -395,6 +395,28 @@ class MemoryManager:
         Returns:
             Formatted string with relevant memories, or empty string if none found
         """
+        memories = await self.find_relevant_memories(
+            query=query,
+            chat_id=chat_id,
+            user_id=user_id,
+            limit=limit,
+            use_embedding=use_embedding,
+        )
+        if not memories:
+            return ""
+        return memory_context.format_retrieved_memories_section(
+            memories, tag_important=True
+        )
+
+    async def find_relevant_memories(
+        self,
+        query: str,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = DEFAULT_MEMORY_RETRIEVAL_LIMIT,
+        use_embedding: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """The memories :meth:`retrieve_relevant_memories` would inject, unformatted."""
         try:
             import time
 
@@ -406,7 +428,7 @@ class MemoryManager:
                 f"[retrieve_relevant_memories] get_memory_count={count} elapsed={time.monotonic() - t0:.3f}s"
             )
             if count == 0:
-                return ""
+                return []
 
             if use_embedding:
                 memories = await self.search_memories(
@@ -422,17 +444,15 @@ class MemoryManager:
                 )
 
             if not memories:
-                return ""
+                return []
 
             self._log_recalls(memories)
             logger.info(f"Retrieved {len(memories)} relevant memories for query")
-            return memory_context.format_retrieved_memories_section(
-                memories, tag_important=True
-            )
+            return memories
 
         except Exception as e:
             logger.error(f"Failed to retrieve relevant memories: {e}")
-            return ""
+            return []
 
     # ===== Archival Memory Search (Agent-facing) =====
 

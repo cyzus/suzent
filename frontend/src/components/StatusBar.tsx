@@ -368,7 +368,7 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
   const pending = status?.pending_count ?? 0;
   const failed = !!error || status?.last_result?.advanced === false;
   const running = extracting || !!status?.running;
-  // Idle memory is shown in the overview's environment section, not the header.
+  // Idle memory is shown in the overview's memory section, not the header.
   if (!running && !failed && pending === 0 && !open) return null;
 
   const label = extracting
