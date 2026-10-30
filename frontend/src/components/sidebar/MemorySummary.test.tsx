@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryCount, MemoryDetails, MemoryPreview } from './MemorySummary';
-import type { MemorySection } from '../../hooks/useMemorySection';
+import { savedFactKey, type MemorySection } from '../../hooks/useMemorySection';
 import { tForLocale } from '../../i18n';
 
 vi.mock('../../hooks/useChatStore', () => ({
@@ -21,6 +21,7 @@ vi.mock('../../i18n', async (importOriginal) => ({
 const used: MemorySection = {
   enabled: true,
   extracting: false,
+  fresh: new Set(),
   activity: {
     recalled: {
       items: [
@@ -61,10 +62,36 @@ describe('MemorySummary', () => {
     expect(html).toContain('Open memory');
   });
 
+  it('keeps only the newest saved facts and counts the rest', () => {
+    const fact = used.activity!.saved[0];
+    const busy: MemorySection = {
+      ...used,
+      activity: {
+        ...used.activity!,
+        saved: [1, 2, 3, 4, 5].map((n) => ({ ...fact, content: `Fact ${n}`, revision: false })),
+      },
+    };
+    const html = renderToStaticMarkup(<MemoryDetails section={busy} />);
+    expect(html).toContain('Saved recently');
+    expect(html).toContain('Fact 3');
+    expect(html).not.toContain('Fact 4');
+    expect(html).toContain('5 saved in this chat');
+  });
+
+  it('marks facts saved since the chat was opened', () => {
+    const fact = used.activity!.saved[0];
+    const html = renderToStaticMarkup(
+      <MemoryDetails section={{ ...used, fresh: new Set([savedFactKey(fact)]) }} />
+    );
+    expect(html).toContain('>New<');
+    expect(html).toContain('bg-brutal-blue');
+  });
+
   it('says when a turn used nothing and the chat is still saving', () => {
     const quiet: MemorySection = {
       enabled: true,
       extracting: true,
+      fresh: new Set(),
       activity: { recalled: { items: [], updated_at: null }, saved: [] },
     };
     expect(renderToStaticMarkup(<MemoryCount section={quiet} />)).toBe('');
