@@ -562,11 +562,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     2
   );
   const contextStats = useContextUsageStats(currentChatId);
-  const emptySections: Partial<Record<TabId, boolean>> = {
-    plan: !isFocal && chatTasks.length === 0,
-    agents: backgroundTasks.length === 0,
-    context: !contextStats.known && contextStats.measuredPercent == null,
-  };
   const overviewContent: Partial<
     Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
   > = {
@@ -584,6 +579,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 statuses={chatTasks.map((task) => task.status)}
                 caption={currentTask?.title ?? goal?.objective}
               />
+            ) : goalMatchesChat && goal?.objective ? (
+              <div className="mt-1 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                {goal.objective}
+              </div>
             ) : undefined,
           body: (
             <OverviewList
@@ -674,14 +673,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       fullView: false,
     },
   };
+  // Sections stay listed even when empty: the overview is the only way into their full panels.
   const overviewSections: OverviewSection[] = tabs
-    .filter(
-      (tab) =>
-        (!tab.pinned || tab.id === 'plan') &&
-        tab.hasContent &&
-        !isTabLocked(tab.id) &&
-        !emptySections[tab.id]
-    )
+    .filter((tab) => (!tab.pinned || tab.id === 'plan') && tab.hasContent && !isTabLocked(tab.id))
     .map((tab) => ({
       id: tab.id,
       icon: tab.icon,
