@@ -4,23 +4,29 @@ import android.animation.ValueAnimator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -29,9 +35,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -148,7 +156,15 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
     }
     val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
     Column(Modifier.fillMaxWidth()) {
-        SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
+        // Desktop's collapsed current header: a running tool's surface, or the plain moving ruler before any tool.
+        val runningTool = parts.lastOrNull { it.type == "tool" && it.state == "running" && it.output.isEmpty() }
+        val headerSurface = when {
+            !live || !current || expanded || waiting || parts.lastOrNull()?.type == "reasoning" -> null
+            runningTool != null -> activityRunningSurface(runningTool.toolName)
+            parts.none { it.type == "tool" } -> "mono"
+            else -> null
+        }
+        SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
             parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
             Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
             Text(stringResource(R.string.activity_steps, activityStepCount(parts)), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = accent)
@@ -176,6 +192,8 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
     val ink = MaterialTheme.colorScheme.onSurface
     val status = stringResource(if (failed) R.string.activity_failed else if (pending) R.string.approval_required else if (active) R.string.activity_running else R.string.activity_completed)
     val dot = color.copy(alpha = if (active || pending || failed) 1f else .35f)
+    val pulse = if (active) rememberInfiniteTransition(label = "rail dot").animateFloat(1f, 0f,
+        infiniteRepeatable(tween(600, easing = CubicBezierEasing(.42f, 0f, .58f, 1f)), RepeatMode.Reverse), label = "rail dot pulse").value else 1f
     // Drawn over the row's real (animating) height so neighbouring rows join into one rail without intrinsic measurement.
     Row(Modifier.fillMaxWidth().drawBehind {
         val x = 5.dp.toPx()
@@ -184,12 +202,16 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
         val line = ink.copy(alpha = .13f)
         if (!first) drawLine(line, Offset(x, 0f), Offset(x, center), stroke)
         if (!last) drawLine(line, Offset(x, center), Offset(x, size.height), stroke)
-        drawCircle(dot, 3.dp.toPx(), Offset(x, center))
+        // Desktop's activity-rail-dot-pulse: fades to .45 and shrinks to .88 and back.
+        drawCircle(dot.copy(alpha = dot.alpha * (.45f + .55f * pulse)), 3.dp.toPx() * (.88f + .12f * pulse), Offset(x, center))
     }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
-            SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp).semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            val surface = if (part.type == "tool" && active && part.output.isEmpty()) activityRunningSurface(part.toolName) else null
+            SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
+                .then(if (surface != null) Modifier.border(2.dp, ink) else Modifier).runningSurface(surface, ink)
+                .semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                 ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -285,5 +307,50 @@ private fun ActivityToolIcon(part: MessagePart, running: Boolean, color: Color) 
         if (pose.sweepAlpha > 0) Box(Modifier.align(Alignment.Center).padding(horizontal = 1.dp).fillMaxWidth().height(1.5.dp)
             .graphicsLayer { translationY = (pose.sweepY * unit).dp.toPx(); alpha = pose.sweepAlpha.toFloat() }
             .background(color, RoundedCornerShape(50)))
+    }
+}
+
+/** Desktop's brutal-running-* background: a sliding grid (ruler ticks for "mono", dots for "dots") under a sweeping wave. */
+@Composable
+private fun Modifier.runningSurface(kind: String?, ink: Color): Modifier {
+    if (kind == null) return this
+    val reduced = !ValueAnimator.areAnimatorsEnabled()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var seconds by remember { mutableDoubleStateOf(0.0) }
+    LaunchedEffect(reduced, lifecycle) {
+        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var previous = 0L
+            while (true) withFrameNanos { now ->
+                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                previous = now
+            }
+        }
+    }
+    return clipToBounds().drawBehind {
+        val frame = runningSurfaceFrame(kind, seconds)
+        val px = 1.dp.toPx()
+        val shift = (frame.gridShift % 6).toFloat() * px
+        when (kind) {
+            "mono" -> {
+                var x = shift - 6 * px
+                while (x < size.width) { drawRect(ink.copy(alpha = .05f), Offset(x, 0f), Size(px, size.height)); x += 6 * px }
+            }
+            "dots" -> {
+                var x = shift - 3 * px
+                while (x < size.width) {
+                    var y = 3 * px
+                    while (y < size.height) { drawCircle(ink.copy(alpha = .09f), px, Offset(x, y)); y += 6 * px }
+                    x += 6 * px
+                }
+            }
+        }
+        // The wave is twice the block's width and tiles, so its peak crosses the block every other half cycle.
+        val span = size.width * 2
+        val peak = frame.wave.toFloat() * span
+        val stops = frame.stops.zip(frame.alphas).map { (stop, alpha) -> stop.toFloat() to ink.copy(alpha = alpha.toFloat()) }.toTypedArray()
+        for (center in listOf(peak, peak - span)) {
+            val start = center - size.width
+            drawRect(Brush.horizontalGradient(*stops, startX = start, endX = start + span), Offset(start, 0f), Size(span, size.height))
+        }
     }
 }

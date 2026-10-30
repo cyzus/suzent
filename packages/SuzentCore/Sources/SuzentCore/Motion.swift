@@ -98,3 +98,19 @@ public func toolIconPose(_ kind: String, seconds: Double) -> ToolIconPose {
     }
     return pose
 }
+
+/// One frame of desktop's brutal-running-* surface: where the wave's peak is (fraction of twice the width) and how far the grid has slid (px).
+public struct RunningSurfaceFrame: Sendable, Equatable {
+    public let wave: Double, gridShift: Double, stops: [Double], alphas: [Double]
+}
+
+/// Desktop's brutal-running-{mono,dots,scan} backgrounds, with the lighter inline alphas activity-turn-tool uses.
+public func runningSurfaceFrame(_ kind: String, seconds: Double) -> RunningSurfaceFrame {
+    let duration = kind == "scan" ? 1.2 : kind == "dots" ? 1.4 : 1.35
+    let u = cycle(seconds, duration)
+    switch kind {
+    case "scan": return RunningSurfaceFrame(wave: u, gridShift: 0, stops: [0, 0.42, 0.48, 0.5, 0.52, 0.58, 1], alphas: [0, 0, 0.09, 0.28, 0.09, 0, 0])
+    case "dots": return RunningSurfaceFrame(wave: u, gridShift: 12 * u, stops: [0, 0.35, 0.5, 0.65, 1], alphas: [0, 0.06, 0.13, 0.06, 0])
+    default: return RunningSurfaceFrame(wave: u, gridShift: 12 * u, stops: [0, 0.35, 0.5, 0.65, 1], alphas: [0, 0.05, 0.12, 0.05, 0])
+    }
+}

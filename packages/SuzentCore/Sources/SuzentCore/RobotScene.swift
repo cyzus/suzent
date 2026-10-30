@@ -217,7 +217,7 @@ public enum RobotScene {
             let p = cycle(t, 2)
             let sweep = keyframe(p, [0, 0.1, 0.9, 1], [0, 1, 1, 0], .linear)
             let left = keyframe(p, [0, 1], [-slot, slot], .linear)
-            let strips = 8.0
+            let strips = 16.0
             for index in 0..<Int(strips) {
                 let x = left + Double(index) * slot / strips
                 let glow = 0.5 * (1 - abs((Double(index) + 0.5) / strips * 2 - 1))

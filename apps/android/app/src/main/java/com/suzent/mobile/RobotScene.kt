@@ -249,7 +249,7 @@ internal object RobotScene {
                 val p = cycle(t, 2.0)
                 val sweep = keyframe(p, listOf(0.0, .1, .9, 1.0), listOf(0.0, 1.0, 1.0, 0.0), Curve.linear)
                 val left = keyframe(p, listOf(0.0, 1.0), listOf(-SLOT, SLOT), Curve.linear)
-                val strips = 8
+                val strips = 16
                 for (index in 0 until strips) {
                     val x = left + index * SLOT / strips
                     val glow = .5 * (1 - kotlin.math.abs((index + .5) / strips * 2 - 1))

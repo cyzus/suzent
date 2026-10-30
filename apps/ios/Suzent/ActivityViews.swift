@@ -89,6 +89,12 @@ struct ActivityRail: View {
     private var running: Bool { live && current && parts.contains { $0.state == "running" || $0.type == "reasoning" } }
     private var failed: Bool { parts.contains(where: activityFailed) }
     private var accent: Color { waiting ? .orange : failed ? Color.suzentDanger : running ? Color.suzentLink : Color.suzentMuted }
+    /// Desktop's collapsed current header: a running tool's surface, or the plain moving ruler before any tool.
+    private var headerSurface: String? {
+        guard live, current, !expanded, !waiting, parts.last?.type != "reasoning" else { return nil }
+        if let tool = parts.last(where: { $0.type == "tool" && $0.state == "running" && ($0.output ?? "").isEmpty }) { return activityRunningSurface(tool.toolName ?? "") }
+        return parts.contains { $0.type == "tool" } ? nil : "mono"
+    }
     private var totals: String {
         activitySummary(parts, live: live).map { entry in
             let format: String
@@ -130,6 +136,7 @@ struct ActivityRail: View {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).rotationEffect(.degrees(expanded ? 90 : 0))
                 }.suzentFont(PresentationTokens.typeLabel, weight: .medium).foregroundStyle(accent)
                     .padding(.horizontal, 2).frame(minHeight: 44).contentShape(Rectangle())
+                    .background { RunningSurface(kind: headerSurface) }
             }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.1)).frame(height: 1) }
             ActivityReveal(expanded: expanded) {
@@ -156,6 +163,7 @@ struct ToolActivityBlock: View {
     private var pending: Bool { part.state == "approval-requested" && (part.output ?? "").isEmpty }
     private var active: Bool { !failed && !pending && live && current && (part.state == "running" || (last && part.type == "reasoning")) }
     private var color: Color { failed ? Color.suzentDanger : pending ? .orange : active ? Color.suzentLink : Color.suzentMuted }
+    private var surface: String? { part.type == "tool" && active && (part.output ?? "").isEmpty ? activityRunningSurface(part.toolName ?? "") : nil }
     private var status: String { failed ? String(localized: "Failed") : pending ? String(localized: "Approval required") : active ? String(localized: "Running") : String(localized: "Completed") }
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -179,6 +187,8 @@ struct ToolActivityBlock: View {
                         }
                         Image(systemName: "chevron.right").font(.system(size: 9)).rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Color.suzentMuted)
                     }.padding(.horizontal, 8).frame(minHeight: 46).contentShape(Rectangle())
+                        .background { RunningSurface(kind: surface) }
+                        .overlay { if surface != nil { Rectangle().strokeBorder(Color.suzentText, lineWidth: 2) } }
                 }.buttonStyle(.plain).accessibilityValue(Text(status))
                 if !expanded && failed {
                     Text(String(activityDetail(part.output, output: true).prefix(180))).suzentFont(PresentationTokens.typeMeta, design: .monospaced)
@@ -201,8 +211,13 @@ struct ToolActivityBlock: View {
                         if !first { path.move(to: CGPoint(x: 5, y: 0)); path.addLine(to: CGPoint(x: 5, y: center)) }
                         if !last { path.move(to: CGPoint(x: 5, y: center)); path.addLine(to: CGPoint(x: 5, y: proxy.size.height)) }
                     }.stroke(Color.suzentText.opacity(0.13), lineWidth: 1)
-                    Circle().fill(color.opacity(active || pending || failed ? 1 : 0.35)).frame(width: 6, height: 6)
-                        .position(x: 5, y: center)
+                    // Desktop's activity-rail-dot-pulse: fades to .45 and shrinks to .88 and back.
+                    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active || reduceMotion)) { timeline in
+                        let pulse = active && !reduceMotion ? keyframe(cycle(timeline.date.timeIntervalSinceReferenceDate, 1.2), [0, 0.5, 1], [1, 0, 1], .easeInOut) : 1
+                        Circle().fill(color.opacity((active || pending || failed ? 1 : 0.35) * (0.45 + 0.55 * pulse))).frame(width: 6, height: 6)
+                            .scaleEffect(0.88 + 0.12 * pulse)
+                            .position(x: 5, y: center)
+                    }
                 }.accessibilityHidden(true)
             }
     }
@@ -270,6 +285,47 @@ struct ActivityToolIcon: View {
                     }
                 }
             }.accessibilityHidden(true)
+        }
+    }
+}
+
+/// Desktop's brutal-running-* background: a sliding grid (ruler ticks for "mono", dots for "dots") under a sweeping wave.
+struct RunningSurface: View {
+    let kind: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        if let kind {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+                Canvas { context, size in
+                    let frame = runningSurfaceFrame(kind, seconds: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
+                    let ink = Color.suzentText
+                    let shift = frame.gridShift.truncatingRemainder(dividingBy: 6)
+                    if kind == "mono" {
+                        for x in stride(from: shift - 6, to: size.width, by: 6) {
+                            context.fill(Path(CGRect(x: x, y: 0, width: 1, height: size.height)), with: .color(ink.opacity(0.05)))
+                        }
+                    } else if kind == "dots" {
+                        for x in stride(from: shift - 3, to: size.width, by: 6) {
+                            for y in stride(from: 3.0, to: size.height, by: 6) {
+                                context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)), with: .color(ink.opacity(0.09)))
+                            }
+                        }
+                    }
+                    // The wave is twice the block's width and tiles, so its peak crosses the block every other half cycle.
+                    let span = size.width * 2
+                    let peak = frame.wave * span
+                    let gradient = Gradient(stops: zip(frame.stops, frame.alphas).map { .init(color: ink.opacity($1), location: $0) })
+                    for center in [peak, peak - span] {
+                        let start = center - size.width
+                        context.fill(Path(CGRect(x: start, y: 0, width: span, height: size.height)),
+                                     with: .linearGradient(gradient, startPoint: CGPoint(x: start, y: 0), endPoint: CGPoint(x: start + span, y: 0)))
+                    }
+                }
+            }
+            .clipped()
+            .accessibilityHidden(true)
         }
     }
 }

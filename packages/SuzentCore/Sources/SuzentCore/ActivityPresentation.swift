@@ -236,3 +236,17 @@ public func activityToolAnimation(_ toolName: String, approval: String? = nil, r
     default: return fallbackToolAnimations.first { $0.keys.contains(where: name.contains) }?.kind ?? "terminal"
     }
 }
+
+/// Desktop's pickToolRunningSurfaceClass: the moving background a running tool block wears ("scan", "dots" or "mono").
+public func activityRunningSurface(_ toolName: String) -> String {
+    let name = canonicalActivityTool(toolName)
+    switch name {
+    case "glob_search", "grep_search", "web_search", "memory_search", "session_search", "search_tools", "analyze_image", "analyze_visual", "list_tasks", "agent_list", "agent_read", "check_video_status": return "scan"
+    case "read_file", "write_file", "edit_file", "webpage_fetch", "browser_action", "render_ui", "ask_question", "generate_image", "edit_image", "generate_video", "speak", "social_message", "create_tasks", "update_task", "manage_goal", "agent_send", "agent_dispatch": return "dots"
+    case "run_command", "start_command", "check_command", "stop_command", "skill_execute", "schedule_cron", "agent", "agent_stop": return "mono"
+    default:
+        if ["search", "grep", "glob", "memory", "session", "vision", "analyze"].contains(where: name.contains) { return "scan" }
+        if ["read", "write", "edit", "file", "fetch", "browser", "image", "video", "speak", "message"].contains(where: name.contains) { return "dots" }
+        return "mono"
+    }
+}

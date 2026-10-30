@@ -202,3 +202,18 @@ fun activityToolAnimation(toolName: String, approval: String? = null, running: B
         }
     }
 }
+
+/** Desktop's pickToolRunningSurfaceClass: the moving background a running tool block wears ("scan", "dots" or "mono"). */
+fun activityRunningSurface(toolName: String): String {
+    val name = canonicalActivityTool(toolName)
+    return when (name) {
+        "glob_search", "grep_search", "web_search", "memory_search", "session_search", "search_tools", "analyze_image", "analyze_visual", "list_tasks", "agent_list", "agent_read", "check_video_status" -> "scan"
+        "read_file", "write_file", "edit_file", "webpage_fetch", "browser_action", "render_ui", "ask_question", "generate_image", "edit_image", "generate_video", "speak", "social_message", "create_tasks", "update_task", "manage_goal", "agent_send", "agent_dispatch" -> "dots"
+        "run_command", "start_command", "check_command", "stop_command", "skill_execute", "schedule_cron", "agent", "agent_stop" -> "mono"
+        else -> when {
+            listOf("search", "grep", "glob", "memory", "session", "vision", "analyze").any { it in name } -> "scan"
+            listOf("read", "write", "edit", "file", "fetch", "browser", "image", "video", "speak", "message").any { it in name } -> "dots"
+            else -> "mono"
+        }
+    }
+}

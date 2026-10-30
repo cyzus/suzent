@@ -91,3 +91,17 @@ internal fun toolIconPose(kind: String, seconds: Double): ToolIconPose {
         else -> ToolIconPose()
     }
 }
+
+/** One frame of desktop's brutal-running-* surface: where the wave's peak is (fraction of twice the width) and how far the grid has slid (px). */
+internal data class RunningSurfaceFrame(val wave: Double, val gridShift: Double, val stops: List<Double>, val alphas: List<Double>)
+
+/** Desktop's brutal-running-{mono,dots,scan} backgrounds, with the lighter inline alphas activity-turn-tool uses. */
+internal fun runningSurfaceFrame(kind: String, seconds: Double): RunningSurfaceFrame {
+    val duration = when (kind) { "scan" -> 1.2; "dots" -> 1.4; else -> 1.35 }
+    val u = cycle(seconds, duration)
+    return when (kind) {
+        "scan" -> RunningSurfaceFrame(u, 0.0, listOf(0.0, .42, .48, .5, .52, .58, 1.0), listOf(0.0, 0.0, .09, .28, .09, 0.0, 0.0))
+        "dots" -> RunningSurfaceFrame(u, 12 * u, listOf(0.0, .35, .5, .65, 1.0), listOf(0.0, .06, .13, .06, 0.0))
+        else -> RunningSurfaceFrame(u, 12 * u, listOf(0.0, .35, .5, .65, 1.0), listOf(0.0, .05, .12, .05, 0.0))
+    }
+}
