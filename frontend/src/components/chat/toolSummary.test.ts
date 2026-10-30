@@ -29,6 +29,16 @@ describe('getToolSummary', () => {
     );
   });
 
+  it('tells a new session apart from a message to an existing one', () => {
+    expect(line('agent_dispatch', { agent_id: 'new', title: 'Fix CI', message: 'Go' })).toBe(
+      'Start session Fix CI'
+    );
+    expect(line('agent_dispatch', { agent_id: 'a1', message: 'Next' })).toBe(
+      'Message agent a1 · Next'
+    );
+    expect(line('memory_update', { fact: 'Prefers tabs' })).toBe('Update memory Prefers tabs');
+  });
+
   it('includes the read offset when the model reads a slice', () => {
     expect(line('read_file', { file_path: 'src/main.py', offset: 120 })).toBe('Read main.py:120');
     expect(line('read_file', { file_path: 'src/main.py', offset: 0 })).toBe('Read main.py');

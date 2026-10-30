@@ -27,7 +27,21 @@ describe('summarizeActivity', () => {
         ],
         t
       )
-    ).toBe('1 次调用失败 · 调用了 1 次其他工具');
+    ).toBe('1 次调用失败 · 调用了 1 次工具');
     expect(summarizeActivity([], t)).toBeUndefined();
+  });
+  it('names sub-agent work instead of lumping it into other tools', () => {
+    expect(
+      summarizeActivity(
+        [
+          { toolName: 'agent', args: '{"description":"Fix the build"}' },
+          { toolName: 'agent_dispatch', args: '{"agent_id":"new","message":"Go"}' },
+          { toolName: 'agent_read', args: '{"agent_id":"a1"}' },
+          { toolName: 'agent_dispatch', args: '{"agent_id":"a1","message":"Next"}' },
+          { toolName: 'render_ui' },
+        ],
+        t
+      )
+    ).toBe('委派了 2 项任务 · 与代理沟通 2 次 · 另有 1 项操作');
   });
 });
