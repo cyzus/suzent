@@ -22,6 +22,7 @@ import { DisclosureChevron } from '../DisclosureChevron';
 import { SubAgentSteerBox } from './SubAgentSteerBox';
 import { SubAgentActivityFeed } from './SubAgentActivityFeed';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { hoverText } from '../../lib/hoverText';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -188,7 +189,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         aria-controls={bodyId}
         onClick={() => setExpanded(!expanded)}
         className={headerClassName}
-        title={description || undefined}
+        title={hoverText(description)}
       >
         {/* Identity, not outcome. A green check here only repeated the DONE
             outcome icon, and said nothing about which agent ran.

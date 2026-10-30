@@ -12,6 +12,8 @@
  * readable).
  */
 
+import { hoverText } from '../../lib/hoverText';
+
 export type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
 
 export interface ToolSummary {
@@ -19,7 +21,7 @@ export interface ToolSummary {
   verb: string;
   /** Truncated argument detail shown next to the verb, or null. */
   detail: string | null;
-  /** Untruncated "verb — detail" text for the header tooltip, or null. */
+  /** "verb — detail" for the header tooltip, clamped to one glanceable line. */
   title: string | null;
 }
 
@@ -601,7 +603,7 @@ export function getToolSummary(
   return {
     verb: headline,
     detail: rawDetail ? truncate(rawDetail) : null,
-    title: titleDetail ? `${headline} — ${titleDetail}` : headline,
+    title: hoverText(titleDetail ? `${headline} — ${titleDetail}` : headline) ?? headline,
   };
 }
 

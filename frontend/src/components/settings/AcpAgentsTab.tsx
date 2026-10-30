@@ -19,6 +19,7 @@ import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpConnections } from './AcpConnections';
 import { fetchAcpLogins, startAcpLogin, cancelAcpLogin, isLoginActive } from '../../lib/acpLogin';
 import type { AcpLoginState } from '../../lib/acpLogin';
+import { hoverText } from '../../lib/hoverText';
 
 // ---------------------------------------------------------------------------
 // Auth status badge
@@ -457,7 +458,7 @@ export function AcpAgentsTab(): React.ReactElement {
                               )}
                             </Badge>
                           ) : (
-                            <Badge tone="red" title={probe.message}>
+                            <Badge tone="red" title={hoverText(probe.message)}>
                               {t('settings.acp.probeFailed')}
                             </Badge>
                           )}
