@@ -66,7 +66,7 @@ import Testing
     try await client.manageChat(chat.id, action: "delete")
     #expect(try await !client.chats().contains { $0.id == chat.id })
     try client.reset()
-    #expect(try await client.chats().count == 3)
+    #expect(try await client.chats().count == 7)
 }
 
 @Test @MainActor func demoAttachmentsUseOnlyMetadataAndAreScoped() async throws {
@@ -94,6 +94,12 @@ import Testing
     try await Task.sleep(for: .milliseconds(10))
     observer.cancel()
     _ = await observer.result
+    let composer = try await client.composer()
+    #expect(composer.id.isEmpty)
+    let independent = try await client.createChat(title: "Independent")
+    try await client.send("New work", chatID: independent.id, model: nil, attachments: [])
+    try await client.observe(independent.id) { _ in }
+    #expect(try await client.chat(independent.id).messages?.first?.content == "New work")
     try await Task.sleep(for: .milliseconds(100))
     let saved = try await client.chat(chat.id)
     #expect(saved.isRunning == false && saved.messages?.count == 2)
@@ -112,7 +118,7 @@ import Testing
     #expect(try await restored.chat(chat.id).isRunning == false)
     #expect(try await restored.chat(chat.id).messages?.last?.content.contains("中断") == true)
     try restored.reset()
-    #expect(try await restored.chats().count == 3)
+    #expect(try await restored.chats().count == 7)
 }
 
 @Test @MainActor func demoRetryAfterApprovalRequestsAFreshDecision() async throws {
@@ -130,5 +136,16 @@ import Testing
         #expect(try await client.chat(chat.id).isRunning == false)
         #expect(try await client.approvals(chat.id).pending.isEmpty)
         if index < 2 { _ = try await client.messageAction(chat.id, index: 1, action: "retry") }
+    }
+}
+
+@Test @MainActor func demoExamplesIncludeSuccessfulAndFailedActivities() async throws {
+    for language in ["en", "zh"] {
+        let client = try DemoClient(language: language)
+        let success = try await client.chat("demo-ui")
+        let failure = try await client.chat("demo-failure")
+        #expect(success.messages?.last?.parts.filter { $0.type == "tool" }.count == 2)
+        #expect(failure.messages?.last?.parts.contains(where: activityFailed) == true)
+        #expect(try await client.chat("demo-note").messages?.last?.content.isEmpty == false)
     }
 }

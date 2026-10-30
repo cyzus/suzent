@@ -474,6 +474,16 @@ same English/Chinese fixtures from
 `packages/SuzentCore/Sources/SuzentCore/Resources/demo.json`. Android includes that
 directory as an asset source; SwiftPM processes it as a package resource.
 
+The native navigation shows Regent and New conversation as separate entries, then
+pinned chats, a three-conversation recent preview with View all, and expandable
+projects. Scheduled tasks are collapsed below the projects; searching reveals
+matching task rows. Settings is available from the top toolbar.
+
+The bundled English/Chinese demo includes a successful UI review with tool
+activity, a simulated source timeout, a daily note, a trip plan, an approval
+example, a welcome chat and Regent. Existing demo workspaces are preserved on
+upgrade; Reset demo loads the latest examples.
+
 The demo supports scripted streaming, stop, tool approval/rejection, project/model
 selection, new conversations, pin/rename/move/delete, branching, editing and retry.
 Trip and tool-approval prompts are offered on the start page; arbitrary input gets
@@ -493,3 +503,52 @@ For review, provide the exact demo entry and scenario steps, disclose all simula
 behaviour, and include a physical-device video of real desktop pairing and
 interaction. This mode provides an accessible demonstration, not a guarantee that
 stores will waive access to the real connection flow.
+
+### Regent
+
+The chat index prepends a `platform: "focal"` summary for `all_chats` grants.
+Discovery does not create the singleton or start its heartbeat; the existing
+chat-detail path initializes it when opened. The optional `regent` object carries
+`waiting`, `unread` and `lastMessageAt`. Ordinary clients can ignore it. Detail
+responses omit the hidden system project's navigation metadata.
+
+`ClientPermissions.permits_chat` requires `all_chats` for `focal-suzent`, including
+when its ID appears in an explicit chat list. The same guard covers sending,
+observing, stopping and approvals. Mobile management, retry/edit/fork and
+attachment sends reject Regent. `POST /mobile/client/chats/{chat_id}/read` resets
+the shared unread counter after an authorized read. Discovery itself never marks
+messages read.
+
+Both native clients render Regent as a fixed navigation entry and reuse the
+normal conversation, stream and recovery mechanisms. A collapsible list links to
+the five most recent authorized direct child conversations. Navigation polling updates
+status; a background Regent turn discovered in the selected conversation attaches
+to the existing observer. Read receipts from polling only run while its conversation
+is visible. The crown/eyes animate while working, the gem pulses when waiting,
+and new message timestamps trigger a nod. System reduced-motion settings and
+foreground lifecycle gate animations.
+
+`RegentPresentation` in Swift and Kotlin transforms normalized tool results into
+separate visible bubbles and user reactions. It suppresses quiet heartbeat replies
+and in-flight delivery calls while retaining failed/malformed calls for inspection.
+The raw history and live buffers remain authoritative. Reactions stop at background
+trigger boundaries. Cross-platform delivery cases live in
+`packages/mobile-contract/regent-fixtures.json`.
+
+### Native activity presentation
+
+Swift and Kotlin `ActivityPresentation` consume persisted run timings, deduplicate
+run IDs and sum resumed active durations without including approval waits. Shared
+cases live in `packages/mobile-contract/activity-timing-fixtures.json`. Missing
+timing displays Activity instead of a fabricated duration.
+
+`ActivityTurn` folds completed process content beneath Worked for while preserving
+final prose and Regent delivery bubbles. Pending approvals remain visible. Nested
+activity rails and tool blocks expose status, formatted input/output, copy actions
+and bounded detail scrolling. Tool-category animations and disclosure transitions
+respect reduced motion; ongoing icon animations pause in the background. These
+are native generic tool renderers, not the complete desktop rich-renderer set.
+
+Starting a new conversation detaches the selected local stream observer only after
+composer loading succeeds. Generation guards reject stale updates, and no backend
+stop is sent. Regent and ordinary tasks therefore continue independently.

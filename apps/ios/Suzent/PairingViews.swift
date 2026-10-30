@@ -82,6 +82,7 @@ struct ClientPermissionsView: View {
             Text(origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted)
             Label(device.permissions.allChats ? String(localized: "All conversations")
                 : String(localized: "Shared conversations: \(device.permissions.chatIds.count)"), systemImage: "text.bubble")
+            if device.permissions.allChats { Text("Regent can coordinate work across all your projects.").font(.footnote).foregroundStyle(Color.suzentMuted) }
             permission("Create conversations", enabled: device.permissions.createChats)
             permission("Manage conversations", enabled: device.permissions.manageChats == true)
             permission("Send messages", enabled: device.permissions.send)
@@ -115,6 +116,7 @@ struct PairingPermissionsView: View {
             permission("Stop responses", enabled: permissions.stop)
             permission("Approve tool requests", enabled: permissions.approveTools == true)
             }
+            if permissions.allChats { Text("Regent can coordinate work across all your projects.").font(.footnote).foregroundStyle(Color.suzentMuted) }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }

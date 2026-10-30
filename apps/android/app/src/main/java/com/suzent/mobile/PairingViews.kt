@@ -54,6 +54,7 @@ fun PairingView(model: MobileModel) {
                         Text(stringResource(label) + ": " + stringResource(if (allowed) R.string.allowed else R.string.not_allowed))
                     }
                     }
+                    if (permissions.allChats) Text(stringResource(R.string.regent_permission), style = MaterialTheme.typography.bodySmall)
                 }
             }
             Text(invitation.origin)
@@ -105,6 +106,7 @@ fun ClientPermissionsView(device: ClientDevice, origin: String) {
         Text(origin, style = MaterialTheme.typography.bodySmall)
         Text(if (device.permissions.allChats) stringResource(R.string.all_conversations)
             else stringResource(R.string.shared_conversations, device.permissions.chatIds.size))
+        if (device.permissions.allChats) Text(stringResource(R.string.regent_permission), style = MaterialTheme.typography.bodySmall)
         listOf(R.string.manage_conversations to device.permissions.manageChats, R.string.create_conversations to device.permissions.createChats,
             R.string.send_messages to device.permissions.send, R.string.stop_responses to device.permissions.stop, R.string.approve_tools to device.permissions.approveTools).forEach { (label, enabled) ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

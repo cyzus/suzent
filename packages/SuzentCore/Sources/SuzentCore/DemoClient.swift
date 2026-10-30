@@ -87,6 +87,11 @@ import Foundation
         return try decode(Chat.self, item)
     }
 
+    public func markRead(_ id: String) async throws {
+        let i = try index(id)
+        if var status = records[i]["regent"] as? [String: Any] { status["unread"] = 0; records[i]["regent"] = status; try save() }
+    }
+
     public func chat(_ id: String) async throws -> Chat {
         try advance(id)
         return try decode(Chat.self, records[try index(id)])
@@ -136,8 +141,8 @@ import Foundation
         messages.append(user)
         records[i]["messages"] = messages
         if messages.count == 1, !text.isEmpty { records[i]["title"] = String(text.prefix(60)) }
-        let tool = matches(text, key: "keywords_tool")
-        let reply = !attachments.isEmpty ? label("attachment") : matches(text, key: "keywords_trip") ? label("plan") : label("generic")
+        let tool = records[i]["platform"] as? String != "focal" && matches(text, key: "keywords_tool")
+        let reply = records[i]["platform"] as? String == "focal" ? label("regent_reply") : !attachments.isEmpty ? label("attachment") : matches(text, key: "keywords_trip") ? label("plan") : label("generic")
         runs[chatID] = Run(text: reply, pending: tool, tool: tool)
         records[i]["isRunning"] = true
         for id in attachments { uploads.removeValue(forKey: id) }
@@ -242,6 +247,10 @@ import Foundation
                      "title": label("source_title"), "url": "https://suzent.com/docs", "snippet": label("source_snippet")]]])
         var result = message("assistant", run.text, model: records[i]["model"] as? String)
         result["parts"] = parts
+        result["_streaming_run_id"] = run.id
+        result["run_started_at"] = ISO8601DateFormatter().string(from: run.started)
+        result["run_finished_at"] = ISO8601DateFormatter().string(from: Date())
+        result["run_active_seconds"] = max(0, Date().timeIntervalSince(run.started))
         var messages = records[i]["messages"] as? [[String: Any]] ?? []
         messages.append(result); records[i]["messages"] = messages; records[i]["isRunning"] = false
         try save()
