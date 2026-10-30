@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.5.0] - 2026-10-29
+## [mobile-v0.5.0] - 2026-10-30
 
 ### Release notes
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
