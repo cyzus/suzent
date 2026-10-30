@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add project settings with a default working directory that every chat in the project uses unless it has its own."
+}

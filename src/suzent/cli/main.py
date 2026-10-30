@@ -717,6 +717,7 @@ def _delegate_installer_update(
     relaunch: Path | None,
     repair: bool = False,
     headless: bool = False,
+    silent: bool = False,
 ) -> None:
     typer.echo("  • Preparing standalone updater...")
     try:
@@ -739,9 +740,11 @@ def _delegate_installer_update(
     if relaunch is not None:
         command.extend(["--relaunch", str(relaunch)])
 
-    use_headless = headless or not _graphical_update_available()
+    use_headless = silent or headless or not _graphical_update_available()
     if use_headless:
         command.append("--headless")
+    if silent:
+        command.append("--silent")
 
     kwargs: dict = {"cwd": root, "env": os.environ.copy()}
     if IS_WINDOWS:
@@ -759,6 +762,135 @@ def _delegate_installer_update(
     action = "Repair" if repair else "Update"
     destination = "terminal" if use_headless else "standalone Suzent Installer"
     typer.echo(f"  • {action} continues in the {destination}.")
+
+
+_AUTO_UPDATE_FILE = Path(".suzent") / "auto-update"
+_STAGED_UPDATE_FILE = Path(".suzent") / "staged-update.json"
+_PREFETCH_TIMEOUT_SECONDS = 2 * 60 * 60
+
+
+def auto_update_enabled(root: Path) -> bool:
+    """Automatic updates are on unless the user turned them off."""
+    if os.environ.get("SUZENT_AUTO_UPDATE", "").strip().lower() in {
+        "0",
+        "false",
+        "off",
+    }:
+        return False
+    try:
+        return (root / _AUTO_UPDATE_FILE).read_text(encoding="utf-8").strip() != "off"
+    except OSError:
+        return True
+
+
+def set_auto_update(root: Path, enabled: bool) -> None:
+    path = root / _AUTO_UPDATE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("on" if enabled else "off", encoding="utf-8")
+
+
+def read_staged_update(root: Path) -> dict | None:
+    """Return the release the updater has staged in the background, if any."""
+    try:
+        data = json.loads((root / _STAGED_UPDATE_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    tag = str(data.get("target_tag", "")) if isinstance(data, dict) else ""
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+        return None
+    return data
+
+
+def _has_local_source_changes(root: Path) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(result.stdout.strip())
+
+
+def auto_update_blocker(root: Path, latest: str) -> str | None:
+    """Explain why `latest` must not be installed without asking, or None.
+
+    Silent updates are for stable release installs moving within a major
+    version. Anything that needs a person's judgement -- a source checkout,
+    local edits, an interrupted update, a major version -- keeps the manual
+    Update button instead.
+    """
+    if not auto_update_enabled(root):
+        return "automatic updates are turned off"
+    if _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL:
+        return "development installs update from their branch"
+    release_file = root / ".suzent" / "release-tag"
+    try:
+        installed = release_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        installed = ""
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", installed):
+        return "this installation does not track a release"
+    if _interrupted_update_message(root):
+        return "an interrupted update needs 'suzent repair'"
+    if not _is_newer_version(latest, installed):
+        return "already up to date"
+    if _version_key(latest)[:1] != _version_key(installed)[:1]:
+        return f"{latest} is a major version; update manually"
+    if _has_local_source_changes(root):
+        return "the installation has local source changes"
+    return None
+
+
+def prefetch_update(root: Path) -> str:
+    """Stage the latest release in the background when it may auto-install.
+
+    Returns a one-line description of what happened.
+    """
+    try:
+        latest = str(_fetch_latest_release(timeout=10.0).get("tag_name", ""))
+    except Exception as error:
+        return f"could not check for updates: {error}"
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", latest):
+        return f"invalid latest release tag: {latest or 'missing'}"
+    blocker = auto_update_blocker(root, latest)
+    if blocker:
+        return f"not staging {latest}: {blocker}"
+    # The target release's own updater does the work, so prefetching never
+    # depends on the features of the version that is running now.
+    updater = _install_release_updater(latest)
+    kwargs: dict = {"cwd": root, "capture_output": True, "text": True}
+    if IS_WINDOWS:
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
+        )
+    try:
+        result = subprocess.run(
+            [str(updater), "--prefetch", "--dir", str(root), "--target", latest],
+            timeout=_PREFETCH_TIMEOUT_SECONDS,
+            **kwargs,
+        )
+    except subprocess.TimeoutExpired:
+        return f"prefetch of {latest} timed out"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        return f"prefetch of {latest} failed: {detail[-1] if detail else result.returncode}"
+    return f"{latest} is staged"
+
+
+def apply_staged_update(root: Path, *, relaunch: Path | None = None) -> str | None:
+    """Hand a staged release to the updater, silently. Returns its tag or None."""
+    staged = read_staged_update(root)
+    if staged is None:
+        return None
+    tag = staged["target_tag"]
+    if auto_update_blocker(root, tag):
+        return None
+    _delegate_installer_update(root, release_tag=tag, relaunch=relaunch, silent=True)
+    return tag
 
 
 def _replace_ui_files(
@@ -2589,8 +2721,25 @@ def register_commands(app: typer.Typer):
             "--headless",
             help="Run the standalone updater in the terminal without a window.",
         ),
+        prefetch: bool = typer.Option(
+            False,
+            "--prefetch",
+            help="Download the latest release in the background without installing it.",
+        ),
+        apply_staged: bool = typer.Option(
+            False,
+            "--apply-staged",
+            help="Silently install a release that --prefetch already downloaded.",
+        ),
     ):
         """Update Suzent to the latest version."""
+        if prefetch:
+            typer.echo(prefetch_update(get_project_root()))
+            return
+        if apply_staged:
+            tag = apply_staged_update(get_project_root(), relaunch=relaunch)
+            typer.echo(f"Applying {tag}" if tag else "No staged update to apply.")
+            return
         _run_update(dev=dev, relaunch=relaunch, headless=headless)
 
     @app.command()
@@ -2694,6 +2843,28 @@ def register_commands(app: typer.Typer):
 
         if not report.ok:
             raise typer.Exit(code=1)
+
+    @app.command("auto-update")
+    def auto_update(
+        state: str = typer.Argument(
+            "status", help="on, off, or status", show_default=True
+        ),
+    ) -> None:
+        """Turn silent background updates on or off."""
+        root = get_project_root()
+        choice = state.strip().lower()
+        if choice in {"on", "off"}:
+            set_auto_update(root, choice == "on")
+        elif choice != "status":
+            typer.echo("❌ Use 'on', 'off' or 'status'.")
+            raise typer.Exit(code=2)
+        enabled = auto_update_enabled(root)
+        typer.echo(f"Automatic updates are {'on' if enabled else 'off'}.")
+        staged = read_staged_update(root)
+        if enabled and staged:
+            typer.echo(
+                f"{staged['target_tag']} is downloaded and installs when Suzent next restarts."
+            )
 
     @app.command("check-update")
     def check_update(

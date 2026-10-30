@@ -585,9 +585,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             to be able to give ground — it used to be shrink-0 and by itself
             overflowed the rail. The detail yields first (shrink-[3]) so the
             action stays readable longest. */}
-        <span className="truncate min-w-0" title={summary.verb}>
-          {summary.verb}
-        </span>
+        <span className="truncate min-w-0">{summary.verb}</span>
         {summary.detail && (
           <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
             {summary.detail}

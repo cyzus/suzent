@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 460" width="880" height="460" role="img" aria-label="Comparison of data flows: the Integration Route funnels your life into one vendor's cloud graph and rents access back to you; the Sovereign Route keeps your data, memory, and permissions on your machine while treating models as swappable engines.">
+  <defs>
+    <pattern id="route-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#ececec" stroke-width="1"/>
+    </pattern>
+    <pattern id="route-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#d4d4d4" stroke-width="2"/>
+    </pattern>
+    <pattern id="route-hatch-dark" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#000000" stroke-width="1.5"/>
+    </pattern>
+    <marker id="route-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .box { fill: #ffffff; stroke: #000000; stroke-width: 2.5; }
+    .box-heavy { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+    .shadow { fill: #000000; }
+  </style>
+
+  <!-- Outer Frame -->
+  <rect x="0" y="0" width="880" height="460" fill="#ffffff"/>
+  <rect x="12" y="12" width="856" height="436" fill="url(#route-grid)" stroke="#000000" stroke-width="3"/>
+
+  <!-- Center Divider -->
+  <line x1="440" y1="12" x2="440" y2="448" stroke="#000000" stroke-width="3"/>
+  <rect x="420" y="212" width="40" height="36" fill="#000000"/>
+  <text x="440" y="235" class="mono" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">VS</text>
+
+  <!-- ===================================================================== -->
+  <!-- LEFT PANEL: THE INTEGRATION ROUTE (THEIR AGENT)                       -->
+  <!-- ===================================================================== -->
+  <g transform="translate(12, 12)">
+    <!-- Top Section Bar -->
+    <rect x="0" y="0" width="428" height="38" fill="#f4f4f4" stroke="#000000" stroke-width="3"/>
+    <rect x="14" y="10" width="28" height="18" fill="#000000"/>
+    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">01</text>
+    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#000000" letter-spacing="0.8">THE INTEGRATION ROUTE · THEIR GRAPH</text>
+
+    <!-- 4 Personal Data Sources -->
+    <g transform="translate(24, 58)">
+      <rect x="0" y="0" width="84" height="32" class="box"/>
+      <text x="42" y="20" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">Inbox</text>
+
+      <rect x="98" y="0" width="84" height="32" class="box"/>
+      <text x="140" y="20" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">Calendar</text>
+
+      <rect x="196" y="0" width="84" height="32" class="box"/>
+      <text x="238" y="20" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">Files / Docs</text>
+
+      <rect x="294" y="0" width="86" height="32" class="box"/>
+      <text x="337" y="20" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">Habits / Chat</text>
+    </g>
+
+    <!-- Funnel Arrows into Vendor Cloud -->
+    <line x1="66" y1="90" x2="154" y2="138" stroke="#000000" stroke-width="2" marker-end="url(#route-arrow)"/>
+    <line x1="164" y1="90" x2="194" y2="138" stroke="#000000" stroke-width="2" marker-end="url(#route-arrow)"/>
+    <line x1="262" y1="90" x2="234" y2="138" stroke="#000000" stroke-width="2" marker-end="url(#route-arrow)"/>
+    <line x1="361" y1="90" x2="274" y2="138" stroke="#000000" stroke-width="2" marker-end="url(#route-arrow)"/>
+
+    <!-- Vendor Cloud Monolith -->
+    <g transform="translate(54, 144)">
+      <rect x="6" y="6" width="320" height="122" fill="url(#route-hatch-dark)" stroke="#000000" stroke-width="2"/>
+      <rect x="0" y="0" width="320" height="122" class="box-heavy"/>
+      <rect x="0" y="0" width="320" height="28" fill="#000000"/>
+      <text x="14" y="19" class="mono" font-size="10" font-weight="700" fill="#ffffff" letter-spacing="0.8">VENDOR CLOUD SANDBOX</text>
+      <rect x="226" y="5" width="84" height="18" fill="#ffffff"/>
+      <text x="268" y="17" class="mono" font-size="8.5" font-weight="700" fill="#000000" text-anchor="middle">OPAQUE DB</text>
+
+      <text x="160" y="54" class="ui" font-size="14" font-weight="800" fill="#000000" text-anchor="middle">Proprietary Context Graph</text>
+      <text x="160" y="74" class="mono" font-size="10" fill="#333333" text-anchor="middle">Model + Memory + Permissions fused</text>
+
+      <rect x="18" y="88" width="284" height="22" fill="#f0f0f0" stroke="#000000" stroke-width="1.5"/>
+      <text x="160" y="103" class="mono" font-size="9.5" font-weight="700" fill="#000000" text-anchor="middle">Cannot read raw · Cannot git-diff · Cannot move</text>
+    </g>
+
+    <!-- Downward metered return to You -->
+    <line x1="214" y1="272" x2="214" y2="322" stroke="#000000" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#route-arrow)"/>
+    <rect x="122" y="286" width="184" height="22" fill="#000000"/>
+    <text x="214" y="301" class="mono" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">RENTED BACK ($ / ToS / LOCK-IN)</text>
+
+    <g transform="translate(114, 328)">
+      <rect x="4" y="4" width="200" height="42" class="shadow"/>
+      <rect x="0" y="0" width="200" height="42" class="box"/>
+      <text x="100" y="20" class="ui" font-size="13" font-weight="800" fill="#000000" text-anchor="middle">YOU (TENANT)</text>
+      <text x="100" y="34" class="mono" font-size="9.5" fill="#555555" text-anchor="middle">Leaving = starting from zero</text>
+    </g>
+
+    <!-- Bottom Caption -->
+    <rect x="20" y="386" width="388" height="34" fill="#f4f4f4" stroke="#000000" stroke-width="2"/>
+    <text x="214" y="407" class="ui" font-size="11.5" font-weight="600" fill="#000000" text-anchor="middle">Every month of context makes leaving more expensive.</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- RIGHT PANEL: THE SOVEREIGN ROUTE (YOUR AGENT)                         -->
+  <!-- ===================================================================== -->
+  <g transform="translate(440, 12)">
+    <!-- Top Section Bar -->
+    <rect x="0" y="0" width="428" height="38" fill="#000000" stroke="#000000" stroke-width="3"/>
+    <rect x="14" y="10" width="28" height="18" fill="#ffffff"/>
+    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">02</text>
+    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#ffffff" letter-spacing="0.8">THE SOVEREIGN ROUTE · YOUR BOUNDARY</text>
+
+    <!-- Sovereign Perimeter Box (Covers You + Data + Agent State) -->
+    <rect x="20" y="54" width="388" height="248" fill="#ffffff" stroke="#000000" stroke-width="3" stroke-dasharray="8 5"/>
+    <rect x="34" y="45" width="212" height="18" fill="#000000"/>
+    <text x="140" y="57" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">YOUR MACHINE / YOUR FILESYSTEM</text>
+
+    <!-- You + Sources inside boundary -->
+    <g transform="translate(44, 74)">
+      <rect x="4" y="4" width="340" height="46" class="shadow"/>
+      <rect x="0" y="0" width="340" height="46" class="box-heavy"/>
+      <text x="170" y="20" class="ui" font-size="13" font-weight="800" fill="#000000" text-anchor="middle">YOU + YOUR RAW DATA</text>
+      <text x="170" y="36" class="mono" font-size="9.5" fill="#333333" text-anchor="middle">Files · Notes · Code · Local Workspace</text>
+    </g>
+
+    <!-- Closed-loop bidirectional arrows inside boundary -->
+    <line x1="174" y1="124" x2="174" y2="156" stroke="#000000" stroke-width="2.5" marker-end="url(#route-arrow)"/>
+    <line x1="254" y1="156" x2="254" y2="124" stroke="#000000" stroke-width="2.5" marker-end="url(#route-arrow)"/>
+    <text x="162" y="144" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="end">reads/writes</text>
+    <text x="266" y="144" class="mono" font-size="9" font-weight="700" fill="#000000">auditable</text>
+
+    <!-- Local Sovereign Agent Core -->
+    <g transform="translate(44, 162)">
+      <rect x="5" y="5" width="340" height="120" class="shadow"/>
+      <rect x="0" y="0" width="340" height="120" class="box-heavy"/>
+      <rect x="0" y="0" width="340" height="28" fill="#000000"/>
+      <text x="14" y="19" class="mono" font-size="10" font-weight="700" fill="#ffffff" letter-spacing="0.8">SUZENT · SOVEREIGN AGENT STATE</text>
+      <rect x="244" y="5" width="86" height="18" fill="#ffffff"/>
+      <text x="287" y="17" class="mono" font-size="8.5" font-weight="700" fill="#000000" text-anchor="middle">PLAIN FILES</text>
+
+      <!-- 3 local pillars -->
+      <rect x="14" y="40" width="98" height="64" fill="#f7f7f7" stroke="#000000" stroke-width="1.8"/>
+      <text x="63" y="58" class="mono" font-size="9.5" font-weight="700" fill="#000000" text-anchor="middle">memory/</text>
+      <text x="63" y="74" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">Markdown</text>
+      <text x="63" y="88" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">&amp; Git history</text>
+
+      <rect x="121" y="40" width="98" height="64" fill="#f7f7f7" stroke="#000000" stroke-width="1.8"/>
+      <text x="170" y="58" class="mono" font-size="9.5" font-weight="700" fill="#000000" text-anchor="middle">skills/</text>
+      <text x="170" y="74" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">Portable</text>
+      <text x="170" y="88" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">workflows</text>
+
+      <rect x="228" y="40" width="98" height="64" fill="#f7f7f7" stroke="#000000" stroke-width="1.8"/>
+      <text x="277" y="58" class="mono" font-size="9.5" font-weight="700" fill="#000000" text-anchor="middle">policy</text>
+      <text x="277" y="74" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">Per-tool</text>
+      <text x="277" y="88" class="ui" font-size="9.5" fill="#333333" text-anchor="middle">approval gates</text>
+    </g>
+
+    <!-- Scoped outbound call to swappable model -->
+    <line x1="214" y1="288" x2="214" y2="328" stroke="#000000" stroke-width="2.5" marker-end="url(#route-arrow)"/>
+    <rect x="132" y="302" width="164" height="18" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="214" y="314" class="mono" font-size="8.5" font-weight="700" fill="#000000" text-anchor="middle">STATELESS INFERENCE CALL</text>
+
+    <g transform="translate(64, 332)">
+      <rect x="4" y="4" width="300" height="38" class="shadow"/>
+      <rect x="0" y="0" width="300" height="38" fill="url(#route-hatch)" stroke="#000000" stroke-width="2.5"/>
+      <text x="150" y="18" class="ui" font-size="12" font-weight="800" fill="#000000" text-anchor="middle">ANY MODEL ENGINE</text>
+      <text x="150" y="31" class="mono" font-size="9" font-weight="700" fill="#222222" text-anchor="middle">Claude · GPT · Gemini · DeepSeek · Local</text>
+    </g>
+
+    <!-- Bottom Caption -->
+    <rect x="20" y="386" width="388" height="34" fill="#000000"/>
+    <text x="214" y="407" class="ui" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">Rent the engine when useful. Keep the vehicle yours.</text>
+  </g>
+</svg>

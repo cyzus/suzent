@@ -48,6 +48,7 @@
 "Your desktop will ask you to approve this phone. Node access stays separate." = "桌面端会请求批准这台手机。Node 访问需单独开启。";
 "Request pairing" = "请求配对";
 "On desktop, open Settings → Devices → Mobile access, then choose Pair a phone." = "在桌面端打开「设置 → 设备 → 移动端访问」，选择「配对手机」。";
+"On desktop: Settings → Devices → Mobile access" = "桌面端：设置 → 设备 → 移动端访问";
 "Scan desktop QR code" = "扫描桌面二维码";
 "Paste an invitation instead" = "粘贴配对邀请";
 "Pairing invitation" = "配对邀请";
@@ -194,3 +195,71 @@
 "Connecting to Suzent" = "正在连接 Suzent";
 "Connection help" = "连接帮助";
 "Check that Suzent is running on your desktop and both devices are online." = "请确认桌面端 Suzent 正在运行，并检查两端的网络连接。";
+
+// Offline demonstration
+"Try offline demo" = "体验离线演示";
+"Explore with sample data. No desktop, API key, or internet required." = "使用示例数据体验，无需电脑、API Key 或网络。";
+"Offline demo · Scripted replies, no AI calls" = "离线演示 · 预设回复，不调用 AI";
+"Exit demo" = "退出演示";
+"Reset demo" = "重置演示";
+"Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed." = "配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。";
+"Could not open the demo workspace." = "无法打开演示工作区。";
+"About" = "关于";
+
+"In progress: %d" = "%d 项进行中";
+"Commands run: %d" = "执行了 %d 条命令";
+"Files read: %d" = "读取了 %d 个文件";
+"Files modified: %d" = "修改了 %d 个文件";
+"Searches: %d" = "搜索了 %d 次";
+"Other tool calls: %d" = "调用了 %d 次其他工具";
+"Failed calls: %d" = "%d 次调用失败";
+
+"No chats yet" = "还没有对话";
+"No matching chats" = "没有匹配的对话";
+
+"QR code recognized. Connecting to your desktop…" = "已识别二维码，正在连接桌面端…";
+"Sending connection request…" = "正在发送连接请求…";
+"Finishing connection…" = "正在完成连接…";
+
+"Keep Suzent open on your desktop and check Wi-Fi or Tailscale." = "请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。";
+
+"Back to chats" = "返回会话列表";
+
+"Regent is working" = "Regent 正在工作";
+"Needs your attention" = "需要你处理";
+"Across all your projects" = "统筹你的所有项目";
+"One conversation for all your projects. Ask what needs you, or hand me your next task." = "在一个对话里统筹所有项目。问问有什么需要你处理，或把下一个任务交给我。";
+"%lld unread messages" = "%lld 条未读消息";
+"Regent reacted %@" = "Regent 的回应：%@";
+"Regent can coordinate work across all your projects." = "Regent 可以统筹你所有项目中的工作。";
+"Recent delegated conversations" = "最近委派的对话";
+
+"Worked for %@" = "用时 %@";
+"Thinking" = "思考中";
+"Copy activity details" = "复制活动详情";
+"Show full details" = "显示完整详情";
+
+"Recent" = "最近对话";
+
+"View all" = "查看全部";
+
+"Search results" = "搜索结果";
+
+"Load more" = "加载更多";
+
+"Loading conversations" = "正在加载对话";
+
+// Native polish
+"Copy" = "复制";
+"Share" = "分享";
+"Show all" = "显示全部";
+"Show less" = "收起";
+"Show fewer" = "收起";
+"Projects" = "项目";
+"Confirm" = "确认";
+"View all %lld scheduled tasks" = "查看全部 %lld 个定时任务";
+"Connection" = "连接";
+"Forget connection?" = "忘记连接？";
+"This phone will need to pair again before it can reach your desktop." = "这台手机需要重新配对才能访问你的桌面端。";
+"Paused · Failed" = "已暂停 · 失败";
+"Not yet" = "尚未运行";

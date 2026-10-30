@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "suzent"
-version = "0.17.0"
+version = "0.18.0"
 description = "Suzent is a sovereign AI agent: own its memory, govern its actions, choose its intelligence, and keep its continuity."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,7 +32,9 @@ classifiers = [
 dependencies = [
     "crawl4ai>=0.7.3",
     "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.56,<3",
-    "litellm",
+    # Exact pin: litellm 1.82.7/1.82.8 on PyPI were compromised (Mar 2026). Bump
+    # deliberately, after checking the release and the uv.lock hashes.
+    "litellm==1.81.13",
     "starlette>=1.0.0,<2.0.0",
     "uvicorn",
     "python-dotenv",

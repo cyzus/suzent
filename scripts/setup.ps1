@@ -28,6 +28,7 @@ $ReleaseBaseUrl = if ($env:SUZENT_RELEASE_BASE_URL) { $env:SUZENT_RELEASE_BASE_U
 $MinNodeMajor = 20
 $StateDir = Join-Path $env:USERPROFILE ".suzent"
 $MirrorReleaseBase = "https://registry.npmmirror.com/-/binary/suzent"
+$NpmMirrorRegistry = "https://registry.npmmirror.com"
 $GithubReleaseBase = "https://github.com/cyzus/suzent/releases/download"
 $PypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
 # Windows PowerShell's download progress bar slows transfers to a crawl.
@@ -127,10 +128,17 @@ function Get-HighestReleaseTag {
     return ($stable | Sort-Object { [version]$_.Substring(1) } | Select-Object -Last 1)
 }
 
-# The mirror first in China mode, so the version is one it can serve; then the
-# API; then the release page redirect, which has no 60-an-hour rate limit.
+# The mirrors first in China mode, so the version is one they can serve; then
+# the API; then the release page redirect, which has no 60-an-hour rate limit.
 function Resolve-LatestRelease {
     if ($UseChinaMirror) {
+        try {
+            # Release CI publishes the release files as npm packages; 0.0.0 is
+            # only the placeholder that let Trusted Publishing be set up.
+            $tags = Invoke-RestMethod -Uri "$NpmMirrorRegistry/-/package/@suzent/desktop-win32-x64/dist-tags" -TimeoutSec 15
+            $tag = "v" + [string]$tags.latest
+            if ($tag -match '^v\d+\.\d+\.\d+$' -and $tag -ne "v0.0.0") { return $tag }
+        } catch {}
         try {
             $listing = Invoke-RestMethod -Uri "$MirrorReleaseBase/" -TimeoutSec 15
             $tag = Get-HighestReleaseTag @($listing | ForEach-Object { ([string]$_.name).TrimEnd("/") })
@@ -153,23 +161,68 @@ function Resolve-LatestRelease {
     return ""
 }
 
+# In China mode the npm package of the release files comes first: it is
+# downloaded and unpacked once, into the cache the suzent CLI also reads, and
+# tried as a local folder before the other release sources.
+$NpmReleaseTried = $false
+function Add-NpmReleaseBase {
+    if ($script:NpmReleaseTried) { return }
+    $script:NpmReleaseTried = $true
+    if (-not $ReleaseTag -or $ReleaseBaseUrl -or -not $UseChinaMirror) { return }
+    # tar.exe ships with Windows 10 1803 and later.
+    $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+    if (-not (Test-Path $tar)) { return }
+    $dir = Join-Path $env:USERPROFILE ".suzent\cache\npm\desktop-win32-x64\$ReleaseTag"
+    if (-not (Test-Path (Join-Path $dir "SHA256SUMS"))) {
+        $partial = "$dir.partial"
+        try {
+            if (Test-Path $partial) { Remove-Item -Recurse -Force $partial }
+            New-Item -ItemType Directory -Force -Path $partial | Out-Null
+            Write-Info "Downloading release files from the npm mirror..."
+            $tgz = Join-Path $partial "package.tgz"
+            $version = $ReleaseTag.Substring(1)
+            Invoke-WebRequest -Uri "$NpmMirrorRegistry/@suzent/desktop-win32-x64/-/desktop-win32-x64-$version.tgz" -OutFile $tgz -TimeoutSec 600 -UseBasicParsing
+            & $tar -xzf $tgz -C $partial --strip-components=1 package
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $partial "SHA256SUMS"))) { throw "the package could not be unpacked" }
+            Remove-Item -Force $tgz
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            Move-Item $partial $dir
+        } catch {
+            Write-Warn ("The npm mirror has no release files for ${ReleaseTag}; trying the next source. " + $_.Exception.Message)
+            if (Test-Path $partial) { Remove-Item -Recurse -Force $partial -ErrorAction SilentlyContinue }
+            return
+        }
+    }
+    $script:ReleaseBases = @($dir) + $script:ReleaseBases
+}
+
 # Tries each release source in turn and keeps the first download matching the
 # release's SHA256SUMS, so a mirror can make a download faster, never different.
 function Save-ReleaseAsset {
     param([string]$Asset, [string]$Destination)
     $tmp = "$Destination.download"
+    Add-NpmReleaseBase
     foreach ($base in $ReleaseBases) {
+        $local = $base -notmatch '^https?://'
         try {
-            # Served as application/octet-stream, so read the raw bytes as text.
-            $sumsResponse = Invoke-WebRequest -Uri "$base/SHA256SUMS" -TimeoutSec 60 -UseBasicParsing
-            $sums = [System.Text.Encoding]::UTF8.GetString($sumsResponse.RawContentStream.ToArray())
+            if ($local) {
+                $sums = [System.IO.File]::ReadAllText((Join-Path $base "SHA256SUMS"))
+            } else {
+                # Served as application/octet-stream, so read the raw bytes as text.
+                $sumsResponse = Invoke-WebRequest -Uri "$base/SHA256SUMS" -TimeoutSec 60 -UseBasicParsing
+                $sums = [System.Text.Encoding]::UTF8.GetString($sumsResponse.RawContentStream.ToArray())
+            }
             $expected = ""
             foreach ($line in ($sums -split "`n")) {
                 $parts = $line.Trim() -split '\s+', 2
                 if ($parts.Count -eq 2 -and $parts[1].TrimStart("*") -eq $Asset) { $expected = $parts[0].ToLowerInvariant(); break }
             }
             if (-not $expected) { Write-Warn "No checksum for $Asset at $base; trying the next source."; continue }
-            Invoke-WebRequest -Uri "$base/$Asset" -OutFile $tmp -TimeoutSec 300 -UseBasicParsing
+            if ($local) {
+                Copy-Item -Force (Join-Path $base $Asset) $tmp
+            } else {
+                Invoke-WebRequest -Uri "$base/$Asset" -OutFile $tmp -TimeoutSec 300 -UseBasicParsing
+            }
             $actual = (Get-FileHash -Algorithm SHA256 $tmp).Hash.ToLowerInvariant()
             if ($actual -ne $expected) { Write-Warn "Checksum mismatch for $Asset from $base; trying the next source."; continue }
             Move-Item -Force $tmp $Destination
@@ -491,6 +544,20 @@ if ($IsUpdate) {
 
 Set-Location $SuzentDir
 
+# Record the channel now, not at the end: if setup stops halfway, the
+# installer must still see a release install to repair, not a dev checkout.
+$ChannelDir = Join-Path $SuzentDir ".suzent"
+if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
+$Channel = if ($ReleaseTag) { "stable" } else { "dev" }
+Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
+# `suzent web` and `suzent repair` read the installed release from here.
+$ReleaseFile = Join-Path $ChannelDir "release-tag"
+if ($ReleaseTag) {
+    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
+} elseif (Test-Path $ReleaseFile) {
+    Remove-Item -Force $ReleaseFile
+}
+
 # -- Setup .env ----------------------------------------------------------------
 if (-not (Test-Path ".env")) {
     if (Test-Path ".env.example") {
@@ -680,17 +747,6 @@ Write-Ok "CLI shim written to $ShimPath"
 # PROTOCOL_VERSION in apps/suzent-installer.
 $MarkerPath = Join-Path $SuzentDir ".suzent-bootstrap-complete"
 Set-Content -Path $MarkerPath -Value "protocol=1`n" -NoNewline -Encoding ASCII
-$ChannelDir = Join-Path $SuzentDir ".suzent"
-if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
-$Channel = if ($ReleaseTag) { "stable" } else { "dev" }
-Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
-# `suzent web` and `suzent repair` read the installed release from here.
-$ReleaseFile = Join-Path $ChannelDir "release-tag"
-if ($ReleaseTag) {
-    Set-Content -Path $ReleaseFile -Value $ReleaseTag -NoNewline -Encoding ASCII
-} elseif (Test-Path $ReleaseFile) {
-    Remove-Item -Force $ReleaseFile
-}
 Write-Ok "Workspace marked as bootstrapped"
 
 # -- Launcher shortcuts --------------------------------------------------------

@@ -26,7 +26,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) {
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) : MobileClient {
     init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
@@ -81,17 +81,20 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             throw failure
         } catch (_: org.json.JSONException) { throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE) }
     }
-    var supportsAttachments = false
+    override var supportsAttachments = false
         private set
 
-    var supportsScheduledTasks = false
+    override var supportsScheduledTasks = false
         private set
 
-    suspend fun session(): ClientDevice {
+    private var supportsPagination = false
+
+    override suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
         validateMobileCapabilities(value)
         supportsAttachments = value.optInt("attachments") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
+        supportsPagination = value.optInt("chat_pagination") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
@@ -105,26 +108,49 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     suspend fun confirmPairing() { json("mobile/client/pairing/confirm", JSONObject()) }
 
-    suspend fun chats(): List<Chat> {
+    override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
+        if (!supportsPagination) return super.chatPage(query, offset, limit)
+        return ChatPage.parse(json("mobile/client/chat-page", JSONObject().put("kind", query.kind)
+            .put("value", query.value).put("offset", offset).put("limit", limit)))
+    }
+    override suspend fun navigationMetadata(): NavigationMetadata {
+        if (!supportsPagination) return super.navigationMetadata()
+        val value = json("mobile/client/navigation")
+        val array = value.getJSONArray("projects")
+        return NavigationMetadata(value.optJSONObject("regent")?.let(Chat::parse), (0 until array.length()).map {
+            val project = array.getJSONObject(it)
+            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"))
+        })
+    }
+    override suspend fun chatStatuses(ids: List<String>): List<Chat> {
+        if (ids.isEmpty()) return emptyList()
+        if (!supportsPagination) return super.chatStatuses(ids)
+        return ids.chunked(100).flatMap { batch ->
+            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch))).getJSONArray("chats")
+            (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
+        }
+    }
+
+    override suspend fun chats(): List<Chat> {
         val array = json("mobile/client/chats").getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
     }
-    suspend fun scheduledTasks(): List<ScheduledTask> {
+    override suspend fun scheduledTasks(): List<ScheduledTask> {
         if (!supportsScheduledTasks) return emptyList()
         val array = json("mobile/client/scheduled-tasks").getJSONArray("tasks")
         return (0 until array.length()).map { ScheduledTask.parse(array.getJSONObject(it)) }
     }
-    suspend fun projects(): List<Project> {
+    override suspend fun projects(): List<Project> {
         val array = json("mobile/client/projects").getJSONArray("projects")
         return (0 until array.length()).map { val item = array.getJSONObject(it); Project(item.getString("id"), item.getString("name")) }
     }
-    suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
-    suspend fun create(title: String, projectId: String? = null): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
-    suspend fun manageChat(id: String, action: String, value: String? = null) {
+    override suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
+    override suspend fun create(title: String, projectId: String?): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
+    override suspend fun manageChat(id: String, action: String, value: String?) {
         json("mobile/client/manage", JSONObject().put("chat_id", id).put("action", action).apply { if (value != null) put("value", value) })
     }
 
-    suspend fun messageAction(id: String, index: Int, action: String, text: String? = null, model: String? = null): String {
+    override suspend fun messageAction(id: String, index: Int, action: String, text: String?, model: String?): String {
         val result = json("mobile/client/message-action", JSONObject().put("chat_id", id)
             .put("message_index", index).put("action", action).apply {
                 if (text != null) put("text", text)
@@ -133,11 +159,15 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         return result.optString("chat_id", id)
     }
 
-    suspend fun chat(id: String): Chat {
+    override suspend fun markRead(id: String) {
+        require(!id.contains('/') && id != "." && id != "..")
+        json("mobile/client/chats/$id/read", JSONObject())
+    }
+    override suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))
     }
-    suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String> {
+    override suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String> {
         require(!id.contains('/') && id != "." && id != "..")
         val form = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
             attachments.forEach { addFormDataPart("files", it.name, it.file.asRequestBody(it.mimeType.toMediaTypeOrNull())) }
@@ -148,7 +178,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         return (0 until issued.length()).map { issued.getJSONObject(it).getString("id") }
     }
 
-    suspend fun send(id: String, text: String, model: String? = null, attachments: List<String> = emptyList()) {
+    override suspend fun send(id: String, text: String, model: String?, attachments: List<String>) {
         val messageId = UUID.randomUUID().toString()
         val body = JSONObject().put("chat_id", id).put("message", text)
             .put("client_message_id", messageId)
@@ -161,20 +191,20 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             json("mobile/client/send", body)
         }
     }
-    suspend fun approvals(id: String): ApprovalState {
+    override suspend fun approvals(id: String): ApprovalState {
         require(!id.contains('/') && id != "." && id != "..")
         val value = json("mobile/client/chats/$id/approvals")
         val pending = value.getJSONArray("pending")
         return ApprovalState((0 until pending.length()).map { ApprovalRequest.parse(pending.getJSONObject(it)) }, value.optBoolean("isRunning"))
     }
-    suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>) {
+    override suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>) {
         val decisions = org.json.JSONArray()
         pending.forEach { item -> decisions.put(JSONObject().put("chat_id", id).put("request_id", item.id).put("kind", item.kind).put("action_id", choices.getValue(item.id))) }
         json("mobile/client/approvals", JSONObject().put("chat_id", id).put("decisions", decisions))
     }
-    suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
+    override suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
 
-    suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
+    override suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
         var recovery = StreamRecovery()
         repeat(5) { attempt ->
             currentCoroutineContext().ensureActive()
@@ -221,11 +251,11 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         http.dispatcher.executorService.execute { socket.cancel() }
     }
 
-    fun cancelLive() {
+    override fun cancelLive() {
         val call = liveCall ?: return
         http.dispatcher.executorService.execute { call.cancel() }
     }
-    fun close() {
+    override fun close() {
         // TLS shutdown can write close_notify, including when evicting an idle socket.
         http.dispatcher.executorService.execute {
             http.dispatcher.cancelAll()

@@ -104,8 +104,16 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
-Android parses Markdown off the UI thread and memoizes the saved transcript's
-presentation. The scoped title index does not load transcripts/checkpoints;
+Network events accumulate away from the UI thread; only display batches reach the
+native views. Android finishes each off-thread Markdown parse before rendering the
+latest pending text, so frequent deltas cannot keep cancelling a long parse. Both
+clients memoize saved transcript presentation. Live growth follows the bottom
+without restarting a layout/scroll animation on every batch. Streamed prose uses
+the same opaque Markdown renderer as saved messages, without per-fragment fades
+or a synthetic cursor inserted into the document. Android skips rebinding a
+native text view when its rendered content and styling are unchanged. Android tables retain the original Markwon table theme and row spans. A native
+text view prepares table row measurements before visible layout, rather than
+showing unmeasured rows and correcting their heights on the next frame. The scoped title index does not load transcripts/checkpoints;
 mobile detail reads omit desktop context-budget computation and return current
 `isRunning` state. Completion reconciles that state in both the selected chat and
 list so the stop control cannot retain a stale list flag.
@@ -188,8 +196,23 @@ flat conversation rows and an outlined composer. Assistant messages carry the
 robot badge; inline code uses yellow highlights and top-level code blocks have
 black language headers with horizontally scrollable light bodies. User messages
 use a neutral surface so yellow retains its emphasis role. Keyboard and camera
-permission prompts stay native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
-scanner saves an image. Both apps provide English and Simplified Chinese strings.
+permission prompts stay native. iOS uses VisionKit QR recognition; Android uses Google
+Code Scanner when Google Play services is available and falls back to ZXing embedded
+(devices without Play services, or when the scanner module fails). Neither scanner
+saves an image. Both apps provide English and Simplified Chinese strings.
+
+Platform interactions stay native where the system already defines them. On iOS the
+conversation list is the root of a `NavigationStack` (edge swipe back), and regular
+width uses `NavigationSplitView`; Android animates list to detail under
+`PredictiveBackHandler` and shows both panes from 840 dp. Conversation rows have a
+context menu plus swipe actions (pin/unpin, delete with confirmation). Settings is a
+native grouped list. Destructive confirmations use system alerts; rename and
+edit-and-resend use sheets. Errors appear as a transient toast above the composer
+(or at the bottom elsewhere), while pending approvals are pinned above the composer.
+Only the latest message shows its action row; every message offers the same actions
+(copy, share, edit, retry, branch, sources) from a long-press menu on its footer or
+bubble, so message text keeps native selection. Send, copy, long press and approval
+choices give haptic feedback, and iOS text follows Dynamic Type.
 
 ### Mobile tool approvals and activity rail
 
@@ -448,3 +471,117 @@ clients and changes only `manage_chats`.
 
 The desktop editor keeps a local draft until Save. Cancel discards the draft;
 failed saves leave it available to retry.
+
+## Offline demonstration
+
+Both native apps expose **Try offline demo** as a quiet text button at the bottom
+of the unpaired connection screen. Once paired, the entry is under **Settings →
+About**; it is absent from connection help and the regular chat surface. It is
+available in release builds to everyone. A persistent
+banner identifies scripted responses; Settings provides **Reset demo** and **Exit
+demo**. Existing desktop pairing credentials are retained when entering or leaving
+the demo, and demo operations never use them.
+
+The regular conversation UI consumes a `MobileClient` interface. `SuzentClient`
+(iOS) and `BackendClient` (Android) implement the real transport; `DemoClient`
+implements a local workspace with no network transport. Both platforms bundle the
+same English/Chinese fixtures from
+`packages/SuzentCore/Sources/SuzentCore/Resources/demo.json`. Android includes that
+directory as an asset source; SwiftPM processes it as a package resource.
+
+The native navigation shows Regent and New conversation as separate entries, then
+pinned chats, a three-conversation recent preview with View all, and expandable
+projects. Scheduled tasks are collapsed below the projects; searching reveals
+matching task rows. Settings is available from the top toolbar.
+
+The bundled English/Chinese demo includes a successful UI review with tool
+activity, a simulated source timeout, a daily note, a trip plan, an approval
+example, a welcome chat and Regent. Existing demo workspaces are preserved on
+upgrade; Reset demo loads the latest examples.
+
+The demo supports scripted streaming, stop, tool approval/rejection, project/model
+selection, new conversations, pin/rename/move/delete, branching, editing and retry.
+Trip and tool-approval prompts are offered on the start page; arbitrary input gets
+a clearly labelled example response. Attachment selection uses the real native
+pickers, but the local client records only names and MIME types. It neither reads
+attachment bytes nor uploads or analyses them. No model API key is needed.
+
+Conversation changes are persisted in a separate versioned demo JSON file in app
+storage. Running turns progress independently of a stream observer while the app
+is alive, and reconcile on foreground return. An unfinished turn from a terminated
+process is marked interrupted on reopening. Reset restores the bundled examples.
+Pairing and foreground Node controls remain real-desktop features and are explained
+in demo Settings. Example citations have no remotely fetched favicons; opening a
+source website is an explicit user action requiring internet access.
+
+For review, provide the exact demo entry and scenario steps, disclose all simulated
+behaviour, and include a physical-device video of real desktop pairing and
+interaction. This mode provides an accessible demonstration, not a guarantee that
+stores will waive access to the real connection flow.
+
+### Regent
+
+The chat index prepends a `platform: "focal"` summary for `all_chats` grants.
+Discovery does not create the singleton or start its heartbeat; the existing
+chat-detail path initializes it when opened. The optional `regent` object carries
+`waiting`, `unread` and `lastMessageAt`. Ordinary clients can ignore it. Detail
+responses omit the hidden system project's navigation metadata.
+
+`ClientPermissions.permits_chat` requires `all_chats` for `focal-suzent`, including
+when its ID appears in an explicit chat list. The same guard covers sending,
+observing, stopping and approvals. Mobile management, retry/edit/fork and
+attachment sends reject Regent. `POST /mobile/client/chats/{chat_id}/read` resets
+the shared unread counter after an authorized read. Discovery itself never marks
+messages read.
+
+Both native clients render Regent as a fixed navigation entry and reuse the
+normal conversation, stream and recovery mechanisms. A collapsible list links to
+the five most recent authorized direct child conversations. Navigation polling updates
+status; a background Regent turn discovered in the selected conversation attaches
+to the existing observer. Read receipts from polling only run while its conversation
+is visible. The crown/eyes animate while working, the gem pulses when waiting,
+and new message timestamps trigger a nod. System reduced-motion settings and
+foreground lifecycle gate animations.
+
+`RegentPresentation` in Swift and Kotlin transforms normalized tool results into
+separate visible bubbles and user reactions. It suppresses quiet heartbeat replies
+and in-flight delivery calls while retaining failed/malformed calls for inspection.
+The raw history and live buffers remain authoritative. Reactions stop at background
+trigger boundaries. Cross-platform delivery cases live in
+`packages/mobile-contract/regent-fixtures.json`.
+
+### Native activity presentation
+
+Swift and Kotlin `ActivityPresentation` consume persisted run timings, deduplicate
+run IDs and sum resumed active durations without including approval waits. Shared
+cases live in `packages/mobile-contract/activity-timing-fixtures.json`. Missing
+timing displays Activity instead of a fabricated duration.
+
+`ActivityTurn` folds completed process content beneath Worked for while preserving
+final prose and Regent delivery bubbles. Pending approvals remain visible. Nested
+activity rails and tool blocks expose status, formatted input/output, copy actions
+and bounded detail scrolling. Tool-category animations and disclosure transitions
+respect reduced motion; ongoing icon animations pause in the background. These
+are native generic tool renderers, not the complete desktop rich-renderer set.
+
+Starting a new conversation detaches the selected local stream observer only after
+composer loading succeeds. Generation guards reject stale updates, and no backend
+stop is sent. Regent and ordinary tasks therefore continue independently.
+
+### Paged conversation navigation
+
+The first screen loads 30 recent chats and a separate pinned page. Projects carry
+server counts and fetch their own first page when expanded; Load more requests
+another 30. Title search runs on the server across the authorized history, so an
+older conversation remains discoverable even if it was never loaded on the phone.
+
+The clients use `chat_pagination: 1` and the navigation/page/status routes documented
+in `packages/mobile-contract/README.md`. Older servers retain the legacy index
+fallback. Foreground polling refreshes loaded summaries in batches of at most 100;
+metadata and the short recent page refresh once per minute. Page loads and search
+results are guarded against navigation changes and cancellation. Pull to refresh
+on iOS or the refresh action on Android restarts from the newest page. Regent,
+project counts and pin discovery do not depend on the recent page.
+
+The demo implements the same paging contract locally. Paging, old-title search,
+independent pins, duplicate merges and access-scoped counts have regression tests.

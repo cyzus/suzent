@@ -1,7 +1,73 @@
 """Display records are captured from stream events, independently of model context."""
 
 from copy import deepcopy
+from collections.abc import Iterable
+from datetime import datetime
 from typing import Any
+
+
+def recover_logged_run_timing(
+    messages: list[dict[str, Any]], events: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Estimate legacy run ends from their first finalized append, never later edits."""
+    missing = {
+        message["_streaming_run_id"]
+        for message in messages
+        if message.get("role") == "assistant"
+        and message.get("_streaming_run_id")
+        and not message.get("_streaming_draft")
+        and not message.get("run_finished_at")
+        and not message.get("run_timings")
+    }
+    if not missing:
+        return messages
+    ends: dict[str, str] = {}
+    for event in events:
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        rows = (
+            [data]
+            if event.get("type") == "message.append"
+            else data.get("insert", [])
+            if event.get("type") == "messages.splice"
+            else []
+        )
+        for row in rows:
+            run_id = row.get("_streaming_run_id")
+            if (
+                run_id in missing
+                and not row.get("_streaming_draft")
+                and event.get("ts")
+            ):
+                ends.setdefault(run_id, event["ts"])
+        if len(ends) == len(missing):
+            break
+    result = []
+    for message in messages:
+        run_id = message.get("_streaming_run_id")
+        start = message.get("run_started_at") or message.get("timestamp")
+        end = ends.get(run_id) if run_id in missing else None
+        if start and end:
+            try:
+                started = datetime.fromisoformat(start)
+                finished = datetime.fromisoformat(end)
+                valid = (
+                    started.tzinfo is not None
+                    and finished.tzinfo is not None
+                    and finished >= started
+                )
+            except (ValueError, TypeError):
+                valid = False
+            if valid:
+                message = {
+                    **message,
+                    "run_started_at": start,
+                    "run_finished_at": end,
+                    "run_timing_source": "log_append",
+                }
+        result.append(message)
+    return result
 
 
 def merge_streamed_message(
@@ -33,6 +99,37 @@ def merge_streamed_message(
                         and not (key == "toolName" and value == "unknown")
                     }
                     row["parts"][part_index] = {**previous, **updates}
+                    # A tool-only resume may not produce a new display row.
+                    # Keep its timing on the updated card so that work survives.
+                    if message.get("run_started_at") and message.get("run_finished_at"):
+                        timings = {}
+                        for source in (row, message):
+                            runs = source.get("run_timings") or []
+                            if (
+                                not runs
+                                and source.get("run_started_at")
+                                and source.get("run_finished_at")
+                            ):
+                                runs = [
+                                    {
+                                        "run_id": source.get("_streaming_run_id"),
+                                        "started_at": source["run_started_at"],
+                                        "finished_at": source["run_finished_at"],
+                                        **(
+                                            {
+                                                "active_seconds": source[
+                                                    "run_active_seconds"
+                                                ]
+                                            }
+                                            if "run_active_seconds" in source
+                                            else {}
+                                        ),
+                                    }
+                                ]
+                            for timing in runs:
+                                if timing.get("run_id"):
+                                    timings[timing["run_id"]] = timing
+                        row["run_timings"] = list(timings.values())
                     result[index] = row
                     matched = True
                     break

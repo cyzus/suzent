@@ -6,13 +6,15 @@ Projects group multiple chat sessions and own the shared workspace
 Endpoints:
 - ``GET    /projects``               list non-archived projects, most recently active first
 - ``POST   /projects``               create a new project
-- ``PATCH  /projects/{id}``          rename / archive
+- ``PATCH  /projects/{id}``          rename / archive / change settings
 - ``DELETE /projects/{id}``          delete an empty, non-system project
+- ``GET    /projects/{id}/folders``  folders the project's chats recently used
 - ``POST   /chats/{id}/project``     move a chat to a different project
 """
 
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -51,7 +53,30 @@ def _project_to_dict(project, chat_count: int) -> dict:
         "createdAt": project.created_at.isoformat() if project.created_at else None,
         "archived": project.archived,
         "chatCount": chat_count,
+        "workingDirectory": project.working_directory,
+        "extraFolders": list(project.extra_folders or []),
     }
+
+
+def _normalize_working_directory(value: object) -> tuple[str, str | None]:
+    """Validate a project working directory from a request body.
+
+    Returns ``(path, error)``. An empty path means "clear the setting".
+    """
+    if value is None:
+        return "", None
+    if not isinstance(value, str):
+        return "", "'working_directory' must be a string or null"
+    raw = value.strip()
+    if not raw:
+        return "", None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        return "", "'working_directory' must be an absolute path"
+    path = path.resolve()
+    if not path.is_dir():
+        return "", f"Folder not found: {path}"
+    return str(path), None
 
 
 def _aware(value: datetime, *, local: bool) -> datetime:
@@ -159,7 +184,12 @@ async def create_project(request: Request) -> JSONResponse:
 
 
 async def update_project(request: Request) -> JSONResponse:
-    """Rename or archive a project. Body: ``{name?, archived?}``."""
+    """Update a project.
+
+    Body: ``{name?, archived?, working_directory?, extra_folders?}``.
+    ``working_directory`` set to ``null`` or ``""`` clears it; ``extra_folders``
+    replaces the project's extra folders.
+    """
     project_id = request.path_params.get("project_id")
     if not project_id:
         return JSONResponse({"error": "project_id required"}, status_code=400)
@@ -171,21 +201,56 @@ async def update_project(request: Request) -> JSONResponse:
 
     name = body.get("name")
     archived = body.get("archived")
-    if name is None and archived is None:
+    has_working_directory = "working_directory" in body
+    has_extra_folders = "extra_folders" in body
+    if (
+        name is None
+        and archived is None
+        and not has_working_directory
+        and not has_extra_folders
+    ):
         return JSONResponse(
-            {"error": "Provide at least one of 'name' or 'archived'"},
+            {
+                "error": (
+                    "Provide at least one of 'name', 'archived', "
+                    "'working_directory' or 'extra_folders'"
+                )
+            },
             status_code=400,
         )
     if name is not None:
         name = str(name).strip()
         if not name:
             return JSONResponse({"error": "'name' cannot be empty"}, status_code=400)
+    working_directory = None
+    if has_working_directory:
+        working_directory, error = _normalize_working_directory(
+            body.get("working_directory")
+        )
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+    extra_folders = None
+    if has_extra_folders:
+        raw_folders = body.get("extra_folders") or []
+        if not isinstance(raw_folders, list):
+            return JSONResponse(
+                {"error": "'extra_folders' must be a list of paths"}, status_code=400
+            )
+        extra_folders = []
+        for raw in raw_folders:
+            folder, error = _normalize_working_directory(raw)
+            if error:
+                return JSONResponse({"error": error}, status_code=400)
+            if folder and folder not in extra_folders:
+                extra_folders.append(folder)
 
     db = get_database()
     project = db.update_project(
         project_id=project_id,
         name=name,
         archived=bool(archived) if archived is not None else None,
+        working_directory=working_directory,
+        extra_folders=extra_folders,
     )
     if not project:
         return JSONResponse({"error": "Project not found"}, status_code=404)
@@ -193,6 +258,15 @@ async def update_project(request: Request) -> JSONResponse:
     return JSONResponse(
         _project_to_dict(project, db.count_chats_in_project(project_id))
     )
+
+
+async def list_project_folders(request: Request) -> JSONResponse:
+    """Folders the project's chats worked in or mounted, newest first."""
+    project_id = request.path_params.get("project_id")
+    db = get_database()
+    if not project_id or not db.get_project(project_id):
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    return JSONResponse({"folders": db.get_project_recent_folders(project_id)})
 
 
 async def delete_project(request: Request) -> JSONResponse:

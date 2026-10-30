@@ -25,6 +25,7 @@ public struct ClientSession: Decodable, Sendable {
     public let pairingRepair: Int?
     public let attachments: Int?
     public let scheduledTasks: Int?
+    public var chatPagination: Int? = nil
 
     public var supportsAttachments: Bool { attachments == 1 }
     public var supportsScheduledTasks: Bool { scheduledTasks == 1 }
@@ -92,21 +93,28 @@ public struct PairingInvitation: Decodable, Sendable {
         return value
     }
 
-    public func resolving<Value: Sendable>(probe: @Sendable (String) async throws -> Value) async throws -> (invitation: Self, value: Value) {
-        for candidate in origins ?? [origin] {
-            try Task.checkCancellation()
-            guard expiresAt > Date().timeIntervalSince1970 else { throw PairingError.expired }
-            do {
-                let value = try await probe(candidate)
-                try Task.checkCancellation()
-                var result = self
-                result.origin = candidate
-                return (result, value)
-            } catch {
-                try Task.checkCancellation()
+    public func resolving<Value: Sendable>(probe: @escaping @Sendable (String) async throws -> Value) async throws -> (invitation: Self, value: Value) {
+        try Task.checkCancellation()
+        guard expiresAt > Date().timeIntervalSince1970 else { throw PairingError.expired }
+        return try await withThrowingTaskGroup(of: (String, Value)?.self) { group in
+            for candidate in origins ?? [origin] {
+                group.addTask {
+                    do { return (candidate, try await probe(candidate)) }
+                    catch { try Task.checkCancellation(); return nil }
+                }
             }
+            for try await result in group {
+                if let (candidate, value) = result {
+                    group.cancelAll()
+                    try Task.checkCancellation()
+                    guard expiresAt > Date().timeIntervalSince1970 else { throw PairingError.expired }
+                    var invitation = self
+                    invitation.origin = candidate
+                    return (invitation, value)
+                }
+            }
+            throw tls == nil ? PairingError.unreachable : PairingError.secureConnection
         }
-        throw tls == nil ? PairingError.unreachable : PairingError.secureConnection
     }
 
 }

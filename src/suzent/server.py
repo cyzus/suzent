@@ -79,6 +79,7 @@ from suzent.routes.project_routes import (
     create_project,
     delete_project,
     list_projects,
+    list_project_folders,
     move_all_chats,
     move_chat_to_project,
     update_project,
@@ -164,6 +165,9 @@ from suzent.routes.memory_routes import (
     update_project_context,
     search_archival_memory,
     delete_archival_memory,
+    get_archival_memory_origin,
+    get_recent_memory_changes,
+    get_chat_memory_activity,
     get_memory_stats,
     consolidate_memory,
     lint_memory,
@@ -194,7 +198,6 @@ from suzent.routes.system_routes import (
     open_in_explorer,
 )
 from suzent.routes.session_routes import (
-    get_session_transcript,
     get_session_state,
     get_memory_daily_log,
     list_memory_daily_logs,
@@ -683,6 +686,14 @@ async def startup():
             _monitor_service_resources(), name="service_resource_guard"
         )
 
+    from suzent.config.paths import PROJECT_DIR
+    from suzent.service.auto_update import run_auto_update
+
+    app.state.auto_updater = asyncio.create_task(
+        run_auto_update(PROJECT_DIR, service=os.getenv("SUZENT_RUN_MODE") == "service"),
+        name="auto_updater",
+    )
+
     try:
         from genai_prices import UpdatePrices
 
@@ -1004,7 +1015,7 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
-    for task_name in ("service_resource_guard", "overflow_sweeper"):
+    for task_name in ("service_resource_guard", "overflow_sweeper", "auto_updater"):
         task = getattr(app.state, task_name, None)
         if task is not None and not task.done():
             task.cancel()
@@ -1245,6 +1256,7 @@ app = Starlette(
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),
         Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
         Route("/projects/{project_id}/move-chats", move_all_chats, methods=["POST"]),
+        Route("/projects/{project_id}/folders", list_project_folders, methods=["GET"]),
         Route("/project/goal", get_project_goal, methods=["GET"]),
         Route("/project/goal/action", update_project_goal, methods=["POST"]),
         Route("/project/tasks", get_project_tasks, methods=["GET"]),
@@ -1362,6 +1374,13 @@ app = Starlette(
         Route(
             "/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]
         ),
+        Route(
+            "/memory/archival/{memory_id}/origin",
+            get_archival_memory_origin,
+            methods=["GET"],
+        ),
+        Route("/memory/recent", get_recent_memory_changes, methods=["GET"]),
+        Route("/memory/chat/{chat_id}", get_chat_memory_activity, methods=["GET"]),
         Route("/memory/stats", get_memory_stats, methods=["GET"]),
         Route("/memory/daily", list_memory_daily_logs, methods=["GET"]),
         Route("/memory/daily/{date}", get_memory_daily_log, methods=["GET"]),
@@ -1370,11 +1389,6 @@ app = Starlette(
         Route("/memory/dream/status", get_dream_status, methods=["GET"]),
         Route("/memory/consolidate", consolidate_memory, methods=["POST"]),
         Route("/memory/lint", lint_memory, methods=["POST"]),
-        Route(
-            "/session/{session_id}/transcript",
-            get_session_transcript,
-            methods=["GET"],
-        ),
         Route(
             "/session/{session_id}/state",
             get_session_state,

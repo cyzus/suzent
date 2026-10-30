@@ -41,6 +41,12 @@ public enum ClientError: Error, LocalizedError, Sendable {
     }
 }
 
+public struct RegentStatus: Decodable, Sendable {
+    public let waiting: Int
+    public let unread: Int
+    public let lastMessageAt: String?
+}
+
 public struct Chat: Decodable, Identifiable, Sendable {
     public let id: String
     public var title: String
@@ -53,6 +59,8 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public var models: [String]?
     public var platform: String?
     public var parentChatId: String?
+    public var regent: RegentStatus?
+    public var isRegent: Bool { platform == "focal" }
 
     public init(id: String, title: String) {
         self.id = id
@@ -76,7 +84,8 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
 public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
-    public init(id: String, name: String) { self.id = id; self.name = name }
+    public let chatCount: Int?
+    public init(id: String, name: String, chatCount: Int? = nil) { self.id = id; self.name = name; self.chatCount = chatCount }
 }
 
 public struct FileAttachment: Decodable, Sendable, Equatable {
@@ -93,7 +102,7 @@ public struct FileAttachment: Decodable, Sendable, Equatable {
     }
 }
 
-public struct ChatMessage: Decodable, Sendable {
+public struct ChatMessage: Decodable, Sendable, Equatable {
     public let role: String
     public let content: String
 
@@ -103,6 +112,12 @@ public struct ChatMessage: Decodable, Sendable {
     public let model: String?
     public let timestamp: String?
     public let files: [FileAttachment]
+    public var runTimings: [RunTiming] = []
+    public var runID: String?
+    public var runStartedAt: String?
+    public var runFinishedAt: String?
+    public var runActiveSeconds: Double?
+    public var lastActivityAt: String?
 
     public init(role: String, content: String, files: [FileAttachment] = []) {
         self.role = role
@@ -115,7 +130,10 @@ public struct ChatMessage: Decodable, Sendable {
         self.files = files
     }
 
-    enum CodingKeys: String, CodingKey { case role, content, parts, name, model, timestamp, files; case toolCallId = "tool_call_id" }
+    enum CodingKeys: String, CodingKey { case role, content, parts, name, model, timestamp, files; case toolCallId = "tool_call_id"
+        case runTimings = "run_timings", runID = "_streaming_run_id", runStartedAt = "run_started_at"
+        case runFinishedAt = "run_finished_at", runActiveSeconds = "run_active_seconds", lastActivityAt = "turn_last_activity_at"
+    }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         role = try values.decodeIfPresent(String.self, forKey: .role) ?? "assistant"
@@ -126,6 +144,12 @@ public struct ChatMessage: Decodable, Sendable {
         model = try values.decodeIfPresent(String.self, forKey: .model)
         timestamp = try values.decodeIfPresent(String.self, forKey: .timestamp)
         files = (try? values.decodeIfPresent([FileAttachment].self, forKey: .files)) ?? []
+        runTimings = (try? values.decodeIfPresent([RunTiming].self, forKey: .runTimings)) ?? []
+        runID = try values.decodeIfPresent(String.self, forKey: .runID)
+        runStartedAt = try values.decodeIfPresent(String.self, forKey: .runStartedAt)
+        runFinishedAt = try values.decodeIfPresent(String.self, forKey: .runFinishedAt)
+        runActiveSeconds = try values.decodeIfPresent(Double.self, forKey: .runActiveSeconds)
+        lastActivityAt = try values.decodeIfPresent(String.self, forKey: .lastActivityAt)
     }
 }
 

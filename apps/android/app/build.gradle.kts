@@ -15,6 +15,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.suzent.mobile"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 26
         targetSdk = 36
         versionCode = mobileVersion.getProperty("versionCode").toInt()
@@ -37,6 +38,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     sourceSets["test"].resources.srcDir("../../../packages/mobile-contract")
+    sourceSets["main"].assets.srcDir("../../../packages/SuzentCore/Sources/SuzentCore/Resources")
+    sourceSets["test"].resources.srcDir("../../../packages/SuzentCore/Sources/SuzentCore/Resources")
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -52,9 +55,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20251224")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

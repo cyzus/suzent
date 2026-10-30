@@ -1,3 +1,4 @@
+import { regentReactions } from '../lib/regentConversation';
 import { ModelWaitNotice } from './chat/ModelWaitNotice';
 import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
@@ -38,7 +39,11 @@ import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
-import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
+import {
+  permissionApprovalsToParts,
+  resolvedApprovalToolCallIds,
+  useApprovalRestore,
+} from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
@@ -454,6 +459,7 @@ const MessageList: React.FC<{
   fallbackModel?: string;
   /** Turn durations keyed by *absolute* message index; built from the full history. */
   turnWorkedSeconds?: Map<number, number>;
+  reactionParts?: AGUIPart[];
 }> = ({
   messages,
   streamingForCurrentChat,
@@ -477,7 +483,15 @@ const MessageList: React.FC<{
   chatCitationSources,
   fallbackModel,
   turnWorkedSeconds,
+  reactionParts,
 }) => {
+  const reactions = useMemo(
+    () =>
+      chatId === FOCAL_CHAT_ID
+        ? regentReactions(messages, reactionParts)
+        : new Map<number, string>(),
+    [chatId, messages, reactionParts]
+  );
   const { t, locale } = useI18n();
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
@@ -526,7 +540,7 @@ const MessageList: React.FC<{
 
   let previousTimestamp: string | undefined;
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}>
       {messages.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 
@@ -681,6 +695,7 @@ const MessageList: React.FC<{
                 {isUser ? (
                   <UserMessage
                     message={m}
+                    reaction={reactions.get(idx)}
                     chatId={chatId}
                     onImageClick={onImageClick}
                     onFileClick={onFileClick}
@@ -772,6 +787,7 @@ let queuedMessageStore: Record<string, QueuedMessage[]> = {};
 
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
+  rightSidebarHeaderSlot?: HTMLElement | null;
   onRightSidebarToggle?: (isOpen: boolean) => void;
   onRightSidebarWidthChange?: (width: number | null) => void;
   rightSidebarMaxWidthPx?: number;
@@ -787,6 +803,7 @@ const isAbortError = (err: unknown) =>
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
+  rightSidebarHeaderSlot,
   onRightSidebarToggle = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
@@ -2476,19 +2493,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!currentChatId) return;
     if (streamingChatIdRef.current !== currentChatId) return;
 
-    const resolvedToolCallIds = new Set<string>();
-    for (const m of messages) {
-      if (m.role !== 'assistant' || !Array.isArray(m.parts)) continue;
-      for (const p of m.parts) {
-        if (
-          p.type === 'tool' &&
-          p.toolCallId &&
-          (p.output != null || p.state !== 'approval-requested')
-        ) {
-          resolvedToolCallIds.add(p.toolCallId);
-        }
-      }
-    }
+    const resolvedToolCallIds = resolvedApprovalToolCallIds(messages);
 
     clearIfResolved(currentChatId, getStreamingParts(), resolvedToolCallIds);
   }, [currentChatId, messages, clearIfResolved, getStreamingParts, streamingChatIdRef]);
@@ -3071,6 +3076,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopInFlightRef.current = true;
 
     const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
+    // The user ended this turn themselves, so its ending is nothing to announce,
+    // whichever path the stop finishes through.
+    if (targetChatId) forgetReply(targetChatId);
     // Stopping means "not that" — firing off the queue next would carry on
     // regardless. Hand the queued text back to the composer to revise instead.
     const stoppedQueue = targetChatId ? messageQueues[targetChatId] : undefined;
@@ -3395,6 +3403,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     {safeMessages.length > 0 && (
                       <MessageListMemo
                         messages={visibleMessages}
+                        reactionParts={showTransientAssistant ? streamingParts : undefined}
                         turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
                         streamingForCurrentChat={false}
                         chatCitationSources={chatCitationSources}
@@ -3561,6 +3570,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Right Sidebar */}
         <RightSidebar
           isOpen={isRightSidebarOpen}
+          headerSlot={rightSidebarHeaderSlot}
           onClose={() => onRightSidebarToggle(false)}
           onOpen={() => onRightSidebarToggle(true)}
           onWidthChange={onRightSidebarWidthChange}

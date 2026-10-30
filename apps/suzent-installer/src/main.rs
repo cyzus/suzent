@@ -166,7 +166,17 @@ fn inspect_destination_path(root: &Path) -> DestinationInfo {
     if git(&["rev-parse", "HEAD"]).is_none() {
         return info("invalid", None);
     }
-    if !root.join(".suzent-bootstrap-complete").is_file() && channel.trim() != "stable" {
+    // An install interrupted before it recorded its channel (setup.ps1 and
+    // setup.sh used to write it last) is still a detached release-tag clone,
+    // not a development checkout: repair it instead of asking for cargo.
+    let at_release_tag = || {
+        git(&["tag", "--points-at", "HEAD"])
+            .is_some_and(|tags| tags.lines().any(|tag| is_release_tag(tag.trim())))
+    };
+    if !root.join(".suzent-bootstrap-complete").is_file()
+        && channel.trim() != "stable"
+        && !at_release_tag()
+    {
         return info("development", branch);
     }
     let kind = if !root.join(".suzent-bootstrap-complete").is_file()
@@ -257,10 +267,17 @@ async fn save_diagnostics(app: tauri::AppHandle, content: String) -> Result<bool
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if has_flag(&args, "--prefetch") {
+        std::process::exit(updater::run_prefetch(&args));
+    }
     if has_flag(&args, "--update") || has_flag(&args, "--repair") {
         let repair = has_flag(&args, "--repair");
         if has_flag(&args, "--headless") {
-            show_update_console();
+            // A silent update runs while nobody is watching (app exit or
+            // relaunch), so it gets no console window either.
+            if !has_flag(&args, "--silent") {
+                show_update_console();
+            }
             std::process::exit(updater::run(&args, repair));
         }
         run_update_tauri(args, repair);
@@ -655,6 +672,7 @@ impl InstallConfig {
                     .filter(|value| !value.trim().is_empty())
                     .map(PathBuf::from)
             })
+            .map(without_verbatim_prefix)
             .unwrap_or_else(default_install_dir);
         let configured_branch = flag_value(args, "--branch").or_else(|| {
             env::var("SUZENT_BRANCH")
@@ -1857,7 +1875,7 @@ fn install_dir_marker_path() -> PathBuf {
 }
 
 fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
-    let path = PathBuf::from(fs::read_to_string(marker).ok()?.trim());
+    let path = without_verbatim_prefix(PathBuf::from(fs::read_to_string(marker).ok()?.trim()));
     // A missing drive or broken environment needs repair, not a second install.
     path.is_absolute().then_some(path)
 }
@@ -1865,7 +1883,26 @@ fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
 fn write_install_dir_marker(dir: &Path) -> io::Result<()> {
     let marker = install_dir_marker_path();
     fs::create_dir_all(marker.parent().expect("install marker parent"))?;
-    fs::write(marker, fs::canonicalize(dir)?.display().to_string())
+    fs::write(
+        marker,
+        without_verbatim_prefix(fs::canonicalize(dir)?)
+            .display()
+            .to_string(),
+    )
+}
+
+/// `fs::canonicalize` on Windows returns `\\?\C:\...`, which Git cannot clone
+/// into. Earlier installers saved that form as the install directory, so a
+/// reinstall failed in the clone step within a second.
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
 }
 
 fn dirs_home() -> PathBuf {
@@ -2112,6 +2149,12 @@ mod tests {
         assert_eq!(super::inspect_destination_path(root).kind, "development");
         git(&["checkout", "--detach"]);
         assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "development");
+        git(&["tag", "v0.18.0"]);
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        git(&["tag", "-d", "v0.18.0"]);
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
         fs::create_dir_all(root.join(".suzent")).unwrap();
         fs::write(root.join(".suzent/update-channel"), "stable").unwrap();
         fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
@@ -2258,6 +2301,21 @@ mod tests {
         for invalid in ["", "relative/install"] {
             fs::write(&marker, invalid).unwrap();
             assert_eq!(saved_install_dir(&marker), None);
+        }
+    }
+
+    #[test]
+    fn strips_the_windows_verbatim_prefix_git_cannot_use() {
+        for (verbatim, plain) in [
+            (r"\\?\C:\Users\a\suzent", r"C:\Users\a\suzent"),
+            (r"\\?\UNC\server\share\suzent", r"\\server\share\suzent"),
+            (r"\\?\Volume{1234}\suzent", r"\\?\Volume{1234}\suzent"),
+            ("/home/a/suzent", "/home/a/suzent"),
+        ] {
+            assert_eq!(
+                super::without_verbatim_prefix(std::path::PathBuf::from(verbatim)),
+                std::path::PathBuf::from(plain)
+            );
         }
     }
 }

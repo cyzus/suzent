@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Reorganize the memory page into Memory, Organize and Raw records tabs with topics, plain-language organizing and links back to the source conversation, and extract memories straight from the chat log instead of separate transcript copies."
+}

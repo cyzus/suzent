@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   frameLevel,
+  shownStatus,
   initialVoiceSessionState,
   latestLines,
   voiceSessionReducer,
@@ -59,6 +60,40 @@ describe('voice session reducer', () => {
     expect(busy.transcripts.at(-1)?.text).toBe('l49');
     expect(voiceSessionReducer(busy, { type: 'start' }).transcripts).toEqual([]);
     expect(voiceSessionReducer(busy, { type: 'stop' })).toEqual(initialVoiceSessionState);
+  });
+});
+
+describe('shownStatus', () => {
+  const call = run([{ type: 'start' }, { type: 'state', state: 'speaking' }]);
+
+  it('stays speaking while a reply sent faster than real time is still playing', () => {
+    const generated = run(
+      [
+        { type: 'playback', playing: true },
+        { type: 'state', state: 'listening' },
+      ],
+      call
+    );
+    expect(generated.status).toBe('listening');
+    expect(shownStatus(generated)).toBe('speaking');
+    const played = voiceSessionReducer(generated, { type: 'playback', playing: false });
+    expect(shownStatus(played)).toBe('listening');
+  });
+
+  it('shows the user taking the turn even while the reply still plays', () => {
+    const playing = run([{ type: 'playback', playing: true }], call);
+    expect(
+      shownStatus(voiceSessionReducer(playing, { type: 'state', state: 'user_speaking' }))
+    ).toBe('user_speaking');
+    expect(shownStatus(voiceSessionReducer(playing, { type: 'state', state: 'thinking' }))).toBe(
+      'thinking'
+    );
+  });
+
+  it('a new call starts with nothing playing', () => {
+    const playing = run([{ type: 'playback', playing: true }], call);
+    expect(voiceSessionReducer(playing, { type: 'start' }).playing).toBe(false);
+    expect(voiceSessionReducer(playing, { type: 'stop' }).playing).toBe(false);
   });
 });
 

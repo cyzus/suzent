@@ -168,71 +168,147 @@ describe('message bottom scrolling', () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
-  it('scrolls a pixel and back after the transcript narrows or shrinks so WKWebView resyncs', () => {
-    vi.useFakeTimers();
-    let frame: FrameRequestCallback = () => {};
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      frame = callback;
-      return 1;
-    });
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    let onResize = () => {};
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(callback: () => void) {
-          onResize = callback;
+  describe('WebKit scroll-layer resync after the transcript resizes', () => {
+    function useScrollerHarness(overrides: Record<string, unknown> = {}) {
+      vi.useFakeTimers();
+      let nextId = 0;
+      const queue = new Map<number, FrameRequestCallback>();
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        queue.set(++nextId, callback);
+        return nextId;
+      });
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => queue.delete(id));
+      let onResize = () => {};
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(callback: () => void) {
+            onResize = callback;
+          }
+          observe = vi.fn();
+          disconnect = vi.fn();
         }
-        observe = vi.fn();
-        disconnect = vi.fn();
-      }
-    );
-    vi.stubGlobal(
-      'MutationObserver',
-      class {
-        observe = vi.fn();
-        disconnect = vi.fn();
-      }
-    );
-    const hook = useAutoScroll([]);
-    const container = {
-      children: [],
-      clientWidth: 900,
-      clientHeight: 600,
-      scrollHeight: 3000,
-      scrollTop: 2400,
-      scrollTo: vi.fn(),
-      closest: () => ({}),
-    };
-    hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
-    const cleanup = effects[2]();
+      );
+      vi.stubGlobal(
+        'MutationObserver',
+        class {
+          observe = vi.fn();
+          disconnect = vi.fn();
+        }
+      );
+      const hook = useAutoScroll([]);
+      const container = {
+        children: [],
+        clientWidth: 900,
+        clientHeight: 600,
+        scrollHeight: 3000,
+        scrollTop: 2400,
+        scrollTo: vi.fn(),
+        style: { transform: '' },
+        closest: () => ({}),
+        ...overrides,
+      };
+      hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
+      const cleanup = effects[2]();
+      // Runs the frames queued so far; frames they queue wait for the next call.
+      const flushFrame = () => {
+        const pending = [...queue.entries()];
+        queue.clear();
+        for (const [, callback] of pending) callback(0);
+      };
+      return { container, onResize: () => onResize(), flushFrame, cleanup };
+    }
 
-    // A height-only resize (streaming growth) needs no repaint.
-    onResize();
-    vi.advanceTimersByTime(400);
-    expect(container.scrollTop).toBe(2400);
+    it('ignores height-only growth such as streaming', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness();
+      onResize();
+      flushFrame();
+      flushFrame();
+      flushFrame();
+      vi.advanceTimersByTime(400);
+      expect(container.scrollTop).toBe(2400);
+      if (cleanup) cleanup();
+    });
 
-    container.clientWidth = 1200;
-    onResize();
-    vi.advanceTimersByTime(349);
-    expect(container.scrollTop).toBe(2400);
-    vi.advanceTimersByTime(1);
-    expect(container.scrollTop).toBe(2399);
-    container.scrollTo.mockClear();
-    frame(0);
-    expect(container.scrollTop).toBe(2400);
-    expect(container.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: 'auto' });
+    it('scrolls a pixel and back on the frames right after the column gets wider', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness();
+      container.clientWidth = 1200;
+      onResize();
+      flushFrame();
+      expect(container.scrollTop).toBe(2400);
+      flushFrame();
+      expect(container.scrollTop).toBe(2399);
+      container.scrollTo.mockClear();
+      flushFrame();
+      expect(container.scrollTop).toBe(2400);
+      expect(container.scrollTo).toHaveBeenCalledWith({ top: 3000, behavior: 'auto' });
+      if (cleanup) cleanup();
+    });
 
-    // Collapsing a tool block shortens the transcript at the same width.
-    container.scrollHeight = 2500;
-    container.scrollTop = 1900;
-    onResize();
-    vi.advanceTimersByTime(99);
-    expect(container.scrollTop).toBe(1900);
-    vi.advanceTimersByTime(1);
-    expect(container.scrollTop).toBe(1899);
-    frame(0);
-    expect(container.scrollTop).toBe(1900);
-    if (cleanup) cleanup();
+    it('also resyncs when the transcript shrinks at the same width', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness();
+      container.scrollHeight = 2500;
+      container.scrollTop = 1900;
+      onResize();
+      flushFrame();
+      flushFrame();
+      expect(container.scrollTop).toBe(1899);
+      flushFrame();
+      expect(container.scrollTop).toBe(1900);
+      if (cleanup) cleanup();
+    });
+
+    it('still repaints when nothing is scrollable, by toggling a compositing layer', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness({
+        scrollHeight: 500,
+        scrollTop: 0,
+      });
+      container.clientWidth = 1200;
+      onResize();
+      flushFrame();
+      expect(container.style.transform).toBe('');
+      flushFrame();
+      expect(container.style.transform).toBe('translateZ(0)');
+      flushFrame();
+      expect(container.style.transform).toBe('');
+      expect(container.scrollTop).toBe(0);
+      if (cleanup) cleanup();
+    });
+
+    it('falls back to a trailing pass when the frames never get to run', () => {
+      const { container, onResize, cleanup } = useScrollerHarness();
+      container.clientWidth = 1200;
+      onResize();
+      vi.advanceTimersByTime(349);
+      expect(container.scrollTop).toBe(2400);
+      vi.advanceTimersByTime(1);
+      expect(container.scrollTop).toBe(2399);
+      if (cleanup) cleanup();
+    });
+
+    it('restores the pixel nudge when another resize interrupts it', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness();
+      container.clientWidth = 1200;
+      onResize();
+      flushFrame();
+      flushFrame();
+      expect(container.scrollTop).toBe(2399);
+
+      container.clientWidth = 1000;
+      onResize();
+      expect(container.scrollTop).toBe(2400);
+      if (cleanup) cleanup();
+    });
+
+    it('restores the pixel nudge when the hook is torn down mid-flight', () => {
+      const { container, onResize, flushFrame, cleanup } = useScrollerHarness();
+      container.clientWidth = 1200;
+      onResize();
+      flushFrame();
+      flushFrame();
+      expect(container.scrollTop).toBe(2399);
+      if (cleanup) cleanup();
+      expect(container.scrollTop).toBe(2400);
+    });
   });
 });

@@ -45,6 +45,7 @@ class ChatSummaryModel(BaseModel):
     createdAt: str
     updatedAt: str
     pinned: bool = False
+    archived: bool = False
     messageCount: int
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
@@ -70,6 +71,12 @@ class ProjectModel(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     archived: bool = Field(default=False)
+    # Default working directory for every chat in the project. A chat's own
+    # working directory still wins; see resolve_chat_working_directory().
+    working_directory: Optional[str] = None
+    # More folders every chat in the project can reach, mounted alongside the
+    # chat's own. Host paths.
+    extra_folders: list = Field(default_factory=list, sa_column=Column(JSON))
 
     chats: List["ChatModel"] = Relationship(back_populates="project")
     goals: List["GoalModel"] = Relationship(
@@ -90,6 +97,7 @@ class ChatModel(SQLModel, table=True):
     id: str = Field(primary_key=True)
     title: str
     pinned: bool = Field(default=False)
+    archived: bool = Field(default=False)
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
@@ -150,6 +158,16 @@ class ChatStatusModel(SQLModel, table=True):
     waiting_reason: Optional[str] = None
     summary: Optional[str] = None
     judged_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class MemoryRecallModel(SQLModel, table=True):
+    """The memories retrieved for a chat's latest turn, kept for display only."""
+
+    __tablename__ = "memory_recalls"
+
+    chat_id: str = Field(primary_key=True)
+    items: list = Field(default_factory=list, sa_column=Column(JSON))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -473,9 +491,8 @@ class PostprocessJobModel(SQLModel, table=True):
 
 
 class PostProcessStep:
-    """Constant definitions for postprocess steps B1..B7."""
+    """Constant definitions for postprocess steps B2..B7."""
 
-    TRANSCRIPT = "B1_transcript"
     MEMORY = "B2_memory"
     COMPRESS = "B3_compress"
     DISPLAY = "B4_display"
@@ -483,7 +500,7 @@ class PostProcessStep:
     LIFECYCLE = "B6_lifecycle"
     MIRROR = "B7_mirror"
 
-    ALL = [TRANSCRIPT, MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
+    ALL = [MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
 
 
 class PostProcessStatus:

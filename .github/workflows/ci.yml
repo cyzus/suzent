@@ -73,7 +73,7 @@ jobs:
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
     - name: Install dependencies
-      run: uv sync --all-extras
+      run: uv sync --locked --all-extras
 
     - name: Check version consistency
       run: python scripts/bump_version.py --check
@@ -280,6 +280,8 @@ jobs:
       if: steps.changed.outputs.touched == 'true'
       working-directory: website
       run: npm run build
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
 
   browser-extension:
     name: Browser extension

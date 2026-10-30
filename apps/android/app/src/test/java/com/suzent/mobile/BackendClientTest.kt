@@ -13,6 +13,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
+    @Test fun paginationCapabilityUsesBoundedEndpoints() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"client_protocol":1,"stream_protocols":[1],"chat_pagination":1,"device":{"device_id":"phone","display_name":"Phone","permissions":{"chat_ids":[],"all_chats":true,"create_chats":true,"send":true,"stop":true}}}"""))
+        server.enqueue(MockResponse().setBody("""{"chats":[],"total":31,"nextOffset":30}"""))
+        server.enqueue(MockResponse().setBody("""{"chats":[]}"""))
+        server.enqueue(MockResponse().setBody("""{"chats":[]}"""))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "token")
+        try {
+            client.session()
+            assertEquals(30, client.chatPage(ChatPageQuery("search", "older / 旧会话")).nextOffset)
+            client.chatStatuses((0..100).map { "chat-$it" })
+            assertEquals("/mobile/client/session", server.takeRequest().path)
+            val page = server.takeRequest()
+            assertEquals("/mobile/client/chat-page", page.path)
+            assertEquals("older / 旧会话", JSONObject(page.body.readUtf8()).getString("value"))
+            for (count in listOf(100, 1)) {
+                val status = server.takeRequest()
+                assertEquals("/mobile/client/chat-status", status.path)
+                assertEquals(count, JSONObject(status.body.readUtf8()).getJSONArray("ids").length())
+            }
+        } finally { client.close(); server.shutdown() }
+    }
+
     @Test fun sendRetriesWithTheSameIdAfterAnAmbiguousResponse() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(202).setBody("not-json"))

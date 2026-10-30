@@ -34,7 +34,7 @@ and overrides whatever the request asked for:
 - `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
   `FocalDispatchTool`, web search and fetch, memory and session search,
   ask-question, skills, read-only file tools, `FocalScheduleTool`, and
-  `FocalNotesTool`. The plain
+  `FocalNotesTool`, `FocalMessageTool`, and `FocalReactionTool`. The plain
   `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
@@ -49,7 +49,7 @@ carry it. They sit together in `suzent.tools.focal`: `FocalDispatchTool`
 (`schedule_wakeup`, a subclass of `ScheduleTool`) and `FocalNotesTool`
 (`update_notes`). The two subclasses call their parents' internals, so a change
 to `AgentSendTool._deliver` or `ScheduleTool`'s helpers needs a look there too.
-All three have an empty `group` and are
+These tools have an empty `group` and are
 not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than
 naming the Focal Agent, so nothing Regent reads calls it anything but Regent.
@@ -159,6 +159,17 @@ not opened Regent, except for sessions Focal started.
 When a woken Focal turn replies, `announce_focal_reply()` also queues a
 desktop notification, since the user may not have the chat open.
 
+The global context tells Regent to filter rather than relay: blockers first,
+one line each, no restated reports, and the quiet token (`HEARTBEAT_OK`) when a
+session's reply or finish needs nothing from the user. A quiet reply is not
+rolled back: the event and the reply stay in Regent's history, so it can still
+answer what happened. It only reaches nobody: `announce_focal_reply()` skips
+the notification, and `_persist_state` finalizes with `count_unread=False`, so
+the unread badge stays put. The one exception is `task_blocked_notification`:
+if Regent goes quiet on a blocker anyway, the notification carries the blocker
+text itself. The desktop renders a quiet reply as "Nothing needed from you"
+(`lib/quietReply.ts`, mirroring `is_quiet_reply()`).
+
 ## Heartbeat
 
 The first `get_or_create_focal_chat()` enables the heartbeat at 30 minutes
@@ -183,6 +194,12 @@ before any model call:
 The signature is written by `record_focal_heartbeat_done()` only after a
 check-in turn succeeds, so a failed or preempted check-in raises the same
 findings next time.
+
+A quiet check-in is rolled back only if it did nothing. `turn_acted()` looks
+for any tool call outside the look-up tools (`_OBSERVING_TOOL_NAMES`): a
+check-in that dispatched a nudge and then answered `HEARTBEAT_OK` stays in
+history, unannounced, so Regent doesn't forget the nudge and send it again.
+This holds for every chat's heartbeat, not only Regent's.
 
 ## Wake-ups
 
@@ -253,8 +270,8 @@ from tasks or replies.
   cube appears exactly where the logo was. Both read "working" from the chat's
   own stream as well as from status (`components/regent/RegentHeader.tsx`).
 - Regent's replies are signed with its mark (`AssistantMessage`'s `regent`):
-  the live badge shows `RegentMark` through `AgentBadge`'s `icon`, scanning
-  while it works, and past replies carry the small mark and "Regent".
+  a compact `RegentMark` and name sit above the bubbles, with thinking dots
+  while it works. Past replies keep the same quiet identity.
 - `FocalBriefing` is only the greeting on an empty chat; the header carries the
   name and what waits on the user.
 - Regent has two marks in `components/regent/`: `RegentMark`, the flat Suzent
@@ -269,3 +286,28 @@ from tasks or replies.
   session, with a remembered project filter.
 - The Tools tab shows `FocalToolsPanel` instead of the tool picker, and the
   input hides the folder and attachment controls.
+
+
+## Conversation delivery
+
+Regent can use `send_message(messages=[...])` to send 1–4 separate bubbles
+(up to 4,000 characters each), then continue its turn. Its final text remains
+an ordinary reply; session guidance tells it not to repeat already delivered
+messages. `react_to_message(emoji=...)` sets one of eight supported reactions on
+the user message for the current turn. An empty emoji removes that reaction.
+Runtime-only wake-ups cannot react to an earlier user message.
+
+Both tools are Regent-only and return validated `ToolResult` envelopes with
+`regent_messages` or `regent_reaction` metadata. Delivery uses the existing
+`TOOL_CALL_RESULT` stream and persisted tool-return history, so reload and
+recovery share the same source of truth. The React conversation view renders
+successful sends as separate bubbles and reactions beneath the user message;
+failed calls stay visible in the activity rail. Tool call IDs deduplicate
+replayed deliveries. The original parts remain in storage and model history.
+
+Regent's text stays visible when activity folds at the end of a turn. The UI
+uses a compact identity and thinking dots, light/dark bubble styles, and an
+accessible reaction label. Completed work duration shares the identity row and
+expands on demand; long answers retain bubbles with restrained heading sizes. Desktop notifications remain once per turn, with
+sent messages used as a fallback preview when final text is empty. The stream
+parser also includes sent messages in text collected for background replies.

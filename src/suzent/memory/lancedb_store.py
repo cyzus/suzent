@@ -29,6 +29,7 @@ from lancedb.pydantic import LanceModel, Vector
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
+from suzent.memory.topics import describe
 
 logger = get_logger(__name__)
 
@@ -54,12 +55,15 @@ def matches_metadata(
     source_types: Optional[List[str]] = None,
     categories: Optional[List[str]] = None,
     tags: Optional[List[str]] = None,
+    kinds: Optional[List[str]] = None,
+    topics: Optional[List[str]] = None,
 ) -> bool:
-    """Whether a memory's metadata passes the source/category/tag filters.
+    """Whether a memory's metadata passes the source/category/tag/kind/topic filters.
 
-    Each list is an OR within itself and an AND across the three. `metadata` is a
-    JSON *string* column, so none of this can be pushed into a SQL clause — it has
-    to happen in Python, after the rows are read. The list path already materialises
+    Each list is an OR within itself and an AND across the lists; kinds and topics
+    are read off the metadata by `describe`. `metadata` is a JSON *string* column,
+    so none of this can be pushed into a SQL clause — it has to happen in Python,
+    after the rows are read. The list path already materialises
     and sorts the full set there, so this costs one more pass over the same list;
     the search path reuses it so both routes filter identically.
     """
@@ -74,6 +78,12 @@ def matches_metadata(
         if not isinstance(row_tags, list):
             return False
         if not set(tags) & {str(t) for t in row_tags}:
+            return False
+    if kinds or topics:
+        derived = describe(meta)
+        if kinds and derived["kind"] not in kinds:
+            return False
+        if topics and not set(topics) & set(derived["topics"]):
             return False
     return True
 
@@ -299,7 +309,7 @@ class LanceDBMemoryStore:
         result = {
             "id": row["id"],
             "content": row["content"],
-            "metadata": json.loads(row["metadata"]),
+            "metadata": (meta := json.loads(row["metadata"])) | describe(meta),
             "importance": row["importance"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -974,10 +984,13 @@ class LanceDBMemoryStore:
         source_types: Optional[List[str]] = None,
         categories: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
+        kinds: Optional[List[str]] = None,
+        topics: Optional[List[str]] = None,
     ) -> int:
         """Get the number of memories for a user, optionally within an importance band."""
         try:
-            if not (source_types or categories or tags):
+            filters = (source_types, categories, tags, kinds, topics)
+            if not any(filters):
                 return await self.archival_table.count_rows(
                     self._scalar_clause(
                         user_id, chat_id, min_importance, max_importance
@@ -990,9 +1003,7 @@ class LanceDBMemoryStore:
             return sum(
                 1
                 for r in rows
-                if self._matches_metadata(
-                    self._row_metadata(r), source_types, categories, tags
-                )
+                if self._matches_metadata(self._row_metadata(r), *filters)
             )
         except Exception as e:
             logger.error(f"Get memory count failed: {e}")
@@ -1005,41 +1016,61 @@ class LanceDBMemoryStore:
         min_importance: Optional[float] = None,
         max_importance: Optional[float] = None,
         max_tags: int = 24,
+        source_types: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Counts per source type, per category, and for the commonest tags.
+        """Counts per source type, category and kind, and for the commonest tags and topics.
 
         Deliberately computed over the set *before* metadata filtering: a facet count
         that shrinks as you tick its own box tells you nothing about what else you
-        could have picked.
+        could have picked. The exception is `source_types`, the shelf being browsed:
+        every count except the per-source one is taken within it, so a kind or topic
+        count matches what its tab will list.
         """
         try:
             rows = await self._list_rows(
                 user_id, chat_id, min_importance, max_importance
             )
-            source_types: Dict[str, int] = {}
+            source_counts: Dict[str, int] = {}
             categories: Dict[str, int] = {}
             tag_counts: Dict[str, int] = {}
+            kinds: Dict[str, int] = {}
+            topic_counts: Dict[str, int] = {}
             for row in rows:
                 meta = self._row_metadata(row)
                 st = meta.get("source_type") or "unknown"
-                source_types[st] = source_types.get(st, 0) + 1
+                source_counts[st] = source_counts.get(st, 0) + 1
+                if source_types and st not in source_types:
+                    continue
                 cat = meta.get("category") or "uncategorized"
                 categories[cat] = categories.get(cat, 0) + 1
                 for tag in meta.get("tags") or []:
                     tag = str(tag)
                     tag_counts[tag] = tag_counts.get(tag, 0) + 1
+                derived = describe(meta)
+                kinds[derived["kind"]] = kinds.get(derived["kind"], 0) + 1
+                for topic in derived["topics"]:
+                    topic_counts[topic] = topic_counts.get(topic, 0) + 1
 
             top_tags = sorted(tag_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            top_topics = sorted(topic_counts.items(), key=lambda kv: (-kv[1], kv[0]))
             return {
                 "source_types": dict(
-                    sorted(source_types.items(), key=lambda kv: -kv[1])
+                    sorted(source_counts.items(), key=lambda kv: -kv[1])
                 ),
                 "categories": dict(sorted(categories.items(), key=lambda kv: -kv[1])),
                 "tags": dict(top_tags[:max_tags]),
+                "kinds": dict(sorted(kinds.items(), key=lambda kv: -kv[1])),
+                "topics": dict(top_topics[:max_tags]),
             }
         except Exception as e:
             logger.error(f"Get memory facets failed: {e}")
-            return {"source_types": {}, "categories": {}, "tags": {}}
+            return {
+                "source_types": {},
+                "categories": {},
+                "tags": {},
+                "kinds": {},
+                "topics": {},
+            }
 
     async def list_memories(
         self,
@@ -1054,6 +1085,8 @@ class LanceDBMemoryStore:
         source_types: Optional[List[str]] = None,
         categories: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
+        kinds: Optional[List[str]] = None,
+        topics: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """List memories with pagination, ordering, and an importance band.
 
@@ -1067,13 +1100,12 @@ class LanceDBMemoryStore:
             rows = await self._list_rows(
                 user_id, chat_id, min_importance, max_importance
             )
-            if source_types or categories or tags:
+            filters = (source_types, categories, tags, kinds, topics)
+            if any(filters):
                 rows = [
                     r
                     for r in rows
-                    if self._matches_metadata(
-                        self._row_metadata(r), source_types, categories, tags
-                    )
+                    if self._matches_metadata(self._row_metadata(r), *filters)
                 ]
 
             # Sort by specified column (full set, so offset paging is stable/correct).

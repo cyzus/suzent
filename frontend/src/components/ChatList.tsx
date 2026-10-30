@@ -19,6 +19,7 @@ import { useEventBus } from '../hooks/useEventBus';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { FocalAgentCardView } from './FocalAgentCard';
+import { RegentQueue } from './sidebar/RegentQueue';
 import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
@@ -44,8 +45,10 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
+import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
+import { hoverText } from '../lib/hoverText';
 
 const ALL_PROJECTS_FILTER = '__all__';
 const AUTOMATION_PREVIEW_LIMIT = 5;
@@ -102,6 +105,8 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
 export type SidebarView = 'chat' | 'memory' | 'skills';
 
 interface ChatListProps {
+  mobile?: boolean;
+  onOpenChat?: () => void;
   onOpenAutomation?: () => void;
   /** The main area's current view, so its sidebar entry reads as selected. */
   activeView?: string;
@@ -113,6 +118,7 @@ interface ChatListProps {
 
 /** Search and new chat, as icons in the sidebar's logo row. */
 const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
+const ARCHIVED_PAGE_SIZE = 50;
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
 function sidebarNavRowClass(selected: boolean): string {
@@ -120,6 +126,8 @@ function sidebarNavRowClass(selected: boolean): string {
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
+  mobile = false,
+  onOpenChat,
   onOpenAutomation,
   activeView,
   onOpenView,
@@ -129,6 +137,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const {
     chats,
     pinnedChats,
+    archivedCount,
     chatTotal,
     loadingChats,
     loadingMoreChats,
@@ -161,6 +170,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     setCurrentProjectId,
     createProject,
     renameProject,
+    updateProjectSettings,
     deleteProject,
     moveChat,
     moveAllChats,
@@ -200,9 +210,10 @@ export const ChatList: React.FC<ChatListProps> = ({
   // Project context menu (kebab on each project row).
   const [projectMenu, setProjectMenu] = useState<{
     projectId: string;
-    anchor: { rect: DOMRect };
+    anchor: { x: number; y: number } | { rect: DOMRect };
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState('');
   const [taskMenu, setTaskMenu] = useState<{
     jobId: number;
@@ -251,10 +262,18 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [archivedChats, setArchivedChats] = useState<ChatSummary[]>([]);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  // Grows by a page per "load more"; a refetch covers everything already shown.
+  const [archivedLimit, setArchivedLimit] = useState(ARCHIVED_PAGE_SIZE);
   const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
   const knownChats = useMemo(
-    () => new Map([...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])),
-    [chats, pinnedChats, projectChats]
+    () =>
+      new Map(
+        [...archivedChats, ...projectChats, ...pinnedChats, ...chats].map((chat) => [chat.id, chat])
+      ),
+    [archivedChats, chats, pinnedChats, projectChats]
   );
 
   useEffect(() => {
@@ -370,6 +389,32 @@ export const ChatList: React.FC<ChatListProps> = ({
   const focalStatus = useFocalStatus();
   // On Regent's chat the rest of the sidebar steps back behind its card.
   const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
+  // On desktop the sidebar becomes Regent's queue instead: what waits on the
+  // user and what runs, with projects folded away and the rest as icons. It
+  // stays while memory or skills fill the main area; only leaving Regent ends it.
+  const regentConsole = currentChatId === FOCAL_CHAT_ID && !mobile;
+  const [regentProjectsOpen, setRegentProjectsOpen] = useState(false);
+  // Leaving Regent returns to the chat the user came from.
+  const chatBeforeRegentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentChatId && currentChatId !== FOCAL_CHAT_ID)
+      chatBeforeRegentRef.current = currentChatId;
+  }, [currentChatId]);
+  const exitRegentRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!regentConsole) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented || isImeComposing(event)) return;
+      // Escape inside a field belongs to that field, and while a menu or dialog
+      // is open it closes that first, wherever focus happens to be.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="menu"], [role="dialog"]')) return;
+      exitRegentRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [regentConsole]);
   const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
@@ -637,6 +682,24 @@ export const ChatList: React.FC<ChatListProps> = ({
     void fetchProjectChats(filterId);
   }, [filterId, fetchProjectChats, chatTotal]);
 
+  const fetchArchivedChats = useCallback(async () => {
+    setLoadingArchived(true);
+    try {
+      const res = await fetch(`${getApiBase()}/chats?archived=true&limit=${archivedLimit}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setArchivedChats(data.chats || []);
+    } catch (error) {
+      console.error('Error fetching archived chats:', error);
+    } finally {
+      setLoadingArchived(false);
+    }
+  }, [archivedLimit]);
+
+  useEffect(() => {
+    if (archivedOpen) void fetchArchivedChats();
+  }, [archivedOpen, archivedCount, fetchArchivedChats]);
+
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
     return projectChats;
@@ -719,8 +782,18 @@ export const ChatList: React.FC<ChatListProps> = ({
       organization === 'list' || filterId !== ALL_PROJECTS_FILTER
         ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
         : [];
-    return [...new Set([...pinnedChats, ...listed].map((chat) => chat.id))];
-  }, [chats, filterId, localSearchQuery, organization, pinnedChats, visibleChats]);
+    const archived = archivedOpen ? archivedChats : [];
+    return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
+  }, [
+    archivedChats,
+    archivedOpen,
+    chats,
+    filterId,
+    localSearchQuery,
+    organization,
+    pinnedChats,
+    visibleChats,
+  ]);
 
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -738,7 +811,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const findChatSummary = (chatId: string): ChatSummary | undefined =>
     chatsRef.current.find((c) => c.id === chatId) ??
     projectChatsRef.current.find((c) => c.id === chatId) ??
-    pinnedChats.find((c) => c.id === chatId);
+    pinnedChats.find((c) => c.id === chatId) ??
+    archivedChats.find((c) => c.id === chatId);
 
   const clearSelection = (): void => {
     setSelection(EMPTY_SELECTION);
@@ -1059,6 +1133,42 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
   };
 
+  const handleSetArchived = async (chatIds: string[], archived: boolean): Promise<void> => {
+    if (chatIds.length === 0) return;
+    const ids = new Set(chatIds);
+    if (archived) setProjectChats((prev) => prev.filter((chat) => !ids.has(chat.id)));
+    else setArchivedChats((prev) => prev.filter((chat) => !ids.has(chat.id)));
+    const results = await Promise.allSettled(
+      chatIds.map(async (chatId) => {
+        const response = await fetch(`${getApiBase()}/chats/${chatId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      })
+    );
+    await Promise.all([
+      refreshChatList(undefined, true),
+      refreshProjects(),
+      filterId !== ALL_PROJECTS_FILTER ? fetchProjectChats(filterId) : undefined,
+      archivedOpen ? fetchArchivedChats() : undefined,
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      setDialog({
+        title: t('chatList.archiveError'),
+        message: t('chatList.archiveErrorMessage'),
+        actions: [{ label: t('common.cancel'), tone: 'default' }],
+      });
+    }
+  };
+
+  const handleBulkArchive = (): void => {
+    const ids = [...selection.selected];
+    clearSelection();
+    void handleSetArchived(ids, !ids.every((id) => findChatSummary(id)?.archived));
+  };
+
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
@@ -1231,6 +1341,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     ) : null;
+    const hangKindIcon = kindIcon !== null && (nested || chatKind === 'subagent');
     const rowContent = compact ? (
       <div className="flex min-w-0 items-center gap-2">
         <h3
@@ -1251,8 +1362,10 @@ export const ChatList: React.FC<ChatListProps> = ({
       </div>
     ) : (
       <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-1.5 overflow-hidden">
-          {kindIcon}
+        <div className={`flex items-center gap-1.5 ${hangKindIcon ? '' : 'overflow-hidden'}`}>
+          {/* Indented rows hang the icon in their left padding so titles stay aligned. */}
+          {kindIcon &&
+            (hangKindIcon ? <span className="-ml-5 flex shrink-0">{kindIcon}</span> : kindIcon)}
           <h3
             className={`text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${isUnread(chat) ? 'font-extrabold' : 'font-medium'} ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white'}`}
           >
@@ -1306,6 +1419,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           pickedInSidebarRef.current = chat.id;
           loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
           if (switchToView) switchToView('chat');
+          onOpenChat?.();
         }}
         onMouseDown={(e) => {
           // Keeps Shift-click from also selecting the row text.
@@ -1432,7 +1546,35 @@ export const ChatList: React.FC<ChatListProps> = ({
     const chat = chats.find((item) => item.id === chatId);
     loadChat(chatId, { authoritative: !isChatRunning(chatId, chat?.isRunning) });
     if (switchToView) switchToView('chat');
+    onOpenChat?.();
   };
+
+  const openNewChat = (): void => {
+    beginNewChat();
+    if (switchToView) switchToView('chat');
+    onOpenChat?.();
+  };
+
+  exitRegentRef.current = () => {
+    const previous = chatBeforeRegentRef.current;
+    // Off the chat view, leaving Regent only changes the sidebar.
+    if (!regentOpen) {
+      if (previous) {
+        const chat = chats.find((item) => item.id === previous);
+        loadChat(previous, { authoritative: !isChatRunning(previous, chat?.isRunning) });
+      } else beginNewChat();
+      return;
+    }
+    if (previous) openChatById(previous);
+    else openNewChat();
+  };
+
+  // Behind Regent's queue, projects stay one click away instead of dimmed.
+  const regentRestClass = regentConsole
+    ? regentProjectsOpen
+      ? ''
+      : 'hidden'
+    : `regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`;
 
   return (
     <div
@@ -1452,10 +1594,18 @@ export const ChatList: React.FC<ChatListProps> = ({
           {/* Regent sits above everything else, like a pinned contact. */}
           {!isSearching && (
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
-              <FocalAgentCardView status={focalStatus} active={regentOpen} onOpen={openChatById} />
+              <FocalAgentCardView
+                status={focalStatus}
+                active={regentOpen || regentConsole}
+                onOpen={openChatById}
+                onExit={regentConsole ? () => exitRegentRef.current() : undefined}
+                onReturn={
+                  regentConsole && !regentOpen ? () => openChatById(FOCAL_CHAT_ID) : undefined
+                }
+              />
             </div>
           )}
-          {!isSearching && (
+          {!isSearching && !regentConsole && (
             <nav
               aria-label={t('chatList.sections.navigation')}
               className={`order-0 px-1.5 pt-1 pb-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
@@ -1481,16 +1631,16 @@ export const ChatList: React.FC<ChatListProps> = ({
                 )}
               </button>
               {showAutomation && automationOpen && (
-                <section className="mt-1 border-y border-neutral-200 dark:border-zinc-700">
+                <section className="pb-1">
                   {loadingAutomation ? (
-                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    <div>
                       <SidebarRowSkeleton compact />
                       <SidebarRowSkeleton compact />
                     </div>
                   ) : (
-                    <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    <div>
                       {scheduledJobs.length > 0 && (
-                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
                           <div>
                             {visibleCronJobs.map((job) => {
                               const { chatId, canOpen } = getScheduledTaskChat(job);
@@ -1523,19 +1673,19 @@ export const ChatList: React.FC<ChatListProps> = ({
                                       anchor: { rect: event.currentTarget.getBoundingClientRect() },
                                     });
                                   }}
-                                  className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                  className={`group/task relative transition-colors ${
                                     currentChatId === chatId
                                       ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                      : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                      : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                                   }`}
                                 >
                                   {renamingTaskId === job.id ? (
                                     <form
-                                      className="flex min-h-11 items-center gap-1 px-2"
+                                      className="flex items-center gap-1 py-1 pl-6 pr-2"
                                       onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
                                     >
                                       <input
-                                        autoFocus
+                                        autoFocus={!mobile}
                                         value={taskRenameValue}
                                         onChange={(event) => setTaskRenameValue(event.target.value)}
                                         onKeyDown={(event) => {
@@ -1566,30 +1716,45 @@ export const ChatList: React.FC<ChatListProps> = ({
                                         onClick={() =>
                                           canOpen ? openChatById(chatId) : onOpenAutomation?.()
                                         }
-                                        title={unresolvedError ?? job.last_result ?? undefined}
-                                        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
+                                        title={hoverText(unresolvedError ?? job.last_result)}
+                                        className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-2 text-left disabled:cursor-default"
                                       >
-                                        <span className="min-w-0">
+                                        <span className="flex items-center gap-1.5 overflow-hidden">
                                           <span
-                                            className={`block truncate text-xs leading-tight text-brutal-black dark:text-white ${currentChatId !== chatId && job.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
+                                            className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
+                                              currentChatId !== chatId && job.unread_count > 0
+                                                ? 'font-extrabold text-neutral-950 dark:text-white'
+                                                : currentChatId === chatId
+                                                  ? 'font-medium text-brutal-black dark:text-white'
+                                                  : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/task:text-brutal-black dark:group-hover/task:text-white'
+                                            }`}
                                           >
                                             {job.name}
                                           </span>
-                                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                            <RunningMark
-                                              running={isChatRunning(chatId, job.is_running)}
-                                            />
-                                            <span
-                                              className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
-                                            >
-                                              {subtitle}
-                                            </span>
+                                          <span
+                                            className={`flex min-w-6 shrink-0 items-center justify-end transition-opacity ${
+                                              taskMenu?.jobId === job.id
+                                                ? 'opacity-0'
+                                                : 'group-hover/task:opacity-0 group-focus-within/task:opacity-0'
+                                            }`}
+                                          >
+                                            {isChatRunning(chatId, job.is_running) ? (
+                                              <RunningMark running />
+                                            ) : (
+                                              <span
+                                                className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chatId ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+                                              >
+                                                {latestActivityAt
+                                                  ? formatDate(latestActivityAt)
+                                                  : t('chatList.automation.notYet')}
+                                              </span>
+                                            )}
                                           </span>
                                         </span>
-                                        <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                                          {latestActivityAt
-                                            ? formatDate(latestActivityAt)
-                                            : t('chatList.automation.notYet')}
+                                        <span
+                                          className={`block truncate text-[10px] ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
+                                        >
+                                          {subtitle}
                                         </span>
                                       </button>
                                       <button
@@ -1605,7 +1770,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                             },
                                           });
                                         }}
-                                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                        className={`absolute right-1 top-1.5 flex items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
                                           taskMenu?.jobId === job.id
                                             ? 'opacity-100'
                                             : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
@@ -1623,7 +1788,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 <button
                                   type="button"
                                   onClick={onOpenAutomation}
-                                  className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
+                                  className="w-full py-1.5 pl-8 pr-2 text-left text-[10px] text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700/80 dark:hover:text-white"
                                 >
                                   {t('chatList.automation.viewAllScheduled', {
                                     count: scheduledJobs.length,
@@ -1635,45 +1800,52 @@ export const ChatList: React.FC<ChatListProps> = ({
                       )}
 
                       {heartbeatSessions.length > 0 && (
-                        <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
                           <div>
                             {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
                               <button
                                 key={session.chat_id}
                                 type="button"
                                 onClick={() => openChatById(session.chat_id)}
-                                className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                className={`group/beat block w-full space-y-0.5 py-1.5 pl-8 pr-2 text-left transition-colors ${
                                   currentChatId === session.chat_id
                                     ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                    : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                    : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
                                 }`}
                               >
-                                <span className="min-w-0">
+                                <span className="flex items-center gap-1.5 overflow-hidden">
                                   <span
-                                    className={`block text-xs leading-tight truncate text-brutal-black dark:text-white ${currentChatId !== session.chat_id && session.unread_count > 0 ? 'font-extrabold' : 'font-medium'}`}
+                                    className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
+                                      currentChatId !== session.chat_id && session.unread_count > 0
+                                        ? 'font-extrabold text-neutral-950 dark:text-white'
+                                        : currentChatId === session.chat_id
+                                          ? 'font-medium text-brutal-black dark:text-white'
+                                          : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/beat:text-brutal-black dark:group-hover/beat:text-white'
+                                    }`}
                                   >
                                     {session.title}
                                   </span>
-                                  <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                    <RunningMark
-                                      running={isChatRunning(session.chat_id, session.is_running)}
-                                    />
-                                    <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
-                                      {t('chatList.automation.everyMinutes', {
-                                        minutes: session.interval_minutes,
-                                      })}
+                                  {isChatRunning(session.chat_id, session.is_running) ? (
+                                    <RunningMark running />
+                                  ) : (
+                                    <span
+                                      className={`shrink-0 text-[10px] font-medium uppercase tabular-nums ${currentChatId === session.chat_id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+                                    >
+                                      {session.last_run_at
+                                        ? formatDate(session.last_run_at)
+                                        : t('chatList.automation.notYet')}
                                     </span>
-                                  </span>
+                                  )}
                                 </span>
-                                <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
-                                  {session.last_run_at
-                                    ? formatDate(session.last_run_at)
-                                    : t('chatList.automation.notYet')}
+                                <span className="block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  {t('chatList.automation.everyMinutes', {
+                                    minutes: session.interval_minutes,
+                                  })}
                                 </span>
                               </button>
                             ))}
                             {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
-                              <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                              <div className="py-1.5 pl-8 pr-2 text-[10px] text-neutral-500 dark:text-neutral-400">
                                 {t('chatList.automation.moreHeartbeat', {
                                   count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
                                 })}
@@ -1710,14 +1882,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                 while Regent's chat dims the rest. Search opens right under its row,
                 and this block keeps its place while results replace the list, so
                 the input keeps focus as the first keystroke turns searching on. */}
-          <div className="order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
+          {/* On Regent's queue both live in the icon row below; only an open search stays here. */}
+          <div
+            className={`chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700 ${regentConsole && !searchOpen && !localSearchQuery ? 'hidden' : ''}`}
+          >
             <button
               type="button"
-              onClick={() => {
-                beginNewChat();
-                if (switchToView) switchToView('chat');
-              }}
-              className={sidebarNavRowClass(false)}
+              onClick={openNewChat}
+              className={regentConsole ? 'hidden' : sidebarNavRowClass(false)}
             >
               <PencilSquareIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="flex-1 truncate">{t('chatList.newChat')}</span>
@@ -1725,17 +1897,21 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={() => onSearchOpenChange?.(true)}
-              className={sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))}
+              className={
+                mobile || regentConsole
+                  ? 'hidden'
+                  : sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))
+              }
             >
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="flex-1 truncate">{t('chatList.search')}</span>
             </button>
-            {(searchOpen || localSearchQuery) && (
+            {(mobile || searchOpen || localSearchQuery) && (
               <div className="px-0.5 pt-1 pb-1">
                 <div className="relative">
                   <input
                     type="text"
-                    autoFocus
+                    autoFocus={!mobile}
                     value={localSearchQuery}
                     onChange={(e) => setLocalSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -1815,10 +1991,30 @@ export const ChatList: React.FC<ChatListProps> = ({
             </section>
           ) : (
             <>
+              {regentConsole && (
+                <>
+                  <RegentQueue onOpenChat={openChatById} />
+                  {/* Once open, the section's own header folds it again. */}
+                  {!regentProjectsOpen && (
+                    <button
+                      type="button"
+                      aria-expanded={false}
+                      onClick={() => setRegentProjectsOpen(true)}
+                      className="flex w-full items-center justify-between border-t border-neutral-200 px-3 py-2 text-left hover:bg-neutral-100 dark:border-zinc-700 dark:hover:bg-zinc-700"
+                    >
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                        {t('chatList.regentQueue.projects')}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                        {projects.length}
+                        <ChevronRightIcon className="h-3 w-3" aria-hidden="true" />
+                      </span>
+                    </button>
+                  )}
+                </>
+              )}
               {pinnedChats.length > 0 && (
-                <section
-                  className={`order-0 px-1.5 pb-2 pt-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
-                >
+                <section className={`order-0 px-1.5 pb-2 pt-1 ${regentRestClass}`}>
                   <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
                     {t('chatList.pinnedChats')}
                   </h2>
@@ -1826,16 +2022,30 @@ export const ChatList: React.FC<ChatListProps> = ({
                 </section>
               )}
               <section
-                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
+                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} ${regentRestClass}`}
               >
                 <div
                   ref={organizationMenuRef}
                   className="relative flex items-center justify-between px-3 py-2"
                 >
                   <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                    {organization === 'projects'
-                      ? t('chatList.sections.projects')
-                      : t('chatList.sections.chats')}
+                    {regentConsole ? (
+                      <button
+                        type="button"
+                        aria-expanded
+                        onClick={() => setRegentProjectsOpen(false)}
+                        className="flex items-center gap-1 uppercase hover:text-brutal-black dark:hover:text-white"
+                      >
+                        {organization === 'projects'
+                          ? t('chatList.sections.projects')
+                          : t('chatList.sections.chats')}
+                        <ChevronRightIcon className="h-3 w-3 rotate-90" aria-hidden="true" />
+                      </button>
+                    ) : organization === 'projects' ? (
+                      t('chatList.sections.projects')
+                    ) : (
+                      t('chatList.sections.chats')
+                    )}
                   </h2>
                   <div className="flex items-center gap-0.5">
                     <button
@@ -1854,6 +2064,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         if (organization === 'list') {
                           beginNewChat();
                           if (switchToView) switchToView('chat');
+                          onOpenChat?.();
                           return;
                         }
                         setCreatingProjectInline(true);
@@ -1908,7 +2119,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         className="flex items-center gap-1 px-3 pb-2"
                       >
                         <input
-                          autoFocus
+                          autoFocus={!mobile}
                           type="text"
                           value={newProjectName}
                           onChange={(event) => setNewProjectName(event.target.value)}
@@ -1944,11 +2155,20 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <div className="space-y-0.5 px-2 pb-2">
                       {sortedProjects.map((project) => {
                         const isOpen = filterId === project.id;
-                        const isSystem = project.slug === 'default' || project.slug === 'social';
                         const isRenaming = renamingProjectId === project.id;
                         return (
                           <div key={project.id}>
                             <div
+                              onContextMenu={(event) => {
+                                if (isRenaming) return;
+                                event.preventDefault();
+                                // Keep the open menu's own contextmenu listener from closing it.
+                                event.stopPropagation();
+                                setProjectMenu({
+                                  projectId: project.id,
+                                  anchor: { x: event.clientX, y: event.clientY },
+                                });
+                              }}
                               className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
                             >
                               {isRenaming ? (
@@ -1963,7 +2183,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   }}
                                 >
                                   <input
-                                    autoFocus
+                                    autoFocus={!mobile}
                                     value={projectRenameValue}
                                     onChange={(event) => setProjectRenameValue(event.target.value)}
                                     onKeyDown={(event) => {
@@ -2007,30 +2227,28 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   </button>
                                   <span className="relative flex items-center justify-center">
                                     <span
-                                      className={`flex transition-opacity ${!isSystem && projectMenu?.projectId === project.id ? 'opacity-0' : isSystem ? '' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
+                                      className={`flex transition-opacity ${projectMenu?.projectId === project.id ? 'opacity-0' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
                                     >
                                       <RunningMark
                                         running={!isOpen && runningProjectIds.has(project.id)}
                                       />
                                     </span>
-                                    {!isSystem && (
-                                      <button
-                                        type="button"
-                                        aria-label={t('chatList.menu.title')}
-                                        title={t('chatList.menu.title')}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          const rect = event.currentTarget.getBoundingClientRect();
-                                          setProjectMenu({
-                                            projectId: project.id,
-                                            anchor: { rect },
-                                          });
-                                        }}
-                                        className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
-                                      >
-                                        <MoreActionsIcon />
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.menu.title')}
+                                      title={t('chatList.menu.title')}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        setProjectMenu({
+                                          projectId: project.id,
+                                          anchor: { rect },
+                                        });
+                                      }}
+                                      className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                    >
+                                      <MoreActionsIcon />
+                                    </button>
                                   </span>
                                 </>
                               )}
@@ -2090,9 +2308,107 @@ export const ChatList: React.FC<ChatListProps> = ({
                   </div>
                 )}
               </section>
+              {(archivedCount > 0 || archivedOpen) && (
+                <section
+                  className={`order-2 border-t border-neutral-200 dark:border-zinc-700 ${regentRestClass}`}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={archivedOpen}
+                    onClick={() => setArchivedOpen((open) => !open)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                  >
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                      {t('chatList.archivedChats')}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {archivedCount}
+                      <svg
+                        className={`h-3 w-3 transition-transform ${archivedOpen ? 'rotate-90' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        strokeWidth={3}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </button>
+                  {archivedOpen &&
+                    (loadingArchived && archivedChats.length === 0 ? (
+                      renderListSkeleton()
+                    ) : archivedChats.length === 0 ? (
+                      <div className="px-4 py-4 text-center text-[10px] font-bold uppercase text-neutral-400">
+                        {t('chatList.archivedEmpty')}
+                      </div>
+                    ) : (
+                      <div className="px-1.5 pb-2">
+                        {archivedChats.map((chat) => renderChatRow(chat, true, false, true))}
+                        {archivedCount > archivedChats.length && (
+                          <button
+                            type="button"
+                            onClick={() => setArchivedLimit((limit) => limit + ARCHIVED_PAGE_SIZE)}
+                            disabled={loadingArchived}
+                            className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                          >
+                            {loadingArchived
+                              ? t('chatList.loadingMore')
+                              : t('chatList.loadMore', {
+                                  count: archivedCount - archivedChats.length,
+                                })}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                </section>
+              )}
             </>
           )}
         </div>
+        {regentConsole && (
+          <nav
+            aria-label={t('chatList.regentQueue.shortcuts')}
+            className="flex shrink-0 items-center justify-around border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700"
+          >
+            {[
+              { label: t('chatList.newChat'), Icon: PencilSquareIcon, onClick: openNewChat },
+              {
+                label: t('chatList.search'),
+                Icon: MagnifyingGlassIcon,
+                onClick: () => onSearchOpenChange?.(true),
+              },
+              {
+                label: t('chatList.sections.scheduled'),
+                Icon: ClockIcon,
+                onClick: () => onOpenAutomation?.(),
+              },
+              {
+                label: t('nav.memory'),
+                Icon: CircleStackIcon,
+                onClick: () => onOpenView?.('memory'),
+                selected: activeView === 'memory',
+              },
+              {
+                label: t('nav.skills'),
+                Icon: SparklesIcon,
+                onClick: () => onOpenView?.('skills'),
+                selected: activeView === 'skills',
+              },
+            ].map(({ label, Icon, onClick, selected }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={onClick}
+                aria-label={label}
+                aria-current={selected ? 'page' : undefined}
+                title={label}
+                className={`flex h-8 w-8 items-center justify-center transition-colors hover:bg-neutral-100 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:hover:bg-zinc-700 dark:hover:text-white ${selected ? 'bg-neutral-200/70 text-brutal-black dark:bg-zinc-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
 
       {bulkMenu && (
@@ -2101,9 +2417,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
           projects={projects}
           pinned={false}
+          archived={[...selection.selected].every((id) => findChatSummary(id)?.archived)}
           bulkCount={Math.max(2, selection.selected.size)}
           initialView={bulkMenu.view}
           onTogglePin={() => undefined}
+          onToggleArchive={handleBulkArchive}
           onRename={() => undefined}
           onDelete={handleRequestBulkDelete}
           onMoveToProject={(projectId) => void handleBulkMove(projectId)}
@@ -2117,7 +2435,8 @@ export const ChatList: React.FC<ChatListProps> = ({
           const chat =
             pinnedChats.find((c) => c.id === openMenu.chatId) ??
             chatsRef.current.find((c) => c.id === openMenu.chatId) ??
-            projectChatsRef.current.find((c) => c.id === openMenu.chatId);
+            projectChatsRef.current.find((c) => c.id === openMenu.chatId) ??
+            archivedChats.find((c) => c.id === openMenu.chatId);
           if (!chat) return null;
           return (
             <ChatRowMenu
@@ -2126,7 +2445,9 @@ export const ChatList: React.FC<ChatListProps> = ({
               projects={projects}
               currentProjectId={chat.projectId ?? undefined}
               pinned={pinnedChats.some((item) => item.id === chat.id)}
+              archived={!!chat.archived}
               onTogglePin={() => void handleTogglePin(chat.id)}
+              onToggleArchive={() => void handleSetArchived([chat.id], !chat.archived)}
               onRename={() => {
                 setRenamingChatId(chat.id);
                 setRenameValue(chat.title || '');
@@ -2175,82 +2496,111 @@ export const ChatList: React.FC<ChatListProps> = ({
         (() => {
           const p = projects.find((pr) => pr.id === projectMenu.projectId);
           if (!p) return null;
+          const isSystem = SYSTEM_PROJECT_SLUGS.has(p.slug);
           return (
             <ProjectRowMenu
               anchor={projectMenu.anchor}
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
               rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
-              onRename={() => {
-                setProjectRenameValue(p.name);
-                setRenamingProjectId(p.id);
-              }}
-              onDelete={() => {
-                // Always allow delete. If the project has chats, prompt the user
-                // to confirm — chats will be moved to the default project first.
-                const fallback = projects.find((pr) => pr.slug === 'default');
-                const finalizeDelete = async () => {
-                  const result = await deleteProject(p.id);
-                  if (!result.success) {
-                    setDialog({
-                      title: p.name,
-                      message: result.error || t('chatList.menu.deleteFailed'),
-                      actions: [{ label: t('common.ok'), tone: 'primary' }],
-                    });
-                    return;
-                  }
-                  if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
-                  await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
-                };
-
-                if (p.chatCount === 0) {
-                  setDialog({
-                    title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                    message: t('chatList.menu.deleteConfirmEmpty'),
-                    actions: [
-                      { label: t('common.cancel') },
-                      { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
-                    ],
-                  });
-                  return;
-                }
-
-                if (!fallback) {
-                  setDialog({
-                    title: p.name,
-                    message: t('chatList.menu.deleteFailed'),
-                    actions: [{ label: t('common.ok'), tone: 'primary' }],
-                  });
-                  return;
-                }
-
-                setDialog({
-                  title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                  message: t('chatList.menu.deleteConfirmWithChats', {
-                    count: p.chatCount,
-                    target: fallback.name,
-                  }),
-                  actions: [
-                    { label: t('common.cancel') },
-                    {
-                      label: t('chatList.menu.delete'),
-                      tone: 'danger',
-                      onClick: async () => {
-                        const moveResult = await moveAllChats(p.id, fallback.id);
-                        if (!moveResult.success) {
+              onSettings={() => setSettingsProjectId(p.id)}
+              onRename={
+                isSystem
+                  ? undefined
+                  : () => {
+                      setProjectRenameValue(p.name);
+                      setRenamingProjectId(p.id);
+                    }
+              }
+              onDelete={
+                isSystem
+                  ? undefined
+                  : () => {
+                      // Always allow delete. If the project has chats, prompt the user
+                      // to confirm — chats will be moved to the default project first.
+                      const fallback = projects.find((pr) => pr.slug === 'default');
+                      const finalizeDelete = async () => {
+                        const result = await deleteProject(p.id);
+                        if (!result.success) {
                           setDialog({
                             title: p.name,
-                            message: moveResult.error || t('chatList.menu.deleteFailed'),
+                            message: result.error || t('chatList.menu.deleteFailed'),
                             actions: [{ label: t('common.ok'), tone: 'primary' }],
                           });
                           return;
                         }
-                        await finalizeDelete();
-                      },
-                    },
-                  ],
-                });
-              }}
+                        if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
+                        await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+                      };
+
+                      if (p.chatCount === 0) {
+                        setDialog({
+                          title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                          message: t('chatList.menu.deleteConfirmEmpty'),
+                          actions: [
+                            { label: t('common.cancel') },
+                            {
+                              label: t('chatList.menu.delete'),
+                              tone: 'danger',
+                              onClick: finalizeDelete,
+                            },
+                          ],
+                        });
+                        return;
+                      }
+
+                      if (!fallback) {
+                        setDialog({
+                          title: p.name,
+                          message: t('chatList.menu.deleteFailed'),
+                          actions: [{ label: t('common.ok'), tone: 'primary' }],
+                        });
+                        return;
+                      }
+
+                      setDialog({
+                        title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                        message: t('chatList.menu.deleteConfirmWithChats', {
+                          count: p.chatCount,
+                          target: fallback.name,
+                        }),
+                        actions: [
+                          { label: t('common.cancel') },
+                          {
+                            label: t('chatList.menu.delete'),
+                            tone: 'danger',
+                            onClick: async () => {
+                              const moveResult = await moveAllChats(p.id, fallback.id);
+                              if (!moveResult.success) {
+                                setDialog({
+                                  title: p.name,
+                                  message: moveResult.error || t('chatList.menu.deleteFailed'),
+                                  actions: [{ label: t('common.ok'), tone: 'primary' }],
+                                });
+                                return;
+                              }
+                              await finalizeDelete();
+                            },
+                          },
+                        ],
+                      });
+                    }
+              }
               onClose={() => setProjectMenu(null)}
+            />
+          );
+        })()}
+
+      {settingsProjectId &&
+        (() => {
+          const p = projects.find((pr) => pr.id === settingsProjectId);
+          if (!p) return null;
+          return (
+            <ProjectSettingsDialog
+              project={p}
+              canRename={!SYSTEM_PROJECT_SLUGS.has(p.slug)}
+              onSave={(update) => updateProjectSettings(p.id, update)}
+              onClose={() => setSettingsProjectId(null)}
+              rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
             />
           );
         })()}

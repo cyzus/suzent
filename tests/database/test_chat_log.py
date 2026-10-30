@@ -314,6 +314,21 @@ def test_a_hand_edited_log_is_replayed_on_start(temp_db) -> None:
     reopened.engine.dispose()
 
 
+def test_a_log_from_before_archiving_matches_its_row(temp_db) -> None:
+    db = temp_db
+    chat_id = db.create_chat(title="Legacy", config={})
+    path = db.chat_log.path(chat_id)
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    for event in events:
+        event["data"].pop("archived", None)
+    path.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+    assert db.chat_log_differences(db.chat_log) == {}
+    reopened = _reopen(db)
+    assert reopened.get_chat(chat_id).archived is False
+    reopened.engine.dispose()
+
+
 def test_rebuild_index_rewrites_rows_that_drifted(temp_db) -> None:
     db = temp_db
     chat_id = db.create_chat(title="Logged", config={})

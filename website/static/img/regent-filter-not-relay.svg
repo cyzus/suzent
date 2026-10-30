@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360" role="img" aria-label="Filter, not relay: a 4,000-character session transcript is distilled by Regent into a single decision line or suppressed via HEARTBEAT_OK.">
+  <defs>
+    <pattern id="fnr-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#efefef" stroke-width="1"/>
+    </pattern>
+    <pattern id="fnr-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#d9d9d9" stroke-width="2"/>
+    </pattern>
+    <marker id="fnr-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+    .shadow { fill: #000000; }
+  </style>
+
+  <!-- Outer Frame -->
+  <rect x="0" y="0" width="880" height="360" fill="#ffffff"/>
+  <rect x="12" y="12" width="856" height="336" fill="url(#fnr-grid)" stroke="#000000" stroke-width="3"/>
+
+  <!-- ===================================================================== -->
+  <!-- LEFT: RAW SESSION REPORT (NOISY)                                      -->
+  <!-- ===================================================================== -->
+  <g transform="translate(36, 36)">
+    <rect x="6" y="6" width="268" height="284" class="shadow"/>
+    <rect x="0" y="0" width="268" height="284" class="card"/>
+
+    <!-- Window Header -->
+    <rect x="0" y="0" width="268" height="32" fill="#000000"/>
+    <circle cx="14" cy="16" r="3" fill="#ffffff"/>
+    <circle cx="24" cy="16" r="3" fill="#ffffff"/>
+    <text x="40" y="20" class="mono" font-size="10" font-weight="700" fill="#ffffff" letter-spacing="0.5">RAW SESSION OUTPUT</text>
+    <text x="256" y="20" class="mono" font-size="9" fill="#bbbbbb" text-anchor="end">3,840 chars</text>
+
+    <!-- Simulated Verbose Log -->
+    <g transform="translate(14, 46)">
+      <text x="0" y="12" class="mono" font-size="9" fill="#777777">[tool] grep_search("v1_routes") → 14 hits</text>
+      <rect x="0" y="20" width="220" height="5" fill="#e0e0e0"/>
+      <rect x="0" y="30" width="190" height="5" fill="#e0e0e0"/>
+      <text x="0" y="48" class="mono" font-size="9" fill="#777777">[tool] run_command("pytest tests/api")</text>
+      <rect x="0" y="56" width="234" height="5" fill="#e0e0e0"/>
+      <rect x="0" y="66" width="160" height="5" fill="#e0e0e0"/>
+      <text x="0" y="84" class="mono" font-size="9" fill="#777777">[ok] 48 passed, 0 failed in 4.12s</text>
+
+      <!-- The actual blocker buried inside -->
+      <rect x="-4" y="96" width="248" height="44" fill="#000000"/>
+      <text x="6" y="113" class="mono" font-size="9" font-weight="700" fill="#ffffff">▲ TASK BLOCKED (waiting_kind: user)</text>
+      <text x="6" y="129" class="mono" font-size="9" fill="#ffffff">Drop legacy /v1/auth endpoint in v0.18?</text>
+
+      <text x="0" y="158" class="mono" font-size="9" fill="#777777">## Appendix: Benchmark Table</text>
+      <rect x="0" y="166" width="230" height="5" fill="#e0e0e0"/>
+      <rect x="0" y="176" width="210" height="5" fill="#e0e0e0"/>
+      <rect x="0" y="186" width="238" height="5" fill="#e0e0e0"/>
+      <rect x="0" y="196" width="140" height="5" fill="#e0e0e0"/>
+    </g>
+
+    <rect x="14" y="254" width="240" height="18" fill="url(#fnr-hatch)" stroke="#000000" stroke-width="1.5"/>
+    <text x="134" y="266" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">95% EXECUTION TRACE · 5% DECISION</text>
+  </g>
+
+  <!-- Arrow into Filter -->
+  <line x1="312" y1="178" x2="352" y2="178" stroke="#000000" stroke-width="3" marker-end="url(#fnr-arrow)"/>
+
+  <!-- ===================================================================== -->
+  <!-- CENTER: REGENT FILTER GATE                                            -->
+  <!-- ===================================================================== -->
+  <g transform="translate(360, 74)">
+    <rect x="6" y="6" width="176" height="208" class="shadow"/>
+    <rect x="0" y="0" width="176" height="208" class="card"/>
+    <rect x="0" y="0" width="176" height="32" fill="#000000"/>
+    <text x="88" y="20" class="ui" font-size="12" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1">REGENT GATE</text>
+
+    <!-- Funnel Graphic -->
+    <polygon points="28,48 148,48 106,96 70,96" fill="url(#fnr-hatch)" stroke="#000000" stroke-width="2.5"/>
+    <rect x="70" y="96" width="36" height="16" fill="#000000"/>
+
+    <!-- Filter Rules -->
+    <text x="16" y="134" class="mono" font-size="9" font-weight="700" fill="#000000">1. Strip tool &amp; test logs</text>
+    <text x="16" y="152" class="mono" font-size="9" font-weight="700" fill="#000000">2. Never restate reports</text>
+    <text x="16" y="170" class="mono" font-size="9" font-weight="700" fill="#000000">3. Extract user decision</text>
+
+    <rect x="14" y="180" width="148" height="18" fill="#000000"/>
+    <text x="88" y="192" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">"FILTER, NOT RELAY"</text>
+  </g>
+
+  <!-- Branch 1: Needs User (Top Right) -->
+  <path d="M 542 136 L 586 136 L 586 106 L 614 106" fill="none" stroke="#000000" stroke-width="3" marker-end="url(#fnr-arrow)"/>
+
+  <!-- Branch 2: Nothing Needed (Bottom Right) -->
+  <path d="M 542 220 L 586 220 L 586 258 L 614 258" fill="none" stroke="#000000" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#fnr-arrow)"/>
+
+  <!-- ===================================================================== -->
+  <!-- RIGHT TOP: WHAT YOU SEE (WHEN BLOCKED)                                -->
+  <!-- ===================================================================== -->
+  <g transform="translate(622, 36)">
+    <rect x="6" y="6" width="222" height="142" class="shadow"/>
+    <rect x="0" y="0" width="222" height="142" class="card"/>
+    <rect x="0" y="0" width="222" height="28" fill="#000000"/>
+    <text x="12" y="18" class="mono" font-size="10" font-weight="700" fill="#ffffff">IF BLOCKED → 1 LINE TO YOU</text>
+
+    <text x="14" y="48" class="mono" font-size="10" font-weight="700" fill="#000000">Coding · API migration</text>
+    <text x="14" y="66" class="ui" font-size="11" fill="#000000">Benchmarks passed. Need your</text>
+    <text x="14" y="82" class="ui" font-size="11" fill="#000000">call: drop `/v1/auth` in v0.18?</text>
+
+    <!-- Action Pills -->
+    <rect x="14" y="98" width="92" height="26" fill="#000000"/>
+    <text x="60" y="115" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">Drop in v0.18</text>
+    <rect x="114" y="98" width="94" height="26" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+    <text x="161" y="115" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle">Keep deprecated</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- RIGHT BOTTOM: QUIET TOKEN (WHEN ROUTINE)                              -->
+  <!-- ===================================================================== -->
+  <g transform="translate(622, 204)">
+    <rect x="5" y="5" width="222" height="114" class="shadow"/>
+    <rect x="0" y="0" width="222" height="114" fill="#f7f7f7" stroke="#000000" stroke-width="2.5"/>
+    <rect x="0" y="0" width="222" height="26" fill="#e5e5e5" stroke="#000000" stroke-width="2.5"/>
+    <text x="12" y="17" class="mono" font-size="9" font-weight="700" fill="#000000">IF ROUTINE → SILENT RECORD</text>
+
+    <rect x="14" y="40" width="124" height="22" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+    <text x="76" y="55" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">HEARTBEAT_OK</text>
+
+    <text x="14" y="80" class="mono" font-size="9" fill="#333333">• Saved in Regent history</text>
+    <text x="14" y="96" class="mono" font-size="9" fill="#333333">• 0 notifications · 0 unread badge</text>
+  </g>
+</svg>

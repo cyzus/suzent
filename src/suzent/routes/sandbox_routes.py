@@ -123,6 +123,7 @@ def _get_resolver_for_request(
     sandbox_enabled = CONFIG.sandbox_enabled
     cwd: str | None = None
     configured_volumes: list[str] = []
+    chat = None
     try:
         chat = get_database().get_chat(chat_id)
         if chat is not None:
@@ -137,13 +138,19 @@ def _get_resolver_for_request(
             cwd = working_directory or config.get("cwd")
             sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
             configured_volumes = config.get("sandbox_volumes", [])
+            if not cwd:
+                cwd = get_database().resolve_chat_working_directory(chat)
     except Exception as e:
         logger.warning(f"Failed to fetch chat config for file access: {e}")
 
+    volumes = override_volumes if override_volumes is not None else configured_volumes
+    try:
+        if chat is not None:
+            volumes = get_database().with_project_folders(chat, volumes)
+    except Exception as e:
+        logger.warning(f"Failed to add project folders for file access: {e}")
     # Volume overrides must not discard the chat's persisted working-directory grant.
-    custom_volumes = get_effective_volumes(
-        override_volumes if override_volumes is not None else configured_volumes
-    )
+    custom_volumes = get_effective_volumes(volumes)
 
     custom_volumes = _with_discovered_skill_volumes(
         chat_id, custom_volumes, sandbox_enabled=sandbox_enabled

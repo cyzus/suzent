@@ -10,6 +10,7 @@ const core = vi.hoisted(() => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock('@tauri-apps/api/core', () => core);
 
 import {
+  bindReplyRun,
   forgetReply,
   notifyDesktop,
   recordReplyChunk,
@@ -110,6 +111,35 @@ describe('desktop notifications', () => {
     });
   });
 
+  it('announces the steered reply, not the run it replaced', () => {
+    const text = (delta: string) =>
+      frame({ type: 'TEXT_MESSAGE_START' }) + frame({ type: 'TEXT_MESSAGE_CONTENT', delta });
+    watchForReply('chat-1');
+    // The old run is still draining when the steer is sent.
+    recordReplyChunk('chat-1', text('Old answer'), 'old');
+    expect(takeReplyOutcome('chat-1', 'old')).toBeNull();
+    bindReplyRun('chat-1', 'new');
+    recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', code: 'stream_stopped' }), 'old');
+    recordReplyChunk('chat-1', text('New answer'), 'new');
+    expect(takeReplyOutcome('chat-1', 'old')).toBeNull();
+    expect(takeReplyOutcome('chat-1', 'new')).toEqual({ outcome: 'ready', preview: 'New answer' });
+  });
+
+  it('forgets what the replaced run streamed before the new one started', () => {
+    watchForReply('chat-1');
+    recordReplyChunk('chat-1', frame({ type: 'RUN_ERROR', code: 'stream_stopped' }), 'old');
+    bindReplyRun('chat-1', 'new');
+    expect(takeReplyOutcome('chat-1', 'new')).toEqual({ outcome: 'ready', preview: '' });
+  });
+
+  it('keeps the first run a watch was bound to', () => {
+    watchForReply('chat-1');
+    bindReplyRun('chat-1', 'first');
+    bindReplyRun('chat-1', 'second');
+    expect(takeReplyOutcome('chat-1', 'second')).toBeNull();
+    expect(takeReplyOutcome('chat-1', 'first')).not.toBeNull();
+  });
+
   it('drops a watch whose turn never started', () => {
     watchForReply('chat-1');
     forgetReply('chat-1');
@@ -122,4 +152,29 @@ describe('desktop notifications', () => {
     expect(body).toHaveLength(200);
     expect(body.endsWith('…')).toBe(true);
   });
+});
+
+it('uses Regent deliveries as a fallback preview and announces the turn only once', () => {
+  watchForReply('focal-suzent');
+  recordReplyChunk(
+    'focal-suzent',
+    frame({ type: 'TOOL_CALL_START', toolCallName: 'send_message', toolCallId: 'send' })
+  );
+  recordReplyChunk(
+    'focal-suzent',
+    frame({
+      type: 'TOOL_CALL_RESULT',
+      toolCallId: 'send',
+      content: {
+        success: true,
+        metadata: { regent_messages: ['Hello', 'Two tests failed.'] },
+      },
+    })
+  );
+  recordReplyChunk('focal-suzent', frame({ type: 'TEXT_MESSAGE_START' }));
+  expect(takeReplyOutcome('focal-suzent')).toEqual({
+    outcome: 'ready',
+    preview: 'Hello Two tests failed.',
+  });
+  expect(takeReplyOutcome('focal-suzent')).toBeNull();
 });

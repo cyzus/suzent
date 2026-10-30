@@ -1,5 +1,6 @@
 import { SidebarExpansionContext } from '../sidebar/SidebarExpansionContext';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../../i18n';
 import { FOCAL_CHAT_ID, readFocalBoardOpen } from '../../lib/focalAgent';
 import { markOpenedFromRegent, unmarkOpenedFromRegent } from '../../lib/regentReturn';
@@ -31,16 +32,56 @@ import {
   ClipboardDocumentListIcon,
   WrenchScrewdriverIcon,
   DocumentTextIcon,
+  Squares2X2Icon,
+  ServerStackIcon,
+  CircleStackIcon,
+  EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { ToolsPanel } from './ToolsPanel';
 import { FocalToolsPanel } from './FocalToolsPanel';
-
-// Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
-const ICON_STRIP_WIDTH = 44;
+import {
+  HeaderMoreMenu,
+  OverviewBackBar,
+  OverviewList,
+  PlanProgress,
+  SidebarOverview,
+  type OverviewSection,
+} from './SidebarOverview';
+import { ContextUsageSummary } from '../sidebar/ContextUsageSummary';
+import {
+  ContextHeaderButton,
+  ContextUsageHeadline,
+  ContextWindowStats,
+} from '../sidebar/ContextWindowStats';
+import {
+  EnvironmentPreview,
+  EnvironmentProjectName,
+  EnvironmentSummary,
+} from '../sidebar/EnvironmentSummary';
+import { MemoryCount, MemoryDetails, MemoryPreview } from '../sidebar/MemorySummary';
+import { useMemorySection } from '../../hooks/useMemorySection';
+import { useContextUsageStats } from '../../hooks/useContextUsageStats';
+import {
+  RegentBoardCounts,
+  RegentBoardList,
+  RegentWaitingCount,
+} from '../sidebar/RegentBoardSummary';
+import { formatPercent } from '../../lib/contextFormat';
+import { isSubAgentActive } from './subAgentStatus';
 
 export type TabId =
-  'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
+  | 'overview'
+  | 'files'
+  | 'context'
+  | 'browser'
+  | 'canvas'
+  | 'agents'
+  | 'plan'
+  | 'project'
+  | 'environment'
+  | 'memory'
+  | 'tools';
 
 export interface AutoOpenFlags {
   chatId: string | null | undefined;
@@ -161,6 +202,8 @@ interface RightSidebarProps {
   canvasExpandNonce?: number;
   onClearForcedWebContext?: () => void;
   isNewChat?: boolean;
+  /** App header node the tab buttons are portalled into. */
+  headerSlot?: HTMLElement | null;
 }
 
 interface TabConfig {
@@ -171,6 +214,8 @@ interface TabConfig {
   hasContent: boolean;
   hasActivity: boolean;
   activityClass?: string;
+  /** Gets its own header button; the rest are reached from the overview. */
+  pinned: boolean;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -208,6 +253,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   canvasExpandNonce,
   onClearForcedWebContext,
   isNewChat = false,
+  headerSlot,
 }) => {
   const { t } = useI18n();
   const { taskStates } = useBackgroundTasks();
@@ -217,7 +263,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const hasBackgroundActivity = backgroundTasks.some(
     (task) => task.status === 'running' || task.status === 'queued'
   );
-  const [activeTab, setActiveTab] = useState<TabId>('tools');
+  const [activeTab, setActiveTab] = useState<TabId>(currentChatId ? 'overview' : 'tools');
   const selectedTabByChat = useRef<Map<string, TabId>>(new Map());
   const previousChatId = useRef(currentChatId);
   useEffect(() => {
@@ -227,12 +273,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       }
       previousChatId.current = currentChatId;
       setActiveTab(
-        currentChatId ? (selectedTabByChat.current.get(currentChatId) ?? 'tools') : 'tools'
+        currentChatId ? (selectedTabByChat.current.get(currentChatId) ?? 'overview') : 'tools'
       );
     } else if (currentChatId) {
       selectedTabByChat.current.set(currentChatId, activeTab);
     }
   }, [activeTab, currentChatId]);
+  const [expandedSections, setExpandedSections] = useState<ReadonlySet<TabId>>(
+    () => new Set<TabId>(['plan', 'agents'])
+  );
   const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
@@ -297,22 +346,33 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const hasGoalContent = goalMatchesChat && Boolean(goal !== null || tasks.length > 0);
 
   // ── Tab definitions ─────────────────────────────────────────────────
+  // Agents open on history too: the panel fetches its own list from /subagents,
+  // so a reopened chat can show every past run. The dot stays tied to live
+  // state -- a finished history is not activity.
+  const hasAgentContent =
+    backgroundTasks.length > 0 || hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId;
+  const isFocal = currentChatId === FOCAL_CHAT_ID;
+  const memorySection = useMemorySection(currentChatId);
   const tabs: TabConfig[] = [
+    {
+      id: 'overview',
+      icon: Squares2X2Icon,
+      labelKey: 'sidebar.tabs.overview',
+      fallbackLabel: 'Overview',
+      hasContent: Boolean(currentChatId),
+      hasActivity: hasBackgroundActivity,
+      activityClass: 'bg-brutal-blue animate-pulse',
+      pinned: true,
+    },
     {
       id: 'files',
       icon: FolderIcon,
       labelKey: 'sidebar.tabs.files',
       fallbackLabel: 'Files',
-      hasContent: !!fileToPreview,
+      hasContent: true,
       hasActivity: !!fileToPreview,
-    },
-    {
-      id: 'context',
-      icon: DocumentTextIcon,
-      labelKey: 'sidebar.tabs.context',
-      fallbackLabel: 'Context',
-      hasContent: Boolean(currentChatId),
-      hasActivity: false,
+      activityClass: 'bg-brutal-yellow',
+      pinned: true,
     },
     {
       id: 'browser',
@@ -322,28 +382,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       hasContent: Boolean(currentChatId),
       hasActivity: isBrowserStreamActive || hasWebActivity,
       activityClass: 'bg-brutal-green',
-    },
-    {
-      id: 'canvas',
-      icon: PencilSquareIcon,
-      labelKey: 'sidebar.tabs.canvas',
-      fallbackLabel: 'Canvas',
-      hasContent: hasCanvasContent,
-      hasActivity: hasCanvasContent,
-      activityClass: 'bg-brutal-yellow',
-    },
-    {
-      id: 'agents',
-      icon: CpuChipIcon,
-      labelKey: 'sidebar.tabs.agents',
-      fallbackLabel: 'Background tasks',
-      // Openable on history: the panel fetches its own list from /subagents,
-      // so a reopened chat can show every past run. The dot stays tied to live
-      // state -- a finished history is not activity.
-      hasContent:
-        backgroundTasks.length > 0 || hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId,
-      hasActivity: hasBackgroundActivity,
-      activityClass: 'bg-brutal-blue animate-pulse',
+      pinned: true,
     },
     {
       id: 'plan',
@@ -353,14 +392,65 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       hasContent: true,
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
+      // Regent's board spans every project, so it gets its own header button.
+      pinned: isFocal,
+    },
+    {
+      id: 'canvas',
+      icon: PencilSquareIcon,
+      labelKey: 'sidebar.tabs.canvas',
+      fallbackLabel: 'Canvas',
+      hasContent: hasCanvasContent,
+      hasActivity: hasCanvasContent,
+      activityClass: 'bg-brutal-yellow',
+      pinned: hasCanvasContent,
+    },
+    {
+      id: 'agents',
+      icon: CpuChipIcon,
+      labelKey: 'sidebar.tabs.agents',
+      fallbackLabel: 'Background tasks',
+      hasContent: hasAgentContent,
+      hasActivity: hasBackgroundActivity,
+      activityClass: 'bg-brutal-blue animate-pulse',
+      pinned: false,
+    },
+    {
+      id: 'context',
+      icon: DocumentTextIcon,
+      labelKey: 'sidebar.tabs.context',
+      fallbackLabel: 'Context',
+      hasContent: Boolean(currentChatId),
+      hasActivity: false,
+      pinned: false,
+    },
+    {
+      id: 'environment',
+      icon: ServerStackIcon,
+      labelKey: 'sidebar.tabs.environment',
+      fallbackLabel: 'Environment',
+      hasContent: Boolean(currentChatId),
+      hasActivity: false,
+      pinned: false,
+    },
+    {
+      id: 'memory',
+      icon: CircleStackIcon,
+      labelKey: 'sidebar.tabs.memory',
+      fallbackLabel: 'Memory',
+      hasContent: Boolean(currentChatId),
+      hasActivity: memorySection.extracting,
+      activityClass: 'bg-brutal-blue animate-pulse',
+      pinned: false,
     },
     {
       id: 'tools',
       icon: WrenchScrewdriverIcon,
       labelKey: 'sidebar.tabs.tools',
       fallbackLabel: 'Tools',
-      hasContent: true, // always accessible
+      hasContent: true,
       hasActivity: false,
+      pinned: true,
     },
   ];
 
@@ -421,7 +511,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     };
 
     const { nextTab, shouldOpen, shouldClose } = evaluateSidebarAutoOpen(prev, flags);
-    if (nextTab) {
+    // Regent's board needs the full panel; any other plan is status, so it unfolds in place.
+    if (nextTab === 'plan' && currentChatId !== FOCAL_CHAT_ID) {
+      setActiveTab('overview');
+      setExpandedSections((current) => new Set(current).add('plan'));
+    } else if (nextTab) {
       setActiveTab(nextTab);
     }
     if (!isOpen && shouldOpen) {
@@ -455,20 +549,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // yet, so they can't be selected (avoids opening an empty/collapsed panel).
   const isTabLocked = useCallback((tabId: TabId) => isNewChat && tabId !== 'tools', [isNewChat]);
 
-  // ── Icon strip click: toggle panel or switch tab ───────────────────
+  // ── Header tab click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback(
     (tabId: TabId) => {
       const targetTab = tabs.find((tab) => tab.id === tabId);
-      if (!targetTab) return;
-      if (isTabLocked(tabId)) return;
-      if (
-        targetTab.id !== 'files' &&
-        targetTab.id !== 'plan' &&
-        targetTab.id !== 'tools' &&
-        !targetTab.hasContent
-      ) {
-        return;
-      }
+      if (!targetTab || !targetTab.hasContent || isTabLocked(tabId)) return;
 
       if (isOpen && activeTab === tabId) {
         onClose();
@@ -478,6 +563,213 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       }
     },
     [tabs, isOpen, activeTab, onClose, onOpen, isTabLocked]
+  );
+
+  const chatTasks = goalMatchesChat ? tasks : [];
+  const doneTaskCount = chatTasks.filter((task) => task.status === 'completed').length;
+  const currentTask = chatTasks.find((task) => task.status === 'in_progress');
+  const runningAgentCount = backgroundTasks.filter(
+    (task) => task.status === 'running' || task.status === 'queued'
+  ).length;
+  const activeAgents = backgroundTasks.filter((task) => isSubAgentActive(task.status));
+  const previewAgents = (activeAgents.length > 0 ? activeAgents : backgroundTasks.slice(-1)).slice(
+    0,
+    2
+  );
+  const contextStats = useContextUsageStats(currentChatId);
+  const overviewContent: Partial<
+    Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
+  > = {
+    plan: isFocal
+      ? {
+          summary: <RegentWaitingCount />,
+          detail: <RegentBoardCounts />,
+          body: <RegentBoardList onOpenChat={(chatId) => void openChatFromBoard(chatId)} />,
+        }
+      : {
+          summary: chatTasks.length > 0 ? `${doneTaskCount}/${chatTasks.length}` : undefined,
+          detail:
+            chatTasks.length > 0 ? (
+              <PlanProgress
+                statuses={chatTasks.map((task) => task.status)}
+                caption={currentTask?.title ?? goal?.objective}
+              />
+            ) : goalMatchesChat && goal?.objective ? (
+              <div className="mt-1 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                {goal.objective}
+              </div>
+            ) : undefined,
+          body: (
+            <OverviewList
+              items={chatTasks}
+              empty={t('sidebar.overview.noPlan')}
+              getKey={(task) => task.id}
+              muted={(task) => task.status === 'completed' || task.status === 'cancelled'}
+              renderMarker={(task) => (
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    task.status === 'completed'
+                      ? 'bg-brutal-green'
+                      : task.status === 'in_progress'
+                        ? 'bg-brutal-yellow'
+                        : 'bg-neutral-300 dark:bg-zinc-600'
+                  }`}
+                />
+              )}
+              renderLabel={(task) => task.title}
+            />
+          ),
+        },
+    agents: {
+      summary: runningAgentCount
+        ? t('sidebar.overview.running', { count: runningAgentCount })
+        : undefined,
+      preview: (
+        <ul className="mt-1.5 space-y-0.5">
+          {previewAgents.map((task) => (
+            <li
+              key={task.task_id}
+              className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400"
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  isSubAgentActive(task.status)
+                    ? 'bg-brutal-blue animate-pulse'
+                    : task.status === 'failed'
+                      ? 'bg-brutal-red'
+                      : 'bg-neutral-300 dark:bg-zinc-600'
+                }`}
+              />
+              <span className="truncate">{task.description}</span>
+            </li>
+          ))}
+        </ul>
+      ),
+      body: (
+        <OverviewList
+          items={backgroundTasks}
+          empty={t('backgroundTasks.empty')}
+          getKey={(task) => task.task_id}
+          muted={(task) => !isSubAgentActive(task.status)}
+          renderMarker={(task) => (
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                isSubAgentActive(task.status)
+                  ? 'bg-brutal-blue animate-pulse'
+                  : task.status === 'failed'
+                    ? 'bg-brutal-red'
+                    : 'bg-neutral-300 dark:bg-zinc-600'
+              }`}
+            />
+          )}
+          renderLabel={(task) => task.description}
+          onSelect={(task) => onSelectSubAgent?.(task.task_id)}
+        />
+      ),
+    },
+    context: {
+      summary:
+        contextStats.measuredPercent != null
+          ? formatPercent(contextStats.measuredPercent)
+          : undefined,
+      preview: currentChatId ? <ContextUsageHeadline chatId={currentChatId} /> : null,
+      body: currentChatId ? (
+        <>
+          <ContextWindowStats chatId={currentChatId} />
+          <ContextUsageSummary chatId={currentChatId} plain />
+        </>
+      ) : null,
+    },
+    environment: {
+      // Once expanded, the project row names the project.
+      summary: expandedSections.has('environment') ? undefined : <EnvironmentProjectName />,
+      preview: <EnvironmentPreview />,
+      body: <EnvironmentSummary />,
+      fullView: false,
+    },
+    memory: {
+      summary: <MemoryCount section={memorySection} />,
+      preview: <MemoryPreview section={memorySection} />,
+      body: <MemoryDetails section={memorySection} />,
+      fullView: false,
+    },
+  };
+  // Sections stay listed even when empty: the overview is the only way into their full panels.
+  const overviewSections: OverviewSection[] = tabs
+    .filter((tab) => (!tab.pinned || tab.id === 'plan') && tab.hasContent && !isTabLocked(tab.id))
+    .map((tab) => ({
+      id: tab.id,
+      icon: tab.icon,
+      label: t(tab.labelKey) || tab.fallbackLabel,
+      activityClass: tab.hasActivity ? tab.activityClass : undefined,
+      body: null,
+      ...overviewContent[tab.id],
+    }));
+  const headerTabs = tabs.filter((tab) => tab.pinned && tab.hasContent && !isTabLocked(tab.id));
+  // Next to the overview, so the board never lands in the overflow menu.
+  if (isFocal) {
+    const board = headerTabs.findIndex((tab) => tab.id === 'plan');
+    if (board > 1) headerTabs.splice(1, 0, ...headerTabs.splice(board, 1));
+  }
+  const activeTabInHeader = headerTabs.some((tab) => tab.id === activeTab);
+  const maxHeaderTabs = chatAreaWidth > 0 && chatAreaWidth < 900 ? 3 : 4;
+  const overflowing = headerTabs.length > maxHeaderTabs;
+  const visibleHeaderTabs = overflowing ? headerTabs.slice(0, maxHeaderTabs - 1) : headerTabs;
+  // The open panel keeps its button, so the header always shows where you are.
+  const activeOverflowTab = overflowing
+    ? headerTabs.slice(maxHeaderTabs - 1).find((tab) => tab.id === activeTab)
+    : undefined;
+  if (activeOverflowTab) visibleHeaderTabs.push(activeOverflowTab);
+  const overflowTabs = headerTabs.filter((tab) => !visibleHeaderTabs.includes(tab));
+  const openChatFromBoard = async (chatId: string): Promise<void> => {
+    if (isFocal) markOpenedFromRegent(chatId);
+    const opened = await onTaskChat?.(chatId);
+    if (!opened && isFocal) unmarkOpenedFromRegent(chatId);
+    if (opened) {
+      if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+      if (isOverlayMode) onClose();
+    }
+  };
+  const toggleSection = (tabId: TabId): void => {
+    setExpandedSections((current) => {
+      const next = new Set(current);
+      if (!next.delete(tabId)) next.add(tabId);
+      return next;
+    });
+  };
+  const backToOverview = (
+    <OverviewBackBar label={t('sidebar.tabs.overview')} onBack={() => setActiveTab('overview')} />
+  );
+  const contextOpenInOverview =
+    isOpen && !isNewChat && activeTab === 'overview' && expandedSections.has('context');
+  const openContextSection = (): void => {
+    if (contextOpenInOverview) {
+      onClose();
+      return;
+    }
+    setActiveTab('overview');
+    setExpandedSections((current) => new Set(current).add('context'));
+    if (!isOpen) onOpen();
+  };
+  const closeSubAgent = (): void => {
+    onCloseSubAgent?.();
+    setActiveTab('overview');
+    setExpandedSections((current) => new Set(current).add('agents'));
+  };
+  const overviewPanel = (
+    <div
+      // A reserved gutter keeps expanding a section from narrowing every row.
+      className={`flex-1 h-full flex-col min-h-0 overflow-y-auto scrollbar-stable bg-neutral-50 dark:bg-zinc-900 ${activeTab === 'overview' ? 'flex' : 'hidden'}`}
+    >
+      <SidebarOverview
+        sections={overviewSections}
+        expanded={expandedSections}
+        onToggle={toggleSection}
+        onOpenFull={setActiveTab}
+        openFullLabel={t('sidebar.overview.viewAll')}
+        emptyLabel={t('sidebar.overview.empty')}
+      />
+    </div>
   );
 
   useEffect(() => {
@@ -510,9 +802,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     Math.min(effectiveMaxWidth, shouldUseCustomWidth ? sidebarWidth! : getDesktopDefaultWidth())
   );
 
-  // Desktop: icon strip always visible (44px), content panel expands on open
-  // Overlay: full hide/show (icon strip is part of the slide)
-  // New chat: in overlay mode hide entirely; in desktop mode show icon strip but only expand for tools tab
+  // Tab buttons live in the app header, so a closed sidebar takes no width.
+  // New chat: in overlay mode hide entirely; on desktop only the tools tab expands.
   const isNewChatOverlayHidden = isNewChat && isOverlayMode;
   const effectiveOpen = isOpen && (!isNewChat || activeTab === 'tools');
   const isCoveringChat = coveringChat && effectiveOpen && !isOverlayMode;
@@ -531,17 +822,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     setCoverWidth(null);
     onClose();
   };
-  const sidebarLeftBorder = coveringChat
-    ? 'border-l border-neutral-300 dark:border-zinc-700'
-    : 'border-l-3 border-brutal-black';
-  const sidebarRightBorder = coveringChat
-    ? 'border-r border-neutral-300 dark:border-zinc-700'
-    : 'border-r-3 border-brutal-black';
-  const desktopWidth = isNewChatOverlayHidden
-    ? 0
-    : effectiveOpen
-      ? desktopOpenWidth
-      : ICON_STRIP_WIDTH;
+  // The overview blends into the chat; content panels keep the brutalist edge.
+  const sidebarLeftBorder =
+    activeTab === 'overview'
+      ? ''
+      : coveringChat
+        ? 'border-l border-neutral-300 dark:border-zinc-700'
+        : 'border-l-3 border-brutal-black';
+  const desktopWidth = effectiveOpen && !isNewChatOverlayHidden ? desktopOpenWidth : 0;
 
   // ── Report width via ResizeObserver ────────────────────────────────
   useEffect(() => {
@@ -554,8 +842,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       // intermediate sizes up to App (it would re-render the layout per frame).
       // The final width is reported when setSidebarWidth commits on mouseup.
       if (dragState.current) return;
-      const width = isCoveringChat ? ICON_STRIP_WIDTH : Math.round(measuredWidth);
-      onWidthChange(Number.isFinite(width) && width > 0 ? width : null);
+      const width = isCoveringChat ? 0 : Math.round(measuredWidth);
+      onWidthChange(Number.isFinite(width) && width >= 0 ? width : null);
     };
 
     const observer = new ResizeObserver(([entry]) => {
@@ -591,19 +879,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         },
       }}
     >
-      <div
-        ref={spacerRef}
-        className="h-full shrink-0"
-        style={{ width: isCoveringChat ? ICON_STRIP_WIDTH : 0 }}
-        aria-hidden="true"
-      />
+      <div ref={spacerRef} className="h-full shrink-0" style={{ width: 0 }} aria-hidden="true" />
       <div
         ref={sidebarRef}
         style={
           isNewChatOverlayHidden
             ? { width: 0 }
             : isOverlayMode
-              ? { width: ICON_STRIP_WIDTH, maxWidth: ICON_STRIP_WIDTH }
+              ? { width: 0, maxWidth: 0 }
               : isCoveringChat
                 ? {
                     width: displayedCoverWidth,
@@ -617,26 +900,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         // Animating docked width reflows the transcript and reports intermediate sizes back to App.
         className={`
         z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
-        ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? sidebarLeftBorder : ''}`}
+        ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode && effectiveOpen ? sidebarLeftBorder : ''}`}
         relative
       `}
       >
         {/* ── Content Panel ─────────────────────────────────────────── */}
-        {/* In overlay mode: slides out absolutely to the right of the icon strip */}
-        {/* In desktop mode: sits inline to the left of the icon strip */}
+        {/* In overlay mode: slides in from the right edge over the chat */}
         {isOverlayMode ? (
           <div
             className={`absolute inset-y-0 right-full transform-gpu will-change-transform transition-transform duration-300 ease-in-out ${sidebarLeftBorder} overflow-hidden bg-white dark:bg-zinc-900 ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}
             style={{
               width: isOpen
                 ? isBrowserActive || coveringChat
-                  ? Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH)
+                  ? effectiveViewportWidth
                   : desktopOpenWidth
                 : 0,
             }}
           >
             <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
               <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
+                {overviewPanel}
                 <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
                   <SandboxFiles
                     onViewModeChange={setIsFileExpanded}
@@ -649,7 +932,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
                 >
-                  {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+                  {backToOverview}
+                  <div className="flex-1 min-h-0">
+                    {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+                  </div>
                 </div>
                 <div
                   className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
@@ -674,12 +960,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
                 >
                   {viewingSubAgentTaskId ? (
-                    <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                    <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={closeSubAgent} />
                   ) : currentChatId ? (
-                    <BackgroundTaskList
-                      chatId={currentChatId}
-                      onSelect={(taskId) => onSelectSubAgent?.(taskId)}
-                    />
+                    <>
+                      {backToOverview}
+                      <div className="flex-1 min-h-0">
+                        <BackgroundTaskList
+                          chatId={currentChatId}
+                          onSelect={(taskId) => onSelectSubAgent?.(taskId)}
+                        />
+                      </div>
+                    </>
                   ) : (
                     <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
                       {t('backgroundTasks.empty')}
@@ -725,9 +1016,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               />
             )}
             <div
-              className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? `opacity-100 translate-x-0 ${sidebarRightBorder}` : 'opacity-0 translate-x-3 pointer-events-none'}`}
+              className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-3 pointer-events-none'}`}
             >
               <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
+                {overviewPanel}
                 <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
                   <SandboxFiles
                     onViewModeChange={setIsFileExpanded}
@@ -740,7 +1032,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
                 >
-                  {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+                  {backToOverview}
+                  <div className="flex-1 min-h-0">
+                    {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+                  </div>
                 </div>
                 <div
                   className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
@@ -765,12 +1060,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
                 >
                   {viewingSubAgentTaskId ? (
-                    <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                    <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={closeSubAgent} />
                   ) : currentChatId ? (
-                    <BackgroundTaskList
-                      chatId={currentChatId}
-                      onSelect={(taskId) => onSelectSubAgent?.(taskId)}
-                    />
+                    <>
+                      {backToOverview}
+                      <div className="flex-1 min-h-0">
+                        <BackgroundTaskList
+                          chatId={currentChatId}
+                          onSelect={(taskId) => onSelectSubAgent?.(taskId)}
+                        />
+                      </div>
+                    </>
                   ) : (
                     <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
                       {t('backgroundTasks.empty')}
@@ -789,100 +1089,115 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         )}
 
         <div
-          className={`absolute inset-y-0 z-10 overflow-hidden ${sidebarRightBorder} bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? '' : 'hidden'}`}
+          className={`absolute inset-y-0 z-10 overflow-hidden bg-white dark:bg-zinc-900 ${effectiveOpen && activeTab === 'plan' ? 'flex flex-col' : 'hidden'}`}
           style={
-            isOverlayMode
-              ? { right: '100%', width: Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH) }
-              : { left: 0, right: ICON_STRIP_WIDTH }
+            isOverlayMode ? { right: '100%', width: effectiveViewportWidth } : { left: 0, right: 0 }
           }
         >
-          <TaskPanel
-            navigationError={taskNavigationError}
-            onDismissError={onDismissTaskError}
-            goal={goalMatchesChat ? goal : null}
-            tasks={goalMatchesChat ? tasks : []}
-            kanban={kanban}
-            projectName={currentProjectName}
-            chatTitles={chatTitles}
-            focal={currentChatId === FOCAL_CHAT_ID}
-            onOpenTask={async (task) => {
-              // Marked before the switch, so the header sees the mark the moment
-              // the chat becomes current, and taken back if it never does.
-              const marked = currentChatId === FOCAL_CHAT_ID ? task.chatId : null;
-              if (marked) markOpenedFromRegent(marked);
-              const opened = (await onOpenTask?.(task)) ?? false;
-              if (!opened && marked) unmarkOpenedFromRegent(marked);
-              if (opened) {
-                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                if (isOverlayMode) onClose();
-              }
-              return opened;
-            }}
-            onOpenChat={async (chatId) => {
-              const fromRegent = currentChatId === FOCAL_CHAT_ID;
-              if (fromRegent) markOpenedFromRegent(chatId);
-              const opened = await onTaskChat?.(chatId);
-              if (!opened && fromRegent) unmarkOpenedFromRegent(chatId);
-              if (opened) {
-                if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
-                if (isOverlayMode) onClose();
-              }
-            }}
-          />
-        </div>
-
-        {/* ── Icon Strip — always visible (except new chat) ─────────── */}
-        <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 pt-2 pb-1 gap-1">
-          {isCoveringChat && activeTab !== 'plan' && (
-            <button
-              type="button"
-              onClick={() => dockSidebar()}
-              title={t('sidebar.dock')}
-              aria-label={t('sidebar.dock')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-brutal-black hover:bg-neutral-100 dark:text-white dark:hover:bg-zinc-700"
-            >
-              <ChevronDoubleRightIcon className="h-5 w-5" />
-            </button>
-          )}
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const locked = isTabLocked(tab.id);
-            const isActive = isOpen && activeTab === tab.id && !locked;
-            const isIdle = !tab.hasContent;
-            const isDisabled = locked || (tab.id !== 'files' && !tab.hasContent);
-
-            return (
-              <button
-                key={tab.id}
-                disabled={isDisabled}
-                onClick={() => handleTabClick(tab.id)}
-                title={t(tab.labelKey) || tab.fallbackLabel}
-                aria-disabled={isDisabled}
-                className={`
-                relative flex items-center justify-center w-8 h-8 rounded transition-colors
-                ${
-                  isActive
-                    ? 'bg-brutal-black text-white'
-                    : isDisabled
-                      ? 'text-neutral-300 dark:text-zinc-600 cursor-default'
-                      : isIdle
-                        ? 'text-neutral-300 dark:text-zinc-600 hover:text-neutral-500 dark:hover:text-zinc-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'
-                        : 'text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
+          {currentChatId !== FOCAL_CHAT_ID && backToOverview}
+          <div className="flex-1 min-h-0">
+            <TaskPanel
+              navigationError={taskNavigationError}
+              onDismissError={onDismissTaskError}
+              goal={goalMatchesChat ? goal : null}
+              tasks={goalMatchesChat ? tasks : []}
+              kanban={kanban}
+              projectName={currentProjectName}
+              chatTitles={chatTitles}
+              focal={currentChatId === FOCAL_CHAT_ID}
+              onOpenTask={async (task) => {
+                // Marked before the switch, so the header sees the mark the moment
+                // the chat becomes current, and taken back if it never does.
+                const marked = currentChatId === FOCAL_CHAT_ID ? task.chatId : null;
+                if (marked) markOpenedFromRegent(marked);
+                const opened = (await onOpenTask?.(task)) ?? false;
+                if (!opened && marked) unmarkOpenedFromRegent(marked);
+                if (opened) {
+                  if (isCoveringChat) dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());
+                  if (isOverlayMode) onClose();
                 }
-              `}
-              >
-                <Icon className="w-[18px] h-[18px]" />
-                {/* Activity dot — shown when content exists and panel not active */}
-                {tab.hasActivity && !isActive && (
-                  <span
-                    className={`absolute top-1 right-1 w-2 h-2 border border-brutal-black rounded-full ${tab.activityClass ?? 'bg-brutal-yellow'}`}
-                  />
-                )}
-              </button>
-            );
-          })}
+                return opened;
+              }}
+              onOpenChat={openChatFromBoard}
+            />
+          </div>
         </div>
       </div>
+      {headerSlot &&
+        createPortal(
+          <div className="flex items-center gap-0.5">
+            {isCoveringChat && activeTab !== 'plan' && (
+              <button
+                type="button"
+                onClick={() => dockSidebar()}
+                title={t('sidebar.dock')}
+                aria-label={t('sidebar.dock')}
+                className="flex h-7 w-7 items-center justify-center text-brutal-black hover:bg-neutral-100 dark:text-white dark:hover:bg-zinc-700"
+              >
+                <ChevronDoubleRightIcon className="h-4 w-4" />
+              </button>
+            )}
+            {currentChatId && !isTabLocked('context') && (
+              <ContextHeaderButton
+                chatId={currentChatId}
+                active={contextOpenInOverview}
+                onOpen={openContextSection}
+              />
+            )}
+            {visibleHeaderTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive =
+                effectiveOpen &&
+                (activeTab === tab.id || (tab.id === 'overview' && !activeTabInHeader));
+              const label = t(tab.labelKey) || tab.fallbackLabel;
+              return (
+                <React.Fragment key={tab.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleTabClick(tab.id)}
+                    title={label}
+                    aria-label={label}
+                    aria-pressed={isActive}
+                    className={`relative flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                      isActive
+                        ? 'bg-neutral-200 text-brutal-black dark:bg-zinc-700 dark:text-white'
+                        : 'text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.hasActivity && !isActive && (
+                      <span
+                        className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-brutal-black ${tab.activityClass ?? 'bg-brutal-yellow'}`}
+                      />
+                    )}
+                  </button>
+                  {tab.id === 'overview' && visibleHeaderTabs.length > 1 && (
+                    <span
+                      className="mx-1 h-4 w-px bg-neutral-300 dark:bg-zinc-600"
+                      aria-hidden="true"
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+            {overflowTabs.length > 0 && (
+              <HeaderMoreMenu
+                items={overflowTabs.map((tab) => ({
+                  id: tab.id,
+                  icon: tab.icon,
+                  label: t(tab.labelKey) || tab.fallbackLabel,
+                  activityClass: tab.hasActivity
+                    ? (tab.activityClass ?? 'bg-brutal-yellow')
+                    : undefined,
+                }))}
+                label={t('sidebar.morePanels')}
+                icon={EllipsisHorizontalIcon}
+                onSelect={handleTabClick}
+              />
+            )}
+          </div>,
+          headerSlot
+        )}
     </SidebarExpansionContext.Provider>
   );
 };

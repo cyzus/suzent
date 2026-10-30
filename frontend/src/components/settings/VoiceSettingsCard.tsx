@@ -305,6 +305,16 @@ export function VoiceSettingsCard({
                 onChange={(realtime_model) => update({ realtime_model })}
                 options={[
                   { value: '', label: t('voice.settings.auto') },
+                  ...(settings.realtime_model &&
+                  !realtimeOptions.some((option) => option.id === settings.realtime_model)
+                    ? [
+                        {
+                          value: settings.realtime_model,
+                          label: settings.realtime_model,
+                          disabled: true,
+                        },
+                      ]
+                    : []),
                   ...realtimeOptions.map((option) => ({
                     value: option.id,
                     label:

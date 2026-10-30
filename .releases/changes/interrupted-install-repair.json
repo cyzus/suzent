@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The installer repairs a release install that stopped halfway, instead of treating it as a development checkout that needs cargo."
+}

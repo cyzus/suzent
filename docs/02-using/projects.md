@@ -41,6 +41,29 @@ files on your computer:
 Selected chats are highlighted. Right-click any of them to move or delete them
 all together. A plain click or Esc clears the selection.
 
+## Project settings
+
+Open a project's settings from the **⋯** menu next to it in the sidebar's
+**Projects** list, or right-click the project. **Home** and **Social** have settings too, though they
+can't be renamed.
+
+**Folders** gives every chat in the project access to folders on your
+computer, such as the codebase the project is about and a folder of reference
+material. The first folder is the project's **working directory**: chats start
+there, relative paths resolve inside it, and the agent can edit files there
+without asking. The other folders are mounted for every chat in the project,
+alongside any the chat mounts itself. Use **Set as working directory** on a
+folder to make it the first one.
+
+Under the list, Suzent offers folders this project's chats already used and
+folders you picked recently; click one to add it, or use **Choose a different
+folder** to browse. With no folders, chats work in the project's `scratch/`
+folder.
+
+A chat that already has its own working directory, for example one opened from
+an editor, keeps it. The project library, including `context.md`, stays in the
+project folder. Changes apply from each chat's next message.
+
 ## Give it standing instructions
 
 Project context is the place for anything every chat should know: the goal,

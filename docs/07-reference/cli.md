@@ -69,7 +69,8 @@ See [Updating Suzent](../01-getting-started/updating.md) for details.
 | Command | What it does | Key options |
 |---|---|---|
 | `suzent check-update` | Check whether a newer release is available. | `--json`, `--cached` |
-| `suzent update` | Update Suzent and the desktop app to the latest release. | `--headless` to update in the terminal without a window |
+| `suzent update` | Update Suzent and the desktop app to the latest release. | `--headless` to update in the terminal without a window; `--prefetch` to only download it; `--apply-staged` to install a downloaded release silently |
+| `suzent auto-update` | Turn silent background updates on or off. | `on`, `off`, `status` |
 | `suzent upgrade` | Same as `suzent update`. | `--headless` |
 | `suzent repair` | Reinstall the current release, for example after an update was interrupted. | `--headless` |
 | `suzent shortcuts` | Create or repair the app's menu entry and shortcuts. | `--desktop` / `--no-desktop`, `--menu` / `--no-menu`, `--remove`, `--json` |

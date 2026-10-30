@@ -43,6 +43,8 @@ FOCAL_TOOL_NAMES = (
     "GrepTool",
     "FocalScheduleTool",
     "FocalNotesTool",
+    "FocalMessageTool",
+    "FocalReactionTool",
 )
 
 FOCAL_HEARTBEAT_INTERVAL_MINUTES = 30
@@ -285,6 +287,8 @@ def _project_overview(slug: str) -> Optional[str]:
 
 def build_focal_global_context() -> str:
     """Render the projects, live primary sessions and open tasks the Focal Agent oversees."""
+    from suzent.core.heartbeat import HEARTBEAT_OK
+
     db = get_database()
     running = running_chat_ids()
     lines = [
@@ -299,6 +303,17 @@ def build_focal_global_context() -> str:
         "to have a configured ACP agent, such as a coding agent, do the work. "
         "Primary sessions run autonomously and "
         "notify you when they block on the user; relay those blockers clearly.",
+        "",
+        "## How to reply",
+        "You are a filter, not a relay. Keep every reply short:",
+        "- Lead with what needs the user: one line per item, saying which "
+        "session, what is stuck, and what they need to decide.",
+        "- Never restate a session's report. Give the outcome in a sentence; "
+        "the user can open the session for detail.",
+        "- Confirm a dispatch in one line. Don't explain how the work will be done.",
+        f"- When a session's reply or finish needs nothing from the user, answer "
+        f"exactly {HEARTBEAT_OK}. The event stays in your history, and the user "
+        f"is not notified. Never do this for a blocked task.",
         "",
         "## Projects",
     ]
@@ -722,14 +737,23 @@ def notify_focal_of_finished_session(chat_id: str) -> bool:
     return True
 
 
-def announce_focal_reply(target_chat_id: str, text: str) -> None:
+def announce_focal_reply(message: dict[str, Any], text: str) -> None:
     """Surface what the Focal Agent said when an event woke it in the background.
 
     A woken turn lands in the Focal conversation, which the user may not have
-    open, so anything it says is also queued as a desktop notification.
+    open, so anything it says is also queued as a desktop notification. A
+    quiet reply stays in Regent's history but reaches nobody, except for a
+    blocked task: that waits on the user by definition, so the user hears the
+    blocker itself.
     """
-    if target_chat_id != FOCAL_CHAT_ID or not text.strip():
+    from suzent.core.heartbeat import is_quiet_reply
+
+    if message.get("target_chat_id") != FOCAL_CHAT_ID or not text.strip():
         return
+    if is_quiet_reply(text):
+        if message.get("kind") != "task_blocked_notification":
+            return
+        text = str(message.get("content") or "")
     try:
         get_database().create_background_notification(
             source="focal", title=FOCAL_TITLE, result=text.strip()

@@ -25,30 +25,17 @@ from pydantic_ai.realtime import (
 from pydantic_ai.realtime.model import RealtimeModel
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from suzent.core.providers.helpers import resolve_api_key
+from suzent.core.model_registry import get_model_registry
+from suzent.core.providers.helpers import get_configured_provider_ids, resolve_api_key
 from suzent.logger import get_logger
 from suzent.voice.handoff import HandoffRouter
 from suzent.voice.settings import VoiceSettings, get_voice_settings
 
 logger = get_logger(__name__)
 
-_REALTIME_MODELS = (
-    ("openai/gpt-realtime", "OpenAI GPT Realtime", "openai"),
-    ("openai/gpt-realtime-2.1", "OpenAI GPT Realtime 2.1", "openai"),
-    ("openai/gpt-realtime-2.1-mini", "OpenAI GPT Realtime 2.1 Mini", "openai"),
-    ("gemini/gemini-3.8-live", "Gemini 3.8 Live", "gemini"),
-    (
-        "gemini/gemini-3.1-flash-live-preview",
-        "Gemini 3.1 Flash Live Preview",
-        "gemini",
-    ),
-    (
-        "gemini/gemini-2.5-flash-native-audio-latest",
-        "Gemini 2.5 Flash Native Audio",
-        "gemini",
-    ),
-    ("xai/grok-voice-latest", "xAI Grok Voice", "xai"),
-)
+# Providers pydantic-ai has a realtime adapter for, in auto-selection order.
+_REALTIME_PROVIDERS = ("openai", "gemini", "xai", "dashscope")
+_REALTIME_ENDPOINT = "/v1/realtime"
 
 _DEFAULT_MODELS = {
     "openai": "openai/gpt-realtime",
@@ -56,6 +43,17 @@ _DEFAULT_MODELS = {
     # one tool call per request, TurnComplete events, ~1.4s to the transcript.
     "gemini": "gemini/gemini-3.8-live",
     "xai": "xai/grok-voice-latest",
+    "dashscope": "dashscope/qwen3.5-omni-flash-realtime",
+}
+
+# Qwen-Omni realtime speaks the OpenAI GA protocol, checked live 2026-10-26:
+# session.update, text items, tools, and function_call_output all work as-is.
+# It hears only 16 kHz PCM, ignores OpenAI's transcription models, and accepts
+# conversation.item.truncate without ever applying it.
+_DASHSCOPE_TRANSCRIPTION_MODEL = "qwen3-asr-flash-realtime"
+_DASHSCOPE_PROFILE = {
+    "audio_input_sample_rate": 16000,
+    "supports_output_truncation": False,
 }
 
 # Whether a model streams the user's words while they speak ("live captions").
@@ -85,31 +83,50 @@ class UnsupportedProvider(RealtimeVoiceError):
     code = "unsupported_provider"
 
 
+def _supports_realtime(model_id: str) -> bool:
+    caps = get_model_registry().get_capabilities(model_id)
+    return caps is not None and _REALTIME_ENDPOINT in caps.supported_endpoints
+
+
 def list_realtime_options() -> list[dict[str, Any]]:
-    configured = {
-        provider: bool(resolve_api_key(provider))
-        for provider in ("openai", "gemini", "xai")
-    }
+    """Realtime-capable models on configured providers, like the vision role."""
+    configured = get_configured_provider_ids()
+    providers = [p for p in _REALTIME_PROVIDERS if p in configured]
+    models = [
+        model_id
+        for model_id in get_model_registry()._capabilities
+        if model_id.partition("/")[0] in providers and _supports_realtime(model_id)
+    ]
+    # Grouped by provider, each provider's default first.
+    models.sort(
+        key=lambda m: (
+            providers.index(m.partition("/")[0]),
+            m not in _DEFAULT_MODELS.values(),
+            m,
+        )
+    )
     return [
         {
             "id": model_id,
-            "label": label,
-            "configured": configured[provider],
+            "label": model_id,
+            "configured": True,
             "live_captions": _LIVE_CAPTIONS.get(model_id),
         }
-        for model_id, label, provider in _REALTIME_MODELS
+        for model_id in models
     ]
 
 
 def resolve_realtime_model(settings: VoiceSettings) -> tuple[str, RealtimeModel]:
     model_id = settings.realtime_model.strip()
     if not model_id:
-        for provider in ("openai", "gemini", "xai"):
+        for provider in _REALTIME_PROVIDERS:
             if resolve_api_key(provider):
                 model_id = _DEFAULT_MODELS[provider]
                 break
         if not model_id:
-            raise NoRealtimeModel("Configure an OpenAI, Gemini, or xAI API key first.")
+            raise NoRealtimeModel(
+                "Configure an OpenAI, Gemini, xAI, or DashScope API key first."
+            )
 
     try:
         provider_id, model_name = model_id.split("/", 1)
@@ -117,11 +134,11 @@ def resolve_realtime_model(settings: VoiceSettings) -> tuple[str, RealtimeModel]
         raise UnsupportedProvider(
             "Realtime model IDs must use provider/model format."
         ) from exc
-    if provider_id not in {"openai", "gemini", "xai"}:
+    if provider_id not in _REALTIME_PROVIDERS:
         raise UnsupportedProvider(
             f"Realtime voice does not support provider '{provider_id}'."
         )
-    if model_id not in {option[0] for option in _REALTIME_MODELS}:
+    if not _supports_realtime(model_id):
         raise UnsupportedProvider(f"Unsupported realtime model '{model_id}'.")
 
     api_key = resolve_api_key(provider_id)
@@ -134,6 +151,7 @@ def resolve_realtime_model(settings: VoiceSettings) -> tuple[str, RealtimeModel]
             "openai": "openai_voice",
             "gemini": "google_voice",
             "xai": "xai_voice",
+            "dashscope": "openai_voice",
         }[provider_id]
         model_settings[voice_key] = settings.realtime_voice
     language = settings.realtime_language.strip()
@@ -161,6 +179,23 @@ def resolve_realtime_model(settings: VoiceSettings) -> tuple[str, RealtimeModel]
             model_name,
             provider=GoogleProvider(api_key=api_key),
             settings=model_settings,
+        )
+    elif provider_id == "dashscope":
+        from pydantic_ai.providers.openai import OpenAIProvider
+        from pydantic_ai.realtime.openai import OpenAIRealtimeModel
+
+        from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+        chat_base = PROVIDER_REGISTRY_BY_ID["dashscope"].base_url or ""
+        model_settings["input_transcription_model"] = _DASHSCOPE_TRANSCRIPTION_MODEL
+        model = OpenAIRealtimeModel(
+            model_name,
+            provider=OpenAIProvider(
+                base_url=chat_base.replace("/compatible-mode/v1", "/api-ws/v1"),
+                api_key=api_key,
+            ),
+            settings=model_settings,
+            profile=_DASHSCOPE_PROFILE,
         )
     else:
         from pydantic_ai.providers.xai import XaiProvider
@@ -392,6 +427,10 @@ class VoiceBridge:
         lines, self._delta_lines = self._delta_lines, []
         return lines
 
+    def _delta_snapshot(self) -> list[tuple[str, str]]:
+        """The delta as it stands, without consuming it (for a turn-end signal)."""
+        return list(self._delta_lines)
+
     async def _on_transcript(
         self, index: int, speaker: str, raw: str, final: bool
     ) -> None:
@@ -465,7 +504,7 @@ class VoiceBridge:
             (getattr(model, "settings", None) or {}).get("google_vad", "default"),
         )
         agent = build_front_desk_agent(self.router)
-        return lambda: agent.realtime(model).session(handle_barge_in=True)
+        return lambda: agent.realtime(model).session()
 
     def _load_startup_messages(self) -> list[Any]:
         if self._startup_messages is not None:
@@ -648,10 +687,12 @@ class VoiceBridge:
             elif isinstance(
                 event, (RealtimeOutputSpeechEndEvent, RealtimeTurnCompleteEvent)
             ):
+                self.router.note_front_desk_turn_end(self._delta_snapshot())
                 self._muted = self._replying = False
                 await self._set_state("listening")
             elif isinstance(event, RealtimeResponseInterruptedEvent):
                 logger.info("Voice {} reply interrupted by provider VAD", self._key)
+                self.router.note_front_desk_turn_end(self._delta_snapshot())
                 self._muted = self._replying = False
                 await self._send_json({"type": "interrupted"})
                 await self._set_state("listening")

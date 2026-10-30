@@ -60,7 +60,7 @@ checkpoint, which has no row.
 | `type` | `data` |
 |---|---|
 | `chat.created` / `chat.imported` | The projection with both lists empty; their items follow as appends. `imported` marks a chat that existed before its log. |
-| `meta.set` | Changed values among `title`, `pinned`, `project_id`, `working_directory`, `created_at`, `updated_at`, `last_active_at`, `turn_count`, `context_usage`. |
+| `meta.set` | Changed values among `title`, `pinned`, `archived`, `project_id`, `working_directory`, `created_at`, `updated_at`, `last_active_at`, `turn_count`, `context_usage`. |
 | `config.merge` | `{"set": {...}, "unset": [...]}` for changed config keys. |
 | `message.append` | One display message added at the end. |
 | `messages.splice` | `{"start", "delete", "insert"}` applied to the display messages, for any change other than appending. |

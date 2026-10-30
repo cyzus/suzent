@@ -17,6 +17,10 @@ interface ProjectContextValue {
   createProject: (name: string, slug?: string) => Promise<Project | null>;
   renameProject: (id: string, name: string) => Promise<void>;
   archiveProject: (id: string, archived: boolean) => Promise<void>;
+  updateProjectSettings: (
+    id: string,
+    update: { name?: string; workingDirectory?: string | null; extraFolders?: string[] }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteProject: (id: string) => Promise<{ success: boolean; error?: string }>;
   moveChat: (chatId: string, projectId: string, fromProjectId?: string | null) => Promise<boolean>;
   moveAllChats: (
@@ -155,6 +159,46 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [projects, refresh]
   );
 
+  const updateProjectSettings = useCallback(
+    async (
+      id: string,
+      update: { name?: string; workingDirectory?: string | null; extraFolders?: string[] }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const body: Record<string, unknown> = {};
+      if (update.name !== undefined) body.name = update.name;
+      if (update.workingDirectory !== undefined) body.working_directory = update.workingDirectory;
+      if (update.extraFolders !== undefined) body.extra_folders = update.extraFolders;
+      try {
+        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          return { success: false, error: err.error || `HTTP ${res.status}` };
+        }
+        const saved: Project = await res.json();
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  name: saved.name,
+                  workingDirectory: saved.workingDirectory ?? null,
+                  extraFolders: saved.extraFolders ?? [],
+                }
+              : p
+          )
+        );
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: String(e) };
+      }
+    },
+    []
+  );
+
   const deleteProject = useCallback(
     async (id: string): Promise<{ success: boolean; error?: string }> => {
       try {
@@ -245,6 +289,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createProject,
       renameProject,
       archiveProject,
+      updateProjectSettings,
       deleteProject,
       moveChat,
       moveAllChats,
@@ -260,6 +305,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createProject,
       renameProject,
       archiveProject,
+      updateProjectSettings,
       deleteProject,
       moveChat,
       moveAllChats,

@@ -81,7 +81,7 @@ def build_agent_deps(
     if is_focal_chat(_chat_obj):
         cwd = None
     elif not cwd and _chat_obj is not None:
-        cwd = _chat_obj.working_directory or (_chat_obj.config or {}).get("cwd")
+        cwd = _gdb().resolve_chat_working_directory(_chat_obj)
 
     # Merge layers: later layers win on conflict; command_rules are unioned by pattern
     def _merge_perm(base: dict, overlay: dict) -> dict:
@@ -115,6 +115,12 @@ def build_agent_deps(
     requested_volumes = _get_config_value(config, "sandbox_volumes", None)
     if requested_volumes is None and _chat_obj is not None:
         requested_volumes = (_chat_obj.config or {}).get("sandbox_volumes")
+    if _chat_obj is not None:
+        from suzent.database import get_database
+
+        requested_volumes = get_database().with_project_folders(
+            _chat_obj, requested_volumes
+        )
     custom_volumes = get_effective_volumes(requested_volumes)
 
     # Skills are loaded from their canonical source directories. Reuse an

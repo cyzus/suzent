@@ -7,12 +7,96 @@ import SuzentCore
     var invitationText = ""
     var pairingInvitation: PairingInvitation?
     var pairingPreview: PairingPreview?
+    var pairingStatus: String?
     var pairingCode: String?
     var device: ClientDevice?
     var canReconnect = false
     var reconnecting = false
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
+    var chatPages: [ChatPageQuery: ChatPage] = [:]
+    var loadingPages: Set<ChatPageQuery> = []
+    private var navigationRevision = UUID()
+    var navigationVersion = 0
+    private var lastNavigationRefresh = Date.distantPast
+
+    func pageChats(_ query: ChatPageQuery) -> [Chat] {
+        let byID = Dictionary(chats.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        return (chatPages[query]?.chats ?? []).compactMap { byID[$0.id] }
+    }
+
+    func loadPage(_ query: ChatPageQuery, more: Bool = false) async {
+        guard let client, !loadingPages.contains(query) else { return }
+        if !more && chatPages[query] != nil { return }
+        let offset = more ? chatPages[query]?.nextOffset : 0
+        guard let offset else { return }
+        let current = generation
+        let revision = navigationRevision
+        loadingPages.insert(query)
+        defer { if revision == navigationRevision { loadingPages.remove(query) } }
+        do {
+            let page = try await client.chatPage(query, offset: offset, limit: 30)
+            guard current == generation, revision == navigationRevision, !Task.isCancelled else { return }
+            if query.kind == "search" {
+                chatPages = chatPages.filter { $0.key.kind != "search" || $0.key == query }
+            }
+            chatPages[query] = more ? chatPages[query]?.appending(page) ?? page : page
+            mergeNavigationChats(page.chats)
+            let retained = Set(chatPages.values.flatMap { $0.chats.map(\.id) })
+            chats.removeAll { !$0.isRegent && $0.id != selected?.id && !retained.contains($0.id) }
+        } catch is CancellationError { }
+        catch { if current == generation && revision == navigationRevision { handle(error) } }
+    }
+
+    private func mergeNavigationChats(_ updates: [Chat]) {
+        let ids = Set(updates.map(\.id))
+        chats = chats.filter { !ids.contains($0.id) } + updates
+    }
+
+    private func applyNavigation(_ initial: InitialNavigation) {
+        navigationRevision = UUID()
+        navigationVersion += 1
+        loadingPages = []
+        chatPages = [ChatPageQuery(): initial.recent, ChatPageQuery("pinned"): initial.pinned]
+        chats = initial.chats
+        projects = initial.metadata.projects
+        lastNavigationRefresh = Date()
+    }
+
+    private func refreshNavigation(_ client: any MobileClient, poll: Bool) async throws {
+        let current = generation
+        let revision = navigationRevision
+        if !poll || chatPages.isEmpty {
+            let initial = try await client.initialNavigation()
+            guard current == generation, revision == navigationRevision else { return }
+            applyNavigation(initial)
+        } else {
+            let requested = Set(chats.map(\.id))
+            let updates = try await client.chatStatuses(Array(requested))
+            guard current == generation, revision == navigationRevision else { return }
+            chats = chats.filter { !requested.contains($0.id) } + updates
+            if Date().timeIntervalSince(lastNavigationRefresh) >= 60 {
+                let recentIDs = chatPages[ChatPageQuery()]?.chats.map(\.id)
+                let pinnedIDs = chatPages[ChatPageQuery("pinned")]?.chats.map(\.id)
+                let metadata = try await client.navigationMetadata()
+                let recent = chatPages[ChatPageQuery()].map { $0.chats.count <= 30 } == true
+                    ? try await client.chatPage(ChatPageQuery(), offset: 0, limit: 30) : nil
+                let pinned = (chatPages[ChatPageQuery("pinned")]?.chats.count ?? 0) <= 30
+                    ? try await client.chatPage(ChatPageQuery("pinned"), offset: 0, limit: 30) : nil
+                guard current == generation, revision == navigationRevision else { return }
+                projects = metadata.projects
+                if let regent = metadata.regent { mergeNavigationChats([regent]) }
+                if let recent, !loadingPages.contains(ChatPageQuery()), chatPages[ChatPageQuery()]?.chats.map(\.id) == recentIDs {
+                    chatPages[ChatPageQuery()] = recent; mergeNavigationChats(recent.chats)
+                }
+                if let pinned, !loadingPages.contains(ChatPageQuery("pinned")), chatPages[ChatPageQuery("pinned")]?.chats.map(\.id) == pinnedIDs {
+                    chatPages[ChatPageQuery("pinned")] = pinned; mergeNavigationChats(pinned.chats)
+                }
+                lastNavigationRefresh = Date()
+            }
+        }
+    }
+
     var chats: [Chat] = []
     var projects: [Project] = []
     var scheduledTasks: [ScheduledTask] = []
@@ -27,18 +111,20 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var liveParts: [MessagePart] = []
+    var regentVisible = false
     var pendingApprovals: [ApprovalRequest] = []
     var approvalChoices: [String: String] = [:]
     var approvalBusy = false
     var error: String?
     var busy = false
     var streaming = false
-    @ObservationIgnored private var activityBuffer = LiveActivityBuffer()
+    var isDemo = false
+    var demoPrompts: [String] = []
     var connected = false
     var nodeEnabled = false
     var nodeStatus = String(localized: "Off")
     private var connection: Connection?
-    private var client: SuzentClient?
+    private var client: (any MobileClient)?
     private var streamTask: Task<Void, Never>?
     private var nodeTask: Task<Void, Never>?
     private var socket: URLSessionWebSocketTask?
@@ -64,6 +150,55 @@ import SuzentCore
         #endif
     }
 
+    func startDemo() async {
+        guard !busy, !streaming else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                       appropriateFor: nil, create: true)
+            let demo = try DemoClient(storageURL: directory.appendingPathComponent("OfflineDemo/workspace.json"))
+            let session = try await demo.clientSession()
+            let navigation = try await demo.initialNavigation()
+            let taskList = try await demo.scheduledTasks()
+            let composer = try await demo.composer()
+            clearSession(removeCredentials: false)
+            error = nil
+            client = demo
+            isDemo = true
+            demoPrompts = demo.prompts
+            origin = "demo://offline"
+            canReconnect = false
+            device = session.device
+            attachmentsSupported = true
+            applyNavigation(navigation); scheduledTasks = taskList
+            selected = composer
+            connected = true
+            openedVersion += 1
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func resetDemo() async {
+        guard let demo = client as? DemoClient, !busy else { return }
+        generation = UUID()
+        streamTask?.cancel(); streaming = false; liveParts = []
+        pendingApprovals = []; approvalChoices = [:]; approvalBusy = false; drafts = [:]; draft = ""; error = nil
+        discardAttachments()
+        do {
+            try demo.reset()
+            selected = try await demo.composer()
+            selectedModel = nil
+            await refresh()
+            openedVersion += 1
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func exitDemo() {
+        guard isDemo, !busy else { return }
+        clearSession(removeCredentials: false)
+        isDemo = false; demoPrompts = []; error = nil
+    }
+
     func stageInvitation(_ text: String) {
         guard !busy else { return }
         let invitation: PairingInvitation
@@ -76,8 +211,9 @@ import SuzentCore
         busy = true
         let current = generation
         let allowHTTP = allowsHTTP
+        pairingStatus = String(localized: "QR code recognized. Connecting to your desktop…")
         pairingTask = Task {
-            defer { if generation == current { busy = false } }
+            defer { if generation == current { busy = false; pairingStatus = nil } }
             do {
                 let selected = try await invitation.resolving { origin -> PairingPreview? in
                     let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: invitation.tls)
@@ -95,6 +231,7 @@ import SuzentCore
     func cancelPairing() {
         pairingTask?.cancel()
         pairingTask = nil
+        pairingStatus = nil
         pairingInvitation = nil
         pairingCode = nil
         pairingPreview = nil
@@ -108,7 +245,8 @@ import SuzentCore
         error = nil
         let current = generation
         pairingTask = Task {
-            defer { if generation == current { busy = false; pairingCode = nil } }
+            defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
+            pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
                 let bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
@@ -124,6 +262,7 @@ import SuzentCore
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
                 if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
+                pairingStatus = String(localized: "Finishing connection…")
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
                     let result = try await bootstrap.collect(pairingID: invitation.pairingId, pickupSecret: claim.pickupSecret)
@@ -197,8 +336,7 @@ import SuzentCore
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
-            let listing = try await candidate.chats()
-            let projectList = try await candidate.projects()
+            let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
@@ -209,8 +347,7 @@ import SuzentCore
             client = candidate
             device = session.device
             attachmentsSupported = session.supportsAttachments
-            chats = listing
-            projects = projectList
+            applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
@@ -219,6 +356,7 @@ import SuzentCore
     }
 
     func connect() async {
+        guard !isDemo else { return }
         guard let connection, canReconnect, !busy else { return }
         busy = true
         reconnecting = true
@@ -252,30 +390,32 @@ import SuzentCore
     func watchNavigation() async {
         while !Task.isCancelled && connected {
             if foreground && !busy {
-                await refresh()
+                await refresh(poll: true)
             }
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
         }
     }
 
-    func refresh() async {
+    func refresh(poll: Bool = false) async {
         guard let client else { return }
         let current = generation
         do {
             let session = try await client.clientSession()
-            let listing = try await client.chats()
-            let projectList = try await client.projects()
+            let scopeChanged = device?.permissions.allChats != session.device.permissions.allChats || device?.permissions.chatIds != session.device.permissions.chatIds
+            try await refreshNavigation(client, poll: poll && !scopeChanged)
             let taskList = session.supportsScheduledTasks ? try await client.scheduledTasks() : []
             guard generation == current else { return }
             device = session.device
             attachmentsSupported = session.supportsAttachments
-            chats = listing
-            projects = projectList
             scheduledTasks = taskList
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
+                if chat.isRegent {
+                    if regentVisible && (chat.regent?.unread ?? 0) > 0 { try await client.markRead(id) }
+                    if current == generation && selected?.id == id && chat.isRunning == true && liveParts.isEmpty { observe(id, client: client) }
+                }
             }
         } catch { if generation == current { handle(error) } }
     }
@@ -298,9 +438,9 @@ import SuzentCore
                     liveParts = []; pendingApprovals = []; draft = ""; discardAttachments()
                 }
             }
-            let listing = try await client.chats()
+            try await refreshNavigation(client, poll: false)
             guard generation == current else { return }
-            chats = listing
+            let listing = chats
             if action == "pin", listing.contains(where: { $0.id == chat.id && $0.pinned == true }) { pinnedVersion += 1 }
             if let updated = listing.first(where: { $0.id == selected?.id }) {
                 selected?.title = updated.title
@@ -328,6 +468,8 @@ import SuzentCore
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
+            if saved.isRegent { try await client.markRead(saved.id) }
+            guard current == generation, selected?.id == saved.id else { return }
             restoreModel(saved)
             openedVersion += 1
             syncRunning(saved)
@@ -368,15 +510,20 @@ import SuzentCore
     }
 
     func createChat(projectID: String? = nil) async {
-        guard let client, device?.permissions.createChats == true, !busy, !streaming else { return }
+        guard let client, device?.permissions.createChats == true, !busy else { return }
+        let current = generation
         busy = true
         defer { busy = false }
         do {
             if let id = selected?.id { drafts[id] = draft }
             var chat = try await client.composer()
+            guard generation == current else { return }
             chat.projectId = projectID
             chat.projectName = projects.first { $0.id == projectID }?.name
             generation = UUID()
+            streamTask?.cancel()
+            streamTask = nil
+            streaming = false
             pendingApprovals = []; approvalChoices = [:]
             liveParts = []
             selected = chat
@@ -447,35 +594,39 @@ import SuzentCore
         }
     }
 
-    private func observe(_ id: String, client: SuzentClient) {
+    private func observe(_ id: String, client: any MobileClient) {
         guard !streaming, foreground else { return }
         streaming = true
         liveParts = []
         let current = generation
-        activityBuffer = LiveActivityBuffer()
+        let buffer = LiveActivityAccumulator()
         streamTask = Task {
             let publisher = Task { @MainActor in
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
                     guard generation == current, foreground else { return }
-                    publishActivity()
+                    await publishActivity(from: buffer, generation: current)
                 }
             }
             defer { publisher.cancel() }
             do {
                 try await client.observe(id) { [weak self] event in
-                    await self?.receive(event, generation: current)
+                    await buffer.consume(event)
+                    if event.type == "RUN_ERROR" { await self?.receive(event, generation: current) }
                 }
                 publisher.cancel()
                 guard generation == current, !Task.isCancelled else { return }
-                publishActivity()
+                await publishActivity(from: buffer, generation: current)
                 let saved = try await client.chat(id)
                 guard generation == current, !Task.isCancelled, selected?.id == id else { return }
                 selected = saved
                 syncRunning(saved)
                 liveParts = []
             } catch {
-                if !Task.isCancelled, generation == current { publishActivity(); handle(error) }
+                if !Task.isCancelled, generation == current {
+                    await publishActivity(from: buffer, generation: current)
+                    if generation == current { handle(error) }
+                }
             }
             guard generation == current, !Task.isCancelled else { return }
             streaming = false
@@ -484,14 +635,13 @@ import SuzentCore
 
     private func receive(_ event: StreamEvent, generation current: UUID) {
         guard generation == current, foreground else { return }
-        activityBuffer.consume(event)
         if event.type == "RUN_ERROR" { error = event.message ?? String(localized: "Task failed.") }
     }
 
-    private func publishActivity() {
-        if let parts = activityBuffer.drain() {
-            liveParts = parts
-        }
+    private func publishActivity(from buffer: LiveActivityAccumulator, generation current: UUID) async {
+        let parts = await buffer.drain()
+        guard generation == current, foreground, !Task.isCancelled else { return }
+        if let parts { liveParts = parts }
     }
 
     private func syncRunning(_ saved: Chat) {
@@ -584,6 +734,7 @@ import SuzentCore
     }
 
     func toggleNode(_ enabled: Bool) {
+        guard !isDemo else { return }
         nodeEnabled = enabled
         if enabled && foreground { startNode() } else { disconnectNode() }
     }
@@ -598,7 +749,7 @@ import SuzentCore
 
     private func startNode() {
         disconnectNode()
-        guard let client, let connection, foreground else { return }
+        guard !isDemo, let client = client as? SuzentClient, let connection, foreground else { return }
         let ws = client.nodeSocket()
         socket = ws
         nodeStatus = String(localized: "Connecting")
@@ -645,29 +796,38 @@ import SuzentCore
     }
 
     func forget() {
+        if isDemo { exitDemo(); return }
+        clearSession(removeCredentials: true)
+    }
+
+    private func clearSession(removeCredentials: Bool) {
         scheduledTasks = []
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         pairingTask?.cancel()
-        do { try CredentialStore.clear() }
-        catch { self.error = error.localizedDescription }
+        reconnectTask?.cancel()
+        if removeCredentials {
+            do { try CredentialStore.clear() }
+            catch { self.error = error.localizedDescription }
+        }
         generation = UUID()
         nodeEnabled = false
         disconnectNode()
         streamTask?.cancel()
         client?.close()
         client = nil
-        connection = nil
+        if removeCredentials { connection = nil }
         connected = false
         busy = false
         selected = nil
         chats = []
-        canReconnect = false
+        chatPages = [:]; loadingPages = []; navigationRevision = UUID()
+        canReconnect = connection?.clientProtocol == 1
         device = nil
         pairingInvitation = nil
         pairingCode = nil
         invitationText = ""
-        origin = ""
+        origin = connection?.origin ?? ""
         draft = ""
         streaming = false
         liveParts = []

@@ -97,6 +97,10 @@ export interface MemoryFacets {
   source_types: Record<string, number>;
   categories: Record<string, number>;
   tags: Record<string, number>;
+  /** user / experience / world, or `untyped` for records from before typed capture. */
+  kinds?: Record<string, number>;
+  /** The most common topics, largest first. */
+  topics?: Record<string, number>;
 }
 
 /** Server-side ordering and filtering for the archival list. */
@@ -110,24 +114,43 @@ export interface ArchivalQueryOptions {
   sourceTypes?: string[];
   categories?: string[];
   tags?: string[];
+  kinds?: MemoryKind[];
+  topics?: string[];
   /** Ask the server for facet counts; only worth it on the first page. */
   withFacets?: boolean;
 }
 
-// --- Session & Transcript types (Phase 6: Frontend Integration) ---
+export type MemoryKind = 'user' | 'experience' | 'world' | 'untyped';
 
-export interface TranscriptEntry {
-  ts: string;
-  role: string;
-  content: string;
-  actions?: Record<string, unknown>[];
-  metadata?: Record<string, unknown>;
+/** Where a daily-log memory was captured; `chat_id` is null once the chat is gone. */
+export interface MemoryOrigin {
+  date: string;
+  time: string | null;
+  chat_id: string | null;
+  title: string | null;
 }
 
-export interface TranscriptResponse {
-  session_id: string;
-  entries: TranscriptEntry[];
-  count: number;
+export interface RecentMemoryChanges {
+  since: string;
+  added: Partial<Record<MemoryKind, number>>;
+  revised: { id: string; content: string }[];
+  confirmed: { content: string; count: number; last: string }[];
+}
+
+/** What one chat did with memory: the latest turn's recall and the facts it saved. */
+export interface ChatMemoryActivity {
+  recalled: {
+    items: { id: string; content: string; category?: string | null; kind?: string | null }[];
+    updated_at: string | null;
+  } | null;
+  saved: {
+    date: string;
+    time: string;
+    category: string;
+    kind: string | null;
+    content: string;
+    revision: boolean;
+  }[];
 }
 
 export interface SessionStateResponse {

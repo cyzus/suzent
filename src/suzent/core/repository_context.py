@@ -114,6 +114,8 @@ def resolve_repository_context(
     configured_cwd = cwd or (chat.working_directory if chat else None)
     if not configured_cwd and chat:
         configured_cwd = (chat.config or {}).get("cwd")
+    if not configured_cwd and getattr(chat, "project_id", None):
+        configured_cwd = database.resolve_chat_working_directory(chat)
 
     from suzent.config import get_effective_volumes
     from suzent.tools.filesystem.path_resolver import PathResolver
@@ -121,6 +123,8 @@ def resolve_repository_context(
     configured_volumes = custom_volumes
     if configured_volumes is None and chat:
         configured_volumes = list((chat.config or {}).get("sandbox_volumes") or [])
+    if getattr(chat, "project_id", None):
+        configured_volumes = database.with_project_folders(chat, configured_volumes)
     effective_volumes = get_effective_volumes(configured_volumes or [])
     mounts: list[tuple[Path, str]] = []
     for volume in effective_volumes:

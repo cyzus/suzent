@@ -9,6 +9,15 @@ from .models import (
 )
 
 
+def normalize_delivery_mode(mode: Optional[str]) -> str:
+    """Map a stored or configured delivery mode onto ``announce`` or ``none``.
+
+    Presets and older configs spelled "none" as "silent". Anything but
+    "announce" was already treated as quiet, so both read the same.
+    """
+    return "announce" if mode == "announce" else "none"
+
+
 class CronOperationsMixin:
     def list_cron_jobs(self, active_only: bool = False) -> List[CronJobModel]:
         """List all cron jobs, optionally filtered to active only."""
@@ -56,7 +65,7 @@ class CronOperationsMixin:
             cron_expr=cron_expr,
             prompt=prompt,
             active=active,
-            delivery_mode=delivery_mode,
+            delivery_mode=normalize_delivery_mode(delivery_mode),
             model_override=model_override,
             schedule_kind=schedule_kind,
             interval_minutes=interval_minutes,
@@ -110,6 +119,10 @@ class CronOperationsMixin:
             job = session.get(CronJobModel, job_id)
             if not job:
                 return False
+            if "delivery_mode" in kwargs:
+                kwargs["delivery_mode"] = normalize_delivery_mode(
+                    kwargs["delivery_mode"]
+                )
             for key, value in kwargs.items():
                 if hasattr(job, key) and key not in ("id", "created_at"):
                     setattr(job, key, value)

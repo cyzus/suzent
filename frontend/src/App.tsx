@@ -1,3 +1,4 @@
+import { useMobileNavigation } from './hooks/useMobileNavigation';
 import { WorkspacePanelHost, WorkspacePanelProvider } from './components/WorkspacePanel';
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
@@ -17,7 +18,7 @@ import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SidebarToggleIcon } from './components/SidebarToggleIcon';
 import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
-import { MemoryView } from './components/memory/MemoryView';
+import { MemoryView, type MemoryTab } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
@@ -39,11 +40,13 @@ import {
 import {
   checkDesktopUpdate,
   startDesktopUpdateAndRestart,
+  takeUpdatedVersion,
   type UpdateStatus,
 } from './lib/desktopUpdates';
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
 import {
   notifyDesktop,
+  bindReplyRun,
   recordReplyChunk,
   takeReplyOutcome,
   type ReplyOutcome,
@@ -272,6 +275,10 @@ function UpdateButton(): React.ReactElement | null {
       .then((status) => {
         if (cancelled) return;
         setUpdateStatus(status);
+        const updated = takeUpdatedVersion(status.current_version);
+        if (updated) {
+          notify(t('updates.updatedTo', { version: updated.replace(/^v?/, 'v') }));
+        }
       })
       .catch(() => {
         if (!cancelled) setUpdateStatus(null);
@@ -319,9 +326,7 @@ function UpdateButton(): React.ReactElement | null {
 function AppInner(): React.ReactElement {
   const [mainView, setMainView] = useState<MainView>('chat');
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
-  const [memoryInitialTab, setMemoryInitialTab] = useState<
-    'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined
-  >(undefined);
+  const [memoryInitialTab, setMemoryInitialTab] = useState<MemoryTab | undefined>(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsNavigationHost, setSettingsNavigationHost] = useState<HTMLDivElement | null>(null);
   const sidebarOpenBeforeSettings = React.useRef(false);
@@ -353,9 +358,13 @@ function AppInner(): React.ReactElement {
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [rightSidebarHeaderSlot, setRightSidebarHeaderSlot] = useState<HTMLDivElement | null>(null);
   const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+
+  const mobile = viewportWidth < DESKTOP_BREAKPOINT_PX;
+  const mobileNavigation = useMobileNavigation(mobile);
 
   // The left sidebar only ever closes itself under layout pressure -- too narrow
   // for three panes, or the window crossing into mobile width. That's a loan,
@@ -368,7 +377,7 @@ function AppInner(): React.ReactElement {
       MAX_LEFT_SIDEBAR_WIDTH_PX,
       viewportWidth -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
-        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 44)
+        (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 0)
     )
   );
   const leftSidebarWidth = Math.max(
@@ -378,7 +387,7 @@ function AppInner(): React.ReactElement {
       MAX_LEFT_SIDEBAR_WIDTH_PX,
       viewportWidth -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
-        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 44)
+        (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 0)
     )
   );
   const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(
@@ -466,12 +475,17 @@ function AppInner(): React.ReactElement {
           void refreshChatListSilentRef.current();
           return;
         }
+        const runId = typeof msg.run_id === 'string' ? msg.run_id : undefined;
+        if (msg.event === 'stream_started') {
+          bindReplyRun(msg.chat_id, runId);
+          return;
+        }
         if (msg.event === 'chunk' && typeof msg.data === 'string') {
-          recordReplyChunk(msg.chat_id, msg.data);
+          recordReplyChunk(msg.chat_id, msg.data, runId);
           return;
         }
         if (msg.event !== 'stream_ended') return;
-        const reply = takeReplyOutcome(msg.chat_id);
+        const reply = takeReplyOutcome(msg.chat_id, runId);
         if (!reply || reply.outcome === 'stopped') return;
         const { outcome, preview } = reply;
         const preferences = readNotificationPreferences();
@@ -706,6 +720,8 @@ function AppInner(): React.ReactElement {
               <>
                 <div className={isSettingsOpen ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
                   <ChatList
+                    mobile={mobile}
+                    onOpenChat={mobileNavigation.open}
                     searchOpen={sidebarSearchOpen}
                     onSearchOpenChange={setSidebarSearchOpen}
                     onOpenAutomation={() => openSettings('automation')}
@@ -713,6 +729,7 @@ function AppInner(): React.ReactElement {
                     onOpenView={(view) => {
                       setMemoryInitialTab(undefined);
                       setMainView(view);
+                      mobileNavigation.open();
                     }}
                   />
                 </div>
@@ -723,7 +740,7 @@ function AppInner(): React.ReactElement {
               </>
             }
             showSettingsButton={!isSettingsOpen}
-            isOpen={isLeftSidebarOpen}
+            isOpen={mobile ? !mobileNavigation.detail && !isSettingsOpen : isLeftSidebarOpen}
             onOpenSettings={() => openSettings()}
             onClose={closeLeftSidebar}
             titlebarControls={
@@ -735,7 +752,9 @@ function AppInner(): React.ReactElement {
               ) : null
             }
           />
-          <div className="app-main flex-1 min-w-0 flex flex-col overflow-hidden w-full">
+          <div
+            className={`${mobile && !mobileNavigation.detail && !isSettingsOpen ? 'hidden' : 'flex'} app-main flex-1 min-w-0 flex-col overflow-hidden w-full`}
+          >
             <header
               className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between gap-4 md:gap-6 bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
               onMouseDown={handleHeaderMouseDown}
@@ -747,7 +766,24 @@ function AppInner(): React.ReactElement {
                     onMaximize={toggleWindowMaximize}
                   />
                 ) : null}
-                {isLeftSidebarOpen ? (
+                {mobile ? (
+                  <button
+                    type="button"
+                    onClick={mobileNavigation.back}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                    aria-label={t('sidebar.backToChats')}
+                  >
+                    <svg
+                      className="h-6 w-6"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path d="m14 6-6 6 6 6" />
+                    </svg>
+                  </button>
+                ) : isLeftSidebarOpen ? (
                   <div className="h-10 w-10 mr-3" aria-hidden="true" />
                 ) : (
                   <div
@@ -788,31 +824,18 @@ function AppInner(): React.ReactElement {
                 <StatusBar
                   inline
                   onOpenMemorySettings={() => {
-                    setMemoryInitialTab('dreaming');
+                    setMemoryInitialTab('organize');
                     setMainView('memory');
                   }}
                 />
                 <UpdateButton />
 
-                {mainView === 'chat' && !isSettingsOpen ? (
-                  <button
-                    onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
-                    className={`
-                    h-10 w-10 flex items-center justify-center rounded-md transition-colors
-                    ${
-                      isRightSidebarOpen
-                        ? 'bg-neutral-200 dark:bg-zinc-700 text-brutal-black dark:text-white'
-                        : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
-                    }
-                  `}
-                    aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                    title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
-                  >
-                    <SidebarToggleIcon side="right" open={isRightSidebarOpen} />
-                  </button>
-                ) : (
-                  <div className="h-10 w-10" aria-hidden="true" />
-                )}
+                <div
+                  ref={setRightSidebarHeaderSlot}
+                  className={
+                    mainView === 'chat' && !isSettingsOpen ? 'flex items-center' : 'hidden'
+                  }
+                />
 
                 {showWindowsWindowControls ? (
                   <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
@@ -884,6 +907,7 @@ function AppInner(): React.ReactElement {
               >
                 <ChatWindow
                   isRightSidebarOpen={isRightSidebarOpen}
+                  rightSidebarHeaderSlot={rightSidebarHeaderSlot}
                   onRightSidebarToggle={handleRightSidebarToggle}
                   onRightSidebarWidthChange={setRightSidebarWidth}
                   rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
@@ -1195,13 +1219,42 @@ async function isBackendPortReachable(port: number): Promise<boolean> {
   }
 }
 
-async function waitForBackendPort(options?: { attempts?: number }): Promise<number | null> {
-  // Tauri may spend up to 45 seconds waiting for the port file and health
-  // check. Keep polling beyond that window so a persisted startup error is
-  // surfaced even when the original backend-error event fired before React
-  // registered its listener.
+interface StartupFailure {
+  message: string;
+  /** False when starting again cannot succeed until the user acts on `message`. */
+  recoverable: boolean;
+}
+
+class BackendStartupError extends Error {
+  constructor(readonly failure: StartupFailure) {
+    super(failure.message);
+  }
+}
+
+function toStartupFailure(error: unknown): StartupFailure {
+  if (error instanceof BackendStartupError) return error.failure;
+  return { message: String(error), recoverable: true };
+}
+
+async function isBackendStarting(): Promise<boolean> {
+  try {
+    return await invoke<boolean>('is_backend_starting');
+  } catch {
+    return false;
+  }
+}
+
+async function waitForBackendPort(options?: {
+  attempts?: number;
+  isCancelled?: () => boolean;
+}): Promise<number | null> {
+  // A first start on Windows can take minutes while dependencies compile under
+  // antivirus scanning. After the attempt budget, keep polling for as long as
+  // Tauri still reports an attempt in flight: giving up early would offer a
+  // retry that only discards that progress.
   const attempts = options?.attempts ?? 24;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for (let attempt = 0; ; attempt += 1) {
+    if (options?.isCancelled?.()) return null;
     try {
       const tauriPort = await invoke<number>('get_backend_port');
       if (Number.isFinite(tauriPort) && tauriPort > 0) {
@@ -1221,19 +1274,20 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
       return remembered;
     }
 
+    let startupError: StartupFailure | null = null;
     try {
-      const startupError = await invoke<string | null>('get_backend_startup_error');
-      if (startupError) throw new Error(startupError);
-    } catch (error) {
-      if (error instanceof Error && error.message) throw error;
+      startupError = await invoke<StartupFailure | null>('get_backend_startup_error');
+    } catch {
       // Older/dev shells may not expose startup error persistence yet.
     }
+    if (startupError) throw new BackendStartupError(startupError);
+
+    if (attempt >= attempts - 1 && !(await isBackendStarting())) return null;
 
     await new Promise((resolve) =>
       window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500))
     );
   }
-  return null;
 }
 
 // Web mode has no Tauri port handshake: the backend is simply already there, at
@@ -1285,7 +1339,7 @@ export default function App({ children }: AppProps = {}) {
   // Gate rendering until bootstrap_status answers, so the chat UI cannot flash
   // before the installer/onboarding decision is known.
   const [backendReady, setBackendReady] = React.useState<boolean>(false);
-  const [backendError, setBackendError] = React.useState<string | null>(null);
+  const [backendError, setBackendError] = React.useState<StartupFailure | null>(null);
   const [backendCompatible, setBackendCompatible] = React.useState(false);
   const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(
     null
@@ -1293,6 +1347,37 @@ export default function App({ children }: AppProps = {}) {
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
   const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
   const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
+
+  const waitForDesktopBackend = React.useCallback((isCancelled: () => boolean) => {
+    setBackendStartingAtStartup(true);
+    waitForBackendPort({ isCancelled })
+      .then((port) => {
+        if (isCancelled()) return;
+        setBackendStartingAtStartup(false);
+        if (port === null) {
+          setBackendError({
+            message: tForLocale(getInitialLocale(), 'app.backendStartTimeout'),
+            recoverable: true,
+          });
+          return;
+        }
+        setBackendReady(true);
+        setBackendError(null);
+      })
+      .catch((error: unknown) => {
+        if (isCancelled()) return;
+        setBackendStartingAtStartup(false);
+        setBackendError(toStartupFailure(error));
+      });
+  }, []);
+
+  const retryBackendStart = React.useCallback(async () => {
+    await invoke('retry_backend_start');
+    setBackendError(null);
+    // Dropping readiness re-runs the compatibility check once the port is back.
+    setBackendReady(false);
+    waitForDesktopBackend(() => false);
+  }, [waitForDesktopBackend]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1310,14 +1395,17 @@ export default function App({ children }: AppProps = {}) {
             setBackendReady(true);
             setBackendError(null);
           } else {
-            setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
+            setBackendError({
+              message: tForLocale(getInitialLocale(), 'app.backendStartTimeout'),
+              recoverable: true,
+            });
           }
         })
         .catch((error: unknown) => {
           if (cancelled) return;
           setBackendStartingAtStartup(false);
           setBootstrapChecked(true);
-          setBackendError(String(error));
+          setBackendError(toStartupFailure(error));
         });
       return () => {
         cancelled = true;
@@ -1336,24 +1424,7 @@ export default function App({ children }: AppProps = {}) {
           setBackendReady(true);
           setBackendStartingAtStartup(false);
         } else {
-          setBackendStartingAtStartup(true);
-          waitForBackendPort()
-            .then((port) => {
-              if (cancelled) return;
-              if (port === null) {
-                setBackendStartingAtStartup(false);
-                setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
-                return;
-              }
-              setBackendReady(true);
-              setBackendError(null);
-              setBackendStartingAtStartup(false);
-            })
-            .catch((error: unknown) => {
-              if (cancelled) return;
-              setBackendStartingAtStartup(false);
-              setBackendError(String(error));
-            });
+          waitForDesktopBackend(() => cancelled);
         }
         setBootstrapChecked(true);
       })
@@ -1364,7 +1435,7 @@ export default function App({ children }: AppProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [waitForDesktopBackend]);
 
   React.useEffect(() => {
     if (backendReady || isWeb()) return;
@@ -1376,7 +1447,7 @@ export default function App({ children }: AppProps = {}) {
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
     // If we have a persisted port, probe backend health and continue without waiting forever.
     if (hasPersistedBackendPort()) {
-      waitForBackendPort({ attempts: 8 })
+      waitForBackendPort({ attempts: 8, isCancelled: () => cancelled })
         .then((port) => {
           if (!cancelled && port !== null) {
             setBackendReady(true);
@@ -1389,7 +1460,7 @@ export default function App({ children }: AppProps = {}) {
           if (!cancelled) {
             setBackendStartingAtStartup(false);
             setBackendStartingAfterInstall(false);
-            setBackendError(String(error));
+            setBackendError(toStartupFailure(error));
           }
         });
     }
@@ -1405,7 +1476,7 @@ export default function App({ children }: AppProps = {}) {
       }).then((fn) => {
         unlisten = fn;
       });
-      listen<string>('backend-error', (event) => {
+      listen<StartupFailure>('backend-error', (event) => {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
@@ -1442,13 +1513,16 @@ export default function App({ children }: AppProps = {}) {
         if (cancelled) return;
         const compatibilityIssue = getBackendCompatibilityIssue(identity);
         if (compatibilityIssue) {
-          setBackendError(
-            tForLocale(
+          setBackendError({
+            message: tForLocale(
               getInitialLocale(),
               `app.backendCompatibility.${compatibilityIssue.kind}`,
               compatibilityIssue
-            )
-          );
+            ),
+            // The desktop shell reattaches to the same backend; a browser reload
+            // fetches the bundle the backend now serves.
+            recoverable: isWeb(),
+          });
           setBackendCompatible(false);
           return;
         }
@@ -1457,15 +1531,16 @@ export default function App({ children }: AppProps = {}) {
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setBackendError(
-            tForLocale(
+          setBackendError({
+            message: tForLocale(
               getInitialLocale(),
               error instanceof BackendVersionTimeoutError
                 ? 'app.backendCompatibility.verifyTimeout'
                 : 'app.backendCompatibility.verifyFailed',
               error instanceof BackendVersionTimeoutError ? undefined : { error: String(error) }
-            )
-          );
+            ),
+            recoverable: true,
+          });
           setBackendCompatible(false);
         }
       });
@@ -1488,7 +1563,11 @@ export default function App({ children }: AppProps = {}) {
           }}
         />
       ) : backendError ? (
-        <BackendLoadingScreen error={backendError} />
+        <BackendLoadingScreen
+          error={backendError.message}
+          recoverable={backendError.recoverable}
+          onRetry={isWeb() ? undefined : retryBackendStart}
+        />
       ) : backendStartingAfterInstall || backendStartingAtStartup ? (
         <BackendLoadingScreen status={t('app.startingBackend')} progressHint={45} />
       ) : !backendReady ? (

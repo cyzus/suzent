@@ -8,8 +8,10 @@ import type {
   MemoryStats,
   MemorySearchResponse,
   ArchivalQueryOptions,
-  TranscriptResponse,
   SessionStateResponse,
+  MemoryOrigin,
+  RecentMemoryChanges,
+  ChatMemoryActivity,
   DailyLogResponse,
   DailyLogListResponse,
   MemoryFileResponse,
@@ -144,6 +146,12 @@ export const memoryApi = {
     if (options.tags?.length) {
       params.set('tags', options.tags.join(','));
     }
+    if (options.kinds?.length) {
+      params.set('kinds', options.kinds.join(','));
+    }
+    if (options.topics?.length) {
+      params.set('topics', options.topics.join(','));
+    }
     if (options.withFacets) {
       params.set('facets', 'true');
     }
@@ -216,19 +224,23 @@ export const memoryApi = {
     return await response.json();
   },
 
-  /**
-   * Get session transcript entries
-   */
-  async getSessionTranscript(sessionId: string, lastN?: number): Promise<TranscriptResponse> {
-    const params = new URLSearchParams();
-    if (lastN !== undefined) {
-      params.set('last_n', lastN.toString());
-    }
-    const url = `${getApiBase()}/session/${encodeURIComponent(sessionId)}/transcript`;
-    const qs = params.toString();
-    const response = await fetch(qs ? `${url}?${qs}` : url);
+  /** The conversation a daily-log memory came from, or null when it cannot be traced. */
+  async getMemoryOrigin(memoryId: string): Promise<MemoryOrigin | null> {
+    const response = await fetch(
+      `${memoryEndpoint()}/archival/${encodeURIComponent(memoryId)}/origin`
+    );
+    if (response.status === 404) return null;
     if (!response.ok) {
-      throw new Error(`Failed to fetch transcript: ${response.statusText}`);
+      throw new Error(`Failed to trace memory: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /** What memory picked up, corrected and had confirmed in the last `days`. */
+  async getRecentChanges(days: number = 7): Promise<RecentMemoryChanges> {
+    const response = await fetch(`${memoryEndpoint()}/recent?days=${days}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load recent changes: ${response.statusText}`);
     }
     return await response.json();
   },
@@ -262,6 +274,14 @@ export const memoryApi = {
   /**
    * Get background dream consolidation status
    */
+  async getChatMemoryActivity(chatId: string): Promise<ChatMemoryActivity> {
+    const response = await fetch(`${memoryEndpoint()}/chat/${encodeURIComponent(chatId)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load chat memory activity: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
   async getDreamStatus(): Promise<DreamStatus> {
     const response = await fetch(`${memoryEndpoint()}/dream/status`);
     if (!response.ok) {

@@ -268,6 +268,7 @@ function UserImageGallery({
 }
 
 interface UserMessageProps {
+  reaction?: string;
   message: Message;
   chatId?: string;
   onImageClick?: (src: string) => void;
@@ -282,6 +283,7 @@ interface UserMessageProps {
 
 const UserMessageComponent: React.FC<UserMessageProps> = ({
   message,
+  reaction,
   chatId,
   onImageClick,
   onFileClick,
@@ -360,68 +362,94 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
   }
 
   return (
-    <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
-      {/* Images — single thumbnail or a slideshow when there are several */}
-      <UserImageGallery images={galleryImages} onImageClick={onImageClick} />
+    <div
+      className={`w-full max-w-3xl space-y-3 pl-8 md:pl-16 ${chatId === FOCAL_CHAT_ID ? 'regent-user-message' : ''}`}
+    >
+      <div
+        className={
+          chatId === FOCAL_CHAT_ID
+            ? `regent-user-content space-y-3 ${reaction && !isEditing ? 'regent-user-content-reacted' : ''}`
+            : 'space-y-3'
+        }
+      >
+        {/* Images — single thumbnail or a slideshow when there are several */}
+        <UserImageGallery images={galleryImages} onImageClick={onImageClick} />
 
-      {/* Non-image file attachments — download cards */}
-      {otherFiles.length > 0 && (
-        <div className="flex flex-col gap-2 items-end">
-          {otherFiles.map((file, fileIdx) => {
-            const downloadUrl = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`;
-            return (
-              <div
-                key={fileIdx}
-                className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop"
-              >
-                <FileIcon mimeType={file.mime_type} className="w-6 h-6 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-brutal-black dark:text-white truncate">
-                    {file.filename}
+        {/* Non-image file attachments — download cards */}
+        {otherFiles.length > 0 && (
+          <div className="flex flex-col gap-2 items-end">
+            {otherFiles.map((file, fileIdx) => {
+              const downloadUrl = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`;
+              return (
+                <div
+                  key={fileIdx}
+                  className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop"
+                >
+                  <FileIcon mimeType={file.mime_type} className="w-6 h-6 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-brutal-black dark:text-white truncate">
+                      {file.filename}
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {file.size > 0 ? `${(file.size / 1024).toFixed(1)} KB` : file.mime_type}
+                    </div>
                   </div>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {file.size > 0 ? `${(file.size / 1024).toFixed(1)} KB` : file.mime_type}
-                  </div>
+                  {chatId && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => onFileClick?.(file.path, file.filename, e.shiftKey)}
+                        className="shrink-0 p-2 bg-brutal-yellow border-2 border-brutal-black text-brutal-black hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                        title={t('chatMessage.viewFile')}
+                      >
+                        <EyeIcon className="w-4 h-4" />
+                      </button>
+                      <a
+                        href={downloadUrl}
+                        download={file.filename}
+                        className="shrink-0 p-2 bg-brutal-blue border-2 border-brutal-black text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                        title={t('chatMessage.downloadFile')}
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                      </a>
+                    </div>
+                  )}
                 </div>
-                {chatId && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={(e) => onFileClick?.(file.path, file.filename, e.shiftKey)}
-                      className="shrink-0 p-2 bg-brutal-yellow border-2 border-brutal-black text-brutal-black hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                      title={t('chatMessage.viewFile')}
-                    >
-                      <EyeIcon className="w-4 h-4" />
-                    </button>
-                    <a
-                      href={downloadUrl}
-                      download={file.filename}
-                      className="shrink-0 p-2 bg-brutal-blue border-2 border-brutal-black text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                      title={t('chatMessage.downloadFile')}
-                    >
-                      <ArrowDownTrayIcon className="w-4 h-4" />
-                    </a>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
 
-      {/* Text content — edit mode swaps the bubble for a textarea */}
-      {message.content && !isEditing && (
-        <div className="flex justify-end pr-1 pb-1">
-          <div className="relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-white/10 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)]">
-            <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-200 font-sans font-normal leading-relaxed whitespace-pre-wrap">
-              <ClickableContent
-                content={content}
-                onFileClick={onFileClick}
-                fileChipTone="neutral"
-              />
+        {/* Text content — edit mode swaps the bubble for a textarea */}
+        {message.content && !isEditing && (
+          <div className="flex justify-end pr-1 pb-1">
+            <div
+              className={`relative min-w-0 max-w-full border-2 border-brutal-black bg-neutral-100 px-4 py-2.5 shadow-[3px_3px_0_0_#000] select-text dark:border-white/10 dark:bg-zinc-800 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.3)] ${chatId === FOCAL_CHAT_ID ? 'regent-user-bubble' : ''}`}
+            >
+              <div className="prose prose-sm max-w-none break-words text-brutal-black dark:text-zinc-200 font-sans font-normal leading-relaxed whitespace-pre-wrap">
+                <ClickableContent
+                  content={content}
+                  onFileClick={onFileClick}
+                  fileChipTone="neutral"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {reaction && !isEditing && chatId === FOCAL_CHAT_ID && (
+          <div className="regent-reaction-anchor" aria-live="polite">
+            <span
+              className="regent-reaction"
+              role="img"
+              aria-label={t('chatMessage.regentReaction', { emoji: reaction })}
+              title={t('chatMessage.regentReaction', { emoji: reaction })}
+              tabIndex={0}
+            >
+              <span aria-hidden="true">{reaction}</span>
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Inline edit form */}
       {isEditing && (
@@ -470,8 +498,10 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
       )}
 
       {/* Action toolbar + label + timestamp */}
-      {!isEditing && (
-        <div className="flex items-center justify-end gap-2">
+      {!isEditing && (chatId !== FOCAL_CHAT_ID || canEdit) && (
+        <div
+          className={`flex items-center justify-end gap-2 ${chatId === FOCAL_CHAT_ID ? 'regent-user-actions' : ''}`}
+        >
           {canEdit && (
             <div className="flex items-center gap-1 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity">
               <CopyButton

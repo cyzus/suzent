@@ -528,15 +528,52 @@ def test_sessions_focal_did_not_start_finish_quietly(
     assert enqueued == []
 
 
+def _wake(kind: str, content: str = "", target: str = FOCAL_CHAT_ID) -> dict:
+    return {"target_chat_id": target, "kind": kind, "content": content}
+
+
 def test_focal_replies_to_events_become_notifications(db, sandbox) -> None:
-    focal_agent.announce_focal_reply(FOCAL_CHAT_ID, "Deploy needs your approval.")
-    focal_agent.announce_focal_reply(FOCAL_CHAT_ID, "   ")
-    focal_agent.announce_focal_reply("some-other-chat", "Hello")
+    reply = _wake("session_reply_notification")
+    focal_agent.announce_focal_reply(reply, "Deploy needs your approval.")
+    focal_agent.announce_focal_reply(reply, "   ")
+    focal_agent.announce_focal_reply(
+        _wake("session_reply_notification", target="some-other-chat"), "Hello"
+    )
 
     notices = db.drain_background_notifications()
     assert [(n.source, n.result) for n in notices] == [
         ("focal", "Deploy needs your approval.")
     ]
+
+
+def test_a_quiet_focal_reply_notifies_nobody(db, sandbox) -> None:
+    focal_agent.announce_focal_reply(
+        _wake("session_reply_notification"), "HEARTBEAT_OK"
+    )
+    focal_agent.announce_focal_reply(
+        _wake("session_finished_notification"), "Both tasks done. HEARTBEAT_OK"
+    )
+
+    assert db.drain_background_notifications() == []
+
+
+def test_a_blocker_reaches_the_user_even_when_focal_goes_quiet(db, sandbox) -> None:
+    blocked = _wake("task_blocked_notification", "Task blocked in project Docs.")
+
+    focal_agent.announce_focal_reply(blocked, "HEARTBEAT_OK")
+
+    notices = db.drain_background_notifications()
+    assert [n.result for n in notices] == ["Task blocked in project Docs."]
+
+
+def test_focal_context_tells_regent_to_filter(db, sandbox) -> None:
+    from suzent.core.heartbeat import HEARTBEAT_OK
+
+    context = focal_agent.build_focal_global_context()
+
+    assert "## How to reply" in context
+    assert f"exactly {HEARTBEAT_OK}" in context
+    assert "Never do this for a blocked task." in context
 
 
 def test_heartbeat_runner_skips_a_quiet_focal_check_in(

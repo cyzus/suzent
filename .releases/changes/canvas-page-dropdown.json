@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip."
+}

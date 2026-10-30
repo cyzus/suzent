@@ -49,3 +49,55 @@ This requires a backend with protocol 1 (main after #227). It does not fall back
 to the consume-once protocol. Recovery survives client reloads, not backend
 restarts; no durable event journal is introduced. Structured live tool rendering
 is a follow-up; persisted tool activities are rendered from chat history.
+
+### Regent (optional)
+
+Updated servers prepend the singleton Regent to the chat index for `all_chats`
+grants, with `platform: "focal"` and an optional
+`regent: { waiting: Int, unread: Int, lastMessageAt: String | null }` object.
+Its hidden system project is not exposed as a navigation group. Listing does not
+initialize Regent; opening its detail does. Clients without this metadata remain
+compatible. Explicit chat-ID grants do not authorize Regent's global context.
+Sending/stopping/approving continue to require their respective action grants.
+
+`POST /mobile/client/chats/{chat_id}/read` (empty JSON body) acknowledges the
+conversation's unread messages using the same shared-chat authorization.
+Clients use it for discovered Regent conversations on open and while visible.
+Regent does not support mobile attachments, management, retry/edit or fork.
+
+Regent delivery and reaction rendering cases are shared by both native test
+suites in `regent-fixtures.json`; these transformations never change saved history.
+
+### Activity timing (optional)
+
+Native history presentation reads `run_timings`, `_streaming_run_id`,
+`run_started_at`, `run_finished_at`, `run_active_seconds` and
+`turn_last_activity_at`. Recorded active durations take precedence over wall time;
+replayed run IDs are counted once and unknown waiting durations are not shown as
+worked time. Missing fields remain compatible with older history. Cross-platform
+cases are in `activity-timing-fixtures.json`.
+
+### Conversation pagination (optional)
+
+Session capability `chat_pagination: 1` enables these read-only navigation routes:
+
+- `GET /mobile/client/navigation`: independent Regent presence plus authorized
+  projects with `chatCount` (non-pinned, non-cron, non-archived chats).
+- `POST /mobile/client/chat-page`: `{kind, value, offset, limit}` returns
+  `{chats, total, nextOffset}`. Kinds are `recent`, `pinned`, `project` (value is
+  project ID) and `search` (value is a title substring). Default page size is 30,
+  maximum 100. Recent/project lists exclude pinned and cron entries. Search
+  includes those entries and treats SQL wildcard characters literally.
+- `POST /mobile/client/chat-status`: `{ids: [...]}` accepts at most 100 IDs and
+  returns authorized, existing, non-archived summaries only. Omitted IDs must be
+  evicted, while summaries loaded concurrently outside that request are retained.
+
+Authorization is applied before paging and counting. Regent never consumes a page
+slot and still requires all-conversation access. The legacy chat index remains for
+older apps; native clients fall back to it when the capability is absent.
+
+Native clients load project pages on expansion and debounce search by 300 ms.
+Load more appends with ID deduplication. Status polling updates loaded summaries
+rather than reloading the index; metadata and a short recent page refresh at
+60-second intervals. Explicit refresh resets pagination. Offset pages can shift
+when conversations are updated remotely; refresh restarts from the newest page.

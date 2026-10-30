@@ -266,8 +266,9 @@ export function MobileAccessCard({
         const value = mobilePairingPayload(origin, next, candidates);
         const image = await QRCode.toDataURL(value, {
           errorCorrectionLevel: 'M',
-          margin: 2,
-          width: 320,
+          margin: 4,
+          scale: 6,
+          color: { dark: '#000000ff', light: '#ffffffff' },
         });
         if (!mounted.current || invitationRef.current !== next) return;
         setInvitation(next);
@@ -366,7 +367,7 @@ export function MobileAccessCard({
                 <img
                   src={qr}
                   alt={t('mobileAccess.qrAlt')}
-                  className="h-auto w-full max-w-64 border-2 border-brutal-black bg-white"
+                  className="block h-auto w-full max-w-96 bg-white [image-rendering:pixelated]"
                 />
                 <p className="font-mono text-xs">
                   {t('mobileAccess.expires', {

@@ -3,6 +3,8 @@ import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 import type { A2UISurface } from '../../types/a2ui';
 import { generateBlockKey, type ContentBlock } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
+import { useI18n } from '../../i18n';
+import { isQuietReply } from '../../lib/quietReply';
 import { InlineSurface } from '../a2ui/InlineSurface';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { LogBlock } from './LogBlock';
@@ -237,6 +239,16 @@ export const StepPills: React.FC<{
   );
 };
 
+/** A background turn that reported nothing: kept in history, shown as a quiet line. */
+const QuietReplyNote: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
+      {t('chatMessage.quietReply')}
+    </div>
+  );
+};
+
 const StreamingMarkdownBlock: React.FC<{
   content: string;
   isLastBlock: boolean;
@@ -352,6 +364,7 @@ export const StaticContent: React.FC<{
       {blocks.map((b, bi) => {
         const blockKey = generateBlockKey(b, bi, messageIndex);
         if (b.type === 'markdown') {
+          if (isQuietReply(b.content)) return <QuietReplyNote key={blockKey} />;
           return <MarkdownRenderer key={blockKey} content={b.content} onFileClick={onFileClick} />;
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;

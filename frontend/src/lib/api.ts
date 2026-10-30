@@ -1382,7 +1382,7 @@ export interface CronJob {
   cron_expr: string;
   prompt: string;
   active: boolean;
-  delivery_mode: 'announce' | 'none' | 'silent';
+  delivery_mode: 'announce' | 'none';
   model_override: string | null;
   retry_count: number;
   /** How next_run_at is computed: a cron expression, a fixed gap, or a single run_at. */

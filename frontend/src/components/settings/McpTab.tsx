@@ -30,6 +30,7 @@ import {
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { formatKeyValueList, parseKeyValueList } from '../../lib/mcpKeyValue';
+import { hoverText } from '../../lib/hoverText';
 
 type MCPUrlServer = {
   type: 'url';
@@ -456,7 +457,7 @@ export function McpTab({
                             <li
                               key={tool.name}
                               className="flex flex-col gap-0.5 text-[11px] font-mono border-b border-neutral-300 dark:border-neutral-700 pb-1 last:border-0 last:pb-0"
-                              title={tool.description || tool.name}
+                              title={hoverText(tool.description || tool.name)}
                             >
                               <span className="font-bold text-brutal-blue dark:text-blue-400">
                                 {tool.name}

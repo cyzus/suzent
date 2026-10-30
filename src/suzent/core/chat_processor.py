@@ -38,6 +38,7 @@ from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
+from suzent.core.heartbeat import is_quiet_reply
 from suzent.core.prompt_cache import record_turn_config
 from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.streaming import (
@@ -45,7 +46,6 @@ from suzent.streaming import (
     remove_pending_approvals,
     stream_agent_responses,
 )
-from suzent.memory import AgentAction
 from suzent.database import (
     get_database,
     PostProcessStep,
@@ -1063,11 +1063,6 @@ class ChatProcessor:
                     chat_id,
                 )
 
-        # Calls already answered before this turn (abandoned ones were just given a
-        # result above); post-processing reports only the rest, since the snapshot
-        # it receives is the whole (compacted) history.
-        prior_tool_call_ids = _answered_tool_call_ids(message_history or [])
-
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
@@ -1594,7 +1589,6 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
-                    prior_tool_call_ids=prior_tool_call_ids,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1691,12 +1685,11 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
-        prior_tool_call_ids: frozenset[str] = frozenset(),
     ) -> bool:
         """Background post-processing for a completed turn.
 
-        Runs the transcript write, memory extraction (scheduled independently),
-        and display rebuild + state persistence, tracking each step against the
+        Runs display rebuild + state persistence, then schedules memory
+        extraction independently, tracking each step against the
         post-process job. Designed to run as a background task so the SSE stream
         can close immediately while this finishes.
         """
@@ -1731,104 +1724,22 @@ class ChatProcessor:
                 f"History length: {msg_count}"
             )
 
-            # B1: Write JSONL transcript
-            try:
-                # System/forked turns (dream, sub-agents) don't get transcripts
-                # written/indexed — keeps their chatter out of memory (NEW-7).
-                if not self._is_system_chat(chat_id):
-                    await self._write_transcript(
-                        chat_id,
-                        message_content,
-                        full_response,
-                        last_messages,
-                        prior_tool_call_ids,
-                    )
-                db.update_job_step_status(
-                    job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
-                )
-            except Exception as e:
-                logger.error(f"Transcript writing failed: {e}")
-                db.update_job_step_status(
-                    job_id,
-                    PostProcessStep.TRANSCRIPT,
-                    StepStatus.FAILED,
-                    error=str(e),
-                )
-
             is_suspended = getattr(deps, "is_suspended", False)
             compressed_messages = last_messages
 
-            if is_suspended:
-                logger.debug(
-                    f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
-                )
-                try:
+            try:
+                if is_suspended:
+                    logger.debug(
+                        f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
+                    )
                     db.update_job_step_status(
                         job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                     )
-                    db.update_job_step_status(
-                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                    )
-                except Exception:
-                    pass
-            else:
-                # B2: Memory Extraction (independent; never blocks display/state persistence)
-                async def _run_memory_extraction() -> None:
-                    memory_db = get_database()
-                    try:
-                        # The turn is already in the transcript (B1); the queue
-                        # decides whether this is the moment to extract it.
-                        if not self._is_system_chat(chat_id):
-                            from suzent.memory.extraction_queue import (
-                                get_extraction_queue,
-                            )
-
-                            queue = get_extraction_queue()
-                            if CONFIG.memory_enabled:
-                                await queue.note_turn(chat_id, user_id)
-                            else:
-                                # Turning memory on later must not sweep up
-                                # what was said while it was off.
-                                await queue.skip_pending(chat_id)
-                        memory_db.update_job_step_status(
-                            job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
-                        )
-                    except Exception as e:
-                        logger.warning(f"Memory extraction failed: {e}")
-                        memory_db.update_job_step_status(
-                            job_id,
-                            PostProcessStep.MEMORY,
-                            StepStatus.FAILED,
-                            error=str(e),
-                        )
-
-                try:
-                    memory_coro = _run_memory_extraction()
-                    await register_background_task(
-                        memory_coro,
-                        task_id=f"memory_extract_{chat_id}_{job_id}",
-                        description=f"Memory extraction for chat {chat_id}",
-                    )
-                except Exception as e:
-                    try:
-                        memory_coro.close()
-                    except Exception:
-                        pass
-                    logger.warning(
-                        f"Failed to schedule memory extraction for {chat_id}: {e}"
-                    )
-                    db.update_job_step_status(
-                        job_id,
-                        PostProcessStep.MEMORY,
-                        StepStatus.FAILED,
-                        error=str(e),
-                    )
-                try:
-                    db.update_job_step_status(
-                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                    )
-                except Exception:
-                    pass
+                db.update_job_step_status(
+                    job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
+                )
+            except Exception:
+                pass
 
             persisted = False
             # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
@@ -1874,6 +1785,59 @@ class ChatProcessor:
                     StepStatus.FAILED,
                     error=str(e),
                 )
+
+            if persisted and not is_suspended:
+                # B2: Memory extraction reads the turn from the chat log just written,
+                # in the background so it never holds up the turn.
+                async def _run_memory_extraction() -> None:
+                    memory_db = get_database()
+                    try:
+                        # The queue decides whether this is the moment to extract.
+                        if not self._is_system_chat(chat_id):
+                            from suzent.memory.extraction_queue import (
+                                get_extraction_queue,
+                            )
+
+                            queue = get_extraction_queue()
+                            if CONFIG.memory_enabled:
+                                await queue.note_turn(chat_id, user_id)
+                            else:
+                                # Turning memory on later must not sweep up
+                                # what was said while it was off.
+                                await queue.skip_pending(chat_id)
+                        memory_db.update_job_step_status(
+                            job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
+                        )
+                    except Exception as e:
+                        logger.warning(f"Memory extraction failed: {e}")
+                        memory_db.update_job_step_status(
+                            job_id,
+                            PostProcessStep.MEMORY,
+                            StepStatus.FAILED,
+                            error=str(e),
+                        )
+
+                try:
+                    memory_coro = _run_memory_extraction()
+                    await register_background_task(
+                        memory_coro,
+                        task_id=f"memory_extract_{chat_id}_{job_id}",
+                        description=f"Memory extraction for chat {chat_id}",
+                    )
+                except Exception as e:
+                    try:
+                        memory_coro.close()
+                    except Exception:
+                        pass
+                    logger.warning(
+                        f"Failed to schedule memory extraction for {chat_id}: {e}"
+                    )
+                    db.update_job_step_status(
+                        job_id,
+                        PostProcessStep.MEMORY,
+                        StepStatus.FAILED,
+                        error=str(e),
+                    )
 
             logger.info(
                 f"[ChatProcessor] Background post-processing complete for {chat_id}"
@@ -2278,42 +2242,6 @@ class ChatProcessor:
         except Exception:
             return False
 
-    async def _write_transcript(
-        self,
-        chat_id: str,
-        user_content: str,
-        agent_content: str,
-        messages: list,
-        prior_tool_call_ids: frozenset[str] = frozenset(),
-    ) -> None:
-        """Write user and assistant turns to the JSONL transcript.
-
-        Memory extraction reads its turns from here, so the hidden reminder is
-        stripped (it carries recalled memories the extractor would store again)
-        and each tool call keeps the start of its result.
-        """
-        try:
-            from suzent.core.system_reminder import strip_system_reminders
-            from suzent.session.transcript import TranscriptManager
-
-            tm = TranscriptManager()
-            await tm.append_turn(chat_id, "user", strip_system_reminders(user_content))
-
-            actions = []
-            for action in _extract_tool_calls(
-                messages, exclude_ids=prior_tool_call_ids
-            ):
-                actions.append(
-                    {"tool": action.tool, "args": action.args, "output": action.output}
-                )
-
-            await tm.append_turn(
-                chat_id, "assistant", agent_content, actions=actions or None
-            )
-
-        except Exception as e:
-            logger.debug(f"Transcript write failed for {chat_id}: {e}")
-
     async def _persist_state(
         self,
         chat_id: str,
@@ -2426,6 +2354,7 @@ class ChatProcessor:
                         agent_state=agent_state,
                         messages=target_messages,
                         update_lifecycle=True,
+                        count_unread=not is_quiet_reply(agent_content),
                     )
                     if not finalized:
                         logger.info(
@@ -2579,62 +2508,6 @@ def _strip_attachment_annotations(text: str) -> str:
     """Remove [User attached …] annotations from display text."""
     text = _ATTACHMENT_PATTERN.sub("", text)
     return _REFERENCE_PATTERN.sub("", text).strip()
-
-
-def _answered_tool_call_ids(messages: list) -> frozenset[str]:
-    """IDs of the tool calls in ``messages`` that already have a result."""
-    from pydantic_ai.messages import ModelResponse, ToolCallPart
-
-    return frozenset(
-        call.tool_call_id
-        for msg in messages
-        if isinstance(msg, ModelResponse)
-        for call in msg.parts
-        if isinstance(call, ToolCallPart)
-    ) - _collect_unprocessed_tool_call_ids(messages)
-
-
-def _extract_tool_calls(
-    messages: list, exclude_ids: frozenset[str] = frozenset()
-) -> List[AgentAction]:
-    """Extract AgentAction records from pydantic-ai message history.
-
-    Calls whose ID is in *exclude_ids* are skipped.
-    """
-    from pydantic_ai.messages import (
-        ModelResponse,
-        ModelRequest,
-        ToolCallPart,
-        ToolReturnPart,
-    )
-
-    actions = []
-    # Build a map of tool_call_id → return content
-    returns: Dict[str, str] = {}
-    for msg in messages:
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart):
-                    returns[part.tool_call_id] = str(part.content)[:200]
-
-    # Extract tool calls
-    for msg in messages:
-        if isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if (
-                    isinstance(part, ToolCallPart)
-                    and part.tool_call_id not in exclude_ids
-                ):
-                    output = returns.get(part.tool_call_id, "")
-                    actions.append(
-                        AgentAction(
-                            tool=part.tool_name,
-                            args=part.args if isinstance(part.args, dict) else {},
-                            output=output,
-                        )
-                    )
-
-    return actions
 
 
 def _is_compaction_summary_message(msg: Any) -> bool:

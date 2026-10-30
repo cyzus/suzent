@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Turn the sidebar into Regent's queue while its chat is open, with a back button and Esc to leave, waiting and running chats with a right-click menu, folded projects, and the board starting closed."
+}

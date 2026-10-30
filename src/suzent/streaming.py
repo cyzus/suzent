@@ -463,7 +463,9 @@ class _DraftDisplayAccumulator:
         # the final forced persist can wait for it instead of racing it.
         self._persist_task: Optional["asyncio.Task[None]"] = None
 
-    def snapshot(self, model_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+    def snapshot(
+        self, model_id: Optional[str] = None, *, finished_at: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         if not self.parts:
             return None
         return {
@@ -477,6 +479,8 @@ class _DraftDisplayAccumulator:
             "_streaming_run_id": self.run_id,
             "id": self.run_id,
             "timestamp": self.timestamp,
+            "run_started_at": self.timestamp,
+            **({"run_finished_at": finished_at} if finished_at else {}),
             "model": model_id,
         }
 
@@ -635,6 +639,7 @@ class _DraftDisplayAccumulator:
             self.run_id,
             snapshot,
             content,
+            started_at=self.timestamp,
         )
         if force:
             # The last write of a turn has to land before the stream reports
@@ -759,8 +764,22 @@ class _DraftDisplayAccumulator:
             # on them and the frontend drops them the moment the user answers.
             # Persisting one into the draft makes the answered question render a
             # second time when the finished turn is reloaded from the backend.
-            if value.get("target") == "inline" and not value.get("deferred"):
-                self.parts.append({"type": "a2ui", "surface": value})
+            if value.get("target", "inline") in {"inline", "canvas"} and not value.get(
+                "deferred"
+            ):
+                existing = next(
+                    (
+                        part
+                        for part in self.parts
+                        if part.get("type") == "a2ui"
+                        and part.get("surface", {}).get("id") == value.get("id")
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    existing["surface"] = deepcopy(value)
+                else:
+                    self.parts.append({"type": "a2ui", "surface": deepcopy(value)})
                 self.dirty = True
         elif name == "citation_sources" and isinstance(value, dict):
             self._merge_citation_sources(value.get("sources"))
@@ -799,7 +818,12 @@ class _DraftDisplayAccumulator:
 
 
 def _persist_draft_display_message(
-    chat_id: str, run_id: str, parts: list[dict[str, Any]], content: str
+    chat_id: str,
+    run_id: str,
+    parts: list[dict[str, Any]],
+    content: str,
+    *,
+    started_at: Optional[str] = None,
 ) -> None:
     from suzent.database import get_database
 
@@ -815,6 +839,7 @@ def _persist_draft_display_message(
         "parts": parts,
         "_streaming_draft": True,
         "_streaming_run_id": run_id,
+        **({"run_started_at": started_at} if started_at else {}),
     }
 
     messages = merge_streamed_message(messages, draft)
@@ -1388,6 +1413,9 @@ async def stream_agent_responses(
     # Callers may supply this so they can recognise the draft row this run
     # wrote; see the trigger-row placement in chat_processor.
     run_id = run_id or str(uuid.uuid4())
+    from suzent.core.run_clock import RunClock
+
+    deps.run_clock = RunClock()
     if chat_id:
         claim_stream_control(chat_id, control)
     # Indicates whether the stream paused waiting for user approvals.
@@ -2069,15 +2097,27 @@ async def stream_agent_responses(
                     # Agent finished (or was cancelled) — exit loop
                     break
 
-            # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
+            # A heartbeat that reported nothing is rolled back, unless it acted:
+            # dropping that turn would make the agent forget what it did.
             if not control.cancel_event.is_set() and is_heartbeat and chat_id:
                 from suzent.core.focal_agent import record_focal_heartbeat_done
 
                 record_focal_heartbeat_done(chat_id)
-                from suzent.core.heartbeat import get_active_heartbeat
+                from suzent.core.heartbeat import (
+                    get_active_heartbeat,
+                    is_quiet_reply,
+                    turn_acted,
+                )
 
-                runner = get_active_heartbeat()
-                if runner and runner._is_heartbeat_ok(final_response_text):
+                turn_start = getattr(deps, "turn_start_index", None)
+                this_turn = list(partial_history)[
+                    original_count if turn_start is None else turn_start :
+                ]
+                if (
+                    get_active_heartbeat()
+                    and (not final_response_text or is_quiet_reply(final_response_text))
+                    and not turn_acted(this_turn)
+                ):
                     logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
                     partial_history = roll_back_heartbeat(
                         partial_history, original_count, deps
@@ -2102,6 +2142,7 @@ async def stream_agent_responses(
             await sse_queue.put(("done", None))
 
     agent_task = asyncio.create_task(_agent_runner())
+    draft_accumulator: Optional[_DraftDisplayAccumulator] = None
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
@@ -2129,23 +2170,20 @@ async def stream_agent_responses(
                             logger.debug(
                                 "[Streaming] Failed to cache inline A2UI surface"
                             )
-                    await out_queue.put(
-                        (
-                            "chunk",
-                            _encode_custom(
-                                ev["event"],
-                                {
-                                    "id": ev["id"],
-                                    "title": ev.get("title", ""),
-                                    "component": ev["component"],
-                                    "target": ev.get("target", "inline"),
-                                    "deferred": ev.get("deferred", False),
-                                    "chatId": chat_id,
-                                    **({"rev": ev["rev"]} if "rev" in ev else {}),
-                                },
-                            ),
-                        )
-                    )
+                    value = {
+                        "id": ev["id"],
+                        "title": ev.get("title", ""),
+                        "component": ev["component"],
+                        "target": ev.get("target", "inline"),
+                        "deferred": ev.get("deferred", False),
+                        "chatId": chat_id,
+                        **({"rev": ev["rev"]} if "rev" in ev else {}),
+                    }
+                    event = CustomEvent(name=ev["event"], value=value)
+                    if draft_accumulator is not None:
+                        draft_accumulator.apply(event)
+                        await draft_accumulator.maybe_persist()
+                    await out_queue.put(("chunk", _encoder.encode(event)))
                 except asyncio.QueueEmpty:
                     break
 
@@ -2394,7 +2432,7 @@ async def stream_agent_responses(
 
     # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker() -> None:
-        draft_accumulator: Optional[_DraftDisplayAccumulator] = None
+        nonlocal draft_accumulator
         try:
             if not is_heartbeat:
                 draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
@@ -2429,6 +2467,8 @@ async def stream_agent_responses(
             await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
             if draft_accumulator is not None:
+                finished_at = datetime.now().astimezone().isoformat()
+                active_seconds = deps.run_clock.elapsed()
                 try:
                     final_sources = citation_mgr.to_event_payload()
                     if final_sources:
@@ -2439,8 +2479,11 @@ async def stream_agent_responses(
                 # The fast snapshot commits this even if a draft write failed.
                 # Model history may have been compacted several times by now.
                 deps.streamed_message = draft_accumulator.snapshot(
-                    getattr(agent, "_model_id", None)
+                    getattr(agent, "_model_id", None),
+                    finished_at=finished_at,
                 )
+                if deps.streamed_message is not None:
+                    deps.streamed_message["run_active_seconds"] = active_seconds
                 if deps.streamed_message is not None and deferred_tool_results:
                     deps.streamed_message["_resumed_tool_call_ids"] = list(
                         deferred_tool_results.approvals

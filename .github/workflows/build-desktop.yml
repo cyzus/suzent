@@ -14,6 +14,10 @@ on:
         description: 'Sign existing macOS release assets, package the installer disk image, and upload CI artifacts without publishing'
         type: boolean
         default: false
+      npm_only:
+        description: 'Only publish an already published release to npm, for example when its publish-npm job did not run'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,7 +28,7 @@ concurrency:
 
 jobs:
   prepare-release:
-    if: ${{ !inputs.verify_signing }}
+    if: ${{ !inputs.verify_signing && !inputs.npm_only }}
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release-tag.outputs.tag }}
@@ -344,6 +348,65 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
+  # npmmirror copies every npm package within minutes and without review, so
+  # the release files published here download domestically in mainland China.
+  # Publishing uses npm Trusted Publishing, so no npm token is stored; it runs
+  # after the GitHub release is out and its failure never holds the release.
+  # `always()` because the skipped reuse-assets (or build) job upstream would
+  # otherwise skip it too; `npm_only` publishes an existing release by itself.
+  publish-npm:
+    if: >-
+      always() &&
+      (needs.publish-release.result == 'success' || (inputs.npm_only && !inputs.verify_signing))
+    needs:
+      - prepare-release
+      - publish-release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Pack release files as npm packages
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          gh release download "$RELEASE_TAG" --pattern 'suzent-*' --pattern SHA256SUMS --dir release-assets
+          (cd release-assets && sha256sum --check SHA256SUMS)
+          python3 scripts/pack_npm_release.py release-assets "$RELEASE_TAG" npm-packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
+
+      - name: Publish to npm and ask npmmirror to sync
+        shell: bash
+        run: |
+          # Trusted Publishing needs npm 11.5.1 or newer.
+          npm install --global npm@^11.5.1
+          version="${RELEASE_TAG#v}"
+          for directory in npm-packages/*/; do
+            name="$(node -p "require('./${directory}package.json').name")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              (cd "$directory" && npm publish --access public)
+            fi
+            curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$name/syncs" \
+              || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
+          done
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag || inputs.tag }}
 
   verify-macos-signing:
     if: inputs.verify_signing

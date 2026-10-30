@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
@@ -1330,3 +1331,223 @@ def test_scheduled_tasks_are_scoped_and_safe(
             assert tasks[-1]["id"] == "5"
     store.revoke(result["device"]["device_id"])
     assert client.get("/mobile/client/scheduled-tasks").status_code == 401
+
+
+def test_regent_discovery_requires_all_chats_and_does_not_activate(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    rows = client.get("/mobile/client/chats").json()["chats"]
+    assert rows[0] == {
+        "id": "focal-suzent",
+        "title": "Regent",
+        "platform": "focal",
+        "isRunning": False,
+        "regent": {"waiting": 0, "unread": 0, "lastMessageAt": None},
+    }
+    assert sum(row["id"] == "focal-suzent" for row in rows) == 1
+    from suzent.mobile.client_api import get_database
+
+    assert get_database().get_chat("focal-suzent") is None
+    assert (
+        client.post(
+            "/mobile/client/send",
+            json={"chat_id": "focal-suzent", "message": "Start work"},
+        ).status_code
+        == 403
+    )
+
+
+def test_regent_explicit_chat_grant_cannot_bypass_global_scope(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    result = grant(
+        store,
+        chat_ids=["shared", "focal-suzent"],
+        send=True,
+        stop=True,
+        manage_chats=True,
+        approve_tools=True,
+    )
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert not any(
+        row["id"] == "focal-suzent"
+        for row in client.get("/mobile/client/chats").json()["chats"]
+    )
+    for path in (
+        "/mobile/client/chats/focal-suzent",
+        "/mobile/client/chats/focal-suzent/approvals",
+    ):
+        assert client.get(path).status_code == 403
+    for path, body in (
+        ("send", {"chat_id": "focal-suzent", "message": "Start work"}),
+        ("stop", {"chat_id": "focal-suzent"}),
+        ("live", {"chat_id": "focal-suzent"}),
+    ):
+        assert client.post(f"/mobile/client/{path}", json=body).status_code == 403
+    assert client.post("/mobile/client/chats/focal-suzent/read").status_code == 403
+
+
+def test_regent_status_and_read_receipt_use_existing_singleton(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    original = db.get_chat
+    focal = SimpleNamespace(
+        id="focal-suzent", title="Regent", config={"platform": "focal"}
+    )
+    monkeypatch.setattr(
+        db,
+        "get_chat",
+        lambda chat_id: focal if chat_id == focal.id else original(chat_id),
+    )
+    monkeypatch.setattr(
+        "suzent.mobile.client_api.focal_status",
+        lambda: {
+            "running": True,
+            "waiting": 2,
+            "unread": 3,
+            "lastMessageAt": "2026-10-29T12:00:00Z",
+            "waitingByChat": {"private": 1},
+        },
+    )
+    marked: list[str] = []
+    monkeypatch.setattr(db, "mark_chat_read", marked.append, raising=False)
+    result = grant(store, all_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    row = client.get("/mobile/client/chats").json()["chats"][0]
+    assert row["isRunning"] is True
+    assert row["regent"] == {
+        "waiting": 2,
+        "unread": 3,
+        "lastMessageAt": "2026-10-29T12:00:00Z",
+    }
+    assert marked == []
+    assert client.post("/mobile/client/chats/focal-suzent/read").status_code == 200
+    assert marked == ["focal-suzent"]
+    store.set_permissions(
+        result["device"]["device_id"], ClientPermissions(chat_ids=["shared"])
+    )
+    assert client.post("/mobile/client/chats/focal-suzent/read").status_code == 403
+
+
+@pytest.mark.parametrize("action", ["pin", "unpin", "rename", "move", "delete"])
+def test_regent_cannot_be_managed_as_ordinary_chat(
+    setup_client: tuple[TestClient, PairingStore], action: str
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True, manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={
+                "chat_id": "focal-suzent",
+                "action": action,
+                "value": "other",
+            },
+        ).status_code
+        == 403
+    )
+
+
+@pytest.mark.parametrize("action", ["retry", "edit", "fork"])
+def test_regent_cannot_be_replayed_or_forked(
+    setup_client: tuple[TestClient, PairingStore], action: str
+) -> None:
+    client, store = setup_client
+    result = grant(
+        store, all_chats=True, send=True, create_chats=True, manage_chats=True
+    )
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert (
+        client.post(
+            "/mobile/client/message-action",
+            json={
+                "chat_id": "focal-suzent",
+                "action": action,
+                "message_index": 0,
+            },
+        ).status_code
+        == 403
+    )
+
+
+def test_regent_upload_is_rejected_before_saving_files(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    result = grant(store, all_chats=True, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert (
+        client.post(
+            "/mobile/client/upload?chat_id=focal-suzent",
+            files={"files": ("note.txt", b"example")},
+        ).status_code
+        == 400
+    )
+
+
+def test_regent_detail_and_send_reuse_desktop_singleton(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    original = db.get_chat
+    focal = SimpleNamespace(
+        id="focal-suzent",
+        title="Regent",
+        config={"platform": "focal", "model": "test/model"},
+    )
+    monkeypatch.setattr(
+        db,
+        "get_chat",
+        lambda chat_id: focal if chat_id == focal.id else original(chat_id),
+    )
+    monkeypatch.setattr("suzent.mobile.client_api.focal_status", lambda: {"waiting": 1})
+
+    async def detail(request: Request, *, include_runtime: bool = True) -> JSONResponse:
+        assert request.path_params["chat_id"] == focal.id
+        assert include_runtime is False
+        return JSONResponse(
+            {"id": focal.id, "title": "Regent", "messages": [], "isRunning": False}
+        )
+
+    sent: list[dict[str, object]] = []
+
+    async def send(request: Request) -> JSONResponse:
+        sent.append(await request.json())
+        return JSONResponse({"ok": True}, status_code=202)
+
+    def merge_config(chat_id: str, updates: dict[str, object]) -> bool:
+        assert chat_id == focal.id
+        focal.config.update(updates)
+        return True
+
+    monkeypatch.setattr(db, "merge_chat_config", merge_config)
+    monkeypatch.setattr("suzent.routes.chat_routes.get_chat", detail)
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    result = grant(store, all_chats=True, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    detail_response = client.get("/mobile/client/chats/focal-suzent")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["platform"] == "focal"
+    assert detail_response.json()["projectId"] is None
+    assert detail_response.json()["regent"]["waiting"] == 1
+    assert (
+        client.post(
+            "/mobile/client/send",
+            json={"chat_id": focal.id, "message": "Continue the project"},
+        ).status_code
+        == 202
+    )
+    assert sent[0]["chat_id"] == focal.id
+    assert sent[0]["config"]["platform"] == "focal"

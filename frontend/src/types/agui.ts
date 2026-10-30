@@ -15,6 +15,8 @@ export interface AGUIPart {
     | 'incoming-message';
   text?: string;
   messageId?: string;
+  /** Presentation-only: a deliberately sent Regent bubble. */
+  regentBubble?: boolean;
   toolCallId?: string;
   toolName?: string;
   args?: string;

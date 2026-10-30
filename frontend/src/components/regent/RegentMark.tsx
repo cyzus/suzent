@@ -23,7 +23,7 @@ function Shape({
 }): React.ReactElement {
   return (
     <>
-      <g className={live ? 'regent-circlet' : undefined}>
+      <g className={`regent-mark-circlet ${live ? 'regent-circlet' : ''}`}>
         <path d="M3 3.6 Q12 0 21 3.6 L21 6.6 Q12 10.2 3 6.6 Z" fill={fill} />
         <path
           d="M4.6 4.2 Q12 6.9 19.4 4.2"
@@ -44,10 +44,12 @@ function Shape({
           fill={eye}
         />
       </g>
-      <rect x="0" y={BODY_TOP} width="24" height="24" rx="4" fill={fill} />
-      <g className={live ? 'regent-eyes' : undefined}>
-        <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill={eye} />
-        <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill={eye} />
+      <g className="regent-mark-head">
+        <rect x="0" y={BODY_TOP} width="24" height="24" rx="4" fill={fill} />
+        <g className={live ? 'regent-eyes' : undefined}>
+          <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill={eye} />
+          <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill={eye} />
+        </g>
       </g>
     </>
   );

@@ -56,6 +56,7 @@ type Event = dict[str, Any]
 META_FIELDS = (
     "title",
     "pinned",
+    "archived",
     "project_id",
     "working_directory",
     "created_at",
@@ -157,6 +158,7 @@ def project_chat(chat: Any) -> Projection:
     meta = {
         "title": chat.title,
         "pinned": bool(chat.pinned),
+        "archived": bool(chat.archived),
         "project_id": chat.project_id,
         "working_directory": chat.working_directory,
         "created_at": _timestamp(chat.created_at),
@@ -267,6 +269,8 @@ def apply_event(projection: Optional[Projection], event: Event) -> Optional[Proj
     if kind in ("chat.created", "chat.imported"):
         created = copy.deepcopy(data)
         created.setdefault("checkpoint", None)
+        # Logs written before archiving existed never recorded the field.
+        created.setdefault("archived", False)
         return created
     if kind == "chat.deleted":
         return None

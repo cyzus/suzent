@@ -33,6 +33,13 @@ class DatabaseMigrationMixin:
                             "WHERE slug = 'default' AND name = 'Default'"
                         )
                     )
+            if "archived" not in columns:
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
 
         # Migration: Add 'headers' column to 'mcp_servers' table
         if "mcp_servers" in inspector.get_table_names():
@@ -228,6 +235,20 @@ class DatabaseMigrationMixin:
                         )
                     )
                     conn.commit()
+
+        # Migration: Add per-project default working directory.
+        if "projects" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("projects")]
+            with self.engine.connect() as conn:
+                if "working_directory" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE projects ADD COLUMN working_directory TEXT")
+                    )
+                if "extra_folders" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE projects ADD COLUMN extra_folders JSON")
+                    )
+                conn.commit()
 
         # Migration: PlanningTool v2 — drop legacy plans/tasks tables and recreate
         # with new schema (tasks gets project_id FK; goals table is new).

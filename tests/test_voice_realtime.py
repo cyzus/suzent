@@ -79,11 +79,74 @@ def test_gemini_start_sensitivity_defaults_low_and_can_be_left_to_the_provider(
 
 
 def test_realtime_options_say_which_models_stream_captions(monkeypatch):
-    monkeypatch.setattr("suzent.voice.realtime.resolve_api_key", lambda _p: "key")
+    monkeypatch.setattr(
+        "suzent.voice.realtime.get_configured_provider_ids",
+        lambda: {"openai", "gemini", "xai"},
+    )
     live = {o["id"]: o["live_captions"] for o in list_realtime_options()}
     assert live["gemini/gemini-2.5-flash-native-audio-latest"] is True
     assert live["gemini/gemini-3.1-flash-live-preview"] is False
     assert live["openai/gpt-realtime"] is None  # never measured: no claim
+
+
+def test_realtime_options_come_from_configured_providers_capabilities(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.voice.realtime.get_configured_provider_ids",
+        lambda: {"gemini", "google", "anthropic"},
+    )
+    ids = [o["id"] for o in list_realtime_options()]
+    assert ids[0] == "gemini/gemini-3.8-live"  # the provider default leads
+    assert "gemini/gemini-3.1-flash-live-preview" in ids
+    assert all(i.startswith("gemini/") for i in ids)
+    # Live models without realtime endpoint data are not offered.
+    assert "gemini/gemini-2.5-flash" not in ids
+
+
+def test_realtime_options_include_models_found_only_in_capability_data(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.voice.realtime.get_configured_provider_ids", lambda: {"xai"}
+    )
+    ids = {o["id"] for o in list_realtime_options()}
+    assert {"xai/grok-voice-latest", "xai/grok-voice-3.0"} <= ids
+    monkeypatch.setattr("suzent.voice.realtime.resolve_api_key", lambda _p: "key")
+    _id, model = resolve_realtime_model(
+        VoiceSettings(realtime_model="openai/gpt-realtime-mini")
+    )
+    assert model.model_name == "gpt-realtime-mini"
+
+
+def test_dashscope_realtime_uses_qwen_omni_over_the_openai_protocol(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.voice.realtime.get_configured_provider_ids", lambda: {"dashscope"}
+    )
+    ids = [o["id"] for o in list_realtime_options()]
+    assert ids[0] == "dashscope/qwen3.5-omni-flash-realtime"
+    assert "dashscope/qwen3.5-omni-plus-realtime" in ids
+    # No function calling, so it could never hand work to Suzent.
+    assert "dashscope/qwen3-omni-flash-realtime" not in ids
+
+    monkeypatch.setattr(
+        "suzent.voice.realtime.resolve_api_key",
+        lambda provider: "key" if provider == "dashscope" else None,
+    )
+    model_id, model = resolve_realtime_model(VoiceSettings(realtime_voice="Ethan"))
+    assert model_id == "dashscope/qwen3.5-omni-flash-realtime"
+    assert model._realtime_url().startswith(
+        "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3.5-omni-flash-realtime"
+    )
+    assert model.profile["audio_input_sample_rate"] == 16000
+    assert model.profile["supports_output_truncation"] is False
+    session = model._session_config("hi", None, model_settings=None)
+    assert session["audio"]["input"]["format"]["rate"] == 16000
+    assert session["audio"]["input"]["transcription"] == {
+        "model": "qwen3-asr-flash-realtime"
+    }
+    assert session["audio"]["output"]["voice"] == "Ethan"
+
+
+def test_realtime_options_empty_without_configured_providers(monkeypatch):
+    monkeypatch.setattr("suzent.voice.realtime.get_configured_provider_ids", set)
+    assert list_realtime_options() == []
 
 
 @pytest.mark.parametrize(

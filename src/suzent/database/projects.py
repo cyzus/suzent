@@ -34,7 +34,9 @@ class ProjectOperationsMixin:
         counts: dict[str, dict[str, int]] = {}
         with self._session() as session:
             rows = session.exec(
-                select(ChatModel.id, ChatModel.project_id, ChatModel.config)
+                select(ChatModel.id, ChatModel.project_id, ChatModel.config).where(
+                    ChatModel.archived.is_(False)
+                )
             ).all()
             for chat_id, project_id, config in rows:
                 if (config or {}).get("platform") == "focal":
@@ -404,8 +406,15 @@ class ProjectOperationsMixin:
         project_id: str,
         name: Optional[str] = None,
         archived: Optional[bool] = None,
+        working_directory: Optional[str] = None,
+        extra_folders: Optional[List[str]] = None,
     ) -> Optional[ProjectModel]:
-        """Update a project's name and/or archived flag."""
+        """Update a project's name, archived flag, working directory or folders.
+
+        ``working_directory=""`` clears the project's working directory and
+        ``extra_folders=[]`` clears its extra folders; ``None`` leaves either
+        unchanged.
+        """
         with self._session() as session:
             project = session.get(ProjectModel, project_id)
             if not project:
@@ -414,6 +423,10 @@ class ProjectOperationsMixin:
                 project.name = name
             if archived is not None:
                 project.archived = archived
+            if working_directory is not None:
+                project.working_directory = working_directory or None
+            if extra_folders is not None:
+                project.extra_folders = list(extra_folders)
             session.add(project)
             session.commit()
             session.refresh(project)
@@ -461,6 +474,105 @@ class ProjectOperationsMixin:
             if project:
                 return project.slug
         return self.DEFAULT_PROJECT_SLUG
+
+    def resolve_chat_working_directory(self, chat: Any) -> Optional[str]:
+        """The working directory a chat runs in, if one is configured.
+
+        The chat's own working directory wins, then the legacy ``cwd`` in its
+        config, then the default set in its project's settings. Accepts a
+        ``ChatModel`` or the dict form some callers hold.
+        """
+        if chat is None:
+            return None
+        if isinstance(chat, dict):
+            own = chat.get("working_directory")
+            config = chat.get("config") or {}
+            project_id = chat.get("project_id")
+        else:
+            own = getattr(chat, "working_directory", None)
+            config = getattr(chat, "config", None) or {}
+            project_id = getattr(chat, "project_id", None)
+        if own or config.get("cwd"):
+            return own or config.get("cwd")
+        if not project_id:
+            return None
+        project = self.get_project(project_id)
+        return project.working_directory if project else None
+
+    def with_project_folders(
+        self, chat: Any, volumes: Optional[List[str]]
+    ) -> List[str]:
+        """``volumes`` plus mounts for the extra folders of the chat's project.
+
+        A folder the chat already mounts keeps the chat's mount.
+        """
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        merged = list(volumes or [])
+        project_id = (
+            chat.get("project_id")
+            if isinstance(chat, dict)
+            else getattr(chat, "project_id", None)
+        )
+        if not isinstance(project_id, str):
+            return merged
+        project = self.get_project(project_id)
+        if not project or not project.extra_folders:
+            return merged
+
+        def normalize(path: str) -> str:
+            return str(path).replace("\\", "/").rstrip("/")
+
+        mounted_hosts: set[str] = set()
+        mount_points: set[str] = set()
+        for volume in merged:
+            parsed = PathResolver.parse_volume_string(str(volume))
+            if parsed:
+                mounted_hosts.add(normalize(parsed[0]))
+                mount_points.add(parsed[1])
+        for folder in project.extra_folders:
+            if normalize(folder) in mounted_hosts:
+                continue
+            name = normalize(folder).split("/")[-1] or "data"
+            mount_point, counter = f"/mnt/{name}", 1
+            while mount_point in mount_points:
+                mount_point, counter = f"/mnt/{name}-{counter}", counter + 1
+            merged.append(f"{folder}:{mount_point}")
+            mounted_hosts.add(normalize(folder))
+            mount_points.add(mount_point)
+        return merged
+
+    def get_project_recent_folders(self, project_id: str, limit: int = 8) -> List[str]:
+        """Host folders the project's chats worked in or mounted, newest first.
+
+        Collects each chat's working directory and its mounted folders, skips
+        folders that no longer exist, and returns at most ``limit`` paths.
+        """
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        with self._session() as session:
+            rows = session.exec(
+                select(ChatModel.working_directory, ChatModel.config)
+                .where(ChatModel.project_id == project_id)
+                .order_by(ChatModel.updated_at.desc())
+            ).all()
+
+        folders: List[str] = []
+        for working_directory, config in rows:
+            config = config or {}
+            candidates = [working_directory, config.get("cwd")]
+            for volume in config.get("sandbox_volumes") or []:
+                parsed = PathResolver.parse_volume_string(str(volume))
+                if parsed:
+                    candidates.append(parsed[0])
+            for candidate in candidates:
+                if not candidate or candidate in folders:
+                    continue
+                if Path(candidate).expanduser().is_dir():
+                    folders.append(candidate)
+                    if len(folders) >= limit:
+                        return folders
+        return folders
 
     def get_project_dir(self, chat_id: str) -> Path:
         """Host path for the project a chat belongs to.

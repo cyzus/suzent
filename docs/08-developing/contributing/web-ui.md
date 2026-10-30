@@ -148,8 +148,8 @@ serves the API.
 A normal install has no Node, so it never builds the bundle. Instead each
 desktop release carries `suzent-webui.zip`, built in CI from the release tag and
 listed in `SHA256SUMS`. `setup.sh`, `setup.ps1`, the installer and the updater
-download it from the same release sources as the other assets (the npmmirror
-copy first on a mainland China network) and unpack it with
+download it from the same release sources as the other assets (the npm
+packages on npmmirror first on a mainland China network) and unpack it with
 `python scripts/build_webui.py --install-archive <zip>`. If that download failed,
 `suzent web` fetches the bundle for the installed release tag before giving up.
 

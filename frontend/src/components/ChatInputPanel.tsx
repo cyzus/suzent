@@ -94,7 +94,7 @@ const PERMISSION_MODES: PermissionMode[] = ['default', 'auto', 'full_access'];
 
 /** Shared look for the muted selects under the composer. */
 const FOOTER_SELECT_BUTTON_CLASS =
-  '!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white';
+  '!h-6 !w-auto !gap-1.5 !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 hover:!text-brutal-black dark:hover:!text-white';
 
 const ImagePreviewThumbnail: React.FC<{
   file: File;
@@ -887,6 +887,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               onRemoveVolume={removeVolume}
               disabled={!configReady || streamingForCurrentChat || isUploading}
               dropUp={modelSelectDropUp}
+              compact={!!currentChatId}
             />
           )}
           <input
@@ -938,8 +939,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 disabled={isAcpRuntime && !canChooseRuntime}
                 placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                 dropUp={modelSelectDropUp}
+                variant="ghost"
                 className="h-9 text-sm max-w-[220px]"
-                buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !border-0 !bg-transparent dark:!bg-transparent !px-2 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
+                buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !px-2 !py-1.5 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
                 dropdownClassName="min-w-[240px] right-0"
               />
             </div>
@@ -999,6 +1001,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               }))}
               dropUp={true}
               hideChevron={true}
+              variant="ghost"
               disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
               className="inline-block w-auto"
               buttonClassName={FOOTER_SELECT_BUTTON_CLASS}

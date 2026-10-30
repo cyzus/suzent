@@ -41,7 +41,7 @@ _SUBAGENT_PROFILES: dict[SubagentType, list[str]] = {
     "explore": ["GlobTool", "GrepTool", "ReadFileTool"],
     "plan": ["GlobTool", "GrepTool", "ReadFileTool", "WebSearchTool", "WebpageTool"],
     "write": ["ReadFileTool", "WriteFileTool", "EditFileTool", "GlobTool", "GrepTool"],
-    "verify": ["RunCommandTool"],
+    "verify": ["RunCommandTool", "ReadFileTool", "GlobTool", "GrepTool"],
     "web": ["WebSearchTool", "WebpageTool"],
 }
 
@@ -74,21 +74,25 @@ class AgentTool(Tool):
         "session ID for explicit resume when starting a task; agent_send.agent_id identifies "
         "a Suzent chat or sub-agent task. Never interchange these IDs.\n"
         "\n"
-        "### When to spawn a sub-agent (use proactively)\n"
-        "- **explore**: when you need to find files by pattern, search code for keywords, or answer "
-        "questions about a codebase — especially when a simple search might take more than 3 tries. "
-        "Keeps raw search output out of your context window.\n"
-        "- **plan**: when a task requires designing an implementation strategy, identifying critical "
-        "files, or weighing architectural trade-offs before writing any code.\n"
+        "### When to spawn a sub-agent\n"
+        "Keep connected research, planning, and execution in your own loop so you can use "
+        "what you learn in later steps. Load relevant skills and tools as needed. Delegate "
+        "when work is independent and can run in parallel, needs an isolated workspace or "
+        "fresh review, or would otherwise overwhelm your context.\n"
+        "- **explore**: for a bounded code search whose detailed results you will not need "
+        "for subsequent decisions. Do ordinary code searches yourself.\n"
+        "- **plan**: for an independent second opinion on a complex design. Plan work "
+        "you will implement in your own loop.\n"
         "- **write**: when file editing work is independent of your current turn and can run in "
         "parallel (run_in_background=True), or when you want changes isolated in a worktree.\n"
-        "- **verify**: how you satisfy the Verification Contract. That contract defines "
-        "when it is required and what verdict you need; this is the tool for it.\n"
-        "- **web**: when you need external information that would clutter your context with raw results.\n"
-        "- **general (no subagent_type)**: for any complex multi-step task where the raw tool output "
-        "would fill your context with content you won't need again.\n"
+        "- **verify**: for an independent review of high-risk or coupled changes; "
+        "run focused checks yourself for smaller changes.\n"
+        "- **web**: for independent research with a compact result; keep research "
+        "you need to reason over in your own context.\n"
+        "- **general (no subagent_type)**: for a bounded independent task with "
+        "a clear result to return.\n"
         "\n"
-        "### Parallelism — your most powerful lever\n"
+        "### Parallelism\n"
         "Independent sub-agents can run simultaneously. When multiple research angles or tasks "
         "don't depend on each other, spawn them all in the SAME turn with run_in_background=True. "
         "You will be notified as each one finishes.\n"

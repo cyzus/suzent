@@ -3,6 +3,7 @@
  * elsewhere, or needs feedback on an action. Desktop only: in web mode
  * every call is a no-op.
  */
+import { readRegentDelivery } from './regentConversation';
 import { isDesktop } from './runtime';
 
 const MAX_BODY_LENGTH = 200;
@@ -14,7 +15,12 @@ let permission: Promise<boolean> | null = null;
 export type ReplyOutcome = 'ready' | 'approval' | 'failed' | 'stopped';
 
 interface WatchedReply {
+  // The run this turn streams as, learned from the first stream_started after
+  // the turn was sent. Until then any stream events belong to an older run.
+  runId?: string;
   preview: string;
+  sentPreview: string;
+  messageToolIds: Set<string>;
   failed: boolean;
   stopped: boolean;
   pendingApprovals: Set<string>;
@@ -53,13 +59,19 @@ export async function notifyDesktop(title: string, body: string): Promise<void> 
   }
 }
 
-export function watchForReply(chatId: string): void {
-  awaitingReply.set(chatId, {
+function freshReply(): WatchedReply {
+  return {
     preview: '',
+    sentPreview: '',
+    messageToolIds: new Set(),
     failed: false,
     stopped: false,
     pendingApprovals: new Set(),
-  });
+  };
+}
+
+export function watchForReply(chatId: string): void {
+  awaitingReply.set(chatId, freshReply());
 }
 
 export function forgetReply(chatId: string): void {
@@ -67,13 +79,30 @@ export function forgetReply(chatId: string): void {
 }
 
 /**
+ * Tie a watched turn to the run that streams it. A steer starts a new run
+ * while the one it replaces is still draining, so without this the old run's
+ * end would be announced as the new reply.
+ */
+export function bindReplyRun(chatId: string, runId: string | undefined): void {
+  const watched = awaitingReply.get(chatId);
+  if (!watched || watched.runId || !runId) return;
+  // Anything recorded so far came from the run being replaced.
+  awaitingReply.set(chatId, { ...freshReply(), runId });
+}
+
+// Events without a run id come from an older server; take them as before.
+function belongsToReply(watched: WatchedReply, runId: string | undefined): boolean {
+  return !runId || watched.runId === runId;
+}
+
+/**
  * Note how a watched turn is going from a raw SSE chunk off the event bus.
  * A stream also ends when it pauses for approval, fails, or is stopped, and
  * each of those deserves a different message, or none.
  */
-export function recordReplyChunk(chatId: string, rawData: string): void {
+export function recordReplyChunk(chatId: string, rawData: string, runId?: string): void {
   const watched = awaitingReply.get(chatId);
-  if (!watched) return;
+  if (!watched || !belongsToReply(watched, runId)) return;
   for (const line of rawData.split('\n')) {
     if (!line.startsWith('data:')) continue;
     let frame: {
@@ -81,6 +110,11 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
       code?: string;
       name?: string;
       delta?: string;
+      toolCallId?: string;
+      toolCallName?: string;
+      content?: unknown;
+      output?: unknown;
+      result?: unknown;
       value?: Record<string, unknown>;
     };
     try {
@@ -88,7 +122,27 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
     } catch {
       continue;
     }
-    if (frame.type === 'TEXT_MESSAGE_START') {
+    if (
+      frame.type === 'TOOL_CALL_START' &&
+      frame.toolCallName === 'send_message' &&
+      frame.toolCallId
+    ) {
+      watched.messageToolIds.add(frame.toolCallId);
+    } else if (
+      frame.type === 'TOOL_CALL_RESULT' &&
+      frame.toolCallId &&
+      watched.messageToolIds.has(frame.toolCallId)
+    ) {
+      const raw = frame.content ?? frame.output ?? frame.result;
+      const delivery = readRegentDelivery({
+        type: 'tool',
+        toolName: 'send_message',
+        state: 'completed',
+        output: typeof raw === 'string' ? raw : JSON.stringify(raw),
+      });
+      if (delivery && 'messages' in delivery)
+        watched.sentPreview = delivery.messages.join(' ').slice(0, MAX_BODY_LENGTH + 1);
+    } else if (frame.type === 'TEXT_MESSAGE_START') {
       watched.preview = '';
     } else if (frame.type === 'TEXT_MESSAGE_CONTENT' && typeof frame.delta === 'string') {
       watched.preview = (watched.preview + frame.delta)
@@ -111,10 +165,11 @@ export function recordReplyChunk(chatId: string, rawData: string): void {
 
 /** The watched turn's outcome, once: the caller owns announcing it. */
 export function takeReplyOutcome(
-  chatId: string
+  chatId: string,
+  runId?: string
 ): { outcome: ReplyOutcome; preview: string } | null {
   const watched = awaitingReply.get(chatId);
-  if (!watched) return null;
+  if (!watched || !belongsToReply(watched, runId)) return null;
   awaitingReply.delete(chatId);
   const outcome: ReplyOutcome = watched.stopped
     ? 'stopped'
@@ -123,5 +178,5 @@ export function takeReplyOutcome(
       : watched.pendingApprovals.size > 0
         ? 'approval'
         : 'ready';
-  return { outcome, preview: truncateNotificationBody(watched.preview) };
+  return { outcome, preview: truncateNotificationBody(watched.preview || watched.sentPreview) };
 }

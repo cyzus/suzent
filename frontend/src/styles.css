@@ -2445,6 +2445,130 @@ button.activity-turn-duration:focus-visible {
   animation: regentHover 1.8s ease-in-out infinite;
 }
 
+/* In the sidebar entry row Regent rests as the full-slot Suzent head; on hover
+   or keyboard focus it plays a multi-stage coronation sequence. */
+.regent-crown-on-hover .regent-mark-head {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: translateY(-1px) scale(1);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.regent-crown-on-hover:hover .regent-mark-head,
+.regent-crown-on-hover:focus-visible .regent-mark-head {
+  animation: regentMarkHeadCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover .regent-eyes {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: transform 0.24s ease-out;
+}
+
+.regent-crown-on-hover:not([data-regent-state='working']):hover .regent-eyes,
+.regent-crown-on-hover:not([data-regent-state='working']):focus-visible .regent-eyes {
+  animation: regentMarkEyesCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover .regent-mark-circlet {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.72) rotate(-10deg);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.26s ease-out;
+}
+
+.regent-crown-on-hover:hover .regent-mark-circlet,
+.regent-crown-on-hover:focus-visible .regent-mark-circlet {
+  animation: regentMarkCircletCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover:not([data-regent-state='waiting']):hover .regent-gem,
+.regent-crown-on-hover:not([data-regent-state='waiting']):focus-visible .regent-gem {
+  animation: regentGemGlint 0.65s ease-out 0.22s 1;
+}
+
+.regent-crown-on-hover[data-regent-state='working'] .regent-circlet,
+.regent-crown-on-hover [data-regent-state='working'] .regent-circlet {
+  animation: none;
+}
+
+.regent-crown-on-hover:hover [data-regent-state='working'] .regent-circlet,
+.regent-crown-on-hover:focus-visible [data-regent-state='working'] .regent-circlet {
+  animation: regentHover 1.8s ease-in-out 0.62s infinite;
+}
+
+@keyframes regentMarkHeadCrown {
+  0% {
+    transform: translateY(-1px) scale(1);
+  }
+  26% {
+    transform: translateY(-2.4px) scale(0.95, 1.03);
+  }
+  58% {
+    transform: translateY(1.4px) scale(0.89, 0.81);
+  }
+  80% {
+    transform: translateY(-0.2px) scale(0.85, 0.87);
+  }
+  100% {
+    transform: translateY(0.4px) scale(0.86);
+  }
+}
+
+@keyframes regentMarkEyesCrown {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  28% {
+    transform: translateY(-2.2px) scaleY(1.08);
+  }
+  58% {
+    transform: translateY(0.6px) scaleY(0.22);
+  }
+  80% {
+    transform: translateY(-0.5px) scaleY(1.04);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes regentMarkCircletCrown {
+  0% {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.72) rotate(-12deg);
+  }
+  28% {
+    opacity: 1;
+    transform: translateY(0.4px) scale(0.92) rotate(5deg);
+  }
+  58% {
+    opacity: 1;
+    transform: translateY(6.1px) scale(0.92, 0.85) rotate(-1.5deg);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(4px) scale(0.88) rotate(0.6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(4.7px) scale(0.88) rotate(0deg);
+  }
+}
+
+@keyframes regentGemGlint {
+  0%,
+  100% {
+    fill: #fff;
+  }
+  45% {
+    fill: var(--brutal-yellow);
+  }
+}
+
 /* The one place Regent turns colour: something waits on the user. */
 [data-regent-state='waiting'] .regent-gem {
   animation: regentGemPulse 1.6s ease-in-out infinite;
@@ -2532,8 +2656,22 @@ button.activity-turn-duration:focus-visible {
   .regent-circlet,
   .regent-gem,
   .regent-cube-gem,
-  .regent-nod {
+  .regent-nod,
+  .regent-mark-head,
+  .regent-mark-circlet {
     animation: none !important;
+    transition: none !important;
+  }
+
+  .regent-crown-on-hover:hover .regent-mark-head,
+  .regent-crown-on-hover:focus-visible .regent-mark-head {
+    transform: translateY(0.4px) scale(0.86);
+  }
+
+  .regent-crown-on-hover:hover .regent-mark-circlet,
+  .regent-crown-on-hover:focus-visible .regent-mark-circlet {
+    opacity: 1;
+    transform: translateY(4.7px) scale(0.88);
   }
 }
 
@@ -2705,4 +2843,212 @@ button.activity-turn-duration:focus-visible {
 .dark .file-document .prose :not(pre) > code {
   background: #27272a;
   border-color: #3f3f46;
+}
+
+/* Deliberate Regent messages keep their boundaries throughout a turn. */
+.regent-message-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgb(0 0 0 / 16%);
+  border-radius: 0.5rem;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.dark .regent-message-bubble {
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 14%);
+}
+.regent-reaction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  min-height: 1.5rem;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 999px;
+  background: #f5f5f5;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+.dark .regent-reaction {
+  background: #27272a;
+  border-color: rgb(255 255 255 / 14%);
+}
+.regent-reaction:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.regent-typing {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 4px;
+}
+.regent-typing span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: regentTyping 1.4s ease-in-out infinite;
+}
+.regent-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.regent-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes regentTyping {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .regent-typing span {
+    animation: none;
+  }
+}
+
+.regent-message-bubble .prose > :first-child {
+  margin-top: 0;
+}
+.regent-message-bubble .prose > :last-child {
+  margin-bottom: 0;
+}
+.regent-user-bubble {
+  border-width: 1px;
+  border-color: rgb(0 0 0 / 18%);
+  border-radius: 0.5rem;
+  background: #f5f5f5;
+  box-shadow: none;
+}
+.dark .regent-user-message .regent-user-bubble {
+  background: #27272a;
+  border-color: rgb(255 255 255 / 14%);
+  box-shadow: none;
+}
+
+.regent-turn-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  min-height: 1.75rem;
+}
+.regent-activity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0;
+  color: #737373;
+  font-size: 0.6875rem;
+}
+.regent-activity-toggle span {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  text-transform: none;
+  padding: 0;
+}
+.regent-activity-toggle:hover {
+  color: #171717;
+}
+.dark .regent-activity-toggle {
+  color: #a3a3a3;
+}
+.dark .regent-activity-toggle:hover {
+  color: #f5f5f5;
+}
+.regent-activity-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.regent-message-bubble .prose :where(h1, h2, h3) {
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.regent-user-content {
+  position: relative;
+}
+.regent-user-content-reacted {
+  padding-bottom: 0.875rem;
+}
+.regent-user-content .regent-reaction-anchor {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  margin: 0;
+  z-index: 1;
+}
+.regent-user-message .regent-user-actions {
+  min-height: 1.5rem;
+  margin-top: 0.375rem;
+}
+.regent-conversation-list {
+  padding-inline-end: 1.25rem;
+}
+
+/* Mobile conversations are a destination, with room for touch and safe areas. */
+@media (max-width: 1023px) {
+  .mobile-home {
+    border-right: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-home > div:first-child {
+    height: 88px;
+    padding: 20px;
+    border-bottom: 0;
+  }
+
+  .mobile-home .chat-list-actions {
+    order: -1;
+    padding: 0 16px 12px;
+    border-top: 0;
+  }
+
+  .mobile-home .chat-list-actions > button:first-child {
+    min-height: 44px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    border-radius: 0;
+    background: #facc15;
+    color: #171717;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .mobile-home .chat-list-actions input {
+    height: 44px;
+    border-color: transparent;
+    border-radius: 0;
+    background: rgb(128 128 128 / 10%);
+    font-size: 16px;
+  }
+
+  .mobile-home [data-chat-row] {
+    min-height: 60px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .mobile-home nav > button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .mobile-home .regent-dimmed {
+    opacity: 1;
+  }
 }

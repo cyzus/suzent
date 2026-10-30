@@ -112,3 +112,50 @@ The automation can be tested without production credentials using a throwaway
 Android signing key. Such APKs must never be installed over or distributed as a
 production release. Apple distribution must still be validated with the configured
 team and App Store Connect account.
+
+
+## Store review demonstration
+
+The submitted release binary includes a quiet **Try offline demo** text button
+at the bottom of the unpaired connection screen. On paired installations, expand
+**Settings → About** to find it. No special reviewer detection, credentials,
+server, or model API key is needed.
+
+Suggested English review notes (include your real pairing video link separately):
+
+> Suzent is a companion client for a user's self-hosted Suzent backend. To explore
+> the app without setting up a backend, launch the app and select "Try offline
+> demo" at the bottom of the connection screen. If already paired, open Settings,
+> expand About, and select "Try offline demo". The visible demo banner identifies
+> scripted, on-device sample data.
+> On the start page, select the trip prompt to see a streamed example response,
+> or the tool-approval prompt to allow or reject a simulated note-writing action.
+> You can also enter arbitrary text, stop a response, select attachments, and use
+> message copy, edit, retry, and branch actions. Long-press a conversation in the
+> sidebar to pin, rename, move, or delete it. Open Settings to reset the sample
+> data or exit the demo. Attachments are not uploaded or analysed in this mode.
+> Real desktop pairing and Node connections are demonstrated in the accompanying
+> physical-device video; those operations require a running Suzent backend.
+
+Before submitting, test these steps on fresh signed Android and TestFlight
+installations in airplane mode, plus a paired installation to verify that leaving
+or resetting the demo preserves its real pairing. Check both English and Chinese,
+background/foreground during streaming and pending approval, process termination,
+and subsequent reopening of the saved demo workspace. A store may still request
+access to the real backend; the offline demo does not guarantee review acceptance.
+
+## Website download links
+
+The homepage and phone guide use `/download/android/` and `/download/ios/`.
+`website/content/downloads.json` owns the GitHub repository and TestFlight invite.
+Website preparation resolves all GitHub release pages, selects the highest stable
+`mobile-vMAJOR.MINOR.PATCH` version with an uploaded APK, and generates static
+redirect pages. Drafts, prereleases, desktop releases and releases without an APK
+are excluded. A failed lookup stops deployment, preserving the previous site.
+Local website builds need GitHub API access; set `GITHUB_TOKEN` if rate-limited.
+
+After Android assets are published, **Release mobile** calls the documentation
+workflow to rebuild the site from main. This also refreshes links when retrying an
+already published release, without replacing its assets. If website refresh fails,
+rerun the failed job or dispatch **Deploy Documentation**; do not rebuild the apps.
+The TestFlight invitation remains the same across builds unless the group changes.

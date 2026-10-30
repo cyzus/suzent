@@ -56,7 +56,7 @@ xcodegen generate --spec apps/ios/project.yml
 xcodebuild -project apps/ios/Suzent.xcodeproj -scheme Suzent -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Suzent.xcarchive" \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' \
-  PROVISIONING_PROFILE_SPECIFIER="$profile_uuid" OTHER_CODE_SIGN_FLAGS="--keychain $keychain" archive
+  SUZENT_PROVISIONING_PROFILE="$profile_uuid" OTHER_CODE_SIGN_FLAGS="--keychain $keychain" archive
 xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Suzent.xcarchive" \
   -exportPath "$RUNNER_TEMP/ios-export" -exportOptionsPlist "$signing_dir/ExportOptions.plist" \
   -authenticationKeyPath "$signing_dir/AuthKey.p8" -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \

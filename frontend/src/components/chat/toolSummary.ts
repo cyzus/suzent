@@ -12,6 +12,8 @@
  * readable).
  */
 
+import { hoverText } from '../../lib/hoverText';
+
 export type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
 
 export interface ToolSummary {
@@ -19,7 +21,7 @@ export interface ToolSummary {
   verb: string;
   /** Truncated argument detail shown next to the verb, or null. */
   detail: string | null;
-  /** Untruncated "verb — detail" text for the header tooltip, or null. */
+  /** "verb — detail" for the header tooltip, clamped to one glanceable line. */
   title: string | null;
 }
 
@@ -521,11 +523,37 @@ const BUILDERS: Record<string, Builder> = {
   agent_dispatch: (args, t) => {
     const id = str(args.agent_id);
     const message = str(args.message);
+    if (id === 'new') {
+      const name = firstOf(args, ['title', 'task_title']);
+      return {
+        verb: verb(t, 'startSession'),
+        detail: name ?? (message && compact(message)),
+      };
+    }
     const detail =
       id && message ? `${id} · ${compact(message)}` : (id ?? (message && compact(message)));
     return { verb: verb(t, 'messageAgent'), detail: detail || null };
   },
   agent_stop: (args, t) => ({ verb: verb(t, 'stopAgent'), detail: str(args.agent_id) }),
+
+  memory_update: (args, t) => ({
+    verb: verb(t, 'updateMemory'),
+    detail: firstOf(args, ['fact', 'retract']),
+  }),
+  update_notes: (args, t) => ({
+    verb: verb(t, 'updateNotes'),
+    detail: firstOf(args, ['section', 'new_text', 'old_text']),
+  }),
+  send_message: (args, t) => ({
+    verb: verb(t, 'sendMessage'),
+    detail: firstItemLabel(args.messages, ['text', 'content', 'message']),
+  }),
+  react_to_message: (args, t) => ({ verb: verb(t, 'react'), detail: str(args.emoji) }),
+  generate_video: (args, t) => ({
+    verb: verb(t, 'makeVideo'),
+    detail: str(args.prompt) ? quoted(str(args.prompt)!) : null,
+  }),
+  check_video: (args, t) => ({ verb: verb(t, 'checkVideo'), detail: str(args.job_id) }),
 };
 
 // ---------------------------------------------------------------------------
@@ -575,7 +603,7 @@ export function getToolSummary(
   return {
     verb: headline,
     detail: rawDetail ? truncate(rawDetail) : null,
-    title: titleDetail ? `${headline} — ${titleDetail}` : headline,
+    title: hoverText(titleDetail ? `${headline} — ${titleDetail}` : headline) ?? headline,
   };
 }
 

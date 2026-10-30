@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Log which prompt section changed before each model request, to explain prompt-cache misses.",
+  "reason": "Adds DEBUG diagnostics only; nothing users see or do changes."
+}

@@ -17,6 +17,7 @@ const idleVoice: VoiceSession = {
   working: false,
   liveCaptions: null,
   errorKey: null,
+  playing: false,
   supported: true,
   micLevel: { current: 0 },
   start: () => {},
@@ -119,3 +120,131 @@ describe('Focal conversation controls', () => {
     expect(regular).toContain('<time');
   });
 });
+
+it('keeps sent Regent bubbles visible after tool work and hides delivery plumbing', () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      conversational
+      regent
+      message={{
+        role: 'assistant',
+        content: '',
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'send_message',
+            toolCallId: 'sent',
+            state: 'completed',
+            output: JSON.stringify({
+              success: true,
+              message: 'Delivered',
+              metadata: { regent_messages: ['Looking now.', 'Two tests failed.'] },
+            }),
+          },
+          {
+            type: 'tool',
+            toolName: 'web_search',
+            toolCallId: 'search',
+            state: 'completed',
+            output: 'result',
+          },
+          { type: 'text', text: 'Shall I fix them?' },
+        ],
+      }}
+      messageIndex={1}
+      isStreaming={false}
+      isLastMessage={false}
+    />
+  );
+  expect(html).toContain('Looking now.');
+  expect(html).toContain('Two tests failed.');
+  expect(html).toContain('Shall I fix them?');
+  expect(html.match(/class="regent-message-bubble"/g)).toHaveLength(3);
+  expect(html).not.toContain('send_message');
+  expect(html).not.toContain('Delivered');
+});
+
+it('does not leave an empty Regent card after a reaction-only reply', () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      conversational
+      regent
+      message={{
+        role: 'assistant',
+        content: '',
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'react_to_message',
+            state: 'completed',
+            output: JSON.stringify({
+              success: true,
+              metadata: { regent_reaction: '👍' },
+            }),
+          },
+        ],
+      }}
+      messageIndex={1}
+      isStreaming={false}
+      isLastMessage={false}
+    />
+  );
+  expect(html).toBe('');
+});
+
+it('keeps long answers in bubbles with a compact identity and activity row', () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      conversational
+      regent
+      message={{
+        role: 'assistant',
+        content: '',
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'web_search',
+            toolCallId: 'search',
+            state: 'completed',
+            output: 'result',
+          },
+          {
+            type: 'text',
+            text: '## Findings\n\nA detailed explanation with structure.\n\n- First point\n- Second point',
+          },
+        ],
+      }}
+      workedDurationSeconds={35}
+      messageIndex={1}
+      isStreaming={false}
+      isLastMessage={false}
+    />
+  );
+  expect(html).toContain('regent-message-bubble');
+  expect(html).not.toContain('regent-message-reading');
+  expect(html.match(/class="regent-turn-header"/g)).toHaveLength(1);
+  expect(html).toContain('regent-activity-toggle');
+  expect(html).not.toContain('class="activity-rail-header activity-turn-duration"');
+  expect(html).toContain('aria-expanded="false"');
+});
+
+it.each([false, true])(
+  'hides quiet-only Regent replies without an empty bubble (structured: %s)',
+  (structured) => {
+    const html = renderToStaticMarkup(
+      <AssistantMessage
+        conversational
+        regent
+        message={{
+          role: 'assistant',
+          content: 'HEARTBEAT_OK',
+          parts: structured ? [{ type: 'text', text: 'HEARTBEAT_OK' }] : undefined,
+        }}
+        messageIndex={1}
+        isStreaming={false}
+        isLastMessage={false}
+      />
+    );
+    expect(html).toBe('');
+  }
+);

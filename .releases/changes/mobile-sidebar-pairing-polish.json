@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch", "desktop": "patch"},
+  "summary": "Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability."
+}

@@ -33,10 +33,5 @@ final class AssemblySceneTests: XCTestCase {
             }
         }
     }
-    func testCaretOnlyAppearsOnLiveTextAndPreservesFence() {
-        XCTAssertEqual(streamingMarkdown("", active: true), "")
-        XCTAssertEqual(streamingMarkdown("hello", active: false), "hello")
-        XCTAssertEqual(streamingMarkdown("hello", active: true), "hello ▍")
-        XCTAssertEqual(streamingMarkdown("```\nx\n```", active: true), "```\nx\n```\n\n▍")
-    }
+
 }

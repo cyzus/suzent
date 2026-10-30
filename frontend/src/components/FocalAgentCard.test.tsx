@@ -28,6 +28,8 @@ describe('Regent contact card', () => {
     const html = render(status());
     expect(html).toContain('chatList.focal.name');
     expect(html).toContain('data-regent-state="idle"');
+    expect(html).toContain('regent-crown-on-hover');
+    expect(html).toContain('regent-mark-circlet');
     expect(text(html)).toContain('chatList.focal.allClear');
     expect(text(html)).not.toContain('chatList.focal.role');
   });
@@ -77,6 +79,29 @@ describe('Regent contact card', () => {
     expect(html).toContain('regent-cube');
     expect(html).not.toContain('regent-mark');
     expect(text(html)).toContain('chatList.focal.waitingCount:1');
+  });
+
+  it('offers a way back out of Regent once it is open', () => {
+    const open = renderToStaticMarkup(
+      <FocalAgentCardView status={status()} active onOpen={() => {}} onExit={() => {}} />
+    );
+    expect(open).toContain('aria-label="chatList.focal.exit"');
+    expect(text(open)).toContain('chatList.focal.exitShort');
+    const closed = renderToStaticMarkup(
+      <FocalAgentCardView status={status()} active={false} onOpen={() => {}} onExit={() => {}} />
+    );
+    expect(closed).not.toContain('chatList.focal.exit');
+  });
+
+  it('leads back to Regent’s chat while another page fills the main area', () => {
+    const elsewhere = renderToStaticMarkup(
+      <FocalAgentCardView status={status()} active onOpen={() => {}} onReturn={() => {}} />
+    );
+    expect(elsewhere).toContain('aria-label="chatList.focal.open"');
+    expect(elsewhere).not.toContain('aria-current="page"');
+    const onChat = render(status(), true);
+    expect(onChat).not.toContain('chatList.focal.open');
+    expect(onChat).toContain('aria-current="page"');
   });
 
   it('keeps the entry usable before its status arrives', () => {

@@ -31,7 +31,13 @@ private final class RedirectBlocker: NSObject, URLSessionTaskDelegate, Sendable 
     }
 }
 
+private actor NavigationCapability {
+    var enabled = false
+    func update(_ value: Bool) { enabled = value }
+}
+
 public final class SuzentClient: Sendable {
+    private let navigationCapability = NavigationCapability()
     public let backend: Backend
     private let token: String
     private let session: URLSession
@@ -112,6 +118,7 @@ public final class SuzentClient: Sendable {
     public func clientSession() async throws -> ClientSession {
         let result = try mobileDecode(ClientSession.self, await data("mobile/client/session"))
         try result.validate()
+        await navigationCapability.update(result.chatPagination == 1)
         return result
     }
 
@@ -145,6 +152,46 @@ public final class SuzentClient: Sendable {
 
     public func confirmPairing() async throws {
         _ = try await data("mobile/client/pairing/confirm", body: [:])
+    }
+
+    public func chatPage(_ query: ChatPageQuery, offset: Int = 0, limit: Int = 30) async throws -> ChatPage {
+        guard await navigationCapability.enabled else {
+            return localChatPage(try await chats(), query: query, offset: offset, limit: limit)
+        }
+        return try JSONDecoder().decode(ChatPage.self, from: await data("mobile/client/chat-page", body: [
+            "kind": query.kind, "value": query.value, "offset": String(offset), "limit": String(limit)
+        ]))
+    }
+
+    public func navigationMetadata() async throws -> NavigationMetadata {
+        guard await navigationCapability.enabled else {
+            let rows = try await chats()
+            let projects = try await projects().map { project in
+                Project(id: project.id, name: project.name, chatCount: rows.filter {
+                    $0.projectId == project.id && !$0.isRegent && !$0.isScheduled && $0.pinned != true
+                }.count)
+            }
+            return NavigationMetadata(regent: rows.first { $0.isRegent }, projects: projects)
+        }
+        return try JSONDecoder().decode(NavigationMetadata.self, from: await data("mobile/client/navigation"))
+    }
+
+    public func chatStatuses(_ ids: [String]) async throws -> [Chat] {
+        guard !ids.isEmpty else { return [] }
+        guard await navigationCapability.enabled else {
+            let wanted = Set(ids)
+            return try await chats().filter { wanted.contains($0.id) }
+        }
+        struct Listing: Decodable { let chats: [Chat] }
+        var result: [Chat] = []
+        for start in stride(from: 0, to: ids.count, by: 100) {
+            var request = try request("mobile/client/chat-status", body: [:])
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": Array(ids.dropFirst(start).prefix(100))])
+            let (data, response) = try await session.data(for: request)
+            try validate(response)
+            result += try JSONDecoder().decode(Listing.self, from: data).chats
+        }
+        return result
     }
 
     public func chats() async throws -> [Chat] {
@@ -188,6 +235,11 @@ public final class SuzentClient: Sendable {
         var body = ["title": title]
         if let projectID { body["project_id"] = projectID }
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: body))
+    }
+
+    public func markRead(_ id: String) async throws {
+        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
+        _ = try await data("mobile/client/chats/\(id)/read", body: [:])
     }
 
     public func chat(_ id: String) async throws -> Chat {

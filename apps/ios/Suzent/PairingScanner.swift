@@ -60,7 +60,14 @@ struct PairingScanner: View {
                                 }.padding(16).background(Color(uiColor: .systemBackground))
                                     .overlay(alignment: .leading) { Rectangle().fill(Color(presentation: PresentationTokens.yellow)).frame(width: 3) }
                                     .transition(.offset(y: 12).combined(with: .opacity))
-                            } else if model.busy { ProgressView("Checking desktop addresses…").tint(.white).foregroundStyle(.white) }
+                            } else if model.busy {
+                                VStack(spacing: 12) {
+                                    ProgressView(model.pairingStatus ?? String(localized: "Checking desktop addresses…"))
+                                    Text("Keep Suzent open on your desktop and check Wi-Fi or Tailscale.").font(.footnote)
+                                    Button("Cancel pairing", action: model.cancelPairing)
+                                }.padding(16).frame(maxWidth: .infinity)
+                                    .background(Color.suzentSurface).foregroundStyle(Color.suzentText)
+                            }
                             HStack(spacing: 12) {
                                 Button { setTorch(!torch) } label: { Image(systemName: torch ? "flashlight.on.fill" : "flashlight.off.fill").frame(width: 44, height: 44) }
                                     .foregroundStyle(torch ? .black : .white).background(torch ? Color(presentation: PresentationTokens.yellow) : .black.opacity(0.6))
@@ -100,8 +107,8 @@ struct PairingScanner: View {
                 else if let invitation = model.pairingInvitation {
                     if let preview = model.pairingPreview { DisclosureGroup("Desktop access") { PairingPermissionsView(permissions: preview.permissions) } }
                     Text(invitation.phoneConfirmation ? String(localized: "Confirm to connect with the permissions shown above. You do not need to approve again on desktop.") : String(localized: "Your desktop will ask you to approve this phone. Node access stays separate.")).font(.footnote).foregroundStyle(.secondary)
-                    if let error = model.error { Text(error).font(.footnote).foregroundStyle(.red) }
-                    if model.busy { ProgressView() }
+                    if let error = model.error { Text(error).font(.footnote).foregroundStyle(Color.suzentDanger) }
+                    if model.busy { ProgressView(model.pairingStatus ?? String(localized: "Finishing connection…")) }
                     Button(invitation.phoneConfirmation ? String(localized: "Confirm connection") : String(localized: "Request pairing"), action: model.approveDestination).buttonStyle(SuzentButtonStyle(prominent: true)).disabled(model.busy)
                 }
             }.padding(24)

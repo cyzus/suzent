@@ -35,6 +35,7 @@ const makeVoice = (
   working: false,
   liveCaptions: null,
   errorKey: null,
+  playing: false,
   supported: true,
   micLevel: { current: 0 },
   start: () => {},

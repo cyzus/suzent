@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known."
+}
