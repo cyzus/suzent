@@ -112,7 +112,7 @@ export function OrganizePanel(): React.ReactElement {
             </span>
           </div>
           {lastText ? (
-            <div className="max-h-48 overflow-y-auto pr-1 text-sm leading-6 break-words">
+            <div className="max-h-48 overflow-y-auto overflow-x-hidden pr-1 text-sm leading-6 break-words">
               <MarkdownRenderer content={lastText} />
             </div>
           ) : (
@@ -207,7 +207,7 @@ export function OrganizePanel(): React.ReactElement {
               />
             )}
             {lastCheckText && (
-              <div className="mt-3 max-h-40 overflow-y-auto pr-1 text-xs leading-5 break-words">
+              <div className="mt-3 max-h-40 overflow-y-auto overflow-x-hidden pr-1 text-xs leading-5 break-words">
                 <MarkdownRenderer content={lastCheckText} />
               </div>
             )}
