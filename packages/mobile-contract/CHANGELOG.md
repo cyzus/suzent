@@ -4,6 +4,7 @@
 
 ### Release notes
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
+- Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
 
 ## [mobile-v0.4.1] - 2026-10-26
 
