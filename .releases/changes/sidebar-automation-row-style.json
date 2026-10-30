@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Style scheduled-task and heartbeat rows in the sidebar like chat rows, and keep chat titles aligned when a chat-app icon is shown."
+}
