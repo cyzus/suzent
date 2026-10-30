@@ -318,12 +318,25 @@ export interface UserConfig {
   custom_models: string[];
 }
 
+export interface ProviderRegion {
+  id: string;
+  name: string;
+  name_zh?: string;
+  base_url: string;
+  key_url?: string;
+}
+
 export interface ApiProvider {
   id: string;
   label: string;
   logo_url?: string;
   key_url?: string;
   user_defined?: boolean;
+  /** Endpoint choices, first is the default; picking one sets the *_BASE_URL field. */
+  regions?: ProviderRegion[];
+  region_label?: 'region' | 'plan';
+  /** China and Global accounts don't work at each other's endpoints. */
+  split_accounts?: boolean;
   default_models: Model[];
   fields: ApiField[];
   models: Model[];

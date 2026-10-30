@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "minor"},
-  "summary": "Add built-in providers for Chinese coding and token plans: Kimi Code, Bailian Token/Coding Plan, Tencent Cloud Token/Coding Plan, GLM Coding Plan and Volcengine Agent/Coding Plan. Moonshot keys from platform.moonshot.cn now work for chat (set Base URL to https://api.moonshot.ai/v1 for an international key), DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app."
+  "summary": "Add Chinese coding and token plans to Settings > Providers: Kimi Code, Bailian Plan, Tencent Cloud and Volcengine Ark, each with a picker for the plan or China/Global endpoint, which Kimi, Qwen, MiniMax, Zhipu GLM / Z.ai and Xiaomi MiMo now have too. Moonshot keys from platform.moonshot.cn now work for chat, DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app."
 }

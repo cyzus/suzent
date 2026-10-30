@@ -1,6 +1,7 @@
 import openaiIcon from '../assets/provider-icons/openai.svg';
 import anthropicIcon from '../assets/provider-icons/anthropic.svg';
 import geminiIcon from '../assets/provider-icons/gemini.svg';
+import qwenIcon from '../assets/provider-icons/qwen.svg';
 import xaiIcon from '../assets/provider-icons/xai.svg';
 import bailianIcon from '../assets/provider-icons/bailian.svg';
 import deepseekIcon from '../assets/provider-icons/deepseek.svg';
@@ -57,9 +58,9 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
   },
   dashscope: {
     id: 'dashscope',
-    label: 'Dashscope',
-    color: 'FF6A00',
-    logoUrl: bailianIcon,
+    label: 'Qwen (DashScope)',
+    color: '615CED',
+    logoUrl: qwenIcon,
   },
   deepseek: {
     id: 'deepseek',
@@ -75,13 +76,13 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
   },
   moonshot: {
     id: 'moonshot',
-    label: 'Moonshot',
+    label: 'Kimi (Moonshot)',
     color: '1C1C1E',
     logoUrl: moonshotIcon,
   },
   zhipuai: {
     id: 'zhipuai',
-    label: 'Zhipu AI',
+    label: 'Zhipu GLM / Z.ai',
     color: '2B60D6',
     logoUrl: zaiIcon,
   },
@@ -91,45 +92,21 @@ const PROVIDER_VISUALS: Record<string, ProviderVisual> = {
     color: '1C1C1E',
     logoUrl: kimiIcon,
   },
-  bailian_token: {
-    id: 'bailian_token',
-    label: 'Bailian Token Plan',
+  bailian_plan: {
+    id: 'bailian_plan',
+    label: 'Bailian Plan',
     color: 'FF6A00',
     logoUrl: bailianIcon,
   },
-  bailian_coding: {
-    id: 'bailian_coding',
-    label: 'Bailian Coding Plan',
-    color: 'FF6A00',
-    logoUrl: bailianIcon,
-  },
-  tencent_token: {
-    id: 'tencent_token',
-    label: 'Tencent Cloud Token Plan',
+  tencent: {
+    id: 'tencent',
+    label: 'Tencent Cloud',
     color: '0052D9',
     logoUrl: tencentcloudIcon,
   },
-  tencent_coding: {
-    id: 'tencent_coding',
-    label: 'Tencent Cloud Coding Plan',
-    color: '0052D9',
-    logoUrl: tencentcloudIcon,
-  },
-  glm_coding: {
-    id: 'glm_coding',
-    label: 'GLM Coding Plan',
-    color: '2B60D6',
-    logoUrl: zaiIcon,
-  },
-  volcengine_agent: {
-    id: 'volcengine_agent',
-    label: 'Volcengine Agent Plan',
-    color: '1664FF',
-    logoUrl: volcengineIcon,
-  },
-  volcengine_coding: {
-    id: 'volcengine_coding',
-    label: 'Volcengine Coding Plan',
+  volcengine: {
+    id: 'volcengine',
+    label: 'Volcengine Ark',
     color: '1664FF',
     logoUrl: volcengineIcon,
   },

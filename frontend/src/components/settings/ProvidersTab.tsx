@@ -5,6 +5,7 @@ import {
   ApiField,
   ApiProvider,
   Model,
+  ProviderRegion,
   CustomProviderPayload,
   fetchChatGPTStatus,
   logoutChatGPT,
@@ -130,6 +131,87 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
         />
       ) : (
         <span className="text-[10px] font-black text-white select-none">{initials}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── RegionPicker ────────────────────────────────────────────────────────────
+
+/** The provider's *_BASE_URL field, which a region choice writes. */
+function baseUrlField(provider: ApiProvider): ApiField | undefined {
+  return provider.fields.find((field) => field.key.includes('BASE_URL'));
+}
+
+/**
+ * The region whose endpoint is in use: the saved Base URL's, the first when
+ * none is saved, or none when the saved one matches no region (a custom URL).
+ */
+function activeRegion(provider: ApiProvider, baseUrl: string): ProviderRegion | undefined {
+  const regions = provider.regions ?? [];
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return regions[0];
+  return regions.find((region) => region.base_url.replace(/\/+$/, '') === trimmed);
+}
+
+function regionName(region: ProviderRegion, locale: string): string {
+  return locale.startsWith('zh') && region.name_zh ? region.name_zh : region.name;
+}
+
+interface RegionPickerProps {
+  provider: ApiProvider;
+  selected?: ProviderRegion;
+  custom: boolean;
+  onSelect: (region: ProviderRegion) => void;
+  onCustom: () => void;
+}
+
+function RegionPicker({ provider, selected, custom, onSelect, onCustom }: RegionPickerProps) {
+  const { t, locale } = useI18n();
+  const regions = provider.regions ?? [];
+  const label = provider.region_label === 'plan' ? 'plan' : 'region';
+  const chip = (active: boolean) =>
+    `border-2 border-brutal-black px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+      active
+        ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+        : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-700'
+    }`;
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
+        {t(`settings.providers.regionPicker.${label}`)}
+      </span>
+      <div role="radiogroup" className="flex flex-wrap gap-1.5">
+        {regions.map((region) => {
+          const active = !custom && selected?.id === region.id;
+          return (
+            <button
+              key={region.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              title={region.base_url}
+              onClick={() => onSelect(region)}
+              className={chip(active)}
+            >
+              {regionName(region, locale)}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={custom}
+          onClick={onCustom}
+          className={chip(custom)}
+        >
+          {t('settings.providers.regionPicker.custom')}
+        </button>
+      </div>
+      {provider.split_accounts && (
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          {t('settings.providers.regionPicker.splitAccounts')}
+        </p>
       )}
     </div>
   );
@@ -644,6 +726,8 @@ export function ProvidersTab({
   const [syncResult, setSyncResult] = useState<string | null>(null);
   // Tracks which secret field keys are currently in edit mode (user clicked "Change")
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+  // Providers whose Base URL is being typed by hand rather than picked.
+  const [customRegion, setCustomRegion] = useState<Set<string>>(new Set());
   useEffect(() => {
     onCredentialDraftChange?.(editingFields.size > 0 || Object.keys(keyDrafts).length > 0);
   }, [editingFields, keyDrafts, onCredentialDraftChange]);
@@ -654,6 +738,14 @@ export function ProvidersTab({
   };
 
   const cancelEditing = (field: ApiField) => {
+    // Backing out of a custom Base URL goes back to the region picker.
+    setCustomRegion((prev) => {
+      const owners = providers.filter((p) => p.fields.some((f) => f.key === field.key));
+      if (!owners.some((p) => prev.has(p.id))) return prev;
+      const next = new Set(prev);
+      for (const owner of owners) next.delete(owner.id);
+      return next;
+    });
     setEditingFields((prev) => {
       const s = new Set(prev);
       s.delete(field.key);
@@ -815,6 +907,15 @@ export function ProvidersTab({
           const activeTab = activeTabs[provider.id] || 'credentials';
           const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
           const isEnabled = conf.enabled_models.length > 0;
+          const regionField = provider.regions?.length ? baseUrlField(provider) : undefined;
+          const savedBaseUrl = regionField
+            ? (keyDrafts[regionField.key] ?? apiKeys[regionField.key] ?? '')
+            : '';
+          const region = regionField ? activeRegion(provider, savedBaseUrl) : undefined;
+          // A saved URL that is none of the regions' was typed by hand.
+          const customBaseUrl =
+            !!regionField && (customRegion.has(provider.id) || (!!savedBaseUrl.trim() && !region));
+          const keyUrl = (!customBaseUrl && region?.key_url) || provider.key_url;
 
           if (provider.id === 'chatgpt') {
             return (
@@ -923,9 +1024,28 @@ export function ProvidersTab({
               <div className="flex flex-1 flex-col gap-4 p-4">
                 {activeTab === 'credentials' && (
                   <div className="space-y-4">
-                    {provider.key_url && (
+                    {regionField && (
+                      <RegionPicker
+                        provider={provider}
+                        selected={region}
+                        custom={customBaseUrl}
+                        onSelect={(picked) => {
+                          setCustomRegion((prev) => {
+                            const next = new Set(prev);
+                            next.delete(provider.id);
+                            return next;
+                          });
+                          onKeyChange(regionField.key, picked.base_url);
+                        }}
+                        onCustom={() => {
+                          setCustomRegion((prev) => new Set(prev).add(provider.id));
+                          startEditing(regionField.key);
+                        }}
+                      />
+                    )}
+                    {keyUrl && (
                       <a
-                        href={provider.key_url}
+                        href={keyUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-block text-xs font-bold underline text-blue-600 dark:text-blue-400"
@@ -934,6 +1054,8 @@ export function ProvidersTab({
                       </a>
                     )}
                     {provider.fields.map((field) => {
+                      // A picked region already says where requests go.
+                      if (field.key === regionField?.key && !customBaseUrl) return null;
                       const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
                       const isConfigured =
                         (field.isSet || !!apiKeys[field.key]) &&
