@@ -167,58 +167,55 @@ def test_pull_clears_untracked_payload_files(tmp_path: Path):
     assert (payload / "node_devices.json").read_text(encoding="utf-8") == "[]"
 
 
-def test_fetch_updates_tracking_ref_for_non_origin_remote(tmp_path, monkeypatch):
-    """The authenticated fetch must name the *configured* remote in its refspec.
+def test_fetch_updates_tracking_ref_for_non_origin_remote(tmp_path: Path):
+    """Fetch must update the *configured* remote's tracking ref.
 
     `_push_with_rebase` and the pull preview both resolve "<remote>/<branch>",
-    so a refspec hardcoded to refs/remotes/origin/<branch> leaves a non-origin
-    remote's tracking ref missing (pull fails) or stale (previews and auto-sync
-    silently use old data).
+    so a fetch that only updated origin (or FETCH_HEAD) would leave a
+    non-origin remote's tracking ref missing or stale.
     """
+    repo = make_repo(tmp_path)
+    git(repo, "remote", "rename", "origin", "github")
+    other = _clone_device(tmp_path, "other")
+    (other / "new.txt").write_text("remote change", encoding="utf-8")
+    git(other, "add", "new.txt")
+    git(other, "commit", "-m", "remote change")
+    git(other, "push", "origin", "master")
+
+    GitHubSyncProvider(repo, remote="github", branch="master").refresh_remote()
+
+    assert git(repo, "rev-parse", "github/master") == git(other, "rev-parse", "HEAD")
+
+
+def test_remote_calls_use_token_only_for_github(tmp_path: Path, monkeypatch):
     from suzent.sync import provider as provider_module
 
-    captured: dict[str, object] = {}
+    calls: list[tuple] = []
+    resolved: list[int] = []
 
-    def fake_fetch(cwd, remote_url, branch, remote="origin"):
-        captured["remote"] = remote
-        captured["branch"] = branch
-        return "fetched"
-
-    monkeypatch.setattr(provider_module, "resolve_github_token", lambda: "tok")
-    monkeypatch.setattr(provider_module, "git_fetch_with_token", fake_fetch)
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    prov = provider_module.GitHubSyncProvider(repo, remote="github", branch="main")
-    monkeypatch.setattr(
-        prov, "_remote_url", lambda: "https://github.com/alice/brain.git"
-    )
-
-    assert prov._fetch() == "fetched"
-    assert captured["remote"] == "github"
-    assert captured["branch"] == "main"
-
-
-def test_fetch_with_token_builds_refspec_from_remote_name(tmp_path, monkeypatch):
-    from suzent.sync import github_token
-
-    captured: dict[str, tuple] = {}
-
-    def fake_run_git(cwd, *args, extra_env=None):
-        captured["args"] = args
+    def fake_run_git(cwd, *args, token=None):
+        calls.append((args, token))
+        if args[:2] == ("remote", "get-url"):
+            return "https://github.com/alice/brain.git\n"
         return ""
 
-    monkeypatch.setattr(github_token, "_run_git", fake_run_git)
-    github_token.git_fetch_with_token(
-        tmp_path, "https://github.com/alice/brain.git", "main", "github"
-    )
-    assert "main:refs/remotes/github/main" in captured["args"]
+    def fake_resolve():
+        resolved.append(1)
+        return "tok"
 
-    # Default stays "origin" for every existing caller.
-    github_token.git_fetch_with_token(
-        tmp_path, "https://github.com/alice/brain.git", "main"
-    )
-    assert "main:refs/remotes/origin/main" in captured["args"]
+    monkeypatch.setattr(provider_module, "run_git", fake_run_git)
+    monkeypatch.setattr(provider_module, "resolve_github_token", fake_resolve)
+
+    prov = provider_module.GitHubSyncProvider(tmp_path, remote="github", branch="main")
+    prov._fetch()
+    prov._push()
+
+    remote_calls = [c for c in calls if c[0][0] in {"fetch", "push"}]
+    assert remote_calls == [
+        (("fetch", "github", "main"), "tok"),
+        (("push", "github", "main"), "tok"),
+    ]
+    assert len(resolved) == 1
 
 
 def _device(tmp_path: Path, name: str, repo: Path, monkeypatch) -> GitHubSyncService:

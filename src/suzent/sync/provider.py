@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from suzent.logger import get_logger
+from suzent.sync.git_transport import is_github_https_url, run_git
 from suzent.sync.github_api import resolve_github_token
-from suzent.sync.github_token import (
-    _redact_git_credentials,
-    authed_remote_for_push,
-    git_fetch_with_token,
-    git_pull_with_token,
-    git_push_with_token,
-)
 from suzent.sync.payload import PAYLOAD_DIR_NAME
 
 logger = get_logger(__name__)
@@ -28,6 +21,8 @@ class GitHubSyncProvider:
         self.repo_path = repo_path.expanduser().resolve()
         self.remote = remote
         self.branch = branch
+        self._token: str | None = None
+        self._token_resolved = False
 
     def validate(self, *, require_clean: bool = False) -> dict[str, str | bool]:
         if not self.repo_path.exists():
@@ -182,38 +177,28 @@ class GitHubSyncProvider:
         return self._git("remote", "get-url", self.remote).strip()
 
     def _fetch(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_fetch_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-                self.remote,
-            )
-        return self._git("fetch", self.remote, self.branch)
+        return self._git_remote("fetch", self.remote, self.branch)
 
     def _pull(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_pull_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-            )
-        return self._git("pull", "--ff-only", self.remote, self.branch)
+        return self._git_remote("pull", "--ff-only", self.remote, self.branch)
 
     def _push(self) -> str:
-        token = resolve_github_token()
-        remote_url = self._remote_url()
-        if token and "github.com" in remote_url:
-            return git_push_with_token(
-                self.repo_path,
-                authed_remote_for_push(remote_url, token),
-                self.branch,
-            )
-        return self._git("push", self.remote, self.branch)
+        return self._git_remote("push", self.remote, self.branch)
+
+    def _git_remote(self, *args: str) -> str:
+        """Run a git command that talks to the remote, authenticated if GitHub."""
+        token = (
+            self._github_token() if is_github_https_url(self._remote_url()) else None
+        )
+        return run_git(self.repo_path, *args, token=token)
+
+    def _github_token(self) -> str | None:
+        # Resolve once per provider (one sync operation): resolving may refresh
+        # the token over HTTP, and a sync makes several remote calls.
+        if not self._token_resolved:
+            self._token = resolve_github_token()
+            self._token_resolved = True
+        return self._token
 
     def _rebase_onto(self, remote_ref: str) -> None:
         """Rebase current branch onto remote_ref, raising SyncConflictError on conflict.
@@ -247,35 +232,4 @@ class GitHubSyncProvider:
         return self._push()
 
     def _git(self, *args: str) -> str:
-        completed = subprocess.run(
-            ["git", *args],
-            cwd=self.repo_path,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            detail = _redact_git_credentials(
-                completed.stderr.strip() or completed.stdout.strip()
-            )
-            command = " ".join(_redact_git_credentials(arg) for arg in args)
-            raise RuntimeError(f"git {command} failed: {detail}")
-        return completed.stdout
-
-
-def git_remote_names(repo_path: Path) -> list[str]:
-    """List the remotes configured in ``repo_path``; empty list if git fails."""
-    completed = subprocess.run(
-        ["git", "remote"],
-        cwd=repo_path,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return []
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+        return run_git(self.repo_path, *args)

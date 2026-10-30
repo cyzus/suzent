@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 from suzent.config import DATA_DIR
 from suzent.logger import get_logger
+from suzent.sync.git_transport import git_config_value, run_git
 from suzent.sync.github_api import (
     GitHubApiError,
     create_private_repo,
@@ -16,11 +16,6 @@ from suzent.sync.github_api import (
     resolve_github_token,
 )
 from suzent.sync.github_device_flow import GITHUB_APP_INSTALL_URL
-from suzent.sync.github_token import (
-    _redact_git_credentials,
-    authed_clone_url,
-    git_push_with_token,
-)
 from suzent.sync.models import SyncProfile
 from suzent.sync.provider import GitHubSyncProvider
 
@@ -145,7 +140,7 @@ def quickstart_github_sync(
         _ensure_remote(target, remote, remote_url, actions)
         if not cloned_existing_remote:
             created, install_required = _create_github_repo_api(
-                target, token, username, slug, branch_name, warnings
+                target, token, username, slug, remote, branch_name, warnings
             )
             if created:
                 actions.append(created)
@@ -219,15 +214,15 @@ def _create_github_repo_api(
     token: str,
     username: str,
     repo_name: str,
+    remote: str,
     branch: str,
     warnings: list[str],
 ) -> tuple[str | None, bool]:
     full_name = f"{username}/{repo_name}"
     try:
         if repo_exists(token, username, repo_name):
-            push_url = authed_clone_url(username, repo_name, token)
             try:
-                git_push_with_token(path, push_url, branch)
+                run_git(path, "push", remote, branch, token=token)
             except RuntimeError as exc:
                 warnings.append(str(exc))
             return f"Linked to existing GitHub repository {full_name}", False
@@ -236,8 +231,7 @@ def _create_github_repo_api(
             repo_name,
             description="Suzent portable brain sync",
         )
-        push_url = authed_clone_url(username, repo_name, token)
-        git_push_with_token(path, push_url, branch)
+        run_git(path, "push", remote, branch, token=token)
         return (
             f"Created private GitHub repository {full_name} and pushed initial commit",
             False,
@@ -272,15 +266,8 @@ def _clone_existing_repo(
             "Choose an empty folder or an existing Git repository."
         )
 
-    clone_url = remote_url
-    if token:
-        owner_repo = remote_url.removeprefix("https://github.com/").removesuffix(".git")
-        if "/" in owner_repo:
-            owner, repo = owner_repo.split("/", 1)
-            clone_url = authed_clone_url(owner, repo, token)
     target.parent.mkdir(parents=True, exist_ok=True)
-    _run_git(None, "clone", "--origin", remote, clone_url, str(target))
-    _git_in(target, "remote", "set-url", remote, remote_url)
+    run_git(None, "clone", "--origin", remote, remote_url, str(target), token=token)
     _ensure_local_git_identity(target)
     actions.append(f"Cloned existing GitHub repository into {target}")
 
@@ -303,16 +290,7 @@ def _ensure_local_git_identity(path: Path) -> None:
 
 
 def _git_config(path: Path, key: str) -> str:
-    completed = subprocess.run(
-        ["git", "config", key],
-        cwd=path,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return ""
-    return completed.stdout.strip()
+    return git_config_value(path, key)
 
 
 def _detect_branch(path: Path) -> str:
@@ -339,21 +317,4 @@ def _ensure_remote(
 
 
 def _git_in(path: Path, *args: str) -> str:
-    return _run_git(path, *args)
-
-
-def _run_git(cwd: Path | None, *args: str) -> str:
-    completed = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        detail = _redact_git_credentials(
-            completed.stderr.strip() or completed.stdout.strip()
-        )
-        command = " ".join(_redact_git_credentials(arg) for arg in args)
-        raise RuntimeError(f"git {command} failed: {detail}")
-    return completed.stdout
+    return run_git(path, *args)
