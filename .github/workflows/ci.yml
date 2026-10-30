@@ -32,6 +32,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           REQUESTED_PRODUCT: ${{ inputs.release_product }}
         run: |
           set -euo pipefail
@@ -45,6 +46,9 @@ jobs:
                 release/mobile) product=mobile ;;
                 release/browser) product=browser ;;
               esac
+              if [[ "$PR_AUTHOR" == 'dependabot[bot]' ]]; then
+                args+=(--dependency-update)
+              fi
             fi
           elif [[ "$EVENT" == workflow_dispatch && -n "$REQUESTED_PRODUCT" ]]; then
             product="$REQUESTED_PRODUCT"
