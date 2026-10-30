@@ -9,6 +9,41 @@ export interface ActivitySummaryTool {
   output?: string;
 }
 
+const CATEGORIES: Record<string, string> = {
+  run_command: 'commands',
+  start_command: 'commands',
+  web_search: 'searches',
+  glob_search: 'searches',
+  grep_search: 'searches',
+  memory_search: 'searches',
+  session_search: 'searches',
+  webpage_fetch: 'web',
+  browser_action: 'web',
+  agent: 'delegated',
+  agent_list: 'agents',
+  agent_read: 'agents',
+  agent_send: 'agents',
+  agent_stop: 'agents',
+  create_tasks: 'tasks',
+  update_task: 'tasks',
+  list_tasks: 'tasks',
+  manage_goal: 'tasks',
+  memory_update: 'memory',
+  update_notes: 'memory',
+  skill_execute: 'skills',
+};
+
+function parseArgs(raw: string | undefined): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      return parsed as Record<string, unknown>;
+  } catch {
+    /* Arguments can be incomplete in restored calls. */
+  }
+  return {};
+}
+
 export function summarizeActivity(
   tools: ActivitySummaryTool[],
   t: TranslateFn
@@ -28,25 +63,17 @@ export function summarizeActivity(
       continue;
     }
     const name = normalizeToolName(tool.toolName ?? '');
-    if (['run_command', 'start_command'].includes(name)) {
-      add('commands');
+    if (name === 'agent_dispatch') {
+      add(parseArgs(tool.args).agent_id === 'new' ? 'delegated' : 'agents');
       continue;
     }
-    if (
-      ['web_search', 'glob_search', 'grep_search', 'memory_search', 'session_search'].includes(name)
-    ) {
-      add('searches');
+    const category = CATEGORIES[name];
+    if (category) {
+      add(category);
       continue;
     }
     if (['read_file', 'write_file', 'edit_file'].includes(name)) {
-      let args: Record<string, unknown> = {};
-      try {
-        const parsed: unknown = JSON.parse(tool.args || '{}');
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-          args = parsed as Record<string, unknown>;
-      } catch {
-        /* Arguments can be incomplete in restored calls. */
-      }
+      const args = parseArgs(tool.args);
       const path = [args.file_path, args.path, args.filePath, args.filename].find(
         (value) => typeof value === 'string' && value.trim()
       );
@@ -61,6 +88,12 @@ export function summarizeActivity(
       }
     }
     add('other');
+  }
+  // "Other" only reads right beside something it is other than.
+  const others = counts.get('other');
+  if (others && ![...counts.keys()].some((key) => !['other', 'failed', 'running'].includes(key))) {
+    counts.delete('other');
+    counts.set('tools', others);
   }
   return (
     [...counts].map(([key, count]) => t(`activityRail.summary.${key}`, { count })).join(' · ') ||
