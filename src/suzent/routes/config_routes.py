@@ -8,8 +8,10 @@ application settings including user preferences, API keys, and provider manageme
 import json
 import os
 import traceback
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 import asyncio
 
 from starlette.requests import Request
@@ -483,6 +485,7 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                 "user_defined": spec.user_defined,
                 "regions": spec.regions,
                 "region_label": spec.region_label,
+                "group": spec.group,
                 "split_accounts": spec.split_accounts,
                 "fields": [],
                 "models": [],
@@ -1153,45 +1156,60 @@ async def get_role_suggestions(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+_CUSTOM_PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+#: Only these honour a custom base_url; the rest are tied to one vendor.
+_CUSTOM_PROVIDER_API_TYPES = ("openai", "anthropic")
+
+
+def _custom_provider_error(data: dict[str, Any]) -> str | None:
+    """Why a custom provider can't be saved, or None if it can."""
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+    provider_id = data.get("id")
+    if not isinstance(provider_id, str) or not _CUSTOM_PROVIDER_ID.match(provider_id):
+        # A slash would split the provider off the model name in every model id.
+        return "Provider ID must be lowercase letters, digits and underscores, starting with a letter"
+    if provider_id in PROVIDER_REGISTRY_BY_ID:
+        return f"Provider '{provider_id}' already exists"
+    if not isinstance(data.get("label"), str) or not data["label"].strip():
+        return "Missing required field: label"
+    if data.get("api_type") not in _CUSTOM_PROVIDER_API_TYPES:
+        return "api_type must be 'openai' or 'anthropic'"
+    base_url = data.get("base_url")
+    if not isinstance(base_url, str) or urlparse(base_url).scheme not in (
+        "http",
+        "https",
+    ):
+        return "base_url must be an http(s) URL"
+    for field in data.get("fields", []):
+        key = field.get("key") if isinstance(field, dict) else None
+        if not isinstance(key, str) or not key:
+            return "Every field needs a key"
+        # Sharing a built-in's variable would quietly share its secret.
+        for spec in PROVIDER_REGISTRY_BY_ID.values():
+            if any(f.get("key") == key for f in spec.fields):
+                return f"'{key}' is already used by {spec.label}"
+    return None
+
+
 async def save_custom_provider(request: Request) -> JSONResponse:
     """POST /api/config/providers/custom — add a user-defined provider."""
     try:
-        import json as _json
-        from suzent.core.providers.catalog import _CONFIG_DIR, reload_registry
-
-        data = await request.json()
-
-        # Validate required fields
-        for field in ("id", "label", "api_type"):
-            if field not in data:
-                return JSONResponse(
-                    {"error": f"Missing required field: {field}"}, status_code=400
-                )
-
-        user_path = _CONFIG_DIR / "providers.user.json"
-
-        # Load existing user providers
-        existing: list = []
-        if user_path.exists():
-            try:
-                raw = _json.loads(user_path.read_text(encoding="utf-8"))
-                existing = raw.get("providers", [])
-            except _json.JSONDecodeError:
-                pass
-
-        # Check for duplicate ID
-        if any(p.get("id") == data["id"] for p in existing):
-            return JSONResponse(
-                {"error": f"Provider '{data['id']}' already exists"}, status_code=409
-            )
-
-        existing.append(data)
-        user_path.write_text(
-            _json.dumps({"providers": existing}, indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        from suzent.core.providers.catalog import (
+            load_user_provider_entries,
+            reload_registry,
+            save_user_provider_entries,
         )
 
-        # Hot-reload
+        data = await request.json()
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Expected a JSON object"}, status_code=400)
+        error = _custom_provider_error(data)
+        if error:
+            status = 409 if error.endswith("already exists") else 400
+            return JSONResponse({"error": error}, status_code=status)
+
+        save_user_provider_entries([*load_user_provider_entries(), data])
         reload_registry()
 
         return JSONResponse({"success": True, "provider_id": data["id"]})
@@ -1219,30 +1237,21 @@ async def sync_capabilities(request: Request) -> JSONResponse:
 async def delete_custom_provider(request: Request) -> JSONResponse:
     """DELETE /api/config/providers/custom/{provider_id} — remove a user-defined provider."""
     try:
-        import json as _json
-        from suzent.core.providers.catalog import _CONFIG_DIR, reload_registry
+        from suzent.core.providers.catalog import (
+            load_user_provider_entries,
+            reload_registry,
+            save_user_provider_entries,
+        )
 
         provider_id = request.path_params["provider_id"]
-
-        user_path = _CONFIG_DIR / "providers.user.json"
-        if not user_path.exists():
-            return JSONResponse(
-                {"error": "No custom providers configured"}, status_code=404
-            )
-
-        raw = _json.loads(user_path.read_text(encoding="utf-8"))
-        providers = raw.get("providers", [])
+        providers = load_user_provider_entries()
         filtered = [p for p in providers if p.get("id") != provider_id]
-
         if len(filtered) == len(providers):
             return JSONResponse(
                 {"error": f"Provider '{provider_id}' not found"}, status_code=404
             )
 
-        user_path.write_text(
-            _json.dumps({"providers": filtered}, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        save_user_provider_entries(filtered)
         reload_registry()
 
         return JSONResponse({"success": True})

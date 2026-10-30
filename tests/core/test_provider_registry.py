@@ -151,6 +151,11 @@ class TestRegistryLoading:
             assert len(ids) == len(set(ids)), spec.id
             assert spec.region_label in {"region", "plan"}, spec.id
 
+    def test_every_built_in_has_a_group(self):
+        for spec in PROVIDER_REGISTRY:
+            if not spec.user_defined:
+                assert spec.group in {"global", "china", "relay", "local"}, spec.id
+
     def test_regions_fill_in_a_missing_base_url(self):
         spec = _parse_provider(
             {
@@ -214,7 +219,13 @@ class TestUserProviders:
             )
         )
 
-        with patch("suzent.core.providers.catalog._CONFIG_DIR", tmp_path):
+        with (
+            patch("suzent.core.providers.catalog._CONFIG_DIR", tmp_path),
+            patch(
+                "suzent.core.providers.catalog.user_providers_path",
+                lambda: tmp_path / "data" / "providers.user.json",
+            ),
+        ):
             specs = load_provider_registry()
 
         ids = [s.id for s in specs]
@@ -237,7 +248,13 @@ class TestUserProviders:
             )
         )
 
-        with patch("suzent.core.providers.catalog._CONFIG_DIR", tmp_path):
+        with (
+            patch("suzent.core.providers.catalog._CONFIG_DIR", tmp_path),
+            patch(
+                "suzent.core.providers.catalog.user_providers_path",
+                lambda: tmp_path / "data" / "providers.user.json",
+            ),
+        ):
             specs = load_provider_registry()
 
         assert len(specs) == 1
