@@ -164,11 +164,6 @@ def test_quickstart_clones_existing_remote_repo(
         "_remote_repo_exists",
         lambda token, username, repo_name: True,
     )
-    monkeypatch.setattr(
-        quickstart_module,
-        "authed_clone_url",
-        lambda owner, repo, token: str(remote),
-    )
 
     result = quickstart_github_sync(
         repo_name="alice/custom-brain",
