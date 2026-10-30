@@ -248,11 +248,12 @@ struct ContentView: View {
                 result.append(Project(id: id, name: chat.projectName ?? id))
             }
         }
-        // The backend lists chats newest-first (updated_at desc), so a project's earliest
-        // chat index is its latest activity. Mirrors the desktop sidebar's sortedProjects
-        // ordering without adding a timestamp to the mobile payload.
+        // The recent page is newest-first (updated_at desc), so a project's earliest chat index
+        // there is its latest activity. Mirrors the desktop sidebar's sortedProjects ordering
+        // without adding a timestamp to the mobile payload. model.chats is not ranked: opening a
+        // project appends its page there, which would reorder the projects on every expand.
         var activity: [String: Int] = [:]
-        for (index, chat) in model.chats.enumerated() {
+        for (index, chat) in model.pageChats(ChatPageQuery()).enumerated() {
             guard let id = chat.projectId, activity[id] == nil else { continue }
             activity[id] = index
         }
@@ -529,7 +530,7 @@ struct ContentView: View {
                     if !search.isEmpty {
                         sidebarHeading("Search results").sidebarListRow()
                         let rows = sidebarChats(model.pageChats(searchQuery), search: search, expanded: expandedAgents)
-                        conversationRows(rows)
+                        conversationRows(rows, scope: "search")
                         pageFooter(searchQuery)
                         if rows.isEmpty && model.chatPages[searchQuery] != nil {
                             Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
@@ -537,7 +538,7 @@ struct ContentView: View {
                     } else {
                         if !pinnedRows.isEmpty {
                             sidebarHeading("Pinned").sidebarListRow()
-                            conversationRows(pinnedRows)
+                            conversationRows(pinnedRows, scope: "pinned")
                             pageFooter(ChatPageQuery("pinned"))
                         }
                         let recent = recentRows.filter { $0.depth == 0 }
@@ -551,7 +552,7 @@ struct ContentView: View {
                                 }
                             }.sidebarListRow()
                             let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
-                            conversationRows(recentRows.filter { recentIDs.contains($0.root.id) })
+                            conversationRows(recentRows.filter { recentIDs.contains($0.root.id) }, scope: "recent")
                         }
                         if showAllRecent { pageFooter(ChatPageQuery()) }
                         if !projects.isEmpty { sidebarHeading("Projects").sidebarListRow() }
@@ -622,13 +623,16 @@ struct ContentView: View {
                 if isOpen { await model.loadPage(query) }
             }
         if isOpen {
-            conversationRows(rows, spacing: 0)
+            conversationRows(rows, scope: "project:\(project.id)", spacing: 0)
             pageFooter(query)
         }
     }
 
-    private func conversationRows(_ entries: [SidebarChatEntry], spacing: CGFloat = 6) -> some View {
-        ForEach(entries) { entry in
+    /// One List holds every section and a chat can sit in several (Recent and its project), so row
+    /// identity is scoped per section; a shared chat id makes the List reorder rows on expand.
+    private func conversationRows(_ entries: [SidebarChatEntry], scope: String, spacing: CGFloat = 6) -> some View {
+        ForEach(entries.map { ("\(scope):\($0.id)", $0) }, id: \.0) { item in
+            let entry = item.1
             let chat = entry.chat
             ChatSidebarRow(chat: chat, selected: wide && model.selected?.id == chat.id && !showSettings,
                            parentTitle: model.chats.first { $0.id == chat.parentChatId }?.title,
@@ -704,8 +708,8 @@ struct ContentView: View {
             ForEach(scheduledExpanded || !search.isEmpty ? visible : []) { group in
                 if let task = group.task {
                     scheduledTaskRow(task, root: group.root).sidebarListRow()
-                } else if let root = group.root { conversationRows([root]) }
-                conversationRows(group.children, spacing: 0)
+                } else if let root = group.root { conversationRows([root], scope: "scheduled") }
+                conversationRows(group.children, scope: "scheduled", spacing: 0)
             }
             if scheduledExpanded && search.isEmpty && groups.count > previewLimit {
                 Button { showAllScheduled.toggle() } label: {
