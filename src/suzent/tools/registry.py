@@ -184,12 +184,22 @@ def _make_tool(
 _REGISTRY: Optional[Dict[str, Union[Callable, PydanticTool]]] = None
 
 
+def reset_tool_caches() -> None:
+    """Forget the collected tool classes, so plugin tools added or removed
+    in the running process are picked up by the next lookup."""
+    global _REGISTRY
+    _REGISTRY = None
+    _all_tool_classes.cache_clear()
+    _name_indexes.cache_clear()
+    get_model_excluded_metadata.cache_clear()
+
+
 @functools.cache
 def _all_tool_classes() -> tuple:
-    """Import and return all tool classes in display order.
+    """Import and return all tool classes in display order, plugin tools last.
 
-    Cached: the list is fixed once the process has imported it, and
-    ``get_tool_class_name`` runs per discovered tool on the streaming path, so
+    Cached until ``reset_tool_caches()``, which runs when a plugin is turned
+    on or off; ``get_tool_class_name`` runs per discovered tool on the streaming path, so
     rebuilding it per call was pure overhead.
     """
     from suzent.tools.filesystem import (
@@ -239,7 +249,7 @@ def _all_tool_classes() -> tuple:
         AgentStopTool,
     )
 
-    return (
+    builtin = (
         ReadFileTool,
         WriteFileTool,
         EditFileTool,
@@ -281,6 +291,27 @@ def _all_tool_classes() -> tuple:
         FocalMessageTool,
         FocalReactionTool,
     )
+    return builtin + _plugin_tool_classes(builtin)
+
+
+def _plugin_tool_classes(builtin: tuple) -> tuple:
+    """Enabled plugins' tools, minus any whose names would shadow another tool."""
+    from suzent.plugins import get_plugin_manager
+
+    names = {cls.name for cls in builtin}
+    runtime_names = {cls.tool_name for cls in builtin}
+    accepted = []
+    for cls in get_plugin_manager().tool_classes():
+        if cls.name in names or cls.tool_name in runtime_names:
+            logger.warning(
+                f"Plugin tool {cls.name} ({cls.tool_name}) clashes with an "
+                "existing tool and was skipped"
+            )
+            continue
+        names.add(cls.name)
+        runtime_names.add(cls.tool_name)
+        accepted.append(cls)
+    return tuple(accepted)
 
 
 CAPABILITY_DESCRIPTIONS = {

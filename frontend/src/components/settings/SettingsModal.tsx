@@ -30,6 +30,7 @@ import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
 import { McpTab } from './McpTab';
+import { PluginsTab } from './PluginsTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
 import { NotificationsTab } from './NotificationsTab';
@@ -683,6 +684,7 @@ export function SettingsModal({
       )}
 
       {activeCategory === 'acp-agents' && <AcpAgentsTab />}
+      {activeCategory === 'plugins' && <PluginsTab />}
 
       {activeCategory === 'automation' && (
         <AutomationTab models={backendConfig?.models || []} tools={backendConfig?.tools || []} />

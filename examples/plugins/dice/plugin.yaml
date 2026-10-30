@@ -1,0 +1,5 @@
+id: dice
+name: Dice
+version: 0.1.0
+description: Example plugin that adds a dice tool, a /roll command and a skill.
+api_version: 1

@@ -512,6 +512,12 @@ def build_agent_config(
 _TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id", "_retry_expected_revision"}
 
 
+def invalidate_agent() -> None:
+    """Build a fresh agent on the next request, e.g. after a plugin added tools."""
+    global agent_instance
+    agent_instance = None
+
+
 async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Agent:
     """
     Get the current agent instance or create a new one if needed.

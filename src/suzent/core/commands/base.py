@@ -98,10 +98,40 @@ def register_command(
     return decorator
 
 
+def register_plugin_command(
+    handler: Callable[..., Any], aliases: list[str], options: dict[str, Any]
+) -> bool:
+    """Register a plugin's command unless one of its aliases is already taken."""
+    taken = {alias.lower() for meta in _META for alias in meta.aliases}
+    if any(alias.lower() in taken for alias in aliases):
+        return False
+    register_command(aliases, **options)(handler)
+    return True
+
+
+def unregister_plugin_command(primary_alias: str) -> None:
+    """Remove a command a plugin registered, with all of its aliases."""
+    meta = next((m for m in _META if m.aliases[0] == primary_alias), None)
+    if meta is None:
+        return
+    _META.remove(meta)
+    names = {alias.lower() for alias in meta.aliases}
+    bot_cli.registered_commands[:] = [
+        info for info in bot_cli.registered_commands if info.name not in names
+    ]
+
+
+def _load_plugin_commands() -> None:
+    from suzent.plugins import get_plugin_manager
+
+    get_plugin_manager().load()
+
+
 def list_commands(
     surface: str | None = None, include_hidden: bool = False
 ) -> list[CommandMeta]:
     """Return registered commands, optionally filtered by surface and visibility."""
+    _load_plugin_commands()
     cmds = _META if include_hidden else [m for m in _META if not m.hidden]
 
     if surface is None:
@@ -118,6 +148,7 @@ async def dispatch(ctx: CommandContext, message: str) -> str | None:
     content = message.strip()
     if not content.startswith("/"):
         return None
+    _load_plugin_commands()
 
     try:
         parts = shlex.split(content)

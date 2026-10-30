@@ -20,6 +20,12 @@ def _mount_segment(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "skills"
 
 
+def _plugin_skill_dirs() -> list[tuple[str, Path]]:
+    from suzent.plugins import get_plugin_manager
+
+    return get_plugin_manager().skill_dirs()
+
+
 def _virtual_path_under_mount(path: Path, mounts: list[tuple[Path, str]]) -> str | None:
     """Map a host path through the most specific existing sandbox mount."""
     resolved = path.resolve()
@@ -88,6 +94,14 @@ class SkillManager:
                 )
                 source_roots[external_dir] = "external"
                 source_ids[external_dir] = f"external:{identity_path.name}"
+            for plugin_id, plugin_dir in _plugin_skill_dirs():
+                self.skills_dirs.append(plugin_dir)
+                namespace = f"{plugin_id}-{_mount_segment(plugin_dir.name)}"
+                virtual_roots[plugin_dir] = f"/mnt/skills/plugins/{namespace}"
+                source_roots[plugin_dir] = "plugin"
+                source_ids[plugin_dir] = f"plugin:{plugin_id}"
+                # Enabling the plugin is the user's opt-in to its skills.
+                default_enabled_roots.add(plugin_dir)
         else:
             self.skills_dirs = [skills_dir]
             virtual_roots = {}
@@ -159,6 +173,11 @@ class SkillManager:
         if cls._instance is None:
             cls._instance = SkillManager()
         return cls._instance
+
+    @classmethod
+    def reset_instance(cls):
+        """Rescan skill sources on next use, e.g. after a plugin was turned on or off."""
+        cls._instance = None
 
     def _load_enabled_state(self):
         """Load enabled skills from persistence file."""

@@ -1,0 +1,6 @@
+id: slack
+name: Slack
+version: 1.0.0
+description: Chat with Suzent from Slack.
+channel: slack
+extras: [slack]
