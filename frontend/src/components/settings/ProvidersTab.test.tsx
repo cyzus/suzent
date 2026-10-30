@@ -201,12 +201,14 @@ describe('Provider settings overview', () => {
         />
       </I18nProvider>
     );
-    // Only the provider with a saved key gets a card.
-    expect(html.match(/<details/g)?.length).toBe(2); // the enabled summary and Example
+    expect(html.match(/<details/g)?.length).toBe(4);
     expect(html).toContain('title="Example"');
-    // The catalog stays closed while something is set up.
-    expect(html).not.toContain('China vendors');
-    expect(html).not.toContain('Kimi Code');
+    expect(html).toContain('China vendors');
+    expect(html).toContain('Kimi Code');
+    expect(html).toContain('Ollama');
+    expect(html).not.toContain('aria-haspopup="dialog"');
+    expect(html.match(/>Custom endpoint</g)?.length).toBe(1);
+    expect(html).not.toContain('catalog-panel-');
   });
   it('opens the catalog when nothing is set up yet', () => {
     const html = renderToStaticMarkup(
@@ -236,7 +238,7 @@ describe('Provider settings overview', () => {
     expect(html.indexOf('China vendors')).toBeLessThan(html.indexOf('Kimi Code'));
     expect(html.indexOf('Local &amp; self-hosted')).toBeLessThan(html.indexOf('Ollama'));
     expect(html).toContain('Custom endpoint');
-    expect(html.match(/<details/g)?.length).toBe(1); // only the enabled summary
+    expect(html.match(/<details/g)?.length).toBe(3);
   });
 });
 
