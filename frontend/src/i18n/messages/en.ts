@@ -620,12 +620,11 @@ export const en = {
       builtin: 'Built-in',
       builtinHint: 'Built-in tool — always equipped and cannot be turned off.',
       off: 'Off',
-      offHint: 'Turned off — the agent cannot use this one, and cannot find it by searching.',
+      offHint: 'Off — hidden from the agent and from search',
       searchableNote:
         'Unchecked tools are not loaded up front, but the agent can still find and load most of them mid-task. Ones marked OFF are the exception. Use the ⊘ button to deny a tool outright.',
       denied: 'Denied',
-      deniedHint:
-        'Denied — the agent cannot use this tool or find it by searching, and neither can its sub-agents.',
+      deniedHint: 'Denied — hidden from the agent, its sub-agents and search',
       denyHint: 'Deny this tool for this chat',
       allowHint: 'Allow this tool again',
       denyTool: 'Deny {name}',
@@ -803,7 +802,7 @@ export const en = {
       deleteProvider: 'Remove provider',
       sync: 'Sync Capabilities',
       syncing: 'Syncing...',
-      syncTooltip: 'Pull pricing, context windows, and capability flags from LiteLLM',
+      syncTooltip: 'Sync model pricing and limits from LiteLLM',
       syncDone: 'Synced {providers} providers, {models} models',
       syncFailed: 'Sync failed',
       chatgpt: {
@@ -1019,8 +1018,7 @@ export const en = {
       githubQuickStartRunning: 'Setting up GitHub sync...',
       githubQuickStartDone: 'Connected to {repo}. {summary}',
       githubRepoNameLabel: 'GitHub repository name',
-      githubRepoNameHint:
-        'Creates or links username/{name} on GitHub (private). You can rename it before starting.',
+      githubRepoNameHint: 'Private GitHub repo: username/{name}',
       githubSignInButton: 'Sign in with GitHub',
       githubCheckingAuth: 'Checking GitHub sign-in',
       githubSignInDesc: 'Authorize Suzent to access your GitHub repositories.',
@@ -1062,16 +1060,14 @@ export const en = {
       githubReviewFilesHidden: '{count} more files hidden',
       githubReviewHighRisk: '{count} high risk',
       githubReviewDiscard: 'Discard Outgoing',
-      githubReviewDiscardTitle:
-        'Restore local synced files from the current cloud payload and clear outgoing changes',
+      githubReviewDiscardTitle: 'Reset local files to the cloud copy',
       githubReviewDiscardFile: 'Discard',
       githubReviewDiscardFileTitle: 'Restore this local file from the committed sync payload',
       githubDiscardedOutgoing: 'Discarded {count} outgoing sync changes.',
       githubNoOutgoing: 'No outgoing sync changes to discard.',
       githubDiscardedFile: 'Discarded local change to {path}.',
       githubReviewPull: 'Pull Cloud',
-      githubReviewPullTitle:
-        'Pull cloud changes and let cloud synced content replace local synced content',
+      githubReviewPullTitle: 'Replace local synced files with the cloud copy',
       githubReviewConfirm: 'Confirm {operation}',
       githubSave: 'Save profile',
       githubValidate: 'Validate',

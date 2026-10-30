@@ -47,6 +47,7 @@ import { ProjectRowMenu } from './ProjectRowMenu';
 import { ProjectSettingsDialog } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
+import { hoverText } from '../lib/hoverText';
 
 const ALL_PROJECTS_FILTER = '__all__';
 const SYSTEM_PROJECT_SLUGS = new Set(['default', 'social']);
@@ -1654,7 +1655,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                         onClick={() =>
                                           canOpen ? openChatById(chatId) : onOpenAutomation?.()
                                         }
-                                        title={unresolvedError ?? job.last_result ?? undefined}
+                                        title={hoverText(unresolvedError ?? job.last_result)}
                                         className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-2 text-left disabled:cursor-default"
                                       >
                                         <span className="flex items-center gap-1.5 overflow-hidden">

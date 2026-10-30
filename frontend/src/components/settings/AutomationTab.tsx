@@ -35,6 +35,7 @@ import {
 } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
+import { hoverText } from '../../lib/hoverText';
 
 interface AutomationTabProps {
   models: string[];
@@ -699,7 +700,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           {t('settings.automation.nextRun')} {formatDate(job.next_run_at)}
                         </div>
                         {job.last_result && (
-                          <div className="col-span-2 truncate" title={job.last_result}>
+                          <div className="col-span-2 truncate" title={hoverText(job.last_result)}>
                             {t('settings.automation.result')} {job.last_result.substring(0, 120)}
                             {job.last_result.length > 120 ? '...' : ''}
                           </div>
@@ -707,7 +708,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                         {job.last_error && (
                           <div
                             className="col-span-2 text-red-600 dark:text-red-400 truncate"
-                            title={job.last_error}
+                            title={hoverText(job.last_error)}
                           >
                             {t('settings.automation.errorLabel')} {job.last_error}
                           </div>
@@ -717,7 +718,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                       {/* Prompt preview */}
                       <div
                         className="mt-2 text-xs font-mono text-neutral-400 dark:text-neutral-500 truncate"
-                        title={job.prompt}
+                        title={hoverText(job.prompt)}
                       >
                         {job.prompt.substring(0, 150)}
                         {job.prompt.length > 150 ? '...' : ''}
@@ -757,7 +758,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                                   </span>
                                   <span
                                     className="text-neutral-400 dark:text-neutral-500 truncate"
-                                    title={run.result || run.error || ''}
+                                    title={hoverText(run.result || run.error)}
                                   >
                                     {run.error
                                       ? `ERROR: ${run.error.substring(0, 80)}`
