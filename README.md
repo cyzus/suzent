@@ -221,7 +221,7 @@ One agent, one memory, reachable from every surface. Messaging channels are off 
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
 | **Web console** | Local backend | The same UI in your browser | `suzent web` |
-| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/nodes.md#pair-your-phone) |
+| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/mobile.md) |
 | **Your editor** | ACP | Use Suzent as the agent in Zed and other ACP clients | [Guide](docs/03-features/nodes.md#use-suzent-from-your-editor-acp) |
 | **Other agents** | A2A | Delegate work to other agents, or take work you grant them | [Guide](docs/03-features/nodes.md#work-with-other-agents-a2a) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/05-chat-apps/telegram.md) |
