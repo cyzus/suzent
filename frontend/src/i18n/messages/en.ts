@@ -1627,6 +1627,14 @@ export const en = {
       allClear: 'All clear',
       waitingCount: '{count} waiting on you',
       runningCount: '{count} running',
+      exit: 'Leave Regent',
+      exitShort: 'Back',
+    },
+    regentQueue: {
+      showMore: '{count} more',
+      showLess: 'Show less',
+      projects: 'Projects',
+      shortcuts: 'Shortcuts',
     },
     sections: {
       automation: 'Automation',
