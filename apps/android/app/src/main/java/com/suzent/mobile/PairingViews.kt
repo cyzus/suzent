@@ -9,21 +9,69 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun PairingView(model: MobileModel) {
     var scanning by remember { mutableStateOf(false) }
-    val launchScanner = { scanning = true }
-
     if (scanning) PairingScanner(model) { scanning = false }
+    if (model.pairingCode == null && model.pairingInvitation == null && !model.busy) PairingWelcome(model) { scanning = true }
+    else PairingProgressView(model)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
     var paste by remember { mutableStateOf(false) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = 480.dp).fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight)
+            .padding(horizontal = 8.dp).padding(bottom = PresentationTokens.spaceSmall.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.weight(1f).heightIn(min = PresentationTokens.spaceLarge.dp))
+            GreetingCube(engaged = false, modifier = Modifier.size(168.dp))
+            Text(stringResource(R.string.pairing_heading), Modifier.padding(top = PresentationTokens.spaceLarge.dp),
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(stringResource(R.string.pairing_intro), Modifier.padding(top = PresentationTokens.spaceSmall.dp),
+                color = muted, textAlign = TextAlign.Center)
+            Spacer(Modifier.weight(1f).heightIn(min = PresentationTokens.spaceLarge.dp))
+            SuzentAction(stringResource(R.string.scan_desktop), scan, prominent = true)
+            Text(stringResource(R.string.pairing_where), Modifier.padding(top = PresentationTokens.spaceMedium.dp),
+                color = muted, fontSize = PresentationTokens.typeCaption.sp, textAlign = TextAlign.Center)
+            Row(Modifier.padding(top = PresentationTokens.spaceSmall.dp), verticalAlignment = Alignment.CenterVertically) {
+                SuzentTextButton(onClick = { paste = true }) {
+                    Text(stringResource(R.string.paste_invitation), fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium)
+                }
+                Text("·", color = muted, modifier = Modifier.clearAndSetSemantics {})
+                SuzentTextButton(onClick = model::startDemo) {
+                    Text(stringResource(R.string.demo_enter), fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+    if (paste) ModalBottomSheet(onDismissRequest = { paste = false }, shape = RectangleShape,
+        containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = PresentationTokens.spacePage.dp).padding(bottom = PresentationTokens.spaceLarge.dp),
+            verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp)) {
+            Text(stringResource(R.string.pairing_invitation), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
+            SuzentTextInput(model.invitationText, { model.invitationText = it }, stringResource(R.string.pairing_invitation), multiline = true)
+            SuzentAction(stringResource(R.string.review_invitation), { paste = false; model.stageInvitation(model.invitationText) },
+                prominent = true, enabled = model.invitationText.isNotBlank())
+        }
+    }
+}
+
+@Composable
+private fun PairingProgressView(model: MobileModel) {
     Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         Column(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow))
@@ -70,28 +118,6 @@ fun PairingView(model: MobileModel) {
         } else if (model.busy) {
             PairingProgress(model.pairingStatus ?: stringResource(R.string.checking_addresses))
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
-        } else {
-            Text(stringResource(R.string.pairing_steps))
-            SuzentAction(stringResource(R.string.scan_desktop), {
-                launchScanner()
-            }, prominent = true, enabled = !model.busy)
-            SuzentTextButton(onClick = { paste = !paste }) { Text(stringResource(R.string.paste_invitation)) }
-            if (paste) {
-                SuzentTextInput(model.invitationText, { model.invitationText = it }, stringResource(R.string.pairing_invitation), multiline = true)
-                SuzentAction(stringResource(R.string.review_invitation), { model.stageInvitation(model.invitationText) },
-                    enabled = !model.busy && model.invitationText.isNotBlank())
-            }
-            if (model.canReconnect) {
-                HorizontalDivider()
-                Text(model.origin, style = MaterialTheme.typography.bodySmall)
-                SuzentAction(stringResource(R.string.reconnect), model::connect, enabled = !model.busy)
-            }
-            if (!model.canReconnect) {
-                SuzentTextButton(onClick = model::startDemo) {
-                    Text(stringResource(R.string.demo_enter), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
         }
         Spacer(Modifier.height(PresentationTokens.spaceLarge.dp))
     }

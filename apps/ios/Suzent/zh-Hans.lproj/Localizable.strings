@@ -48,6 +48,7 @@
 "Your desktop will ask you to approve this phone. Node access stays separate." = "桌面端会请求批准这台手机。Node 访问需单独开启。";
 "Request pairing" = "请求配对";
 "On desktop, open Settings → Devices → Mobile access, then choose Pair a phone." = "在桌面端打开「设置 → 设备 → 移动端访问」，选择「配对手机」。";
+"On desktop: Settings → Devices → Mobile access" = "桌面端：设置 → 设备 → 移动端访问";
 "Scan desktop QR code" = "扫描桌面二维码";
 "Paste an invitation instead" = "粘贴配对邀请";
 "Pairing invitation" = "配对邀请";
