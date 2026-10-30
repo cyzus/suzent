@@ -74,6 +74,9 @@ class ProjectModel(SQLModel, table=True):
     # Default working directory for every chat in the project. A chat's own
     # working directory still wins; see resolve_chat_working_directory().
     working_directory: Optional[str] = None
+    # More folders every chat in the project can reach, mounted alongside the
+    # chat's own. Host paths.
+    extra_folders: list = Field(default_factory=list, sa_column=Column(JSON))
 
     chats: List["ChatModel"] = Relationship(back_populates="project")
     goals: List["GoalModel"] = Relationship(

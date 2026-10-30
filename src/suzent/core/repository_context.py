@@ -123,6 +123,8 @@ def resolve_repository_context(
     configured_volumes = custom_volumes
     if configured_volumes is None and chat:
         configured_volumes = list((chat.config or {}).get("sandbox_volumes") or [])
+    if getattr(chat, "project_id", None):
+        configured_volumes = database.with_project_folders(chat, configured_volumes)
     effective_volumes = get_effective_volumes(configured_volumes or [])
     mounts: list[tuple[Path, str]] = []
     for volume in effective_volumes:

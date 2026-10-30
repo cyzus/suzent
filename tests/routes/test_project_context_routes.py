@@ -137,6 +137,7 @@ def test_repository_context_returns_project_memory_and_walk_up_instructions(
         get_chat_project_slug=lambda _chat_id: project.slug,
         get_project=lambda _project_id: project,
         get_project_dir=lambda _chat_id: project_dir,
+        with_project_folders=lambda _chat, volumes: list(volumes or []),
     )
     markdown_store = _FakeMarkdownStore()
 
@@ -204,6 +205,7 @@ def test_repository_context_returns_instructions_when_memory_unavailable(
         get_chat_project_slug=lambda _chat_id: project.slug,
         get_project=lambda _project_id: project,
         get_project_dir=lambda _chat_id: project_dir,
+        with_project_folders=lambda _chat, volumes: list(volumes or []),
     )
 
     async def get_manager():

@@ -3,11 +3,7 @@ import { createPortal } from 'react-dom';
 import { CheckIcon, ClockIcon, FolderIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { pickHostDirectory } from '../../lib/hostPathPicker';
 import { useI18n } from '../../i18n';
-
-interface RecentFolder {
-  path: string;
-  timestamp: number;
-}
+import { readFolderHistory, rememberFolders, type RecentFolder } from '../../lib/folderHistory';
 
 interface FolderContextPickerProps {
   onMount: (paths: string[]) => void;
@@ -17,9 +13,6 @@ interface FolderContextPickerProps {
   dropUp?: boolean;
   buttonLabel?: string;
 }
-
-const HISTORY_KEY = 'suzent_folder_history';
-const MAX_HISTORY = 5;
 
 export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   onMount,
@@ -42,30 +35,11 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(HISTORY_KEY);
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error('Failed to load folder history', e);
-    }
+    setHistory(readFolderHistory());
   }, []);
 
   const addToHistory = (paths: string[]) => {
-    const now = Date.now();
-    const newItems = paths.map((p) => ({ path: p, timestamp: now }));
-
-    setHistory((prev) => {
-      const combined = [...newItems, ...prev];
-      const unique = combined.filter(
-        (item, index, self) => index === self.findIndex((t) => t.path === item.path)
-      );
-      const trimmed = unique.slice(0, MAX_HISTORY);
-
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-      return trimmed;
-    });
+    setHistory((prev) => rememberFolders(paths, prev));
   };
 
   const handleNativePick = async () => {
