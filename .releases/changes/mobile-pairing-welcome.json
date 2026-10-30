@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "patch"},
+  "reason": "Only the iOS and Android pairing screens change.",
+  "summary": "Simplify the mobile pairing screen before scanning: a centered welcome, the scan button within thumb reach, a one-line hint for where to find the QR code on desktop, and pasting an invitation in a sheet."
+}
