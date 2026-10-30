@@ -1546,6 +1546,14 @@ export const zhCN = {
       allClear: '一切正常',
       waitingCount: '{count} 个等你',
       runningCount: '{count} 个进行中',
+      exit: '离开 Regent',
+      exitShort: '返回',
+    },
+    regentQueue: {
+      showMore: '还有 {count} 条',
+      showLess: '收起',
+      projects: '项目',
+      shortcuts: '快捷入口',
     },
     sections: {
       scheduled: '定时任务',

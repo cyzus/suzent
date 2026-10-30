@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { RegentCube } from './regent/RegentCube';
 import { RegentMark } from './regent/RegentMark';
 import { regentState, useRegentNod } from './regent/regentState';
@@ -9,6 +10,8 @@ import { FOCAL_CHAT_ID, type FocalAgentStatus } from '../lib/focalAgent';
 interface FocalAgentCardProps {
   active: boolean;
   onOpen: (chatId: string) => void;
+  /** Leaves Regent; shown as a quiet back button on the open card. */
+  onExit?: () => void;
 }
 
 export function FocalAgentCard({ active, onOpen }: FocalAgentCardProps): React.ReactElement {
@@ -51,6 +54,7 @@ export function FocalAgentCardView({
   status,
   active,
   onOpen,
+  onExit,
   nod = 0,
 }: FocalAgentCardViewProps): React.ReactElement {
   const { t, locale } = useI18n();
@@ -88,16 +92,29 @@ export function FocalAgentCardView({
         : t('chatList.focal.allClear');
 
   // Opening Regent turns its row into a profile: the flat mark grows into the
-  // cube, and the rest of the sidebar steps back (see ChatList).
+  // cube, and the sidebar turns into Regent's queue (see ChatList).
   if (active) {
     return (
-      <button
-        type="button"
-        onClick={() => onOpen(status?.chatId ?? FOCAL_CHAT_ID)}
+      <section
         aria-current="page"
-        aria-label={t('chatList.focal.open')}
-        className="regent-card-hero w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black shadow-brutal-sm dark:bg-zinc-800 dark:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+        aria-label={t('chatList.focal.name')}
+        className="group/regent regent-card-hero relative w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black dark:bg-zinc-800 dark:text-white"
       >
+        {/* Always there so the way out is findable, but quiet until the card is hovered. */}
+        {onExit && (
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label={t('chatList.focal.exit')}
+            title={`${t('chatList.focal.exit')} (Esc)`}
+            className="absolute left-1 top-1 flex h-6 items-center gap-1 px-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-brutal-black group-hover/regent:text-neutral-600 focus-visible:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-white dark:group-hover/regent:text-neutral-300"
+          >
+            <ArrowLeftIcon className="h-3.5 w-3.5 shrink-0 stroke-2" aria-hidden="true" />
+            <span className="max-w-0 overflow-hidden whitespace-nowrap text-[11px] font-bold opacity-0 transition-all duration-200 group-hover/regent:max-w-16 group-hover/regent:opacity-100 group-focus-within/regent:max-w-16 group-focus-within/regent:opacity-100">
+              {t('chatList.focal.exitShort')}
+            </span>
+          </button>
+        )}
         <span key={nod} className={`regent-hero-avatar mb-2 flex ${nod > 0 ? 'regent-nod' : ''}`}>
           <RegentCube size={56} state={regentState(status)} />
         </span>
@@ -118,7 +135,7 @@ export function FocalAgentCardView({
         >
           {counts.length > 0 ? counts.join(' · ') : t('chatList.focal.allClear')}
         </span>
-      </button>
+      </section>
     );
   }
 
