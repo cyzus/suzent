@@ -15,6 +15,7 @@ import type { MemoryKind, RecentMemoryChanges } from '../../types/memory';
 import { OverviewList } from '../chat/SidebarOverview';
 
 const KIND_ORDER: MemoryKind[] = ['user', 'experience', 'world'];
+const RECENT_SAVED = 3;
 
 export function MemoryCount({ section }: { section: MemorySection }): JSX.Element | null {
   const { t } = useI18n();
@@ -149,7 +150,7 @@ export function MemoryDetails({ section }: { section: MemorySection }): JSX.Elem
         )}
         {(saved.length > 0 || !section.extracting) && (
           <OverviewList
-            items={saved}
+            items={saved.slice(0, RECENT_SAVED)}
             empty={t('sidebar.memory.noneSaved')}
             getKey={(fact) => `${fact.date}-${fact.time}-${fact.content}`}
             renderMarker={() => <Dot />}
@@ -164,6 +165,11 @@ export function MemoryDetails({ section }: { section: MemorySection }): JSX.Elem
               </span>
             )}
           />
+        )}
+        {saved.length > RECENT_SAVED && (
+          <p className="py-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+            {t('sidebar.memory.savedTotal', { count: String(saved.length) })}
+          </p>
         )}
       </Group>
       <Group title={t('sidebar.memory.organize')}>

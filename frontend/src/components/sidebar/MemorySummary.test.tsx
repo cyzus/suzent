@@ -61,6 +61,22 @@ describe('MemorySummary', () => {
     expect(html).toContain('Open memory');
   });
 
+  it('keeps only the newest saved facts and counts the rest', () => {
+    const fact = used.activity!.saved[0];
+    const busy: MemorySection = {
+      ...used,
+      activity: {
+        ...used.activity!,
+        saved: [1, 2, 3, 4, 5].map((n) => ({ ...fact, content: `Fact ${n}`, revision: false })),
+      },
+    };
+    const html = renderToStaticMarkup(<MemoryDetails section={busy} />);
+    expect(html).toContain('Saved recently');
+    expect(html).toContain('Fact 3');
+    expect(html).not.toContain('Fact 4');
+    expect(html).toContain('5 saved in this chat');
+  });
+
   it('says when a turn used nothing and the chat is still saving', () => {
     const quiet: MemorySection = {
       enabled: true,
