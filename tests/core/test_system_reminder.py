@@ -1721,33 +1721,45 @@ async def test_caller_directives_outrank_ambient_hooks(clean_hooks, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_a_blocking_provider_cannot_hold_the_turn_open(clean_hooks, monkeypatch):
-    """asyncio.wait_for needs the loop running to cancel anything, so a provider
-    that blocks it cannot be timed out. Providers doing synchronous work must
-    hand it to a thread — plan_reminder_hook wraps its database access this way."""
+async def test_a_blocking_provider_cannot_hold_the_turn_open(
+    clean_hooks: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook can time out while its synchronous worker is still blocked."""
     import asyncio as _asyncio
-    import time
+    import threading
 
     from suzent.core import system_reminder as sr
 
     monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
 
-    async def blocking_but_threaded(chat_id, deps):
-        await _asyncio.to_thread(time.sleep, 1.0)
+    release_worker = threading.Event()
+    hook_cancelled = _asyncio.Event()
+
+    async def blocking_but_threaded(chat_id: str, deps: object) -> str:
+        try:
+            await _asyncio.to_thread(release_worker.wait)
+        except _asyncio.CancelledError:
+            hook_cancelled.set()
+            raise
         return "slow"
 
-    async def quick(chat_id, deps):
+    async def quick(chat_id: str, deps: object) -> str:
         return "quick"
 
     sr.register_global_hook(blocking_but_threaded)
     sr.register_global_hook(quick)
 
-    started = time.monotonic()
-    result = await sr.build_combined_reminder("c", None)
-    elapsed = time.monotonic() - started
+    try:
+        result = await _asyncio.wait_for(sr.build_combined_reminder("c", None), 5)
 
-    assert "quick" in result
-    assert elapsed < 0.5, f"deadline could not fire: {elapsed:.2f}s"
+        assert result is not None
+        assert "quick" in result
+        assert "slow" not in result
+        assert hook_cancelled.is_set()
+        assert not release_worker.is_set()
+    finally:
+        # Cancelling to_thread leaves its worker running; release it even on failure.
+        release_worker.set()
 
 
 @pytest.mark.parametrize(

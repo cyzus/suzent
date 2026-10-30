@@ -136,7 +136,7 @@ def _litellm_model_and_kwargs(
         base_url = None
         for field in spec.fields:
             env_key = field.get("key", "")
-            if "BASE_URL" not in env_key:
+            if not env_key.endswith("BASE_URL"):
                 continue
             try:
                 from suzent.core.secrets import get_secret_manager

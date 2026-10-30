@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Settings > Providers now lists only the providers you have set up. The rest are in an Add a provider catalog grouped into model vendors, China vendors and coding plans, relays and local runtimes, with search. Adding a custom provider now asks for a name, OpenAI or Anthropic protocol, Base URL and API key, keeps its Base URL and key editable afterwards, rejects IDs and key names that clash with built-in providers, and saves it in ~/.suzent/config with your other settings instead of the install folder."
+}

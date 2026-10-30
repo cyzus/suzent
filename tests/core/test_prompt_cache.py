@@ -233,6 +233,44 @@ def test_compatible_anthropic_endpoint_keeps_buffered_tool_input() -> None:
     assert "anthropic_eager_input_streaming" not in model.settings
 
 
+def test_keyless_anthropic_endpoint_never_sends_the_first_party_key(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "first-party-secret")
+    spec = dataclasses.replace(
+        PROVIDER_REGISTRY_BY_ID["anthropic"],
+        id="my_gateway",
+        base_url="https://gateway.example",
+        api_key_optional=True,
+        fields=[],
+    )
+
+    model = model_factory._create_anthropic_model("claude-sonnet-5-5", "", spec)
+
+    assert model.client.api_key == "local"
+
+
+def test_base_url_field_is_matched_by_suffix_not_substring(monkeypatch) -> None:
+    """An id like my_base_url gives CUSTOM_MY_BASE_URL_API_KEY, a secret."""
+    monkeypatch.setenv("CUSTOM_MY_BASE_URL_API_KEY", "sk-secret")
+    monkeypatch.setenv("CUSTOM_MY_BASE_URL_BASE_URL", "https://relay.example/v1")
+    spec = dataclasses.replace(
+        PROVIDER_REGISTRY_BY_ID["anthropic"],
+        id="my_base_url",
+        base_url="https://relay.example/default",
+        fields=[
+            {"key": "CUSTOM_MY_BASE_URL_API_KEY", "type": "secret"},
+            {"key": "CUSTOM_MY_BASE_URL_BASE_URL", "type": "text"},
+        ],
+    )
+    monkeypatch.setattr(
+        "suzent.core.secrets.get_secret_manager",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+
+    assert model_factory._resolve_base_url(spec) == "https://relay.example/v1"
+
+
 def _per_chat_agent(seen: list) -> Agent:
     def respond(_messages, info: AgentInfo) -> ModelResponse:
         seen.append(

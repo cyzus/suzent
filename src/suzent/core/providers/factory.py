@@ -36,7 +36,7 @@ class ProviderFactory:
             spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
             if spec:
                 for field in spec.fields:
-                    if "BASE_URL" in field["key"]:
+                    if field["key"].endswith("BASE_URL"):
                         env_key = field["key"]
                         # 1. Check explicit dict
                         if config and env_key in config:

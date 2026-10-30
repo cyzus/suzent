@@ -337,6 +337,8 @@ export interface ApiProvider {
   region_label?: 'region' | 'plan';
   /** China and Global accounts don't work at each other's endpoints. */
   split_accounts?: boolean;
+  /** Where the provider sits in the Add provider catalog. */
+  group?: 'global' | 'china' | 'relay' | 'local';
   default_models: Model[];
   fields: ApiField[];
   models: Model[];
@@ -1076,6 +1078,7 @@ export interface CustomProviderPayload {
   fields?: Array<{ key: string; label: string; placeholder: string; type: 'secret' | 'text' }>;
   default_models?: Model[];
   logo_url?: string;
+  api_key_optional?: boolean;
 }
 
 export async function saveCustomProvider(
