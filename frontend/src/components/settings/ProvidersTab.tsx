@@ -20,6 +20,7 @@ import { SettingsPage } from './SettingsCard';
 import {
   getProviderColor,
   getProviderInitials,
+  getProviderVisual,
   normalizeProviderLogoUrl,
 } from '../../lib/providerVisuals';
 import { isImeComposing } from '../../lib/ime';
@@ -110,7 +111,10 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
 function ProviderIcon({ provider }: { provider: ApiProvider }) {
   const [imgFailed, setImgFailed] = useState(false);
   const color = getProviderColor(provider.id, provider.user_defined);
-  const logoUrl = normalizeProviderLogoUrl(provider.logo_url);
+  // Built-in providers use the bundled logo; a remote one would be blocked by
+  // the desktop CSP. A user-defined provider can still point at its own.
+  const logoUrl =
+    getProviderVisual(provider.id)?.logoUrl ?? normalizeProviderLogoUrl(provider.logo_url);
   const initials = getProviderInitials(provider.label);
   return (
     <div

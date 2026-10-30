@@ -148,7 +148,8 @@
       "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
       "env_keys": ["MOONSHOT_API_KEY"],
       "fields": [
-        {"key": "MOONSHOT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+        {"key": "MOONSHOT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "MOONSHOT_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.moonshot.ai/v1 outside mainland China", "type": "text"}
       ],
       "default_models": [
         {"id": "moonshot/moonshot-v1-128k", "name": "Kimi v1 128K"},
@@ -170,6 +171,140 @@
       ],
       "default_models": [
         {"id": "zai/glm-4.7-flash", "name": "GLM-4.7 Flash"}
+      ]
+    },
+    {
+      "id": "kimi_code",
+      "label": "Kimi Code",
+      "key_url": "https://www.kimi.com/code/console",
+      "api_type": "openai",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
+      "env_keys": ["KIMI_CODE_API_KEY"],
+      "fields": [
+        {"key": "KIMI_CODE_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "KIMI_CODE_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.kimi.ai/coding/v1 outside mainland China", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "kimi_code/k3", "name": "Kimi K3"},
+        {"id": "kimi_code/k3.1-pro", "name": "Kimi K3.1 Pro"},
+        {"id": "kimi_code/kimi-for-coding", "name": "Kimi for Coding"}
+      ]
+    },
+    {
+      "id": "bailian_token",
+      "label": "Bailian Token Plan",
+      "key_url": "https://bailian.console.aliyun.com/",
+      "api_type": "openai",
+      "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "env_keys": ["BAILIAN_TOKEN_PLAN_API_KEY"],
+      "fields": [
+        {"key": "BAILIAN_TOKEN_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "BAILIAN_TOKEN_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1 outside mainland China", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "bailian_token/qwen3.7-max", "name": "Qwen3.7 Max"},
+        {"id": "bailian_token/qwen3.7-plus", "name": "Qwen3.7 Plus"},
+        {"id": "bailian_token/glm-5.2", "name": "GLM-5.2"}
+      ]
+    },
+    {
+      "id": "bailian_coding",
+      "label": "Bailian Coding Plan",
+      "key_url": "https://bailian.console.aliyun.com/",
+      "api_type": "openai",
+      "base_url": "https://coding.dashscope.aliyuncs.com/v1",
+      "env_keys": ["BAILIAN_CODING_PLAN_API_KEY"],
+      "fields": [
+        {"key": "BAILIAN_CODING_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "BAILIAN_CODING_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://coding.dashscope.aliyuncs.com/v1", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "bailian_coding/qwen3.7-plus", "name": "Qwen3.7 Plus"},
+        {"id": "bailian_coding/kimi-k2.5", "name": "Kimi K2.5"},
+        {"id": "bailian_coding/glm-5", "name": "GLM-5"},
+        {"id": "bailian_coding/MiniMax-M2.5", "name": "MiniMax M2.5"}
+      ]
+    },
+    {
+      "id": "tencent_token",
+      "label": "Tencent Cloud Token Plan",
+      "key_url": "https://console.cloud.tencent.com/tokenhub",
+      "api_type": "openai",
+      "base_url": "https://api.lkeap.cloud.tencent.com/plan/v3",
+      "env_keys": ["TENCENT_TOKEN_PLAN_API_KEY"],
+      "fields": [
+        {"key": "TENCENT_TOKEN_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "TENCENT_TOKEN_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.lkeap.cloud.tencent.com/plan/v3", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "tencent_token/hy3", "name": "Hunyuan 3"}
+      ]
+    },
+    {
+      "id": "tencent_coding",
+      "label": "Tencent Cloud Coding Plan",
+      "key_url": "https://console.cloud.tencent.com/tokenhub",
+      "api_type": "openai",
+      "base_url": "https://api.lkeap.cloud.tencent.com/coding/v3",
+      "env_keys": ["TENCENT_CODING_PLAN_API_KEY"],
+      "fields": [
+        {"key": "TENCENT_CODING_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "TENCENT_CODING_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.lkeap.cloud.tencent.com/coding/v3", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "tencent_coding/tc-code-latest", "name": "Auto (tc-code-latest)"}
+      ]
+    },
+    {
+      "id": "glm_coding",
+      "label": "GLM Coding Plan",
+      "key_url": "https://open.bigmodel.cn/usercenter/apikeys",
+      "api_type": "openai",
+      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "env_keys": ["GLM_CODING_PLAN_API_KEY"],
+      "fields": [
+        {"key": "GLM_CODING_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "GLM_CODING_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://open.bigmodel.cn/api/coding/paas/v4", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "glm_coding/glm-5.2", "name": "GLM-5.2"}
+      ]
+    },
+    {
+      "id": "volcengine_agent",
+      "label": "Volcengine Agent Plan",
+      "key_url": "https://console.volcengine.com/ark",
+      "api_type": "openai",
+      "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "env_keys": ["VOLCENGINE_AGENT_PLAN_API_KEY"],
+      "fields": [
+        {"key": "VOLCENGINE_AGENT_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "VOLCENGINE_AGENT_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://ark.cn-beijing.volces.com/api/plan/v3", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "volcengine_agent/doubao-seed-2.1-pro", "name": "Doubao Seed 2.1 Pro"},
+        {"id": "volcengine_agent/glm-5.3", "name": "GLM-5.3"},
+        {"id": "volcengine_agent/deepseek-v4-pro", "name": "DeepSeek V4 Pro"},
+        {"id": "volcengine_agent/kimi-k3", "name": "Kimi K3"}
+      ]
+    },
+    {
+      "id": "volcengine_coding",
+      "label": "Volcengine Coding Plan",
+      "key_url": "https://console.volcengine.com/ark",
+      "api_type": "openai",
+      "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "env_keys": ["VOLCENGINE_CODING_PLAN_API_KEY"],
+      "fields": [
+        {"key": "VOLCENGINE_CODING_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "VOLCENGINE_CODING_PLAN_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://ark.cn-beijing.volces.com/api/coding/v3", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "volcengine_coding/ark-code-latest", "name": "Auto (ark-code-latest)"},
+        {"id": "volcengine_coding/doubao-seed-2.1-pro", "name": "Doubao Seed 2.1 Pro"},
+        {"id": "volcengine_coding/glm-5.3", "name": "GLM-5.3"},
+        {"id": "volcengine_coding/kimi-k3", "name": "Kimi K3"}
       ]
     },
     {

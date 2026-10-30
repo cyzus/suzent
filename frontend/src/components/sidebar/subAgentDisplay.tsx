@@ -9,9 +9,8 @@ import { getProviderInitials, getProviderVisualForModel } from '../../lib/provid
 import { isSubAgentActive } from '../chat/subAgentStatus';
 
 /**
- * Identity tile. The provider's own colour with its initials -- deliberately
- * not its logo: those are remote CDN URLs and the desktop app's CSP blocks
- * off-origin images, so a logo here would render as a silent blank.
+ * Identity tile. The provider's own colour with its bundled logo, or its
+ * initials when it has none.
  */
 export const AgentAvatar: React.FC<{
   model?: string | null;
@@ -30,7 +29,11 @@ export const AgentAvatar: React.FC<{
         style={{ backgroundColor: background }}
         aria-hidden="true"
       >
-        {initials}
+        {visual?.logoUrl ? (
+          <img src={visual.logoUrl} alt="" className="w-3/5 h-3/5 object-contain" />
+        ) : (
+          initials
+        )}
       </div>
       {/* Presence, the way a roster shows it -- additive to the status badge,
           which stays the shared vocabulary across every surface. */}

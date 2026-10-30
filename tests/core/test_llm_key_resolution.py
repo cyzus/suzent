@@ -347,6 +347,53 @@ def test_extract_with_schema_uses_prompt_json_for_unsupported_models(
     )
 
 
+def test_anthropic_compat_provider_routes_to_anthropic(monkeypatch) -> None:
+    """A custom prefix means nothing to LiteLLM, so a user-defined
+    Anthropic-protocol endpoint (a coding plan's /anthropic URL) has to be
+    routed by protocol, or every utility call fails on an unknown provider."""
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: "plan-key")
+    monkeypatch.setitem(
+        llm.PROVIDER_REGISTRY_BY_ID,
+        "my_plan",
+        ProviderSpec(
+            id="my_plan",
+            label="My Plan",
+            api_type="anthropic",
+            base_url="https://plan.example.test/anthropic",
+            user_defined=True,
+        ),
+    )
+
+    model, kwargs = llm._litellm_model_and_kwargs("my_plan/plan-model")
+
+    assert model == "anthropic/plan-model"
+    assert kwargs["api_base"] == "https://plan.example.test/anthropic"
+    assert kwargs["api_key"] == "plan-key"
+
+
+def test_deepseek_images_bypass_the_flattening_adapter(monkeypatch) -> None:
+    """LiteLLM's DeepSeek adapter turns list content into a string and drops
+    the images, so the vision model answers that no image was provided."""
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: "ds-key")
+
+    model, kwargs = llm.chat_completion_args(
+        "deepseek/deepseek-v4-flash", multimodal=True
+    )
+
+    assert model == "openai/deepseek-v4-flash"
+    assert kwargs["api_base"] == "https://api.deepseek.com"
+    assert kwargs["api_key"] == "ds-key"
+
+
+def test_deepseek_text_calls_keep_the_native_adapter(monkeypatch) -> None:
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: "ds-key")
+
+    model, kwargs = llm.chat_completion_args("deepseek/deepseek-v4-flash")
+
+    assert model == "deepseek/deepseek-v4-flash"
+    assert "api_base" not in kwargs
+
+
 # --- self-hosted servers keep their chat-template defaults -------------------
 
 
