@@ -146,18 +146,28 @@ fun activityStepCount(parts: List<MessagePart>): Int = parts.withIndex().count {
     part.type == "tool" || (part.type == "reasoning" && (index == 0 || parts[index - 1].type != "reasoning"))
 }
 
+private val activityCategories = mapOf(
+    "run_command" to "commands", "start_command" to "commands",
+    "web_search" to "searches", "glob_search" to "searches", "grep_search" to "searches", "memory_search" to "searches", "session_search" to "searches",
+    "webpage_fetch" to "web", "browser_action" to "web",
+    "agent" to "delegated", "agent_list" to "agents", "agent_read" to "agents", "agent_send" to "agents", "agent_stop" to "agents",
+    "create_tasks" to "tasks", "update_task" to "tasks", "list_tasks" to "tasks", "manage_goal" to "tasks",
+    "memory_update" to "memory", "update_notes" to "memory", "skill_execute" to "skills",
+)
+
+/** Desktop's summarizeActivity (activitySummary.ts): one count per category, in first-seen order. */
 fun activitySummary(parts: List<MessagePart>, live: Boolean): List<Pair<String, Int>> {
     val counts = linkedMapOf<String, Int>()
-    val files = mutableMapOf("read" to mutableSetOf<String>(), "changed" to mutableSetOf<String>())
+    val files = mapOf("read" to mutableSetOf<String>(), "changed" to mutableSetOf())
     for (part in parts.filter { it.type == "tool" }) {
         val name = canonicalActivityTool(part.toolName)
+        val args by lazy { runCatching { org.json.JSONObject(part.args) }.getOrNull() }
         val category = when {
             activityFailed(part) -> "failed"
             live && part.state == "running" -> "running"
-            name in listOf("run_command", "start_command") -> "commands"
-            name in listOf("web_search", "glob_search", "grep_search", "memory_search", "session_search") -> "searches"
+            name == "agent_dispatch" -> if (args?.opt("agent_id") == "new") "delegated" else "agents"
+            name in activityCategories -> activityCategories.getValue(name)
             name in listOf("read_file", "write_file", "edit_file") -> {
-                val args = runCatching { org.json.JSONObject(part.args) }.getOrNull()
                 val path = listOf("file_path", "path", "filePath", "filename").firstNotNullOfOrNull {
                     (args?.opt(it) as? String)?.trim()?.takeIf(String::isNotEmpty)
                 }
@@ -170,6 +180,12 @@ fun activitySummary(parts: List<MessagePart>, live: Boolean): List<Pair<String, 
             else -> "other"
         }
         counts[category] = (counts[category] ?: 0) + 1
+    }
+    // "Other" only reads right beside something it is other than.
+    val others = counts["other"]
+    if (others != null && counts.keys.all { it in listOf("other", "failed", "running") }) {
+        counts.remove("other")
+        counts["tools"] = others
     }
     return counts.toList()
 }
@@ -185,6 +201,11 @@ fun canonicalActivityTool(tool: String): String {
         "glob" -> "glob_search"
         "grep" -> "grep_search"
         "websearch" -> "web_search"
+        "bashoutput", "process_manage" -> "check_command"
+        "killshell" -> "stop_command"
+        "webfetch", "web_fetch" -> "webpage_fetch"
+        "task" -> "agent"
+        "todowrite" -> "create_tasks"
         else -> name
     }
 }

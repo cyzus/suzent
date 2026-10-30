@@ -211,7 +211,14 @@
 "Files read: %d" = "读取了 %d 个文件";
 "Files modified: %d" = "修改了 %d 个文件";
 "Searches: %d" = "搜索了 %d 次";
-"Other tool calls: %d" = "调用了 %d 次其他工具";
+"Other actions: %d" = "另有 %d 项操作";
+"Pages visited: %d" = "访问了 %d 次网页";
+"Tasks delegated: %d" = "委派了 %d 项任务";
+"Agent check-ins: %d" = "与代理沟通 %d 次";
+"Task updates: %d" = "整理了 %d 次任务";
+"Memory updates: %d" = "更新了 %d 次记忆";
+"Skills used: %d" = "使用了 %d 次技能";
+"Tool calls: %d" = "调用了 %d 次工具";
 "Failed calls: %d" = "%d 次调用失败";
 
 "No chats yet" = "还没有对话";
@@ -236,6 +243,7 @@
 
 "Worked for %@" = "用时 %@";
 "Thinking" = "思考中";
+"Thought" = "思考";
 "Copy activity details" = "复制活动详情";
 "Show full details" = "显示完整详情";
 

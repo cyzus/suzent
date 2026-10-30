@@ -17,6 +17,13 @@ class ChatPresentationTest {
             MessagePart("tool", toolName = "write_file", state = "error"))
         assertEquals(listOf("read" to 1, "changed" to 1, "commands" to 1, "searches" to 1, "running" to 1, "failed" to 1), activitySummary(parts, true))
         assertEquals("other" to 1, activitySummary(parts, false)[4])
+        val named = listOf(
+            MessagePart("tool", toolName = "webpage_fetch"), MessagePart("tool", toolName = "agent_dispatch", args = """{"agent_id":"new"}"""),
+            MessagePart("tool", toolName = "agent_dispatch", args = """{"agent_id":"a1"}"""), MessagePart("tool", toolName = "update_task"),
+            MessagePart("tool", toolName = "memory_update"), MessagePart("tool", toolName = "skill_execute"), MessagePart("tool", toolName = "speak"))
+        assertEquals(listOf("web" to 1, "delegated" to 1, "agents" to 1, "tasks" to 1, "memory" to 1, "skills" to 1, "other" to 1), activitySummary(named, false))
+        assertEquals(listOf("failed" to 1, "tools" to 2), activitySummary(listOf(MessagePart("tool", toolName = "speak"),
+            MessagePart("tool", toolName = "render_ui"), MessagePart("tool", toolName = "speak", state = "error")), false))
         assertEquals("read_file", canonicalActivityTool("ReadFile"))
         assertEquals("read file: ./src/main.py", activityToolLabel(parts.first()))
         assertEquals("read file", activityToolLabel(MessagePart("tool", toolName = "Read", args = "{")))
