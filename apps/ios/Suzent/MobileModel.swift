@@ -28,6 +28,7 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var liveParts: [MessagePart] = []
+    var regentVisible = false
     var pendingApprovals: [ApprovalRequest] = []
     var approvalChoices: [String: String] = [:]
     var approvalBusy = false
@@ -333,6 +334,10 @@ import SuzentCore
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
+                if chat.isRegent {
+                    if regentVisible && (chat.regent?.unread ?? 0) > 0 { try await client.markRead(id) }
+                    if current == generation && selected?.id == id && chat.isRunning == true && liveParts.isEmpty { observe(id, client: client) }
+                }
             }
         } catch { if generation == current { handle(error) } }
     }
@@ -385,6 +390,8 @@ import SuzentCore
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
+            if saved.isRegent { try await client.markRead(saved.id) }
+            guard current == generation, selected?.id == saved.id else { return }
             restoreModel(saved)
             openedVersion += 1
             syncRunning(saved)
@@ -425,15 +432,20 @@ import SuzentCore
     }
 
     func createChat(projectID: String? = nil) async {
-        guard let client, device?.permissions.createChats == true, !busy, !streaming else { return }
+        guard let client, device?.permissions.createChats == true, !busy else { return }
+        let current = generation
         busy = true
         defer { busy = false }
         do {
             if let id = selected?.id { drafts[id] = draft }
             var chat = try await client.composer()
+            guard generation == current else { return }
             chat.projectId = projectID
             chat.projectName = projects.first { $0.id == projectID }?.name
             generation = UUID()
+            streamTask?.cancel()
+            streamTask = nil
+            streaming = false
             pendingApprovals = []; approvalChoices = [:]
             liveParts = []
             selected = chat

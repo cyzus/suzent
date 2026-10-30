@@ -27,6 +27,9 @@ class ClientPermissions(BaseModel):
     approve_tools: bool = False
 
     def permits_chat(self, chat_id: str) -> bool:
+        # Regent can read and dispatch across all projects, even from one chat.
+        if chat_id == "focal-suzent":
+            return self.all_chats
         return self.all_chats or chat_id in self.chat_ids
 
 

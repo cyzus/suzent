@@ -67,6 +67,7 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         records = JSONArray(listOf(item) + objects(records)); save()
         return Chat.parse(item)
     }
+    override suspend fun markRead(id: String) { record(id).optJSONObject("regent")?.put("unread", 0); save() }
     override suspend fun chat(id: String): Chat { advance(id); return Chat.parse(record(id)) }
 
     override suspend fun manageChat(id: String, action: String, value: String?) {
@@ -106,8 +107,8 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         val messages = item.getJSONArray("messages")
         messages.put(message("user", text).put("files", JSONArray(attachments.map { uploads.getValue(it).second })))
         if (messages.length() == 1 && text.isNotEmpty()) item.put("title", text.take(60))
-        val tool = matches(text, "keywords_tool")
-        val reply = label(if (attachments.isNotEmpty()) "attachment" else if (matches(text, "keywords_trip")) "plan" else "generic")
+        val tool = item.optString("platform") != "focal" && matches(text, "keywords_tool")
+        val reply = label(if (item.optString("platform") == "focal") "regent_reply" else if (attachments.isNotEmpty()) "attachment" else if (matches(text, "keywords_trip")) "plan" else "generic")
         runs[id] = Run(text = reply, pending = tool, tool = tool)
         item.put("isRunning", true)
         attachments.forEach(uploads::remove)
@@ -202,7 +203,11 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         val source = JSONObject().put("id", "demo-source").put("type", "web").put("title", label("source_title"))
             .put("url", "https://suzent.com/docs").put("snippet", label("source_snippet"))
         parts.put(JSONObject().put("type", "text").put("text", run.text).put("citationSources", JSONArray().put(source)))
-        item.getJSONArray("messages").put(message("assistant", run.text, item.optString("model")).put("parts", parts))
+        val elapsed = ((System.nanoTime() - run.started) / 1_000_000_000.0).coerceAtLeast(0.0)
+        val finished = Instant.now()
+        item.getJSONArray("messages").put(message("assistant", run.text, item.optString("model")).put("parts", parts)
+            .put("_streaming_run_id", run.id).put("run_started_at", finished.minusMillis((elapsed * 1000).toLong()).toString())
+            .put("run_finished_at", finished.toString()).put("run_active_seconds", elapsed))
         item.put("isRunning", false); save()
     }
     private fun approval(run: Run) = ApprovalRequest(run.id, "tool", "demo.create_note", "{\"path\":\"weekend-plan.md\"}", label("approval_reason"),

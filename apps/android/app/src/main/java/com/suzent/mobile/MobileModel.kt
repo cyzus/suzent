@@ -52,6 +52,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var draft by mutableStateOf("")
     var attachments by mutableStateOf<List<PendingAttachment>>(emptyList())
     var attachmentsSupported by mutableStateOf(false)
+    var regentVisible = false
     var liveParts by mutableStateOf<List<MessagePart>>(emptyList())
     var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
     var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
@@ -364,7 +365,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val id = selected?.id
             if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
-                if (current == generation && selected?.id == id && !streaming) selected = chat
+                if (current == generation && selected?.id == id && !streaming) {
+                    selected = chat
+                    if (chat.isRegent) {
+                        if (regentVisible && (chat.regent?.unread ?: 0) > 0) api.markRead(id)
+                        if (current == generation && selected?.id == id && chat.running && liveParts.isEmpty()) observe(id)
+                    }
+                }
             }
         } catch (error: CancellationException) { throw error }
         catch (failure: Exception) {
@@ -427,6 +434,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
+                    if (saved.isRegent) api.markRead(saved.id)
+                    if (current != generation || selected?.id != saved.id) return@launch
                     restoreModel(saved)
                     openedVersion++
                     chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
@@ -475,20 +484,27 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun create(projectId: String? = null) {
         val api = client ?: return
-        if (busy || streaming || device?.permissions?.createChats != true) return
+        if (busy || device?.permissions?.createChats != true) return
+        val current = generation
         busy = true
         viewModelScope.launch {
             try {
                 selected?.id?.let { drafts[it] = draft }
                 val composer = api.composer()
+                if (current != generation) return@launch
                 generation++
+                api.cancelLive()
+                streamJob?.cancel()
+                streamJob = null
+                streaming = false
                 pendingApprovals = emptyList(); approvalChoices = emptyMap()
                 liveParts = emptyList()
                 selected = composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
                 restoreModel(composer)
                 draft = ""
                 discardAttachments()
-            } catch (failure: Exception) { handle(failure) }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { handle(failure) }
             finally { busy = false }
         }
     }

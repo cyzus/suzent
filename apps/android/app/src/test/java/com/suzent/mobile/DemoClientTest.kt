@@ -12,6 +12,15 @@ class DemoClientTest {
     private fun client(storage: File? = null, language: String = "en", duration: Long = 10) = DemoClient(
         requireNotNull(javaClass.classLoader?.getResource("demo.json")).readText(), storage, language, duration)
 
+    @Test fun examplesIncludeSuccessfulAndFailedActivities() = runBlocking {
+        for (language in listOf("en", "zh")) {
+            val demo = client(language = language)
+            assertEquals(2, demo.chat("demo-ui").messages.last().parts.count { it.type == "tool" })
+            assertTrue(demo.chat("demo-failure").messages.last().parts.any(::activityFailed))
+            assertTrue(demo.chat("demo-note").messages.last().content.isNotEmpty())
+        }
+    }
+
     @Test fun streamsAndPersistsWithoutAConnection() = runBlocking {
         val directory = Files.createTempDirectory("suzent-demo").toFile()
         try {
@@ -92,7 +101,7 @@ class DemoClientTest {
         demo.manageChat(chat.id, "delete")
         assertFalse(demo.chats().any { it.id == chat.id })
         demo.reset()
-        assertEquals(3, demo.chats().size)
+        assertEquals(7, demo.chats().size)
     }
 
     @Test fun attachmentsUseOnlyMetadataAndAreScoped() = runBlocking {
@@ -118,6 +127,11 @@ class DemoClientTest {
         val observer = launch { demo.observe(chat.id) {} }
         delay(10)
         observer.cancel(); observer.join()
+        assertTrue(demo.composer().id.isEmpty())
+        val independent = demo.create("Independent")
+        demo.send(independent.id, "New work")
+        demo.observe(independent.id) {}
+        assertEquals("New work", demo.chat(independent.id).messages.first().content)
         delay(100)
         val saved = demo.chat(chat.id)
         assertFalse(saved.running)
@@ -137,7 +151,7 @@ class DemoClientTest {
             assertFalse(reopened.chat(chat.id).running)
             assertTrue(reopened.chat(chat.id).messages.last().content.contains("中断"))
             reopened.reset()
-            assertEquals(3, reopened.chats().size)
+            assertEquals(7, reopened.chats().size)
         } finally { directory.deleteRecursively() }
     }
 }

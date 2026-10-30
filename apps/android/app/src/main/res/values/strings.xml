@@ -195,4 +195,20 @@
     <string name="pairing_finishing">Finishing connection…</string>
     <string name="pairing_network_help">Keep Suzent open on your desktop and check Wi-Fi or Tailscale.</string>
     <string name="back_to_chats">Back to chats</string>
+    <string name="regent_name">SUZENT Regent</string>
+    <string name="regent_working">Regent is working</string>
+    <string name="regent_waiting">Needs your attention</string>
+    <string name="regent_scope">Across all your projects</string>
+    <string name="regent_greeting">One conversation for all your projects. Ask what needs you, or hand me your next task.</string>
+    <string name="regent_unread">%1$d unread messages</string>
+    <string name="regent_reaction">Regent reacted %1$s</string>
+    <string name="regent_permission">Regent can coordinate work across all your projects.</string>
+    <string name="regent_sessions">Recent delegated conversations</string>
+    <string name="activity_worked_for">Worked for %1$s</string>
+    <string name="activity_label">Activity</string>
+    <string name="activity_thinking">Thinking</string>
+    <string name="activity_copy_details">Copy details</string>
+    <string name="activity_full_details">Show full details</string>
+    <string name="recent_chats">Recent</string>
+    <string name="recent_view_all">View all</string>
 </resources>
