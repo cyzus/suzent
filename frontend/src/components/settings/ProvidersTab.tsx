@@ -129,7 +129,7 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
 
 /** The provider's *_BASE_URL field, which a region choice writes. */
 function baseUrlField(provider: ApiProvider): ApiField | undefined {
-  return provider.fields.find((field) => field.key.includes('BASE_URL'));
+  return provider.fields.find((field) => field.key.endsWith('BASE_URL'));
 }
 
 /**
