@@ -212,4 +212,11 @@
     <string name="recent_view_all">查看全部</string>
     <string name="search_results">搜索结果</string>
     <string name="load_more_chats">加载更多</string>
+    <string name="connection_section">连接</string>
+    <string name="forget_warning">此手机将与桌面端断开连接。如需重新连接，请再次配对。</string>
+    <string name="message_share">分享</string>
+    <string name="message_actions">消息操作</string>
+    <string name="approval_show_all">显示全部</string>
+    <string name="approval_show_less">收起</string>
+    <string name="demo_section">离线演示</string>
 </resources>

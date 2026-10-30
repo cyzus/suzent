@@ -163,7 +163,7 @@ struct AttachmentPanel: View {
                 Image(systemName: icon).font(.system(size: 28, weight: .regular))
                     .frame(width: 60, height: 60).background(Color.suzentSurface)
                     .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                Text(label).font(.system(size: PresentationTokens.typeCaption)).multilineTextAlignment(.center)
+                Text(label).suzentFont(PresentationTokens.typeCaption).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, minHeight: 80)
         }
         .buttonStyle(.plain).foregroundStyle(Color.suzentText)
@@ -176,7 +176,9 @@ struct AttachmentChip: View {
     let name: String
     let mimeType: String
     var foreground: Color = .primary
+    var preview: URL?
     var onRemove: (() -> Void)?
+    @State private var thumbnail: UIImage?
 
     private var symbol: String {
         if mimeType.hasPrefix("image/") { return "photo" }
@@ -186,17 +188,27 @@ struct AttachmentChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 12))
-            Text(name).font(.system(size: 13)).lineLimit(1).truncationMode(.middle).frame(maxWidth: 180, alignment: .leading)
+            if let thumbnail {
+                Image(uiImage: thumbnail).resizable().scaledToFill().frame(width: 28, height: 28).clipped().accessibilityHidden(true)
+            } else {
+                Image(systemName: symbol).font(.system(size: 12)).accessibilityHidden(true)
+            }
+            Text(name).suzentFont(PresentationTokens.typeCaption).lineLimit(1).truncationMode(.middle).frame(maxWidth: 180, alignment: .leading)
             if let onRemove {
-                Button(action: onRemove) { Image(systemName: "xmark").font(.system(size: 11, weight: .bold)) }
+                Button(action: onRemove) { Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(minWidth: 28, minHeight: 28) }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "Remove \(name)"))
             }
         }
         .foregroundStyle(foreground)
-        .padding(.horizontal, 8).padding(.vertical, 4)
+        .padding(.leading, thumbnail == nil ? 8 : 2).padding(.trailing, 8).padding(.vertical, thumbnail == nil ? 4 : 2)
         .overlay(Rectangle().strokeBorder(foreground, lineWidth: PresentationTokens.borderWidth))
+        .task(id: preview) {
+            guard let preview, mimeType.hasPrefix("image/") else { thumbnail = nil; return }
+            thumbnail = await Task.detached(priority: .utility) {
+                UIImage(contentsOfFile: preview.path)?.preparingThumbnail(of: CGSize(width: 84, height: 84))
+            }.value
+        }
     }
 }
 
@@ -208,7 +220,7 @@ struct PendingAttachmentStrip: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(model.attachments) { attachment in
-                        AttachmentChip(name: attachment.name, mimeType: attachment.mimeType) { model.removeAttachment(attachment) }
+                        AttachmentChip(name: attachment.name, mimeType: attachment.mimeType, preview: attachment.url) { model.removeAttachment(attachment) }
                             .disabled(model.busy)
                     }
                 }

@@ -65,7 +65,8 @@ fun AssemblyBadge(thinking: Boolean) {
         Box(Modifier.padding(end = PresentationTokens.shadowOffsetOverlay.dp,
             bottom = PresentationTokens.shadowOffsetOverlay.dp).drawBehind {
             val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
-            drawRect(shadowColor, topLeft = Offset(offset, offset))
+            // Full-size rect offset into the reserved padding; without `size` it stayed inside the face and was painted over.
+            drawRect(shadowColor, topLeft = Offset(offset, offset), size = size)
         }.size(width, height).background(MaterialTheme.colorScheme.surface)
             .border(PresentationTokens.borderWidth.dp, outline).clipToBounds(), contentAlignment = Alignment.Center) {
             if (reveal > 0f) Canvas(Modifier.fillMaxSize().padding(2.dp).graphicsLayer { alpha = reveal }) {
