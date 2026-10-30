@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -340,13 +341,16 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
         }
         model.chats.firstOrNull { it.isRegent }?.let { regent ->
             val selected = model.selected?.isRegent == true && !hideSelection
+            val regentInteraction = remember { MutableInteractionSource() }
+            val regentPressed by regentInteraction.collectIsPressedAsState()
             Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-                .clickable(enabled = !model.busy, role = Role.Button) { open(regent) }.padding(horizontal = 4.dp, vertical = 14.dp),
+                .clickable(interactionSource = regentInteraction, indication = LocalIndication.current,
+                    enabled = !model.busy, role = Role.Button) { open(regent) }.padding(horizontal = 4.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     RegentIdentity(working = regent.running || (model.selected?.isRegent == true && model.streaming),
                         waiting = regent.regent?.waiting ?: 0, unread = if (selected) 0 else regent.regent?.unread ?: 0,
-                        lastMessageAt = regent.regent?.lastMessageAt, expanded = false)
+                        lastMessageAt = regent.regent?.lastMessageAt, expanded = false, coronation = regentPressed)
                 }
                 SuzentChevron(false, Modifier.padding(start = 8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
