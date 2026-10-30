@@ -137,6 +137,33 @@ class TestRegistryLoading:
         assert mm.is_compat is True
         assert "minimaxi.com" in mm.base_url
 
+    def test_regions_default_to_the_base_url_and_have_a_field_to_write(self):
+        """The first region is what an unset Base URL means, and picking any
+        region writes the provider's *_BASE_URL field, so both must exist."""
+        regional = [spec for spec in PROVIDER_REGISTRY if spec.regions]
+        assert {"moonshot", "kimi_code", "zhipuai", "bailian_plan"} <= {
+            spec.id for spec in regional
+        }
+        for spec in regional:
+            assert spec.regions[0]["base_url"] == spec.base_url, spec.id
+            assert any("BASE_URL" in f["key"] for f in spec.fields), spec.id
+            ids = [region["id"] for region in spec.regions]
+            assert len(ids) == len(set(ids)), spec.id
+            assert spec.region_label in {"region", "plan"}, spec.id
+
+    def test_regions_fill_in_a_missing_base_url(self):
+        spec = _parse_provider(
+            {
+                "id": "x",
+                "label": "X",
+                "api_type": "openai",
+                "regions": [{"id": "a", "name": "A", "base_url": "https://a.test/v1"}],
+            }
+        )
+        assert spec.base_url == "https://a.test/v1"
+        assert spec.region_label == "region"
+        assert spec.split_accounts is False
+
 
 class TestLegacyCompat:
     """Tests that legacy constants are correctly derived from the registry."""

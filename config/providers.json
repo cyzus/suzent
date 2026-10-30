@@ -66,9 +66,7 @@
         {"id": "gemini/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
         {"id": "gemini/gemini-2.0-flash", "name": "Gemini 2.0 Flash"}
       ],
-      "model_settings": {
-        "google_thinking_config": {"include_thoughts": true}
-      }
+      "model_settings": {"google_thinking_config": {"include_thoughts": true}}
     },
     {
       "id": "xai",
@@ -88,23 +86,22 @@
     },
     {
       "id": "dashscope",
-      "label": "Dashscope",
+      "label": "Qwen (DashScope)",
       "logo_url": "https://cdn.simpleicons.org/alibabacloud",
       "key_url": "https://bailian.console.aliyun.com/",
       "api_type": "openai",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "env_keys": [
-        "DASHSCOPE_API_KEY"
-      ],
+      "env_keys": ["DASHSCOPE_API_KEY"],
       "fields": [
-        {
-          "key": "DASHSCOPE_API_KEY",
-          "label": "API Key",
-          "placeholder": "sk-**",
-          "type": "secret"
-        }
+        {"key": "DASHSCOPE_API_KEY", "label": "API Key", "placeholder": "sk-**", "type": "secret"},
+        {"key": "DASHSCOPE_BASE_URL", "label": "Base URL", "placeholder": "https://dashscope.aliyuncs.com/compatible-mode/v1", "type": "text"}
       ],
-      "default_models": []
+      "default_models": [],
+      "regions": [
+        {"id": "cn", "name": "China", "name_zh": "国内", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "key_url": "https://bailian.console.aliyun.com/"},
+        {"id": "intl", "name": "International", "name_zh": "国际", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "key_url": "https://modelstudio.console.alibabacloud.com/"}
+      ],
+      "split_accounts": true
     },
     {
       "id": "deepseek",
@@ -131,16 +128,22 @@
       "base_url": "https://api.minimaxi.com/v1",
       "env_keys": ["MINIMAX_API_KEY"],
       "fields": [
-        {"key": "MINIMAX_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"}
+        {"key": "MINIMAX_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"},
+        {"key": "MINIMAX_BASE_URL", "label": "Base URL", "placeholder": "https://api.minimaxi.com/v1", "type": "text"}
       ],
       "default_models": [
         {"id": "minimax/MiniMax-M2.5", "name": "MiniMax M2.5"},
         {"id": "minimax/MiniMax-M2.1", "name": "MiniMax M2.1"}
-      ]
+      ],
+      "regions": [
+        {"id": "cn", "name": "China", "name_zh": "国内", "base_url": "https://api.minimaxi.com/v1", "key_url": "https://platform.minimaxi.com/"},
+        {"id": "global", "name": "Global", "name_zh": "国际", "base_url": "https://api.minimax.io/v1", "key_url": "https://www.minimax.io/platform"}
+      ],
+      "split_accounts": true
     },
     {
       "id": "moonshot",
-      "label": "Moonshot (Kimi)",
+      "label": "Kimi (Moonshot)",
       "logo_url": "https://cdn.simpleicons.org/moonshotai",
       "key_url": "https://platform.moonshot.cn/console/api-keys",
       "api_type": "openai",
@@ -148,17 +151,23 @@
       "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
       "env_keys": ["MOONSHOT_API_KEY"],
       "fields": [
-        {"key": "MOONSHOT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+        {"key": "MOONSHOT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "MOONSHOT_BASE_URL", "label": "Base URL", "placeholder": "https://api.moonshot.cn/v1", "type": "text"}
       ],
       "default_models": [
         {"id": "moonshot/moonshot-v1-128k", "name": "Kimi v1 128K"},
         {"id": "moonshot/moonshot-v1-32k", "name": "Kimi v1 32K"},
         {"id": "moonshot/moonshot-v1-8k", "name": "Kimi v1 8K"}
-      ]
+      ],
+      "regions": [
+        {"id": "cn", "name": "China", "name_zh": "国内", "base_url": "https://api.moonshot.cn/v1", "key_url": "https://platform.moonshot.cn/console/api-keys"},
+        {"id": "global", "name": "Global", "name_zh": "国际", "base_url": "https://api.moonshot.ai/v1", "key_url": "https://platform.moonshot.ai/console/api-keys"}
+      ],
+      "split_accounts": true
     },
     {
       "id": "zhipuai",
-      "label": "Zhipu AI (GLM)",
+      "label": "Zhipu GLM / Z.ai",
       "logo_url": "https://github.com/zai-org.png",
       "key_url": "https://open.bigmodel.cn/usercenter/apikeys",
       "api_type": "openai",
@@ -166,10 +175,196 @@
       "aliases": ["zai"],
       "env_keys": ["ZHIPUAI_API_KEY", "ZAI_API_KEY"],
       "fields": [
-        {"key": "ZAI_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"}
+        {"key": "ZAI_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"},
+        {"key": "ZAI_BASE_URL", "label": "Base URL", "placeholder": "https://open.bigmodel.cn/api/paas/v4", "type": "text"}
       ],
       "default_models": [
-        {"id": "zai/glm-4.7-flash", "name": "GLM-4.7 Flash"}
+        {"id": "zai/glm-4.7-flash", "name": "GLM-4.7 Flash"},
+        {"id": "zai/glm-5.2", "name": "GLM-5.2"}
+      ],
+      "region_label": "plan",
+      "split_accounts": true,
+      "regions": [
+        {"id": "cn", "name": "Pay as you go · China", "name_zh": "按量付费 · 国内", "base_url": "https://open.bigmodel.cn/api/paas/v4", "key_url": "https://open.bigmodel.cn/usercenter/apikeys"},
+        {"id": "coding-cn", "name": "Coding Plan · China", "name_zh": "Coding Plan · 国内", "base_url": "https://open.bigmodel.cn/api/coding/paas/v4", "key_url": "https://open.bigmodel.cn/usercenter/apikeys"},
+        {"id": "global", "name": "Pay as you go · Global (Z.ai)", "name_zh": "按量付费 · 国际 (Z.ai)", "base_url": "https://api.z.ai/api/paas/v4", "key_url": "https://z.ai/manage-apikey/apikey-list"},
+        {"id": "coding-global", "name": "Coding Plan · Global (Z.ai)", "name_zh": "Coding Plan · 国际 (Z.ai)", "base_url": "https://api.z.ai/api/coding/paas/v4", "key_url": "https://z.ai/manage-apikey/apikey-list"}
+      ]
+    },
+    {
+      "id": "kimi_code",
+      "label": "Kimi Code",
+      "key_url": "https://www.kimi.com/code/console",
+      "api_type": "openai",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
+      "env_keys": ["KIMI_CODE_API_KEY"],
+      "fields": [
+        {"key": "KIMI_CODE_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "KIMI_CODE_BASE_URL", "label": "Base URL", "placeholder": "https://api.kimi.com/coding/v1", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "kimi_code/k3", "name": "Kimi K3"},
+        {"id": "kimi_code/k3.1-pro", "name": "Kimi K3.1 Pro"},
+        {"id": "kimi_code/kimi-for-coding", "name": "Kimi for Coding"}
+      ],
+      "regions": [
+        {"id": "cn", "name": "China", "name_zh": "国内", "base_url": "https://api.kimi.com/coding/v1", "key_url": "https://www.kimi.com/code/console"},
+        {"id": "global", "name": "Global", "name_zh": "国际", "base_url": "https://api.kimi.ai/coding/v1", "key_url": "https://www.kimi.ai/code/console"}
+      ],
+      "split_accounts": true
+    },
+    {
+      "id": "bailian_plan",
+      "label": "Bailian Plan",
+      "key_url": "https://bailian.console.aliyun.com/",
+      "api_type": "openai",
+      "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "env_keys": ["BAILIAN_PLAN_API_KEY"],
+      "fields": [
+        {"key": "BAILIAN_PLAN_API_KEY", "label": "Plan API Key", "placeholder": "sk-sp-...", "type": "secret"},
+        {"key": "BAILIAN_PLAN_BASE_URL", "label": "Base URL", "placeholder": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "token-cn", "name": "Token Plan · Beijing", "name_zh": "Token Plan · 北京", "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"},
+        {"id": "token-sg", "name": "Token Plan · Singapore", "name_zh": "Token Plan · 新加坡", "base_url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", "key_url": "https://modelstudio.console.alibabacloud.com/"},
+        {"id": "qwen-token", "name": "Qwen Token Plan (Qwen AI platform)", "name_zh": "Qwen Token Plan（千问国际平台）", "base_url": "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1", "key_url": "https://platform.qianwenai.com/home/analytics/token-plan/individual"},
+        {"id": "coding", "name": "Coding Plan", "name_zh": "Coding Plan", "base_url": "https://coding.dashscope.aliyuncs.com/v1"}
+      ],
+      "default_models": [
+        {"id": "bailian_plan/qwen3.7-max", "name": "Qwen3.7 Max"},
+        {"id": "bailian_plan/qwen3.7-plus", "name": "Qwen3.7 Plus"},
+        {"id": "bailian_plan/glm-5.2", "name": "GLM-5.2"},
+        {"id": "bailian_plan/kimi-k2.5", "name": "Kimi K2.5"},
+        {"id": "bailian_plan/MiniMax-M2.5", "name": "MiniMax M2.5"},
+        {"id": "bailian_plan/qwen3.8-max", "name": "qwen3.8-max"},
+        {"id": "bailian_plan/qwen3.8-flash", "name": "qwen3.8-flash"},
+        {"id": "bailian_plan/deepseek-v4-pro", "name": "deepseek-v4-pro"},
+        {"id": "bailian_plan/glm-5.3", "name": "glm-5.3"}
+      ]
+    },
+    {
+      "id": "tencent",
+      "label": "Tencent Cloud",
+      "key_url": "https://console.cloud.tencent.com/tokenhub",
+      "api_type": "openai",
+      "base_url": "https://api.lkeap.cloud.tencent.com/plan/v3",
+      "env_keys": ["TENCENT_API_KEY"],
+      "fields": [
+        {"key": "TENCENT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "TENCENT_BASE_URL", "label": "Base URL", "placeholder": "https://api.lkeap.cloud.tencent.com/plan/v3", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "token", "name": "Token Plan", "name_zh": "Token Plan", "base_url": "https://api.lkeap.cloud.tencent.com/plan/v3"},
+        {"id": "coding", "name": "Coding Plan", "name_zh": "Coding Plan", "base_url": "https://api.lkeap.cloud.tencent.com/coding/v3"},
+        {"id": "cn", "name": "Pay as you go · China", "name_zh": "按量付费 · 国内", "base_url": "https://tokenhub.tencentmaas.com/v1"},
+        {"id": "global", "name": "Pay as you go · Global", "name_zh": "按量付费 · 国际", "base_url": "https://tokenhub-intl.tencentmaas.com/v1"},
+        {"id": "enterprise-cn", "name": "Enterprise plan · China", "name_zh": "企业版套餐 · 国内", "base_url": "https://tokenhub.tencentmaas.com/plan/v3"},
+        {"id": "enterprise-global", "name": "Enterprise plan · Global", "name_zh": "企业版套餐 · 国际", "base_url": "https://tokenhub-intl.tencentmaas.com/plan/v3"}
+      ],
+      "default_models": [
+        {"id": "tencent/hy3", "name": "Hunyuan 3"},
+        {"id": "tencent/tc-code-latest", "name": "Auto (tc-code-latest)"}
+      ]
+    },
+    {
+      "id": "volcengine",
+      "label": "Volcengine Ark",
+      "key_url": "https://console.volcengine.com/ark",
+      "api_type": "openai",
+      "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "env_keys": ["VOLCENGINE_API_KEY"],
+      "fields": [
+        {"key": "VOLCENGINE_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"},
+        {"key": "VOLCENGINE_BASE_URL", "label": "Base URL", "placeholder": "https://ark.cn-beijing.volces.com/api/coding/v3", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "coding", "name": "Coding Plan", "name_zh": "Coding Plan", "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3"},
+        {"id": "agent", "name": "Agent Plan", "name_zh": "Agent Plan", "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3"},
+        {"id": "api", "name": "Pay as you go", "name_zh": "按量付费", "base_url": "https://ark.cn-beijing.volces.com/api/v3"}
+      ],
+      "default_models": [
+        {"id": "volcengine/ark-code-latest", "name": "Auto (ark-code-latest)"},
+        {"id": "volcengine/doubao-seed-2.1-pro", "name": "Doubao Seed 2.1 Pro"},
+        {"id": "volcengine/glm-5.3", "name": "GLM-5.3"},
+        {"id": "volcengine/deepseek-v4-pro", "name": "DeepSeek V4 Pro"},
+        {"id": "volcengine/kimi-k3", "name": "Kimi K3"}
+      ]
+    },
+    {
+      "id": "stepfun",
+      "label": "StepFun",
+      "key_url": "https://platform.stepfun.com/interface-key",
+      "api_type": "openai",
+      "base_url": "https://api.stepfun.com/step_plan/v1",
+      "env_keys": ["STEPFUN_API_KEY"],
+      "fields": [
+        {"key": "STEPFUN_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "STEPFUN_BASE_URL", "label": "Base URL", "placeholder": "https://api.stepfun.com/step_plan/v1", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "plan-cn", "name": "Step Plan · China", "name_zh": "Step Plan · 国内", "base_url": "https://api.stepfun.com/step_plan/v1"},
+        {"id": "api-cn", "name": "Pay as you go · China", "name_zh": "按量付费 · 国内", "base_url": "https://api.stepfun.com/v1"},
+        {"id": "plan-global", "name": "Step Plan · Global", "name_zh": "Step Plan · 国际", "base_url": "https://api.stepfun.ai/step_plan/v1", "key_url": "https://platform.stepfun.ai/interface-key"},
+        {"id": "api-global", "name": "Pay as you go · Global", "name_zh": "按量付费 · 国际", "base_url": "https://api.stepfun.ai/v1", "key_url": "https://platform.stepfun.ai/interface-key"}
+      ],
+      "split_accounts": true,
+      "default_models": [
+        {"id": "stepfun/step-5-preview", "name": "step-5-preview"},
+        {"id": "stepfun/step-3.5-flash", "name": "step-3.5-flash"}
+      ]
+    },
+    {
+      "id": "qianfan",
+      "label": "Baidu Qianfan",
+      "key_url": "https://console.bce.baidu.com/qianfan/resource/token-plan",
+      "api_type": "openai",
+      "base_url": "https://qianfan.baidubce.com/v2/tokenplan/personal",
+      "env_keys": ["QIANFAN_API_KEY"],
+      "fields": [
+        {"key": "QIANFAN_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "QIANFAN_BASE_URL", "label": "Base URL", "placeholder": "https://qianfan.baidubce.com/v2/tokenplan/personal", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "personal", "name": "Token Plan Personal", "name_zh": "Token Plan 个人版", "base_url": "https://qianfan.baidubce.com/v2/tokenplan/personal"},
+        {"id": "team", "name": "Token Plan Enterprise", "name_zh": "Token Plan 企业版", "base_url": "https://qianfan.baidubce.com/v2/tokenplan/team"},
+        {"id": "api", "name": "Pay as you go", "name_zh": "按量付费", "base_url": "https://qianfan.baidubce.com/v2", "key_url": "https://console.bce.baidu.com/iam/#/iam/apikey/list"}
+      ],
+      "default_models": [
+        {"id": "qianfan/qianfan-code-latest", "name": "qianfan-code-latest"},
+        {"id": "qianfan/deepseek-v4.1-flash", "name": "deepseek-v4.1-flash"},
+        {"id": "qianfan/deepseek-v4-pro", "name": "deepseek-v4-pro"},
+        {"id": "qianfan/glm-5.3", "name": "glm-5.3"},
+        {"id": "qianfan/glm-5.2", "name": "glm-5.2"}
+      ]
+    },
+    {
+      "id": "huaweicloud",
+      "label": "Huawei Cloud MaaS",
+      "key_url": "https://console.huaweicloud.com/modelarts/?#/model-studio/authmanage",
+      "api_type": "openai",
+      "base_url": "https://api.modelarts-maas.com/plan/v2",
+      "env_keys": ["HUAWEICLOUD_API_KEY"],
+      "fields": [
+        {"key": "HUAWEICLOUD_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "HUAWEICLOUD_BASE_URL", "label": "Base URL", "placeholder": "https://api.modelarts-maas.com/plan/v2", "type": "text"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "plan", "name": "Token Plan", "name_zh": "Token Plan", "base_url": "https://api.modelarts-maas.com/plan/v2"},
+        {"id": "api", "name": "Pay as you go", "name_zh": "按量付费", "base_url": "https://api.modelarts-maas.com/openai/v1"}
+      ],
+      "default_models": [
+        {"id": "huaweicloud/glm-5.3", "name": "glm-5.3"},
+        {"id": "huaweicloud/glm-5.1", "name": "glm-5.1"},
+        {"id": "huaweicloud/kimi-k2.6", "name": "kimi-k2.6"},
+        {"id": "huaweicloud/deepseek-v4.1-flash", "name": "deepseek-v4.1-flash"},
+        {"id": "huaweicloud/deepseek-v4-flash", "name": "deepseek-v4-flash"}
       ]
     },
     {
@@ -181,6 +376,49 @@
       "env_keys": ["OPENROUTER_API_KEY"],
       "fields": [
         {"key": "OPENROUTER_API_KEY", "label": "API Key", "placeholder": "sk-or-...", "type": "secret"}
+      ],
+      "default_models": []
+    },
+    {
+      "id": "opencode_go",
+      "label": "OpenCode Go",
+      "key_url": "https://opencode.ai/auth",
+      "api_type": "openai",
+      "base_url": "https://opencode.ai/zen/go/v1",
+      "env_keys": ["OPENCODE_GO_API_KEY"],
+      "fields": [
+        {"key": "OPENCODE_GO_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+      ],
+      "default_models": []
+    },
+    {
+      "id": "clinepass",
+      "label": "ClinePass",
+      "key_url": "https://app.cline.bot",
+      "api_type": "openai",
+      "base_url": "https://api.cline.bot/api/v1",
+      "env_keys": ["CLINEPASS_API_KEY"],
+      "fields": [
+        {"key": "CLINEPASS_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "clinepass/cline-pass/glm-5.3", "name": "cline-pass/glm-5.3"},
+        {"id": "clinepass/cline-pass/kimi-k3", "name": "cline-pass/kimi-k3"},
+        {"id": "clinepass/cline-pass/deepseek-v4-pro", "name": "cline-pass/deepseek-v4-pro"},
+        {"id": "clinepass/cline-pass/qwen3.8-max", "name": "cline-pass/qwen3.8-max"},
+        {"id": "clinepass/cline-pass/minimax-m3", "name": "cline-pass/minimax-m3"},
+        {"id": "clinepass/cline-pass/mimo-v2.5-pro", "name": "cline-pass/mimo-v2.5-pro"}
+      ]
+    },
+    {
+      "id": "ollama_cloud",
+      "label": "Ollama Cloud",
+      "key_url": "https://ollama.com/settings/keys",
+      "api_type": "openai",
+      "base_url": "https://ollama.com/v1",
+      "env_keys": ["OLLAMA_CLOUD_API_KEY"],
+      "fields": [
+        {"key": "OLLAMA_CLOUD_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
       ],
       "default_models": []
     },
@@ -245,11 +483,18 @@
       "env_keys": ["XIAOMI_MIMO_API_KEY"],
       "fields": [
         {"key": "XIAOMI_MIMO_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
-        {"key": "XIAOMI_MIMO_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.xiaomimimo.com/v1", "type": "text"}
+        {"key": "XIAOMI_MIMO_BASE_URL", "label": "Base URL", "placeholder": "https://api.xiaomimimo.com/v1", "type": "text"}
       ],
       "default_models": [
         {"id": "xiaomi_mimo/mimo-v2.5-pro", "name": "MiMo-V2.5-Pro"},
         {"id": "xiaomi_mimo/mimo-v2.5", "name": "MiMo-V2.5"}
+      ],
+      "region_label": "plan",
+      "regions": [
+        {"id": "api", "name": "Pay as you go", "name_zh": "按量付费", "base_url": "https://api.xiaomimimo.com/v1"},
+        {"id": "plan-cn", "name": "Token Plan · China", "name_zh": "Token Plan · 国内", "base_url": "https://token-plan-cn.xiaomimimo.com/v1"},
+        {"id": "plan-sgp", "name": "Token Plan · Singapore", "name_zh": "Token Plan · 新加坡", "base_url": "https://token-plan-sgp.xiaomimimo.com/v1"},
+        {"id": "plan-ams", "name": "Token Plan · Europe", "name_zh": "Token Plan · 欧洲", "base_url": "https://token-plan-ams.xiaomimimo.com/v1"}
       ]
     }
   ]

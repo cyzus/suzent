@@ -54,6 +54,15 @@ class ProviderSpec:
     api_key_optional: bool = False
     user_defined: bool = False
     stream_idle_timeout_seconds: float | None = None
+    # Endpoint choices offered in Settings, e.g. China / Global, or a vendor's
+    # plans beside pay as you go. Each is {"id", "name", "base_url"} plus an
+    # optional "name_zh" and "key_url". The first is the default and matches
+    # base_url; picking another writes the provider's *_BASE_URL field.
+    regions: list[dict[str, str]] = field(default_factory=list)
+    region_label: str = "region"  # "region" | "plan": what the picker is called
+    # China and Global accounts don't work at each other's endpoints, so the
+    # picker tells the user to choose by where the key was made.
+    split_accounts: bool = False
 
     @property
     def is_compat(self) -> bool:
@@ -73,6 +82,7 @@ class ProviderSpec:
 
 def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> ProviderSpec:
     """Create a ProviderSpec from a raw JSON dict."""
+    regions = raw.get("regions", [])
     return ProviderSpec(
         id=raw["id"],
         label=raw["label"],
@@ -80,7 +90,7 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
         env_keys=raw.get("env_keys", []),
         fields=raw.get("fields", []),
         default_models=raw.get("default_models", []),
-        base_url=raw.get("base_url"),
+        base_url=raw.get("base_url") or (regions[0]["base_url"] if regions else None),
         native_provider=raw.get("native_provider"),
         aliases=raw.get("aliases", []),
         model_settings=raw.get("model_settings"),
@@ -95,6 +105,9 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
             if raw.get("stream_idle_timeout_seconds") is not None
             else None
         ),
+        regions=regions,
+        region_label=raw.get("region_label", "region"),
+        split_accounts=raw.get("split_accounts", False),
     )
 
 
