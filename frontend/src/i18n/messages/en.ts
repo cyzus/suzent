@@ -538,6 +538,7 @@ export const en = {
       noneUsed: 'None used this turn',
       savedHere: 'Saved recently',
       savedTotal: '{count} saved in this chat',
+      new: 'New',
       noneSaved: 'Nothing saved yet',
       saving: 'Saving...',
       organize: 'Organizing',

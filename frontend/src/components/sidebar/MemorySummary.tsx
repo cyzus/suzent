@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useChatCoreStore } from '../../hooks/useChatStore';
 import { useDreamStatus } from '../../hooks/useDreamStatus';
-import type { MemorySection } from '../../hooks/useMemorySection';
+import { savedFactKey, type MemorySection } from '../../hooks/useMemorySection';
 import { useI18n } from '../../i18n';
 import { formatRelativeTime } from '../../lib/chatUtils';
 import { memoryApi } from '../../lib/memoryApi';
@@ -54,8 +54,14 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Dot(): JSX.Element {
-  return <span className="h-1.5 w-1.5 rounded-full bg-neutral-300 dark:bg-zinc-600" />;
+function Dot({ fresh = false }: { fresh?: boolean }): JSX.Element {
+  return (
+    <span
+      className={`h-1.5 w-1.5 rounded-full ${
+        fresh ? 'bg-brutal-blue' : 'bg-neutral-300 dark:bg-zinc-600'
+      }`}
+    />
+  );
 }
 
 function OrganizeHint(): JSX.Element {
@@ -152,10 +158,13 @@ export function MemoryDetails({ section }: { section: MemorySection }): JSX.Elem
           <OverviewList
             items={saved.slice(0, RECENT_SAVED)}
             empty={t('sidebar.memory.noneSaved')}
-            getKey={(fact) => `${fact.date}-${fact.time}-${fact.content}`}
-            renderMarker={() => <Dot />}
+            getKey={savedFactKey}
+            renderMarker={(fact) => <Dot fresh={section.fresh.has(savedFactKey(fact))} />}
             renderLabel={(fact) => (
               <span title={fact.content}>
+                {section.fresh.has(savedFactKey(fact)) && (
+                  <span className="mr-1 text-brutal-blue">{t('sidebar.memory.new')}</span>
+                )}
                 {fact.revision && (
                   <span className="mr-1 text-neutral-400 dark:text-neutral-500">
                     {t('memoryView.recent.revisedLabel')}

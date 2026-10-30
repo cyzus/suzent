@@ -513,6 +513,7 @@ export const zhCN = {
       noneUsed: '这一轮没有用到记忆',
       savedHere: '最近记下',
       savedTotal: '本聊天共记下 {count} 条',
+      new: '新',
       noneSaved: '还没有记下什么',
       saving: '正在记下...',
       organize: '整理',
