@@ -39,6 +39,7 @@
     <string name="pairing_heading">Your Suzent, together.</string>
     <string name="pairing_intro">Connect to your desktop. Continue conversations wherever you are.</string>
     <string name="pairing_steps">On desktop, open Settings → Devices → Mobile access, then choose Pair a phone.</string>
+    <string name="pairing_where">On desktop: Settings → Devices → Mobile access</string>
     <string name="scan_desktop">Scan desktop QR code</string>
     <string name="paste_invitation">Paste an invitation instead</string>
     <string name="pairing_invitation">Pairing invitation</string>
