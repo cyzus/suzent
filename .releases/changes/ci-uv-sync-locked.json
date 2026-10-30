@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Make GitHub Actions install Python dependencies with uv sync --locked so CI can never silently re-resolve transitive packages.",
+  "reason": "Only GitHub Actions workflow files change; no shipped desktop, backend, or installer behavior is affected."
+}
