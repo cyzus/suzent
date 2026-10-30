@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Show only the latest facts a chat saved in the sidebar Memory section, with a count of the rest."
+}
