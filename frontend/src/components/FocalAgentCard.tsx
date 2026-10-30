@@ -13,6 +13,8 @@ interface FocalAgentCardProps {
   onOpen: (chatId: string) => void;
   /** Leaves Regent; shown as a quiet back button on the open card. */
   onExit?: () => void;
+  /** Set while another page fills the main area: the open card leads back to Regent's chat. */
+  onReturn?: () => void;
 }
 
 export function FocalAgentCard({ active, onOpen }: FocalAgentCardProps): React.ReactElement {
@@ -56,6 +58,7 @@ export function FocalAgentCardView({
   active,
   onOpen,
   onExit,
+  onReturn,
   nod = 0,
 }: FocalAgentCardViewProps): React.ReactElement {
   const { t, locale } = useI18n();
@@ -97,10 +100,20 @@ export function FocalAgentCardView({
   if (active) {
     return (
       <section
-        aria-current="page"
+        aria-current={onReturn ? undefined : 'page'}
         aria-label={t('chatList.focal.name')}
-        className="group/regent regent-card-hero relative w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black dark:bg-zinc-800 dark:text-white"
+        className={`group/regent regent-card-hero relative w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black dark:bg-zinc-800 dark:text-white ${onReturn ? 'hover:bg-neutral-50 dark:hover:bg-zinc-700/60' : ''}`}
       >
+        {/* Above the animated cube and text, under the back button. */}
+        {onReturn && (
+          <button
+            type="button"
+            onClick={onReturn}
+            aria-label={t('chatList.focal.open')}
+            title={t('chatList.focal.open')}
+            className="absolute inset-0 z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+          />
+        )}
         {/* Always there so the way out is findable, but quiet until the card is hovered. */}
         {onExit && (
           <button
@@ -108,7 +121,7 @@ export function FocalAgentCardView({
             onClick={onExit}
             aria-label={t('chatList.focal.exit')}
             title={`${t('chatList.focal.exit')} (Esc)`}
-            className="absolute left-1 top-1 flex h-6 items-center gap-1 px-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-brutal-black group-hover/regent:text-neutral-600 focus-visible:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-white dark:group-hover/regent:text-neutral-300"
+            className="absolute left-1 top-1 z-20 flex h-6 items-center gap-1 px-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-brutal-black group-hover/regent:text-neutral-600 focus-visible:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-white dark:group-hover/regent:text-neutral-300"
           >
             <ArrowLeftIcon className="h-3.5 w-3.5 shrink-0 stroke-2" aria-hidden="true" />
             <span className="max-w-0 overflow-hidden whitespace-nowrap text-[11px] font-bold opacity-0 transition-all duration-200 group-hover/regent:max-w-16 group-hover/regent:opacity-100 group-focus-within/regent:max-w-16 group-focus-within/regent:opacity-100">

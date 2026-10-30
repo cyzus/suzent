@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep the sidebar in Regent when opening memory or skills from its shortcuts, so only the main page changes."
+}

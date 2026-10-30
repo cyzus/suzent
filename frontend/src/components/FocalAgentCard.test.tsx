@@ -93,6 +93,17 @@ describe('Regent contact card', () => {
     expect(closed).not.toContain('chatList.focal.exit');
   });
 
+  it('leads back to Regent’s chat while another page fills the main area', () => {
+    const elsewhere = renderToStaticMarkup(
+      <FocalAgentCardView status={status()} active onOpen={() => {}} onReturn={() => {}} />
+    );
+    expect(elsewhere).toContain('aria-label="chatList.focal.open"');
+    expect(elsewhere).not.toContain('aria-current="page"');
+    const onChat = render(status(), true);
+    expect(onChat).not.toContain('chatList.focal.open');
+    expect(onChat).toContain('aria-current="page"');
+  });
+
   it('keeps the entry usable before its status arrives', () => {
     const html = render(null);
     expect(html).toContain('chatList.focal.name');
