@@ -1755,7 +1755,7 @@ been saved.
 
 To see what memory did in the chat you are in, open the overview in the right
 sidebar and expand **Memory**. It lists the memories the last reply drew on,
-the facts saved from this chat (corrections are marked **Updated**), and
+the latest facts saved from this chat (corrections are marked **Updated**), and
 whether organizing is caught up. **Open memory** takes you to the full panel.
 
 - **To forget something,** delete it in the panel. It disappears from search
