@@ -15,7 +15,7 @@ five-question ownership test, see
 
 ## Using Suzent
 
-- [Working with your agent](02-using/conversations.md), [Organizing work into projects](02-using/projects.md), [Making it yours](02-using/make-it-yours.md)
+- [Working with your agent](02-using/conversations.md), [Organizing work into projects](02-using/projects.md), [Suzent Regent](02-using/regent.md), [Making it yours](02-using/make-it-yours.md)
 
 ## Features
 
