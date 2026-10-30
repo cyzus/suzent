@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Tidy the sidebar Memory section: one quiet line when a reply used no memories, and saved facts wrap to two lines."
+}

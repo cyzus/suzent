@@ -103,6 +103,8 @@ interface OverviewListProps<T> {
   renderLabel: (item: T) => React.ReactNode;
   muted?: (item: T) => boolean;
   onSelect?: (item: T) => void;
+  /** Let long labels run to a second line instead of cutting them at one. */
+  wrap?: boolean;
 }
 
 export function OverviewList<T>({
@@ -113,6 +115,7 @@ export function OverviewList<T>({
   renderLabel,
   muted,
   onSelect,
+  wrap = false,
 }: OverviewListProps<T>): React.ReactElement {
   if (items.length === 0) {
     return <p className="py-1 text-xs text-neutral-400 dark:text-neutral-500">{empty}</p>;
@@ -126,7 +129,7 @@ export function OverviewList<T>({
               {renderMarker(item)}
             </span>
             <span
-              className={`min-w-0 flex-1 truncate ${
+              className={`min-w-0 flex-1 ${wrap ? 'line-clamp-2 break-words' : 'truncate'} ${
                 muted?.(item)
                   ? 'text-neutral-400 dark:text-neutral-500'
                   : 'text-neutral-600 dark:text-neutral-300'
@@ -142,12 +145,16 @@ export function OverviewList<T>({
               <button
                 type="button"
                 onClick={() => onSelect(item)}
-                className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-neutral-100 dark:hover:bg-zinc-800"
+                className={`flex w-full ${wrap ? 'items-start' : 'items-center'} gap-2 rounded px-1 py-1 text-left text-xs hover:bg-neutral-100 dark:hover:bg-zinc-800`}
               >
                 {content}
               </button>
             ) : (
-              <div className="flex items-center gap-2 px-1 py-1 text-xs">{content}</div>
+              <div
+                className={`flex ${wrap ? 'items-start' : 'items-center'} gap-2 px-1 py-1 text-xs`}
+              >
+                {content}
+              </div>
             )}
           </li>
         );
