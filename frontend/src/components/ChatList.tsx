@@ -19,6 +19,7 @@ import { useEventBus } from '../hooks/useEventBus';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { FocalAgentCardView } from './FocalAgentCard';
+import { RegentQueue } from './sidebar/RegentQueue';
 import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
@@ -388,6 +389,31 @@ export const ChatList: React.FC<ChatListProps> = ({
   const focalStatus = useFocalStatus();
   // On Regent's chat the rest of the sidebar steps back behind its card.
   const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
+  // On desktop the sidebar becomes Regent's queue instead: what waits on the
+  // user and what runs, with projects folded away and the rest as icons.
+  const regentConsole = regentOpen && !mobile;
+  const [regentProjectsOpen, setRegentProjectsOpen] = useState(false);
+  // Leaving Regent returns to the chat the user came from.
+  const chatBeforeRegentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentChatId && currentChatId !== FOCAL_CHAT_ID)
+      chatBeforeRegentRef.current = currentChatId;
+  }, [currentChatId]);
+  const exitRegentRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!regentConsole) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented || isImeComposing(event)) return;
+      // Escape inside a field belongs to that field, and while a menu or dialog
+      // is open it closes that first, wherever focus happens to be.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="menu"], [role="dialog"]')) return;
+      exitRegentRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [regentConsole]);
   const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
@@ -1519,6 +1545,25 @@ export const ChatList: React.FC<ChatListProps> = ({
     onOpenChat?.();
   };
 
+  const openNewChat = (): void => {
+    beginNewChat();
+    if (switchToView) switchToView('chat');
+    onOpenChat?.();
+  };
+
+  exitRegentRef.current = () => {
+    const previous = chatBeforeRegentRef.current;
+    if (previous) openChatById(previous);
+    else openNewChat();
+  };
+
+  // Behind Regent's queue, projects stay one click away instead of dimmed.
+  const regentRestClass = regentConsole
+    ? regentProjectsOpen
+      ? ''
+      : 'hidden'
+    : `regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`;
+
   return (
     <div
       ref={sidebarBoundsRef}
@@ -1537,10 +1582,15 @@ export const ChatList: React.FC<ChatListProps> = ({
           {/* Regent sits above everything else, like a pinned contact. */}
           {!isSearching && (
             <div className="order-0 border-b border-neutral-200 px-1.5 pt-1.5 pb-1.5 dark:border-zinc-700">
-              <FocalAgentCardView status={focalStatus} active={regentOpen} onOpen={openChatById} />
+              <FocalAgentCardView
+                status={focalStatus}
+                active={regentOpen}
+                onOpen={openChatById}
+                onExit={regentConsole ? () => exitRegentRef.current() : undefined}
+              />
             </div>
           )}
-          {!isSearching && (
+          {!isSearching && !regentConsole && (
             <nav
               aria-label={t('chatList.sections.navigation')}
               className={`order-0 px-1.5 pt-1 pb-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
@@ -1795,15 +1845,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                 while Regent's chat dims the rest. Search opens right under its row,
                 and this block keeps its place while results replace the list, so
                 the input keeps focus as the first keystroke turns searching on. */}
-          <div className="chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700">
+          {/* On Regent's queue both live in the icon row below; only an open search stays here. */}
+          <div
+            className={`chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700 ${regentConsole && !searchOpen && !localSearchQuery ? 'hidden' : ''}`}
+          >
             <button
               type="button"
-              onClick={() => {
-                beginNewChat();
-                if (switchToView) switchToView('chat');
-                onOpenChat?.();
-              }}
-              className={sidebarNavRowClass(false)}
+              onClick={openNewChat}
+              className={regentConsole ? 'hidden' : sidebarNavRowClass(false)}
             >
               <PencilSquareIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="flex-1 truncate">{t('chatList.newChat')}</span>
@@ -1812,7 +1861,9 @@ export const ChatList: React.FC<ChatListProps> = ({
               type="button"
               onClick={() => onSearchOpenChange?.(true)}
               className={
-                mobile ? 'hidden' : sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))
+                mobile || regentConsole
+                  ? 'hidden'
+                  : sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))
               }
             >
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1903,10 +1954,30 @@ export const ChatList: React.FC<ChatListProps> = ({
             </section>
           ) : (
             <>
+              {regentConsole && (
+                <>
+                  <RegentQueue onOpenChat={openChatById} />
+                  {/* Once open, the section's own header folds it again. */}
+                  {!regentProjectsOpen && (
+                    <button
+                      type="button"
+                      aria-expanded={false}
+                      onClick={() => setRegentProjectsOpen(true)}
+                      className="flex w-full items-center justify-between border-t border-neutral-200 px-3 py-2 text-left hover:bg-neutral-100 dark:border-zinc-700 dark:hover:bg-zinc-700"
+                    >
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                        {t('chatList.regentQueue.projects')}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                        {projects.length}
+                        <ChevronRightIcon className="h-3 w-3" aria-hidden="true" />
+                      </span>
+                    </button>
+                  )}
+                </>
+              )}
               {pinnedChats.length > 0 && (
-                <section
-                  className={`order-0 px-1.5 pb-2 pt-1 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
-                >
+                <section className={`order-0 px-1.5 pb-2 pt-1 ${regentRestClass}`}>
                   <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
                     {t('chatList.pinnedChats')}
                   </h2>
@@ -1914,16 +1985,30 @@ export const ChatList: React.FC<ChatListProps> = ({
                 </section>
               )}
               <section
-                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
+                className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t border-neutral-200 dark:border-zinc-700'} ${regentRestClass}`}
               >
                 <div
                   ref={organizationMenuRef}
                   className="relative flex items-center justify-between px-3 py-2"
                 >
                   <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                    {organization === 'projects'
-                      ? t('chatList.sections.projects')
-                      : t('chatList.sections.chats')}
+                    {regentConsole ? (
+                      <button
+                        type="button"
+                        aria-expanded
+                        onClick={() => setRegentProjectsOpen(false)}
+                        className="flex items-center gap-1 uppercase hover:text-brutal-black dark:hover:text-white"
+                      >
+                        {organization === 'projects'
+                          ? t('chatList.sections.projects')
+                          : t('chatList.sections.chats')}
+                        <ChevronRightIcon className="h-3 w-3 rotate-90" aria-hidden="true" />
+                      </button>
+                    ) : organization === 'projects' ? (
+                      t('chatList.sections.projects')
+                    ) : (
+                      t('chatList.sections.chats')
+                    )}
                   </h2>
                   <div className="flex items-center gap-0.5">
                     <button
@@ -2188,7 +2273,7 @@ export const ChatList: React.FC<ChatListProps> = ({
               </section>
               {(archivedCount > 0 || archivedOpen) && (
                 <section
-                  className={`order-2 border-t border-neutral-200 dark:border-zinc-700 regent-dimmable ${regentOpen ? 'regent-dimmed' : ''}`}
+                  className={`order-2 border-t border-neutral-200 dark:border-zinc-700 ${regentRestClass}`}
                 >
                   <button
                     type="button"
@@ -2243,6 +2328,43 @@ export const ChatList: React.FC<ChatListProps> = ({
             </>
           )}
         </div>
+        {regentConsole && (
+          <nav
+            aria-label={t('chatList.regentQueue.shortcuts')}
+            className="flex shrink-0 items-center justify-around border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700"
+          >
+            {[
+              { label: t('chatList.newChat'), Icon: PencilSquareIcon, onClick: openNewChat },
+              {
+                label: t('chatList.search'),
+                Icon: MagnifyingGlassIcon,
+                onClick: () => onSearchOpenChange?.(true),
+              },
+              {
+                label: t('chatList.sections.scheduled'),
+                Icon: ClockIcon,
+                onClick: () => onOpenAutomation?.(),
+              },
+              {
+                label: t('nav.memory'),
+                Icon: CircleStackIcon,
+                onClick: () => onOpenView?.('memory'),
+              },
+              { label: t('nav.skills'), Icon: SparklesIcon, onClick: () => onOpenView?.('skills') },
+            ].map(({ label, Icon, onClick }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={onClick}
+                aria-label={label}
+                title={label}
+                className="flex h-8 w-8 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
 
       {bulkMenu && (

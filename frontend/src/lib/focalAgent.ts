@@ -83,7 +83,9 @@ export async function cancelFocalWakeup(id: number): Promise<void> {
   if (!response.ok) throw new Error('Cancelling the wake-up failed');
 }
 
-const BOARD_OPEN_KEY = 'suzent.focal.boardOpen';
+// Renamed when the board started closed: the old key holds "true" for nearly
+// everyone, since it also recorded the board opening on its own.
+const BOARD_OPEN_KEY = 'suzent.focal.boardOpen.v2';
 const PROJECT_FILTER_KEY = 'suzent.focal.projectFilter';
 
 function readSetting(key: string): string | null {
@@ -102,9 +104,12 @@ function writeSetting(key: string, value: string): void {
   }
 }
 
-/** Whether the board should open when arriving on the Focal chat; open unless closed there. */
+/**
+ * Whether the board should open when arriving on the Focal chat. Closed unless
+ * opened there: the sidebar already lists what waits on the user.
+ */
 export function readFocalBoardOpen(): boolean {
-  return readSetting(BOARD_OPEN_KEY) !== 'false';
+  return readSetting(BOARD_OPEN_KEY) === 'true';
 }
 
 export function writeFocalBoardOpen(open: boolean): void {
