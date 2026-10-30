@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
+- GitHub sync no longer gets stuck when both devices changed different files: auto-sync merges them. A real conflict on the same file now stops for review instead of silently dropping the local change.
 - Keep hover tooltips to one short line instead of showing whole commands, prompts, results and errors, and shorten the longest hover hints.
 - On Windows, reinstalling no longer fails at the clone step because an earlier install saved its folder as a \\?\ path.
 - The installer repairs a release install that stopped halfway, instead of treating it as a development checkout that needs cargo.
