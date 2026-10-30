@@ -6,6 +6,7 @@ import { regentState, useRegentNod } from './regent/regentState';
 import { useI18n } from '../i18n';
 import { useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID, type FocalAgentStatus } from '../lib/focalAgent';
+import { hoverText } from '../lib/hoverText';
 
 interface FocalAgentCardProps {
   active: boolean;
@@ -131,7 +132,7 @@ export function FocalAgentCardView({
         </span>
         <span
           className={`regent-hero-text max-w-full truncate text-[11px] font-bold ${waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
-          title={statusLine ?? undefined}
+          title={hoverText(statusLine)}
         >
           {counts.length > 0 ? counts.join(' · ') : t('chatList.focal.allClear')}
         </span>
@@ -169,7 +170,7 @@ export function FocalAgentCardView({
         <span className="mt-0.5 flex items-center gap-2 min-w-0">
           <span
             className={`min-w-0 flex-1 truncate text-[11px] ${hasNews || waiting > 0 ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}
-            title={statusLine ?? undefined}
+            title={hoverText(statusLine)}
           >
             {statusLine}
           </span>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { tForLocale } from '../../i18n';
+import { HOVER_TEXT_MAX } from '../../lib/hoverText';
 import {
   getRepeatedToolLabel,
   getToolSummary,
@@ -98,12 +99,13 @@ describe('getToolSummary', () => {
     );
   });
 
-  it('truncates long details but keeps the full text for the tooltip', () => {
-    const query = 'a'.repeat(200);
+  it('gives the tooltip more of a long detail than the pill, but not all of it', () => {
+    const query = 'a'.repeat(400);
     const summary = summarize('web_search', { query });
     expect(summary.detail).toHaveLength(64);
     expect(summary.detail?.endsWith('…')).toBe(true);
-    expect(summary.title).toContain(query);
+    expect(summary.title).toHaveLength(HOVER_TEXT_MAX);
+    expect(summary.title?.endsWith('…')).toBe(true);
   });
 
   it('truncates an over-long description so it stays a headline', () => {

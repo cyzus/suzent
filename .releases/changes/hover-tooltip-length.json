@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep hover tooltips to one short line instead of showing whole commands, prompts, results and errors, and shorten the longest hover hints."
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Task } from '../../types/api';
 import { useI18n } from '../../i18n';
+import { hoverText } from '../../lib/hoverText';
 
 interface TaskProgressCardProps {
   task: Task;
@@ -83,7 +84,7 @@ export function TaskProgressCard({
           </h3>
           {summary && (
             <p
-              title={summary}
+              title={hoverText(summary)}
               className="mt-1 truncate text-sm text-neutral-500 dark:text-zinc-400"
             >
               {summary}

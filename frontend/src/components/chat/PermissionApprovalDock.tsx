@@ -2,6 +2,7 @@ import React from 'react';
 import { useI18n } from '../../i18n';
 import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
 import { isImeComposing } from '../../lib/ime';
+import { hoverText } from '../../lib/hoverText';
 
 interface PermissionApprovalDockProps {
   parts: AGUIPart[];
@@ -254,10 +255,7 @@ const ApprovalCard: React.FC<{
       </div>
 
       {detail && (
-        <pre
-          title={detail}
-          className="mx-3 mt-2 max-h-20 overflow-auto whitespace-pre-wrap break-words border border-neutral-300 bg-neutral-100 px-2.5 py-1.5 font-mono text-[11px] leading-4 text-neutral-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-300"
-        >
+        <pre className="mx-3 mt-2 max-h-20 overflow-auto whitespace-pre-wrap break-words border border-neutral-300 bg-neutral-100 px-2.5 py-1.5 font-mono text-[11px] leading-4 text-neutral-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-300">
           {detail}
         </pre>
       )}
@@ -270,7 +268,7 @@ const ApprovalCard: React.FC<{
                 {approval.risk}
               </span>
             )}
-            <span className="truncate" title={approval.reason}>
+            <span className="truncate" title={hoverText(approval.reason)}>
               {approval.reason}
             </span>
           </div>

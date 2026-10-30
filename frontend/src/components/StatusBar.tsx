@@ -26,6 +26,7 @@ import { LiveRegentIdentity } from './regent/RegentHeader';
 import { RegentMark } from './regent/RegentMark';
 import { ResolveChatButton } from './chat/ResolveChatButton';
 import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
+import { hoverText } from '../lib/hoverText';
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
 const SERVICE_STATUS_POLL_MS = 8_000;
@@ -334,7 +335,7 @@ function HeartbeatWidget() {
         {/* Spelled out only when it needs attention: running, or failing. */}
         <span
           className={`${(failure && enabled) || inFlightForChat ? 'hidden md:inline' : 'sr-only'} text-[10px] font-bold uppercase tracking-wider ${failure && enabled && !inFlightForChat ? 'text-red-600 dark:text-red-400' : ''}`}
-          title={failure && enabled ? failure : undefined}
+          title={enabled ? hoverText(failure) : undefined}
         >
           {text}
         </span>
