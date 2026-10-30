@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "On Windows, reinstalling no longer fails at the clone step because an earlier install saved its folder as a \\\\?\\ path."
+}
