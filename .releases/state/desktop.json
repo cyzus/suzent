@@ -5,6 +5,7 @@
     ".releases/changes/acp-discovery-guidance.json",
     ".releases/changes/acp-registry-pairing.json",
     ".releases/changes/acp-settings-clarity.json",
+    ".releases/changes/activity-rail-agent-tools.json",
     ".releases/changes/activity-rail-disclosure.json",
     ".releases/changes/agent-activity-presentation.json",
     ".releases/changes/agent-inbox-system-reminders.json",
