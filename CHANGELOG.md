@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
 - Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
 - Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
+- Keep the sidebar in Regent when opening memory or skills from its shortcuts, so only the main page changes.
 - Turn the sidebar into Regent's queue while its chat is open, with a back button and Esc to leave, waiting and running chats with a right-click menu, folded projects, and the board starting closed.
 - Soften Regent message bubbles and align the copy action beneath replies.
 - Redesign the right sidebar as an expandable overview with context usage, the chat's environment and heartbeat, and Regent's task board, and shrink the composer's folder button to an icon inside existing chats.

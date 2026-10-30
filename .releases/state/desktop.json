@@ -127,6 +127,7 @@
     ".releases/changes/regent-conversation-polish.json",
     ".releases/changes/regent-conversation.json",
     ".releases/changes/regent-identity.json",
+    ".releases/changes/regent-keep-on-memory-skills.json",
     ".releases/changes/regent-name.json",
     ".releases/changes/regent-no-repeated-session-answers.json",
     ".releases/changes/regent-quiet-wakes.json",
