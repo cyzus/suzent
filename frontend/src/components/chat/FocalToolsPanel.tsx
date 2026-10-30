@@ -7,6 +7,7 @@ import {
   type FocalPanel,
   type FocalWakeup,
 } from '../../lib/focalAgent';
+import { hoverText } from '../../lib/hoverText';
 
 const PANEL_POLL_MS = 30_000;
 
@@ -144,7 +145,7 @@ export function FocalToolsPanelView({
                   {wakeup.lastError && (
                     <p
                       className="mt-1 text-[10px] font-bold text-red-600 dark:text-red-400 truncate"
-                      title={wakeup.lastError}
+                      title={hoverText(wakeup.lastError)}
                     >
                       {t('focalTools.lastRunFailed')}
                     </p>
