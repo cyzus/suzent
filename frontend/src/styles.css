@@ -2445,6 +2445,130 @@ button.activity-turn-duration:focus-visible {
   animation: regentHover 1.8s ease-in-out infinite;
 }
 
+/* In the sidebar entry row Regent rests as the full-slot Suzent head; on hover
+   or keyboard focus it plays a multi-stage coronation sequence. */
+.regent-crown-on-hover .regent-mark-head {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: translateY(-1px) scale(1);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.regent-crown-on-hover:hover .regent-mark-head,
+.regent-crown-on-hover:focus-visible .regent-mark-head {
+  animation: regentMarkHeadCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover .regent-eyes {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: transform 0.24s ease-out;
+}
+
+.regent-crown-on-hover:not([data-regent-state='working']):hover .regent-eyes,
+.regent-crown-on-hover:not([data-regent-state='working']):focus-visible .regent-eyes {
+  animation: regentMarkEyesCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover .regent-mark-circlet {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.72) rotate(-10deg);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.26s ease-out;
+}
+
+.regent-crown-on-hover:hover .regent-mark-circlet,
+.regent-crown-on-hover:focus-visible .regent-mark-circlet {
+  animation: regentMarkCircletCrown 0.62s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.regent-crown-on-hover:not([data-regent-state='waiting']):hover .regent-gem,
+.regent-crown-on-hover:not([data-regent-state='waiting']):focus-visible .regent-gem {
+  animation: regentGemGlint 0.65s ease-out 0.22s 1;
+}
+
+.regent-crown-on-hover[data-regent-state='working'] .regent-circlet,
+.regent-crown-on-hover [data-regent-state='working'] .regent-circlet {
+  animation: none;
+}
+
+.regent-crown-on-hover:hover [data-regent-state='working'] .regent-circlet,
+.regent-crown-on-hover:focus-visible [data-regent-state='working'] .regent-circlet {
+  animation: regentHover 1.8s ease-in-out 0.62s infinite;
+}
+
+@keyframes regentMarkHeadCrown {
+  0% {
+    transform: translateY(-1px) scale(1);
+  }
+  26% {
+    transform: translateY(-2.4px) scale(0.95, 1.03);
+  }
+  58% {
+    transform: translateY(1.4px) scale(0.89, 0.81);
+  }
+  80% {
+    transform: translateY(-0.2px) scale(0.85, 0.87);
+  }
+  100% {
+    transform: translateY(0.4px) scale(0.86);
+  }
+}
+
+@keyframes regentMarkEyesCrown {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  28% {
+    transform: translateY(-2.2px) scaleY(1.08);
+  }
+  58% {
+    transform: translateY(0.6px) scaleY(0.22);
+  }
+  80% {
+    transform: translateY(-0.5px) scaleY(1.04);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes regentMarkCircletCrown {
+  0% {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.72) rotate(-12deg);
+  }
+  28% {
+    opacity: 1;
+    transform: translateY(0.4px) scale(0.92) rotate(5deg);
+  }
+  58% {
+    opacity: 1;
+    transform: translateY(6.1px) scale(0.92, 0.85) rotate(-1.5deg);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(4px) scale(0.88) rotate(0.6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(4.7px) scale(0.88) rotate(0deg);
+  }
+}
+
+@keyframes regentGemGlint {
+  0%,
+  100% {
+    fill: #fff;
+  }
+  45% {
+    fill: var(--brutal-yellow);
+  }
+}
+
 /* The one place Regent turns colour: something waits on the user. */
 [data-regent-state='waiting'] .regent-gem {
   animation: regentGemPulse 1.6s ease-in-out infinite;
@@ -2532,8 +2656,22 @@ button.activity-turn-duration:focus-visible {
   .regent-circlet,
   .regent-gem,
   .regent-cube-gem,
-  .regent-nod {
+  .regent-nod,
+  .regent-mark-head,
+  .regent-mark-circlet {
     animation: none !important;
+    transition: none !important;
+  }
+
+  .regent-crown-on-hover:hover .regent-mark-head,
+  .regent-crown-on-hover:focus-visible .regent-mark-head {
+    transform: translateY(0.4px) scale(0.86);
+  }
+
+  .regent-crown-on-hover:hover .regent-mark-circlet,
+  .regent-crown-on-hover:focus-visible .regent-mark-circlet {
+    opacity: 1;
+    transform: translateY(4.7px) scale(0.88);
   }
 }
 
