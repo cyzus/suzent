@@ -6848,6 +6848,24 @@ Starting a new conversation detaches the selected local stream observer only aft
 composer loading succeeds. Generation guards reject stale updates, and no backend
 stop is sent. Regent and ordinary tasks therefore continue independently.
 
+### Paged conversation navigation
+
+The first screen loads 30 recent chats and a separate pinned page. Projects carry
+server counts and fetch their own first page when expanded; Load more requests
+another 30. Title search runs on the server across the authorized history, so an
+older conversation remains discoverable even if it was never loaded on the phone.
+
+The clients use `chat_pagination: 1` and the navigation/page/status routes documented
+in `packages/mobile-contract/README.md`. Older servers retain the legacy index
+fallback. Foreground polling refreshes loaded summaries in batches of at most 100;
+metadata and the short recent page refresh once per minute. Page loads and search
+results are guarded against navigation changes and cancellation. Pull to refresh
+on iOS or the refresh action on Android restarts from the newest page. Regent,
+project counts and pin discovery do not depend on the recent page.
+
+The demo implements the same paging contract locally. Paging, old-title search,
+independent pins, duplicate merges and access-scoped counts have regression tests.
+
 
 ---
 
