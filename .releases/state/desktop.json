@@ -60,6 +60,7 @@
     ".releases/changes/focal-session-request-visible.json",
     ".releases/changes/focal-tools-package.json",
     ".releases/changes/github-sync-merge-disjoint-changes.json",
+    ".releases/changes/greeting-cube-visual-polish.json",
     ".releases/changes/header-title-gap.json",
     ".releases/changes/hover-tooltip-length.json",
     ".releases/changes/image-edit-support.json",
