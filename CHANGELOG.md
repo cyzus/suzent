@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show only the latest facts a chat saved in the sidebar Memory section, with a count of the rest.
 - Tidy the sidebar Memory section: one quiet line when a reply used no memories, and saved facts wrap to two lines.
 - The overview gets its own Memory section showing what the last turn used, what this chat saved, and how organizing is going.
+- Memories are now saved in the language you chat in instead of always in English, and the organizer keeps each notebook page in one language.
 - Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
 - Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
 - Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
