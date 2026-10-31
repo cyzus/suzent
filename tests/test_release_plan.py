@@ -234,7 +234,10 @@ def test_dependency_update_needs_no_declaration_only_for_manifests(
     (repo / "frontend").mkdir()
     (repo / "frontend/package-lock.json").write_text("{}")
     release.git(repo, "add", ".")
-    with pytest.raises(ValueError, match="desktop"):
+    with pytest.raises(
+        ValueError,
+        match=r'changes/<short-slug>\.json such as \{"products": \{"desktop"',
+    ):
         release.check(repo, base)
     release.check(repo, base, dependency_update=True)
     (repo / "src").mkdir()

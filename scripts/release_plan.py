@@ -450,8 +450,16 @@ def check(
         paths = [p for p in paths if Path(p).name not in DEPENDENCY_FILES]
     missing = affected_products(paths) - declared
     if missing:
+        example = json.dumps(
+            {
+                "products": dict.fromkeys(sorted(missing), "patch"),
+                "summary": "Describe the user-visible change.",
+            }
+        )
         raise ValueError(
-            f"Add a release declaration for: {', '.join(sorted(missing))}; use none with a reason when no release is needed"
+            f"Add a release declaration for: {', '.join(sorted(missing))}. "
+            f"Commit a new .releases/changes/<short-slug>.json such as {example}; "
+            'use "none" with a "reason" when no release is needed (see .releases/README.md)'
         )
     for product in PRODUCTS:
         if product_version(root, product) != product_version(root, product, base):
