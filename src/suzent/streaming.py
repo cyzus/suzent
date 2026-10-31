@@ -49,6 +49,7 @@ from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
     is_tool_history_protocol_error,
     strip_tool_interactions,
+    without_workspace_refs,
 )
 from suzent.core.stream_registry import (
     StreamControl,
@@ -81,13 +82,17 @@ def tool_call_outcome(part: Any) -> str | None:
     """The failure a tool result carries, or None for an ordinary success.
 
     A rejected call (bad arguments, or the tool asking for a retry) comes back
-    as a retry prompt; a call that raised is a return marked ``failed``.
-    Denials are reported through the approval events instead.
+    as a return marked ``retried`` (a retry prompt in older histories); a call
+    that raised is a return marked ``failed``. Denials are reported through the
+    approval events instead.
     """
     if isinstance(part, RetryPromptPart):
         return "failed" if part.tool_name else None
-    if isinstance(part, ToolReturnPart) and part.outcome in ("failed", "interrupted"):
-        return part.outcome
+    if isinstance(part, ToolReturnPart):
+        if part.outcome == "retried":
+            return "failed"
+        if part.outcome in ("failed", "interrupted"):
+            return part.outcome
     return None
 
 
@@ -923,9 +928,8 @@ def _function_tool_result_part(event: Any) -> Any:
 
 
 def _run_result_usage(result: Any) -> Any:
-    """Read run usage whether pydantic-ai exposes it as a property or method."""
-    usage = result.usage
-    return usage() if callable(usage) else usage
+    """Read run usage (a property since pydantic-ai 2.64)."""
+    return result.usage
 
 
 def _incoming_message_texts(event: Any) -> list[str]:
@@ -1614,7 +1618,7 @@ async def stream_agent_responses(
         final_response_text = ""
         original_count = len(message_history) if message_history else 0
         prompt = message
-        history = list(message_history) if message_history else None
+        history = without_workspace_refs(message_history) if message_history else None
         current_deferred = deferred_tool_results
         # tool_call_ids whose recovery we already emitted immediately at
         # function_tool_result time, so the AgentRunResultEvent fallback path

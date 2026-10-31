@@ -39,8 +39,19 @@ def _validation_retry(tool_call_id: str = "call-1") -> RetryPromptPart:
     )
 
 
+def _validation_return(tool_call_id: str = "call-1") -> ToolReturnPart:
+    # pydantic-ai 2.64+ answers a rejected call with a "retried" return.
+    return ToolReturnPart(
+        tool_name="run_command",
+        tool_call_id=tool_call_id,
+        content="1 validation error: content Field required",
+        outcome="retried",
+    )
+
+
 def test_outcome_of_each_kind_of_result():
     assert tool_call_outcome(_validation_retry()) == "failed"
+    assert tool_call_outcome(_validation_return()) == "failed"
     assert (
         tool_call_outcome(
             ToolReturnPart(
@@ -90,11 +101,14 @@ async def _stream_events(event):
 
 
 async def test_a_rejected_call_streams_its_outcome_after_the_result():
-    events = await _stream_events(FunctionToolResultEvent(part=_validation_retry()))
+    events = await _stream_events(FunctionToolResultEvent(part=_validation_return()))
 
-    assert [type(e).__name__ for e in events] == ["ToolCallResultEvent", "CustomEvent"]
-    assert events[1].name == "tool_call_outcome"
-    assert events[1].value == {"toolCallId": "call-1", "outcome": "failed"}
+    # pydantic-ai may add its own replay events between the two.
+    names = [type(e).__name__ for e in events]
+    assert names[0] == "ToolCallResultEvent"
+    assert names[-1] == "CustomEvent"
+    assert events[-1].name == "tool_call_outcome"
+    assert events[-1].value == {"toolCallId": "call-1", "outcome": "failed"}
 
 
 async def test_a_successful_call_streams_no_outcome():

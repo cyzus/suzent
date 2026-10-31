@@ -95,6 +95,11 @@ def estimate_text(text: str) -> int:
     return math.ceil(cjk + other * 0.5 + ascii_chars * 0.25)
 
 
+_CONTEXT_ELEMENT = re.compile(
+    r'<context id="[^"]*">\n(?P<body>.*)\n</context>(?:\n.*)?', re.DOTALL
+)
+
+
 def _text(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -260,7 +265,15 @@ def build_context_breakdown(
 
     history_rows = sum(sum(items.values()) for items in buckets.values())
     for instruction in parameters.instruction_parts or []:
-        add_text(instruction.content, "system_prompt", "system_prompt", sources)
+        content = instruction.content
+        # Append-mode instructions (pydantic-ai 2.64+) wrap each dynamic part in
+        # a <context id="..."> element; attribute the registered inner text and
+        # count the wrapper itself as system prompt.
+        wrapped = _CONTEXT_ELEMENT.fullmatch(content)
+        if wrapped and source_key(wrapped.group("body")) in sources:
+            add_text(wrapped.group("body"), "system_prompt", "system_prompt", sources)
+            content = content[: wrapped.start("body")] + content[wrapped.end("body") :]
+        add_text(content, "system_prompt", "system_prompt", sources)
 
     for tool in [*parameters.function_tools, *parameters.output_tools]:
         category = (

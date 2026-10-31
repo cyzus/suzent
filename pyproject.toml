@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "crawl4ai>=0.7.3",
-    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.56,<3",
+    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.64,<3",
     # Exact pin: litellm 1.82.7/1.82.8 on PyPI were compromised (Mar 2026). Bump
     # deliberately, after checking the release and the uv.lock hashes.
     "litellm==1.81.13",
@@ -61,7 +61,7 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
-    "pydantic-ai-harness>=0.24,<0.25",
+    "pydantic-ai-harness>=0.64,<0.65",
 ]
 
 [project.urls]

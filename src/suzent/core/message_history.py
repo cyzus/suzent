@@ -20,6 +20,23 @@ def _is_tool_result_part(part: Any) -> bool:
     )
 
 
+def without_workspace_refs(messages: list[Any]) -> list[Any]:
+    """Drop the workspace each response recorded, so the run picks its own.
+
+    Suzent's only workspace is the read-only folder repository instructions
+    are read from, and it keeps no state. A chat whose project working folder
+    changed would otherwise carry the old folder in history, which
+    pydantic-ai refuses to continue in a different one.
+    """
+    return [
+        dataclasses.replace(message, workspace_ref=None)
+        if isinstance(message, ModelResponse)
+        and getattr(message, "workspace_ref", None) is not None
+        else message
+        for message in messages
+    ]
+
+
 def safe_tool_history_tail_start(messages: list[Any], desired_start: int) -> int:
     """Move a tail boundary left until it no longer orphans tool results."""
 
