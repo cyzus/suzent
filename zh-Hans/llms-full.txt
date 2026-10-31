@@ -6036,6 +6036,25 @@ that wrote whatever looked like a fact; a replay of past batches showed it stori
 agent's own words and task specs as facts about the user, so it was removed rather than
 kept as an option.
 
+### Memory language
+
+Capture and experience write `content` in the language of the USER lines (the majority one
+when they mix); ASSISTANT and ACTION lines never decide it, because tool output and agent
+replies are often English in a conversation that is not. An update to a listed memory keeps
+that memory's language unless the user has switched. Experience falls back to English when a
+batch has no USER line. Evidence is always verbatim. Earlier versions forced English, which
+left memories unreadable to non-English users and out of reach of full-text search in their
+language.
+
+There is no global language setting behind this: the UI locale is frontend-only, chat-app
+channels have none, and it often differs from the language the user actually writes. The
+deterministic `restatement` and `evidence_not_in_user_line` gates compare bigrams, so they do
+not catch a restatement in another language; the recall set listed in the prompt and the
+dream, which compares by meaning, cover that. The dream keeps each page in one language: a
+new page takes its candidates' language, filing into an existing page uses that page's
+language, and a page changes language only when it is rewritten whole. Review-queue questions
+are in the user's language.
+
 Scheduled turns are filtered per turn in `extraction_queue._is_scheduled`, so a cron or
 heartbeat run inside a normal chat is not captured as user facts. `cron` is deliberately
 not in `_is_system_chat`: that list also makes a chat stateless.
@@ -11215,6 +11234,16 @@ Not done yet:
 - **System chats.** Dream and sub-agent chats still keep no agent history.
   Logging it, with an explicit `run.reset` event where dream deliberately
   starts over, would let a sub-agent woken by `agent_send` keep its context.
+
+## Memory
+
+- **Full-text search for CJK memories.** Capture now writes memories in the
+  user's language, but the `archival_memories` FTS index still uses LanceDB's
+  English tokenizer with stemming and stop words, which treats a run of Chinese
+  as one token. Chinese memories are found only through the vector side of
+  hybrid search until the index uses an n-gram (or CJK-aware) tokenizer. The
+  index is created only with the table, so existing stores need a one-time
+  rebuild on startup.
 
 ## A2A
 
