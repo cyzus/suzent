@@ -5496,6 +5496,15 @@ directly (heartbeat config, the heartbeat route, the turn-end file snapshot).
 Because the difference is taken against the row, a write that reached the row
 some other way is recorded by the next logged write to that chat.
 
+SQLite allows one writer at a time, so how long a write holds the lock decides
+how long everything else waits. Every connection runs in WAL mode, so reads
+(the Regent board, the chat list) don't wait for a write, and writers wait up
+to 15 seconds for each other before failing as locked. `synchronous=NORMAL`
+can lose the last commits on power loss; chats replay them from their logs.
+The search index (`chat_messages_fts`) is updated in the same transaction, but
+only for messages whose text changed: re-tokenizing a long chat on every
+appended message used to hold the lock for up to a second.
+
 ## Starting up
 
 `ChatDatabase.__init__` runs `reconcile_chat_logs()` after the migrations and
