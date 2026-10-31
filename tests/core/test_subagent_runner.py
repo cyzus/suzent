@@ -489,3 +489,51 @@ def test_fork_reminder_carries_role_tools_and_a_moved_cwd():
     assert "/worktree" not in subagent_runner.fork_reminder(
         task, config, parent_cwd="/worktree"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_subagent_without_tools_cannot_fall_back_to_spawning_agents():
+    """An empty tool list resolves to the user's defaults, which hold AgentTool."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    task = SubAgentTask(
+        task_id="sub_empty",
+        parent_chat_id="parent",
+        chat_id="subagent-sub_empty",
+        description="do a thing",
+        tools_allowed=[],
+        model_override="parent/model",
+    )
+    db = MagicMock()
+    db.get_chat.return_value = MagicMock(
+        config={"denied_tools": ["RunCommandTool"]},
+        working_directory=None,
+        project_id=None,
+    )
+    built: list[dict] = []
+
+    with (
+        patch(
+            "suzent.agent_manager.build_agent_config",
+            lambda config, **_: built.append(dict(config)) or config,
+        ),
+        patch(
+            "suzent.core.chat_processor.ChatProcessor.process_turn_text",
+            AsyncMock(return_value="done"),
+        ),
+        patch.object(subagent_runner, "_ensure_task_chat", return_value=db),
+        patch.object(subagent_runner, "register_background_stream", MagicMock()),
+        patch.object(subagent_runner, "unregister_background_stream", MagicMock()),
+        patch.object(subagent_runner, "_broadcast_task_update", MagicMock()),
+        patch.object(subagent_runner, "_persist_task_state", MagicMock()),
+        patch.object(subagent_runner, "_evict_old_finished_tasks_locked", AsyncMock()),
+        patch.object(subagent_runner, "_notify_parent", AsyncMock()),
+        patch.object(subagent_runner, "_queue_parent_wakeup", MagicMock()),
+    ):
+        await subagent_runner._run_subagent(task, wakeup_parent=False)
+
+    assert task.status == "completed", task.error
+    denied = set(built[0]["denied_tools"])
+    assert {"RunCommandTool", "AgentTool", "AgentSendTool"} <= denied
+    persisted = db.merge_chat_config.call_args.args[1]
+    assert "AgentTool" in persisted["denied_tools"]
