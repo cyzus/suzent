@@ -14,10 +14,9 @@
         "core:window:allow-close",
         "core:window:allow-minimize",
         "core:window:allow-toggle-maximize",
-        "core:webview:allow-create-webview",
-        "core:webview:allow-webview-close",
-        "core:webview:allow-set-webview-position",
-        "core:webview:allow-set-webview-size",
+        "core:webview:allow-create-webview-window",
+        "core:window:allow-set-position",
+        "core:window:allow-set-size",
         "fs:default",
         "notification:default",
         {
