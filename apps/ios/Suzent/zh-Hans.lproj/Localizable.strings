@@ -199,7 +199,6 @@
 // Offline demonstration
 "Try offline demo" = "体验离线演示";
 "Explore with sample data. No desktop, API key, or internet required." = "使用示例数据体验，无需电脑、API Key 或网络。";
-"Offline demo · Scripted replies, no AI calls" = "离线演示 · 预设回复，不调用 AI";
 "Exit demo" = "退出演示";
 "Reset demo" = "重置演示";
 "Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed." = "配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。";

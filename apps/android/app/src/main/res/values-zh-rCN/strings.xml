@@ -174,7 +174,6 @@
     <string name="reminder_collapsed">已折叠</string>
     <string name="demo_enter">体验离线演示</string>
     <string name="demo_intro">使用示例数据体验，无需电脑、API Key 或网络。</string>
-    <string name="demo_banner">离线演示 · 预设回复，不调用 AI</string>
     <string name="demo_exit">退出演示</string>
     <string name="demo_reset">重置演示</string>
     <string name="demo_limits">配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。</string>

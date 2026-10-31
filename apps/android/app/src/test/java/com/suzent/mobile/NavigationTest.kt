@@ -17,8 +17,8 @@ class NavigationTest {
         val second = client.chatPage(ChatPageQuery(), 30)
         assertNull(second.nextOffset)
         assertTrue(initial.recent.chats.map { it.id }.toSet().intersect(second.chats.map { it.id }.toSet()).isEmpty())
-        assertEquals(listOf("demo-failure"), client.chatPage(ChatPageQuery("search", "unavailable")).chats.map { it.id })
-        assertEquals(39, initial.metadata.projects.first { it.id == "demo-home" }.chatCount)
+        assertEquals(listOf("demo-failure"), client.chatPage(ChatPageQuery("search", "digest")).chats.map { it.id })
+        assertEquals(37, initial.metadata.projects.first { it.id == "demo-home" }.chatCount)
     }
     @Test fun appendedPagesDeduplicateUpdatedRows() {
         val first = ChatPage(listOf(Chat("a", "Old", false, emptyList()), Chat("b", "B", false, emptyList())), 3, 2)
