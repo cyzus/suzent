@@ -1937,6 +1937,8 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    notice: '通知',
+    compactionResolved: '此前压缩失败 · 后续重试已成功',
     regentThinking: 'Regent 正在思考',
     regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
