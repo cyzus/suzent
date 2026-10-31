@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.20.0] - 2026-10-31
+
+### Release notes
+- Pairing a phone now offers Full control, Chat only, or Read only instead of six separate permissions, and new phones get Full control by default.
+- The desktop app now shows a restart button once an update is downloaded, and restarts into it on its own after 30 minutes away with no chat or task running.
+
 ## [v0.19.0] - 2026-10-31
 
 <!-- highlights -->
