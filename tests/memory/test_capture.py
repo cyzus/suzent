@@ -76,6 +76,15 @@ def test_a_grounded_user_fact_is_kept():
     assert result.dropped == [] and result.ungrounded == {}
 
 
+def test_a_fact_in_the_users_language_is_kept():
+    """Capture writes content in the user's language; the gate must not need English."""
+    batch = "## New turns\n\n### Turn on 2026-10-22\nUSER: 我一直只喝茶，从来不喝咖啡。"
+    fact = _fact(content="用户只喝茶，不喝咖啡", evidence="我一直只喝茶，从来不喝咖啡")
+    result = capture.gate([fact], batch)
+    assert [f.content for f in result.kept] == ["用户只喝茶，不喝咖啡"]
+    assert result.dropped == [] and result.ungrounded == {}
+
+
 def test_evidence_matches_despite_spacing_and_punctuation():
     fact = _fact(evidence="I always drink tea never coffee")
     assert capture.gate([fact], BATCH).kept == [fact]

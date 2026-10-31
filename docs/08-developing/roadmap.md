@@ -89,6 +89,16 @@ Not done yet:
   Logging it, with an explicit `run.reset` event where dream deliberately
   starts over, would let a sub-agent woken by `agent_send` keep its context.
 
+## Memory
+
+- **Full-text search for CJK memories.** Capture now writes memories in the
+  user's language, but the `archival_memories` FTS index still uses LanceDB's
+  English tokenizer with stemming and stop words, which treats a run of Chinese
+  as one token. Chinese memories are found only through the vector side of
+  hybrid search until the index uses an n-gram (or CJK-aware) tokenizer. The
+  index is created only with the table, so existing stores need a one-time
+  rebuild on startup.
+
 ## A2A
 
 See [A2A](./protocols/a2a.md) for what exists today.
