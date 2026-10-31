@@ -1,6 +1,7 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "consumed": [
+    ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-app-store-privacy.json",
@@ -22,11 +23,13 @@
     ".releases/changes/mobile-desktop-composer.json",
     ".releases/changes/mobile-device-name.json",
     ".releases/changes/mobile-greeting-cube.json",
+    ".releases/changes/mobile-ipad-reading-width.json",
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-model-memory.json",
     ".releases/changes/mobile-native-polish.json",
     ".releases/changes/mobile-offline-demo.json",
     ".releases/changes/mobile-pairing-welcome.json",
+    ".releases/changes/mobile-privacy-link.json",
     ".releases/changes/mobile-project-order.json",
     ".releases/changes/mobile-pua-citations.json",
     ".releases/changes/mobile-reconnect-animation.json",
