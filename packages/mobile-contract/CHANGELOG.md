@@ -1,5 +1,12 @@
 # Mobile changelog
 
+## [mobile-v0.5.2] - 2026-10-31
+
+### Release notes
+- The Android chat list shows its settings button again; the wordmark had pushed it out of view.
+- On iPad the conversation keeps a readable width, and starting the offline demo no longer flashes the pairing screen.
+- Settings and the connection screen now link to the mobile privacy policy.
+
 ## [mobile-v0.5.1] - 2026-10-31
 
 ### Release notes
