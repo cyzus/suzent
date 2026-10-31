@@ -128,8 +128,7 @@ Suggested English review notes (include your real pairing video link separately)
 > demo" at the bottom of the connection screen. If already paired, open Settings,
 > expand About, and select "Try offline demo". The demo uses scripted, on-device
 > sample data and calls no AI service; the pinned "Welcome to Suzent"
-> conversation explains this, replies are labelled "Demo model", and Settings
-> offers Reset demo and Exit demo.
+> conversation explains this, and Settings offers Reset demo and Exit demo.
 > On the start page, select "Plan a weekend trip to London" to see a streamed
 > example response, or "Save the weekend plan to my notes" to allow or reject a
 > simulated file-writing action.

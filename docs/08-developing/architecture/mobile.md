@@ -477,8 +477,8 @@ failed saves leave it available to retry.
 Both native apps expose **Try offline demo** as a quiet text button at the bottom
 of the unpaired connection screen. Once paired, the entry is under **Settings →
 About**; it is absent from connection help and the regular chat surface. It is
-available in release builds to everyone. The pinned welcome conversation and the
-"Demo model" label identify scripted responses; Settings provides **Reset demo**
+available in release builds to everyone. The pinned welcome conversation identifies
+scripted responses; Settings provides **Reset demo**
 and **Exit demo**. Existing desktop pairing credentials are retained when entering or leaving
 the demo, and demo operations never use them.
 
