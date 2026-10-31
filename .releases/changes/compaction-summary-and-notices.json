@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Reduce compaction summary overhead and show when a later retry resolved a historical compaction failure, with timestamps on notices."
+}

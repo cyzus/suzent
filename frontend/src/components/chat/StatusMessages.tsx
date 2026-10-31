@@ -161,7 +161,11 @@ export const SystemTriggeredMessage: React.FC<{
   );
 };
 
-export const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
+export const NoticeMessage: React.FC<{ message: Message; resolved?: boolean }> = ({
+  message,
+  resolved = false,
+}) => {
+  const { t, locale } = useI18n();
   const content = message.content?.trim();
   if (!content) {
     return null;
@@ -184,7 +188,12 @@ export const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
             {isRunning && <CompactionCube size={34} className="self-center" />}
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                Notice
+                {resolved ? t('chatMessage.compactionResolved') : t('chatMessage.notice')}
+                {message.timestamp && !Number.isNaN(Date.parse(message.timestamp)) && (
+                  <time dateTime={message.timestamp} className="ml-2 normal-case">
+                    {new Date(message.timestamp).toLocaleString(locale)}
+                  </time>
+                )}
               </div>
               <div className="text-sm leading-snug text-brutal-black dark:text-neutral-100">
                 <MarkdownRenderer content={content} />
