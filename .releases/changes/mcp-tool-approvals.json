@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "MCP tools now go through permission checks: tools a server marks read-only run directly, and others ask first, are reviewed in Smart mode, or are refused in read-only modes."
+}

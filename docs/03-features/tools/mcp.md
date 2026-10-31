@@ -50,8 +50,14 @@ server there changes the same switch in Settings.
 
 Every tool from an enabled server is available to the agent, named after the
 server so you can tell where it came from. MCP tools don't appear as separate
-checkboxes in the tool picker, and they run without an approval prompt, so only
-add servers you trust.
+checkboxes in the tool picker.
+
+MCP tools go through the same [permission checks](./human-in-the-loop.md) as
+Suzent's own tools. A tool the server marks as read-only runs straight away.
+Any other tool asks you first in Ask mode, is reviewed in Smart mode, and runs
+without asking in Full Access. You can always allow or deny a tool when it
+asks, as with any other tool. A server decides for itself which of its tools it
+calls read-only, so only add servers you trust.
 
 ## From the command line
 
