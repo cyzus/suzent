@@ -292,12 +292,16 @@ export const en = {
     pairedDevices: 'Paired phones',
     noDevices: 'No paired phones yet.',
 
-    fullAccess: 'Full access',
-    restrictedAccess: 'Restricted access',
-    fullAccessHelp:
-      'Use conversations, send and stop responses, and approve tool requests from your phone.',
-    restrictAccess: 'Restrict access',
-    restoreFullAccess: 'Restore full access',
+    preset_full: 'Full control',
+    preset_full_help:
+      'Read and organize every conversation, chat with the agent, and approve tool requests. Best for your own phone.',
+    preset_chat: 'Chat only',
+    preset_chat_help:
+      'Read every conversation and chat with the agent, but not approve tool requests or rename, move, or delete chats.',
+    preset_read: 'Read only',
+    preset_read_help: 'See every conversation without sending anything.',
+    preset_custom: 'Custom',
+    preset_custom_help: 'Pick individual permissions and which conversations this phone can read.',
     approve_tools: 'Approve tool requests',
 
     choosePermissions: 'Choose what this phone can access before generating its QR code.',

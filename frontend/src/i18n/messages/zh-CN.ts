@@ -278,11 +278,15 @@ export const zhCN = {
     pairedDevices: '已配对的手机',
     noDevices: '暂无已配对手机',
 
-    fullAccess: '完整访问',
-    restrictedAccess: '受限访问',
-    fullAccessHelp: '在手机上使用会话、发送和停止响应，并审批工具请求。',
-    restrictAccess: '限制访问',
-    restoreFullAccess: '恢复完整访问',
+    preset_full: '完全控制',
+    preset_full_help: '读取并整理所有会话、与智能体对话、审批工具请求。适合你自己的手机。',
+    preset_chat: '只聊天',
+    preset_chat_help:
+      '读取所有会话并与智能体对话，但不能审批工具请求，也不能重命名、移动或删除会话。',
+    preset_read: '只读',
+    preset_read_help: '查看所有会话，不能发送任何内容。',
+    preset_custom: '自定义',
+    preset_custom_help: '逐项选择权限，以及这台手机可以读取哪些会话。',
     approve_tools: '审批工具请求',
 
     choosePermissions: '先选择手机可访问的内容和操作，再生成二维码。',

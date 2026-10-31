@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useState, useRef } from 'react';
 import QRCode from 'qrcode';
 import { DevicePhoneMobileIcon, QrCodeIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
@@ -34,15 +34,47 @@ const emptyPermissions = (): MobilePermissions => ({
   stop: false,
   approve_tools: false,
 });
-const fullPermissions = (): MobilePermissions => ({
-  ...emptyPermissions(),
-  all_chats: true,
-  create_chats: true,
-  manage_chats: true,
-  send: true,
-  stop: true,
-  approve_tools: true,
-});
+
+const PERMISSION_KEYS = [
+  'all_chats',
+  'create_chats',
+  'manage_chats',
+  'send',
+  'stop',
+  'approve_tools',
+] as const;
+
+type PermissionPreset = 'full' | 'chat' | 'read';
+
+const PRESETS: Record<PermissionPreset, () => MobilePermissions> = {
+  full: () => ({
+    ...emptyPermissions(),
+    all_chats: true,
+    create_chats: true,
+    manage_chats: true,
+    send: true,
+    stop: true,
+    approve_tools: true,
+  }),
+  chat: () => ({
+    ...emptyPermissions(),
+    all_chats: true,
+    create_chats: true,
+    send: true,
+    stop: true,
+  }),
+  read: () => ({ ...emptyPermissions(), all_chats: true }),
+};
+
+const fullPermissions = PRESETS.full;
+
+function presetOf(permissions: MobilePermissions): PermissionPreset | 'custom' {
+  const match = (Object.keys(PRESETS) as PermissionPreset[]).find((preset) => {
+    const expected = PRESETS[preset]();
+    return PERMISSION_KEYS.every((key) => permissions[key] === expected[key]);
+  });
+  return match ?? 'custom';
+}
 
 function PermissionPicker({
   permissions,
@@ -56,30 +88,57 @@ function PermissionPicker({
   busy: boolean;
 }): React.ReactElement {
   const { t } = useI18n();
+  const groupName = useId();
+  const matched = presetOf(permissions);
+  const [customizing, setCustomizing] = useState(matched === 'custom');
+  const selected = customizing ? 'custom' : matched;
   return (
     <div className="space-y-3">
-      <BrutalMultiSelect
-        variant="list"
-        disabled={busy}
-        value={(
-          ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
-        ).filter((key) => permissions[key])}
-        options={(
-          ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
-        ).map((key) => ({ value: key, label: t(`mobileAccess.${key}`) }))}
-        onChange={(selected) =>
-          setPermissions({
-            ...permissions,
-            all_chats: selected.includes('all_chats'),
-            create_chats: selected.includes('create_chats'),
-            manage_chats: selected.includes('manage_chats'),
-            send: selected.includes('send'),
-            stop: selected.includes('stop'),
-            approve_tools: selected.includes('approve_tools'),
-          })
-        }
-      />
-      {!permissions.all_chats && (
+      <div role="radiogroup" aria-label={t('mobileAccess.accessSettings')} className="grid gap-2">
+        {(['full', 'chat', 'read', 'custom'] as const).map((preset) => (
+          <label
+            key={preset}
+            className={`flex cursor-pointer items-start gap-2 border-2 p-2 text-sm ${
+              selected === preset
+                ? 'border-brutal-black bg-brutal-yellow/30 dark:border-brutal-yellow'
+                : 'border-neutral-300 dark:border-white/15'
+            } ${busy ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            <input
+              type="radio"
+              name={groupName}
+              className="mt-1"
+              disabled={busy}
+              checked={selected === preset}
+              onChange={() => {
+                setCustomizing(preset === 'custom');
+                if (preset !== 'custom') setPermissions(PRESETS[preset]());
+              }}
+            />
+            <span>
+              <span className="block font-bold">{t(`mobileAccess.preset_${preset}`)}</span>
+              <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                {t(`mobileAccess.preset_${preset}_help`)}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {selected === 'custom' && (
+        <BrutalMultiSelect
+          variant="list"
+          disabled={busy}
+          value={PERMISSION_KEYS.filter((key) => permissions[key])}
+          options={PERMISSION_KEYS.map((key) => ({ value: key, label: t(`mobileAccess.${key}`) }))}
+          onChange={(selected) =>
+            setPermissions({
+              ...permissions,
+              ...Object.fromEntries(PERMISSION_KEYS.map((key) => [key, selected.includes(key)])),
+            })
+          }
+        />
+      )}
+      {selected === 'custom' && !permissions.all_chats && (
         <BrutalMultiSelect
           variant="list"
           label={t('mobileAccess.sharedChats')}
@@ -108,7 +167,7 @@ function ApprovePhone({
   decide: (id: string, permissions: MobilePermissions | null) => void;
 }): React.ReactElement {
   const { t } = useI18n();
-  const [permissions, setPermissions] = useState<MobilePermissions>(emptyPermissions);
+  const [permissions, setPermissions] = useState<MobilePermissions>(fullPermissions);
   return (
     <div className="border-2 border-brutal-black dark:border-white/15 p-4 space-y-3">
       <strong>
@@ -146,10 +205,7 @@ export function MobileAccessCard({
 }): React.ReactElement {
   const { t } = useI18n();
   const [origin, setOrigin] = useState('');
-  const [permissions, setPermissions] = useState<MobilePermissions>(() => ({
-    ...fullPermissions(),
-    manage_chats: false,
-  }));
+  const [permissions, setPermissions] = useState<MobilePermissions>(fullPermissions);
   const invitationRef = useRef<MobileInvitation | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -451,21 +507,27 @@ export function MobileAccessCard({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 px-3 pb-3">
-                <Badge>
-                  {device.permissions.all_chats
-                    ? t('mobileAccess.shortAllChats')
-                    : t('mobileAccess.chatCount', { count: device.permissions.chat_ids.length })}
-                </Badge>
-                {(['create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const)
-                  .filter((key) => device.permissions[key])
-                  .map((key) => (
-                    <Badge key={key}>{t(`mobileAccess.short_${key}`)}</Badge>
-                  ))}
-                {!device.permissions.create_chats &&
-                  !device.permissions.manage_chats &&
-                  !device.permissions.send &&
-                  !device.permissions.stop &&
-                  !device.permissions.approve_tools && <Badge>{t('mobileAccess.readOnly')}</Badge>}
+                {presetOf(device.permissions) === 'custom' ? (
+                  <>
+                    <Badge>
+                      {device.permissions.all_chats
+                        ? t('mobileAccess.shortAllChats')
+                        : t('mobileAccess.chatCount', {
+                            count: device.permissions.chat_ids.length,
+                          })}
+                    </Badge>
+                    {PERMISSION_KEYS.filter(
+                      (key) => key !== 'all_chats' && device.permissions[key]
+                    ).map((key) => (
+                      <Badge key={key}>{t(`mobileAccess.short_${key}`)}</Badge>
+                    ))}
+                    {PERMISSION_KEYS.every(
+                      (key) => key === 'all_chats' || !device.permissions[key]
+                    ) && <Badge>{t('mobileAccess.readOnly')}</Badge>}
+                  </>
+                ) : (
+                  <Badge>{t(`mobileAccess.preset_${presetOf(device.permissions)}`)}</Badge>
+                )}
               </div>
               <div className="flex items-start justify-between gap-3 border-t-2 border-brutal-black bg-white p-3 dark:bg-zinc-800">
                 <SettingsListAction

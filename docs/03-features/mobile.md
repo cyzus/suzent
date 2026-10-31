@@ -42,17 +42,29 @@ pairing is kept while you're in the demo.
    turn it on, and restart Suzent. See
    [Make this computer reachable](./nodes.md#step-1-make-this-computer-reachable).
 2. **Choose what the phone may do.** Open **Settings → Devices → Mobile access**
-   and expand **Phone permissions**. Everything is on except managing
-   conversations:
+   and expand **Phone permissions**. Pick one of these; **Full control** is
+   selected for you:
+
+   | Choice | Lets the phone |
+   |---|---|
+   | **Full control** | Do everything you can do in a chat on the computer: read and organize every conversation, chat with the agent, and answer its approval requests. Best for your own phone. |
+   | **Chat only** | Read every conversation and chat with the agent, but not answer approval requests or rename, move, or delete chats. |
+   | **Read only** | See every conversation without sending anything. |
+   | **Custom** | Choose each permission yourself, and pick which conversations the phone can read. |
+
+   With **Custom**, the permissions are:
 
    | Permission | Lets the phone |
    |---|---|
    | **Read all conversations, including future ones** | See every chat. Untick it to pick chats one by one under **Conversations this phone can read**. |
    | **Create conversations** | Start new chats, and branch a conversation. |
-   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. Off by default. |
+   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. |
    | **Send messages** | Write to the agent, which can then use its tools under the chat's usual [permission mode](./tools/human-in-the-loop.md). |
    | **Stop responses** | Stop a reply in progress. |
    | **Approve tool requests** | Answer the agent's approval requests. |
+
+   Whatever you pick, the agent's tools still follow each chat's permission
+   mode, and you can change or revoke the phone's access at any time.
 
 3. **Check the address.** Under **Connection settings**, **Backend address
    reachable from your phone** is filled in for your home network. Connections on your home network are
@@ -86,8 +98,8 @@ keeps it running when the window is closed.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
-  last message, retry a reply, or branch a conversation. Edit and retry also
-  need the manage permission.
+  last message, retry a reply, or branch a conversation. Edit and retry need
+  **Full control** (or the manage permission under **Custom**).
 - **Talk to Regent.** If the phone may read all conversations, you can talk to
   [Suzent Regent](../02-using/regent.md) as on the computer, see when it's
   working or needs you, and open the conversations it handed work to. You
@@ -104,7 +116,8 @@ keeps it running when the window is closed.
   appears above the message box with **Allow once** and **Reject** for each
   request.
 - **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
-  it to pin or delete, if the phone may manage conversations.
+  it to pin or delete, if the phone has **Full control** (or may manage
+  conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
   started them. **Scheduled tasks** shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
@@ -118,8 +131,8 @@ picks up a reply where it left off. If it can't, **Connection help** has
 ## Change or remove access
 
 On your computer, **Paired phones** under **Mobile access** lists each phone
-by name with what it may do. Click **Edit permissions** to change any of them
-and **Save**; the phone keeps working with the new permissions straight away.
+by name with what it may do. Click **Edit permissions**, pick another choice
+(or **Custom**), and **Save**; the phone keeps working with the new permissions straight away.
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
