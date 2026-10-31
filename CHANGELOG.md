@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
 - Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
 - Keep the sidebar in Regent when opening memory or skills from its shortcuts, so only the main page changes.
+- Chats opened from Regent's queue in the left sidebar now show the way back to Regent in their header.
 - Turn the sidebar into Regent's queue while its chat is open, with a back button and Esc to leave, waiting and running chats with a right-click menu, folded projects, and the board starting closed.
 - Soften Regent message bubbles and align the copy action beneath replies.
 - Allow retrying agent-dispatched and attachment-only tasks while preserving their original task context.
