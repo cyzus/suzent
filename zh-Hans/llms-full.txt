@@ -1712,8 +1712,8 @@ don't need a computer, an API key, or an internet connection: you can send
 messages, try a trip-planning example, approve or reject a pretend tool request,
 attach files, and organize chats.
 
-Replies are scripted and nothing reaches an AI model; a banner says so the whole
-time. Attachments stay on the phone. **Reset demo** in Settings restores the
+Replies are scripted and nothing reaches an AI model; the pinned **Welcome to
+Suzent** conversation explains this. Attachments stay on the phone. **Reset demo** in Settings restores the
 examples, and **Exit demo** takes you back to the connection screen. An existing
 pairing is kept while you're in the demo.
 
@@ -7043,9 +7043,9 @@ failed saves leave it available to retry.
 Both native apps expose **Try offline demo** as a quiet text button at the bottom
 of the unpaired connection screen. Once paired, the entry is under **Settings →
 About**; it is absent from connection help and the regular chat surface. It is
-available in release builds to everyone. A persistent
-banner identifies scripted responses; Settings provides **Reset demo** and **Exit
-demo**. Existing desktop pairing credentials are retained when entering or leaving
+available in release builds to everyone. The pinned welcome conversation identifies
+scripted responses; Settings provides **Reset demo**
+and **Exit demo**. Existing desktop pairing credentials are retained when entering or leaving
 the demo, and demo operations never use them.
 
 The regular conversation UI consumes a `MobileClient` interface. `SuzentClient`
@@ -9319,10 +9319,12 @@ Suggested English review notes (include your real pairing video link separately)
 > Suzent is a companion client for a user's self-hosted Suzent backend. To explore
 > the app without setting up a backend, launch the app and select "Try offline
 > demo" at the bottom of the connection screen. If already paired, open Settings,
-> expand About, and select "Try offline demo". The visible demo banner identifies
-> scripted, on-device sample data.
-> On the start page, select the trip prompt to see a streamed example response,
-> or the tool-approval prompt to allow or reject a simulated note-writing action.
+> expand About, and select "Try offline demo". The demo uses scripted, on-device
+> sample data and calls no AI service; the pinned "Welcome to Suzent"
+> conversation explains this, and Settings offers Reset demo and Exit demo.
+> On the start page, select "Plan a weekend trip to London" to see a streamed
+> example response, or "Save the weekend plan to my notes" to allow or reject a
+> simulated file-writing action.
 > You can also enter arbitrary text, stop a response, select attachments, and use
 > message copy, edit, retry, and branch actions. Long-press a conversation in the
 > sidebar to pin, rename, move, or delete it. Open Settings to reset the sample
