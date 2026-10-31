@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -19,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+
+const val PRIVACY_POLICY_URL = "https://suzent.com/mobile-privacy"
 
 @Composable
 fun PairingView(model: MobileModel) {
@@ -55,6 +58,10 @@ private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
                 SuzentTextButton(onClick = model::startDemo) {
                     Text(stringResource(R.string.demo_enter), fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.Medium)
                 }
+            }
+            val uriHandler = LocalUriHandler.current
+            SuzentTextButton(onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) }) {
+                Text(stringResource(R.string.privacy_policy), color = muted, fontSize = PresentationTokens.typeCaption.sp)
             }
         }
     }

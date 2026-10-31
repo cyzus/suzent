@@ -808,10 +808,13 @@ struct ContentView: View {
                 } header: { settingsHeader("Connection") } footer: {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
-                Section {
-                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
-                } header: { settingsHeader("About") }
             }
+            Section {
+                if !model.isDemo {
+                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
+                }
+                Link("Privacy policy", destination: suzentPrivacyPolicyURL)
+            } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
         .alert("Forget connection?", isPresented: $confirmForget) {

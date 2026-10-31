@@ -1,6 +1,8 @@
 import SwiftUI
 import SuzentCore
 
+let suzentPrivacyPolicyURL = URL(string: "https://suzent.com/mobile-privacy")!
+
 struct PairingView: View {
     @Bindable var model: MobileModel
     @State private var scanner = false
@@ -39,6 +41,9 @@ struct PairingView: View {
                     }
                     .suzentFont(PresentationTokens.typeCaption, weight: .medium).buttonStyle(.plain)
                     .frame(minHeight: PresentationTokens.controlHeight).padding(.top, PresentationTokens.spaceSmall)
+                    Link("Privacy policy", destination: suzentPrivacyPolicyURL)
+                        .suzentFont(PresentationTokens.typeCaption).foregroundStyle(Color.suzentMuted)
+                        .frame(minHeight: PresentationTokens.controlHeight)
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, PresentationTokens.spaceLarge).padding(.bottom, PresentationTokens.spaceSmall)

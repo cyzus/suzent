@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
@@ -698,9 +699,14 @@ private fun SettingsView(model: MobileModel) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsRow(stringResource(R.string.forget), { forgetting = true }, enabled = !model.busy, danger = true)
             SettingsFooter(stringResource(R.string.revoke_help))
-            SettingsSection(stringResource(R.string.about))
-            SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
         }
+        SettingsSection(stringResource(R.string.about))
+        if (!model.isDemo) {
+            SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        val uriHandler = LocalUriHandler.current
+        SettingsRow(stringResource(R.string.privacy_policy), { uriHandler.openUri(PRIVACY_POLICY_URL) })
     }
 }
 

@@ -179,6 +179,7 @@
     <string name="demo_reset">重置演示</string>
     <string name="demo_limits">配对与 Node 连接需要真实电脑。附件留在本机，不进行分析。</string>
     <string name="demo_load_error">无法打开演示工作区。</string>
+    <string name="privacy_policy">隐私政策</string>
     <string name="about">关于</string>
     <string name="rail_summary_running">%1$d 项进行中</string>
     <string name="rail_summary_commands">执行了 %1$d 条命令</string>

@@ -180,6 +180,7 @@
     <string name="demo_reset">Reset demo</string>
     <string name="demo_limits">Pairing and Node connections require a real desktop. Attachments stay on this device and are not analysed.</string>
     <string name="demo_load_error">Could not open the demo workspace.</string>
+    <string name="privacy_policy">Privacy policy</string>
     <string name="about">About</string>
     <string name="rail_summary_running">In progress: %1$d</string>
     <string name="rail_summary_commands">Commands run: %1$d</string>
