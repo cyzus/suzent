@@ -87,6 +87,56 @@ def test_update_chat_replaces_index(db):
     assert cid in (db.fts_match_chat_ids("replaced") or [])
 
 
+def _fts_rows(db, chat_id):
+    from sqlalchemy import text
+
+    with db.engine.connect() as conn:
+        return {
+            index: (rowid, body)
+            for rowid, index, body in conn.execute(
+                text(
+                    "SELECT rowid, message_index, text FROM chat_messages_fts"
+                    " WHERE chat_id = :c"
+                ),
+                {"c": chat_id},
+            )
+        }
+
+
+def test_append_keeps_rows_of_unchanged_messages(db):
+    cid = db.create_chat(
+        "T", {}, [{"role": "user", "content": f"message {i}"} for i in range(3)]
+    )
+    before = _fts_rows(db, cid)
+    db.append_chat_message(cid, {"role": "user", "content": "message 3"})
+    after = _fts_rows(db, cid)
+    assert {i: after[i] for i in range(3)} == before
+    assert after[3][1] == "message 3"
+
+
+def test_rewrite_reindexes_only_what_changed(db):
+    cid = db.create_chat(
+        "T",
+        {},
+        [{"role": "user", "content": f"message {i}"} for i in range(3)]
+        + [{"role": "user", "content": "dropped zebra"}],
+    )
+    before = _fts_rows(db, cid)
+    db.update_chat(
+        cid,
+        messages=[
+            {"role": "user", "content": "message 0"},
+            {"role": "user", "content": "edited middle"},
+            {"role": "user", "content": "message 2"},
+        ],
+    )
+    after = _fts_rows(db, cid)
+    assert sorted(after) == [0, 1, 2]
+    assert after[0] == before[0] and after[2] == before[2]
+    assert after[1][1] == "edited middle"
+    assert not db.fts_match_chat_ids("zebra")
+
+
 def test_delete_chat_removes_from_index(db):
     cid = db.create_chat("T", {}, [{"role": "user", "content": "deletme token"}])
     assert db.fts_match_chat_ids("deletme")
