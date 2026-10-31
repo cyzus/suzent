@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The desktop app now shows a restart button once an update is downloaded, and restarts into it on its own after 30 minutes away with no chat or task running."}

@@ -629,9 +629,11 @@ export const zhCN = {
     confirmRestart: 'Suzent 将关闭、更新到 {version}，然后自动重启。是否继续？',
     startFailed: '启动更新失败：{error}',
     autoUpdate: '自动更新',
-    autoUpdateDescription: '在后台下载新版本，并在 Suzent 下次重启时自动安装。',
+    autoUpdateDescription: '在后台下载新版本，并在 Suzent 重启或空闲一段时间后自动安装。',
     autoUpdateFailed: '无法更改自动更新设置：{error}',
     updatedTo: 'Suzent 已更新到 {version}。',
+    readyTitle: '更新已就绪：{version}，重启即可安装',
+    confirmRestartStaged: 'Suzent 将重启以完成更新到 {version}，只需几秒钟。是否继续？',
   },
   config: {
     loading: '正在加载配置...',

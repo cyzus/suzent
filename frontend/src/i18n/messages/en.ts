@@ -655,9 +655,12 @@ export const en = {
     startFailed: 'Failed to start update: {error}',
     autoUpdate: 'Update automatically',
     autoUpdateDescription:
-      'Download new versions in the background and install them the next time Suzent restarts.',
+      'Download new versions in the background and install them when Suzent restarts, or once it has been idle for a while.',
     autoUpdateFailed: 'Could not change automatic updates: {error}',
     updatedTo: 'Suzent was updated to {version}.',
+    readyTitle: 'Update ready: {version}. Restart to install',
+    confirmRestartStaged:
+      'Suzent will restart to finish updating to {version}. This takes a few seconds. Continue?',
   },
   config: {
     loading: 'Loading config...',

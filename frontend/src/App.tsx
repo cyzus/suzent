@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
-import { ChatWindow } from './components/ChatWindow';
+import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
@@ -38,7 +38,10 @@ import {
   getBackendCompatibilityIssue,
 } from './lib/api';
 import {
+  applyStagedUpdateNow,
   checkDesktopUpdate,
+  fetchAgentsIdle,
+  getStagedUpdate,
   startDesktopUpdateAndRestart,
   takeUpdatedVersion,
   type UpdateStatus,
@@ -262,11 +265,19 @@ function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): R
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
+const STAGED_UPDATE_POLL_MS = 5 * 60_000;
+// Matches the backend's agent idle window, so an untouched window and quiet
+// agents both mean nobody is mid-task.
+const AUTO_RESTART_IDLE_MS = 30 * 60_000;
+
 function UpdateButton(): React.ReactElement | null {
   const { t } = useI18n();
   const notify = useNativeNotification();
   const [updateStatus, setUpdateStatus] = React.useState<UpdateStatus | null>(null);
+  const [stagedTag, setStagedTag] = React.useState<string | null>(null);
   const [isStartingUpdate, setIsStartingUpdate] = React.useState(false);
+  const lastInteractionRef = React.useRef(Date.now());
+  const applyingRef = React.useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -289,20 +300,68 @@ function UpdateButton(): React.ReactElement | null {
     };
   }, []);
 
-  if (!updateStatus?.update_available) {
+  React.useEffect(() => {
+    if (isWeb()) return;
+    const markInteraction = (): void => {
+      lastInteractionRef.current = Date.now();
+    };
+    const events = ['keydown', 'pointerdown', 'wheel', 'focus'] as const;
+    events.forEach((name) => window.addEventListener(name, markInteraction, { passive: true }));
+
+    let cancelled = false;
+    const tick = async (): Promise<void> => {
+      try {
+        const tag = await getStagedUpdate();
+        if (cancelled) return;
+        setStagedTag(tag);
+        const userAway = (): boolean =>
+          !applyingRef.current &&
+          !document.hasFocus() &&
+          Date.now() - lastInteractionRef.current >= AUTO_RESTART_IDLE_MS &&
+          !hasUnsentComposerWork();
+        if (!tag || !userAway()) return;
+        if (!(await fetchAgentsIdle()) || cancelled || !userAway()) return;
+        applyingRef.current = true;
+        await applyStagedUpdateNow();
+      } catch {
+        applyingRef.current = false;
+      }
+    };
+    void tick();
+    const interval = window.setInterval(() => void tick(), STAGED_UPDATE_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      events.forEach((name) => window.removeEventListener(name, markInteraction));
+    };
+  }, []);
+
+  if (!stagedTag && !updateStatus?.update_available) {
     return null;
   }
 
+  const latest = stagedTag || updateStatus?.latest_version || t('updates.latestVersion');
+
   async function handleUpdate(): Promise<void> {
-    const latest = updateStatus?.latest_version || t('updates.latestVersion');
-    const ok = window.confirm(t('updates.confirmRestart', { version: latest }));
+    const ok = window.confirm(
+      t(stagedTag ? 'updates.confirmRestartStaged' : 'updates.confirmRestart', {
+        version: latest,
+      })
+    );
     if (!ok) return;
 
     setIsStartingUpdate(true);
+    applyingRef.current = true;
     try {
-      await startDesktopUpdateAndRestart();
+      if (stagedTag) {
+        await applyStagedUpdateNow();
+      } else {
+        await startDesktopUpdateAndRestart();
+      }
     } catch (error) {
       setIsStartingUpdate(false);
+      applyingRef.current = false;
       const message = error instanceof Error ? error.message : String(error);
       notify(t('updates.startFailed', { error: message }));
     }
@@ -314,9 +373,7 @@ function UpdateButton(): React.ReactElement | null {
       disabled={isStartingUpdate}
       className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white disabled:opacity-50 disabled:cursor-wait"
       aria-label={t('updates.available')}
-      title={t('updates.availableTitle', {
-        version: updateStatus.latest_version || t('updates.latestVersion'),
-      })}
+      title={t(stagedTag ? 'updates.readyTitle' : 'updates.availableTitle', { version: latest })}
     >
       <ArrowPathIcon className={`h-5 w-5 ${isStartingUpdate ? 'animate-spin' : ''}`} />
     </button>

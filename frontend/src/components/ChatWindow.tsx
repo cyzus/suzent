@@ -787,6 +787,15 @@ const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
  */
 let queuedMessageStore: Record<string, QueuedMessage[]> = {};
 
+/** Whether anything typed or queued would be lost if the app restarted now. */
+export function hasUnsentComposerWork(): boolean {
+  return (
+    composerDraft.input.trim() !== '' ||
+    composerDraft.mentions.length > 0 ||
+    Object.values(queuedMessageStore).some((queue) => queue.length > 0)
+  );
+}
+
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   rightSidebarHeaderSlot?: HTMLElement | null;
