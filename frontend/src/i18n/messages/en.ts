@@ -2024,6 +2024,8 @@ export const en = {
     },
   },
   chatMessage: {
+    notice: 'Notice',
+    compactionResolved: 'Previous compaction failed · A later retry succeeded',
     regentThinking: 'Regent is thinking',
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',

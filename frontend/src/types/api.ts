@@ -42,6 +42,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'system_triggered';
   content: string;
   timestamp?: string; // ISO 8601 timestamp when the message was created
+  metadata?: { kind?: string; stage?: string; source?: string; [key: string]: unknown };
   model?: string; // Model used to produce an assistant message
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
   parts?: AGUIPart[]; // Structured assistant display parts; content remains as fallback.

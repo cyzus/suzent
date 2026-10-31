@@ -147,3 +147,33 @@ async def test_chunk_requests_are_bounded(compressor, monkeypatch) -> None:
     compressor.llm_client.complete.return_value = "\n".join(REQUIRED_SECTIONS)
     assert await compressor._chunked_summarize(history(), 1)
     assert peak == 3
+
+
+async def test_incomplete_summary_retries_then_compacts(compressor) -> None:
+    original = history()
+    complete = "\n".join(f"{section}\nNone" for section in REQUIRED_SECTIONS)
+    compressor.llm_client.complete.side_effect = [
+        "<summary>" + "\n".join(REQUIRED_SECTIONS[:6]) + "</summary>",
+        f"<summary>{complete}</summary>",
+    ]
+
+    compacted = await compressor._perform_compression(original)
+
+    assert len(compacted) < len(original)
+    assert complete in compacted[2].parts[0].content
+    calls = compressor.llm_client.complete.call_args_list
+    assert len(calls) == 2
+    assert "## 10. Exact Identifiers" in calls[1].kwargs["prompt"]
+    assert all(call.kwargs["reasoning_effort"] == "low" for call in calls)
+    assert "<analysis>" not in calls[0].kwargs["prompt"]
+
+
+async def test_repeated_incomplete_summary_preserves_history(compressor) -> None:
+    original = history()
+    compressor.llm_client.complete.return_value = "\n".join(REQUIRED_SECTIONS[:6])
+
+    with pytest.raises(CompactionError, match="Original history preserved"):
+        await compressor._perform_compression(original)
+
+    assert compressor.llm_client.complete.await_count == 3
+    assert "important prior work" in original[1].parts[0].content
