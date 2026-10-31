@@ -56,6 +56,17 @@ def clear_suppressed_tools(chat_id: str) -> None:
     _suppressed_tools_by_chat.pop(chat_id, None)
 
 
+def _mcp_call_needs_approval(ctx: Any, tool_def: Any, args: Dict[str, Any]) -> bool:
+    """Defer every MCP call the server does not mark read-only.
+
+    Deferred calls reach the permission engine like Suzent's own tools, so the
+    approval prompt, "always allow", Full Access, Plan and strict read-only
+    modes all apply. Without this, MCP calls ran with no check at all.
+    """
+    annotations = (tool_def.metadata or {}).get("annotations") or {}
+    return annotations.get("readOnlyHint") is not True
+
+
 def _build_mcp_servers(config: Dict[str, Any]) -> List:
     """
     Build MCP server toolset instances from the enabled servers in config.
@@ -103,6 +114,7 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
                 )
                 .prefixed(name)
                 .with_metadata(suzent_context_source="mcp")
+                .approval_required(_mcp_call_needs_approval)
             )
             servers.append(server)
 
@@ -119,6 +131,7 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
                     MCPToolset(transport, id=name)
                     .prefixed(name)
                     .with_metadata(suzent_context_source="mcp")
+                    .approval_required(_mcp_call_needs_approval)
                 )
                 servers.append(server)
 
