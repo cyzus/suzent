@@ -33,7 +33,7 @@ class DemoClientTest {
             val saved = demo.chat(chat.id)
             assertFalse(saved.running)
             assertEquals(2, saved.messages.size)
-            assertTrue(saved.messages.last().content.contains("London"))
+            assertTrue(saved.messages.last().content.contains("Lisbon"))
             assertTrue(requireNotNull(buffer.drain()).any { it.type == "text" })
             assertEquals(saved.messages.last().content, client(storage).chat(chat.id).messages.last().content)
         } finally { directory.deleteRecursively() }
@@ -49,7 +49,7 @@ class DemoClientTest {
             assertEquals("allow", request.actions.first().behavior)
             demo.decideApprovals(chat.id, state.pending, mapOf(request.id to if (allowed) "allow" else "reject"))
             demo.observe(chat.id) {}
-            assertTrue(demo.chat(chat.id).messages.last().content.contains(if (allowed) "Saved" else "rejected"))
+            assertTrue(demo.chat(chat.id).messages.last().content.contains(if (allowed) "Done" else "Nothing moved"))
             assertTrue(demo.approvals(chat.id).pending.isEmpty())
         }
         demo.send(chat.id, "tool")
@@ -144,7 +144,7 @@ class DemoClientTest {
         try {
             val storage = File(directory, "workspace.json")
             val demo = client(storage, "zh-Hans")
-            assertTrue(demo.prompts.first().contains("旅行"))
+            assertTrue(demo.prompts.first().contains("里斯本"))
             val chat = demo.create("测试")
             demo.send(chat.id, "工具审批")
             val reopened = client(storage, "zh-Hans")

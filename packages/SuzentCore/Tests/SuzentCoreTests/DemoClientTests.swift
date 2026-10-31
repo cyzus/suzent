@@ -19,7 +19,7 @@ import Testing
     let saved = try await client.chat(chat.id)
     #expect(saved.isRunning == false)
     #expect(saved.messages?.count == 2)
-    #expect(saved.messages?.last?.content.contains("London") == true)
+    #expect(saved.messages?.last?.content.contains("Lisbon") == true)
     #expect(events.buffer.drain()?.contains { $0.type == "text" } == true)
     let restored = try DemoClient(storageURL: storage, language: "en")
     #expect(try await restored.chat(chat.id).messages?.last?.content == saved.messages?.last?.content)
@@ -36,7 +36,7 @@ import Testing
         try await client.decideApprovals(chat.id, pending: state.pending, choices: [request.id: allowed ? "allow" : "reject"])
         try await client.observe(chat.id) { _ in }
         let saved = try await client.chat(chat.id)
-        #expect(saved.messages?.last?.content.contains(allowed ? "Saved" : "rejected") == true)
+        #expect(saved.messages?.last?.content.contains(allowed ? "Done" : "Nothing moved") == true)
         #expect(try await client.approvals(chat.id).pending.isEmpty)
     }
     try await client.send("tool", chatID: chat.id, model: nil, attachments: [])
@@ -111,7 +111,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = directory.appendingPathComponent("demo.json")
     let client = try DemoClient(storageURL: storage, language: "zh-Hans")
-    #expect(client.prompts.first?.contains("旅行") == true)
+    #expect(client.prompts.first?.contains("里斯本") == true)
     let chat = try await client.createChat(title: "测试")
     try await client.send("工具审批", chatID: chat.id, model: nil, attachments: [])
     let restored = try DemoClient(storageURL: storage, language: "zh-Hans")
