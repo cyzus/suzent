@@ -208,7 +208,7 @@ import Foundation
         try await emit(["type": "THINKING_END"], to: onEvent)
         if initial.tool {
             try await emit(["type": "CUSTOM", "name": "tool_approval_request", "value": ["toolCallId": initial.id,
-                "toolName": "demo.create_note", "args": "{\"path\":\"weekend-plan.md\"}"]], to: onEvent)
+                "toolName": "write_file", "args": "{\"path\":\"weekend-plan.md\"}"]], to: onEvent)
         }
         while let run = runs[chatID], run.id == initial.id {
             try Task.checkCancellation()
@@ -239,7 +239,7 @@ import Foundation
         let i = try index(id)
         var parts: [[String: Any]] = [["type": "reasoning", "text": label("reasoning"), "state": "completed"]]
         if run.tool {
-            parts.append(["type": "tool", "toolCallId": run.id, "toolName": "demo.create_note",
+            parts.append(["type": "tool", "toolCallId": run.id, "toolName": "write_file",
                           "args": "{\"path\":\"weekend-plan.md\"}", "output": run.decision == nil ? label("stopped") : label(run.decision == true ? "allowed" : "denied"),
                           "state": run.decision == true ? "completed" : "error"])
         }
@@ -257,7 +257,7 @@ import Foundation
     }
 
     private func approval(_ run: Run) -> ApprovalRequest {
-        ApprovalRequest(id: run.id, kind: "tool", toolName: "demo.create_note", args: "{\"path\":\"weekend-plan.md\"}",
+        ApprovalRequest(id: run.id, kind: "tool", toolName: "write_file", args: "{\"path\":\"weekend-plan.md\"}",
                         reason: label("approval_reason"), actions: [ApprovalAction(id: "allow", behavior: "allow"), ApprovalAction(id: "reject", behavior: "deny")])
     }
     private func label(_ key: String) -> String { strings[key] as? String ?? key }

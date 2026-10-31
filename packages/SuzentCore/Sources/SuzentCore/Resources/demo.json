@@ -4,11 +4,11 @@
     "project": "Weekend plans",
     "welcome": "Welcome to Suzent",
     "trip": "A weekend in London",
-    "tools": "Try a tool approval",
+    "tools": "Save the weekend plan",
     "task": "Morning briefing",
     "intro": "## Your Suzent, wherever you are\n\nYou are trying Suzent with sample conversations. Replies are prepared in advance and stay on this phone, so no computer or API key is needed.\n\n- Send any message to watch a reply stream in.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see how attachments work.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nOther conversations show a design review, a tool that failed, and a daily note. Expand Worked for to see each tool's input and output.",
     "prompt": "Plan a weekend trip to London",
-    "tool_prompt": "Try a tool approval",
+    "tool_prompt": "Save the weekend plan to my notes",
     "generic": "## Got it\n\nOnce Suzent is paired with your computer, your own models answer here, with your memory, projects and tools.\n\nFor now, you can **copy**, **retry**, **edit**, or **branch** this message. Ask about a **trip**, or type **tool approval** to see an approval request.",
     "plan": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket; London weather changes quickly. [[cite:demo-source]]",
     "attachment": "## Attachments received\n\nYour files are listed with this message. In the demo they stay on this phone and are not analysed.\n\nPaired with your computer, Suzent reads them with your configured model.",
@@ -29,7 +29,11 @@
       "approve",
       "工具",
       "审批",
-      "批准"
+      "批准",
+      "save",
+      "note",
+      "保存",
+      "笔记"
     ],
     "keywords_trip": [
       "trip",
@@ -287,7 +291,7 @@
       },
       {
         "id": "demo-tools",
-        "title": "Try a tool approval",
+        "title": "Save the weekend plan",
         "projectId": "demo-home",
         "projectName": "Home",
         "isRunning": false,
@@ -355,11 +359,11 @@
     "project": "周末计划",
     "welcome": "欢迎使用 Suzent",
     "trip": "伦敦周末计划",
-    "tools": "体验工具审批",
+    "tools": "保存周末计划",
     "task": "晨间简报",
     "intro": "## 随时随地使用 Suzent\n\n你正在用示例对话体验 Suzent。回复是预先准备好的，只保存在这台手机上，无需电脑或 API Key。\n\n- 发送任意消息，看看回复如何实时呈现。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，看看附件如何处理。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n其他对话展示了界面检查、一次失败的工具调用和日常笔记。展开 Worked for 可查看每个工具的输入与输出。",
     "prompt": "帮我安排伦敦周末旅行",
-    "tool_prompt": "体验工具审批",
+    "tool_prompt": "把周末计划存进我的笔记",
     "generic": "## 收到\n\n与电脑配对后，这里会由你自己的模型回答，并用上你的记忆、项目和工具。\n\n现在你可以**复制**、**重试**、**编辑**消息，或创建**会话分支**。问问**旅行**，或输入**工具审批**看看审批请求。",
     "plan": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣，伦敦天气说变就变。[[cite:demo-source]]",
     "attachment": "## 已收到附件\n\n文件会显示在这条消息中。演示中文件只留在这台手机上，不会被分析。\n\n与电脑配对后，Suzent 会用你配置的模型读取它们。",
@@ -380,7 +384,11 @@
       "approve",
       "工具",
       "审批",
-      "批准"
+      "批准",
+      "save",
+      "note",
+      "保存",
+      "笔记"
     ],
     "keywords_trip": [
       "trip",
@@ -638,7 +646,7 @@
       },
       {
         "id": "demo-tools",
-        "title": "体验工具审批",
+        "title": "保存周末计划",
         "projectId": "demo-home",
         "projectName": "主页",
         "isRunning": false,
