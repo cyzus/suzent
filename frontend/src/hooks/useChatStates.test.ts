@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatStates } from '../lib/chatStates';
+import type { ChatStateRow, ChatStates } from '../lib/chatStates';
 
 const api = vi.hoisted(() => ({ fetchChatStates: vi.fn(), setChatResolved: vi.fn() }));
 
@@ -11,25 +11,40 @@ vi.mock('./useEventBus', () => ({ subscribeToBusPayloads: () => () => {} }));
 
 import { getChatStates, refreshChatStates, resolveChat } from './useChatStates';
 
+const waiting = (chatId: string): ChatStateRow => ({
+  chatId,
+  title: chatId,
+  projectId: 'p',
+  projectName: 'Project',
+  state: 'waiting',
+  waitingKind: 'reply',
+  waitingReason: 'Pick an option',
+  summary: null,
+  lastActiveAt: null,
+  resolvedAt: null,
+  openTasks: 0,
+  doneTasks: 0,
+});
 const board: ChatStates = {
-  chats: [
-    {
-      chatId: 'c',
-      title: 'Chat',
-      projectId: 'p',
-      projectName: 'Project',
-      state: 'waiting',
-      waitingKind: 'reply',
-      waitingReason: 'Pick an option',
-      summary: null,
-      lastActiveAt: null,
-      resolvedAt: null,
-      openTasks: 0,
-      doneTasks: 0,
-    },
-  ],
-  counts: { waiting: 1, running: 0, idle: 0, resolved: 0 },
+  chats: [waiting('a'), waiting('b')],
+  counts: { waiting: 2, running: 0, idle: 0, resolved: 0 },
 };
+const stateOf = (chatId: string): string | undefined =>
+  getChatStates()?.chats.find((row) => row.chatId === chatId)?.state;
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (v: T) => void;
+  reject: (e: Error) => void;
+} {
+  let resolve = (_: T): void => {};
+  let reject = (_: Error): void => {};
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('resolveChat', () => {
   afterEach(() => {
@@ -40,43 +55,60 @@ describe('resolveChat', () => {
   it('shows the chat resolved before the save returns', async () => {
     api.fetchChatStates.mockResolvedValue(board);
     await refreshChatStates();
-    let finishSave = (): void => {};
-    api.setChatResolved.mockReturnValue(new Promise<void>((done) => (finishSave = done)));
+    const save = deferred<void>();
+    api.setChatResolved.mockReturnValue(save.promise);
 
-    const saving = resolveChat('c', true);
-    const shown = getChatStates()!;
-    expect(shown.chats[0]).toMatchObject({ state: 'resolved', waitingKind: null });
-    expect(shown.counts).toEqual({ waiting: 0, running: 0, idle: 0, resolved: 1 });
+    const saving = resolveChat('a', true);
+    expect(stateOf('a')).toBe('resolved');
+    expect(getChatStates()!.counts).toEqual({ waiting: 1, running: 0, idle: 0, resolved: 1 });
 
-    finishSave();
+    save.resolve();
     await saving;
-    expect(api.setChatResolved).toHaveBeenCalledWith('c', true);
+    expect(api.setChatResolved).toHaveBeenCalledWith('a', true);
   });
 
-  it('ignores a refresh that was in flight before the change', async () => {
+  it('keeps showing the click when a refresh lands during the save', async () => {
     api.fetchChatStates.mockResolvedValue(board);
     await refreshChatStates();
-    let answerStale = (_: ChatStates): void => {};
-    api.fetchChatStates.mockReturnValueOnce(
-      new Promise<ChatStates>((done) => (answerStale = done))
+    const save = deferred<void>();
+    api.setChatResolved.mockReturnValue(save.promise);
+
+    const saving = resolveChat('a', true);
+    // A poll that read the server before the save finished.
+    await refreshChatStates();
+    expect(stateOf('a')).toBe('resolved');
+
+    const resolvedBoard: ChatStates = {
+      chats: [{ ...waiting('a'), state: 'resolved', waitingKind: null }, waiting('b')],
+      counts: { waiting: 1, running: 0, idle: 0, resolved: 1 },
+    };
+    api.fetchChatStates.mockResolvedValue(resolvedBoard);
+    save.resolve();
+    await saving;
+    // Settled: the next refresh shows the server's row as it is.
+    api.fetchChatStates.mockResolvedValue(board);
+    await refreshChatStates();
+    expect(stateOf('a')).toBe('waiting');
+  });
+
+  it("puts back only the failed chat's row", async () => {
+    api.fetchChatStates.mockResolvedValue(board);
+    await refreshChatStates();
+    const saveA = deferred<void>();
+    const saveB = deferred<void>();
+    api.setChatResolved.mockImplementation((chatId: string) =>
+      chatId === 'a' ? saveA.promise : saveB.promise
     );
-    const stale = refreshChatStates();
-    api.setChatResolved.mockResolvedValue(undefined);
     api.fetchChatStates.mockReturnValue(new Promise<ChatStates>(() => {}));
 
-    await resolveChat('c', true);
-    answerStale(board);
-    await stale;
-    expect(getChatStates()!.chats[0].state).toBe('resolved');
-  });
+    const resolvingA = resolveChat('a', true);
+    const resolvingB = resolveChat('b', true);
+    saveA.reject(new Error('offline'));
+    await expect(resolvingA).rejects.toThrow('offline');
 
-  it('puts the row back when the save fails', async () => {
-    api.fetchChatStates.mockResolvedValue(board);
-    await refreshChatStates();
-    api.setChatResolved.mockRejectedValue(new Error('offline'));
-    api.fetchChatStates.mockReturnValue(new Promise<ChatStates>(() => {}));
-
-    await expect(resolveChat('c', true)).rejects.toThrow('offline');
-    expect(getChatStates()!.chats[0].state).toBe('waiting');
+    expect(stateOf('a')).toBe('waiting');
+    expect(stateOf('b')).toBe('resolved');
+    expect(getChatStates()!.counts).toEqual({ waiting: 1, running: 0, idle: 0, resolved: 1 });
+    void resolvingB;
   });
 });
