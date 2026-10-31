@@ -42,6 +42,7 @@
     ".releases/changes/composer-message-queue.json",
     ".releases/changes/conversation-task-checklist.json",
     ".releases/changes/cube-loading-indicators.json",
+    ".releases/changes/db-write-lock.json",
     ".releases/changes/deny-tools.json",
     ".releases/changes/deps-batch-2026-10-24.json",
     ".releases/changes/deps-dompurify-3-4-16.json",
