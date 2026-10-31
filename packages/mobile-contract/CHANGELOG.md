@@ -1,5 +1,27 @@
 # Mobile changelog
 
+## [mobile-v0.5.0] - 2026-10-31
+
+<!-- highlights -->
+### Highlights
+
+- **Regent in your pocket.** Regent comes to iOS and Android with its own access scope and new conversations of its own. It rests as the plain Suzent head and puts on its circlet when pressed, just like on the desktop. Pair with desktop 0.19.0 for the full experience.
+- **Feels like a native app.** Native navigation, menus, swipe actions, sheets, sharing and haptics on both platforms. Conversations open on a full-screen home page with search, and approvals stay pinned above the composer.
+- **The desktop's personality, on mobile.** The robot badge reacts to what the agent is doing, tools show their desktop icons and animations, and the activity rail sums up pages visited, tasks delegated and skills used.
+- **Faster with long histories.** Conversation lists load page by page, search runs on the desktop over the chats you are allowed to see, and projects load on demand.
+- **Easier pairing.** The pairing screen is simpler, the scan button sits within thumb reach, and you can paste an invitation from a sheet.
+<!-- /highlights -->
+
+### Release notes
+- Bring the desktop chat animations to mobile: the robot badge with its personalities and reactions (startled by failures, skeptical while approval waits, a face per tool, dozing when idle), the desktop tool icons and their running animations, and the activity rail's summary categories such as pages visited, tasks delegated and skills used.
+- Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
+- Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
+- Use native navigation, menus, swipe actions, settings, sheets, sharing and haptics on iOS and Android, unify the mobile visual rules, pin approvals above the composer, and make activity disclosures expand and collapse smoothly.
+- Simplify the mobile pairing screen before scanning: a centered welcome, the scan button within thumb reach, a one-line hint for where to find the QR code on desktop, and pasting an invitation in a sheet.
+- Keep the project order on the mobile home screen steady when projects are expanded, and stop iOS from shuffling chat rows that appear in both Recent and an expanded project.
+- Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
+- Match the desktop Regent row on mobile: it rests as the plain Suzent head and puts on its circlet with the desktop coronation while pressed.
+
 ## [mobile-v0.4.1] - 2026-10-26
 
 ### Release notes
