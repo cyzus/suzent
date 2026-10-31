@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Keep the open chat visible in the sidebar when its project is collapsed."
+}
