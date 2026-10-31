@@ -1,0 +1,99 @@
+.cube-loading {
+  position: relative;
+  height: 100px;
+  perspective: 420px;
+}
+.cube-loading-unit,
+.cube-loading-solid {
+  transform-style: preserve-3d;
+}
+.cube-loading-solid {
+  position: relative;
+  width: var(--edge);
+  height: var(--edge);
+}
+.cube-loading-solid > span {
+  position: absolute;
+  inset: 0;
+  background: #202020;
+  border: 1px solid #666;
+  backface-visibility: hidden;
+}
+.cube-loading-solid > span:nth-child(3) {
+  background: #444;
+}
+.cube-loading-solid > span:nth-child(5) {
+  background: #666;
+}
+.dark .cube-loading-solid > span {
+  background: #ddd;
+  border-color: #888;
+}
+.dark .cube-loading-solid > span:nth-child(3) {
+  background: #aaa;
+}
+.dark .cube-loading-solid > span:nth-child(5) {
+  background: #fafafa;
+}
+.cube-loading-settings {
+  width: 120px;
+  --edge: 40px;
+  transform-style: preserve-3d;
+}
+.cube-loading-settings .cube-loading-unit {
+  position: absolute;
+  left: 40px;
+  top: 28px;
+  animation: cube-loading-align 4s ease-in-out infinite;
+  animation-delay: calc(var(--index) * 0.15s);
+}
+.cube-loading-settings .cube-loading-solid {
+  transform: scaleY(0.3);
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span,
+.cube-loading-skills .cube-loading-unit:last-child span {
+  background: var(--brutal-yellow, var(--suzent-yellow));
+  border-color: #887930;
+}
+.cube-loading-skills {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  --edge: 20px;
+}
+.cube-loading-skills .cube-loading-unit {
+  animation: cube-loading-hop 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--index) * 0.22s);
+}
+.cube-loading-skills .cube-loading-solid {
+  transform: rotateX(-22deg) rotateY(32deg);
+}
+@keyframes cube-loading-align {
+  0%,
+  100% {
+    transform: rotateX(-24deg) rotateY(32deg) translateY(calc((var(--index) - 1) * 14px));
+  }
+  40%,
+  65% {
+    transform: rotateX(-24deg) rotateY(calc(32deg + (var(--index) - 1) * 35deg))
+      translateY(calc((var(--index) - 1) * 26px));
+  }
+}
+@keyframes cube-loading-hop {
+  0%,
+  60%,
+  100% {
+    transform: translateY(5px) rotateY(0deg);
+  }
+  30% {
+    transform: translateY(-14px) rotateY(90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cube-loading-unit {
+    animation: none !important;
+  }
+  .cube-loading-settings .cube-loading-unit {
+    transform: rotateX(-24deg) rotateY(32deg) translateY(calc((var(--index) - 1) * 20px));
+  }
+}
