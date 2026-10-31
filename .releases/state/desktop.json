@@ -133,6 +133,7 @@
     ".releases/changes/realtime-dashscope.json",
     ".releases/changes/realtime-model-list.json",
     ".releases/changes/realtime-voice.json",
+    ".releases/changes/regent-board-instant-resolve.json",
     ".releases/changes/regent-board.json",
     ".releases/changes/regent-breadcrumb.json",
     ".releases/changes/regent-conversation-polish.json",

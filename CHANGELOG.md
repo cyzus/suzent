@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add project settings with a default working directory that every chat in the project uses unless it has its own.
 - Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
 - Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
+- Resolving or reopening a chat from Regent's board, its queue or a chat header shows at once, and the board loads faster with long chats.
 - Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
 - Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
 - Keep the sidebar in Regent when opening memory or skills from its shortcuts, so only the main page changes.
