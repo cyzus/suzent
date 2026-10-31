@@ -782,13 +782,30 @@ export const ChatList: React.FC<ChatListProps> = ({
     return arranged;
   }, [expandedSubagentParents, filteredChats, subagentsByParent]);
 
+  // The open chat's row, shown under its project while that project is collapsed.
+  const keptChat =
+    currentChatSummary &&
+    currentChatSummary.id === currentChatId &&
+    currentChatSummary.projectId &&
+    currentChatSummary.projectId !== filterId &&
+    getChatKind(currentChatSummary) !== 'scheduled'
+      ? currentChatSummary
+      : null;
+
   // Range selection follows the order rows appear on screen.
   const selectableOrder = useMemo(() => {
     if (localSearchQuery.trim()) return chats.map((chat) => chat.id);
+    const openRows = visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled');
     const listed =
-      organization === 'list' || filterId !== ALL_PROJECTS_FILTER
-        ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
-        : [];
+      organization === 'list'
+        ? openRows
+        : sortedProjects.flatMap((project) =>
+            project.id === filterId
+              ? openRows
+              : keptChat?.projectId === project.id
+                ? [keptChat]
+                : []
+          );
     const archived = archivedOpen ? archivedChats : [];
     return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
   }, [
@@ -796,9 +813,11 @@ export const ChatList: React.FC<ChatListProps> = ({
     archivedOpen,
     chats,
     filterId,
+    keptChat,
     localSearchQuery,
     organization,
     pinnedChats,
+    sortedProjects,
     visibleChats,
   ]);
 
@@ -819,7 +838,8 @@ export const ChatList: React.FC<ChatListProps> = ({
     chatsRef.current.find((c) => c.id === chatId) ??
     projectChatsRef.current.find((c) => c.id === chatId) ??
     pinnedChats.find((c) => c.id === chatId) ??
-    archivedChats.find((c) => c.id === chatId);
+    archivedChats.find((c) => c.id === chatId) ??
+    (keptChat?.id === chatId ? keptChat : undefined);
 
   const clearSelection = (): void => {
     setSelection(EMPTY_SELECTION);
@@ -2169,13 +2189,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                       {sortedProjects.map((project) => {
                         const isOpen = filterId === project.id;
                         const isRenaming = renamingProjectId === project.id;
-                        const keptChat =
-                          !isOpen &&
-                          currentChatSummary?.id === currentChatId &&
-                          currentChatSummary.projectId === project.id &&
-                          getChatKind(currentChatSummary) !== 'scheduled'
-                            ? currentChatSummary
-                            : null;
                         return (
                           <div key={project.id}>
                             <div
@@ -2303,7 +2316,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 )}
                               </div>
                             )}
-                            {keptChat && renderChatRow(keptChat, false, true)}
+                            {keptChat?.projectId === project.id &&
+                              renderChatRow(keptChat, false, true)}
                           </div>
                         );
                       })}
@@ -2457,7 +2471,8 @@ export const ChatList: React.FC<ChatListProps> = ({
             pinnedChats.find((c) => c.id === openMenu.chatId) ??
             chatsRef.current.find((c) => c.id === openMenu.chatId) ??
             projectChatsRef.current.find((c) => c.id === openMenu.chatId) ??
-            archivedChats.find((c) => c.id === openMenu.chatId);
+            archivedChats.find((c) => c.id === openMenu.chatId) ??
+            (keptChat?.id === openMenu.chatId ? keptChat : undefined);
           if (!chat) return null;
           return (
             <ChatRowMenu
