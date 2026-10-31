@@ -1,4 +1,5 @@
 import { regentReactions } from '../lib/regentConversation';
+import { resolvedCompactionFailures } from '../lib/compactionNotices';
 import { ModelWaitNotice } from './chat/ModelWaitNotice';
 import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '../lib/modelWait';
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
@@ -497,6 +498,7 @@ const MessageList: React.FC<{
     () => buildMessageRenderPlan(messages),
     [messages]
   );
+  const resolvedCompactions = useMemo(() => resolvedCompactionFailures(messages), [messages]);
 
   // A fresh `() => onFork(index)` per row would hand every AssistantMessage a
   // new prop identity on each render and defeat its memo -- which is the whole
@@ -675,7 +677,7 @@ const MessageList: React.FC<{
               data-message-index={globalIdx}
               className="chat-msg-row chat-msg-row-compact w-full flex justify-start"
             >
-              <NoticeMessage message={m} />
+              <NoticeMessage message={m} resolved={resolvedCompactions.has(idx)} />
             </div>
           );
         }
@@ -1023,11 +1025,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [messages]);
 
   const upsertCompactNotice = useCallback(
-    (content: string | null) => {
+    (content: string | null, stage?: string) => {
       const notice = content?.trim();
       if (!notice || !currentChatId) return;
 
+      if (stage === 'start') compactNoticeMessageRef.current = null;
       const existing = compactNoticeMessageRef.current;
+      const metadata = stage ? { kind: 'context_compaction', stage } : undefined;
       const currentMessages = messagesRef.current;
       const timestamp = new Date().toISOString();
 
@@ -1040,13 +1044,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ...updatedMessages[existing.index],
           content: notice,
           timestamp,
+          metadata,
         };
         messagesRef.current = updatedMessages;
-        updateMessage(existing.index, { content: notice, timestamp }, currentChatId);
+        updateMessage(existing.index, { content: notice, timestamp, metadata }, currentChatId);
         return;
       }
 
-      const message: Message = { role: 'notice', content: notice, timestamp };
+      const message: Message = { role: 'notice', content: notice, timestamp, metadata };
       compactNoticeMessageRef.current = {
         chatId: currentChatId,
         index: currentMessages.length,
@@ -1072,7 +1077,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       if (payload.event !== 'auto_compaction') return;
-      upsertCompactNotice(formatCompactLifecycleNotice(payload));
+      upsertCompactNotice(formatCompactLifecycleNotice(payload), payload.stage);
       // Publish the pass to the store so the context-window panel animates for
       // agent-triggered compaction too — the panel's own `useCompact` progress
       // only ever covers a compaction started from its button.
