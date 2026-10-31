@@ -1,11 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { useChatStates, refreshChatStates } from '../../hooks/useChatStates';
+import { refreshChatStates, resolveChat, useChatStates } from '../../hooks/useChatStates';
 import {
   CHAT_STATES,
   canResolve,
   chatProjects,
-  setChatResolved,
   type ChatState,
   type ChatStateRow,
 } from '../../lib/chatStates';
@@ -67,9 +66,7 @@ export function ChatStatusBoard({
 
   const resolve = (row: ChatStateRow, resolved: boolean): void => {
     setActionFailed(false);
-    setChatResolved(row.chatId, resolved)
-      .then(() => refreshChatStates())
-      .catch(() => setActionFailed(true));
+    resolveChat(row.chatId, resolved).catch(() => setActionFailed(true));
   };
 
   const openMenu = (event: React.MouseEvent, row: ChatStateRow): void => {

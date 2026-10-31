@@ -47,11 +47,11 @@ JUDGE_SYSTEM_PROMPT = (
 
 def is_tracked(chat_id: str, project_id: Optional[str], config: dict) -> bool:
     """Ordinary project conversations, not Regent, sub-agents, chat apps or dreams."""
-    from suzent.core.focal_agent import is_focal_chat_id
+    from suzent.core.focal_agent import is_focal_config
 
     return (
         bool(project_id)
-        and not is_focal_chat_id(chat_id)
+        and not is_focal_config(chat_id, config)
         and not config.get("platform")
     )
 
@@ -288,10 +288,10 @@ def list_chat_states(
     statuses = db.list_chat_statuses([chat["id"] for chat in chats])
     rows: list[dict[str, Any]] = []
     for chat in chats:
-        chat_id, config = chat["id"], chat["config"]
-        if not is_tracked(chat_id, chat["project_id"], config):
+        row_id, config = chat["id"], chat["config"]
+        if not is_tracked(row_id, chat["project_id"], config):
             continue
-        tasks = tasks_by_chat.get(chat_id, [])
+        tasks = tasks_by_chat.get(row_id, [])
         blocked = next(
             (
                 task
@@ -301,10 +301,10 @@ def list_chat_states(
             ),
             None,
         )
-        status = statuses.get(chat_id)
+        status = statuses.get(row_id)
         state, waiting_kind, waiting_reason = chat_state(
-            running=chat_id in running,
-            holds_question=chat_id in questions,
+            running=row_id in running,
+            holds_question=row_id in questions,
             holds_approval=bool(config.get("_pending_approvals")),
             blocked_task=blocked,
             status=status,
@@ -319,7 +319,7 @@ def list_chat_states(
         project = projects[chat["project_id"]]
         rows.append(
             {
-                "chatId": chat_id,
+                "chatId": row_id,
                 "title": chat["title"],
                 "projectId": project.id,
                 "projectName": project.name,

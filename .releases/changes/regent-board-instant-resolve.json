@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Resolving or reopening a chat from Regent's board, its queue or a chat header shows at once, and the board loads faster with long chats."
+}

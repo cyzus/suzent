@@ -353,6 +353,14 @@ class ChatOperationsMixin:
         with self._session() as session:
             return session.get(ChatModel, chat_id)
 
+    def get_chat_config(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        """The chat's config without its messages and state, or None when it is gone."""
+        with self._session() as session:
+            row = session.exec(
+                select(ChatModel.id, ChatModel.config).where(ChatModel.id == chat_id)
+            ).first()
+        return None if row is None else (row[1] or {})
+
     def commit_chat_changes(
         self,
         session: Session,
