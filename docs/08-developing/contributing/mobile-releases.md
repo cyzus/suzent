@@ -129,9 +129,9 @@ Suggested English review notes (include your real pairing video link separately)
 > expand About, and select "Try offline demo". The demo uses scripted, on-device
 > sample data and calls no AI service; the pinned "Welcome to Suzent"
 > conversation explains this, and Settings offers Reset demo and Exit demo.
-> On the start page, select "Plan a weekend trip to London" to see a streamed
-> example response, or "Save the weekend plan to my notes" to allow or reject a
-> simulated file-writing action.
+> On the start page, select "Plan my Lisbon weekend" to see a streamed example
+> response, or "Tidy up my Downloads folder" to allow or reject a simulated
+> command on the computer.
 > You can also enter arbitrary text, stop a response, select attachments, and use
 > message copy, edit, retry, and branch actions. Long-press a conversation in the
 > sidebar to pin, rename, move, or delete it. Open Settings to reset the sample
