@@ -216,7 +216,7 @@ choices give haptic feedback, and iOS text follows Dynamic Type.
 
 ### Mobile tool approvals and activity rail
 
-New desktop invitations grant every scope except `manage_chats`; tick it under **Phone permissions** to allow managing conversations. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
+New desktop invitations and desktop approvals default to the **Full control** preset, which grants every scope. The desktop picker offers presets that map onto `ClientPermissions` (`full`: every flag; `chat`: `all_chats`, `create_chats`, `send`, `stop`; `read`: `all_chats` only) plus **Custom** for individual flags and per-chat sharing. The presets exist only in the desktop UI; the wire format and stored grants are unchanged, and `ClientPermissions` still defaults every flag to false for API callers that omit them. Existing grants keep their scope. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
 
 Both native clients use the same activity fixtures in `packages/mobile-contract/activity-fixtures.json`. They retain text/activity order, group consecutive reasoning and tools into expandable rails, replace replayed arguments, and clear the entire transient state on stream reset. Pending approvals use the desktop queue and show tool arguments with allow/reject actions. All requests in a batch must be decided before the native run resumes; ACP uses its existing live broker. Foreground polling reflects decisions made on desktop.
 
@@ -426,9 +426,9 @@ the backend and shared with desktop. The mobile rows use the same yellow pressed
 feedback, 44-point minimum menu targets, outlined surfaces, and destructive red
 actions on both platforms.
 
-These actions require the independent `manage_chats` permission, disabled by
-default for existing and newly configured grants. Enable it explicitly in
-desktop Settings → Mobile access, either during pairing or for a paired device.
+These actions require the independent `manage_chats` permission. The **Full
+control** preset includes it; **Chat only** and **Read only** do not. Existing
+grants keep whatever they had; change it in desktop Settings → Mobile access.
 Sending messages and creating chats do not grant management access. Old backend
 sessions without this field are treated as not authorized by both native clients.
 Moving/deleting a running conversation is rejected; project moves may not affect
