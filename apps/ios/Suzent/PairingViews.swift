@@ -12,7 +12,7 @@ struct PairingView: View {
 
     var body: some View {
         Group {
-            if model.pairingCode == nil && model.pairingInvitation == nil && !model.busy { welcome } else { progress }
+            if model.pairingCode == nil && model.pairingInvitation == nil && (!model.busy || model.startingDemo) { welcome } else { progress }
         }
         .font(.system(size: bodySize))
         .fullScreenCover(isPresented: $scanner) { PairingScanner(model: model) }

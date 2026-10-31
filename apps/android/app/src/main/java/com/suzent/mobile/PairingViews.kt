@@ -27,7 +27,7 @@ const val PRIVACY_POLICY_URL = "https://suzent.com/mobile-privacy"
 fun PairingView(model: MobileModel) {
     var scanning by remember { mutableStateOf(false) }
     if (scanning) PairingScanner(model) { scanning = false }
-    if (model.pairingCode == null && model.pairingInvitation == null && !model.busy) PairingWelcome(model) { scanning = true }
+    if (model.pairingCode == null && model.pairingInvitation == null && (!model.busy || model.startingDemo)) PairingWelcome(model) { scanning = true }
     else PairingProgressView(model)
 }
 
