@@ -22,6 +22,7 @@ import { FocalAgentCardView } from './FocalAgentCard';
 import { RegentQueue } from './sidebar/RegentQueue';
 import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
+import { markOpenedFromRegent } from '../lib/regentReturn';
 import { useI18n } from '../i18n';
 import {
   fetchCronJobs,
@@ -1993,7 +1994,13 @@ export const ChatList: React.FC<ChatListProps> = ({
             <>
               {regentConsole && (
                 <>
-                  <RegentQueue onOpenChat={openChatById} />
+                  <RegentQueue
+                    onOpenChat={(chatId) => {
+                      // Marked before the switch, so the header offers the way back.
+                      markOpenedFromRegent(chatId);
+                      openChatById(chatId);
+                    }}
+                  />
                   {/* Once open, the section's own header folds it again. */}
                   {!regentProjectsOpen && (
                     <button
