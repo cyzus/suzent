@@ -2,6 +2,16 @@
 
 ## [mobile-v0.5.0] - 2026-10-31
 
+<!-- highlights -->
+### Highlights
+
+- **Regent in your pocket.** Regent comes to iOS and Android with its own access scope and new conversations of its own. It rests as the plain Suzent head and puts on its circlet when pressed, just like on the desktop. Pair with desktop 0.19.0 for the full experience.
+- **Feels like a native app.** Native navigation, menus, swipe actions, sheets, sharing and haptics on both platforms. Conversations open on a full-screen home page with search, and approvals stay pinned above the composer.
+- **The desktop's personality, on mobile.** The robot badge reacts to what the agent is doing, tools show their desktop icons and animations, and the activity rail sums up pages visited, tasks delegated and skills used.
+- **Faster with long histories.** Conversation lists load page by page, search runs on the desktop over the chats you are allowed to see, and projects load on demand.
+- **Easier pairing.** The pairing screen is simpler, the scan button sits within thumb reach, and you can paste an invitation from a sheet.
+<!-- /highlights -->
+
 ### Release notes
 - Bring the desktop chat animations to mobile: the robot badge with its personalities and reactions (startled by failures, skeptical while approval waits, a face per tool, dozing when idle), the desktop tool icons and their running animations, and the activity rail's summary categories such as pages visited, tasks delegated and skills used.
 - Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
