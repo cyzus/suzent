@@ -1,0 +1,5 @@
+id: linear
+name: Linear
+version: 1.0.0
+description: Let the agent read and update your Linear issues and projects. Sign in with your Linear account.
+api_version: 2

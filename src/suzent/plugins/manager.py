@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from suzent.logger import get_logger
 from suzent.plugins import deps
 from suzent.plugins.context import PluginContext
+from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import (
     MANIFEST_FILENAME,
     PLUGIN_API_VERSION,
@@ -45,6 +46,7 @@ class PluginRecord:
     tool_classes: list[type[Tool]] = field(default_factory=list)
     command_names: list[str] = field(default_factory=list)
     skill_dirs: list[Path] = field(default_factory=list)
+    integrations: list[Integration] = field(default_factory=list)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -77,6 +79,7 @@ class PluginRecord:
             "tools": [cls.name for cls in self.tool_classes],
             "commands": self.command_names,
             "skillDirs": [str(path) for path in self.skill_dirs],
+            "integrations": [i.id for i in self.integrations],
         }
 
 
@@ -356,6 +359,7 @@ class PluginManager:
         for name in record.command_names:
             unregister_plugin_command(name)
         record.tool_classes, record.command_names, record.skill_dirs = [], [], []
+        record.integrations = []
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -403,6 +407,7 @@ class PluginManager:
 
         record.tool_classes = list(ctx.tool_classes)
         record.skill_dirs = list(ctx.skill_dirs)
+        record.integrations = list(ctx.integrations)
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
