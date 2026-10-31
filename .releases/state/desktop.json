@@ -77,6 +77,7 @@
     ".releases/changes/interrupted-install-repair.json",
     ".releases/changes/litellm-proxy-discovery.json",
     ".releases/changes/live-trigger-on-wake.json",
+    ".releases/changes/macos-arrow-key-garbage.json",
     ".releases/changes/macos-installer-dmg.json",
     ".releases/changes/memory-batch-extraction.json",
     ".releases/changes/memory-curated-view.json",
