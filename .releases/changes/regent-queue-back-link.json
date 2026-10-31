@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Chats opened from Regent's queue in the left sidebar now show the way back to Regent in their header."
+}
