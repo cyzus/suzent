@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Upgrade pydantic-ai to 2.64 and pydantic-ai-harness to 0.64, ready for hosted integrations such as Notion."
+}

@@ -457,8 +457,13 @@ class _NoInterruption:
     """Gemini Live: cannot cancel. Exposes the part indices pydantic-ai tracks."""
 
     def __init__(self, audio_part=None, active_assistant=None):
+        from types import SimpleNamespace
+
         self._audio_part_index = audio_part
-        self._active_assistant_index = active_assistant
+        responses = {}
+        if active_assistant is not None:
+            responses["r"] = SimpleNamespace(open_part_index=active_assistant)
+        self._core = SimpleNamespace(_open_responses=responses)
 
     async def interrupt(self, played_ms=None):
         from pydantic_ai.exceptions import UserError
@@ -476,11 +481,15 @@ def test_realtime_session_still_tracks_the_part_indices_the_cut_relies_on():
     """`_cut_boundary` reads pydantic-ai private state; fail loudly on rename."""
     import inspect
 
+    from pydantic_ai.realtime._core import SessionCore
     from pydantic_ai.realtime._session import RealtimeSession
 
-    source = inspect.getsource(RealtimeSession)
-    assert "self._active_assistant_index = 0" in source
-    assert "self._active_assistant_index = self._take_part_index()" in source
+    session = inspect.getsource(RealtimeSession)
+    assert "self._audio_part_index: int | None = None" in session
+    assert "self._core = SessionCore(" in session
+    core = inspect.getsource(SessionCore)
+    assert "self._open_responses: dict[str, _Response] = {}" in core
+    assert "response.open_part_index = index = self._take_index()" in core
 
 
 async def test_cut_reply_stays_out_of_the_log_after_the_user_speaks():

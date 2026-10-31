@@ -297,8 +297,10 @@ def test_context_roots_deduplicate_project_that_is_also_repository(tmp_path: Pat
 
     assert roots.unique_asset_bases() == (("repository", tmp_path.resolve()),)
     capabilities = build_repo_context_capabilities(roots)
-    assert len(capabilities) == 1
-    assert capabilities[0].home_dir == tmp_path.resolve()
+    workspace, repo_context = capabilities
+    assert workspace.read_only
+    assert workspace.working_dir == str(tmp_path.resolve())
+    assert repo_context.home_dir == tmp_path.resolve()
 
 
 def test_discovers_walk_up_instruction_files_ancestor_first(tmp_path: Path):
@@ -408,3 +410,40 @@ async def test_repository_agent_files_use_custom_mount_paths(tmp_path: Path):
     assert reminder is not None
     assert "/mnt/repository/.agents/agents/reviewer.md" in reminder
     assert str(repository) not in reminder
+
+
+async def test_history_from_an_earlier_working_folder_still_runs(tmp_path: Path):
+    """A project's working folder can change between turns of one chat."""
+    from pydantic_ai import Agent
+    from pydantic_ai.messages import ModelMessagesTypeAdapter
+    from pydantic_ai.models.test import TestModel
+
+    from suzent.core.agent_deps import AgentDeps
+    from suzent.core.message_history import without_workspace_refs
+
+    old, new = tmp_path / "old", tmp_path / "new"
+    old.mkdir()
+    new.mkdir()
+    (new / "AGENTS.md").write_text("New folder rules.", encoding="utf-8")
+
+    def agent_for(folder: Path) -> Agent:
+        roots = RepositoryContextRoots(folder, folder, folder)
+        return Agent(
+            TestModel(custom_output_text="done"),
+            deps_type=AgentDeps,
+            capabilities=build_repo_context_capabilities(roots),
+        )
+
+    first = await agent_for(old).run("hello", deps=AgentDeps())
+    history = ModelMessagesTypeAdapter.validate_json(
+        ModelMessagesTypeAdapter.dump_json(first.all_messages())
+    )
+    assert any(getattr(m, "workspace_ref", None) for m in history)
+    # What stream_agent_responses does before every run.
+    history = without_workspace_refs(history)
+
+    second = await agent_for(new).run(
+        "again", deps=AgentDeps(), message_history=history
+    )
+    assert second.output == "done"
+    assert "New folder rules." in str(second.all_messages()[-2])
