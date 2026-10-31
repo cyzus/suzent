@@ -276,6 +276,12 @@ export const ChatList: React.FC<ChatListProps> = ({
       ),
     [archivedChats, chats, pinnedChats, projectChats]
   );
+  // Outlives the project's chat list, so collapsing the project keeps the open chat's row.
+  const [currentChatSummary, setCurrentChatSummary] = useState<ChatSummary | null>(null);
+  useEffect(() => {
+    const known = currentChatId ? knownChats.get(currentChatId) : undefined;
+    if (known) setCurrentChatSummary(known);
+  }, [currentChatId, knownChats]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -776,13 +782,30 @@ export const ChatList: React.FC<ChatListProps> = ({
     return arranged;
   }, [expandedSubagentParents, filteredChats, subagentsByParent]);
 
+  // The open chat's row, shown under its project while that project is collapsed.
+  const keptChat =
+    currentChatSummary &&
+    currentChatSummary.id === currentChatId &&
+    currentChatSummary.projectId &&
+    currentChatSummary.projectId !== filterId &&
+    getChatKind(currentChatSummary) !== 'scheduled'
+      ? currentChatSummary
+      : null;
+
   // Range selection follows the order rows appear on screen.
   const selectableOrder = useMemo(() => {
     if (localSearchQuery.trim()) return chats.map((chat) => chat.id);
+    const openRows = visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled');
     const listed =
-      organization === 'list' || filterId !== ALL_PROJECTS_FILTER
-        ? visibleChats.filter((chat) => getChatKind(chat) !== 'scheduled')
-        : [];
+      organization === 'list'
+        ? openRows
+        : sortedProjects.flatMap((project) =>
+            project.id === filterId
+              ? openRows
+              : keptChat?.projectId === project.id
+                ? [keptChat]
+                : []
+          );
     const archived = archivedOpen ? archivedChats : [];
     return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
   }, [
@@ -790,9 +813,11 @@ export const ChatList: React.FC<ChatListProps> = ({
     archivedOpen,
     chats,
     filterId,
+    keptChat,
     localSearchQuery,
     organization,
     pinnedChats,
+    sortedProjects,
     visibleChats,
   ]);
 
@@ -813,7 +838,8 @@ export const ChatList: React.FC<ChatListProps> = ({
     chatsRef.current.find((c) => c.id === chatId) ??
     projectChatsRef.current.find((c) => c.id === chatId) ??
     pinnedChats.find((c) => c.id === chatId) ??
-    archivedChats.find((c) => c.id === chatId);
+    archivedChats.find((c) => c.id === chatId) ??
+    (keptChat?.id === chatId ? keptChat : undefined);
 
   const clearSelection = (): void => {
     setSelection(EMPTY_SELECTION);
@@ -2290,6 +2316,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 )}
                               </div>
                             )}
+                            {keptChat?.projectId === project.id &&
+                              renderChatRow(keptChat, false, true)}
                           </div>
                         );
                       })}
@@ -2443,7 +2471,8 @@ export const ChatList: React.FC<ChatListProps> = ({
             pinnedChats.find((c) => c.id === openMenu.chatId) ??
             chatsRef.current.find((c) => c.id === openMenu.chatId) ??
             projectChatsRef.current.find((c) => c.id === openMenu.chatId) ??
-            archivedChats.find((c) => c.id === openMenu.chatId);
+            archivedChats.find((c) => c.id === openMenu.chatId) ??
+            (keptChat?.id === openMenu.chatId ? keptChat : undefined);
           if (!chat) return null;
           return (
             <ChatRowMenu
