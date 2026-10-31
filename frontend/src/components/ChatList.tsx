@@ -276,6 +276,12 @@ export const ChatList: React.FC<ChatListProps> = ({
       ),
     [archivedChats, chats, pinnedChats, projectChats]
   );
+  // Outlives the project's chat list, so collapsing the project keeps the open chat's row.
+  const [currentChatSummary, setCurrentChatSummary] = useState<ChatSummary | null>(null);
+  useEffect(() => {
+    const known = currentChatId ? knownChats.get(currentChatId) : undefined;
+    if (known) setCurrentChatSummary(known);
+  }, [currentChatId, knownChats]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2163,6 +2169,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                       {sortedProjects.map((project) => {
                         const isOpen = filterId === project.id;
                         const isRenaming = renamingProjectId === project.id;
+                        const keptChat =
+                          !isOpen &&
+                          currentChatSummary?.id === currentChatId &&
+                          currentChatSummary.projectId === project.id &&
+                          getChatKind(currentChatSummary) !== 'scheduled'
+                            ? currentChatSummary
+                            : null;
                         return (
                           <div key={project.id}>
                             <div
@@ -2290,6 +2303,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 )}
                               </div>
                             )}
+                            {keptChat && renderChatRow(keptChat, false, true)}
                           </div>
                         );
                       })}
