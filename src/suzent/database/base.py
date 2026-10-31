@@ -1,6 +1,26 @@
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
+
+# How long a write waits for another writer before failing as locked.
+BUSY_TIMEOUT_MS = 15_000
+
+
+def _configure_connection(dbapi_connection, _record) -> None:
+    """WAL lets reads run while an agent turn writes a long chat; without it
+    the board and chat list wait behind every save. Writers still queue, so
+    they wait longer than the 5s default before failing as locked.
+    Under WAL, ``synchronous=NORMAL`` can lose the last commits on power loss
+    but never corrupts the file, and chats replay those from their fsynced
+    JSONL logs."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+    finally:
+        cursor.close()
 
 
 class ChatDatabaseBase:
@@ -31,6 +51,7 @@ class ChatDatabaseBase:
             echo=False,
             connect_args={"check_same_thread": False},
         )
+        event.listen(self.engine, "connect", _configure_connection)
 
         # Create all tables
         SQLModel.metadata.create_all(self.engine)

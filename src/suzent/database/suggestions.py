@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from .models import ChatModel, InputSuggestionModel
+from .models import InputSuggestionModel, chat_exists
 
 
 class InputSuggestionOperationsMixin:
@@ -22,7 +22,7 @@ class InputSuggestionOperationsMixin:
         """
         with self._session() as session:
             row = session.get(InputSuggestionModel, chat_id)
-            if text is None or session.get(ChatModel, chat_id) is None:
+            if text is None or not chat_exists(session, chat_id):
                 if row is not None:
                     session.delete(row)
                     session.commit()

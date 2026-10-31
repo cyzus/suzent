@@ -197,20 +197,51 @@ class ChatSearchMixin:
     def _reindex_chat_fts(
         conn: Any, chat_id: str, messages: List[Dict[str, Any]]
     ) -> None:
-        """Replace all FTS rows for *chat_id* with freshly extracted message text.
+        """Bring *chat_id*'s FTS rows in line with freshly extracted message text.
 
         Indexes user + assistant text and tool output (so ``role_filter='tool'``
         searches work). Must run inside the same transaction as the chat write.
+        Only rows whose text changed are deleted and inserted: trigram-indexing
+        a long chat whole on every appended message held SQLite's write lock
+        for up to a second.
         """
-        conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE} WHERE chat_id = ?", (chat_id,))
-        rows = sanitize_messages(messages, role_filter=("user", "assistant", "tool"))
-        if not rows:
-            return
-        conn.exec_driver_sql(
-            f"INSERT INTO {FTS_TABLE} (chat_id, message_index, role, text) VALUES "
-            + ",".join(["(?, ?, ?, ?)"] * len(rows)),
-            tuple(v for r in rows for v in (chat_id, r["index"], r["role"], r["text"])),
-        )
+        # Take the write lock before reading the chat's rows, so a concurrent
+        # write to the same chat can't slip in between and leave duplicates.
+        conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE} WHERE rowid = -1")
+        indexed: Dict[int, tuple[int, str, str]] = {}
+        stale: List[int] = []
+        for rowid, index, role, text in conn.exec_driver_sql(
+            f"SELECT rowid, message_index, role, text FROM {FTS_TABLE} WHERE chat_id = ?",
+            (chat_id,),
+        ):
+            if index in indexed:
+                stale.append(rowid)
+            else:
+                indexed[index] = (rowid, role, text)
+        wanted = {
+            r["index"]: (r["role"], r["text"])
+            for r in sanitize_messages(
+                messages, role_filter=("user", "assistant", "tool")
+            )
+        }
+        inserts = []
+        for index, (rowid, role, text) in indexed.items():
+            if wanted.get(index) != (role, text):
+                stale.append(rowid)
+        for index, (role, text) in wanted.items():
+            current = indexed.get(index)
+            if current is None or current[1:] != (role, text):
+                inserts.append((chat_id, index, role, text))
+        if stale:
+            conn.exec_driver_sql(
+                f"DELETE FROM {FTS_TABLE} WHERE rowid = ?", [(r,) for r in stale]
+            )
+        if inserts:
+            conn.exec_driver_sql(
+                f"INSERT INTO {FTS_TABLE} (chat_id, message_index, role, text) "
+                "VALUES (?, ?, ?, ?)",
+                inserts,
+            )
 
     def reindex_chat(self, chat_id: str, messages: List[Dict[str, Any]]) -> None:
         """Public, self-contained reindex (own transaction). Used by backfill."""

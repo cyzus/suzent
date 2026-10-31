@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Marking chats resolved, the Regent board and the chat list stay responsive while an agent saves a long conversation."
+}

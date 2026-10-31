@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Text, cast, or_
-from sqlmodel import Column, Field, JSON, Relationship, SQLModel
+from sqlmodel import Column, Field, JSON, Relationship, Session, SQLModel, select
 
 
 def _json_escape_for_like(s: str) -> str:
@@ -130,6 +130,14 @@ class ChatModel(SQLModel, table=True):
         default=None, foreign_key="projects.id", index=True
     )
     project: Optional[ProjectModel] = Relationship(back_populates="chats")
+
+
+def chat_exists(session: Session, chat_id: str) -> bool:
+    """Whether the chat exists, without loading its messages and state."""
+    return (
+        session.exec(select(ChatModel.id).where(ChatModel.id == chat_id)).first()
+        is not None
+    )
 
 
 class InputSuggestionModel(SQLModel, table=True):
