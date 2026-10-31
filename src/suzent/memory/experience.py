@@ -122,7 +122,10 @@ accepting the result. Check every such passage.
 - At most 3 lessons per batch; keep the ones most likely to recur.
 - Turns marked as earlier context were already processed. Use them to understand the
   new turns; never take evidence from them.
-- Write every field in English except the evidence, which stays verbatim, 5 to 40 words.
+- Write every field except the evidence in the language the user writes in: the language
+  of the USER lines, or the one most of them use. Errors, logs and ASSISTANT lines do not
+  decide it; with no USER line, write in English. Commands, paths and error text stay as
+  they are. The evidence stays verbatim, 5 to 40 words.
 
 ## Already in memory
 The prompt may list memories that already exist. When the batch shows one of their
