@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.19.0] - 2026-10-30
+## [v0.19.0] - 2026-10-31
 
 ### Release notes
 - Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redesign the right sidebar as an expandable overview with context usage, the chat's environment and heartbeat, and Regent's task board, and shrink the composer's folder button to an icon inside existing chats.
 - Style scheduled-task and heartbeat rows in the sidebar like chat rows, and keep chat titles aligned when a chat-app icon is shown.
 - Keep waiting while a slow first start is still in progress, retry startup without restarting the app, and show guidance instead of a retry button for errors a retry cannot fix.
+- Sub-agents can no longer start sub-agents of their own when they are given no tools.
 - The voice call animation keeps showing Suzent speaking until its reply has finished playing, instead of stopping early with fast realtime models such as Qwen-Omni.
 
 ## [v0.18.0] - 2026-10-26
