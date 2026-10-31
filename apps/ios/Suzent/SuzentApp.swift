@@ -419,18 +419,6 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
     }
 
-    @ViewBuilder private var demoBanner: some View {
-        if model.isDemo {
-            HStack {
-                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
-                Spacer()
-                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).buttonStyle(.plain)
-                    .frame(minHeight: 44).disabled(model.busy)
-            }.padding(.horizontal, 16)
-                .background(Color(presentation: PresentationTokens.yellow), ignoresSafeAreaEdges: []).foregroundStyle(.black)
-        }
-    }
-
     @ViewBuilder private var detail: some View {
         Group {
             if showSettings { settings.navigationTitle("Settings") }
@@ -442,7 +430,6 @@ struct ContentView: View {
             }
         }
         .background(Color.suzentBackground)
-        .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
@@ -459,7 +446,6 @@ struct ContentView: View {
 
     private var settingsPage: some View {
         settings.navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
             .toolbarRole(.editor)
     }
 
@@ -497,7 +483,6 @@ struct ContentView: View {
                 }.buttonStyle(.plain).accessibilityLabel("Settings")
             }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-            if home { demoBanner }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
                     RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
