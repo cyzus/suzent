@@ -6,6 +6,27 @@ from suzent.core.retry import (
 from suzent.database import ChatDatabase
 
 
+def test_agent_task_input_survives_checkpoint_restore(temp_db, monkeypatch) -> None:
+    from suzent.core.retry import apply_retry_checkpoint
+
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    chat_id = temp_db.create_chat("Dispatched task", {}, [])
+    turn_input = {
+        "system_reminders": ["[Agent message from Regent] Inspect repository size"],
+        "incoming_citation_sources": [{"id": "source-1"}],
+        "file_mentions": [],
+    }
+    assert save_retry_checkpoint(
+        chat_id, None, [], "", [], {"model": "test-model"}, turn_input=turn_input
+    )
+    temp_db.update_chat(chat_id, messages=[{"role": "assistant", "content": "partial"}])
+    restored = apply_retry_checkpoint(chat_id)
+    assert restored["user_message"] == ""
+    assert restored["turn_input"] == turn_input
+    assert restored["config_snapshot"] == {"model": "test-model"}
+    assert temp_db.get_chat(chat_id).messages == []
+
+
 def test_retry_checkpoint_stays_bound_to_its_own_turn(
     temp_db: ChatDatabase, monkeypatch
 ):

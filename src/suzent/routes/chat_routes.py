@@ -783,6 +783,7 @@ async def retry_chat(request: Request) -> StreamingResponse:
     user_message = checkpoint_data["user_message"]
     user_files = checkpoint_data["user_files"] or []
     config_snapshot = checkpoint_data.get("config_snapshot") or {}
+    turn_input = checkpoint_data.get("turn_input") or {}
 
     processor = ChatProcessor()
     config_override = build_agent_config(config_snapshot, require_social_tool=False)
@@ -792,6 +793,9 @@ async def retry_chat(request: Request) -> StreamingResponse:
         user_id=CONFIG.user_id,
         message_content=user_message,
         files=user_files if user_files else None,
+        system_reminders=turn_input.get("system_reminders"),
+        incoming_citation_sources=turn_input.get("incoming_citation_sources"),
+        file_mentions=turn_input.get("file_mentions"),
         config_override=config_override,
     )
 
