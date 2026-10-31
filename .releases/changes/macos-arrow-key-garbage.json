@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Stop arrow keys from typing box characters into text fields on macOS."
+}
