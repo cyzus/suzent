@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
 - Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
 - Add Chinese coding and token plans to Settings > Providers: Kimi Code, Bailian Plan, Tencent Cloud, Volcengine Ark, StepFun, Baidu Qianfan and Huawei Cloud MaaS, plus OpenCode Go, ClinePass and Ollama Cloud, each with a picker for the plan or China/Global endpoint, which Kimi, Qwen, MiniMax, Zhipu GLM / Z.ai and Xiaomi MiMo now have too. Moonshot keys from platform.moonshot.cn now work for chat, DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app.
+- Replace flat loading placeholders in ChatWindow, SettingsModal, and SkillsView with 3D cube loading animations.
 - GitHub sync no longer gets stuck when both devices changed different files: auto-sync merges them. A real conflict on the same file now stops for review instead of silently dropping the local change.
 - Polish GreetingCube with 3D orbit rings, natural eye blink/gaze, directional monochrome shading, and smooth rAF pointer tracking.
 - Keep hover tooltips to one short line instead of showing whole commands, prompts, results and errors, and shorten the longest hover hints.
