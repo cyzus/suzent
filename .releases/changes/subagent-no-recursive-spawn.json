@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Sub-agents can no longer start sub-agents of their own when they are given no tools."
+}
