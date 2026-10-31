@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CompactionCube, CompactionSweep } from './CompactionCube';
 import { DisclosureChevron } from '../DisclosureChevron';
+import './CoreConnectionIndicator.css';
 
 /**
  * Small, self-contained presentational rows used by the chat view: the drag-drop
@@ -44,10 +45,44 @@ export const DragOverlay: React.FC = () => {
 export const LoadingIndicator: React.FC = () => {
   const { t } = useI18n();
   return (
-    <div className="flex items-center justify-center p-4">
-      <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
-        {t('chatWindow.connecting')}
+    <div className="flex flex-col items-center justify-center gap-4 px-4 py-8" role="status">
+      <div className="core-connection-scene" aria-hidden="true">
+        <div className="core-connection-cluster">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div
+              key={index}
+              className="core-connection-part"
+              style={
+                {
+                  '--x': index % 2 ? 1 : -1,
+                  '--y': Math.floor(index / 2) % 2 ? 1 : -1,
+                  '--z': Math.floor(index / 4) % 2 ? 1 : -1,
+                } as React.CSSProperties
+              }
+            >
+              <div className="core-connection-cube">
+                {[
+                  '',
+                  'rotateY(180deg)',
+                  'rotateY(90deg)',
+                  'rotateY(-90deg)',
+                  'rotateX(90deg)',
+                  'rotateX(-90deg)',
+                ].map((rotation) => (
+                  <div
+                    key={rotation}
+                    className="core-connection-face"
+                    style={{ transform: `${rotation} translateZ(11px)` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+      <span className="text-xs font-medium tracking-wide text-neutral-500 dark:text-neutral-400">
+        {t('chatWindow.connecting')}
+      </span>
     </div>
   );
 };

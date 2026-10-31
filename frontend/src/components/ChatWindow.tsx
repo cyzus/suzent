@@ -2212,6 +2212,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     !showTransientAssistant &&
     safeMessages.length === 0 &&
     (currentChatSummary?.messageCount ?? 0) > 0;
+  const showConnectionOverlay = !configReady || isProbablyLoadingChatMessages;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.
   const { memoryChats } = useEventBus();
@@ -3348,8 +3349,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <ChatImageGallery key={currentChatId || 'new'}>
           {/* Main Chat Column */}
           <div className="chat-column flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-            {/* Keep sticky message animations below the composer's popovers. */}
-            <div className="relative z-0 isolate flex-1 min-h-0">
+            {showConnectionOverlay && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-50 dark:bg-zinc-900">
+                <LoadingIndicator />
+              </div>
+            )}
+            {/* Keep the content mounted and sized while the loading layer covers it. */}
+            <div
+              className={`relative z-0 isolate flex-1 min-h-0 ${showConnectionOverlay ? 'invisible' : ''}`}
+            >
               <div
                 ref={attachScrollContainer}
                 className={
@@ -3358,9 +3366,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
                 }
               >
-                {isProbablyLoadingChatMessages ? (
-                  <LoadingIndicator />
-                ) : safeMessages.length === 0 && !showTransientAssistant ? (
+                {safeMessages.length === 0 && !showTransientAssistant ? (
                   <NewChatView
                     input={input}
                     setInput={setInput}
@@ -3490,7 +3496,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   </>
                 )}
 
-                {!configReady && <LoadingIndicator />}
                 <div ref={bottomRef} className="h-0" />
               </div>
 
@@ -3507,7 +3512,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
             {/* Existing and live conversations share the same composer. */}
             {(safeMessages.length > 0 || showTransientAssistant) && (
-              <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
+              <div
+                className={`px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0 ${showConnectionOverlay ? 'invisible' : ''}`}
+              >
                 {hasPendingTransientApprovals && (
                   <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
                 )}
