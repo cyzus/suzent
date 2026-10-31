@@ -329,10 +329,10 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight().statusBarsPadding().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The wordmark fills the row to stay centred, so the settings button is layered over its end.
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
             SuzentWordmark()
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(22.dp)) }
+            IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp)) }
         }
         if (model.isDemo) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
