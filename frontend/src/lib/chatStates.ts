@@ -54,6 +54,29 @@ export function canResolve(row: ChatStateRow): boolean {
   return !(row.waitingKind === 'question' || row.waitingKind === 'approval');
 }
 
+/**
+ * The row as the server will show it once resolved or reopened, for showing
+ * the change before the save returns. Resolving clears the wait; reopening
+ * starts idle until the next refresh says otherwise.
+ */
+export function withResolved(row: ChatStateRow, resolved: boolean, now: Date): ChatStateRow {
+  return resolved
+    ? {
+        ...row,
+        state: 'resolved',
+        waitingKind: null,
+        waitingReason: null,
+        resolvedAt: now.toISOString(),
+      }
+    : { ...row, state: 'idle', resolvedAt: null };
+}
+
+export function countStates(rows: ChatStateRow[]): Record<ChatState, number> {
+  const counts = { waiting: 0, running: 0, idle: 0, resolved: 0 };
+  for (const row of rows) counts[row.state] += 1;
+  return counts;
+}
+
 export async function setChatResolved(chatId: string, resolved: boolean): Promise<void> {
   const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}/resolved`, {
     method: 'POST',

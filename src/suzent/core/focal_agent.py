@@ -80,14 +80,19 @@ _PREVIOUS_FOCAL_HEARTBEATS = (
 _PREVIOUS_FOCAL_NOTES = (DEFAULT_FOCAL_NOTES.replace("# Regent's", "# SUZENT's"),)
 
 
+def is_focal_config(chat_id: Optional[str], config: dict[str, Any]) -> bool:
+    return (
+        chat_id == FOCAL_CHAT_ID
+        or bool(config.get("is_focal_agent"))
+        or str(config.get("platform") or "").lower() == FOCAL_PLATFORM
+    )
+
+
 def is_focal_chat(chat: Optional[ChatModel]) -> bool:
     if chat is None:
         return False
-    config = getattr(chat, "config", None) or {}
-    return (
-        getattr(chat, "id", None) == FOCAL_CHAT_ID
-        or bool(config.get("is_focal_agent"))
-        or str(config.get("platform") or "").lower() == FOCAL_PLATFORM
+    return is_focal_config(
+        getattr(chat, "id", None), getattr(chat, "config", None) or {}
     )
 
 
@@ -96,7 +101,8 @@ def is_focal_chat_id(chat_id: Optional[str]) -> bool:
         return False
     if chat_id == FOCAL_CHAT_ID:
         return True
-    return is_focal_chat(get_database().get_chat(chat_id))
+    config = get_database().get_chat_config(chat_id)
+    return config is not None and is_focal_config(chat_id, config)
 
 
 def apply_focal_tool_policy(config: dict[str, Any], chat_id: Optional[str]) -> None:
