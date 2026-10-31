@@ -5,6 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.19.0] - 2026-10-31
+
+<!-- highlights -->
+### Highlights
+
+- **Plugins.** Chat apps, tools, slash commands and skills can now come as plugins, managed under Settings → Plugins or with `suzent plugin`. Telegram, Slack, Discord and Feishu/Lark are each their own plugin, so you only download packages for the apps you use. The apps you already use stay on, and installing or removing a plugin takes effect without a restart.
+- **Regent runs your day from the sidebar.** While Regent's chat is open, the left sidebar becomes its queue of waiting and running chats, with a way back from any chat you open there. Regent reacts to your messages and replies in separate, conversational bubbles. Resolving or reopening a chat updates at once, and the board stays fast even with long chats.
+- **Adding a model is easier.** Settings → Providers shows only the providers you have set up, and the rest live in a searchable catalog. Chinese coding and token plans are built in, including Kimi Code, Bailian, Volcengine Ark, Tencent Cloud, Baidu Qianfan and more, each with a picker for the plan and the China or Global endpoint. A custom provider now needs only a name, its protocol, a Base URL and an API key. Realtime voice can use every realtime model your providers offer, including Qwen-Omni from DashScope.
+- **Projects that span folders.** A project can now hold several folders, with the first as the default working directory for its chats. Right-click a project to open its settings. Archive chats you are done with to hide them without deleting them.
+- **A right sidebar that shows the whole picture.** It is now an expandable overview of context usage, the chat's environment and heartbeat, Regent's task board, and a Memory section that shows what the last reply used and what this chat saved.
+- **Steadier day to day.** GitHub sync merges changes from two devices on its own when they touched different files, and stops for review on a real conflict instead of dropping your local change. Long chats no longer stall the rest of the app while they save. A slow first start keeps waiting instead of restarting, and reinstalling on Windows works again. MCP tools now go through the same permission checks as built-in tools, and memories are saved in the language you chat in.
+- **Regent on your phone.** Pair with mobile 0.5.0 to get Regent, the desktop's activity view and faster conversation search on iOS and Android.
+<!-- /highlights -->
+
+### Release notes
+- Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
+- Settings > Providers now lists only the providers you have set up. The rest are in an Add a provider catalog grouped into model vendors, China vendors and coding plans, relays and local runtimes, with search. Adding a custom provider now asks for a name, OpenAI or Anthropic protocol, Base URL and API key, keeps its Base URL and key editable afterwards, rejects IDs and key names that clash with built-in providers, and saves it in ~/.suzent/config with your other settings instead of the install folder.
+- Switch between multiple canvas pages with a dropdown instead of a horizontally scrolling tab strip.
+- Archive chats from the sidebar menu to hide them without deleting them; archived chats sit in a collapsible Archived section, stay searchable, and can be unarchived.
+- Add Chinese coding and token plans to Settings > Providers: Kimi Code, Bailian Plan, Tencent Cloud, Volcengine Ark, StepFun, Baidu Qianfan and Huawei Cloud MaaS, plus OpenCode Go, ClinePass and Ollama Cloud, each with a picker for the plan or China/Global endpoint, which Kimi, Qwen, MiniMax, Zhipu GLM / Z.ai and Xiaomi MiMo now have too. Moonshot keys from platform.moonshot.cn now work for chat, DeepSeek vision models now receive the image in Visual Analysis, and provider logos are bundled so they show in the desktop app.
+- Reduce compaction summary overhead and show when a later retry resolved a historical compaction failure, with timestamps on notices.
+- Replace flat loading placeholders in ChatWindow, SettingsModal, and SkillsView with 3D cube loading animations.
+- Marking chats resolved, the Regent board and the chat list stay responsive while an agent saves a long conversation.
+- GitHub sync no longer gets stuck when both devices changed different files: auto-sync merges them. A real conflict on the same file now stops for review instead of silently dropping the local change.
+- Polish GreetingCube with 3D orbit rings, natural eye blink/gaze, directional monochrome shading, and smooth rAF pointer tracking.
+- Keep hover tooltips to one short line instead of showing whole commands, prompts, results and errors, and shorten the longest hover hints.
+- On Windows, reinstalling no longer fails at the clone step because an earlier install saved its folder as a \\?\ path.
+- The installer repairs a release install that stopped halfway, instead of treating it as a development checkout that needs cargo.
+- Stop arrow keys from typing box characters into text fields on macOS.
+- MCP tools now go through permission checks: tools a server marks read-only run directly, and others ask first, are reviewed in Smart mode, or are refused in read-only modes.
+- Show only the latest facts a chat saved in the sidebar Memory section, with a count of the rest.
+- Tidy the sidebar Memory section: one quiet line when a reply used no memories, and saved facts wrap to two lines.
+- The overview gets its own Memory section showing what the last turn used, what this chat saved, and how organizing is going.
+- Memories are now saved in the language you chat in instead of always in English, and the organizer keeps each notebook page in one language.
+- Page native conversation lists, search authorized titles on the server, load projects on demand, and refresh loaded summaries without repeatedly downloading the entire index.
+- Make mobile conversations a full-screen home page with search, new-chat actions, and back navigation.
+- Bring Regent to native mobile with scoped access, independent new conversations, expandable activity and tool details, a lighter home screen and richer offline examples.
+- Polish mobile sidebar and activity presentation, speed up pairing with parallel address discovery and clearer progress, fix Android dark-mode tables, and improve desktop pairing QR readability.
+- Pin LiteLLM to the verified 1.81.13 release so installs can never resolve to a compromised or untested version.
+- Add plugins, managed from Settings > Plugins or `suzent plugin`. Each chat app (Telegram, Slack, Discord, Feishu/Lark) is now its own plugin, so only the apps you use download packages; setting one up under Social Channels installs it, and apps you already use stay on. Plugins can also add tools, slash commands and skills, and installing or removing one takes effect without a restart.
+- Give projects several folders, the first being the working directory, with folders the project already used offered for adding; open project settings by right-clicking a project.
+- Add project settings with a default working directory that every chat in the project uses unless it has its own.
+- Upgrade pydantic-ai to 2.64 and pydantic-ai-harness to 0.64, ready for hosted integrations such as Notion.
+- Realtime voice can now use Qwen3.5-Omni realtime models from your DashScope provider.
+- Realtime voice now lists every realtime-capable model from your configured OpenAI, Gemini, and xAI providers instead of a fixed shortlist.
+- Resolving or reopening a chat from Regent's board, its queue or a chat header shows at once, and the board loads faster with long chats.
+- Refine Regent chat bubbles, compact the activity header, and recover delimiter-free citations when their sources are known.
+- Let Regent react to your messages and send separate chat bubbles with a more conversational interface.
+- Keep the sidebar in Regent when opening memory or skills from its shortcuts, so only the main page changes.
+- Chats opened from Regent's queue in the left sidebar now show the way back to Regent in their header.
+- Turn the sidebar into Regent's queue while its chat is open, with a back button and Esc to leave, waiting and running chats with a right-click menu, folded projects, and the board starting closed.
+- Soften Regent message bubbles and align the copy action beneath replies.
+- Allow retrying agent-dispatched and attachment-only tasks while preserving their original task context.
+- Redesign the right sidebar as an expandable overview with context usage, the chat's environment and heartbeat, and Regent's task board, and shrink the composer's folder button to an icon inside existing chats.
+- Style scheduled-task and heartbeat rows in the sidebar like chat rows, and keep chat titles aligned when a chat-app icon is shown.
+- Keep the open chat visible in the sidebar when its project is collapsed.
+- Keep waiting while a slow first start is still in progress, retry startup without restarting the app, and show guidance instead of a retry button for errors a retry cannot fix.
+- Sub-agents can no longer start sub-agents of their own when they are given no tools.
+- The voice call animation keeps showing Suzent speaking until its reply has finished playing, instead of stopping early with fast realtime models such as Qwen-Omni.
+
 ## [v0.18.0] - 2026-10-26
 
 <!-- highlights -->
