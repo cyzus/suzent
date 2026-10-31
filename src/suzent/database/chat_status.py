@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import func, or_
 from sqlmodel import col, select
 
-from .models import ChatModel, ChatStatusModel
+from .models import ChatModel, ChatStatusModel, chat_exists
 
 
 class ChatStatusOperationsMixin:
@@ -87,7 +87,7 @@ class ChatStatusOperationsMixin:
         Returns None for a chat that no longer exists, so no row outlives it.
         """
         with self._session() as session:
-            if session.get(ChatModel, chat_id) is None:
+            if not chat_exists(session, chat_id):
                 return None
             row = session.get(ChatStatusModel, chat_id) or ChatStatusModel(
                 chat_id=chat_id
