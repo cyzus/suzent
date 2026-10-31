@@ -137,7 +137,8 @@ The batch has lines of three kinds:
 
 ## Fields
 - content: one sentence, subject first ("User prefers …", "Agent proposed … and the user
-  rejected it because …"). Keep who said or did what.
+  rejected it because …"). Keep who said or did what. The examples in this prompt show
+  the shape, not the language.
 - source: where it came from.
   user_said = a USER line states it; user_did = the user's action shows it (accepted,
   rejected, chose); outcome = a result (tests, completion, user verdict);
@@ -171,7 +172,10 @@ The batch has lines of three kinds:
 - When a later turn changes something said earlier, extract only where it ended up.
 - Turns marked as earlier context were already processed. Use them to understand the
   new turns; never extract from them.
-- Write content in English, whatever the conversation language; evidence stays verbatim.
+- Write content in the language the user writes in: the language of the USER lines, or
+  the one most of them use when they mix. ASSISTANT and ACTION lines do not decide it.
+  When a USER line updates a memory listed below, keep that memory's language unless the
+  user now writes in another one. Evidence stays verbatim.
 
 ## Already in memory
 The prompt may list memories that already exist. They are context, not material.
