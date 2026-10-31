@@ -13,6 +13,15 @@ logger = get_logger(__name__)
 
 _SERVICE_NAME = "suzent"
 
+#: Secrets Suzent reads itself and never exports to the environment, where
+#: commands the agent runs would inherit them: MCP OAuth tokens and the
+#: tokens plugin integrations are connected with.
+PRIVATE_KEY_PREFIXES = ("SUZENT_MCP_OAUTH::", "SUZENT_MCP_TOKEN::")
+
+
+def is_private_key(key: str) -> bool:
+    return key.startswith(PRIVATE_KEY_PREFIXES)
+
 
 class SecretBackend(Protocol):
     def get(self, key: str) -> Optional[str]: ...
@@ -206,6 +215,10 @@ class SecretManager:
     def set_backend_only(self, key: str, value: str) -> None:
         self._backend.set(key, value)
 
+    def get_backend_only(self, key: str) -> Optional[str]:
+        """The stored value, never one from the environment."""
+        return self._backend.get(key)
+
     def delete(self, key: str) -> None:
         self._backend.delete(key)
         os.environ.pop(key, None)
@@ -234,6 +247,8 @@ class SecretManager:
         """
         count = 0
         for key in self.list_keys():
+            if is_private_key(key):
+                continue
             val = self._backend.get(key)
             if not val:
                 continue

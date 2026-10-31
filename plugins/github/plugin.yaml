@@ -1,0 +1,5 @@
+id: github
+name: GitHub
+version: 1.0.0
+description: Let the agent work with your GitHub repositories, issues and pull requests, using a token you create.
+api_version: 2

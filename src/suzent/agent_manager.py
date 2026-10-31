@@ -135,7 +135,20 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
                 )
                 servers.append(server)
 
+    # Hosted services a plugin connects, once the user signed in to them.
+    from suzent.plugins.integrations import connected_toolsets
+
+    for toolset in connected_toolsets():
+        servers.append(_as_mcp_toolset(toolset))
+
     return servers
+
+
+def _as_mcp_toolset(toolset: Any) -> Any:
+    """Count a toolset as MCP and send its writing calls through approvals."""
+    return toolset.with_metadata(suzent_context_source="mcp").approval_required(
+        _mcp_call_needs_approval
+    )
 
 
 async def probe_mcp_server(
