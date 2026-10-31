@@ -422,7 +422,7 @@ struct ContentView: View {
     @ViewBuilder private var demoBanner: some View {
         if model.isDemo {
             HStack {
-                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
+                Text("Demo mode · Sample conversations").font(.footnote)
                 Spacer()
                 Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).buttonStyle(.plain)
                     .frame(minHeight: 44).disabled(model.busy)

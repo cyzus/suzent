@@ -36,7 +36,7 @@ import Testing
         try await client.decideApprovals(chat.id, pending: state.pending, choices: [request.id: allowed ? "allow" : "reject"])
         try await client.observe(chat.id) { _ in }
         let saved = try await client.chat(chat.id)
-        #expect(saved.messages?.last?.content.contains(allowed ? "Approved" : "rejected") == true)
+        #expect(saved.messages?.last?.content.contains(allowed ? "Saved" : "rejected") == true)
         #expect(try await client.approvals(chat.id).pending.isEmpty)
     }
     try await client.send("tool", chatID: chat.id, model: nil, attachments: [])
@@ -83,7 +83,7 @@ import Testing
     try await client.observe(chat.id) { _ in }
     let saved = try await client.chat(chat.id)
     #expect(saved.messages?.first?.files.first?.filename == "photo.png")
-    #expect(saved.messages?.last?.content.contains("nothing is uploaded") == true)
+    #expect(saved.messages?.last?.content.contains("not analysed") == true)
 }
 
 @Test @MainActor func demoObserverDetachesWithoutResendingAndRecovers() async throws {

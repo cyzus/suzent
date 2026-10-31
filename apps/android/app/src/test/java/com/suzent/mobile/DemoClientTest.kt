@@ -49,7 +49,7 @@ class DemoClientTest {
             assertEquals("allow", request.actions.first().behavior)
             demo.decideApprovals(chat.id, state.pending, mapOf(request.id to if (allowed) "allow" else "reject"))
             demo.observe(chat.id) {}
-            assertTrue(demo.chat(chat.id).messages.last().content.contains(if (allowed) "Approved" else "rejected"))
+            assertTrue(demo.chat(chat.id).messages.last().content.contains(if (allowed) "Saved" else "rejected"))
             assertTrue(demo.approvals(chat.id).pending.isEmpty())
         }
         demo.send(chat.id, "tool")
@@ -117,7 +117,7 @@ class DemoClientTest {
         demo.observe(chat.id) {}
         val saved = demo.chat(chat.id)
         assertEquals("photo.png", saved.messages.first().files.single().filename)
-        assertTrue(saved.messages.last().content.contains("nothing is uploaded"))
+        assertTrue(saved.messages.last().content.contains("not analysed"))
     }
 
     @Test fun observerDetachRecoversWithoutResending() = runBlocking {

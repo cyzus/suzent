@@ -2,27 +2,27 @@
   "en": {
     "home": "Home",
     "project": "Weekend plans",
-    "welcome": "Welcome to the offline demo",
+    "welcome": "Welcome to Suzent",
     "trip": "A weekend in London",
     "tools": "Try a tool approval",
-    "task": "Example morning briefing",
-    "intro": "## Your Suzent, wherever you are\n\nThis is an **offline demonstration** with scripted replies. No desktop, AI service, or API key is used.\n\n- Send any message to see a streamed example reply.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see local attachment handling.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nExample conversations also include a UI review, a failed tool call, and a daily note. Expand Worked for to inspect tool input and output.",
+    "task": "Morning briefing",
+    "intro": "## Your Suzent, wherever you are\n\nYou are trying Suzent with sample conversations. Replies are prepared in advance and stay on this phone, so no computer or API key is needed.\n\n- Send any message to watch a reply stream in.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see how attachments work.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nOther conversations show a design review, a tool that failed, and a daily note. Expand Worked for to see each tool's input and output.",
     "prompt": "Plan a weekend trip to London",
     "tool_prompt": "Try a tool approval",
-    "generic": "## Example response\n\nThanks for trying Suzent! This reply is generated from local demonstration data, not an AI model.\n\nYou can **copy**, **retry**, **edit**, or **branch** this conversation. Try asking about a trip, or type **tool approval** to explore an approval request.\n\n```text\nDesktop connection: not required\nAPI calls: 0\n```",
-    "plan": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
-    "attachment": "## Local attachment example\n\nYour selected files are listed with this message. In this demo they stay on your device: nothing is uploaded or analysed by AI.\n\nConnect your own desktop to process attachments with your configured model.",
-    "reasoning": "Preparing a scripted demonstration. No model or external tool is running.",
-    "approval_reason": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written.",
-    "allowed": "## Approved\n\nThe simulated tool created `weekend-plan.md` in the demo workspace. No real workspace file was written.\n\nYou can retry this turn and reject the request to compare the result.",
-    "denied": "## Request rejected\n\nThe simulated tool did not run. You remain in control of tool requests. No file was written.",
-    "stopped": "\n\n*Demo response stopped.*",
-    "interrupted": "*This demo response was interrupted when the app closed. Retry to run it again.*",
+    "generic": "## Got it\n\nOnce Suzent is paired with your computer, your own models answer here, with your memory, projects and tools.\n\nFor now, you can **copy**, **retry**, **edit**, or **branch** this message. Ask about a **trip**, or type **tool approval** to see an approval request.",
+    "plan": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket; London weather changes quickly. [[cite:demo-source]]",
+    "attachment": "## Attachments received\n\nYour files are listed with this message. In the demo they stay on this phone and are not analysed.\n\nPaired with your computer, Suzent reads them with your configured model.",
+    "reasoning": "Working through the request.",
+    "approval_reason": "Create weekend-plan.md in your notes?",
+    "allowed": "## Saved\n\nCreated `weekend-plan.md` with the itinerary.\n\nRetry this turn and reject the request to see the other outcome.",
+    "denied": "## Request rejected\n\nNothing was written. Every action waits for your decision.",
+    "stopped": "\n\n*Response stopped.*",
+    "interrupted": "*This response was interrupted when the app closed. Retry to run it again.*",
     "source_title": "Suzent documentation",
-    "source_snippet": "Example citation. Opening the website is optional and requires an internet connection.",
+    "source_snippet": "Guides for setting up and using Suzent.",
     "branch": "Branch",
-    "model": "Demo · scripted",
-    "alternate_model": "Demo · alternate",
+    "model": "Demo model",
+    "alternate_model": "Demo model · fast",
     "keywords_tool": [
       "tool",
       "approval",
@@ -55,10 +55,10 @@
         "title": "Regent",
         "platform": "focal",
         "isRunning": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "regent": {
           "waiting": 1,
@@ -76,7 +76,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "Checking the example project status.",
+                "text": "Checking project status.",
                 "state": "completed"
               },
               {
@@ -91,7 +91,7 @@
                 "toolName": "send_message",
                 "toolCallId": "demo-regent-send",
                 "state": "completed",
-                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"Your weekend plan is ready. Only the departure time needs your decision.\", \"This is an offline Regent example; no real tasks were started.\"]}}"
+                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"Your weekend plan is ready. Only the departure time needs your decision.\", \"Everything else is on track.\"]}}"
               }
             ],
             "_streaming_run_id": "demo-regent-example",
@@ -103,21 +103,21 @@
       },
       {
         "id": "demo-welcome",
-        "title": "Welcome to the offline demo",
+        "title": "Welcome to Suzent",
         "projectId": "demo-home",
         "projectName": "Home",
         "isRunning": false,
         "pinned": true,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## Your Suzent, wherever you are\n\nThis is an **offline demonstration** with scripted replies. No desktop, AI service, or API key is used.\n\n- Send any message to see a streamed example reply.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see local attachment handling.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nExample conversations also include a UI review, a failed tool call, and a daily note. Expand Worked for to inspect tool input and output.",
-            "model": "Demo · scripted",
+            "content": "## Your Suzent, wherever you are\n\nYou are trying Suzent with sample conversations. Replies are prepared in advance and stay on this phone, so no computer or API key is needed.\n\n- Send any message to watch a reply stream in.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see how attachments work.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nOther conversations show a design review, a tool that failed, and a daily note. Expand Worked for to see each tool's input and output.",
+            "model": "Demo model",
             "timestamp": "2026-01-01T09:00:00Z"
           }
         ]
@@ -129,10 +129,10 @@
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
@@ -142,13 +142,13 @@
           },
           {
             "role": "assistant",
-            "content": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**Example checks: 3 passed.** This is an offline demonstration; no real project files were read or changed.",
-            "model": "Demo · scripted",
+            "content": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**All 3 layout checks passed.**",
+            "model": "Demo model",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "Reviewing the example layout and touch targets.",
+                "text": "Reviewing the layout and touch targets.",
                 "state": "completed"
               },
               {
@@ -164,12 +164,12 @@
                 "toolName": "run_command",
                 "toolCallId": "demo-ui-check",
                 "state": "completed",
-                "args": "{\"command\": \"check-layout --demo\"}",
-                "output": "{\"success\": true, \"message\": \"3 checks passed · simulated\"}"
+                "args": "{\"command\": \"check-layout\"}",
+                "output": "{\"success\": true, \"message\": \"3 checks passed\"}"
               },
               {
                 "type": "text",
-                "text": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**Example checks: 3 passed.** This is an offline demonstration; no real project files were read or changed."
+                "text": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**All 3 layout checks passed.**"
               }
             ],
             "_streaming_run_id": "demo-ui-run",
@@ -186,28 +186,28 @@
         "projectName": "Weekend plans",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
-            "model": "Demo · scripted",
+            "content": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket; London weather changes quickly. [[cite:demo-source]]",
+            "model": "Demo model",
             "timestamp": "2026-01-01T09:00:00Z",
             "parts": [
               {
                 "type": "text",
-                "text": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
+                "text": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket; London weather changes quickly. [[cite:demo-source]]",
                 "citationSources": [
                   {
                     "id": "demo-source",
                     "type": "web",
                     "title": "Suzent documentation",
                     "url": "https://suzent.com/docs",
-                    "snippet": "Example citation. Opening the website is optional and requires an internet connection."
+                    "snippet": "Guides for setting up and using Suzent."
                   }
                 ]
               }
@@ -222,10 +222,10 @@
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
@@ -235,8 +235,8 @@
           },
           {
             "role": "assistant",
-            "content": "## Leave a little room\n\n1. **Morning** — Finish the one thing that matters most.\n2. **Afternoon** — Leave 30 minutes to organize notes.\n3. **Evening** — Confirm the weekend departure time.\n\n> You do not need to fill every minute.\n\nThis is an offline example note. Long-press the conversation to pin or rename it, or copy and branch this reply.",
-            "model": "Demo · scripted",
+            "content": "## Leave a little room\n\n1. **Morning** — Finish the one thing that matters most.\n2. **Afternoon** — Leave 30 minutes to organize notes.\n3. **Evening** — Confirm the weekend departure time.\n\n> You do not need to fill every minute.\n\nLong-press the conversation to pin or rename it.",
+            "model": "Demo model",
             "timestamp": "2026-10-30T09:00:00Z"
           }
         ]
@@ -248,10 +248,10 @@
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
@@ -261,8 +261,8 @@
           },
           {
             "role": "assistant",
-            "content": "## The source could not be reached\n\nThe example source timed out, so there is no result to summarize. Expand the activity above to inspect the error.\n\nWhen connected to your desktop, you could supply another source or try again later. **This failure is simulated; no network request was made.**",
-            "model": "Demo · scripted",
+            "content": "## The source could not be reached\n\nThe source timed out, so there is nothing reliable to summarize. Expand the activity above to inspect the error.\n\nTry another source, or ask again later.",
+            "model": "Demo model",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
@@ -271,11 +271,11 @@
                 "toolCallId": "demo-failed-search",
                 "state": "failed",
                 "args": "{\"query\": \"example reference\"}",
-                "output": "{\"success\": false, \"error\": \"Example source timed out (simulated).\"}"
+                "output": "{\"success\": false, \"error\": \"Source timed out.\"}"
               },
               {
                 "type": "text",
-                "text": "## The source could not be reached\n\nThe example source timed out, so there is no result to summarize. Expand the activity above to inspect the error.\n\nWhen connected to your desktop, you could supply another source or try again later. **This failure is simulated; no network request was made.**"
+                "text": "## The source could not be reached\n\nThe source timed out, so there is nothing reliable to summarize. Expand the activity above to inspect the error.\n\nTry another source, or ask again later."
               }
             ],
             "_streaming_run_id": "demo-failure-run",
@@ -292,16 +292,16 @@
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Demo model",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Demo model",
+          "Demo model · fast"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written.",
-            "model": "Demo · scripted",
+            "content": "Create weekend-plan.md in your notes?",
+            "model": "Demo model",
             "timestamp": "2026-01-01T09:00:00Z",
             "_streaming_run_id": "demo-tools-example",
             "run_started_at": "2026-10-29T12:00:00Z",
@@ -310,7 +310,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "A scripted example of reading a file and checking it. No real tools run.",
+                "text": "Reading the weekend plan and checking it before saving.",
                 "state": "completed"
               },
               {
@@ -327,11 +327,11 @@
                 "toolCallId": "demo-command",
                 "state": "completed",
                 "args": "{\"command\": \"check-plan weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"2 checks passed (offline example)\"}"
+                "output": "{\"success\": true, \"message\": \"2 checks passed\"}"
               },
               {
                 "type": "text",
-                "text": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written."
+                "text": "Create weekend-plan.md in your notes?"
               }
             ]
           }
@@ -341,39 +341,39 @@
     "tasks": [
       {
         "id": "demo-briefing",
-        "name": "Example morning briefing",
+        "name": "Morning briefing",
         "chatId": null,
         "active": false,
         "isRunning": false,
         "hasError": false
       }
     ],
-    "regent_reply": "I can help you check progress across your projects and bring back decisions that need you.\n\nThis is a local demonstration reply, with no AI call."
+    "regent_reply": "I can help you check progress across your projects and bring back decisions that need you."
   },
   "zh": {
     "home": "主页",
     "project": "周末计划",
-    "welcome": "欢迎体验离线演示",
+    "welcome": "欢迎使用 Suzent",
     "trip": "伦敦周末计划",
     "tools": "体验工具审批",
-    "task": "示例晨间简报",
-    "intro": "## 随时随地使用 Suzent\n\n这是使用预设回复的**离线演示**，不连接电脑或 AI 服务，也不使用 API Key。\n\n- 发送任意消息，体验流式回复。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，体验本地附件操作。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n示例会话还包括界面检查、工具失败和日常笔记。展开 Worked for 查看工具输入与输出。",
+    "task": "晨间简报",
+    "intro": "## 随时随地使用 Suzent\n\n你正在用示例对话体验 Suzent。回复是预先准备好的，只保存在这台手机上，无需电脑或 API Key。\n\n- 发送任意消息，看看回复如何实时呈现。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，看看附件如何处理。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n其他对话展示了界面检查、一次失败的工具调用和日常笔记。展开 Worked for 可查看每个工具的输入与输出。",
     "prompt": "帮我安排伦敦周末旅行",
     "tool_prompt": "体验工具审批",
-    "generic": "## 示例回复\n\n感谢体验 Suzent！这条回复来自本地演示数据，并非 AI 模型生成。\n\n你可以**复制**、**重试**、**编辑**消息，或创建**会话分支**。试着询问旅行，或输入**工具审批**体验操作审批。\n\n```text\n无需连接电脑\nAPI 调用次数：0\n```",
-    "plan": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
-    "attachment": "## 本地附件示例\n\n你选择的文件会显示在消息中。演示模式下，文件留在设备本地，不会上传，也不会交给 AI 分析。\n\n连接自己的电脑后，即可使用配置的模型处理附件。",
-    "reasoning": "正在准备预设演示，不调用模型或外部工具。",
-    "approval_reason": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。",
-    "allowed": "## 已允许\n\n模拟工具已在演示工作区创建 `weekend-plan.md`，没有写入真实工作区文件。\n\n你可以重试本轮并拒绝请求，对比两种结果。",
-    "denied": "## 已拒绝请求\n\n模拟工具未执行。工具操作由你控制，没有写入任何文件。",
-    "stopped": "\n\n*演示回复已停止。*",
-    "interrupted": "*应用关闭时演示回复被中断，请重试。*",
+    "generic": "## 收到\n\n与电脑配对后，这里会由你自己的模型回答，并用上你的记忆、项目和工具。\n\n现在你可以**复制**、**重试**、**编辑**消息，或创建**会话分支**。问问**旅行**，或输入**工具审批**看看审批请求。",
+    "plan": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣，伦敦天气说变就变。[[cite:demo-source]]",
+    "attachment": "## 已收到附件\n\n文件会显示在这条消息中。演示中文件只留在这台手机上，不会被分析。\n\n与电脑配对后，Suzent 会用你配置的模型读取它们。",
+    "reasoning": "正在梳理你的请求。",
+    "approval_reason": "要在笔记中创建 weekend-plan.md 吗？",
+    "allowed": "## 已保存\n\n已创建 `weekend-plan.md`，写入了行程。\n\n重试本轮并拒绝请求，可以看看另一种结果。",
+    "denied": "## 已拒绝请求\n\n没有写入任何内容。每一步操作都等你决定。",
+    "stopped": "\n\n*回复已停止。*",
+    "interrupted": "*应用关闭时回复被中断，请重试。*",
     "source_title": "Suzent 使用文档",
-    "source_snippet": "示例引用。打开网站是可选操作，需要网络连接。",
+    "source_snippet": "Suzent 的安装与使用指南。",
     "branch": "分支",
-    "model": "演示 · 预设回复",
-    "alternate_model": "演示 · 另一模型",
+    "model": "演示模型",
+    "alternate_model": "演示模型 · 快速",
     "keywords_tool": [
       "tool",
       "approval",
@@ -406,10 +406,10 @@
         "title": "Regent",
         "platform": "focal",
         "isRunning": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "regent": {
           "waiting": 1,
@@ -427,7 +427,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "查看各项目的示例进度。",
+                "text": "查看各项目进度。",
                 "state": "completed"
               },
               {
@@ -442,7 +442,7 @@
                 "toolName": "send_message",
                 "toolCallId": "demo-regent-send",
                 "state": "completed",
-                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"周末计划已整理好。你只需要确认出发时间。\", \"这是 Regent 的离线演示；没有启动真实任务。\"]}}"
+                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"周末计划已整理好。你只需要确认出发时间。\", \"其他事项都在按计划进行。\"]}}"
               }
             ],
             "_streaming_run_id": "demo-regent-example",
@@ -454,21 +454,21 @@
       },
       {
         "id": "demo-welcome",
-        "title": "欢迎体验离线演示",
+        "title": "欢迎使用 Suzent",
         "projectId": "demo-home",
         "projectName": "主页",
         "isRunning": false,
         "pinned": true,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## 随时随地使用 Suzent\n\n这是使用预设回复的**离线演示**，不连接电脑或 AI 服务，也不使用 API Key。\n\n- 发送任意消息，体验流式回复。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，体验本地附件操作。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n示例会话还包括界面检查、工具失败和日常笔记。展开 Worked for 查看工具输入与输出。",
-            "model": "演示 · 预设回复",
+            "content": "## 随时随地使用 Suzent\n\n你正在用示例对话体验 Suzent。回复是预先准备好的，只保存在这台手机上，无需电脑或 API Key。\n\n- 发送任意消息，看看回复如何实时呈现。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，看看附件如何处理。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n其他对话展示了界面检查、一次失败的工具调用和日常笔记。展开 Worked for 可查看每个工具的输入与输出。",
+            "model": "演示模型",
             "timestamp": "2026-01-01T09:00:00Z"
           }
         ]
@@ -480,10 +480,10 @@
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
@@ -493,13 +493,13 @@
           },
           {
             "role": "assistant",
-            "content": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**示例检查：3 项通过。** 这是离线演示，没有读取或修改真实项目文件。",
-            "model": "演示 · 预设回复",
+            "content": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**3 项布局检查全部通过。**",
+            "model": "演示模型",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "检查演示布局与点击区域。",
+                "text": "检查布局与点击区域。",
                 "state": "completed"
               },
               {
@@ -515,12 +515,12 @@
                 "toolName": "run_command",
                 "toolCallId": "demo-ui-check",
                 "state": "completed",
-                "args": "{\"command\": \"check-layout --demo\"}",
-                "output": "{\"success\": true, \"message\": \"3 checks passed · simulated\"}"
+                "args": "{\"command\": \"check-layout\"}",
+                "output": "{\"success\": true, \"message\": \"3 checks passed\"}"
               },
               {
                 "type": "text",
-                "text": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**示例检查：3 项通过。** 这是离线演示，没有读取或修改真实项目文件。"
+                "text": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**3 项布局检查全部通过。**"
               }
             ],
             "_streaming_run_id": "demo-ui-run",
@@ -537,28 +537,28 @@
         "projectName": "周末计划",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
-            "model": "演示 · 预设回复",
+            "content": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣，伦敦天气说变就变。[[cite:demo-source]]",
+            "model": "演示模型",
             "timestamp": "2026-01-01T09:00:00Z",
             "parts": [
               {
                 "type": "text",
-                "text": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
+                "text": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣，伦敦天气说变就变。[[cite:demo-source]]",
                 "citationSources": [
                   {
                     "id": "demo-source",
                     "type": "web",
                     "title": "Suzent 使用文档",
                     "url": "https://suzent.com/docs",
-                    "snippet": "示例引用。打开网站是可选操作，需要网络连接。"
+                    "snippet": "Suzent 的安装与使用指南。"
                   }
                 ]
               }
@@ -573,10 +573,10 @@
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
@@ -586,8 +586,8 @@
           },
           {
             "role": "assistant",
-            "content": "## 留一点余地\n\n1. **上午** — 完成最重要的一件事。\n2. **下午** — 留 30 分钟整理笔记。\n3. **晚上** — 确认周末出发时间。\n\n> 不必排满每一分钟。\n\n这是一份离线示例笔记。你可以长按会话置顶、重命名，也可以复制或分支这条回复。",
-            "model": "演示 · 预设回复",
+            "content": "## 留一点余地\n\n1. **上午** — 完成最重要的一件事。\n2. **下午** — 留 30 分钟整理笔记。\n3. **晚上** — 确认周末出发时间。\n\n> 不必排满每一分钟。\n\n长按会话可以置顶或重命名。",
+            "model": "演示模型",
             "timestamp": "2026-10-30T09:00:00Z"
           }
         ]
@@ -599,10 +599,10 @@
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
@@ -612,8 +612,8 @@
           },
           {
             "role": "assistant",
-            "content": "## 暂时无法访问资料\n\n示例来源返回了超时，所以这里没有编造结果。你可以展开上方工具过程，查看错误详情。\n\n连接桌面后，可以提供另一个来源或稍后重试。**此失败是模拟的，没有发出网络请求。**",
-            "model": "演示 · 预设回复",
+            "content": "## 暂时无法访问资料\n\n资料来源超时，所以这里不编造结果。你可以展开上方工具过程，查看错误详情。\n\n可以换一个来源，或稍后再试。",
+            "model": "演示模型",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
@@ -622,11 +622,11 @@
                 "toolCallId": "demo-failed-search",
                 "state": "failed",
                 "args": "{\"query\": \"example reference\"}",
-                "output": "{\"success\": false, \"error\": \"Example source timed out (simulated).\"}"
+                "output": "{\"success\": false, \"error\": \"Source timed out.\"}"
               },
               {
                 "type": "text",
-                "text": "## 暂时无法访问资料\n\n示例来源返回了超时，所以这里没有编造结果。你可以展开上方工具过程，查看错误详情。\n\n连接桌面后，可以提供另一个来源或稍后重试。**此失败是模拟的，没有发出网络请求。**"
+                "text": "## 暂时无法访问资料\n\n资料来源超时，所以这里不编造结果。你可以展开上方工具过程，查看错误详情。\n\n可以换一个来源，或稍后再试。"
               }
             ],
             "_streaming_run_id": "demo-failure-run",
@@ -643,16 +643,16 @@
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "演示模型",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "演示模型",
+          "演示模型 · 快速"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。",
-            "model": "演示 · 预设回复",
+            "content": "要在笔记中创建 weekend-plan.md 吗？",
+            "model": "演示模型",
             "timestamp": "2026-01-01T09:00:00Z",
             "_streaming_run_id": "demo-tools-example",
             "run_started_at": "2026-10-29T12:00:00Z",
@@ -661,7 +661,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "演示如何检查文件并运行验证，不会执行真实工具。",
+                "text": "先读取周末计划并检查，再保存。",
                 "state": "completed"
               },
               {
@@ -678,11 +678,11 @@
                 "toolCallId": "demo-command",
                 "state": "completed",
                 "args": "{\"command\": \"check-plan weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"2 checks passed (offline example)\"}"
+                "output": "{\"success\": true, \"message\": \"2 checks passed\"}"
               },
               {
                 "type": "text",
-                "text": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。"
+                "text": "要在笔记中创建 weekend-plan.md 吗？"
               }
             ]
           }
@@ -692,13 +692,13 @@
     "tasks": [
       {
         "id": "demo-briefing",
-        "name": "示例晨间简报",
+        "name": "晨间简报",
         "chatId": null,
         "active": false,
         "isRunning": false,
         "hasError": false
       }
     ],
-    "regent_reply": "收到。我可以帮你了解各项目的进度，并把需要你决定的事情带回来。\n\n这是本地演示回复，没有调用 AI。"
+    "regent_reply": "收到。我可以帮你了解各项目的进度，并把需要你决定的事情带回来。"
   }
 }
