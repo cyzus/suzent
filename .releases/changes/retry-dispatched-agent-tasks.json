@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Allow retrying agent-dispatched and attachment-only tasks while preserving their original task context."
+}

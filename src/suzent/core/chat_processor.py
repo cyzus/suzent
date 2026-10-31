@@ -767,7 +767,7 @@ class ChatProcessor:
         if (
             not resume_approvals
             and not is_heartbeat
-            and message_content
+            and (message_content or files or system_reminders)
             and _message_history_override is None
         ):
             try:
@@ -782,6 +782,13 @@ class ChatProcessor:
                     user_files=serializable_files,
                     config_snapshot={
                         k: v for k, v in config.items() if not k.startswith("_")
+                    },
+                    turn_input={
+                        "system_reminders": list(system_reminders or []),
+                        "incoming_citation_sources": list(
+                            incoming_citation_sources or []
+                        ),
+                        "file_mentions": list(file_mentions or []),
                     },
                 )
             except Exception as _ckpt_err:
@@ -1915,6 +1922,7 @@ class ChatProcessor:
         # override them so retrying after changing model/thinking/etc. uses the
         # newly selected values.
         replay_files = checkpoint_data["user_files"] or []
+        turn_input = checkpoint_data.get("turn_input") or {}
         replay_config = checkpoint_data.get("config_snapshot") or {}
         merged_config = {
             **replay_config,
@@ -1935,6 +1943,11 @@ class ChatProcessor:
             # over-charging pauses early and is recoverable with /goal resume;
             # under-charging removes the stop condition and is not.
             files=replay_files if replay_files else None,
+            system_reminders=turn_input.get("system_reminders")
+            if not is_retry_edit
+            else None,
+            incoming_citation_sources=turn_input.get("incoming_citation_sources"),
+            file_mentions=turn_input.get("file_mentions"),
             config_override=merged_config,
             is_social=is_social,
         )
