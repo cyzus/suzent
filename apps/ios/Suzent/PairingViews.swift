@@ -1,6 +1,8 @@
 import SwiftUI
 import SuzentCore
 
+let suzentPrivacyPolicyURL = URL(string: "https://suzent.com/mobile-privacy")!
+
 struct PairingView: View {
     @Bindable var model: MobileModel
     @State private var scanner = false
@@ -10,7 +12,7 @@ struct PairingView: View {
 
     var body: some View {
         Group {
-            if model.pairingCode == nil && model.pairingInvitation == nil && !model.busy { welcome } else { progress }
+            if model.pairingCode == nil && model.pairingInvitation == nil && (!model.busy || model.startingDemo) { welcome } else { progress }
         }
         .font(.system(size: bodySize))
         .fullScreenCover(isPresented: $scanner) { PairingScanner(model: model) }
@@ -39,6 +41,9 @@ struct PairingView: View {
                     }
                     .suzentFont(PresentationTokens.typeCaption, weight: .medium).buttonStyle(.plain)
                     .frame(minHeight: PresentationTokens.controlHeight).padding(.top, PresentationTokens.spaceSmall)
+                    Link("Privacy policy", destination: suzentPrivacyPolicyURL)
+                        .suzentFont(PresentationTokens.typeCaption).foregroundStyle(Color.suzentMuted)
+                        .frame(minHeight: PresentationTokens.controlHeight)
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, PresentationTokens.spaceLarge).padding(.bottom, PresentationTokens.spaceSmall)

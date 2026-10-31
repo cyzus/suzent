@@ -117,6 +117,8 @@ import SuzentCore
     var approvalBusy = false
     var error: String?
     var busy = false
+    /// Loading the demo keeps the welcome screen up instead of the pairing progress view.
+    private(set) var startingDemo = false
     var streaming = false
     var isDemo = false
     var demoPrompts: [String] = []
@@ -154,7 +156,8 @@ import SuzentCore
     func startDemo() async {
         guard !busy, !streaming else { return }
         busy = true
-        defer { busy = false }
+        startingDemo = true
+        defer { busy = false; startingDemo = false }
         do {
             let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                        appropriateFor: nil, create: true)

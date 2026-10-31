@@ -137,6 +137,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var approvalBusy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
+    /** Loading the demo keeps the welcome screen up instead of the pairing progress view. */
+    var startingDemo by mutableStateOf(false)
+        private set
     var streaming by mutableStateOf(false)
     var isDemo by mutableStateOf(false)
         private set
@@ -167,6 +170,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun startDemo() {
         if (busy || streaming) return
         busy = true
+        startingDemo = true
         viewModelScope.launch {
             try {
                 val app = getApplication<Application>()
@@ -193,7 +197,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 openedVersion++
             } catch (failure: CancellationException) { throw failure }
             catch (_: Exception) { error = text(R.string.demo_load_error) }
-            finally { busy = false }
+            finally { busy = false; startingDemo = false }
         }
     }
 
