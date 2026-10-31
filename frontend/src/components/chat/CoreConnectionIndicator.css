@@ -1,0 +1,95 @@
+.core-connection-scene {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 130px;
+  height: 100px;
+  perspective: 420px;
+}
+.core-connection-cluster {
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(-24deg) rotateY(32deg);
+  animation: core-connection-turn 10s ease-in-out infinite;
+}
+.core-connection-part {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  transform-style: preserve-3d;
+  animation: core-connection-join 2.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+.core-connection-cube {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  transform-style: preserve-3d;
+}
+.core-connection-face {
+  position: absolute;
+  inset: 0;
+  background: #202020;
+  border: 1px solid #666;
+  backface-visibility: hidden;
+}
+.core-connection-face:nth-child(3) {
+  background: #444;
+}
+.core-connection-face:nth-child(5) {
+  background: #666;
+}
+.dark .core-connection-face {
+  background: #ddd;
+  border-color: #888;
+}
+.dark .core-connection-face:nth-child(3) {
+  background: #aaa;
+}
+.dark .core-connection-face:nth-child(5) {
+  background: #fafafa;
+}
+.core-connection-part:last-child .core-connection-face {
+  background: var(--brutal-yellow, var(--suzent-yellow));
+  border-color: #887930;
+}
+@keyframes core-connection-join {
+  0%,
+  100% {
+    transform: translate3d(calc(var(--x) * 19px), calc(var(--y) * 19px), calc(var(--z) * 19px));
+  }
+  40%,
+  65% {
+    transform: translate3d(
+      calc(var(--x) * 11.5px),
+      calc(var(--y) * 11.5px),
+      calc(var(--z) * 11.5px)
+    );
+  }
+}
+@keyframes core-connection-turn {
+  0% {
+    transform: rotateX(-24deg) rotateY(32deg);
+  }
+  25% {
+    transform: rotateX(-24deg) rotateY(122deg);
+  }
+  50% {
+    transform: rotateX(-24deg) rotateY(212deg);
+  }
+  75% {
+    transform: rotateX(-24deg) rotateY(302deg);
+  }
+  100% {
+    transform: rotateX(-24deg) rotateY(392deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .core-connection-cluster {
+    animation: none;
+  }
+  .core-connection-part {
+    animation: none;
+    transform: translate3d(calc(var(--x) * 13px), calc(var(--y) * 13px), calc(var(--z) * 13px));
+  }
+}
