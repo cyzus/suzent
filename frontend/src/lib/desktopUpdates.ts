@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getApiBase } from './api';
 import { isWeb } from './runtime';
 
 export interface UpdateStatus {
@@ -41,6 +42,26 @@ export function checkDesktopUpdate(force = false): Promise<UpdateStatus> {
 export async function startDesktopUpdateAndRestart(): Promise<void> {
   if (isWeb()) throw new Error('Self-update is only available in the desktop app.');
   await invoke('start_update_and_restart');
+}
+
+/** The release already downloaded in the background and ready to install, if any. */
+export async function getStagedUpdate(): Promise<string | null> {
+  if (isWeb()) return null;
+  return (await invoke<string | null>('get_staged_update')) ?? null;
+}
+
+/** Restarts Suzent into the staged release; takes seconds, not a full update. */
+export async function applyStagedUpdateNow(): Promise<void> {
+  if (isWeb()) throw new Error('Self-update is only available in the desktop app.');
+  await invoke('apply_staged_update_now');
+}
+
+/** Whether no chat, stream or subagent has run on the backend for a while. */
+export async function fetchAgentsIdle(): Promise<boolean> {
+  const response = await fetch(`${getApiBase()}/system/idle`);
+  if (!response.ok) return false;
+  const payload = (await response.json()) as { idle?: unknown };
+  return payload.idle === true;
 }
 
 export async function getAutoUpdateEnabled(): Promise<boolean> {

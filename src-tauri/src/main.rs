@@ -247,6 +247,40 @@ fn restart_app(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(
     Ok(())
 }
 
+/// The release the backend staged and that can be installed right now, if any.
+#[tauri::command]
+fn get_staged_update() -> Option<String> {
+    auto_update::pending(&backend::find_install_workspace_dir())
+}
+
+/// Installs the staged release now and reopens Suzent on it: the updater only
+/// switches versions, so this takes seconds instead of a full update.
+#[tauri::command]
+fn apply_staged_update_now(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let root = backend::find_install_workspace_dir();
+    let tag = auto_update::pending(&root).ok_or("No update is ready to install")?;
+    let relaunch = find_relaunch_exe(&root).map_err(|e| e.to_string())?;
+    {
+        let mut backend_guard = state
+            .backend
+            .lock()
+            .map_err(|_| "Failed to lock backend state".to_string())?;
+        if let Some(mut backend) = backend_guard.take() {
+            backend.stop();
+        }
+    }
+    auto_update::spawn(&root, &tag, Some(&relaunch))?;
+    auto_update::skip_on_exit();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(250));
+        app_handle.exit(0);
+    });
+    Ok(())
+}
+
 #[tauri::command]
 fn get_auto_update_enabled() -> bool {
     auto_update::enabled(&backend::find_install_workspace_dir())
@@ -939,6 +973,8 @@ fn main() {
             get_service_log_path,
             get_auto_update_enabled,
             set_auto_update_enabled,
+            get_staged_update,
+            apply_staged_update_now,
             notifications::show_notification
         ])
         .plugin(tauri_plugin_shell::init())

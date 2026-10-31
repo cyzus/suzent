@@ -66,3 +66,19 @@ def test_auto_update_respects_the_off_switch(monkeypatch, tmp_path):
     assert not auto_update._disabled_by_user(tmp_path)
     (tmp_path / ".suzent" / "auto-update").write_text("off")
     assert auto_update._disabled_by_user(tmp_path)
+
+
+def test_idle_route_reports_agent_activity(monkeypatch):
+    import json
+
+    from suzent.routes.system_routes import get_system_idle
+
+    monkeypatch.setattr(run_state, "_chat_states", {})
+    response = asyncio.run(get_system_idle(None))
+    assert json.loads(response.body) == {"idle": True}
+
+    state = run_state.ChatRunState()
+    state.last_activity = 1e12
+    monkeypatch.setattr(run_state, "_chat_states", {"chat": state})
+    response = asyncio.run(get_system_idle(None))
+    assert json.loads(response.body) == {"idle": False}

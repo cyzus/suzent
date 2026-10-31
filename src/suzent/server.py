@@ -193,6 +193,7 @@ from suzent.routes.ops_routes import (
 from suzent.routes.plugin_routes import install_plugin, list_plugins, remove_plugin
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
+    get_system_idle,
     get_system_version,
     list_host_files,
     open_in_explorer,
@@ -1359,6 +1360,7 @@ app = Starlette(
         Route("/ops/service/enabled", set_ops_service_enabled, methods=["POST"]),
         Route("/ops/logs", get_ops_logs, methods=["GET"]),
         Route("/system/version", get_system_version, methods=["GET"]),
+        Route("/system/idle", get_system_idle, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
         Route("/memory/core", get_core_memory, methods=["GET"]),
