@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Polish GreetingCube with 3D orbit rings, natural eye blink/gaze, directional monochrome shading, and smooth rAF pointer tracking."
+}
