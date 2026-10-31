@@ -243,6 +243,31 @@
       "supported_endpoints": [
         "/v1/responses"
       ]
+    },
+    "chatgpt/gpt-6.1-terra": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "chatgpt/gpt-6-rosalind": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
     }
   }
 }
