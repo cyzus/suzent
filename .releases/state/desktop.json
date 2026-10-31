@@ -1,5 +1,5 @@
 {
-  "version": "0.19.1",
+  "version": "0.20.0",
   "consumed": [
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -100,6 +100,7 @@
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-native-polish.json",
     ".releases/changes/mobile-pairing-welcome.json",
+    ".releases/changes/mobile-permission-presets.json",
     ".releases/changes/mobile-permissions-editor.json",
     ".releases/changes/mobile-project-order.json",
     ".releases/changes/mobile-reconnect-animation.json",
