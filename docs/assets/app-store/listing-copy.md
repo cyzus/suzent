@@ -7,32 +7,29 @@ text 170, keywords 100 bytes (comma-separated, no spaces, no app name).
 
 Name: Suzent
 
-Subtitle: Your personal AI agent, mobile
+Subtitle: Your AI agent, in your pocket
 
-Promotional text: Continue your Suzent conversations on iPhone and iPad. Approve actions, check scheduled tasks, and send photos to the agent running on your own computer.
+Promotional text: Your own AI agent, in your pocket. Catch up on your projects, plan trips around what you like, and approve actions on your computer from anywhere.
 
-Keywords: AI agent,personal AI,assistant,chat,self-hosted,automation,LLM,tasks,companion,desktop,remote
+Keywords: AI agent,personal AI,assistant,self-hosted,automation,LLM,memory,tasks,productivity,remote,desktop
 
 ### Description
 
-Take your Suzent agent with you.
+Suzent is a personal AI agent that runs on your own computer. It remembers what matters to you, works with your files and apps, and keeps going while you are away. This app puts it in your pocket.
 
-Suzent for iPhone and iPad connects to the Suzent personal AI agent running on your own computer. Your conversations, memory, and tools stay on that computer; the app is a secure window into them, wherever you are.
+From your phone, you can:
 
-With a paired computer, you can:
+- Catch up fast. Ask "What changed while I was away?" and get a summary built from your notes and projects.
+- Plan with context. Suzent remembers your preferences, so a weekend plan already fits how you travel, with sources you can check.
+- Stay in control. When Suzent wants to move files or run a command on your computer, you approve or reject it with one tap.
+- Let it keep watch. Regent, your always-on agent, flags only what needs you, like a pull request waiting for review or a check-in about to open.
+- Run your routines. Check scheduled tasks such as a morning briefing, and send photos and files straight to your agent.
 
-- Continue any conversation, or start a new one in a project.
-- Watch replies stream in, with tool activity and sources.
-- Approve or reject actions the agent wants to take.
-- Send photos, camera shots, and files to the agent.
-- Check scheduled tasks and talk to Regent, your always-on agent.
-- Copy, retry, edit, or branch from any message.
+Your data stays yours. Conversations, memory and tools live on your computer, and the app connects to it directly over an encrypted connection: on your Wi-Fi, through Tailscale, or at your own HTTPS address. No accounts, no ads, no tracking.
 
-To pair, open Settings → Devices → Mobile access in Suzent on your computer, choose what the phone may do, and scan the QR code. Pairing works on your local network, over Tailscale, or through your own HTTPS address.
+Getting started: install Suzent on your computer, open Settings → Devices → Mobile access, and scan the QR code. No computer yet? Tap "Try offline demo" to look around with sample conversations.
 
-You control the connection. Forget it in the app, or revoke the phone from your computer at any time.
-
-Requires the Suzent app running on your computer. AI replies need a model provider configured there; provider charges may apply. No computer yet? Choose "Try offline demo" to explore the app with sample data. See the privacy policy for how your information is handled.
+AI replies use the model provider you configure on your computer; provider charges may apply.
 
 ### What's New in This Version (0.5.3)
 
@@ -44,32 +41,29 @@ Requires the Suzent app running on your computer. AI replies need a model provid
 
 名称：Suzent
 
-副标题：随身使用你的个人 AI 智能体
+副标题：口袋里的个人 AI 智能体
 
-推广文本：在 iPhone 和 iPad 上继续你的 Suzent 对话。批准智能体的操作、查看定时任务，把照片发给运行在你自己电脑上的智能体。
+推广文本：把你自己的 AI 智能体装进口袋。随时了解项目进展，按你的喜好规划行程，在手机上批准电脑上的操作。
 
-关键词：AI助手,智能体,个人AI,聊天,自托管,自动化,大模型,任务,远程,桌面,配套应用
+关键词：AI助手,智能体,个人AI,自托管,自动化,大模型,记忆,任务,效率,远程,桌面
 
 ### 详细描述
 
-把 Suzent 智能体带在身边。
+Suzent 是运行在你自己电脑上的个人 AI 智能体。它记得对你重要的事，能操作你的文件和应用，你不在时也能继续工作。这个 App 让你随时带着它。
 
-Suzent iPhone 和 iPad 版连接到运行在你自己电脑上的 Suzent 个人 AI 智能体。对话、记忆和工具都留在那台电脑上，App 是你随时随地访问它们的安全窗口。
+在手机上，你可以：
 
-与电脑配对后，你可以：
+- 快速跟上进度。问一句“我不在的时候有什么变化？”，Suzent 会根据你的笔记和项目给出汇总。
+- 带着上下文做计划。Suzent 记得你的偏好，周末行程一开始就符合你的出行习惯，并附上可以核对的来源。
+- 一切由你掌控。Suzent 想在电脑上移动文件或运行命令时，你一键批准或拒绝。
+- 让它替你盯着。常驻智能体 Regent 只提醒需要你处理的事，比如等你审的 PR、即将开放的值机。
+- 照常运行你的例行任务。查看晨间简报等定时任务，把照片和文件直接发给智能体。
 
-- 继续任意对话，或在项目中新建对话。
-- 实时查看流式回复、工具活动和引用来源。
-- 批准或拒绝智能体想要执行的操作。
-- 把照片、相机拍摄和文件发给智能体。
-- 查看定时任务，与常驻智能体 Regent 对话。
-- 复制、重试、编辑任意消息，或从任意消息分叉。
+数据始终属于你。对话、记忆和工具都在你的电脑上，App 通过加密连接直接连到它：同一 Wi-Fi、Tailscale 或你自己的 HTTPS 地址都可以。没有账号，没有广告，没有跟踪。
 
-配对时，在电脑上的 Suzent 打开“设置 → 设备 → 移动端访问”，选择手机可执行的操作，然后扫描二维码。支持局域网、Tailscale 或你自己的 HTTPS 地址。
+开始使用：在电脑上安装 Suzent，打开“设置 → 设备 → 移动端访问”，扫描二维码即可。还没有电脑端？点“体验离线演示”，用示例对话先看看。
 
-连接由你掌控：可以在 App 中忘记连接，也可以随时在电脑上撤销这台手机。
-
-需要在电脑上运行 Suzent 应用。AI 回复需要在电脑上配置模型提供商，可能产生提供商费用。还没有电脑端？选择“体验离线演示”，用示例数据先体验。信息如何处理请查看隐私政策。
+AI 回复使用你在电脑上配置的模型提供商，可能产生提供商费用。
 
 ### 此版本的新增内容（0.5.3）
 
