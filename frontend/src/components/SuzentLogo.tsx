@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef } from 'react';
 
 /**
  * Canonical Suzent logo — matches public/favicon.svg exactly.
@@ -10,34 +10,38 @@ import React, { useCallback, useRef, useState } from 'react';
 interface SuzentLogoProps {
   className?: string;
   interactive?: boolean;
+  /** Omit the rounded outer background rect when used as a 3D cube face. */
+  faceOnly?: boolean;
 }
 
 const MAX_OFFSET = 1.5;
 
-export const SuzentLogo: React.FC<SuzentLogoProps> = ({ className = '', interactive = false }) => {
+export const SuzentLogo: React.FC<SuzentLogoProps> = ({
+  className = '',
+  interactive = false,
+  faceOnly = false,
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const gazeRef = useRef<SVGGElement>(null);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    const gaze = gazeRef.current;
+    if (!rect || !gaze) return;
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    setOffset({
-      x: Math.max(-1, Math.min(1, dx)) * MAX_OFFSET,
-      y: Math.max(-1, Math.min(1, dy)) * MAX_OFFSET,
-    });
+    const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2))) * MAX_OFFSET;
+    const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2))) * MAX_OFFSET;
+    gaze.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
   }, []);
 
-  const handleMouseLeave = useCallback(() => setOffset({ x: 0, y: 0 }), []);
+  const handleMouseLeave = useCallback(() => {
+    const gaze = gazeRef.current;
+    if (gaze) gaze.style.transform = '';
+  }, []);
 
   const eyeStyle: React.CSSProperties = interactive
-    ? {
-        transform: `translate(${offset.x}px, ${offset.y}px)`,
-        transition: 'transform 0.08s ease-out',
-      }
+    ? { transition: 'transform 0.08s ease-out' }
     : {};
 
   return (
@@ -51,9 +55,15 @@ export const SuzentLogo: React.FC<SuzentLogoProps> = ({ className = '', interact
       onMouseMove={interactive ? handleMouseMove : undefined}
       onMouseLeave={interactive ? handleMouseLeave : undefined}
     >
-      <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-      <rect x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" style={eyeStyle} />
-      <rect x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" style={eyeStyle} />
+      {!faceOnly && <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />}
+      <g ref={gazeRef} className="suzent-logo-gaze" style={eyeStyle}>
+        <g className="suzent-logo-idle-gaze">
+          <g className="suzent-logo-blink">
+            <rect x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+            <rect x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+          </g>
+        </g>
+      </g>
     </svg>
   );
 };
