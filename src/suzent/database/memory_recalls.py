@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .models import ChatModel, MemoryRecallModel
+from .models import MemoryRecallModel, chat_exists
 
 
 class MemoryRecallOperationsMixin:
@@ -19,7 +19,7 @@ class MemoryRecallOperationsMixin:
         A chat deleted mid-turn is skipped, so no row outlives its chat.
         """
         with self._session() as session:
-            if session.get(ChatModel, chat_id) is None:
+            if not chat_exists(session, chat_id):
                 return
             row = session.get(MemoryRecallModel, chat_id)
             if row is None:

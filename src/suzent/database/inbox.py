@@ -6,7 +6,7 @@ from typing import Any, Optional
 from sqlalchemy import and_, or_, text
 from sqlmodel import select
 
-from .models import AgentInboxMessageModel, ChatModel
+from .models import AgentInboxMessageModel, chat_exists
 
 
 def _utcnow() -> datetime:
@@ -66,7 +66,7 @@ class AgentInboxOperationsMixin:
 
         now = _utcnow()
         with self._session() as session:
-            if transport == "local" and session.get(ChatModel, target_chat_id) is None:
+            if transport == "local" and not chat_exists(session, target_chat_id):
                 raise ValueError(f"Target agent '{target_chat_id}' does not exist")
 
             existing = session.get(AgentInboxMessageModel, message_id)
