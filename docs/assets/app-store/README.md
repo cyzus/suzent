@@ -1,6 +1,6 @@
 # Suzent iOS App Store submission kit
 
-Prepared 2026-10-31 for mobile-v0.5.2 (build 9). Mirrors the
+Prepared 2026-10-31 for mobile-v0.5.3. Mirrors the
 [browser store kit](../browser-store/README.md): listing copy lives here,
 generated images go to `store-upload/app-store/` and stay out of Git.
 
@@ -21,20 +21,23 @@ generated images go to `store-upload/app-store/` and stay out of Git.
 
 ## Screenshots
 
-Capture the offline demo so no real conversations, hosts or tokens appear.
-Screens 1–3 come straight from the demo; screens 4 and 5 need the
-connection screen and a paired Settings page from a test desktop.
+All ten screens per locale come from the offline demo, so no real
+conversations, hosts or tokens appear.
 
-1. Boot the "iPhone 17 Pro" and "iPad Pro 13-inch (M5)" simulators, install a
-   Release build, and choose **Try offline demo**.
-2. Use light appearance and English or Chinese to match the locale.
-3. Save each capture with `xcrun simctl io <device> screenshot <file>.png`.
-4. Add the caption from `listing-copy.md` above the device frame. Store
-   screenshots must show the real app; captions and framing are allowed.
+1. Build the Release app for the simulator and install it on "iPhone 17 Pro"
+   and "iPad Pro 13-inch (M5)" with light appearance and
+   `xcrun simctl status_bar <device> override --time 9:41 --batteryLevel 100`.
+2. Launch with `-AppleLanguages "(en)"` or `"(zh-Hans)"` and choose
+   **Try offline demo**. Capture each screen listed in `listing-copy.md` with
+   `xcrun simctl io <device> screenshot store-upload/app-store/raw/<locale>/<device>-0N.png`.
+3. Run `uv run --no-sync python scripts/build_app_store_assets.py`. It frames the
+   captures with their captions into `store-upload/app-store/<locale>/`, at
+   1206 × 2622 for iPhone and 2064 × 2752 for iPad.
 
 ## Before submitting
 
-- Select build 9 (0.5.2) or later; earlier builds lack the in-app privacy link.
+- Select the 0.5.3 build or later: earlier builds lack the in-app privacy link
+  and show the old demo in the screenshots.
 - Leave China mainland out of availability until an ICP filing exists.
 - Declare EU trader status under App Store Regulations and Permits.
 - Answer the age rating questionnaire as described in the submission guide;

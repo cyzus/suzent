@@ -34,11 +34,11 @@ You control the connection. Forget it in the app, or revoke the phone from your 
 
 Requires the Suzent app running on your computer. AI replies need a model provider configured there; provider charges may apply. No computer yet? Choose "Try offline demo" to explore the app with sample data. See the privacy policy for how your information is handled.
 
-### What's New in This Version (0.5.2)
+### What's New in This Version (0.5.3)
 
+- A new offline demo shows a real week with Suzent: project summaries, trip planning, and approving actions on your computer.
 - Privacy policy link in Settings and on the connection screen.
 - Wider iPad layouts keep conversations at a readable width.
-- Starting the offline demo no longer flashes the pairing screen.
 
 ## 简体中文
 
@@ -71,24 +71,24 @@ Suzent iPhone 和 iPad 版连接到运行在你自己电脑上的 Suzent 个人 
 
 需要在电脑上运行 Suzent 应用。AI 回复需要在电脑上配置模型提供商，可能产生提供商费用。还没有电脑端？选择“体验离线演示”，用示例数据先体验。信息如何处理请查看隐私政策。
 
-### 此版本的新增内容（0.5.2）
+### 此版本的新增内容（0.5.3）
 
+- 全新离线演示，带你体验真实的一周：项目汇总、行程规划，以及在手机上批准电脑上的操作。
 - 设置和连接页面新增隐私政策链接。
 - iPad 宽屏下对话保持易读的宽度。
-- 启动离线演示时不再闪现配对界面。
 
 ## Screenshot captions
 
-One caption per screenshot, in upload order. Keep each under about 30
-characters so it fits on one or two lines above the device frame.
+Headline and subline per screenshot, in upload order. The framed images are
+built by `scripts/build_app_store_assets.py`, which holds the same text.
 
-| # | Screen to capture | English | 简体中文 |
-| --- | --- | --- | --- |
-| 1 | A conversation with a streamed reply and a table | Pick up where you left off | 随时接着聊 |
-| 2 | A pending tool approval above the composer | Approve actions from anywhere | 在手机上批准操作 |
-| 3 | The sidebar: Regent, pinned, recent, projects | Every chat, project and task | 对话、项目、任务都在这里 |
-| 4 | The connection screen with "Scan desktop QR code" | Pair with one QR code | 扫码即可配对 |
-| 5 | Settings showing the paired desktop and permissions | Runs on your computer, not ours | 运行在你自己的电脑上 |
+| # | iPhone screen | iPad screen | English | 简体中文 |
+| --- | --- | --- | --- | --- |
+| 1 | "Plan my Lisbon weekend" reply | Same, with sidebar | Plans built around you. — Suzent remembers your preferences and cites its sources. | 按你的习惯，安排好一切。— 记得你的偏好，并附上信息来源。 |
+| 2 | "Tidy up my Downloads folder" approval | Same | Nothing happens without your OK. — Approve or reject actions on your computer from your phone. | 你点头，它才动手。— 在手机上批准或拒绝电脑上的操作。 |
+| 3 | Sidebar | "What changed this week" | Your whole week, in one place. — Projects, notes and scheduled tasks from your computer. | 一周的事，一处看清。— 项目、笔记和定时任务，从电脑同步过来。 |
+| 4 | Connection screen | Same | Pair with one QR code. — Scan it from Settings → Devices on your computer. | 扫一扫，就连上。— 在电脑的“设置 → 设备”中扫码。 |
+| 5 | Regent | Same | Regent keeps watch. — Your always-on agent flags only what needs you. | Regent，替你盯着。— 常驻智能体，只提醒需要你处理的事。 |
 
 ## URLs
 
