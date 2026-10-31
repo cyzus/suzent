@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.19.0] - 2026-10-31
 
+<!-- highlights -->
+### Highlights
+
+- **Plugins.** Chat apps, tools, slash commands and skills can now come as plugins, managed under Settings → Plugins or with `suzent plugin`. Telegram, Slack, Discord and Feishu/Lark are each their own plugin, so you only download packages for the apps you use. The apps you already use stay on, and installing or removing a plugin takes effect without a restart.
+- **Regent runs your day from the sidebar.** While Regent's chat is open, the left sidebar becomes its queue of waiting and running chats, with a way back from any chat you open there. Regent reacts to your messages and replies in separate, conversational bubbles. Resolving or reopening a chat updates at once, and the board stays fast even with long chats.
+- **Adding a model is easier.** Settings → Providers shows only the providers you have set up, and the rest live in a searchable catalog. Chinese coding and token plans are built in, including Kimi Code, Bailian, Volcengine Ark, Tencent Cloud, Baidu Qianfan and more, each with a picker for the plan and the China or Global endpoint. A custom provider now needs only a name, its protocol, a Base URL and an API key. Realtime voice can use every realtime model your providers offer, including Qwen-Omni from DashScope.
+- **Projects that span folders.** A project can now hold several folders, with the first as the default working directory for its chats. Right-click a project to open its settings. Archive chats you are done with to hide them without deleting them.
+- **A right sidebar that shows the whole picture.** It is now an expandable overview of context usage, the chat's environment and heartbeat, Regent's task board, and a Memory section that shows what the last reply used and what this chat saved.
+- **Steadier day to day.** GitHub sync merges changes from two devices on its own when they touched different files, and stops for review on a real conflict instead of dropping your local change. Long chats no longer stall the rest of the app while they save. A slow first start keeps waiting instead of restarting, and reinstalling on Windows works again. MCP tools now go through the same permission checks as built-in tools, and memories are saved in the language you chat in.
+- **Regent on your phone.** Pair with mobile 0.5.0 to get Regent, the desktop's activity view and faster conversation search on iOS and Android.
+<!-- /highlights -->
+
 ### Release notes
 - Name sub-agent, web, task, memory and skill calls in activity summaries instead of counting them as other tools, and give more tool calls readable headlines.
 - Settings > Providers now lists only the providers you have set up. The rest are in an Add a provider catalog grouped into model vendors, China vendors and coding plans, relays and local runtimes, with search. Adding a custom provider now asks for a name, OpenAI or Anthropic protocol, Base URL and API key, keeps its Base URL and key editable afterwards, rejects IDs and key names that clash with built-in providers, and saves it in ~/.suzent/config with your other settings instead of the install folder.
