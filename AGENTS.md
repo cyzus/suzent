@@ -58,6 +58,22 @@ Full documentation lives in `docs/`. Each numbered folder is a sidebar section o
 - Mark appropriately: `@pytest.mark.sandbox` (requires Docker), `@pytest.mark.integration` (external services), `@pytest.mark.slow`
 - Run: `uv run pytest` or `uv run pytest -m "not sandbox"` to skip Docker tests
 
+## Release Declarations (required before opening a PR)
+
+CI's **Release plan** check fails any PR that changes shipped code without a release declaration. Before you push a PR, check whether you need one:
+
+- Needed when the PR touches `src/`, `frontend/`, `src-tauri/`, `apps/`, `extensions/browser/`, `packages/`, `pyproject.toml` or `uv.lock`
+- Not needed for PRs that only change docs, tests, CI or tooling
+- Add a new file `.releases/changes/<short-kebab-slug>.json` in the same PR:
+  ```json
+  {"products": {"desktop": "patch"}, "summary": "One user-facing sentence, used in the release notes."}
+  ```
+- Products: `desktop` (includes the backend), `mobile`, `browser`. Impact: `patch`, `minor`, `major`, or `none` with a `"reason"`
+- Never edit or delete an existing declaration, and never change product versions in a feature PR
+- Verify locally: `git fetch origin main && python scripts/release_plan.py check --base origin/main`
+
+Details: `.releases/README.md` and `docs/08-developing/contributing/releasing.md`.
+
 ## Code Style
 
 - Run `pre-commit run --all-files` before committing
