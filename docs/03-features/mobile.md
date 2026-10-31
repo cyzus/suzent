@@ -31,8 +31,8 @@ don't need a computer, an API key, or an internet connection: you can send
 messages, try a trip-planning example, approve or reject a pretend tool request,
 attach files, and organize chats.
 
-Replies are scripted and nothing reaches an AI model; a banner says so the whole
-time. Attachments stay on the phone. **Reset demo** in Settings restores the
+Replies are scripted and nothing reaches an AI model; the pinned **Welcome to
+Suzent** conversation explains this. Attachments stay on the phone. **Reset demo** in Settings restores the
 examples, and **Exit demo** takes you back to the connection screen. An existing
 pairing is kept while you're in the demo.
 
