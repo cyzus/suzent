@@ -687,8 +687,8 @@ export default function Home(): ReactNode {
 
       <footer className={styles.homeFooter}>
         <span>© 2026 SUZENT</span>
-        <Link href={localePath("/browser-privacy", locale)}>
-          {translate({ id: "home.browserPrivacy", message: "Browser privacy" })}
+        <Link href={localePath("/privacy", locale)}>
+          {translate({ id: "home.privacy", message: "Privacy" })}
         </Link>
       </footer>
     </div>

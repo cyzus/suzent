@@ -8,7 +8,7 @@ description: How the Suzent Browser extension processes browser information, pai
 Last updated: September 6, 2026
 
 Publisher: Yizhou Chi  
-Privacy contact: [cyzus@outlook.com](mailto:cyzus@outlook.com)
+Privacy contact: [support@suzent.com](mailto:support@suzent.com)
 
 ## Scope
 
