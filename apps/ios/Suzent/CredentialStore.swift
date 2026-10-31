@@ -48,6 +48,24 @@ enum CredentialStore {
         } else if status != errSecSuccess { throw StoreError.failed(status) }
     }
 
+    /// Keychain items outlive app deletion. A reinstall gets a new container, so a credential older
+    /// than the container was left by a previous installation; updates keep the container.
+    static func clearIfFromPreviousInstall() throws {
+        var request = query
+        request[kSecReturnAttributes as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        if status == errSecItemNotFound { return }
+        guard status == errSecSuccess, let attributes = result as? [String: Any],
+              let saved = attributes[kSecAttrCreationDate as String] as? Date else {
+            throw StoreError.failed(status)
+        }
+        let container = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        guard let installed = try container.resourceValues(forKeys: [.creationDateKey]).creationDate else { return }
+        if saved < installed { try clear() }
+    }
+
     static func clear() throws {
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
