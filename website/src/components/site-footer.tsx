@@ -6,8 +6,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
   return (
     <footer className="site-footer">
       <span>© {new Date().getFullYear()} SUZENT</span>
-      <Link href={localePath("/browser-privacy", locale)}>{text.privacy}</Link>
-      <Link href={localePath("/mobile-privacy", locale)}>{text.mobilePrivacy}</Link>
+      <Link href={localePath("/privacy", locale)}>{text.privacy}</Link>
       <a href="https://github.com/cyzus/suzent">GitHub ↗</a>
     </footer>
   );

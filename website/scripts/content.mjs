@@ -203,7 +203,7 @@ export function createContent() {
       author: id,
     })),
   ];
-  const privacyPages = ["browser-privacy", "mobile-privacy"].map((slug) => {
+  const privacyPages = ["privacy", "browser-privacy", "mobile-privacy"].map((slug) => {
     const file = path.join(root, `content/${slug}.md`);
     const page = read(file);
     return {
