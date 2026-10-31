@@ -111,7 +111,7 @@ private fun MobileScreen(model: MobileModel) {
             }
         }
         val detail: @Composable (Boolean) -> Unit = { compact ->
-            DetailPane(model, showSettings, demoBanner = !wide,
+            DetailPane(model, showSettings,
                 back = if (compact) ({ focus.clearFocus(); showHome = true }) else null,
                 newChat = { focus.clearFocus(); model.create(); showSettings = false },
                 repair = { model.error = null; repairScanner = true })
@@ -163,7 +163,7 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailPane(model: MobileModel, showSettings: Boolean, demoBanner: Boolean, back: (() -> Unit)?,
+private fun DetailPane(model: MobileModel, showSettings: Boolean, back: (() -> Unit)?,
                        newChat: () -> Unit, repair: () -> Unit) {
     Scaffold(topBar = {
         Column(Modifier.statusBarsPadding()) {
@@ -199,14 +199,6 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, demoBanner: Bo
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            if (model.isDemo && demoBanner) {
-                Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.demo_banner), modifier = Modifier.weight(1f), color = Color.Black,
-                        style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = model::exitDemo, enabled = !model.busy, shape = RectangleShape) { Text(stringResource(R.string.demo_exit), color = Color.Black) }
-                }
-            }
             when {
                 !model.connected && model.canReconnect -> ReconnectView(model, repair)
                 !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
@@ -333,12 +325,6 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
             SuzentWordmark()
             IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp)) }
-        }
-        if (model.isDemo) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.demo_banner), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = model::exitDemo, enabled = !model.busy, shape = RectangleShape) { Text(stringResource(R.string.demo_exit)) }
-            }
         }
         model.chats.firstOrNull { it.isRegent }?.let { regent ->
             val selected = model.selected?.isRegent == true && !hideSelection

@@ -167,7 +167,7 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         event(JSONObject().put("type", "THINKING_TEXT_MESSAGE_CONTENT").put("delta", label("reasoning")))
         event(JSONObject().put("type", "THINKING_END"))
         if (initial.tool) event(JSONObject().put("type", "CUSTOM").put("name", "tool_approval_request")
-            .put("value", JSONObject().put("toolCallId", initial.id).put("toolName", "demo.create_note").put("args", "{\"path\":\"weekend-plan.md\"}")))
+            .put("value", JSONObject().put("toolCallId", initial.id).put("toolName", label("approval_tool")).put("args", label("approval_args"))))
         while (true) {
             currentCoroutineContext().ensureActive()
             val run = runs[id]?.copy()?.takeIf { it.id == initial.id } ?: break
@@ -197,11 +197,11 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         val run = runs.remove(id) ?: return
         val item = record(id)
         val parts = JSONArray().put(JSONObject().put("type", "reasoning").put("text", label("reasoning")).put("state", "completed"))
-        if (run.tool) parts.put(JSONObject().put("type", "tool").put("toolCallId", run.id).put("toolName", "demo.create_note")
-            .put("args", "{\"path\":\"weekend-plan.md\"}").put("output", label(if (run.decision == null) "stopped" else if (run.decision == true) "allowed" else "denied"))
+        if (run.tool) parts.put(JSONObject().put("type", "tool").put("toolCallId", run.id).put("toolName", label("approval_tool"))
+            .put("args", label("approval_args")).put("output", label(if (run.decision == null) "stopped" else if (run.decision == true) "allowed" else "denied"))
             .put("state", if (run.decision == true) "completed" else "error"))
         val source = JSONObject().put("id", "demo-source").put("type", "web").put("title", label("source_title"))
-            .put("url", "https://suzent.com/docs").put("snippet", label("source_snippet"))
+            .put("url", label("source_url")).put("snippet", label("source_snippet"))
         parts.put(JSONObject().put("type", "text").put("text", run.text).put("citationSources", JSONArray().put(source)))
         val elapsed = ((System.nanoTime() - run.started) / 1_000_000_000.0).coerceAtLeast(0.0)
         val finished = Instant.now()
@@ -210,7 +210,7 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
             .put("run_finished_at", finished.toString()).put("run_active_seconds", elapsed))
         item.put("isRunning", false); save()
     }
-    private fun approval(run: Run) = ApprovalRequest(run.id, "tool", "demo.create_note", "{\"path\":\"weekend-plan.md\"}", label("approval_reason"),
+    private fun approval(run: Run) = ApprovalRequest(run.id, "tool", label("approval_tool"), label("approval_args"), label("approval_reason"),
         listOf(ApprovalAction("allow", "allow"), ApprovalAction("reject", "deny")))
     private fun label(key: String): String = strings.getString(key)
     private fun matches(text: String, key: String) = strings.getJSONArray(key).let { keys ->
