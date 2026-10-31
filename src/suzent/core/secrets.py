@@ -13,6 +13,11 @@ logger = get_logger(__name__)
 
 _SERVICE_NAME = "suzent"
 
+# Secrets only Suzent's own code reads. Kept out of os.environ so a shell
+# command the agent runs cannot print them: a mailbox password opens far more
+# than a model API key does.
+_ENV_EXCLUDED_PREFIXES = ("SUZENT_MAIL_",)
+
 
 class SecretBackend(Protocol):
     def get(self, key: str) -> Optional[str]: ...
@@ -234,6 +239,8 @@ class SecretManager:
         """
         count = 0
         for key in self.list_keys():
+            if key.startswith(_ENV_EXCLUDED_PREFIXES):
+                continue
             val = self._backend.get(key)
             if not val:
                 continue

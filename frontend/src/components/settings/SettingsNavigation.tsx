@@ -7,6 +7,7 @@ import {
   ChatBubbleLeftRightIcon,
   CircleStackIcon,
   ClockIcon,
+  EnvelopeIcon,
   BellIcon,
   CloudArrowUpIcon,
   ComputerDesktopIcon,
@@ -35,6 +36,7 @@ export type SettingsCategory =
   | 'memory'
   | 'automation'
   | 'social'
+  | 'email'
   | 'mcp'
   | 'acp-agents'
   | 'plugins'
@@ -57,6 +59,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'memory',
   'automation',
   'social',
+  'email',
   'mcp',
   'acp-agents',
   'plugins',
@@ -103,6 +106,7 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
     labelKey: 'settings.groups.connections',
     categories: [
       { id: 'social', labelKey: 'settings.categories.social', icon: ChatBubbleLeftRightIcon },
+      { id: 'email', labelKey: 'settings.categories.email', icon: EnvelopeIcon },
       { id: 'mcp', labelKey: 'settings.categories.mcp', icon: WrenchScrewdriverIcon },
       {
         id: 'browser',
