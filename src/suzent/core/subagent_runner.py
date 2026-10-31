@@ -911,6 +911,12 @@ async def _run_subagent(
                         f"Sub-agent {task.task_id} forks without its parent's "
                         "cached prefix: no parent turn recorded, or another model"
                     )
+                # An empty tool list falls back to the user's default tools,
+                # which include AgentTool, so stripping it from tools_allowed
+                # alone does not stop a sub-agent from spawning its own.
+                base_config["denied_tools"] = sorted(
+                    {*base_config.get("denied_tools", []), *_ALWAYS_DENIED}
+                )
                 db.merge_chat_config(
                     task.chat_id,
                     {
