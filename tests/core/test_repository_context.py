@@ -297,8 +297,10 @@ def test_context_roots_deduplicate_project_that_is_also_repository(tmp_path: Pat
 
     assert roots.unique_asset_bases() == (("repository", tmp_path.resolve()),)
     capabilities = build_repo_context_capabilities(roots)
-    assert len(capabilities) == 1
-    assert capabilities[0].home_dir == tmp_path.resolve()
+    workspace, repo_context = capabilities
+    assert workspace.read_only
+    assert workspace.working_dir == str(tmp_path.resolve())
+    assert repo_context.home_dir == tmp_path.resolve()
 
 
 def test_discovers_walk_up_instruction_files_ancestor_first(tmp_path: Path):
