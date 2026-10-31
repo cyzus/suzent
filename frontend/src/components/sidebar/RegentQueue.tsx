@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
-import { refreshChatStates, useChatStates } from '../../hooks/useChatStates';
-import { canResolve, setChatResolved, type ChatStateRow } from '../../lib/chatStates';
+import { resolveChat, useChatStates } from '../../hooks/useChatStates';
+import { canResolve, type ChatStateRow } from '../../lib/chatStates';
 import { BoardRowMenu, type BoardRowMenuItem } from './BoardRowMenu';
 
 const WAITING_PREVIEW = 4;
@@ -60,10 +60,7 @@ export function RegentQueueView({ rows, onOpenChat }: RegentQueueViewProps): Rea
       items.push({
         key: 'resolve',
         label: t('chatBoard.resolve'),
-        onSelect: () =>
-          void setChatResolved(row.chatId, true)
-            .then(() => refreshChatStates())
-            .catch(() => {}),
+        onSelect: () => void resolveChat(row.chatId, true).catch(() => {}),
       });
     }
     setMenu({ anchor, title: row.title, items });

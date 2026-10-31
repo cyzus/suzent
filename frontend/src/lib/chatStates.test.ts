@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canResolve, type ChatStateRow } from './chatStates';
+import { canResolve, countStates, withResolved, type ChatStateRow } from './chatStates';
 import { formatRelativeTime } from './chatUtils';
 
 const row = (extra: Partial<ChatStateRow>): ChatStateRow => ({
@@ -41,5 +41,29 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(null, 'en')).toBe('');
     expect(formatRelativeTime('soon', 'en')).toBe('');
     expect(formatRelativeTime(new Date(Date.now() + 60_000).toISOString(), 'en')).toBe('');
+  });
+});
+
+describe('showing a resolve before it saves', () => {
+  const now = new Date('2026-10-31T00:00:00Z');
+
+  it('clears the wait when resolving and starts idle when reopening', () => {
+    const resolved = withResolved(row({ waitingKind: 'reply', waitingReason: 'Pick' }), true, now);
+    expect(resolved).toMatchObject({
+      state: 'resolved',
+      waitingKind: null,
+      waitingReason: null,
+      resolvedAt: now.toISOString(),
+    });
+    expect(withResolved(resolved, false, now)).toMatchObject({ state: 'idle', resolvedAt: null });
+  });
+
+  it('counts rows by state', () => {
+    expect(countStates([row({}), row({ state: 'idle' }), row({ state: 'waiting' })])).toEqual({
+      waiting: 2,
+      running: 0,
+      idle: 1,
+      resolved: 0,
+    });
   });
 });
