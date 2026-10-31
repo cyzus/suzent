@@ -42,7 +42,7 @@ The app contains no advertising, analytics, or tracking, and it does not sell or
 
 ## Retention and deletion
 
-**Forget connection** in the app's settings deletes the pairing credential. Resetting the demo deletes its sample data. Uninstalling the app removes its other stored data. On iPhone and iPad, the pairing credential can remain in the Keychain after you uninstall and be used again if you reinstall, so choose **Forget connection** before uninstalling. Revoking the phone under **Paired phones** in desktop **Settings → Devices → Mobile access** stops it from connecting again.
+**Forget connection** in the app's settings deletes the pairing credential. Resetting the demo deletes its sample data. Uninstalling the app removes everything else it stored on the phone. On iPhone and iPad, the system can keep the pairing credential in the Keychain after you uninstall; the app deletes it, without using it, the first time it opens after a reinstall. Choose **Forget connection** before uninstalling to delete it right away. Revoking the phone under **Paired phones** in desktop **Settings → Devices → Mobile access** stops it from connecting again.
 
 Conversations kept by your Suzent desktop, and copies held by model providers, are managed on the desktop and in your provider accounts. Removing the app does not delete them.
 

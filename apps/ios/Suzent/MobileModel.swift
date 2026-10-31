@@ -134,6 +134,7 @@ import SuzentCore
     init() {
         AttachmentStaging.clear()
         do {
+            try CredentialStore.clearIfFromPreviousInstall()
             if let saved = try CredentialStore.load() {
                 connection = saved
                 origin = saved.origin
