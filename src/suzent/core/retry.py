@@ -107,6 +107,7 @@ def save_retry_checkpoint(
     user_files: list,
     config_snapshot: dict,
     file_snapshot: Optional[list] = None,
+    turn_input: dict[str, Any] | None = None,
 ) -> str | None:
     """
     Persist a retry checkpoint for *chat_id* in its chat log.
@@ -135,6 +136,7 @@ def save_retry_checkpoint(
                     if not key.startswith("_retry_")
                 },
                 "_retry_checkpoint_id": checkpoint_id,
+                "_retry_input": turn_input or {},
             },
             file_snapshot=file_snapshot,
         )
@@ -257,6 +259,7 @@ def apply_retry_checkpoint(
         return {
             "user_message": checkpoint.user_message,
             "user_files": list(checkpoint.user_files),
+            "turn_input": checkpoint.config_snapshot.get("_retry_input", {}),
             "config_snapshot": {
                 key: value
                 for key, value in checkpoint.config_snapshot.items()
