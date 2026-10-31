@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.5.1] - 2026-10-31
+
+### Release notes
+- The iOS app now ships a privacy manifest, declares its encryption use, and no longer reuses a pairing left behind by a previous installation.
+
 ## [mobile-v0.5.0] - 2026-10-31
 
 <!-- highlights -->
