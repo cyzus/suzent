@@ -49,6 +49,7 @@ from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
     is_tool_history_protocol_error,
     strip_tool_interactions,
+    without_workspace_refs,
 )
 from suzent.core.stream_registry import (
     StreamControl,
@@ -1617,7 +1618,7 @@ async def stream_agent_responses(
         final_response_text = ""
         original_count = len(message_history) if message_history else 0
         prompt = message
-        history = list(message_history) if message_history else None
+        history = without_workspace_refs(message_history) if message_history else None
         current_deferred = deferred_tool_results
         # tool_call_ids whose recovery we already emitted immediately at
         # function_tool_result time, so the AgentRunResultEvent fallback path
