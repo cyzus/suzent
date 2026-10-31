@@ -320,3 +320,37 @@ def test_one_chat_can_be_asked_for_however_quiet_it_is(db, project) -> None:
 
     assert [(row["title"], row["state"]) for row in rows] == [("Quiet", "resolved")]
     assert "Quiet" not in _states(project)
+
+
+def test_quiet_chats_with_finished_tasks_leave_the_board(db, project) -> None:
+    done = db.create_chat("Done", {}, project_id=project)
+    db.create_task(project, "Ship", "", chat_id=done, status="completed")
+    with db._session() as session:
+        chat = session.get(ChatModel, done)
+        chat.updated_at = datetime.now(timezone.utc) - timedelta(days=30)
+        session.add(chat)
+        session.commit()
+
+    assert _states(project) == {}
+    assert [row["chatId"] for row in list_chat_states(chat_id=done)] == [done]
+
+
+def test_board_reads_configs_not_whole_chats(db, project, monkeypatch) -> None:
+    db.create_chat("Plan", {}, project_id=project)
+
+    def loads_whole_chat(_chat_id):
+        raise AssertionError("the board loaded a whole chat")
+
+    monkeypatch.setattr(db, "get_chat", loads_whole_chat)
+
+    assert set(_states(project)) == {"Plan"}
+
+
+def test_focal_chats_are_recognised_from_their_config(db, project) -> None:
+    helper = db.create_chat("Regent copy", {"is_focal_agent": True}, project_id=project)
+    plain = db.create_chat("Plan", {}, project_id=project)
+
+    assert focal_agent.is_focal_chat_id(helper)
+    assert not focal_agent.is_focal_chat_id(plain)
+    assert not focal_agent.is_focal_chat_id("missing")
+    assert db.get_chat_config("missing") is None
