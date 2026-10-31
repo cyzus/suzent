@@ -1,5 +1,5 @@
 {
-  "version": "0.19.0",
+  "version": "0.19.1",
   "consumed": [
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -156,6 +156,7 @@
     ".releases/changes/remove-dead-compat-shims.json",
     ".releases/changes/resolve-from-regent.json",
     ".releases/changes/resonance-state-cues.json",
+    ".releases/changes/restart-into-staged-update.json",
     ".releases/changes/restructure-user-docs.json",
     ".releases/changes/resume-keeps-approved-card.json",
     ".releases/changes/resume-without-empty-prompt.json",
