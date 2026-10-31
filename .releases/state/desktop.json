@@ -164,6 +164,7 @@
     ".releases/changes/shell-noninteractive-stdin.json",
     ".releases/changes/sidebar-automation-row-style.json",
     ".releases/changes/sidebar-follow-chat.json",
+    ".releases/changes/sidebar-keep-open-chat-collapsed.json",
     ".releases/changes/sidebar-message-preview.json",
     ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",
