@@ -312,31 +312,37 @@ def discover_instruction_files(
 
 
 def build_repo_context_capabilities(roots: RepositoryContextRoots) -> list[object]:
-    """Create a RepoContext capability for working-tree instructions."""
+    """Create a RepoContext capability, and the workspace it reads, for working-tree instructions."""
     from pydantic_ai_harness import RepoContext
     from pydantic_ai import RunContext
+    from pydantic_ai.capabilities import LocalWorkspace
     from suzent.core.agent_deps import AgentDeps
     from suzent.core.context_usage import register_context_source
 
     class TrackedRepoContext(RepoContext[AgentDeps]):
-        async def for_run(self, ctx: RunContext[AgentDeps]) -> RepoContext[AgentDeps]:
-            capability = await super().for_run(ctx)
-            content = capability.get_instructions()
+        async def before_run(self, ctx: RunContext[AgentDeps]) -> None:
+            # Instruction files are loaded here, so this is the first point
+            # where the rendered instructions exist.
+            await super().before_run(ctx)
+            instructions = self.get_instructions()
+            content = instructions(ctx) if callable(instructions) else instructions
             if isinstance(content, str):
                 register_context_source(
                     ctx.deps, content, "repository", "repository_instructions"
                 )
-            return capability
 
     working_dir = roots.working_dir.resolve()
     return [
+        # RepoContext reads through the run's workspace. Read-only, and it adds
+        # no tools of its own: Suzent's file and shell tools stay the only ones
+        # that touch the filesystem.
+        LocalWorkspace(working_dir, read_only=True, id="suzent_repo_context"),
         TrackedRepoContext(
-            workspace_dir=working_dir,
             home_dir=roots.repository_root,
             filenames=INSTRUCTION_FILENAMES,
             expose_inventory_tool=False,
             nested_traversal=False,
-        )
+        ),
     ]
 
 

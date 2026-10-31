@@ -330,12 +330,19 @@ def _cut_boundary(session: Any, bridge: "VoiceBridge") -> int:
     before any caption of it arrived (pydantic-ai private state; read
     defensively). The highest assistant index seen in captions backs it up.
     """
+
+    def index(value: Any) -> int | None:
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
     candidates = [bridge._max_assistant_index]
-    for name in ("_audio_part_index", "_active_assistant_index"):
-        value = getattr(session, name, None)
-        if isinstance(value, int) and not isinstance(value, bool):
-            candidates.append(value)
-    return max(candidates)
+    candidates.append(index(getattr(session, "_audio_part_index", None)))
+    # pydantic-ai 2.64 keeps each response under way, with the index of the
+    # part it last started, in the session core.
+    responses = getattr(getattr(session, "_core", None), "_open_responses", None)
+    if isinstance(responses, dict):
+        for response in list(responses.values()):
+            candidates.append(index(getattr(response, "open_part_index", None)))
+    return max(value for value in candidates if value is not None)
 
 
 class VoiceBridge:
