@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
-import { ChatWindow } from './components/ChatWindow';
+import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
@@ -314,9 +314,13 @@ function UpdateButton(): React.ReactElement | null {
         const tag = await getStagedUpdate();
         if (cancelled) return;
         setStagedTag(tag);
-        if (!tag || applyingRef.current || document.hasFocus()) return;
-        if (Date.now() - lastInteractionRef.current < AUTO_RESTART_IDLE_MS) return;
-        if (!(await fetchAgentsIdle()) || cancelled) return;
+        const userAway = (): boolean =>
+          !applyingRef.current &&
+          !document.hasFocus() &&
+          Date.now() - lastInteractionRef.current >= AUTO_RESTART_IDLE_MS &&
+          !hasUnsentComposerWork();
+        if (!tag || !userAway()) return;
+        if (!(await fetchAgentsIdle()) || cancelled || !userAway()) return;
         applyingRef.current = true;
         await applyStagedUpdateNow();
       } catch {
