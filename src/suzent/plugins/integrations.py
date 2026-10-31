@@ -9,6 +9,7 @@ not mark read-only go through the user's tool approvals, like any MCP server.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
@@ -55,29 +56,52 @@ def _tolerant(toolset: Any, key: str) -> Any:
     from pydantic_ai.toolsets import WrapperToolset
 
     class TolerantToolset(WrapperToolset):
-        # None until entered; True or False after the last attempt to connect.
+        """Shared by every run of the cached agent, so entries are counted.
+
+        Like ``MCPToolset`` itself, the first entry connects and the last
+        exit disconnects; runs entering while it is connected share the
+        connection, and while a connection attempt failed they get no tools.
+        """
+
+        _entries: int = 0
+        # None while not entered; whether the first entry's connect worked.
         _connected: bool | None = None
+        _lock: asyncio.Lock | None = None
+
+        def _guard(self) -> asyncio.Lock:
+            if self._lock is None:
+                self._lock = asyncio.Lock()
+            return self._lock
 
         async def __aenter__(self):
-            try:
-                await self.wrapped.__aenter__()
-            except Exception as exc:
-                self._connected = False
-                self._fail(exc)
-            else:
-                self._connected = True
-                _last_errors.pop(key, None)
+            async with self._guard():
+                if self._entries == 0:
+                    try:
+                        await self.wrapped.__aenter__()
+                    except Exception as exc:
+                        self._connected = False
+                        self._fail(exc)
+                    else:
+                        self._connected = True
+                        _last_errors.pop(key, None)
+                self._entries += 1
             return self
 
         async def __aexit__(self, *args: Any):
-            connected, self._connected = self._connected, None
-            if not connected:
-                return None
-            try:
-                return await self.wrapped.__aexit__(*args)
-            except Exception as exc:
-                logger.debug("Closing integration {} failed: {}", key, exc)
-                return None
+            async with self._guard():
+                if self._entries == 0:
+                    return None
+                self._entries -= 1
+                if self._entries > 0:
+                    return None
+                connected, self._connected = self._connected, None
+                if not connected:
+                    return None
+                try:
+                    return await self.wrapped.__aexit__(*args)
+                except Exception as exc:
+                    logger.debug("Closing integration {} failed: {}", key, exc)
+                    return None
 
         async def get_tools(self, ctx):
             if self._connected is False:

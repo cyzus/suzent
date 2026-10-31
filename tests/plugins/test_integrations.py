@@ -216,3 +216,68 @@ def test_token_connect_and_disconnect_routes(plugins, secrets, monkeypatch):
     assert "github_pat_x" not in secrets.values.values()
     assert rebuilt == [1, 1]
     assert client.post("/plugins/nope/integrations/x/connect").status_code == 404
+
+
+async def test_concurrent_runs_balance_the_shared_connection():
+    """The cached agent's runs share one wrapper: last exit disconnects."""
+    import asyncio
+
+    from pydantic_ai.toolsets import FunctionToolset
+
+    class Counting(FunctionToolset):
+        entered = 0
+
+        async def __aenter__(self):
+            type(self).entered += 1
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, *args):
+            type(self).entered -= 1
+
+    inner = Counting()
+    wrapper = integrations._tolerant(inner, "t.t")
+
+    async def run(delay):
+        async with wrapper:
+            await asyncio.sleep(delay)
+
+    await asyncio.gather(run(0.01), run(0.03))
+    assert Counting.entered == 0
+    assert wrapper._entries == 0
+
+
+async def test_a_failed_connection_gives_no_tools_and_retries_next_time():
+    from pydantic_ai.toolsets import FunctionToolset
+
+    class Flaky(FunctionToolset):
+        fail = True
+
+        async def __aenter__(self):
+            if self.fail:
+                raise RuntimeError("Sign in again")
+            return self
+
+    inner = Flaky()
+
+    @inner.tool_plain
+    def ping() -> str:
+        return "pong"
+
+    wrapper = integrations._tolerant(inner, "t.flaky")
+    async with wrapper:
+        assert await wrapper.get_tools(None) == {}
+    assert "t.flaky" in integrations._last_errors
+
+    inner.fail = False
+    async with wrapper:
+        assert await wrapper.get_tools(_ctx()) != {}
+    assert "t.flaky" not in integrations._last_errors
+
+
+def _ctx():
+    from pydantic_ai import RunContext
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai.usage import RunUsage
+
+    return RunContext(deps=None, model=TestModel(), usage=RunUsage())
