@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.5.0] - 2026-10-30
+## [mobile-v0.5.0] - 2026-10-31
 
 ### Release notes
 - Bring the desktop chat animations to mobile: the robot badge with its personalities and reactions (startled by failures, skeptical while approval waits, a face per tool, dozing when idle), the desktop tool icons and their running animations, and the activity rail's summary categories such as pages visited, tasks delegated and skills used.
