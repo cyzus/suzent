@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Replace flat loading placeholders in ChatWindow, SettingsModal, and SkillsView with 3D cube loading animations."
+}

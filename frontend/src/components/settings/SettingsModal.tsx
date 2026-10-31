@@ -1,3 +1,4 @@
+import { CubeLoadingIndicator } from '../CubeLoadingIndicator';
 import { VoiceSettingsCard } from './VoiceSettingsCard';
 import { SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
@@ -558,9 +559,7 @@ export function SettingsModal({
   if (!isOpen) return null;
 
   const panel = loading ? (
-    <div className="flex justify-center items-center h-full">
-      <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
-    </div>
+    <CubeLoadingIndicator variant="settings" label={t('config.loading')} />
   ) : (
     <>
       {activeCategory === 'providers' && (
@@ -732,7 +731,7 @@ export function SettingsModal({
             onClose={handleClose}
           />
         )}
-        <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-stable sm:p-5 lg:p-6">
+        <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
           <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
             {panel}
           </div>

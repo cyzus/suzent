@@ -1,3 +1,4 @@
+import { CubeLoadingIndicator } from '../CubeLoadingIndicator';
 import React, { useEffect, useMemo, useState } from 'react';
 import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useSkills } from '../../hooks/useSkills';
@@ -107,15 +108,7 @@ export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
   };
 
   if (loading && skills.length === 0) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center p-8">
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">
-            {t('skills.loading')}
-          </h2>
-        </div>
-      </div>
-    );
+    return <CubeLoadingIndicator variant="skills" label={t('skills.loading')} />;
   }
 
   if (error) {
