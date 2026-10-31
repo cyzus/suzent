@@ -808,10 +808,13 @@ struct ContentView: View {
                 } header: { settingsHeader("Connection") } footer: {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
-                Section {
-                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
-                } header: { settingsHeader("About") }
             }
+            Section {
+                if !model.isDemo {
+                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
+                }
+                Link("Privacy policy", destination: suzentPrivacyPolicyURL)
+            } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
         .alert("Forget connection?", isPresented: $confirmForget) {
@@ -869,7 +872,7 @@ struct ContentView: View {
                             }
                         }
                         Color.clear.frame(height: 1).id("bottom")
-                    }.padding(16)
+                    }.padding(16).readingWidth()
             }.id(chat.id)
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
@@ -877,10 +880,10 @@ struct ContentView: View {
                     ApprovalCards(model: model)
                     ScrollView { ApprovalCards(model: model) }
                 }.frame(maxHeight: viewport.size.height * 0.4)
-                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8).readingWidth()
             }
             toastHost(conversationVisible)
-            composer(chat)
+            composer(chat).readingWidth()
         }.frame(width: viewport.size.width, height: viewport.size.height)
             .offset(y: attachmentsExpanded ? -200 : 0)
         if !chat.isRegent { AttachmentPanel(model: model, expanded: $attachmentsExpanded)
@@ -975,4 +978,9 @@ struct ContentView: View {
             .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
     }
 
+}
+
+private extension View {
+    /// Keeps lines readable when the conversation fills a wide iPad column.
+    func readingWidth() -> some View { frame(maxWidth: 760).frame(maxWidth: .infinity) }
 }

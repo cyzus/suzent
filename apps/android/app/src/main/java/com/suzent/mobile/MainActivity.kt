@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
@@ -328,10 +329,10 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight().statusBarsPadding().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The wordmark fills the row to stay centred, so the settings button is layered over its end.
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
             SuzentWordmark()
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(22.dp)) }
+            IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp)) }
         }
         if (model.isDemo) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -698,9 +699,14 @@ private fun SettingsView(model: MobileModel) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsRow(stringResource(R.string.forget), { forgetting = true }, enabled = !model.busy, danger = true)
             SettingsFooter(stringResource(R.string.revoke_help))
-            SettingsSection(stringResource(R.string.about))
-            SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
         }
+        SettingsSection(stringResource(R.string.about))
+        if (!model.isDemo) {
+            SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        val uriHandler = LocalUriHandler.current
+        SettingsRow(stringResource(R.string.privacy_policy), { uriHandler.openUri(PRIVACY_POLICY_URL) })
     }
 }
 
