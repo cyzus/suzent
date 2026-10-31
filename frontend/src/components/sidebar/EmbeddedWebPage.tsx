@@ -16,7 +16,8 @@ export function EmbeddedWebPage({ url, visible }: EmbeddedWebPageProps): React.R
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const native = isTauri();
+  // Wayland cannot place top-level windows, so Linux keeps the iframe.
+  const native = isTauri() && !navigator.userAgent.includes('Linux');
 
   useEffect(() => {
     if (!native || !visible || !containerRef.current) return;
