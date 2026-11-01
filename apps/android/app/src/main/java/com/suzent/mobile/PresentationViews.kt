@@ -797,7 +797,7 @@ fun ApprovalCards(model: MobileModel) {
             var showAll by remember { mutableStateOf(false) }
             var overflowing by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-                .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
                 Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(request.toolName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
@@ -813,13 +813,16 @@ fun ApprovalCards(model: MobileModel) {
                     }
                     if (request.reason.isNotEmpty()) Text(request.reason, style = MaterialTheme.typography.bodySmall)
                     if (model.device?.permissions?.approveTools == true && request.actions.isNotEmpty()) {
-                        request.actions.forEach { action ->
-                            val allow = action.behavior == "allow"
-                            SuzentAction(stringResource(if (allow) R.string.allow_once else R.string.reject_tool), {
-                                view.suzentHaptic(if (allow) SuzentHaptic.Confirm else SuzentHaptic.Reject)
-                                model.chooseApproval(request, action)
-                            }, prominent = allow, enabled = !model.approvalBusy, compact = true,
-                                leadingIcon = if (model.approvalChoices[request.id] == action.id) R.drawable.ic_message_check else null)
+                        // Side by side when they fit, stacked on narrow screens or large text.
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            request.actions.forEach { action ->
+                                val allow = action.behavior == "allow"
+                                SuzentAction(stringResource(if (allow) R.string.allow_once else R.string.reject_tool), {
+                                    view.suzentHaptic(if (allow) SuzentHaptic.Confirm else SuzentHaptic.Reject)
+                                    model.chooseApproval(request, action)
+                                }, prominent = allow, enabled = !model.approvalBusy, compact = true,
+                                    leadingIcon = if (model.approvalChoices[request.id] == action.id) R.drawable.ic_message_check else null)
+                            }
                         }
                         Text(stringResource(R.string.approval_batch), style = MaterialTheme.typography.bodySmall)
                     } else Text(stringResource(R.string.approval_desktop_only), style = MaterialTheme.typography.bodySmall)
