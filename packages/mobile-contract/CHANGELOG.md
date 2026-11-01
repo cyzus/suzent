@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.5.4] - 2026-11-01
+
+### Release notes
+- Android pairing scans the QR code with the built-in scanner, so it works the same with or without Google Play services and sends nothing to Google.
+
 ## [mobile-v0.5.3] - 2026-10-31
 
 ### Release notes

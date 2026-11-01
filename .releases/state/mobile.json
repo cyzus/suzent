@@ -1,8 +1,9 @@
 {
-  "version": "0.5.3",
+  "version": "0.5.4",
   "consumed": [
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
+    ".releases/changes/android-zxing-only-scanner.json",
     ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-app-store-privacy.json",
     ".releases/changes/ios-compact-chat-controls.json",
