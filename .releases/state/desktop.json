@@ -198,6 +198,7 @@
     ".releases/changes/webfetch-markdown.json",
     ".releases/changes/windows-exclusive-port-bind.json",
     ".releases/changes/windows-install-backend-identity.json",
+    ".releases/changes/windows-repo-context.json",
     ".releases/changes/windows-updater-process-identity.json"
   ],
   "legacy_complete": true
