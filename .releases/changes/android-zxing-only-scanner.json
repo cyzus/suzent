@@ -1,0 +1,1 @@
+{"products": {"mobile": "patch"}, "summary": "Android pairing scans the QR code with the built-in scanner, so it works the same with or without Google Play services and sends nothing to Google."}
