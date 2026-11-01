@@ -21,10 +21,10 @@ ARTWORK = (
 LOCALES = {"en-US": "en", "zh-CN": "zh-Hans"}
 TAGLINE = {
     "en-US": (
-        "Your AI agent,\nin your pocket.",
-        "Runs on your computer. Answers to you.",
+        "Your agent.\nYour rules.",
+        "A sovereign AI agent on your computer.",
     ),
-    "zh-CN": ("把你的 AI 智能体，\n装进口袋。", "运行在你的电脑上，只听你的。"),
+    "zh-CN": ("你的智能体，\n你的规则。", "运行在你自己电脑上的主权 AI 智能体。"),
 }
 PHONE = (1080, 1920)
 STYLE = """*{box-sizing:border-box}body{margin:0;background:white;color:#050505}
