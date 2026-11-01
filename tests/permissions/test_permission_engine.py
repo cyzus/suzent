@@ -490,3 +490,153 @@ async def test_ask_rule_cannot_bypass_plan_mode_write_denial(
 
     assert decision.behavior == CommandDecision.DENY
     assert decision.reason_code == "plan_mode_readonly"
+
+
+def _desktop(command: str, **options: object) -> ToolPermissionRequest:
+    payload: dict = {"command": command}
+    if options:
+        payload["options"] = options
+    return ToolPermissionRequest("desktop", payload)
+
+
+@pytest.mark.asyncio
+async def test_desktop_snapshot_is_allowed(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        _desktop("snapshot", app="Finder", interactive_only=True),
+        context(tmp_path),
+    )
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "readonly_operation"
+
+
+@pytest.mark.asyncio
+async def test_desktop_click_asks_and_can_be_remembered_per_command(
+    tmp_path: Path,
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        _desktop("click", ref="@s8f3k2p9:e8"),
+        context(tmp_path),
+    )
+
+    assert decision.behavior == CommandDecision.ASK
+    assert decision.reason_code == "tool_requires_approval"
+    remembered = next(
+        action for action in decision.actions if action.id == "allow_session"
+    )
+    assert remembered.permission_updates[0].payload["matcher"] == {
+        "type": "exact_input",
+        "value": {"command": "click"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_remembered_desktop_click_does_not_allow_typing(tmp_path: Path) -> None:
+    rules = [
+        {
+            "tool": "desktop",
+            "behavior": "allow",
+            "matcher": {"type": "exact_input", "value": {"command": "click"}},
+        }
+    ]
+    click = await PermissionEngine().evaluate(
+        _desktop("click", ref="@s8f3k2p9:e8"),
+        context(tmp_path, permission_rules=rules),
+    )
+    typing = await PermissionEngine().evaluate(
+        _desktop("type", ref="@s8f3k2p9:e8", text="hello"),
+        context(tmp_path, permission_rules=rules),
+    )
+
+    assert click.behavior == CommandDecision.ALLOW
+    assert click.reason_code == "normalized_rule_allow"
+    assert typing.behavior == CommandDecision.ASK
+
+
+@pytest.mark.asyncio
+async def test_desktop_permission_modes(tmp_path: Path) -> None:
+    click = _desktop("click", ref="@s8f3k2p9:e8")
+    snapshot = _desktop("snapshot")
+
+    full = await PermissionEngine().evaluate(
+        click, context(tmp_path, mode=PermissionMode.FULL_ACCESS)
+    )
+    strict = await PermissionEngine().evaluate(
+        click, context(tmp_path, mode=PermissionMode.STRICT_READONLY)
+    )
+    plan = await PermissionEngine().evaluate(
+        snapshot, context(tmp_path, mode=PermissionMode.PLAN)
+    )
+    plan_click = await PermissionEngine().evaluate(
+        click, context(tmp_path, mode=PermissionMode.PLAN)
+    )
+
+    assert full.behavior == CommandDecision.ALLOW
+    assert full.reason_code == "mode_full_access"
+    assert strict.behavior == CommandDecision.DENY
+    assert strict.reason_code == "strict_readonly"
+    assert plan.behavior == CommandDecision.ALLOW
+    assert plan_click.behavior == CommandDecision.DENY
+
+
+@pytest.mark.asyncio
+async def test_desktop_side_effects_are_not_reads(tmp_path: Path) -> None:
+    cases = [
+        ToolPermissionRequest(
+            "desktop",
+            {"command": "list-notifications", "headed": True},
+        ),
+        _desktop("permissions", guide=True),
+        _desktop("screenshot", path="/tmp/screen.png"),
+        _desktop("session", subcommand="start"),
+        ToolPermissionRequest(
+            "desktop",
+            {
+                "command": "batch",
+                "options": {
+                    "entries": [
+                        {"command": "click", "args": {"ref_id": "@s8f3k2p9:e1"}}
+                    ]
+                },
+            },
+        ),
+    ]
+    for request in cases:
+        decision = await PermissionEngine().evaluate(request, context(tmp_path))
+        assert decision.behavior == CommandDecision.ASK, request.args
+
+
+@pytest.mark.asyncio
+async def test_desktop_read_batch_is_allowed(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "desktop",
+            {
+                "command": "batch",
+                "options": {
+                    "entries": [
+                        {"command": "version"},
+                        {"command": "snapshot", "args": {"app": "Finder"}},
+                    ]
+                },
+            },
+        ),
+        context(tmp_path),
+    )
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "readonly_operation"
+
+
+@pytest.mark.asyncio
+async def test_desktop_invalid_command_is_refused_without_a_prompt(
+    tmp_path: Path,
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        _desktop("click", ref="@e8"),
+        context(tmp_path, mode=PermissionMode.FULL_ACCESS),
+    )
+
+    assert decision.behavior == CommandDecision.DENY
+    assert decision.reason_code == "desktop_invalid_command"
+    assert "@s8f3k2p9:e8" in decision.reason
