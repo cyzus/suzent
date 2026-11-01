@@ -7,7 +7,7 @@ indexes.
 
 ## English (United States) – en-US
 
-App name: Suzent: Personal AI Agent
+App name: Suzent: Sovereign AI Agent
 
 Short description: Your own AI agent, in your pocket. Runs on your computer, answers to you.
 
@@ -39,7 +39,7 @@ AI replies use the model provider you configure on your computer; provider charg
 
 ## 中文（简体）– zh-CN
 
-应用名称：Suzent：个人 AI 智能体
+应用名称：Suzent：主权 AI 智能体
 
 简短说明：把你自己的 AI 智能体装进口袋。运行在你的电脑上，只听你的。
 
