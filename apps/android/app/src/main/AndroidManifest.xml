@@ -14,7 +14,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.attachments"
             android:exported="false" android:grantUriPermissions="true">
