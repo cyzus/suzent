@@ -6951,10 +6951,9 @@ flat conversation rows and an outlined composer. Assistant messages carry the
 robot badge; inline code uses yellow highlights and top-level code blocks have
 black language headers with horizontally scrollable light bodies. User messages
 use a neutral surface so yellow retains its emphasis role. Keyboard and camera
-permission prompts stay native. iOS uses VisionKit QR recognition; Android uses Google
-Code Scanner when Google Play services is available and falls back to ZXing embedded
-(devices without Play services, or when the scanner module fails). Neither scanner
-saves an image. Both apps provide English and Simplified Chinese strings.
+permission prompts stay native. iOS uses VisionKit QR recognition; Android uses embedded
+ZXing, which needs no Google Play services and sends nothing off the device. Neither
+scanner saves an image. Both apps provide English and Simplified Chinese strings.
 
 Platform interactions stay native where the system already defines them. On iOS the
 conversation list is the root of a `NavigationStack` (edge swipe back), and regular
