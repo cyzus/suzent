@@ -1051,6 +1051,17 @@ export const zhCN = {
       working: '处理中…',
       confirmThirdParty:
         '这个插件的代码会以你的权限在 Suzent 里运行。只有在你信任它的来源时才安装。',
+      connected: '已连接',
+      notConnected: '未连接',
+      connect: '登录',
+      reconnect: '重新登录',
+      disconnect: '断开连接',
+      waitingForBrowser: '请在打开的浏览器窗口里完成登录…',
+      signInHint: '请在运行 Suzent 的这台电脑上登录。修改内容等写入操作仍然需要你批准。',
+      tokenPlaceholder: '粘贴令牌',
+      saveToken: '保存',
+      createToken: '创建令牌',
+      tokenHint: '令牌只给 agent 需要的权限。它保存在系统钥匙串里，agent 看不到。',
     },
     acp: {
       title: 'ACP 智能体',

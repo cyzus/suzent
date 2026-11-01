@@ -47,6 +47,34 @@ working.
 Removing a chat-app plugin also switches that app off under Social Channels.
 WeChat needs no extra packages, so it has no plugin and always works.
 
+## Notion, Linear and GitHub
+
+These built-in plugins connect the agent to your account on each service, so
+it can search and edit Notion pages, read and update Linear issues, or work
+with GitHub repositories, issues and pull requests. Each one is off until you
+install it and connect your account.
+
+1. Open **Settings → Plugins** and choose **Install** on the service.
+2. Connect your account:
+   - **Notion and Linear:** choose **Sign in**. A browser window opens on the
+     service's own sign-in page. Do this on the computer that runs Suzent.
+   - **GitHub:** create a fine-grained personal access token (the **Create a
+     token** link opens GitHub's page), paste it and choose **Save**. Give the
+     token only the repositories and permissions you want the agent to have.
+
+You stay signed in after a restart. Your sign-in and tokens are kept in your
+system keychain. The agent never sees them, and they are not passed to
+commands the agent runs.
+
+Anything that changes your data, such as creating a page or commenting on an
+issue, asks for your approval first, the same as other tools. Lookups the
+service marks as read-only run without asking. Your permission mode and
+**Always allow** choices apply as usual.
+
+If a sign-in expires or the service can't be reached, chats keep working
+without that service's tools, and the Plugins page shows **Sign in again**.
+Choose **Disconnect** to sign out and forget the token.
+
 ## Plugins from other people
 
 Put the plugin's folder (the one holding `plugin.yaml`) in the `plugins` folder

@@ -980,6 +980,19 @@ export const en = {
       working: 'Working…',
       confirmThirdParty:
         "This plugin's code will run inside Suzent with your permissions. Install it only if you trust where it came from.",
+      connected: 'Connected',
+      notConnected: 'Not connected',
+      connect: 'Sign in',
+      reconnect: 'Sign in again',
+      disconnect: 'Disconnect',
+      waitingForBrowser: 'Finish signing in in the browser window that opened…',
+      signInHint:
+        'Sign in on the computer that runs Suzent. Changes and other writing actions still ask for your approval.',
+      tokenPlaceholder: 'Paste a token',
+      saveToken: 'Save',
+      createToken: 'Create a token',
+      tokenHint:
+        'Give the token only the access you want the agent to have. It is kept in your system keychain and never shown to the agent.',
     },
     acp: {
       title: 'ACP Agents',

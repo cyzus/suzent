@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { fetchPlugins, setPluginInstalled } from '../../lib/api';
-import type { PluginInfo } from '../../lib/api';
+import {
+  connectPluginIntegration,
+  disconnectPluginIntegration,
+  fetchPlugins,
+  setPluginInstalled,
+} from '../../lib/api';
+import type { PluginInfo, PluginIntegration } from '../../lib/api';
 import { RefreshButton } from '../RefreshButton';
 import {
   Badge,
@@ -31,6 +36,172 @@ function StatusBadge({
   return <Badge tone="green">{t('settings.plugins.statusOn')}</Badge>;
 }
 
+const INPUT_CLASS =
+  'w-full min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500';
+
+async function openExternal(url: string, popup: Window | null): Promise<void> {
+  if (window.__TAURI__) {
+    popup?.close();
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } else if (popup) popup.location.href = url;
+  else window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/** Sign-in, or token entry, for one service a plugin connects. */
+export function IntegrationRow({
+  pluginId,
+  integration,
+  onChange,
+  t,
+}: {
+  pluginId: string;
+  integration: PluginIntegration;
+  onChange: () => Promise<void>;
+  t: (key: string) => string;
+}): React.ReactElement {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const waiting = integration.signIn?.state === 'waiting';
+
+  // While the browser sign-in is open, poll until it finishes.
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => void onChange(), 2000);
+    return () => window.clearInterval(timer);
+  }, [waiting, onChange]);
+
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      await onChange();
+    }
+  };
+
+  const signIn = (): Promise<void> =>
+    run(async () => {
+      // Opened before the request so the browser treats it as the click's popup.
+      const popup = window.__TAURI__ ? null : window.open('', '_blank');
+      // The sign-in page must not be able to steer this window.
+      if (popup) popup.opener = null;
+      try {
+        const result = await connectPluginIntegration(pluginId, integration.id);
+        if (result.authorizeUrl) await openExternal(result.authorizeUrl, popup);
+        else popup?.close();
+      } catch (err) {
+        popup?.close();
+        throw err;
+      }
+    });
+
+  const saveToken = (): Promise<void> =>
+    run(async () => {
+      await connectPluginIntegration(pluginId, integration.id, token.trim());
+      setToken('');
+    });
+
+  const disconnect = (): Promise<void> =>
+    run(async () => {
+      await disconnectPluginIntegration(pluginId, integration.id);
+    });
+
+  const problem = error || integration.error || integration.signIn?.error;
+
+  return (
+    <div className="space-y-2 border-t-2 border-dashed border-neutral-300 pt-3 dark:border-white/15">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold">{integration.name}</span>
+          {integration.connected ? (
+            <Badge tone={integration.error ? 'amber' : 'green'}>
+              {t('settings.plugins.connected')}
+            </Badge>
+          ) : (
+            <Badge tone="neutral">{t('settings.plugins.notConnected')}</Badge>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {integration.auth === 'oauth' && (!integration.connected || integration.error) && (
+            <SettingsListAction
+              tone="blue"
+              disabled={busy || waiting}
+              onClick={() => void signIn()}
+            >
+              {busy || waiting
+                ? t('settings.plugins.working')
+                : integration.connected
+                  ? t('settings.plugins.reconnect')
+                  : t('settings.plugins.connect')}
+            </SettingsListAction>
+          )}
+          {integration.connected && (
+            <SettingsListAction tone="red" disabled={busy} onClick={() => void disconnect()}>
+              {t('settings.plugins.disconnect')}
+            </SettingsListAction>
+          )}
+        </div>
+      </div>
+      {integration.auth === 'token' && !integration.connected && (
+        <form
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (token.trim()) void saveToken();
+          }}
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            aria-label={t('settings.plugins.tokenPlaceholder')}
+            placeholder={t('settings.plugins.tokenPlaceholder')}
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            className={INPUT_CLASS}
+          />
+          <SettingsListAction tone="blue" type="submit" disabled={busy || !token.trim()}>
+            {busy ? t('settings.plugins.working') : t('settings.plugins.saveToken')}
+          </SettingsListAction>
+        </form>
+      )}
+      {waiting && (
+        <p className="text-xs text-blue-700 dark:text-blue-300">
+          {t('settings.plugins.waitingForBrowser')}
+        </p>
+      )}
+      {problem && !waiting && (
+        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {problem}
+        </p>
+      )}
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        {integration.auth === 'token' ? (
+          <>
+            {t('settings.plugins.tokenHint')}{' '}
+            {integration.tokenHelpUrl && (
+              <button
+                type="button"
+                className="underline"
+                onClick={() => void openExternal(integration.tokenHelpUrl as string, null)}
+              >
+                {t('settings.plugins.createToken')}
+              </button>
+            )}
+          </>
+        ) : (
+          t('settings.plugins.signInHint')
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function PluginsTab(): React.ReactElement {
   const { t } = useI18n();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
@@ -53,6 +224,15 @@ export function PluginsTab(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A quiet reload, for sign-in progress, that keeps the list on screen.
+  const refresh = useCallback(async (): Promise<void> => {
+    try {
+      setPlugins(await fetchPlugins());
+    } catch {
+      // The next poll or a manual refresh retries.
+    }
+  }, []);
 
   const toggle = async (plugin: PluginInfo): Promise<void> => {
     const installing = !plugin.enabled || plugin.missing.length > 0;
@@ -142,6 +322,16 @@ export function PluginsTab(): React.ReactElement {
                         {t('settings.plugins.restartHint')}
                       </p>
                     )}
+                    {plugin.enabled &&
+                      plugin.integrations?.map((integration) => (
+                        <IntegrationRow
+                          key={integration.id}
+                          pluginId={plugin.id}
+                          integration={integration}
+                          onChange={refresh}
+                          t={t}
+                        />
+                      ))}
                   </div>
                   <SettingsListAction
                     tone={plugin.enabled ? 'red' : 'blue'}
