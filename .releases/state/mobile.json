@@ -1,8 +1,9 @@
 {
-  "version": "0.5.3",
+  "version": "0.5.4",
   "consumed": [
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
+    ".releases/changes/android-zxing-only-scanner.json",
     ".releases/changes/ios-app-store-orientations.json",
     ".releases/changes/ios-app-store-privacy.json",
     ".releases/changes/ios-compact-chat-controls.json",
@@ -10,6 +11,7 @@
     ".releases/changes/ios-resource-bundle-signing.json",
     ".releases/changes/ios-scroll-invalidation.json",
     ".releases/changes/ios-sidebar-hierarchy.json",
+    ".releases/changes/mobile-approval-card-home-name.json",
     ".releases/changes/mobile-approval-retry.json",
     ".releases/changes/mobile-attachments.json",
     ".releases/changes/mobile-charcoal-dark-mode.json",
