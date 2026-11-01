@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.5.3] - 2026-10-31
+
+### Release notes
+- The offline demo reads like real use: one clear demo banner instead of disclaimers in every reply.
+
 ## [mobile-v0.5.2] - 2026-10-31
 
 ### Release notes
