@@ -24,7 +24,8 @@
       "supports_reasoning": true,
       "supported_endpoints": [
         "/v1beta/interactions"
-      ]
+      ],
+      "supports_video": true
     },
     "gemini/gemini-2.5-pro": {
       "mode": "chat",
@@ -566,13 +567,15 @@
       "mode": "chat",
       "max_output_tokens": 8192,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "max_input_tokens": 8192
     },
     "gemini/gemini-gemma-2-9b-it": {
       "mode": "chat",
       "max_output_tokens": 8192,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "max_input_tokens": 8192
     },
     "gemini/learnlm-1.5-pro-experimental": {
       "mode": "chat",
@@ -759,7 +762,8 @@
         "/v1/chat/completions",
         "/v1/completions",
         "/v1/batch"
-      ]
+      ],
+      "supports_video": true
     },
     "gemini/gemini-3.7-flash": {
       "mode": "chat",
@@ -786,7 +790,8 @@
       ],
       "max_input_tokens": 131072,
       "max_output_tokens": 65536,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supports_video": true
     },
     "gemini/gemini-3.5-live-translate-preview": {
       "mode": "chat",
@@ -822,7 +827,8 @@
       "supports_reasoning": true,
       "supported_endpoints": [
         "/v1beta/interactions"
-      ]
+      ],
+      "supports_video": true
     },
     "gemini/lyria-3.5-clip-preview": {
       "mode": "chat",
