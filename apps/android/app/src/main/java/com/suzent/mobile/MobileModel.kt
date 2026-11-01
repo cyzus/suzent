@@ -576,7 +576,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 streaming = false
                 pendingApprovals = emptyList(); approvalChoices = emptyMap()
                 liveParts = emptyList()
-                selected = composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
+                selected = if (projectId == null) composer else composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
                 restoreModel(composer)
                 draft = ""
                 discardAttachments()

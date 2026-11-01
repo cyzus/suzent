@@ -932,7 +932,7 @@ struct ContentView: View {
                 Text(greeting).textCase(.uppercase).suzentFont(30, weight: .black)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
-            SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
+            SuzentSelectionTrigger(value: chat.projectName ?? String(localized: "Home"), prefix: String(localized: "Creating in")) {
                 composing = false; showProjectPicker = true
             }.disabled(model.busy || model.projects.isEmpty)
             if model.isDemo {
