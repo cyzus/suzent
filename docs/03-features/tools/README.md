@@ -23,6 +23,7 @@ world asks first (see [Permissions & approvals](./human-in-the-loop.md)).
 | **Interaction** | Ask you a focused question, or show tables, forms, and buttons you can answer. | [Questions, canvas & messages](./interaction.md) |
 | **Creative** | Generate and edit images, make videos, speak, and send messages through your chat apps. | [Images, video & speech](./media.md) |
 | **Memory & recall** | Search what it remembers and find past conversations. | [Memory](../memory/README.md) |
+| **Email** | Search and read your mailboxes, save drafts, and send after you approve. | [Email](./email.md) |
 
 Tools from [MCP servers](./mcp.md) you add appear alongside these.
 

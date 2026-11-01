@@ -232,6 +232,12 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
+    from suzent.tools.mail import (
+        MailDraftTool,
+        MailReadTool,
+        MailSearchTool,
+        MailSendTool,
+    )
     from suzent.tools.creative.voice_tool import SpeakTool
     from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
     from suzent.tools.creative.image_generation_tool import ImageGenerationTool
@@ -276,6 +282,10 @@ def _all_tool_classes() -> tuple:
         VisualAnalysisTool,
         SpeakTool,
         SocialMessageTool,
+        MailSearchTool,
+        MailReadTool,
+        MailDraftTool,
+        MailSendTool,
         SkillTool,
         MemorySearchTool,
         MemoryUpdateTool,
@@ -323,6 +333,7 @@ CAPABILITY_DESCRIPTIONS = {
     "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search and correct durable memory, and retrieve relevant past sessions.",
+    "Email": "Search and read the user's connected mailboxes, save drafts, and send mail after approval.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {
