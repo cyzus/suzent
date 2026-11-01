@@ -3,7 +3,6 @@ package com.suzent.mobile
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -36,11 +35,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailabilityLight
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
@@ -49,42 +43,12 @@ import com.journeyapps.barcodescanner.DefaultDecoderFactory
 import kotlin.math.sin
 
 /**
- * Prefers the Google code scanner (no camera permission, system UI). Without Play services, or when
- * the scanner module cannot load (common where Google services are unavailable), falls back to the
- * embedded zxing camera. Either way the result goes through [MobileModel.stageInvitation], and the
- * dialog below shows progress and the confirmation step.
+ * Scans with the embedded ZXing camera, so pairing works without Google Play services and no scanner
+ * SDK sends data off the device. The result goes through [MobileModel.stageInvitation], and the
+ * dialog shows progress and the confirmation step.
  */
 @Composable
 fun PairingScanner(model: MobileModel, close: () -> Unit) {
-    val context = LocalContext.current
-    var fallback by remember { mutableStateOf(!nativeScannerAvailable(context)) }
-    var attempt by remember { mutableIntStateOf(0) }
-    var scanned by remember { mutableStateOf(false) }
-    val latestClose by rememberUpdatedState(close)
-    if (fallback) { CameraPairingScanner(model, close, camera = true, rescan = {}); return }
-    if (scanned) { CameraPairingScanner(model, close, camera = false, rescan = { scanned = false; attempt++ }); return }
-    LaunchedEffect(attempt) {
-        startNativeScan(context, found = { value -> scanned = true; model.stageInvitation(value) },
-            cancelled = { latestClose() }, failed = { fallback = true })
-    }
-}
-
-private fun nativeScannerAvailable(context: Context): Boolean = runCatching {
-    GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
-}.getOrDefault(false)
-
-private fun startNativeScan(context: Context, found: (String) -> Unit, cancelled: () -> Unit, failed: () -> Unit) {
-    try {
-        val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-        GmsBarcodeScanning.getClient(context, options).startScan()
-            .addOnSuccessListener { barcode -> barcode.rawValue?.let(found) ?: failed() }
-            .addOnCanceledListener { cancelled() }
-            .addOnFailureListener { failed() }
-    } catch (_: Exception) { failed() }
-}
-
-@Composable
-private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: Boolean, rescan: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var paste by remember { mutableStateOf(false) }
@@ -96,17 +60,16 @@ private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: 
     } }
     var allowed by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
-    LaunchedEffect(Unit) { if (camera && !allowed) permission.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(Unit) { if (!allowed) permission.launch(Manifest.permission.CAMERA) }
     val found = model.pairingInvitation != null || model.pairingCode != null
-    val active = camera && !found && !model.busy && model.error == null && !paste && foreground
+    val active = !found && !model.busy && model.error == null && !paste && foreground
     val latestActive by rememberUpdatedState(active)
     val reset = { model.cancelPairing(); model.error = null }
-    val scanAgain = { reset(); rescan() }
-    DisposableEffect(preview, lifecycle, allowed, camera) {
+    DisposableEffect(preview, lifecycle, allowed) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 foreground = true
-                if (camera && allowed) try { preview.resume() } catch (_: Exception) { cameraFailed = true }
+                if (allowed) try { preview.resume() } catch (_: Exception) { cameraFailed = true }
             }
             if (event == Lifecycle.Event.ON_PAUSE) { foreground = false; torch = false; preview.pause() }
         }
@@ -118,7 +81,7 @@ private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: 
             override fun cameraError(error: Exception) { cameraFailed = true }
         })
         lifecycle.addObserver(observer)
-        if (camera && allowed && foreground) try { preview.resume() } catch (_: Exception) { cameraFailed = true }
+        if (allowed && foreground) try { preview.resume() } catch (_: Exception) { cameraFailed = true }
         onDispose { lifecycle.removeObserver(observer); preview.setTorch(false); preview.pause() }
     }
     LaunchedEffect(active) {
@@ -128,13 +91,13 @@ private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: 
             }
         }) else preview.stopDecoding()
     }
-    LaunchedEffect(torch) { if (camera) preview.setTorch(torch) }
+    LaunchedEffect(torch) { preview.setTorch(torch) }
     val initialPairingVersion = remember { model.pairingVersion }
     LaunchedEffect(model.pairingVersion) { if (model.pairingVersion != initialPairingVersion) close() }
     Dialog(onDismissRequest = { reset(); close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
             val frameSize = minOf(maxWidth * 0.76f, maxHeight * 0.38f)
-            val cameraLive = camera && allowed && !cameraFailed
+            val cameraLive = allowed && !cameraFailed
             if (cameraLive) AndroidView(factory = { preview }, modifier = Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .75f), Color.Transparent, Color.Black.copy(alpha = .85f)))))
             Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp)) {
@@ -150,14 +113,14 @@ private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: 
             }
             val offset by animateDpAsState(if (found) (-65).dp else (-20).dp, spring(dampingRatio = .9f), label = "scan frame")
             if (cameraLive) ScanFrame(active, found, Modifier.align(Alignment.Center).offset(y = offset).size(frameSize))
-            else if (camera) Text(stringResource(R.string.camera_unavailable), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(32.dp))
+            else Text(stringResource(R.string.camera_unavailable), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(32.dp))
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
                 AnimatedVisibility(visible = !found, modifier = Modifier.align(Alignment.BottomCenter), exit = fadeOut(tween(120))) {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         AnimatedVisibility(model.error != null, enter = fadeIn() + slideInVertically { it / 4 }) {
                             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(model.error.orEmpty(), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
-                                SuzentTextButton(onClick = scanAgain) { Text(stringResource(R.string.scan_again)) }
+                                SuzentTextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
                             }
                         }
                         if (model.busy) {
@@ -182,7 +145,7 @@ private fun CameraPairingScanner(model: MobileModel, close: () -> Unit, camera: 
                         .verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.desktop_recognized), Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
-                            SuzentTextButton(onClick = scanAgain) { Text(stringResource(R.string.scan_again)) }
+                            SuzentTextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Image(painterResource(R.drawable.suzent_logo), contentDescription = null, modifier = Modifier.size(42.dp))
