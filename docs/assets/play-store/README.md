@@ -26,9 +26,12 @@ generated images go to `store-upload/play-store/` and stay out of Git.
    apply for production access.
 2. Create the app: default language English (United States), App, Free.
    The package name is fixed to `com.suzent.mobile` on the first upload.
-3. Choose Play App Signing before the first upload. Pick **Use a different
-   key → Export and upload a key from Java keystore** and upload the existing
-   release key (the one behind `ANDROID_KEYSTORE_BASE64`). Play then signs with
+3. Switch Play App Signing to your own key. Uploading a bundle does not ask:
+   Play enrolls the app with a Google-generated key by default. Before any
+   release reaches open testing or production, open **Protected with Play →
+   Play Store protection → Manage Play app signing → Change key**, choose to
+   provide a copy of your own app signing key, and upload the existing release
+   key (the one behind `ANDROID_KEYSTORE_BASE64`) with the PEPK command shown. Play then signs with
    the same key as the GitHub APK, so users can move between the APK and Play
    with an ordinary update. Letting Google generate a key makes the two
    channels incompatible and cannot be undone.
