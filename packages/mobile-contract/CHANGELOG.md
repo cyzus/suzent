@@ -3,7 +3,7 @@
 ## [mobile-v0.5.3] - 2026-10-31
 
 ### Release notes
-- The offline demo shows a realistic week with Suzent, without a demo banner or disclaimers in every reply.
+- The offline demo reads like real use: one clear demo banner instead of disclaimers in every reply.
 
 ## [mobile-v0.5.2] - 2026-10-31
 
