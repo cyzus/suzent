@@ -677,6 +677,10 @@ export const zhCN = {
         interaction: { name: '交互', description: '向用户提问，并在对话中渲染界面。' },
         creative: { name: '创作', description: '生成、分析、朗读或分享多媒体及社交内容。' },
         'memory-recall': { name: '记忆与回忆', description: '搜索长期记忆并查找相关历史会话。' },
+        desktop: {
+          name: '桌面',
+          description: '通过系统辅助功能读取并操作这台电脑上的原生应用。',
+        },
       },
       tools: {
         SkillTool: {
@@ -774,6 +778,10 @@ export const zhCN = {
         SocialMessageTool: {
           name: '社交消息',
           description: '经审批后通过已配置的社交渠道发送消息。',
+        },
+        DesktopTool: {
+          name: '桌面操作',
+          description: '读取并操作本机桌面应用。只读操作直接运行，会改变桌面的操作需要批准。',
         },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
         MemoryUpdateTool: { name: '更新记忆', description: '按用户要求记住、撤回或更正一条记忆。' },

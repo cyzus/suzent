@@ -112,6 +112,16 @@ if you closed the window. The app must be enabled in
 **Allowed users** on the **Access control** tab, because messages from anyone
 else are refused. See [Access control & pairing](../05-chat-apps/access-control.md).
 
+### The agent can't see my desktop apps.
+
+Desktop control is a separate plugin, and it is off until you install it.
+Install agent-desktop 1.0.x yourself (`npm install -g agent-desktop` or a
+release binary), then install the Desktop plugin. On a Mac, run
+`agent-desktop permissions --guide` and allow Accessibility. Suzent will not
+install the program for you. The Docker sandbox has no screen, so desktop
+actions always run on the computer itself. See
+[Desktop apps](../03-features/tools/desktop.md).
+
 ### The sandbox won't start.
 
 The sandbox needs Docker. Make sure Docker Desktop (or Docker Engine on Linux)

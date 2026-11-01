@@ -88,6 +88,12 @@ uv run suzent plugin install dice
 uv run suzent start
 ```
 
+`plugins/desktop` is the optional desktop computer-use plugin shipped with
+Suzent. It is built in and `default_enabled: false`. Its `register()` adds
+`DesktopTool` and the `suzent-desktop` skill. The tool execs the
+`agent-desktop` 1.0.x binary on the host; it never enters the per-chat Docker
+sandbox. See [Desktop apps](../../03-features/tools/desktop.md).
+
 ## `PluginContext`
 
 | Method | What it does |

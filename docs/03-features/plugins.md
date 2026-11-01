@@ -47,6 +47,13 @@ working.
 Removing a chat-app plugin also switches that app off under Social Channels.
 WeChat needs no extra packages, so it has no plugin and always works.
 
+## Desktop apps
+
+The Desktop plugin lets the agent read and operate native apps on this
+computer. It is off until you install it, and it needs the separate
+agent-desktop program, which Suzent does not install for you. See
+[Desktop apps](./tools/desktop.md).
+
 ## Plugins from other people
 
 Put the plugin's folder (the one holding `plugin.yaml`) in the `plugins` folder

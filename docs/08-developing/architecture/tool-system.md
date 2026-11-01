@@ -73,6 +73,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 | WebSearchTool | `web_search` | — | Web search via SearXNG or DuckDuckGo |
 | WebpageTool | `webpage_fetch` | — | Fetch and extract webpage content as markdown |
 | BrowsingTool | `browser_action` | — | Control a headless browser (Playwright) |
+| DesktopTool | `desktop` | — | Optional. Host-only agent-desktop CLI. Registered by the `desktop` plugin, which is off by default. Reads are allowed; mutations ask. |
 
 ### Filesystem
 

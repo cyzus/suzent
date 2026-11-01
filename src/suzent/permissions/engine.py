@@ -32,6 +32,7 @@ SHELL_TOOLS = frozenset(
 )
 CHECK_COMMAND_TOOL = "check_command"
 SOCIAL_TOOL = "social_message"
+DESKTOP_TOOLS = frozenset({"desktop", "DesktopTool"})
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,10 @@ class PermissionEngine:
                 PermissionRisk.HIGH,
                 source=PermissionDecisionSource.RULE,
             )
+
+        invalid = self._desktop_rejection(request)
+        if invalid is not None:
+            return invalid
 
         if context.mode == PermissionMode.PLAN:
             mode_decision = self._evaluate_plan_mode(request, context)
@@ -488,7 +493,35 @@ class PermissionEngine:
             return True
         if request.tool_name == SOCIAL_TOOL:
             return bool(request.args.get("list_contacts"))
+        if request.tool_name in DESKTOP_TOOLS:
+            from suzent.tools.desktop.catalog import is_readonly_desktop_args
+
+            return is_readonly_desktop_args(request.args)
         return False
+
+    @staticmethod
+    def _desktop_rejection(
+        request: ToolPermissionRequest,
+    ) -> PermissionDecision | None:
+        """Refuse a desktop call whose arguments cannot be run, before any mode allows it.
+
+        The tool rejects the same calls, but approval happens first. An incomplete
+        or unknown command must not be offered as something the user can approve.
+        """
+        if request.tool_name not in DESKTOP_TOOLS:
+            return None
+        from suzent.tools.desktop.catalog import prepare_from_tool_args
+
+        try:
+            prepare_from_tool_args(request.args)
+        except ValueError as exc:
+            return _decision(
+                CommandDecision.DENY,
+                str(exc),
+                "desktop_invalid_command",
+                PermissionRisk.HIGH,
+            )
+        return None
 
 
 def _decision(
