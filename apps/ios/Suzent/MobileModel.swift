@@ -522,8 +522,10 @@ import SuzentCore
             if let id = selected?.id { drafts[id] = draft }
             var chat = try await client.composer()
             guard generation == current else { return }
-            chat.projectId = projectID
-            chat.projectName = projects.first { $0.id == projectID }?.name
+            if let projectID {
+                chat.projectId = projectID
+                chat.projectName = projects.first { $0.id == projectID }?.name
+            }
             generation = UUID()
             streamTask?.cancel()
             streamTask = nil
