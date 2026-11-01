@@ -1,5 +1,5 @@
 {
-  "version": "0.5.2",
+  "version": "0.5.3",
   "consumed": [
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
@@ -20,6 +20,7 @@
     ".releases/changes/mobile-chat-title-header.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-conversation-home.json",
+    ".releases/changes/mobile-demo-copy.json",
     ".releases/changes/mobile-desktop-composer.json",
     ".releases/changes/mobile-device-name.json",
     ".releases/changes/mobile-greeting-cube.json",
