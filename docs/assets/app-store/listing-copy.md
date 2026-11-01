@@ -5,13 +5,13 @@ text 170, keywords 100 bytes (comma-separated, no spaces, no app name).
 
 ## English (U.S.)
 
-Name: Suzent
+Name: Suzent: Sovereign AI Agent
 
-Subtitle: Your AI agent, in your pocket
+Subtitle: Your agent. Your rules.
 
 Promotional text: Your own AI agent, in your pocket. Catch up on your projects, plan trips around what you like, and approve actions on your computer from anywhere.
 
-Keywords: AI agent,personal AI,assistant,self-hosted,automation,LLM,memory,tasks,productivity,remote,desktop
+Keywords: personal AI,assistant,self-hosted,local-first,privacy,automation,LLM,memory,tasks,productivity
 
 ### Description
 
@@ -25,7 +25,7 @@ From your phone, you can:
 - Let it keep watch. Regent, your always-on agent, flags only what needs you, like a pull request waiting for review or a check-in about to open.
 - Run your routines. Check scheduled tasks such as a morning briefing, and send photos and files straight to your agent.
 
-Your data stays yours. Conversations, memory and tools live on your computer, and the app connects to it directly over an encrypted connection: on your Wi-Fi, through Tailscale, or at your own HTTPS address. No accounts, no ads, no tracking.
+Sovereign by design. Your agent runs on your computer, not ours. Its memory, skills and files stay there; swap AI models anytime and it still remembers everything; and it acts only within the rules you set. The app connects to it directly over an encrypted connection: on your Wi-Fi, through Tailscale, or at your own HTTPS address. No accounts, no ads, no tracking.
 
 Getting started: install Suzent on your computer, open Settings → Devices → Mobile access, and scan the QR code. No computer yet? Tap "Try offline demo" to look around with sample conversations.
 
@@ -39,13 +39,13 @@ AI replies use the model provider you configure on your computer; provider charg
 
 ## 简体中文
 
-名称：Suzent
+名称：Suzent：主权 AI 智能体
 
-副标题：口袋里的个人 AI 智能体
+副标题：你的智能体，你的规则。
 
 推广文本：把你自己的 AI 智能体装进口袋。随时了解项目进展，按你的喜好规划行程，在手机上批准电脑上的操作。
 
-关键词：AI助手,智能体,个人AI,自托管,自动化,大模型,记忆,任务,效率,远程,桌面
+关键词：AI助手,个人AI,自托管,本地优先,隐私,自动化,大模型,记忆,任务,效率,远程
 
 ### 详细描述
 
@@ -59,7 +59,7 @@ Suzent 是运行在你自己电脑上的个人 AI 智能体。它记得对你重
 - 让它替你盯着。常驻智能体 Regent 只提醒需要你处理的事，比如等你审的 PR、即将开放的值机。
 - 照常运行你的例行任务。查看晨间简报等定时任务，把照片和文件直接发给智能体。
 
-数据始终属于你。对话、记忆和工具都在你的电脑上，App 通过加密连接直接连到它：同一 Wi-Fi、Tailscale 或你自己的 HTTPS 地址都可以。没有账号，没有广告，没有跟踪。
+主权在你。智能体运行在你自己的电脑上，而不是我们的服务器。记忆、技能和文件都留在那里；随时更换 AI 模型，它依然记得一切；它只在你设定的规则内行动。App 通过加密连接直接连到它：同一 Wi-Fi、Tailscale 或你自己的 HTTPS 地址都可以。没有账号，没有广告，没有跟踪。
 
 开始使用：在电脑上安装 Suzent，打开“设置 → 设备 → 移动端访问”，扫描二维码即可。还没有电脑端？点“体验离线演示”，用示例对话先看看。
 
