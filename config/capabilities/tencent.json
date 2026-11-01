@@ -1,0 +1,194 @@
+{
+  "models": {
+    "tencent/deepseek-v4-pro": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/deepseek-v4-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/deepseek-v4-pro-0813": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/deepseek-v4.1-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/glm-5.3-flashx": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/glm-5.3-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/glm-5.3": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/glm-5.2": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/kimi-k3": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/kimi-k2.8-preview": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/kimi-k2.7-code-highspeed": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 256000,
+      "max_output_tokens": 256000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/kimi-k2.7-code": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 256000,
+      "max_output_tokens": 256000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/minimax-m3": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 1000000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/seedream-image-v5.0-flash": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ]
+    },
+    "tencent/seedream-image-v5.0-lite": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ]
+    },
+    "tencent/seedream-image-v5.0-pro": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ]
+    }
+  }
+}
