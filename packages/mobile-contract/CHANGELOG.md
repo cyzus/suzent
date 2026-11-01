@@ -4,6 +4,7 @@
 
 ### Release notes
 - Android pairing scans the QR code with the built-in scanner, so it works the same with or without Google Play services and sends nothing to Google.
+- Tool approval buttons now sit side by side and the whole approval card stays above the composer on Android, and new conversations show the default project's translated name.
 
 ## [mobile-v0.5.3] - 2026-10-31
 
