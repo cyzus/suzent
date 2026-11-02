@@ -344,8 +344,9 @@ class AgentInboxDispatcher:
         if is_task_result:
             # Background task completion is an autonomous trigger, like cron and
             # heartbeat, rather than a new utterance from the user. Keep the
-            # durable marker inside the reminder so retries remain idempotent.
-            delivered_content = f"{message['content']}\n{marker}"
+            # durable marker inside the reminder so retries remain idempotent,
+            # and ahead of the result, since the reminder budget cuts the tail.
+            delivered_content = f"{marker}\n{message['content']}"
         else:
             delivered_content = (
                 f"[Agent message from {sender_label} ({sender_reference})]\n"
