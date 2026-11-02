@@ -4,6 +4,7 @@
 mod auto_update;
 mod backend;
 mod notifications;
+mod packaged;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
@@ -98,6 +99,9 @@ fn get_backend_startup_error(state: State<AppState>) -> Result<Option<StartupErr
 }
 
 fn check_for_update_blocking() -> Result<String, String> {
+    if packaged::is_packaged() {
+        return Err(packaged::STORE_UPDATES.to_string());
+    }
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
 
@@ -160,10 +164,13 @@ fn start_update_and_restart(
     app_handle: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
+    if packaged::is_packaged() {
+        return Err(packaged::STORE_UPDATES.to_string());
+    }
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
     let ui_exe = find_relaunch_exe(&repo_dir).map_err(|e| e.to_string())?;
-    let restart_service = get_service_status_blocking()
+    let restart_service = get_service_status_blocking(&app_handle)
         .ok()
         .and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
         .and_then(|payload| payload.get("installed").and_then(|value| value.as_bool()))
@@ -327,9 +334,12 @@ fn build_bootstrap_status(app_handle: Option<&tauri::AppHandle>) -> BootstrapSta
             .unwrap_or_default()
             .trim()
             .is_empty();
+    // Packaged builds ship their own runtime: there is nothing to bootstrap.
+    let packaged = packaged::is_packaged();
     BootstrapStatus {
-        required: forced
-            || (!dev_without_install_target && !backend::is_workspace_bootstrapped(&repo_dir)),
+        required: !packaged
+            && (forced
+                || (!dev_without_install_target && !backend::is_workspace_bootstrapped(&repo_dir))),
         workspace_dir: repo_dir.display().to_string(),
         installer_available: installer.is_some(),
         installer_path: installer.map(|path| path.display().to_string()),
@@ -447,13 +457,70 @@ fn extract_json_payload(output: &str) -> Result<String, String> {
     Ok(payload.to_string())
 }
 
-fn get_service_status_blocking() -> Result<String, String> {
+fn get_service_status_blocking(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    if packaged::is_packaged() {
+        return packaged_service_status(app_handle);
+    }
     extract_json_payload(&run_service_cli(&["status", "--json"])?)
 }
 
+/// Packaged builds have no Python service: "background service" means the
+/// package's StartupTask launching the app at login, and the backend is the
+/// app's own child. Reported in the shape of `suzent service status --json`;
+/// states the app cannot change (DisabledByUser/ByPolicy) go into `error`.
+#[cfg(windows)]
+fn packaged_service_status(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let task = packaged::startup_task::state()?;
+    let port = app_handle
+        .state::<AppState>()
+        .backend
+        .lock()
+        .ok()
+        .and_then(|backend| backend.as_ref().map(|process| process.port))
+        .filter(|port| *port != 0);
+    let ready = port.is_some_and(|port| BackendProcess::attach_if_healthy(port).is_some());
+    Ok(serde_json::json!({
+        "installed": task.is_enabled(),
+        "autostart": task.is_enabled(),
+        "running": ready,
+        "ready": ready,
+        "pid": null,
+        "port": port,
+        "version": ready.then_some(env!("CARGO_PKG_VERSION")),
+        "uptime_seconds": null,
+        "rss_bytes": null,
+        "error": task.error(),
+    })
+    .to_string())
+}
+
+#[cfg(not(windows))]
+fn packaged_service_status(_app_handle: &tauri::AppHandle) -> Result<String, String> {
+    Err("Start at login is only available in the Windows package.".to_string())
+}
+
+#[cfg(windows)]
+fn set_packaged_startup_task(enabled: bool) -> Result<(), String> {
+    let state = packaged::startup_task::set_enabled(enabled)?;
+    if state.is_enabled() == enabled {
+        return Ok(());
+    }
+    Err(state.error().unwrap_or_else(|| {
+        format!(
+            "Windows left start at login {} (state {state:?}).",
+            if state.is_enabled() { "on" } else { "off" }
+        )
+    }))
+}
+
+#[cfg(not(windows))]
+fn set_packaged_startup_task(_enabled: bool) -> Result<(), String> {
+    Err("Start at login is only available in the Windows package.".to_string())
+}
+
 #[tauri::command]
-async fn get_service_status() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(get_service_status_blocking)
+async fn get_service_status(app_handle: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || get_service_status_blocking(&app_handle))
         .await
         .map_err(|error| format!("Service status task failed: {}", error))?
 }
@@ -472,6 +539,10 @@ fn set_service_enabled_blocking(
     app_handle: tauri::AppHandle,
     enabled: bool,
 ) -> Result<String, String> {
+    if packaged::is_packaged() {
+        set_packaged_startup_task(enabled)?;
+        return get_service_status_blocking(&app_handle);
+    }
     let state = app_handle.state::<AppState>();
     if enabled {
         run_service_cli(&["install"])?;
@@ -508,14 +579,20 @@ fn set_service_enabled_blocking(
             publish_backend_port(&app_handle, port)?;
         }
     }
-    get_service_status_blocking()
+    get_service_status_blocking(&app_handle)
 }
 
 #[tauri::command]
-async fn restart_background_service() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn restart_background_service(app_handle: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if packaged::is_packaged() {
+            return Err(
+                "This Suzent build runs its backend inside the app; restart Suzent to restart it."
+                    .to_string(),
+            );
+        }
         run_service_cli(&["restart"])?;
-        get_service_status_blocking()
+        get_service_status_blocking(&app_handle)
     })
     .await
     .map_err(|error| format!("Service restart task failed: {}", error))?
@@ -558,6 +635,10 @@ fn find_bootstrap_installer_name() -> &'static str {
 }
 
 fn find_bootstrap_installer(app_handle: Option<&tauri::AppHandle>) -> Option<PathBuf> {
+    // The installer/updater helper never runs in packaged (Store) builds.
+    if packaged::is_packaged() {
+        return None;
+    }
     if let Ok(path) = std::env::var("SUZENT_INSTALLER_EXE") {
         let candidate = PathBuf::from(path);
         if candidate.exists() {
@@ -1077,7 +1158,8 @@ fn get_backend_config(
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
 
-    if !backend::is_workspace_bootstrapped(&repo_dir) {
+    // Packaged builds run the bundled runtime and need no workspace.
+    if !packaged::is_packaged() && !backend::is_workspace_bootstrapped(&repo_dir) {
         return Err("bootstrap-required".to_string().into());
     }
 

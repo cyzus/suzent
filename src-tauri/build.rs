@@ -25,5 +25,8 @@ fn main() {
         .expect("Failed to write suzent placeholder");
     }
 
+    // Read with option_env! in backend::find_data_dir (side-by-side test builds).
+    println!("cargo:rerun-if-env-changed=SUZENT_DATA_DIR_NAME");
+
     tauri_build::build()
 }
