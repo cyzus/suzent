@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from pydantic_ai.messages import (
@@ -26,11 +25,6 @@ MAX_REQUEST_CHARS = 4_000
 #: user's rule for the agent itself and blocked the agent's own edits.
 DELEGATION_TOOLS = frozenset({"agent"})
 
-#: First line of a message the agent inbox delivers. The runtime writes the
-#: sender's chat ID last, so the final parenthesised group is the sender even
-#: when a chat title carries brackets of its own.
-_AGENT_MESSAGE_HEADER_RE = re.compile(r"\[Agent message from [^\n]* \(([^()\n]*)\)\]")
-
 
 def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
@@ -49,34 +43,14 @@ def _user_text(part: UserPromptPart) -> str:
     return strip_system_reminders(_prompt_text(part)).strip()
 
 
-def _delegated_task(fragment: str, delegator_chat_ids: frozenset[str]) -> str:
-    """The brief in a delegator's agent message, or "" for any other fragment."""
-    header, _, body = fragment.partition("\n")
-    match = _AGENT_MESSAGE_HEADER_RE.fullmatch(header.strip())
-    if match is None or match.group(1) not in delegator_chat_ids:
-        return ""
-    return body.strip()
-
-
-def _runtime_text(
-    part: UserPromptPart, delegator_chat_ids: frozenset[str]
-) -> tuple[str, str]:
-    """A part's authenticated reminders, split into (delegated task, the rest).
-
-    A worker started by Regent has no user words of its own: Regent's brief is
-    its whole request. Left as plain runtime context, which the reviewer is told
-    authorizes nothing, it read every action the brief asked for as unrequested.
-    """
-    tasks: list[str] = []
-    runtime: list[str] = []
-    for block in iter_reminder_fragments(_prompt_text(part), authenticated_only=True):
-        for fragment in block:
-            fragment = fragment.strip()
-            if task := _delegated_task(fragment, delegator_chat_ids):
-                tasks.append(task)
-            elif fragment:
-                runtime.append(fragment)
-    return "\n\n".join(tasks), "\n\n".join(runtime)
+def _runtime_text(part: UserPromptPart) -> str:
+    return "\n\n".join(
+        fragment.strip()
+        for block in iter_reminder_fragments(
+            _prompt_text(part), authenticated_only=True
+        )
+        for fragment in block
+    )
 
 
 def _is_summary(text: str) -> bool:
@@ -122,18 +96,14 @@ def _inline(text: str) -> str:
     return text.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
 
 
-def _render_message(message: Any, delegator_chat_ids: frozenset[str]) -> str:
+def _render_message(message: Any) -> str:
     if not isinstance(message, (ModelRequest, ModelResponse)):
         return "UNATTRIBUTED CONTEXT: " + _inline(str(message))
     lines = []
     for part in message.parts:
         lines.append(_render_part(part))
-        if isinstance(part, UserPromptPart):
-            task, runtime = _runtime_text(part, delegator_chat_ids)
-            if task:
-                lines.append(f"DELEGATED TASK: {task}")
-            if runtime:
-                lines.append(f"RUNTIME CONTEXT: {runtime}")
+        if isinstance(part, UserPromptPart) and (runtime := _runtime_text(part)):
+            lines.append(f"RUNTIME CONTEXT: {runtime}")
     return "\n".join(_clip(_inline(line), MAX_LINE_CHARS) for line in lines if line)
 
 
@@ -150,9 +120,7 @@ def latest_user_request(messages: list[Any]) -> str:
     return ""
 
 
-def _latest_runtime_context(
-    messages: list[Any], delegator_chat_ids: frozenset[str]
-) -> str:
+def _latest_runtime_context(messages: list[Any]) -> str:
     for message in reversed(messages):
         if not isinstance(message, ModelRequest):
             continue
@@ -162,60 +130,35 @@ def _latest_runtime_context(
             user = _user_text(part)
             if _is_summary(user):
                 continue
-            task, runtime = _runtime_text(part, delegator_chat_ids)
-            if user or task or runtime:
+            runtime = _runtime_text(part)
+            if user or runtime:
                 return runtime
     return ""
 
 
-def _latest_delegated_task(
-    messages: list[Any], delegator_chat_ids: frozenset[str]
-) -> str:
-    """The newest brief from a delegator, which later runtime notes don't replace."""
-    if not delegator_chat_ids:
-        return ""
-    for message in reversed(messages):
-        if not isinstance(message, ModelRequest):
-            continue
-        for part in reversed(message.parts):
-            if isinstance(part, UserPromptPart):
-                task, _ = _runtime_text(part, delegator_chat_ids)
-                if task:
-                    return task
-    return ""
-
-
-def compact_transcript(
-    messages: list[Any], *, delegator_chat_ids: frozenset[str] = frozenset()
-) -> str:
+def compact_transcript(messages: list[Any], *, delegated_task: str = "") -> str:
     """Project recent conversation context into a bounded classifier transcript.
 
     Every line names who wrote it, and the user's current request leads even
     when a long tool run has pushed it out of the recent window: without it the
     only instructions the reviewer could see were ones the agent wrote itself.
-    ``delegator_chat_ids`` are the chats whose agent messages assign this
-    session its task, shown as DELEGATED TASK rather than runtime context.
+    ``delegated_task`` is the brief the session's delegator handed it, which
+    the caller reads from where the runtime recorded its sender.
     """
     headers = [
-        f"{label}: {_clip(_inline(text), MAX_REQUEST_CHARS)}"
+        f"{label}: {_clip(_inline(text.strip()), MAX_REQUEST_CHARS)}"
         for label, text in (
             ("CURRENT USER REQUEST", latest_user_request(messages)),
-            (
-                "CURRENT DELEGATED TASK",
-                _latest_delegated_task(messages, delegator_chat_ids),
-            ),
-            (
-                "CURRENT RUNTIME CONTEXT",
-                _latest_runtime_context(messages, delegator_chat_ids),
-            ),
+            ("CURRENT DELEGATED TASK", delegated_task),
+            ("CURRENT RUNTIME CONTEXT", _latest_runtime_context(messages)),
         )
-        if text
+        if text.strip()
     ]
     header = _clip("\n\n".join(headers), MAX_TRANSCRIPT_CHARS)
     remaining = MAX_TRANSCRIPT_CHARS - len(header)
     parts: list[str] = []
     for message in reversed(messages[-20:]):
-        text = _render_message(message, delegator_chat_ids)
+        text = _render_message(message)
         separator_size = 2 if header or parts else 0
         available = max(0, remaining - separator_size)
         text = _clip(text, available) if available else ""
