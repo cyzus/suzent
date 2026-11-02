@@ -600,7 +600,10 @@ function Get-EnabledPluginExtras {
     $python = Join-Path $SuzentDir ".venv\Scripts\python.exe"
     $script = Join-Path $SuzentDir "src\suzent\plugins\enablement.py"
     if (-not (Test-Path $script)) { return @("social") }  # checkout predates plugins
-    $dataDir = if ($env:SUZENT_DATA_DIR) { $env:SUZENT_DATA_DIR } else { Join-Path $HOME ".suzent" }
+    $dataDir = if ($env:SUZENT_DATA_DIR) { $env:SUZENT_DATA_DIR.Trim() } else { Join-Path $HOME ".suzent" }
+    # Expand a leading ~ as the backend does (os.path.expanduser).
+    if ($dataDir -eq "~") { $dataDir = $HOME }
+    elseif ($dataDir -match '^~[\\/](.*)$') { $dataDir = Join-Path $HOME $Matches[1] }
     $state = Join-Path $dataDir "config\plugins.json"
     $output = & $python $script $SuzentDir $state 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $output) { return @("social") }

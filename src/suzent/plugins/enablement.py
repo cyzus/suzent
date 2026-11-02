@@ -73,12 +73,17 @@ def read_state(path: Path) -> dict[str, dict[str, Any]]:
     return {str(k): v for k, v in plugins.items() if isinstance(v, dict)}
 
 
-def builtin_plugin_extras(checkout: Path, state_file: Path) -> list[str]:
+def builtin_plugin_extras(
+    checkout: Path, state_file: Path, social_file: Path | None = None
+) -> list[str]:
     """Extras of the enabled built-in plugins of ``checkout``.
 
     Only built-in plugins can name Suzent extras; third-party plugins keep
     their packages in their own directory, outside the synced environment.
     A checkout from before plugins existed gets ``social``, as it always did.
+    ``social_file`` is the user's chat-app configuration. It defaults to the
+    checkout's, but a clean checkout of a new release (the updater's prefetch)
+    has none, so the caller passes the live installation's.
     """
     import yaml
 
@@ -86,7 +91,7 @@ def builtin_plugin_extras(checkout: Path, state_file: Path) -> list[str]:
     if not builtin_dir.is_dir():
         return ["social"]
     state = read_state(state_file)
-    social = read_json_dict(checkout / "config" / "social.json")
+    social = read_json_dict(social_file or checkout / "config" / "social.json")
     extras: dict[str, None] = {}
     for manifest_path in sorted(builtin_dir.glob(f"*/{MANIFEST_FILENAME}")):
         try:
@@ -108,10 +113,14 @@ def builtin_plugin_extras(checkout: Path, state_file: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: enablement.py <checkout> <plugins.json>", file=sys.stderr)
+    if len(argv) not in (2, 3):
+        print(
+            "usage: enablement.py <checkout> <plugins.json> [social.json]",
+            file=sys.stderr,
+        )
         return 2
-    print(json.dumps(builtin_plugin_extras(Path(argv[0]), Path(argv[1]))))
+    social = Path(argv[2]) if len(argv) == 3 else None
+    print(json.dumps(builtin_plugin_extras(Path(argv[0]), Path(argv[1]), social)))
     return 0
 
 

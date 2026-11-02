@@ -543,7 +543,9 @@ fn warm_python_cache(paths: &UpdatePaths, target_tag: &str, china: bool) -> Resu
                 command.env("UV_PYTHON", &python);
             }
         };
-        let extras = crate::plugin_extras::enabled_plugin_extras(&checkout, &python);
+        // Target release's manifests, but the live installation's chat-app
+        // configuration: the clean checkout has no config/social.json.
+        let extras = crate::plugin_extras::enabled_plugin_extras(&checkout, &paths.root, &python);
         let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
         if china {
             let mut failure = None;
@@ -1441,7 +1443,7 @@ fn run_uv_sync_mode(root: &Path, development: bool) -> Result<(), String> {
     // does), so a chat app or the camera the user removed loses its packages
     // and one they set up keeps them.
     let extras = crate::plugin_extras::with_dev(
-        crate::plugin_extras::enabled_plugin_extras(root, &service_python(root)),
+        crate::plugin_extras::enabled_plugin_extras(root, root, &service_python(root)),
         development,
     );
     let extras: Vec<&str> = extras.iter().map(String::as_str).collect();

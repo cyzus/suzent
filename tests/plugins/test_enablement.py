@@ -106,6 +106,25 @@ def test_checkout_without_plugins_gets_social(tmp_path):
     assert enablement.builtin_plugin_extras(tmp_path, tmp_path / "x.json") == ["social"]
 
 
+def test_prefetch_reads_the_live_social_config(checkout, tmp_path):
+    """The updater prefetches into a clean checkout of the target release,
+    which has no config/social.json; the live installation's decides."""
+    live = tmp_path / "live-social.json"
+    live.write_text(json.dumps({"telegram": {"bot_token": "123:abc"}}), "utf-8")
+    state = tmp_path / "none.json"
+
+    assert "telegram" not in enablement.builtin_plugin_extras(checkout, state)
+    assert "telegram" in enablement.builtin_plugin_extras(checkout, state, live)
+
+    result = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), str(checkout), str(state), str(live)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "telegram" in json.loads(result.stdout.strip().splitlines()[-1])
+
+
 def test_runs_by_path_without_importing_suzent(checkout, tmp_path):
     """Copied out of the source tree and run in isolated mode: any import of
     Suzent would fail, as it would on an environment not yet synced."""

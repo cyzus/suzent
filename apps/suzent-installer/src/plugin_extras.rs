@@ -27,13 +27,28 @@ pub fn venv_python(root: &Path) -> PathBuf {
 
 /// `plugins.json`, where the user's plugin choices are kept.
 pub fn plugin_state_file() -> PathBuf {
-    env::var("SUZENT_DATA_DIR")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| crate::dirs_home().join(".suzent"))
+    data_dir(env::var("SUZENT_DATA_DIR").ok(), &crate::dirs_home())
         .join("config")
         .join("plugins.json")
+}
+
+/// Suzent's data directory, resolved like `suzent.config.paths.get_data_dir`:
+/// the `SUZENT_DATA_DIR` override with a leading `~` expanded, else `~/.suzent`.
+fn data_dir(override_value: Option<String>, home: &Path) -> PathBuf {
+    let Some(value) = override_value.filter(|value| !value.trim().is_empty()) else {
+        return home.join(".suzent");
+    };
+    let value = value.trim();
+    if value == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    {
+        return home.join(rest);
+    }
+    PathBuf::from(value)
 }
 
 fn legacy() -> Vec<String> {
@@ -44,7 +59,11 @@ fn legacy() -> Vec<String> {
 }
 
 /// The extras of the plugins enabled for `checkout`, computed with `python`.
-pub fn enabled_plugin_extras(checkout: &Path, python: &Path) -> Vec<String> {
+///
+/// `install_root` is the live installation, whose `config/social.json` holds
+/// the user's chat apps. It differs from `checkout` when prefetching into a
+/// clean checkout of the target release, which has no user configuration.
+pub fn enabled_plugin_extras(checkout: &Path, install_root: &Path, python: &Path) -> Vec<String> {
     let script = checkout.join(ENABLEMENT_SCRIPT);
     if !script.is_file() {
         return legacy();
@@ -63,6 +82,7 @@ pub fn enabled_plugin_extras(checkout: &Path, python: &Path) -> Vec<String> {
         .arg(&script)
         .arg(checkout)
         .arg(plugin_state_file())
+        .arg(install_root.join("config").join("social.json"))
         .current_dir(checkout)
         .env_remove("PYTHONPATH")
         .env_remove("PYTHONHOME");
@@ -139,10 +159,35 @@ mod tests {
         let dir = env::temp_dir().join(format!("suzent-extras-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(
-            enabled_plugin_extras(&dir, &dir.join("missing-python")),
+            enabled_plugin_extras(&dir, &dir, &dir.join("missing-python")),
             vec!["social".to_string()]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn data_dir_expands_a_leading_tilde_like_the_backend() {
+        let home = Path::new("/home/suzy");
+        assert_eq!(data_dir(None, home), home.join(".suzent"));
+        assert_eq!(data_dir(Some("  ".into()), home), home.join(".suzent"));
+        assert_eq!(data_dir(Some("~".into()), home), home.to_path_buf());
+        assert_eq!(
+            data_dir(Some("~/suzent-data".into()), home),
+            home.join("suzent-data")
+        );
+        assert_eq!(
+            data_dir(Some("~\\suzent-data".into()), home),
+            home.join("suzent-data")
+        );
+        assert_eq!(
+            data_dir(Some("/srv/suzent".into()), home),
+            PathBuf::from("/srv/suzent")
+        );
+        // Only a leading "~/" is a home reference, as in os.path.expanduser.
+        assert_eq!(
+            data_dir(Some("data/~x".into()), home),
+            PathBuf::from("data/~x")
+        );
     }
 
     #[test]

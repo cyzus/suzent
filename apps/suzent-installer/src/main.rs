@@ -1236,8 +1236,11 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
     if let Err(message) = sync_dependencies(&uv, config, &[]) {
         return StageOutcome::fail(&message);
     }
-    let extras =
-        plugin_extras::enabled_plugin_extras(&config.dir, &plugin_extras::venv_python(&config.dir));
+    let extras = plugin_extras::enabled_plugin_extras(
+        &config.dir,
+        &config.dir,
+        &plugin_extras::venv_python(&config.dir),
+    );
     if extras.is_empty() {
         return StageOutcome::ok();
     }
