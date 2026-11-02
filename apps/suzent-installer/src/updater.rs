@@ -543,9 +543,11 @@ fn warm_python_cache(paths: &UpdatePaths, target_tag: &str, china: bool) -> Resu
                 command.env("UV_PYTHON", &python);
             }
         };
+        let extras = crate::plugin_extras::enabled_plugin_extras(&checkout, &python);
+        let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
         if china {
             let mut failure = None;
-            network::sync_locked_dependencies_via_mirror(&uv, &checkout, &["social"], |command| {
+            network::sync_locked_dependencies_via_mirror(&uv, &checkout, &extras, |command| {
                 prepare(command);
                 match run_checked(command, "prefetch Python packages") {
                     Ok(()) => true,
@@ -558,7 +560,10 @@ fn warm_python_cache(paths: &UpdatePaths, target_tag: &str, china: bool) -> Resu
             failure.map_or(Ok(()), Err)
         } else {
             let mut command = Command::new(&uv);
-            command.args(["sync", "--frozen", "--quiet", "--extra", "social"]);
+            command.args(["sync", "--frozen", "--quiet"]);
+            for extra in &extras {
+                command.args(["--extra", extra]);
+            }
             prepare(&mut command);
             run_checked(&mut command, "prefetch Python packages")
         }
@@ -1432,11 +1437,15 @@ fn verify_backend_version(root: &Path, target_tag: &str) -> Result<(), String> {
 fn run_uv_sync_mode(root: &Path, development: bool) -> Result<(), String> {
     let mut last_error = String::new();
     let uv = super::find_uv_after_install().unwrap_or_else(|| PathBuf::from("uv"));
-    let extras: &[&str] = if development {
-        &["social", "dev"]
-    } else {
-        &["social"]
-    };
+    // Exactly the extras of the plugins the user has on (as `suzent upgrade`
+    // does), so a chat app or the camera the user removed loses its packages
+    // and one they set up keeps them.
+    let extras = crate::plugin_extras::with_dev(
+        crate::plugin_extras::enabled_plugin_extras(root, &service_python(root)),
+        development,
+    );
+    let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
+    let extras = extras.as_slice();
     for attempt in 1..=3 {
         let result = if network::resolved_china_mode() {
             let mut failure = None;

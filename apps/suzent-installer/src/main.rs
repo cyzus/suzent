@@ -2,6 +2,7 @@
 
 mod git_install;
 mod network;
+mod plugin_extras;
 mod updater;
 mod webui;
 
@@ -1229,29 +1230,52 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail("uv is not installed; run the uv stage first.");
     };
 
+    // Core packages first: the environment's Python then works out which
+    // plugin extras the user has on (none on a fresh install; chat apps and
+    // the camera install their packages when the user sets them up).
+    if let Err(message) = sync_dependencies(&uv, config, &[]) {
+        return StageOutcome::fail(&message);
+    }
+    let extras =
+        plugin_extras::enabled_plugin_extras(&config.dir, &plugin_extras::venv_python(&config.dir));
+    if extras.is_empty() {
+        return StageOutcome::ok();
+    }
+    let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
+    match sync_dependencies(&uv, config, &extras) {
+        Ok(()) => StageOutcome::ok(),
+        Err(message) => StageOutcome::fail(&message),
+    }
+}
+
+fn sync_dependencies(uv: &Path, config: &InstallConfig, extras: &[&str]) -> Result<(), String> {
     if config.china_mirror {
-        return if network::sync_locked_dependencies_via_mirror(
-            &uv,
-            &config.dir,
-            &["social"],
-            run_command,
-        ) {
-            StageOutcome::ok()
+        return if network::sync_locked_dependencies_via_mirror(uv, &config.dir, extras, run_command)
+        {
+            Ok(())
         } else {
-            StageOutcome::fail("Installing Python dependencies through the PyPI mirror failed.")
+            Err("Installing Python dependencies through the PyPI mirror failed.".to_string())
         };
     }
-    let mut command = Command::new(&uv);
-    command
-        .args(["sync", "--frozen", "--extra", "social"])
-        .current_dir(&config.dir);
-    configure_mirror_env(&mut command, config);
-
-    if run_command(&mut command) {
-        StageOutcome::ok()
-    } else {
-        StageOutcome::fail("uv sync --frozen --extra social failed.")
+    let mut command = Command::new(uv);
+    command.args(["sync", "--frozen"]);
+    for extra in extras {
+        command.args(["--extra", extra]);
     }
+    command.current_dir(&config.dir);
+    configure_mirror_env(&mut command, config);
+    if run_command(&mut command) {
+        Ok(())
+    } else {
+        Err(format!("uv sync --frozen{} failed.", extra_flags(extras)))
+    }
+}
+
+fn extra_flags(extras: &[&str]) -> String {
+    extras
+        .iter()
+        .map(|extra| format!(" --extra {extra}"))
+        .collect()
 }
 
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
@@ -1686,7 +1710,10 @@ fn print_preview(config: &InstallConfig) {
                 println!("  Clone or update {}", config.repo_url);
                 println!("  Target: {}", config.dir.display());
             }
-            "dependencies" => println!("  uv sync --frozen --extra social"),
+            "dependencies" => {
+                println!("  uv sync --frozen");
+                println!("  plus --extra for each enabled plugin (chat apps, camera)");
+            }
             "ui" if config.branch_explicit => {
                 println!("  Branch: {}", config.branch);
                 println!("  npm ci (frontend and src-tauri)");
