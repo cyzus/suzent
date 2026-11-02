@@ -1794,9 +1794,11 @@ keeps it running when the window is closed.
   and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
   and **New conversation** are at the top, then pinned chats, your three most
   recent with **View all**, and your projects (tap one to open it, and **Load
-  more** for older chats). Search looks through the titles of every chat the
-  phone may read, not only the ones already loaded. On a tablet, everything is
-  in one list on the left, with **Settings** in its toolbar.
+  more** for older chats). Tap **Search chats** to open a search page that looks
+  through the titles of every chat the phone may read, not only the ones
+  already loaded. Going back from a chat you opened there returns to the
+  results, and **Cancel** returns to **Chats**. On a tablet, everything is in
+  one list on the left, with **Settings** in its toolbar and search at the top.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -6684,6 +6686,12 @@ Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
 the settings button and the scheduled section in the sidebar.
+
+On phones the Chats search field is a button that opens a separate search page
+(iOS: a `Route.search` pushed under the conversation; Android: a `searching`
+flag that replaces the tab home). Its query survives opening a result, so back
+from that chat returns to the results; Cancel or back from the page clears it.
+Tablets keep the inline sidebar field.
 
 ### iOS
 
