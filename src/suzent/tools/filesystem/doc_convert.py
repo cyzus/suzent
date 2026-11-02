@@ -278,6 +278,9 @@ def convert_ipynb(path: Path) -> str:
             continue
         if cell.get("cell_type") == "code":
             parts.append(f"```{language}\n{text}\n```")
+        elif cell.get("cell_type") == "raw":
+            # Raw cells are verbatim text, not markdown to be rendered.
+            parts.append(f"```\n{text}\n```")
         else:
             parts.append(text)
     return "\n\n".join(parts)
@@ -305,6 +308,13 @@ def convert_epub(path: Path) -> str:
         }
         title = next((el.text for el in children("title") if el.text), None)
         parts = [f"# {title}"] if title else []
+        meta = [
+            f"**{label}:** {', '.join(values)}"
+            for label, tag in (("Authors", "creator"), ("Language", "language"))
+            if (values := [el.text.strip() for el in children(tag) if el.text])
+        ]
+        if meta:
+            parts.append("\n".join(meta))
         for ref in children("itemref"):
             href = manifest.get(ref.attrib.get("idref"))
             if not href:

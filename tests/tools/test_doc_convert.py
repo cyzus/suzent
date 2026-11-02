@@ -316,6 +316,54 @@ def test_epub_follows_spine_order(tmp_path):
     assert text.index("Gears") < text.index("Sparks")
 
 
+def test_ipynb_raw_cell_is_fenced(tmp_path):
+    path = tmp_path / "r.ipynb"
+    path.write_text(
+        json.dumps({"cells": [{"cell_type": "raw", "source": ["# not a heading"]}]}),
+        encoding="utf-8",
+    )
+    assert doc_convert.convert(path) == "```\n# not a heading\n```"
+
+
+def test_epub_includes_authors_and_language(tmp_path):
+    path = tmp_path / "m.epub"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "META-INF/container.xml",
+            '<container><rootfiles><rootfile full-path="content.opf"/></rootfiles>'
+            "</container>",
+        )
+        z.writestr(
+            "content.opf",
+            '<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata>'
+            "<dc:title>T</dc:title><dc:creator>Ann</dc:creator>"
+            "<dc:creator>Bob</dc:creator><dc:language>en</dc:language>"
+            "</metadata><manifest/><spine/></package>",
+        )
+    text = doc_convert.convert(path)
+    assert "**Authors:** Ann, Bob" in text
+    assert "**Language:** en" in text
+
+
+def test_xlsx_dates_booleans_formulas_and_gaps(tmp_path):
+    import datetime as dt
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["name", "when", "flag"])
+    ws.append(["apple", dt.date(2026, 1, 15), True])
+    ws.append([])
+    ws.append(["cherry", None, None, None, "farcol"])
+    path = tmp_path / "t.xlsx"
+    wb.save(str(path))
+    text = doc_convert.convert(path)
+    assert "| apple | 2026-01-15 00:00:00 | True |" in text
+    assert "farcol" in text
+    assert "NaN" not in text and "Unnamed" not in text
+
+
 def test_zip_lists_and_converts_members(tmp_path):
     inner = _ipynb(tmp_path / "n.ipynb")
     archive = tmp_path / "bundle.zip"
