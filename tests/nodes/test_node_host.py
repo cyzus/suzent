@@ -7,12 +7,19 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from suzent.nodes.local_node import LocalNode
 from suzent.nodes.node_host import (
     NodeHost,
     _HANDLERS,
     handle_speaker_speak,
     handle_camera_snap,
 )
+
+
+@pytest.fixture(autouse=True)
+def _camera_plugin_enabled(monkeypatch):
+    """camera.snap is gated by the camera plugin; these tests assume it is on."""
+    monkeypatch.setattr("suzent.nodes.node_host._enabled_plugins", lambda: {"camera"})
 
 
 class TestCapabilityDecorator:
@@ -37,7 +44,8 @@ class TestCapabilityDecorator:
 class TestNodeHost:
     """Test the NodeHost class."""
 
-    def test_init_defaults(self):
+    @patch("suzent.nodes.node_host._module_available", return_value=True)
+    def test_init_defaults(self, _available):
         host = NodeHost()
         assert host.display_name == "Local PC"
         assert host.node_id is None
@@ -53,7 +61,8 @@ class TestNodeHost:
         assert host.display_name == "My Desktop"
         assert host.platform == "linux"
 
-    def test_build_connect_message(self):
+    @patch("suzent.nodes.node_host._module_available", return_value=True)
+    def test_build_connect_message(self, _available):
         host = NodeHost(display_name="TestNode", platform="test")
         msg = host._build_connect_message()
 
@@ -65,6 +74,29 @@ class TestNodeHost:
         cap_names = [c["name"] for c in msg["capabilities"]]
         assert "speaker.speak" in cap_names
         assert "camera.snap" in cap_names
+
+    def test_camera_hidden_without_opencv(self):
+        with patch("suzent.nodes.node_host._module_available", return_value=False):
+            host = NodeHost()
+            local = LocalNode()
+        assert "speaker.speak" in host._handlers
+        assert "camera.snap" not in host._handlers
+        assert "camera.snap" not in [c.name for c in local.capabilities]
+
+    def test_camera_hidden_when_plugin_disabled_even_with_opencv(self):
+        with (
+            patch("suzent.nodes.node_host._module_available", return_value=True),
+            patch("suzent.nodes.node_host._enabled_plugins", return_value=set()),
+        ):
+            host = NodeHost()
+            local = LocalNode()
+        assert "camera.snap" not in host._handlers
+        assert "camera.snap" not in [c.name for c in local.capabilities]
+
+    def test_camera_advertised_with_opencv(self):
+        with patch("suzent.nodes.node_host._module_available", return_value=True):
+            host = NodeHost()
+        assert "camera.snap" in host._handlers
 
     def test_stop(self):
         host = NodeHost()
