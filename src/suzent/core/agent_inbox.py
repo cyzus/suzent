@@ -381,7 +381,6 @@ class AgentInboxDispatcher:
 
             if runtime == "acp" or subagent_runtime == "acp":
                 from suzent.acp.runtime import run_acp_turn_text
-                from suzent.core.system_reminder import wrap_in_system_reminder
 
                 # A background stream lets the desktop attach to this turn, the
                 # only place an Ask-mode permission request can be answered.
@@ -391,15 +390,10 @@ class AgentInboxDispatcher:
                     with producing_run(stream_queue.replay):
                         text = await run_acp_turn_text(
                             target_chat_id,
-                            wrap_in_system_reminder(
-                                delivered_content, display_trigger=delivered_content
-                            ),
+                            "",
                             config_override,
                             stream_queue,
-                            # This text was wrapped by us a line ago; the flag is
-                            # the provenance, since the token inside it proves
-                            # nothing.
-                            runtime_authored=True,
+                            system_reminders=[delivered_content],
                             errors_out=errors,
                         )
                 finally:
