@@ -325,7 +325,16 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                             if (!connected) updated = updated.copy(activeId = desktop.id)
                             persist(updated)
                             if (!connected) { origin = saved.origin; canReconnect = true }
-                            activate(desktop.id)
+                            try { activate(desktop.id) }
+                            catch (failure: BackendClient.HttpFailure) {
+                                // The generic handler forgets the active desktop, which may still be another one.
+                                if (failure.code != 401 || desktops.activeId == desktop.id) throw failure
+                                removeDesktop(desktop.id)
+                                error = text(R.string.desktop_access_revoked, desktop.name)
+                                pairingInvitation = null
+                                busy = false; pairingCode = null; pairingStatus = null
+                                return@launch
+                            }
                             pairingVersion++
                             pairingInvitation = null
                             busy = false; pairingCode = null; pairingStatus = null
@@ -394,6 +403,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
+            if (desktops.desktop(id) == null) throw CancellationException("desktop forgotten")
             if (id != desktops.activeId || connected) resetSession()
             var updated = desktops.updating(id, saved).copy(activeId = id)
             session.desktopName?.takeIf { it.isNotBlank() }?.let { updated = updated.renaming(id, it) }
@@ -916,6 +926,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun forgetDesktop(id: String) {
         if (isDemo) { exitDemo(); return }
         desktops.desktop(id)?.let { revokeOnDesktop(it.connection) }
+        // A switch still checking this desktop would otherwise activate an id that is no longer saved.
+        if (checkingDesktop == id) switchJob?.cancel()
         if (id != desktops.activeId) { removeDesktop(id); return }
         switchJob?.cancel()
         removeDesktop(id)

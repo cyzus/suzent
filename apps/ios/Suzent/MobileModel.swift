@@ -383,6 +383,7 @@ import SuzentCore
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
+            guard store.desktop(id) != nil else { throw CancellationError() }
             var next = store
             next.update(id, connection: saved)
             if let name = session.desktopName { next.rename(id, to: name) }
@@ -895,6 +896,8 @@ import SuzentCore
     func forgetDesktop(_ id: String, reconnectNext: Bool = true) {
         guard !isDemo, let desktop = store.desktop(id) else { return }
         revokeOnDesktop(desktop.connection)
+        // A switch still checking this desktop would otherwise activate an id that is no longer saved.
+        if checkingDesktopId == id { reconnectTask?.cancel() }
         let wasActive = store.activeId == id
         var next = store
         next.remove(id)
