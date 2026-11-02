@@ -209,6 +209,81 @@ def test_pptx_title_table_and_notes(tmp_path):
     assert "Mention the store build" in result.message
 
 
+def test_pptx_groups_charts_and_missing_notes_placeholder(tmp_path):
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.util import Inches
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    group = slide.shapes.add_group_shape()
+    box = group.shapes.add_textbox(Inches(1), Inches(1), Inches(3), Inches(1))
+    box.text_frame.text = "Grouped caption"
+    data = CategoryChartData()
+    data.categories = ["Q1", "Q2"]
+    data.add_series("Revenue", (10, 12.5))
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(3), Inches(4), Inches(3), data
+    ).chart
+    chart.has_title = True
+    chart.chart_title.text_frame.text = "Sales"
+    # A notes slide whose text placeholder was deleted.
+    placeholder = slide.notes_slide.notes_placeholder
+    placeholder._element.getparent().remove(placeholder._element)
+    path = tmp_path / "deck.pptx"
+    prs.save(str(path))
+
+    result = _read(tmp_path, path)
+
+    assert result.success, result.message
+    assert "Grouped caption" in result.message
+    assert "### Chart: Sales" in result.message
+    assert "| Category | Revenue |" in result.message
+    assert "| Q1 | 10 |" in result.message
+    assert "| Q2 | 12.5 |" in result.message
+
+
+def test_pptx_picture_alt_text(tmp_path):
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08"
+        b"\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00"
+        b"\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    image = tmp_path / "dot.png"
+    image.write_bytes(png)
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    picture = slide.shapes.add_picture(str(image), Inches(1), Inches(1))
+    picture._element._nvXxPr.cNvPr.set("descr", "Org chart [draft]")
+    path = tmp_path / "pic.pptx"
+    prs.save(str(path))
+
+    result = _read(tmp_path, path)
+
+    assert "![Org chart draft](" in result.message
+
+
+def test_xls_cells_are_typed(tmp_path):
+    import xlrd
+    from xlrd.sheet import Cell
+
+    value = doc_convert._xls_value
+    assert value(Cell(xlrd.XL_CELL_DATE, 45658.0), 0) == "2025-01-01"
+    assert value(Cell(xlrd.XL_CELL_DATE, 0.5), 0) == "12:00:00"
+    assert value(Cell(xlrd.XL_CELL_DATE, 45658.25), 0) == "2025-01-01 06:00:00"
+    assert value(Cell(xlrd.XL_CELL_BOOLEAN, 1), 0) is True
+    assert value(Cell(xlrd.XL_CELL_ERROR, 0x07), 0) == "#DIV/0!"
+    assert value(Cell(xlrd.XL_CELL_EMPTY, ""), 0) is None
+    assert value(Cell(xlrd.XL_CELL_NUMBER, 3.0), 0) == 3.0
+    assert doc_convert.markdown_table([["d", "ok"], ["2025-01-01", True]]) == (
+        "| d | ok |\n| --- | --- |\n| 2025-01-01 | True |"
+    )
+
+
 def test_xlsx_sheets_as_tables(tmp_path):
     result = _read(tmp_path, _xlsx(tmp_path / "a.xlsx"))
     assert result.success, result.message

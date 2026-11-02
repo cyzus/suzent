@@ -82,6 +82,72 @@ def convert_docx(path: Path) -> str:
     return _html_to_markdown(result.value)
 
 
+def _reading_order(shapes) -> list:
+    """Top to bottom, then left to right (shapes without a position first)."""
+    return sorted(
+        shapes,
+        key=lambda s: (
+            float("-inf") if s.top is None else s.top,
+            float("-inf") if s.left is None else s.left,
+        ),
+    )
+
+
+def _chart_markdown(chart) -> str:
+    """A chart as its title plus a Category x Series table of values."""
+    try:
+        heading = "### Chart"
+        if chart.has_title and chart.chart_title.has_text_frame:
+            heading += f": {chart.chart_title.text_frame.text}"
+        categories = list(chart.plots[0].categories)
+        series = list(chart.series)
+        rows: list[list[object]] = [["Category", *(s.name for s in series)]]
+        for index, category in enumerate(categories):
+            rows.append(
+                [
+                    category,
+                    *(
+                        s.values[index] if index < len(s.values) else None
+                        for s in series
+                    ),
+                ]
+            )
+        return f"{heading}\n\n{markdown_table(rows)}"
+    except Exception:  # unsupported plot types raise from python-pptx
+        return "[unsupported chart]"
+
+
+def _shape_parts(shape, title) -> list[str]:
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        return [
+            part
+            for child in _reading_order(shape.shapes)
+            for part in _shape_parts(child, title)
+        ]
+    if getattr(shape, "has_chart", False) and shape.has_chart:
+        return [_chart_markdown(shape.chart)]
+    if getattr(shape, "has_table", False) and shape.has_table:
+        rows = [[cell.text for cell in row.cells] for row in shape.table.rows]
+        table = markdown_table(rows)
+        return [table] if table else []
+    if shape.shape_type == MSO_SHAPE_TYPE.PICTURE or (
+        shape.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER and hasattr(shape, "image")
+    ):
+        try:
+            alt = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
+        except Exception:
+            alt = ""
+        alt = " ".join((alt or shape.name).replace("[", " ").replace("]", " ").split())
+        return [f"![{alt}]({''.join(c for c in shape.name if c.isalnum())}.jpg)"]
+    if shape.has_text_frame:
+        text = shape.text_frame.text.strip()
+        if text:
+            return [f"# {text}" if shape == title else text]
+    return []
+
+
 def convert_pptx(path: Path) -> str:
     from pptx import Presentation
 
@@ -89,19 +155,12 @@ def convert_pptx(path: Path) -> str:
     for number, slide in enumerate(Presentation(str(path)).slides, start=1):
         parts.append(f"<!-- Slide number: {number} -->")
         title = slide.shapes.title
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                text = shape.text_frame.text.strip()
-                if not text:
-                    continue
-                parts.append(f"# {text}" if shape == title else text)
-            elif getattr(shape, "has_table", False) and shape.has_table:
-                rows = [[cell.text for cell in row.cells] for row in shape.table.rows]
-                table = markdown_table(rows)
-                if table:
-                    parts.append(table)
+        for shape in _reading_order(slide.shapes):
+            parts.extend(_shape_parts(shape, title))
         if slide.has_notes_slide:
-            notes = slide.notes_slide.notes_text_frame.text.strip()
+            # A notes slide can lack its text placeholder.
+            frame = slide.notes_slide.notes_text_frame
+            notes = frame.text.strip() if frame is not None else ""
             if notes:
                 parts.append(f"### Notes:\n{notes}")
         parts.append("")
@@ -135,12 +194,42 @@ def convert_xlsx(path: Path) -> str:
         workbook.close()
 
 
+def _xls_value(cell, datemode: int) -> object:
+    """A legacy-Excel cell as what it means, not its raw storage."""
+    import xlrd
+
+    if cell.ctype == xlrd.XL_CELL_DATE:
+        try:
+            value = xlrd.xldate_as_datetime(cell.value, datemode)
+        except (ValueError, OverflowError, xlrd.xldate.XLDateError):
+            return cell.value
+        # A whole-day value is a date; a value under one day is a time.
+        if cell.value == int(cell.value):
+            return value.date().isoformat()
+        if cell.value < 1:
+            return value.time().isoformat()
+        return value.isoformat(sep=" ")
+    if cell.ctype == xlrd.XL_CELL_BOOLEAN:
+        return bool(cell.value)
+    if cell.ctype == xlrd.XL_CELL_ERROR:
+        return xlrd.error_text_from_code.get(cell.value, "#ERROR")
+    if cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+        return None
+    return cell.value
+
+
 def convert_xls(path: Path) -> str:
     import xlrd
 
     book = xlrd.open_workbook(str(path))
     return "\n\n".join(
-        _sheet_markdown(sheet.name, (sheet.row_values(i) for i in range(sheet.nrows)))
+        _sheet_markdown(
+            sheet.name,
+            (
+                [_xls_value(cell, book.datemode) for cell in sheet.row(i)]
+                for i in range(sheet.nrows)
+            ),
+        )
         for sheet in book.sheets()
     )
 
