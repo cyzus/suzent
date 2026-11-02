@@ -328,7 +328,7 @@ private fun SearchPage(model: MobileModel, open: (Chat) -> Unit, close: () -> Un
         if (term.isNotEmpty()) { kotlinx.coroutines.delay(300); model.loadPage(query) }
     }
     val focus = LocalFocusManager.current
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding().navigationBarsPadding().imePadding()) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = search, onValueChange = { search = it },
                 placeholder = { Text(stringResource(R.string.search_chats)) },
