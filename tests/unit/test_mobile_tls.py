@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import hashlib
+import socket
 import ssl
 from pathlib import Path
+from types import SimpleNamespace
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -12,7 +14,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from suzent.mobile.tls import DeviceIdentity, MobileTLS
+from suzent.mobile.tls import DeviceIdentity, MobileTLS, local_hosts
 
 
 def test_identity_persists_and_leaf_renewal_preserves_trust(tmp_path: Path) -> None:
@@ -46,6 +48,42 @@ def test_corrupt_identity_is_not_silently_replaced(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         DeviceIdentity(tmp_path)
     assert (tmp_path / "identity.pem").read_text() == "broken"
+
+
+def test_tailscale_address_survives_the_origin_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import psutil
+
+    import suzent.nodes.discovery as discovery
+
+    interfaces = {
+        "WLAN": "172.16.5.50",
+        "Local Area Connection* 1": "169.254.87.65",
+        "Local Area Connection* 2": "169.254.59.210",
+        "Ethernet": "169.254.153.190",
+        "vEthernet (WSL)": "172.18.64.1",
+        "Docker": "172.17.0.1",
+        "Hyper-V": "172.19.0.1",
+        "Tailscale": "100.64.50.42",
+        "Loopback": "127.0.0.1",
+    }
+    monkeypatch.setattr(
+        psutil,
+        "net_if_addrs",
+        lambda: {
+            name: [SimpleNamespace(family=socket.AF_INET, address=ip)]
+            for name, ip in interfaces.items()
+        },
+    )
+    monkeypatch.setattr(discovery, "_local_ip", lambda: "172.16.5.50")
+    monkeypatch.setattr(socket, "gethostname", lambda: "Jessair")
+
+    hosts = local_hosts()
+
+    assert hosts[:3] == ["172.16.5.50", "Jessair.local", "100.64.50.42"]
+    assert not any(host.startswith("169.254.") for host in hosts)
+    assert hosts[-1] == "127.0.0.1"
 
 
 async def test_tls_gateway_validates_identity_and_limits_routes(tmp_path: Path) -> None:

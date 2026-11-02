@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Phones can now pair over Tailscale when the desktop has many network adapters, instead of failing with a trusted-connection error."}
