@@ -1,8 +1,8 @@
 """
 ReadFileTool - Read files from the filesystem.
 
-Supports reading text files directly and converting various file formats
-(PDF, DOCX, XLSX, images, etc.) to markdown via MarkItDown.
+Supports reading text files directly and converting documents (PDF, DOCX,
+PPTX, XLSX, ...) to markdown via :mod:`suzent.tools.filesystem.doc_convert`.
 """
 
 from pathlib import Path
@@ -13,6 +13,7 @@ from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.filesystem import doc_convert
 from suzent.tools.filesystem.file_tool_utils import (
     detect_text_encoding,
     get_or_create_path_resolver,
@@ -47,10 +48,6 @@ class ReadFileTool(Tool):
     )
     guidance_priority = 20
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._converter = None
-
     def forward(
         self,
         ctx: RunContext[AgentDeps],
@@ -82,7 +79,7 @@ class ReadFileTool(Tool):
 
         Reads up to 2000 lines by default. Results include line numbers (cat -n format).
         For large files use offset+limit to read in chunks.
-        Supports text files, documents (PDF, DOCX, XLSX → markdown), and images.
+        Supports text files and documents (PDF, DOCX, PPTX, XLSX → markdown).
         This tool reads files only; to list a directory use bash.
 
         Args:
@@ -158,9 +155,11 @@ class ReadFileTool(Tool):
 
             if ext in text_extensions:
                 return self._read_text_file(resolved_path, offset, limit)
-            else:
-                # Use MarkItDown for other formats
+            if ext in doc_convert.CONVERTERS:
                 return self._convert_file(resolved_path, offset, limit)
+            # Anything else (source code in other languages, dotfiles, ...)
+            # is read as text when it is text; binary files get a clear error.
+            return self._read_text_file(resolved_path, offset, limit)
 
         except ValueError as e:
             return ToolResult.error_result(
@@ -180,107 +179,100 @@ class ReadFileTool(Tool):
             raw = path.read_bytes()
             encoding = detect_text_encoding(raw)
             if is_binary_content(raw, encoding):
-                return ToolResult.error_result(
-                    ToolErrorCode.BINARY_FILE,
-                    "File appears to be binary, cannot read as text",
-                )
+                return self._binary_error(path)
 
             try:
                 content = raw.decode(encoding)
             except UnicodeDecodeError:
-                return ToolResult.error_result(
-                    ToolErrorCode.BINARY_FILE,
-                    "File appears to be binary, cannot read as text",
-                )
+                return self._binary_error(path)
 
-            lines = content.splitlines(keepends=True)
-
-            total_lines = len(lines)
-
-            # offset is 1-based; default to line 1
-            start = max((offset or 1) - 1, 0)
-            if start >= total_lines:
-                return ToolResult.success_result(
-                    f"(File has {total_lines} lines, offset {offset} is beyond end)",
-                    metadata={"total_lines": total_lines},
-                )
-
-            # Apply limit; default to 2000 lines
-            effective_limit = limit if limit is not None else 2000
-            end = min(start + effective_limit, total_lines)
-
-            selected_lines = lines[start:end]
-
-            # Format with line numbers (cat -n style, 1-based)
-            numbered = "".join(
-                f"{start + i + 1}\t{line}" for i, line in enumerate(selected_lines)
-            )
-
-            truncated = end < total_lines
-            header = f"[Lines {start + 1}-{end} of {total_lines}]"
-            if truncated:
-                header += f" — use offset={end + 1} to read more"
-            header += "\n"
-
-            return ToolResult.success_result(
-                header + numbered,
-                metadata={
-                    "total_lines": total_lines,
-                    "start_line": start + 1,
-                    "end_line": end,
-                    "truncated": truncated,
-                },
-            )
+            return self._paginate(content, offset, limit)
 
         except UnicodeDecodeError:
-            return ToolResult.error_result(
-                ToolErrorCode.BINARY_FILE,
-                "File appears to be binary, cannot read as text",
+            return self._binary_error(path)
+
+    @staticmethod
+    def _binary_error(path: Path) -> ToolResult:
+        supported = ", ".join(sorted(doc_convert.CONVERTERS))
+        return ToolResult.error_result(
+            ToolErrorCode.BINARY_FILE,
+            f"File appears to be binary, cannot read as text: {path.name}. "
+            f"Documents read_file converts: {supported}. "
+            "For images, use an image or vision tool.",
+        )
+
+    @staticmethod
+    def _paginate(
+        content: str,
+        offset: Optional[int],
+        limit: Optional[int],
+        extra_metadata: Optional[dict] = None,
+    ) -> ToolResult:
+        """Return ``content`` as numbered lines (cat -n style, 1-based)."""
+        lines = content.splitlines(keepends=True)
+        total_lines = len(lines)
+
+        # offset is 1-based; default to line 1
+        start = max((offset or 1) - 1, 0)
+        if start >= total_lines:
+            return ToolResult.success_result(
+                f"(File has {total_lines} lines, offset {offset} is beyond end)",
+                metadata={"total_lines": total_lines, **(extra_metadata or {})},
             )
+
+        # Apply limit; default to 2000 lines
+        effective_limit = limit if limit is not None else 2000
+        end = min(start + effective_limit, total_lines)
+
+        numbered = "".join(
+            f"{start + i + 1}\t{line}" for i, line in enumerate(lines[start:end])
+        )
+
+        truncated = end < total_lines
+        header = f"[Lines {start + 1}-{end} of {total_lines}]"
+        if truncated:
+            header += f" — use offset={end + 1} to read more"
+        header += "\n"
+
+        return ToolResult.success_result(
+            header + numbered,
+            metadata={
+                "total_lines": total_lines,
+                "start_line": start + 1,
+                "end_line": end,
+                "truncated": truncated,
+                **(extra_metadata or {}),
+            },
+        )
 
     def _convert_file(
         self, path: Path, offset: Optional[int], limit: Optional[int]
     ) -> ToolResult:
-        """Convert file to markdown using MarkItDown."""
+        """Convert a document (PDF, DOCX, XLSX, ...) to markdown, then paginate."""
         try:
-            if self._converter is None:
-                from markitdown import MarkItDown
-
-                logger.info("Initializing MarkItDown converter (lazy load)...")
-                self._converter = MarkItDown()
-
             logger.info(f"Converting file to markdown: {path}")
-            result = self._converter.convert(str(path))
-
-            # Get content from result
-            if hasattr(result, "text_content"):
-                content = result.text_content
-            else:
-                content = str(result)
-
-            if not content or not content.strip():
-                return ToolResult.success_result(
-                    f"Warning: File converted but appears empty: {path.name}"
-                )
-
-            # Apply offset/limit to converted content
-            if offset is not None or limit is not None:
-                lines = content.split("\n")
-                start = offset or 0
-                if limit:
-                    lines = lines[start : start + limit]
-                else:
-                    lines = lines[start:]
-                content = "\n".join(lines)
-
-            logger.info(f"Successfully converted: {path.name} ({len(content)} chars)")
-            return ToolResult.success_result(
-                content,
-                metadata={"format": path.suffix, "content_length": len(content)},
+            content = doc_convert.convert(path)
+        except ImportError as e:
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Cannot convert {path.suffix} files: missing library ({e.name}).",
             )
-
         except Exception as e:
             logger.error(f"Error converting file {path}: {e}")
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED, f"Error converting file: {str(e)}"
             )
+
+        if not content or not content.strip():
+            return ToolResult.success_result(
+                f"Warning: File converted but appears empty: {path.name}",
+                metadata={"format": path.suffix, "content_length": 0},
+            )
+
+        logger.info(f"Converted {path.name} ({len(content)} chars)")
+        return self._paginate(
+            content,
+            offset,
+            limit,
+            extra_metadata={"format": path.suffix, "content_length": len(content)},
+        )

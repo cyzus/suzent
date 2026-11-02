@@ -40,9 +40,16 @@ dependencies = [
     "pyyaml>=6.0",
     "loguru>=0.7.0",
     "pydantic>=2.0",
-    # Document formats read_file converts; [all] would add audio transcription,
-    # YouTube and Azure Document Intelligence, which nothing here uses.
-    "markitdown[pdf,docx,pptx,xlsx,xls,outlook]",
+    # Document converters for read_file (tools/filesystem/doc_convert.py),
+    # called directly instead of through MarkItDown, whose file-type detector
+    # (magika -> onnxruntime -> sympy) and pandas spreadsheet path cost ~170 MB.
+    "pdfminer.six>=20251107",
+    "mammoth>=1.11.0",
+    "python-pptx>=1.0.2",
+    "openpyxl>=3.1.5",
+    "xlrd>=2.0.1",
+    "olefile>=0.47",
+    "markdownify>=1.2",
     # SpeechOutput decodes compressed TTS audio (MP3/OGG/AAC) with pydub. It
     # used to arrive via markitdown[all]; declare it so trimming extras cannot
     # drop it again. audioop left the stdlib in 3.13.
