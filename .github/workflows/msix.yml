@@ -105,7 +105,7 @@ jobs:
           uv pip install --python $env:PY --break-system-packages --no-deps .
           & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok')"
 
-      - name: Strip files that break signing, tests and pip
+      - name: Strip files that break signing, and test suites
         shell: pwsh
         run: |
           $rt = "$env:PKG\runtime\python"
@@ -120,9 +120,9 @@ jobs:
           foreach ($p in $paths) {
             if (Test-Path "$rt\$p") { Remove-Item -Recurse -Force "$rt\$p"; "removed $p" }
           }
-          # pip is unused at runtime (plugins install with uv into ~/.suzent).
-          & $env:PY -m pip uninstall -y pip 2>$null
-          Get-ChildItem "$rt\Lib\site-packages" -Directory -Filter 'pip*' | Remove-Item -Recurse -Force
+          # pip stays: without uv on the user's machine, plugins/deps.py installs
+          # third-party plugin dependencies with `python -m pip install --target`.
+          & $env:PY -m pip --version
           # _test*.pyd extension modules are CPython's own test helpers.
           Get-ChildItem "$rt\DLLs" -Filter '_test*.pyd' | Remove-Item -Force
           & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok after strip')"
