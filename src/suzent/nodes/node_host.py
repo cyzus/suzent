@@ -8,6 +8,7 @@ Usage:
 """
 
 import asyncio
+import importlib.util
 import json
 import logging
 import signal
@@ -43,19 +44,82 @@ def capability(
     name: str,
     description: str = "",
     params_schema: dict[str, str] | None = None,
+    requires_module: str | None = None,
+    requires_plugin: str | None = None,
 ):
-    """Decorator to register a command handler as a node capability."""
+    """Decorator to register a command handler as a node capability.
+
+    ``requires_module`` names an optional import the handler needs (e.g.
+    ``cv2``); ``requires_plugin`` names the plugin that switches it on (e.g.
+    ``camera``). Unless both are satisfied the capability is not offered:
+    removing the plugin turns it off at once, even while its packages remain
+    installed until the next upgrade.
+    """
 
     def decorator(fn: Callable[..., Coroutine[Any, Any, dict[str, Any]]]):
         fn._capability_meta = {  # type: ignore[attr-defined]
             "name": name,
             "description": description,
             "params_schema": params_schema or {},
+            "requires_module": requires_module,
+            "requires_plugin": requires_plugin,
         }
         _HANDLERS[name] = fn
         return fn
 
     return decorator
+
+
+def _module_available(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
+def _enabled_plugins() -> set[str]:
+    """Ids of enabled plugins. Fails closed: hardware stays off on error."""
+    try:
+        from suzent.plugins import get_plugin_manager
+
+        return get_plugin_manager().enabled_ids()
+    except Exception as e:
+        logger.warning(
+            "Could not read plugin state; plugin-gated capabilities off: %s", e
+        )
+        return set()
+
+
+def available_handlers(
+    capabilities: list[str] | None = None,
+) -> dict[str, Callable[..., Coroutine[Any, Any, dict[str, Any]]]]:
+    """Handlers this machine can actually serve, optionally filtered by name.
+
+    A capability whose optional dependency is missing, or whose plugin is not
+    enabled, is left out, so a node never advertises (or runs) it.
+    """
+    handlers = {}
+    enabled: set[str] | None = None
+    for name, fn in _HANDLERS.items():
+        if capabilities and name not in capabilities:
+            continue
+        meta = fn._capability_meta  # type: ignore[attr-defined]
+        required = meta.get("requires_module")
+        if required and not _module_available(required):
+            logger.info(
+                "Skipping capability %s: optional module %r is not installed",
+                name,
+                required,
+            )
+            continue
+        plugin = meta.get("requires_plugin")
+        if plugin:
+            if enabled is None:
+                enabled = _enabled_plugins()
+            if plugin not in enabled:
+                logger.info(
+                    "Skipping capability %s: plugin %r is not enabled", name, plugin
+                )
+                continue
+        handlers[name] = fn
+    return handlers
 
 
 # ─── Built-in handlers ───────────────────────────────────────────────
@@ -104,6 +168,8 @@ async def handle_speaker_speak(params: dict[str, Any]) -> dict[str, Any]:
     params_schema={
         "format": "(optional) Image format: 'png' or 'jpg' (default: png)",
     },
+    requires_module="cv2",
+    requires_plugin="camera",
 )
 async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     """Capture a frame from the default camera."""
@@ -112,7 +178,12 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
         fmt = "png"
 
     def _capture() -> str:
-        import cv2
+        try:
+            import cv2
+        except ImportError as e:
+            raise RuntimeError(
+                "Camera support is not installed. Run `suzent plugin install camera`."
+            ) from e
 
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
@@ -213,14 +284,30 @@ class NodeHost:
         self.last_error: str | None = None
 
         # Filter handlers to requested capabilities
-        if capabilities:
-            self._handlers = {k: v for k, v in _HANDLERS.items() if k in capabilities}
-        else:
-            self._handlers = dict(_HANDLERS)
+        self._capability_filter = capabilities
+        self._handlers = available_handlers(capabilities)
+        self._ws = None  # the live connection, while one is open
 
     @property
     def node_id(self) -> str | None:
         return self._node_id
+
+    async def refresh_capabilities(self) -> list[str]:
+        """Recompute capabilities, e.g. after a plugin installed OpenCV.
+
+        The server only learns capabilities from the connect handshake, so when
+        they change on a live connection this closes it; ``run()`` reconnects
+        at once and the new handshake advertises the new set.
+        Returns the capability names now advertised.
+        """
+        importlib.invalidate_caches()  # find_spec caches directory listings
+        handlers = available_handlers(self._capability_filter)
+        changed = handlers.keys() != self._handlers.keys()
+        self._handlers = handlers
+        if changed and self._ws is not None:
+            logger.info("Capabilities changed; reconnecting to re-advertise them")
+            await self._ws.close()
+        return list(handlers)
 
     def _build_connect_message(self) -> dict[str, Any]:
         """Build the handshake message."""
@@ -295,6 +382,7 @@ class NodeHost:
         self.status = "connecting"
 
         async with websockets.connect(self.gateway_url) as ws:
+            self._ws = ws  # cleared by run() once this connection ends
             # Handshake — may receive a "pending" while awaiting operator
             # approval (approve mode) before "connected" or "error".
             await ws.send(json.dumps(self._build_connect_message()))
@@ -369,7 +457,10 @@ class NodeHost:
 
         while not self._stop:
             try:
-                await self.run_once()
+                try:
+                    await self.run_once()
+                finally:
+                    self._ws = None
             except NodeAuthError as e:
                 self.status = "error"
                 self.last_error = str(e)

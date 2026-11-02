@@ -1,0 +1,6 @@
+id: camera
+name: Camera
+version: 1.0.0
+description: Let the agent take photos with this computer's webcam (camera.snap on a local node).
+aliases: [webcam]
+extras: [camera]

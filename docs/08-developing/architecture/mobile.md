@@ -153,7 +153,7 @@ list so the stop control cannot retain a stale list flag.
    Invoke `device.status` from the desktop to verify the phone role.
 5. Backgrounding disconnects Node. Foregrounding reconnects an enabled Node.
    Disabling Node closes the connection but retains its pairing credential.
-   Forgetting the connection removes local credentials; revoke remotely on desktop.
+   Forgetting the connection asks the desktop to revoke the device, then removes local credentials.
 
 ## Limits
 
@@ -401,9 +401,13 @@ change rotate it while preserving the desktop device entry. The previous token i
 retired after the replacement is saved securely. Failed or interrupted rotation
 retains recovery credentials and can resume on reconnect.
 
-Forgetting the connection or clearing app storage removes that proof. Those phones
-pair as new installations; revoke stale entries explicitly from desktop. Existing
-duplicates are not deleted based on device names.
+Forgetting the connection revokes the device on the desktop when it is reachable,
+then removes that proof. Phones also send a random per-installation ID on claim;
+the desktop stores only its hash. A new grant for a known installation keeps the
+old device ID and stays provisional until the phone confirms it, which retires the
+stale grant. The ID survives forgetting the connection (Android app storage; iOS
+keychain, this device only), but not clearing Android app data. Device names are
+never used to match phones.
 
 ## Mobile versions and CI builds
 

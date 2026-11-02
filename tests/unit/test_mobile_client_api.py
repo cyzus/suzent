@@ -1554,3 +1554,20 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
     )
     assert sent[0]["chat_id"] == focal.id
     assert sent[0]["config"]["platform"] == "focal"
+
+
+def test_forget_pairing_revokes_only_the_calling_device(setup_client):
+    client, store = setup_client
+    assert client.post("/mobile/client/pairing/forget", json={}).status_code == 401
+    kept = grant(store, chat_ids=["shared"])
+    forgotten = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {forgotten['token']}"
+    assert client.post("/mobile/client/pairing/forget", json={}).status_code == 200
+    assert store.verify(forgotten["token"]) is None
+    assert store.verify(kept["token"]) is not None
+    assert [d["device_id"] for d in store.devices()] == [kept["device"]["device_id"]]
+
+
+def test_capabilities_advertise_installation_id_for_claims(setup_client):
+    client, _ = setup_client
+    assert client.get("/mobile/capabilities").json()["installation_id"] == 1

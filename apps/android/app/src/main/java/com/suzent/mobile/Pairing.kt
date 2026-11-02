@@ -38,18 +38,23 @@ fun validateMobileCapabilities(json: JSONObject, pairing: Boolean = false) {
     }
 }
 
-data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false, val tls: DeviceTrust? = null) {
+data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false, val tls: DeviceTrust? = null, val tlsFingerprint: String? = null) {
+    val secure: Boolean get() = tls != null || tlsFingerprint != null
+
     companion object {
         fun parse(text: String, allowHttp: Boolean = false, now: Double = System.currentTimeMillis() / 1000.0): PairingInvitation {
             try {
                 require(text.toByteArray().size <= 4096)
                 val json = JSONObject(text)
-                if (json.getString("type") != "suzent.mobile" || json.opt("pairing_protocol") !in listOf(1, 2))
+                val protocol = json.opt("pairing_protocol")
+                if (json.getString("type") != "suzent.mobile" || protocol !in listOf(1, 2, 3))
                     throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
                 if (json.has("approval") && json.getString("approval") != "phone")
                     throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
                 val tls = json.optJSONObject("tls")?.let { DeviceTrust.parse(it) }
-                require((json.opt("pairing_protocol") == 2) == (tls != null))
+                require((protocol == 2) == (tls != null))
+                val fingerprint = if (json.has("tls_fingerprint")) json.getString("tls_fingerprint") else null
+                require((protocol == 3) == (fingerprint != null) && (fingerprint == null || fingerprint.matches(Regex("[a-f0-9]{64}"))))
                 val expiry = json.getDouble("expires_at")
                 require(expiry.isFinite())
                 if (expiry <= now) throw PairingFailure(PairingFailure.Reason.EXPIRED)
@@ -59,13 +64,13 @@ data class PairingInvitation(val origin: String, val id: String, val secret: Str
                 val candidates = (listOf(origin) + (0 until additional.length()).map { additional.getString(it) }).distinct()
                 require(candidates.size <= 6)
                 candidates.forEach { Backend.parse(it, allowHttp = true) }
-                require(tls == null || candidates.all { Backend.parse(it, allowHttp = true).origin.isHttps })
+                require(protocol == 1 || candidates.all { Backend.parse(it, allowHttp = true).origin.isHttps })
                 val usable = candidates.filter { allowHttp || Backend.parse(it, allowHttp = true).origin.isHttps }
                 require(usable.isNotEmpty())
                 val id = json.getString("pairing_id")
                 val secret = json.getString("invitation")
                 require(id.matches(Regex("[a-f0-9]{32}")) && secret.matches(Regex("[A-Za-z0-9_-]{40,64}")))
-                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone", tls)
+                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone", tls, fingerprint)
             } catch (failure: PairingFailure) { throw failure }
             catch (_: Exception) { throw PairingFailure(PairingFailure.Reason.INVALID) }
         }
@@ -94,7 +99,7 @@ suspend fun <T> resolvePairingInvitation(invitation: PairingInvitation, probe: s
                 return@coroutineScope result
             }
         }
-        throw PairingFailure(if (invitation.tls == null) PairingFailure.Reason.UNREACHABLE else PairingFailure.Reason.SECURE_CONNECTION)
+        throw PairingFailure(if (!invitation.secure) PairingFailure.Reason.UNREACHABLE else PairingFailure.Reason.SECURE_CONNECTION)
     } finally {
         jobs.forEach { it.cancel() }
         results.close()

@@ -159,9 +159,11 @@ by name with what it may do. Click **Edit permissions**, pick another choice
 signs out and asks you to pair again.
 
 **Forget this desktop** in the app's **Settings** (or **Forget connection** in
-**Connection help**) only removes that computer's connection from the phone;
-other paired computers stay.
-Also click **Revoke access** on the computer so its access is gone too.
+**Connection help**) removes that computer from the phone and also asks the
+computer to revoke the phone's access; other paired computers stay. If the
+computer can't be reached at that moment, click **Revoke access** there
+yourself. Pairing the same phone again replaces its old entry instead of
+adding a second one.
 
 ## Limits
 
