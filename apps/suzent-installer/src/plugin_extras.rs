@@ -26,10 +26,18 @@ pub fn venv_python(root: &Path) -> PathBuf {
 }
 
 /// `plugins.json`, where the user's plugin choices are kept.
-pub fn plugin_state_file() -> PathBuf {
-    data_dir(env::var("SUZENT_DATA_DIR").ok(), &crate::dirs_home())
-        .join("config")
-        .join("plugins.json")
+///
+/// A relative `SUZENT_DATA_DIR` is resolved against `install_root`, where the
+/// backend runs, not against wherever this helper's subprocess runs (a
+/// temporary release worktree during prefetch).
+pub fn plugin_state_file(install_root: &Path) -> PathBuf {
+    let dir = data_dir(env::var("SUZENT_DATA_DIR").ok(), &crate::dirs_home());
+    let dir = if dir.is_absolute() {
+        dir
+    } else {
+        install_root.join(dir)
+    };
+    dir.join("config").join("plugins.json")
 }
 
 /// Suzent's data directory, resolved like `suzent.config.paths.get_data_dir`:
@@ -81,7 +89,7 @@ pub fn enabled_plugin_extras(checkout: &Path, install_root: &Path, python: &Path
     command
         .arg(&script)
         .arg(checkout)
-        .arg(plugin_state_file())
+        .arg(plugin_state_file(install_root))
         .arg(install_root.join("config").join("social.json"))
         .current_dir(checkout)
         .env_remove("PYTHONPATH")
@@ -163,6 +171,23 @@ mod tests {
             vec!["social".to_string()]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn relative_data_dir_resolves_against_the_install_root() {
+        // Run serially with any other test touching SUZENT_DATA_DIR: there is none.
+        let previous = env::var("SUZENT_DATA_DIR").ok();
+        env::set_var("SUZENT_DATA_DIR", "user-data");
+        let root = env::temp_dir().join("suzent-live-install");
+        let state = plugin_state_file(&root);
+        match previous {
+            Some(value) => env::set_var("SUZENT_DATA_DIR", value),
+            None => env::remove_var("SUZENT_DATA_DIR"),
+        }
+        assert_eq!(
+            state,
+            root.join("user-data").join("config").join("plugins.json")
+        );
     }
 
     #[test]
