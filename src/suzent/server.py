@@ -191,6 +191,7 @@ from suzent.routes.ops_routes import (
     set_ops_service_enabled,
 )
 from suzent.routes.plugin_routes import install_plugin, list_plugins, remove_plugin
+from suzent.tools.desktop.routes import desktop_runtime, desktop_runtime_install
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
     get_system_idle,
@@ -1399,6 +1400,8 @@ app = Starlette(
         Route("/plugins", list_plugins, methods=["GET"]),
         Route("/plugins/{name}/install", install_plugin, methods=["POST"]),
         Route("/plugins/{name}/remove", remove_plugin, methods=["POST"]),
+        Route("/desktop/runtime", desktop_runtime, methods=["GET"]),
+        Route("/desktop/runtime/install", desktop_runtime_install, methods=["POST"]),
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/toggle", toggle_skill, methods=["POST"]),

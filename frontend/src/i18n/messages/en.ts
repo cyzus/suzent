@@ -980,6 +980,11 @@ export const en = {
       working: 'Working…',
       confirmThirdParty:
         "This plugin's code will run inside Suzent with your permissions. Install it only if you trust where it came from.",
+      installAgentDesktop: 'Install agent-desktop',
+      agentDesktopReady: 'agent-desktop is ready',
+      agentDesktopMissing: 'agent-desktop is not installed yet.',
+      confirmAgentDesktop:
+        'Suzent will download agent-desktop 1.0.2 from GitHub into its own folder and check the checksum published with that release. It can read and operate the apps on this computer.\n\nOn Windows the release binary is unsigned. SmartScreen, antivirus, or Smart App Control may block it.\n\nOn macOS you still need to allow Accessibility. Suzent opens that guide after install.\n\nIf no archive is published for this computer, Suzent uses npm install -g agent-desktop@1.0.2 instead.\n\nInstall agent-desktop now?',
     },
     acp: {
       title: 'ACP Agents',

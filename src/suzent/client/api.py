@@ -281,6 +281,14 @@ class PluginsAPI:
     async def remove(self, name: str) -> dict:
         return await self.client.post(f"/plugins/{name}/remove")
 
+    async def install_desktop_runtime(self) -> dict:
+        """Download agent-desktop. The caller has already confirmed."""
+        return await self.client.post(
+            "/desktop/runtime/install",
+            json={"confirmed": True},
+            timeout=self.INSTALL_TIMEOUT,
+        )
+
 
 class ChatAPI:
     def __init__(self, client: AsyncBaseClient):

@@ -1059,6 +1059,11 @@ export const zhCN = {
       working: '处理中…',
       confirmThirdParty:
         '这个插件的代码会以你的权限在 Suzent 里运行。只有在你信任它的来源时才安装。',
+      installAgentDesktop: '安装 agent-desktop',
+      agentDesktopReady: 'agent-desktop 已就绪',
+      agentDesktopMissing: '尚未安装 agent-desktop。',
+      confirmAgentDesktop:
+        'Suzent 会从 GitHub 下载 agent-desktop 1.0.2 到自己的文件夹，并核对发布时附带的校验和。它能读取并操作这台电脑上的应用。\n\nWindows 上的发布文件没有签名。SmartScreen、杀毒软件或 Smart App Control 可能会拦截它。\n\nmacOS 上仍需允许辅助功能。安装成功后 Suzent 会打开该引导。\n\n如果这台电脑没有对应的发布包，Suzent 会改用 npm install -g agent-desktop@1.0.2。\n\n现在安装 agent-desktop？',
     },
     acp: {
       title: 'ACP 智能体',

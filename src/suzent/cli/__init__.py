@@ -27,6 +27,7 @@ from suzent.cli.main import (
     _configure_console_encoding,
 )
 from suzent.cli.cron import cron_app
+from suzent.cli.desktop import desktop_app
 from suzent.cli.heartbeat import heartbeat_app
 from suzent.cli.mcp import mcp_app
 from suzent.cli.memory import memory_app
@@ -93,6 +94,7 @@ app.add_typer(mcp_app, name="mcp")
 app.add_typer(memory_app, name="memory")
 app.add_typer(skill_app, name="skill")
 app.add_typer(plugin_app, name="plugin")
+app.add_typer(desktop_app, name="desktop")
 app.add_typer(service_app, name="service")
 
 if __name__ == "__main__":

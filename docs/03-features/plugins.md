@@ -50,9 +50,9 @@ WeChat needs no extra packages, so it has no plugin and always works.
 ## Desktop apps
 
 The Desktop plugin lets the agent read and operate native apps on this
-computer. It is off until you install it, and it needs the separate
-agent-desktop program, which Suzent does not install for you. See
-[Desktop apps](./tools/desktop.md).
+computer. It is off until you install it. The agent-desktop program it needs
+is downloaded only after you confirm, from Settings or with
+`suzent desktop install`. See [Desktop apps](./tools/desktop.md).
 
 ## Plugins from other people
 

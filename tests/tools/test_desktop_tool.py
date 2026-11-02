@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -188,9 +190,9 @@ def test_missing_binary_explains_how_to_install(
     monkeypatch.delenv("SUZENT_AGENT_DESKTOP_BIN", raising=False)
     monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
 
-    with pytest.raises(runner.DesktopBinaryError, match="npm install -g agent-desktop"):
+    with pytest.raises(runner.DesktopBinaryError, match="suzent desktop install"):
         resolve_binary()
-    assert "github.com/vercel-labs/agent-desktop/releases" in INSTALL_HINT
+    assert "unsigned" in INSTALL_HINT
     assert "permissions --guide" in INSTALL_HINT
 
 
@@ -202,6 +204,46 @@ def test_binary_override_must_be_executable(
 
     with pytest.raises(runner.DesktopBinaryError, match="SUZENT_AGENT_DESKTOP_BIN"):
         resolve_binary()
+
+
+@pytest.mark.asyncio
+async def test_run_cli_kills_a_process_whose_task_is_cancelled(tmp_path: Path) -> None:
+    """A cancelled desktop call must not leave the host process running.
+
+    The child writes a marker only after a delay. Cancelling the task before
+    that delay has to kill it; otherwise the marker appears with nobody watching.
+    """
+    started = tmp_path / "started"
+    finished = tmp_path / "finished"
+    script = tmp_path / "delayed.py"
+    script.write_text(
+        "import pathlib, sys, time\n"
+        "pathlib.Path(sys.argv[1]).write_text('started')\n"
+        "time.sleep(2)\n"
+        "pathlib.Path(sys.argv[2]).write_text('finished')\n",
+        encoding="utf-8",
+    )
+    task = asyncio.create_task(
+        runner.run_cli(
+            sys.executable,
+            [str(script), str(started), str(finished)],
+            timeout=30,
+        )
+    )
+    for _ in range(50):
+        if started.exists():
+            break
+        await asyncio.sleep(0.05)
+    else:
+        task.cancel()
+        raise AssertionError("the child never started")
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(2.5)
+
+    assert not finished.exists()
 
 
 @pytest.mark.asyncio
@@ -301,8 +343,16 @@ async def test_tool_parses_a_snapshot_and_checks_the_cli_version(fake_cli) -> No
 async def test_tool_does_not_launch_the_cli_when_it_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    install_calls: list[str] = []
+
     def explode() -> str:
         raise runner.DesktopBinaryError(INSTALL_HINT)
+
+    def refuse_install() -> None:
+        install_calls.append("install")
+        raise AssertionError("tool calls must not download agent-desktop")
+
+    monkeypatch.setattr("suzent.tools.desktop.install.install_release", refuse_install)
 
     async def fail_run(*_args: object, **_kwargs: object) -> tuple[int, str, str]:
         raise AssertionError("the CLI must not be started when it is not installed")
@@ -314,8 +364,9 @@ async def test_tool_does_not_launch_the_cli_when_it_is_missing(
 
     assert result.success is False
     assert result.error_code == ToolErrorCode.EXECUTION_FAILED
-    assert "npm install -g agent-desktop" in result.message
-    assert "does not install" in result.message
+    assert "suzent desktop install" in result.message
+    assert "unsigned" in result.message
+    assert install_calls == []
 
 
 @pytest.mark.asyncio

@@ -13,26 +13,49 @@ version 1.0.x), a separate program that reads the operating system's
 accessibility tree. It is not the [browser](./browser.md) tool, and it does
 not guess from screenshots.
 
-This is off until you turn it on. Suzent never downloads or installs
-agent-desktop for you.
+This is off until you turn the Desktop plugin on. Suzent can download
+agent-desktop for you, but only after you agree. It never downloads it in
+the background when the agent tries to use the tool.
 
 ## Turn it on
 
-1. Install the agent-desktop 1.0.x command line yourself:
+1. In Suzent, open **Settings → Plugins** and install **Desktop**. From a
+   terminal, `suzent plugin install desktop` does the same thing. Removing
+   the plugin turns desktop control off.
+
+2. When the program is missing, Suzent asks before it downloads
+   **agent-desktop 1.0.2** from GitHub into its own folder. It checks the
+   checksum published with that release, and the build attestation when the
+   GitHub CLI (`gh`) is installed. The helper file that has to sit beside the
+   program is kept there. On a Mac, the Accessibility guide opens after a
+   successful install.
+
+   The same download is `suzent desktop install`. Add `--yes` only when you
+   have already agreed.
+
+   On Windows that file is unsigned. SmartScreen, antivirus software, or
+   Smart App Control may block it. The confirmation says so before anything
+   is downloaded.
+
+   If GitHub has no archive for this computer, and only then, Suzent uses
+   `npm install -g agent-desktop@1.0.2` instead.
+
+3. You can still install it yourself and leave Suzent out of it:
 
    ```bash
    npm install -g agent-desktop
-   agent-desktop version
    ```
 
-   Or download the release archive for your system from
-   [GitHub Releases](https://github.com/vercel-labs/agent-desktop/releases)
-   and put the program on your PATH. Keep the helper file that ships beside
-   it. `agent-desktop version` should print JSON whose `data.version` starts
-   with `1.0.`.
+   Or point Suzent at a copy you already trust:
 
-2. On a Mac, grant Accessibility permission. The guide opens System Settings
-   on the right pane:
+   ```bash
+   export SUZENT_AGENT_DESKTOP_BIN=/path/to/agent-desktop
+   ```
+
+   That path is used as-is. A program already on your PATH is used when
+   Suzent has not installed its own copy and the variable is unset.
+
+4. On a Mac, if the guide did not open, grant Accessibility yourself:
 
    ```bash
    agent-desktop permissions --guide
@@ -41,10 +64,6 @@ agent-desktop for you.
    Windows needs no extra grant for apps at the same privilege level as your
    terminal. Linux needs to be inside your graphical session, with the
    accessibility bus running (`at-spi2-core`).
-
-3. In Suzent, open **Settings → Plugins** and install **Desktop**. From a
-   terminal, `suzent plugin install desktop` does the same thing. Removing
-   the plugin turns desktop control off.
 
 The Desktop tool then shows up with your other tools. It is not in the set
 that new chats enable on their own; tick it, or let the agent pick it up when

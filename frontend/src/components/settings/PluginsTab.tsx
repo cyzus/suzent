@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { fetchPlugins, setPluginInstalled } from '../../lib/api';
-import type { PluginInfo } from '../../lib/api';
+import {
+  fetchDesktopRuntime,
+  fetchPlugins,
+  installDesktopRuntime,
+  setPluginInstalled,
+} from '../../lib/api';
+import type { DesktopRuntimeInfo, PluginInfo } from '../../lib/api';
 import { RefreshButton } from '../RefreshButton';
 import {
   Badge,
@@ -34,6 +39,7 @@ function StatusBadge({
 export function PluginsTab(): React.ReactElement {
   const { t } = useI18n();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
+  const [runtime, setRuntime] = useState<DesktopRuntimeInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +47,17 @@ export function PluginsTab(): React.ReactElement {
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      setPlugins(await fetchPlugins());
+      const listed = await fetchPlugins();
+      setPlugins(listed);
+      if (listed.some((plugin) => plugin.id === 'desktop')) {
+        try {
+          setRuntime(await fetchDesktopRuntime());
+        } catch {
+          setRuntime(null);
+        }
+      } else {
+        setRuntime(null);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -49,6 +65,19 @@ export function PluginsTab(): React.ReactElement {
       setLoading(false);
     }
   }, []);
+
+  const offerRuntimeInstall = async (): Promise<void> => {
+    if (!window.confirm(t('settings.plugins.confirmAgentDesktop'))) return;
+    setBusy('desktop-runtime');
+    setError(null);
+    try {
+      setRuntime(await installDesktopRuntime());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -64,6 +93,11 @@ export function PluginsTab(): React.ReactElement {
     try {
       const updated = await setPluginInstalled(plugin.id, installing);
       setPlugins((previous) => previous.map((p) => (p.id === updated.id ? updated : p)));
+      if (plugin.id === 'desktop' && installing) {
+        const current = await fetchDesktopRuntime();
+        setRuntime(current);
+        if (!current.installed) await offerRuntimeInstall();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       await load();
@@ -142,20 +176,40 @@ export function PluginsTab(): React.ReactElement {
                         {t('settings.plugins.restartHint')}
                       </p>
                     )}
+                    {plugin.id === 'desktop' && plugin.enabled && runtime && (
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                        {runtime.installed
+                          ? `${t('settings.plugins.agentDesktopReady')} (${runtime.source})`
+                          : t('settings.plugins.agentDesktopMissing')}
+                      </p>
+                    )}
                   </div>
-                  <SettingsListAction
-                    tone={plugin.enabled ? 'red' : 'blue'}
-                    disabled={busy !== null || plugin.status === 'error'}
-                    onClick={() => void toggle(plugin)}
-                  >
-                    {busy === plugin.id
-                      ? t('settings.plugins.working')
-                      : plugin.enabled && plugin.missing.length > 0
-                        ? t('settings.plugins.retry')
-                        : plugin.enabled
-                          ? t('settings.plugins.remove')
-                          : t('settings.plugins.install')}
-                  </SettingsListAction>
+                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                    <SettingsListAction
+                      tone={plugin.enabled ? 'red' : 'blue'}
+                      disabled={busy !== null || plugin.status === 'error'}
+                      onClick={() => void toggle(plugin)}
+                    >
+                      {busy === plugin.id
+                        ? t('settings.plugins.working')
+                        : plugin.enabled && plugin.missing.length > 0
+                          ? t('settings.plugins.retry')
+                          : plugin.enabled
+                            ? t('settings.plugins.remove')
+                            : t('settings.plugins.install')}
+                    </SettingsListAction>
+                    {plugin.id === 'desktop' && plugin.enabled && runtime && !runtime.installed && (
+                      <SettingsListAction
+                        tone="blue"
+                        disabled={busy !== null}
+                        onClick={() => void offerRuntimeInstall()}
+                      >
+                        {busy === 'desktop-runtime'
+                          ? t('settings.plugins.working')
+                          : t('settings.plugins.installAgentDesktop')}
+                      </SettingsListAction>
+                    )}
+                  </div>
                 </div>
               </SettingsListItem>
             ))}

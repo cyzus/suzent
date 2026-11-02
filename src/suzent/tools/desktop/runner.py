@@ -22,15 +22,15 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 INSTALL_HINT = (
-    "agent-desktop is not installed or not on PATH. Suzent does not install it "
-    "for you. Install the 1.0.x CLI, then try again:\n"
-    "  npm install -g agent-desktop\n"
-    "Or download the release binary for your OS from\n"
-    "  https://github.com/vercel-labs/agent-desktop/releases\n"
-    "and put it on PATH, keeping the platform helper beside the executable.\n"
+    "agent-desktop 1.0.x is not available. Suzent can download the pinned "
+    "1.0.2 release after you agree. In Settings → Plugins, turn Desktop on "
+    "and choose Install agent-desktop, or run `suzent desktop install`.\n"
+    "You can also install it yourself (`npm install -g agent-desktop`) or set "
+    "SUZENT_AGENT_DESKTOP_BIN to an executable you already have.\n"
     "On macOS, grant Accessibility permission with:\n"
     "  agent-desktop permissions --guide\n"
-    "If the binary lives somewhere else, set SUZENT_AGENT_DESKTOP_BIN to its path."
+    "On Windows the official binary is unsigned. SmartScreen, antivirus, or "
+    "Smart App Control may block it."
 )
 
 HOST_BANNER = (
@@ -66,7 +66,13 @@ def is_supported_release(version: str) -> bool:
 
 
 def resolve_binary() -> str:
-    """Return the host executable. Never downloads or installs it."""
+    """Return the host executable. This never downloads or installs it.
+
+    An explicit ``SUZENT_AGENT_DESKTOP_BIN`` wins, then the copy Suzent
+    installed after consent, then whatever ``agent-desktop`` is on PATH.
+    """
+    from suzent.tools.desktop.install import managed_executable
+
     override = os.environ.get("SUZENT_AGENT_DESKTOP_BIN", "").strip()
     if override:
         path = Path(override).expanduser()
@@ -76,6 +82,9 @@ def resolve_binary() -> str:
             f"SUZENT_AGENT_DESKTOP_BIN is {override}, which is not an executable file.\n"
             f"{INSTALL_HINT}"
         )
+    managed = managed_executable()
+    if managed is not None:
+        return str(managed)
     found = shutil.which("agent-desktop")
     if found:
         return found
@@ -221,22 +230,22 @@ async def run_cli(
         raise DesktopBinaryError(INSTALL_HINT) from exc
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
-    except TimeoutError as exc:
-        _kill(process)
-        try:
-            await asyncio.wait_for(process.wait(), 5)
-        except TimeoutError:
-            process.kill()
-        raise DesktopTimeout(
-            f"agent-desktop {command_name} did not finish within {timeout:.0f}s"
-        ) from exc
-    except asyncio.LimitOverrunError as exc:
-        _kill(process)
-        await process.wait()
-        raise ValueError(
-            "agent-desktop output was too large. For a screenshot, pass options.path "
-            "so the image is written to a file instead of returned inline."
-        ) from exc
+    except BaseException as exc:
+        # Cancellation (and every other failure) must reap the host process.
+        # On 3.11+ a cancelled task cannot await until its cancel count is
+        # cleared, so the wait below would otherwise be skipped and the CLI
+        # would keep acting on the desktop with no timeout left.
+        await _stop_process(process)
+        if isinstance(exc, TimeoutError):
+            raise DesktopTimeout(
+                f"agent-desktop {command_name} did not finish within {timeout:.0f}s"
+            ) from exc
+        if isinstance(exc, asyncio.LimitOverrunError):
+            raise ValueError(
+                "agent-desktop output was too large. For a screenshot, pass options.path "
+                "so the image is written to a file instead of returned inline."
+            ) from exc
+        raise
     return (
         process.returncode if process.returncode is not None else 1,
         stdout.decode("utf-8", errors="replace"),
@@ -244,11 +253,32 @@ async def run_cli(
     )
 
 
+async def _stop_process(process: asyncio.subprocess.Process) -> None:
+    """Kill the CLI and wait until it has exited, even if this task is cancelled."""
+    task = asyncio.current_task()
+    pending = task.cancelling() if task is not None else 0
+    if task is not None:
+        while task.cancelling():
+            task.uncancel()
+    try:
+        if process.returncode is None:
+            _kill(process)
+            try:
+                await asyncio.wait_for(process.wait(), 5)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+    finally:
+        if task is not None:
+            for _ in range(pending):
+                task.cancel()
+
+
 def _kill(process: asyncio.subprocess.Process) -> None:
-    """Stop a command that missed its deadline.
+    """Stop the CLI process group.
 
     On POSIX the CLI is started in its own session, so this reaches children
-    that have not daemonized. A timeout is the only time that session is killed.
+    that have not daemonized. Timeout and cancellation both come through here.
     """
     if process.returncode is not None or process.pid is None:
         return

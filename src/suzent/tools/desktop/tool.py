@@ -94,8 +94,9 @@ class DesktopTool(Tool):
         delivery and retry, and only repeat an action when retry is safe.
 
         This always runs on the host computer. The chat sandbox has no display
-        and is not used. Suzent does not install agent-desktop; the 1.0.x CLI
-        must already be on PATH or in SUZENT_AGENT_DESKTOP_BIN.
+        and is not used. If the CLI is missing, tell the user to confirm
+        installation in Settings or with `suzent desktop install`. Do not try
+        to download it yourself.
         """
         try:
             prepared = prepare_call(command, options, headed=headed, session=session)

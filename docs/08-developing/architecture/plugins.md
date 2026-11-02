@@ -92,7 +92,9 @@ uv run suzent start
 Suzent. It is built in and `default_enabled: false`. Its `register()` adds
 `DesktopTool` and the `suzent-desktop` skill. The tool execs the
 `agent-desktop` 1.0.x binary on the host; it never enters the per-chat Docker
-sandbox. See [Desktop apps](../../03-features/tools/desktop.md).
+sandbox. `POST /desktop/runtime/install` downloads the pinned release only
+when the body sets `confirmed` to true. See
+[Desktop apps](../../03-features/tools/desktop.md).
 
 ## `PluginContext`
 
