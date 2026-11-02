@@ -5,6 +5,7 @@
 ### Release notes
 - Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones.
 - The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
+- On phones, searching chats opens its own page with the keyboard ready, and going back from a result returns to the results; on Android, loading chats no longer fails with "Backend request failed" after the app has been idle for a moment.
 
 ## [mobile-v0.5.4] - 2026-11-01
 
