@@ -265,6 +265,16 @@ def convert_msg(path: Path) -> str:
         msg.close()
 
 
+def _fenced(text: str, info: str = "") -> str:
+    """``text`` in a code fence longer than any backtick run inside it, so a
+    fenced example within the cell cannot close the block early."""
+    import re
+
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{info}\n{text}\n{fence}"
+
+
 def convert_ipynb(path: Path) -> str:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     language = (
@@ -277,7 +287,10 @@ def convert_ipynb(path: Path) -> str:
         if not text.strip():
             continue
         if cell.get("cell_type") == "code":
-            parts.append(f"```{language}\n{text}\n```")
+            parts.append(_fenced(text, language))
+        elif cell.get("cell_type") == "raw":
+            # Raw cells are verbatim text, not markdown to be rendered.
+            parts.append(_fenced(text))
         else:
             parts.append(text)
     return "\n\n".join(parts)
@@ -305,6 +318,13 @@ def convert_epub(path: Path) -> str:
         }
         title = next((el.text for el in children("title") if el.text), None)
         parts = [f"# {title}"] if title else []
+        meta = [
+            f"**{label}:** {', '.join(values)}"
+            for label, tag in (("Authors", "creator"), ("Language", "language"))
+            if (values := [el.text.strip() for el in children(tag) if el.text])
+        ]
+        if meta:
+            parts.append("\n".join(meta))
         for ref in children("itemref"):
             href = manifest.get(ref.attrib.get("idref"))
             if not href:
