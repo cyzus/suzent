@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it."
+}

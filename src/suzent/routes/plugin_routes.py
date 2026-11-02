@@ -56,6 +56,27 @@ async def _reload_social(request: Request) -> None:
     await reload_social(request.app, social_config)
 
 
+async def _refresh_node_capabilities(request: Request) -> None:
+    """Re-advertise this machine's node capabilities after packages changed.
+
+    A capability such as camera.snap depends on an optional package; without
+    this the running server keeps its startup view until a restart. Covers the
+    in-process local node and outbound connections to other Suzent servers.
+    """
+    from suzent.nodes.local_node import LocalNode
+
+    state = request.app.state
+    node_manager = getattr(state, "node_manager", None)
+    if node_manager is not None:
+        for node in list(node_manager.nodes.values()):
+            if isinstance(node, LocalNode):
+                names = node.refresh_capabilities()
+                logger.info(f"Local node capabilities: {', '.join(names)}")
+    outbound = getattr(state, "outbound_manager", None)
+    if outbound is not None:
+        await outbound.refresh_capabilities()
+
+
 async def list_plugins(request: Request) -> JSONResponse:
     records = get_plugin_manager().discover().values()
     return JSONResponse(
@@ -87,6 +108,8 @@ async def install_plugin(request: Request) -> JSONResponse:
         # Chat apps import their SDKs when the social stack starts; rebuilding
         # it lets a channel whose packages just arrived connect without a restart.
         await _reload_social(request)
+        # Same for node hardware: camera.snap appears once OpenCV is installed.
+        await _refresh_node_capabilities(request)
     return JSONResponse(_describe(manager.resolve(record.id)))
 
 
@@ -101,4 +124,5 @@ async def remove_plugin(request: Request) -> JSONResponse:
     if _has_packages(record):
         # Stops the chat apps this plugin provided (see ChannelManager).
         await _reload_social(request)
+        await _refresh_node_capabilities(request)
     return JSONResponse(_describe(manager.resolve(record.id)))
