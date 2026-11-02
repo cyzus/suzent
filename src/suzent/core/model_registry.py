@@ -24,11 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
+from suzent.config.paths import PROJECT_DIR
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
-_PROJECT_DIR = Path(__file__).resolve().parents[3]
+# Same root as the rest of Suzent, so installed and packaged builds (where
+# this file is in site-packages, not the repo) still find config/.
+_PROJECT_DIR = Path(PROJECT_DIR)
 # Shipped, hand-curated capability files. Tracked in git; treated as read-only
 # at runtime so `suzent update` (git pull) never hits local modifications.
 _CAPABILITIES_DIR = _PROJECT_DIR / "config" / "capabilities"

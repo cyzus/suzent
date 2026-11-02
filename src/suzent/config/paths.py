@@ -22,6 +22,12 @@ DEFAULT_HOST: str = os.getenv("SUZENT_HOST", "localhost")
 def get_project_root() -> Path:
     """Get source/project root, handling dev, bundled, and installed CLI scenarios."""
 
+    # Packaged builds (MSIX) ship the read-only app resources (config/,
+    # skills/, plugins/) in their own folder and point here explicitly.
+    override = os.getenv("SUZENT_PROJECT_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+
     current_file = Path(__file__).resolve()
     dev_root = current_file.parents[3]
     if (dev_root / "pyproject.toml").exists():
