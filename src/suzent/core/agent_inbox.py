@@ -329,9 +329,14 @@ class AgentInboxDispatcher:
         if sender_chat_id:
             sender = get_database().get_chat(str(sender_chat_id))
         payload = message.get("payload") or {}
-        sender_label = str(
-            payload.get("sender_label")
-            or (sender.title if sender is not None else sender_chat_id or "system")
+        # One line: the permission reviewer reads the sender's chat ID from the
+        # end of the header's first line, so a title spanning lines could put
+        # another chat's ID there.
+        sender_label = " ".join(
+            str(
+                payload.get("sender_label")
+                or (sender.title if sender is not None else sender_chat_id or "system")
+            ).split()
         )
         sender_reference = str(
             payload.get("sender_agent_id") or sender_chat_id or "system"

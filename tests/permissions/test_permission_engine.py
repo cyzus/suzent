@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -490,3 +491,23 @@ async def test_ask_rule_cannot_bypass_plan_mode_write_denial(
 
     assert decision.behavior == CommandDecision.DENY
     assert decision.reason_code == "plan_mode_readonly"
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_gives_the_classifier_the_sessions_delegators(
+    tmp_path: Path,
+) -> None:
+    seen: dict = {}
+
+    class RecordingClassifier(Classifier):
+        async def classify(self, **kwargs):
+            seen.update(kwargs)
+            return await super().classify(**kwargs)
+
+    base = context(tmp_path, mode=PermissionMode.AUTO, interaction_profile="headless")
+    await PermissionEngine(classifier=RecordingClassifier(should_block=False)).evaluate(
+        ToolPermissionRequest("social_message", {"message": "hello"}),
+        dataclasses.replace(base, delegator_chat_ids=frozenset({"focal-suzent"})),
+    )
+
+    assert seen["delegator_chat_ids"] == frozenset({"focal-suzent"})

@@ -18,6 +18,7 @@ class PermissionContext:
     sandbox_enabled: bool
     transcript: list[Any]
     permission_rules: list[Any]
+    delegator_chat_ids: frozenset[str] = frozenset()
 
     @classmethod
     def from_deps(cls, deps: Any) -> "PermissionContext":
@@ -35,6 +36,9 @@ class PermissionContext:
             sandbox_enabled=bool(getattr(deps, "sandbox_enabled", False)),
             transcript=list(getattr(deps, "last_messages", None) or []),
             permission_rules=parse_rules(getattr(deps, "permission_rules", None) or []),
+            delegator_chat_ids=frozenset(
+                getattr(deps, "delegator_chat_ids", None) or ()
+            ),
         )
 
 

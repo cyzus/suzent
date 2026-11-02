@@ -212,6 +212,7 @@ class PermissionEngine:
                 tool_name=request.tool_name,
                 args=request.args,
                 transcript=context.transcript,
+                delegator_chat_ids=context.delegator_chat_ids,
             )
         except Exception as exc:
             if context.interaction_profile == "interactive":
