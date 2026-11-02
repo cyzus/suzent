@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.20.1] - 2026-11-02
+## [v0.21.0] - 2026-11-02
 
 ### Release notes
 - Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
 - read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text.
+- The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
 - Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
 - Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
 
