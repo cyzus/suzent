@@ -30,8 +30,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "crawl4ai>=0.7.3",
-    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.64,<3",
+    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui,web-fetch]>=2.64,<3",
     # Exact pin: litellm 1.82.7/1.82.8 on PyPI were compromised (Mar 2026). Bump
     # deliberately, after checking the release and the uv.lock hashes.
     "litellm==1.81.13",
@@ -41,7 +40,9 @@ dependencies = [
     "pyyaml>=6.0",
     "loguru>=0.7.0",
     "pydantic>=2.0",
-    "markitdown[all]",
+    # Document formats read_file converts; [all] would add audio transcription,
+    # YouTube and Azure Document Intelligence, which nothing here uses.
+    "markitdown[pdf,docx,pptx,xlsx,xls,outlook]",
     "httpx>=0.28.1",
     "pytest>=9.0.0",
     "lancedb>=0.17.0",

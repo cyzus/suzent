@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB."
+}
