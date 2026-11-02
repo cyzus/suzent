@@ -40,7 +40,9 @@ In packaged mode the app:
 The CI workflow (`.github/workflows/msix.yml`) is the reference. By hand, on Windows:
 
 1. `uv python install 3.12` and copy that interpreter dir to `pkg\runtime\python`.
-2. `uv export --frozen --no-dev --no-editable --no-hashes --no-emit-project > req.txt`, then
+2. `uv export --frozen --no-dev --extra social --extra camera --no-editable --no-hashes --no-emit-project > req.txt`
+   (the built-in plugins' extras must be bundled: the package has no `uv.lock`
+   or writable environment to install them into later), then
    `uv pip install --python pkg\runtime\python\python.exe --break-system-packages -r req.txt`
    and `uv pip install --python ... --break-system-packages --no-deps .`.
 3. Delete the files that make signtool fail (`DLLs\tcl86t.dll`, `DLLs\tk86t.dll`,

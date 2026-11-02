@@ -985,10 +985,12 @@ fn main() {
     // there is no uv or workspace, so run the bundled runtime's CLI.
     if args.len() > 1 {
         if let Some(python) = packaged::packaged_python() {
-            let status = packaged::python_command(&python, &backend::find_data_dir())
-                .args(["-m", "suzent.cli"])
-                .args(&args[1..])
-                .status();
+            let mut command = packaged::python_command(&python, &backend::find_data_dir());
+            // `suzent start` launches this exe; the CLI cannot find it otherwise.
+            if let Ok(exe) = std::env::current_exe() {
+                command.env("SUZENT_PACKAGED_UI", exe);
+            }
+            let status = command.args(["-m", "suzent.cli"]).args(&args[1..]).status();
             match status {
                 Ok(s) => std::process::exit(s.code().unwrap_or(1)),
                 Err(e) => {
