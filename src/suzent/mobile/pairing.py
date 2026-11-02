@@ -42,6 +42,7 @@ class ClientGrant(BaseModel):
     approved_at: float
     permissions: ClientPermissions
     provisional_until: float | None = None
+    installation: str | None = None
 
 
 class PairingError(ValueError):
@@ -170,6 +171,7 @@ class PairingStore:
         confirm_permissions: bool = False,
         repair_proof: str | None = None,
         rotate: bool = False,
+        installation_id: str | None = None,
     ) -> dict:
         if not display_name.strip() or len(display_name) > 100:
             raise PairingError("Invalid device name")
@@ -215,6 +217,7 @@ class PairingStore:
                 display_name=display_name.strip(),
                 platform=platform,
                 pickup_hash=_digest(pickup),
+                installation=_digest(installation_id) if installation_id else None,
             )
             del pending["invitation_hash"]
             return {
@@ -277,14 +280,31 @@ class PairingStore:
                     "reused": True,
                     "device": previous.model_dump(),
                 }
+            # A phone that lost its token still reports the same installation, so
+            # the new grant replaces the stale one once the phone confirms it.
+            installation = pending.get("installation")
+            predecessor = previous or next(
+                (
+                    grant
+                    for grant in self._grants.values()
+                    if installation
+                    and grant.installation == installation
+                    and grant.platform == pending["platform"]
+                    and grant.provisional_until is None
+                ),
+                None,
+            )
             token = secrets.token_urlsafe(32)
             grant = ClientGrant(
-                device_id=previous.device_id if previous else secrets.token_hex(16),
-                provisional_until=time.time() + self.TTL if previous else None,
+                device_id=predecessor.device_id
+                if predecessor
+                else secrets.token_hex(16),
+                provisional_until=time.time() + self.TTL if predecessor else None,
                 display_name=pending["display_name"],
                 platform=pending["platform"],
                 approved_at=time.time(),
                 permissions=pending["permissions"],
+                installation=installation,
             )
             self._save({**self._grants, _digest(token): grant})
             del self._pending[pairing_id]
@@ -313,7 +333,14 @@ class PairingStore:
             grants = {
                 key: value
                 for key, value in self._grants.items()
-                if value.device_id != grant.device_id or key == digest
+                if key == digest
+                or (
+                    value.device_id != grant.device_id
+                    and (
+                        grant.installation is None
+                        or value.installation != grant.installation
+                    )
+                )
             }
             grants[digest] = grant.model_copy(update={"provisional_until": None})
             self._save(grants)

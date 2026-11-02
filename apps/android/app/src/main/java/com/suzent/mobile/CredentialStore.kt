@@ -15,6 +15,7 @@ data class Connection(val origin: String, val hostToken: String, val nodeToken: 
 
 class CredentialStore(context: Context) {
     private val preferences = context.getSharedPreferences("secure_connection", Context.MODE_PRIVATE)
+    private val installation = context.getSharedPreferences("installation", Context.MODE_PRIVATE)
     private val alias = "com.suzent.mobile.connection"
 
     private fun key(): SecretKey {
@@ -49,4 +50,13 @@ class CredentialStore(context: Context) {
     }
 
     fun clear() { check(preferences.edit().clear().commit()) }
+
+    /** Survives forgetting the connection so the desktop can retire this phone's stale grant. */
+    fun installationId(): String {
+        installation.getString("id", null)?.let { return it }
+        val id = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(installation.edit().putString("id", id).commit())
+        return id
+    }
 }

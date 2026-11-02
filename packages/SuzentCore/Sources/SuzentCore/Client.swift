@@ -128,7 +128,7 @@ public final class SuzentClient: Sendable {
         return result
     }
 
-    public func claim(_ invitation: PairingInvitation, name: String, confirmPermissions: Bool = false, repairProof: String? = nil, rotate: Bool = false) async throws -> PairingClaim {
+    public func claim(_ invitation: PairingInvitation, name: String, confirmPermissions: Bool = false, repairProof: String? = nil, rotate: Bool = false, installationID: String? = nil) async throws -> PairingClaim {
         var request = try request("mobile/pairing/claim")
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -138,6 +138,7 @@ public final class SuzentClient: Sendable {
         ]
         if confirmPermissions { body["confirm_permissions"] = true }
         if let repairProof { body["repair_proof"] = repairProof; body["rotate"] = rotate }
+        if let installationID { body["installation_id"] = installationID }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         try validate(response)
@@ -152,6 +153,10 @@ public final class SuzentClient: Sendable {
 
     public func confirmPairing() async throws {
         _ = try await data("mobile/client/pairing/confirm", body: [:])
+    }
+
+    public func forgetPairing() async throws {
+        _ = try await data("mobile/client/pairing/forget", body: [:])
     }
 
     public func chatPage(_ query: ChatPageQuery, offset: Int = 0, limit: Int = 30) async throws -> ChatPage {
