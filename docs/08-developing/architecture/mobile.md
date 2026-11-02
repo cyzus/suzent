@@ -93,6 +93,12 @@ conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
 the settings button and the scheduled section in the sidebar.
 
+On phones the Chats search field is a button that opens a separate search page
+(iOS: a `Route.search` pushed under the conversation; Android: a `searching`
+flag that replaces the tab home). Its query survives opening a result, so back
+from that chat returns to the results; Cancel or back from the page clears it.
+Tablets keep the inline sidebar field.
+
 ### iOS
 
 Install full Xcode and XcodeGen. From `apps/ios`, run `xcodegen generate`, open

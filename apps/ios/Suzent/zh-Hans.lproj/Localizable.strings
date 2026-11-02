@@ -288,3 +288,5 @@
 "Couldn't reach %@" = "无法连接%@";
 "Access to %@ was revoked or expired. Pair it again." = "%@的访问权限已被撤销或已过期，请重新配对。";
 "No scheduled tasks on %@" = "%@上没有定时任务";
+"Search the titles of every chat this phone can read." = "搜索此手机可读取的所有对话标题。";
+"Clear search" = "清除搜索";
