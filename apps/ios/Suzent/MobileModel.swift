@@ -219,15 +219,21 @@ import SuzentCore
         pairingTask = Task {
             defer { if generation == current { busy = false; pairingStatus = nil } }
             do {
-                let selected = try await invitation.resolving { origin -> PairingPreview? in
-                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: invitation.tls)
+                let selected = try await invitation.resolving { origin -> (DeviceTrust?, PairingPreview?) in
+                    var trust = invitation.tls
+                    if trust == nil, let fingerprint = invitation.tlsFingerprint {
+                        trust = try await DeviceTrust.fetch(origin: origin, fingerprint: fingerprint)
+                    }
+                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
                     defer { probe.close() }
                     _ = try await probe.capabilities()
-                    return invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil
+                    return (trust, invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil)
                 }
                 guard generation == current, !Task.isCancelled else { return }
-                pairingPreview = selected.value
-                pairingInvitation = selected.invitation
+                pairingPreview = selected.value.1
+                var resolved = selected.invitation
+                resolved.tls = selected.value.0
+                pairingInvitation = resolved
             } catch { if generation == current, !Task.isCancelled { handle(error) } }
         }
     }
@@ -261,7 +267,8 @@ import SuzentCore
                 let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name,
                                                       confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil,
                                                       repairProof: previous.map { pairingRepairProof(token: $0, invitation: invitation, side: "phone") },
-                                                      rotate: connection?.origin != backend.url.absoluteString)
+                                                      rotate: connection?.origin != backend.url.absoluteString,
+                                                      installationID: try? CredentialStore.installationID())
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
@@ -337,6 +344,9 @@ import SuzentCore
                 try Task.checkCancellation()
                 try CredentialStore.save(restored); connection = restored
                 saved = restored
+            } else {
+                // A grant replacing a forgotten one stays provisional until confirmed; this is idempotent.
+                try? await candidate.confirmPairing()
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
@@ -803,7 +813,16 @@ import SuzentCore
 
     func forget() {
         if isDemo { exitDemo(); return }
+        let forgotten = connection
         clearSession(removeCredentials: true)
+        // Best effort: otherwise the desktop keeps a grant no phone holds, and the next scan adds another.
+        if let saved = forgotten, let backend = try? Backend(saved.origin, allowHTTP: allowsHTTP),
+           let revoker = try? SuzentClient(backend: backend, token: saved.hostToken, deviceTrust: saved.tls) {
+            Task {
+                defer { revoker.close() }
+                try? await revoker.forgetPairing()
+            }
+        }
     }
 
     private func clearSession(removeCredentials: Bool) {

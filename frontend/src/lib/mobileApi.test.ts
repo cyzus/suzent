@@ -33,7 +33,6 @@ it('includes deduplicated LAN and Tailscale candidates while retaining the legac
   );
   expect(payload.origin).toBe('http://192.168.1.2:25314');
   expect(payload.origins).toEqual([
-    'http://192.168.1.2:25314',
     'http://100.64.1.2:25314',
     'https://desktop.example',
   ]);
@@ -61,6 +60,16 @@ it('collects detected LAN and Tailscale endpoints with the preferred address fir
   ).toEqual(['http://192.168.1.2:25314', 'http://100.64.1.2:25314', 'https://desktop.example']);
 });
 
+it('keeps the QR sparse by dropping the repeated origin and fractional expiry', () => {
+  const payload = JSON.parse(
+    mobilePairingPayload('https://desktop.example', { ...invitation, expires_at: 12345.678 }, [
+      'https://desktop.example',
+    ])
+  );
+  expect(payload).not.toHaveProperty('origins');
+  expect(payload.expires_at).toBe(12345);
+});
+
 it('marks phone-confirmed invitations without embedding permissions in the QR', () => {
   const payload = JSON.parse(
     mobilePairingPayload('https://desktop.example', { ...invitation, approval: 'phone' })
@@ -82,8 +91,9 @@ it('uses only device-verified HTTPS candidates for local TLS invitations', () =>
       ['http://192.168.1.3:25314']
     )
   );
-  expect(payload.pairing_protocol).toBe(2);
+  expect(payload.pairing_protocol).toBe(3);
   expect(payload.origin).toBe('https://192.168.1.2:25443');
-  expect(payload.origins).toEqual(['https://192.168.1.2:25443', 'https://desktop.local:25443']);
-  expect(payload.tls).toEqual(tls);
+  expect(payload.origins).toEqual(['https://desktop.local:25443']);
+  expect(payload.tls_fingerprint).toBe('fixture');
+  expect(payload).not.toHaveProperty('tls');
 });

@@ -100,13 +100,14 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
         json("mobile/pairing/preview", JSONObject().put("pairing_id", invitation.id)), invitation)
 
-    suspend fun claim(invitation: PairingInvitation, name: String, confirmPermissions: Boolean = false, repairProof: String? = null, rotate: Boolean = false): JSONObject = json("mobile/pairing/claim",
+    suspend fun claim(invitation: PairingInvitation, name: String, confirmPermissions: Boolean = false, repairProof: String? = null, rotate: Boolean = false, installationId: String? = null): JSONObject = json("mobile/pairing/claim",
         JSONObject().put("pairing_id", invitation.id).put("invitation", invitation.secret)
-            .put("display_name", name).put("platform", "android").apply { if (confirmPermissions) put("confirm_permissions", true); repairProof?.let { put("repair_proof", it); put("rotate", rotate) } })
+            .put("display_name", name).put("platform", "android").apply { if (confirmPermissions) put("confirm_permissions", true); repairProof?.let { put("repair_proof", it); put("rotate", rotate) }; installationId?.let { put("installation_id", it) } })
     suspend fun collect(id: String, pickupSecret: String): JSONObject = json("mobile/pairing/collect",
         JSONObject().put("pairing_id", id).put("pickup_secret", pickupSecret))
 
     suspend fun confirmPairing() { json("mobile/client/pairing/confirm", JSONObject()) }
+    suspend fun forgetPairing() { json("mobile/client/pairing/forget", JSONObject()) }
 
     override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
         if (!supportsPagination) return super.chatPage(query, offset, limit)

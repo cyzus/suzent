@@ -33,6 +33,7 @@ class ClaimRequest(BaseModel):
     confirm_permissions: StrictBool = False
     rotate: StrictBool = False
     repair_proof: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    installation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 class PickupRequest(BaseModel):

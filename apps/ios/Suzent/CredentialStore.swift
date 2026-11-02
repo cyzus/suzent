@@ -66,6 +66,30 @@ enum CredentialStore {
         if saved < installed { try clear() }
     }
 
+    /// Survives forgetting the connection, and stays on this device, so the desktop can retire
+    /// this phone's stale grant when it pairs again.
+    static func installationID() throws -> String {
+        let installation: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                           kSecAttrService as String: "com.suzent.mobile.connection",
+                                           kSecAttrAccount as String: "installation"]
+        var request = installation
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        if status == errSecSuccess, let data = result as? Data { return String(decoding: data, as: UTF8.self) }
+        guard status == errSecItemNotFound else { throw StoreError.failed(status) }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw StoreError.failed(errSecParam) }
+        let id = bytes.map { String(format: "%02x", $0) }.joined()
+        var item = installation
+        item[kSecValueData as String] = Data(id.utf8)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let added = SecItemAdd(item as CFDictionary, nil)
+        guard added == errSecSuccess else { throw StoreError.failed(added) }
+        return id
+    }
+
     static func clear() throws {
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

@@ -109,10 +109,21 @@ idempotent. On an expired replacement, the client restores its previous saved
 origin/token. A dropped confirmation response can be retried after restarting.
 Device revocation removes both finalized and provisional tokens.
 
-Use Settings → Pair again to retain the ownership proof. Forgetting the
-connection, clearing app storage, or losing credentials prevents proof of the
-old installation; it is treated as a new device. Existing duplicate grants are
-not automatically removed by matching names or IP addresses.
+When the user forgets the connection on the phone, it posts to
+`/mobile/client/pairing/forget` with its saved token before discarding it. The
+desktop revokes that device, so a later scan from the same phone does not leave
+the old grant behind. The call is best effort; older desktops return 404.
+
+Claim also accepts `installation_id`, 32 lowercase hex characters the phone
+generates once and keeps after forgetting the connection. The desktop stores only
+its SHA-256. When collect mints a new token without a repair proof and a finalized
+grant of the same platform has the same installation hash, the new grant takes
+that device ID and is provisional, exactly like a rotation. Phones post
+`/mobile/client/pairing/confirm` after every activation that has no pending
+rotation; confirming retires grants with the same device ID or installation hash.
+An unconfirmed replacement expires and leaves the old grant intact. Grants from
+phones that send no installation ID are never matched, and names or IP addresses
+are never used to match devices.
 
 ## Local TLS invitations (QR protocol 2)
 
@@ -123,11 +134,26 @@ HTTPS listener, and returns its `origins` plus a `tls` object:
 {"version": 1, "ca_certificate": "base64-DER-device-CA", "fingerprint": "sha256-hex-of-DER"}
 ```
 
-The desktop emits `pairing_protocol: 2` for these invitations. Protocol 2 requires
+The desktop emitted `pairing_protocol: 2` for these invitations until protocol 3
+(below); phones still accept it. Protocol 2 requires
 this object and exclusively HTTPS candidates, even in debug builds. Older phones
 reject the new QR protocol rather than silently falling back to HTTP. Existing
 public-CA HTTPS invitations remain protocol 1; `/mobile/capabilities` preserves
 its protocol-1 bootstrap API and advertises `local_tls: 1`.
+
+### Fingerprint-only QR (protocol 3)
+
+Embedding the CA made local TLS QR codes dense and hard to scan. Desktops now emit
+`pairing_protocol: 3`, which replaces the `tls` object with
+`"tls_fingerprint": "sha256-hex-of-DER"` (64 lowercase hex). All candidates must
+be HTTPS. Before probing a candidate, the phone opens a TLS connection to it,
+reads the presented chain, takes the certificate whose DER SHA-256 equals the
+fingerprint, and aborts the handshake; nothing is sent on that connection. The
+recovered certificate becomes the same `tls` object as protocol 2 and is
+validated, saved and used identically. A chain without the pinned certificate is
+a secure-connection failure. `origins` omits the primary `origin`, which phones
+merge in, and `expires_at` is a whole number. Phones that predate protocol 3
+report the QR as incompatible and ask for an update.
 
 The QR is the out-of-band trust source, so it must be scanned from the intended
 trusted desktop. Its hash detects mismatched certificate data, not a maliciously

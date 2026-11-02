@@ -725,8 +725,16 @@ async def confirm_pairing(request: Request) -> JSONResponse:
     return reply({"ok": True})
 
 
+async def forget_pairing(request: Request) -> JSONResponse:
+    """Let a phone retire its own grant so re-pairing does not leave orphans."""
+    grant = authorize(request)
+    get_mobile_store(request).revoke(grant.device_id)
+    return reply({"ok": True})
+
+
 client_routes = [
     Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
+    Route("/mobile/client/pairing/forget", forget_pairing, methods=["POST"]),
     Route("/mobile/client/composer", composer, methods=["GET"]),
     Route("/mobile/client/projects", projects, methods=["GET"]),
     Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),

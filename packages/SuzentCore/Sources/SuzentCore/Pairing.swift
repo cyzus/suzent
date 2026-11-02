@@ -49,7 +49,9 @@ public struct MobileCapabilities: Decodable, Sendable {
 }
 
 public struct PairingInvitation: Decodable, Sendable {
-    public let tls: DeviceTrust?
+    public var tls: DeviceTrust?
+    public let tlsFingerprint: String?
+    public var secure: Bool { tls != nil || tlsFingerprint != nil }
     public let type: String
     public let pairingProtocol: Int
     public let approval: String?
@@ -67,8 +69,12 @@ public struct PairingInvitation: Decodable, Sendable {
         var value: Self
         do { value = try decoder.decode(Self.self, from: Data(text.utf8)) }
         catch { throw PairingError.invalidInvitation }
-        guard value.type == "suzent.mobile", [1, 2].contains(value.pairingProtocol) else { throw PairingError.incompatible }
-        guard (value.pairingProtocol == 2) == (value.tls != nil) else { throw PairingError.invalidInvitation }
+        guard value.type == "suzent.mobile", [1, 2, 3].contains(value.pairingProtocol) else { throw PairingError.incompatible }
+        guard (value.pairingProtocol == 2) == (value.tls != nil),
+              (value.pairingProtocol == 3) == (value.tlsFingerprint != nil),
+              value.tlsFingerprint.map({ $0.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil }) ?? true else {
+            throw PairingError.invalidInvitation
+        }
         if let tls = value.tls { _ = try tls.certificate() }
         guard value.approval == nil || value.approval == "phone" else { throw PairingError.incompatible }
         guard value.expiresAt > now.timeIntervalSince1970 else { throw PairingError.expired }
@@ -83,7 +89,7 @@ public struct PairingInvitation: Decodable, Sendable {
             if !candidates.contains(origin) { candidates.append(origin) }
         }
         guard candidates.count <= 6 else { throw PairingError.invalidInvitation }
-        if value.tls != nil, candidates.contains(where: { URL(string: $0)?.scheme != "https" }) {
+        if value.pairingProtocol != 1, candidates.contains(where: { URL(string: $0)?.scheme != "https" }) {
             throw PairingError.invalidInvitation
         }
         let usable = try candidates.filter { try Backend($0, allowHTTP: true).url.scheme == "https" || allowHTTP }
@@ -113,7 +119,7 @@ public struct PairingInvitation: Decodable, Sendable {
                     return (invitation, value)
                 }
             }
-            throw tls == nil ? PairingError.unreachable : PairingError.secureConnection
+            throw secure ? PairingError.secureConnection : PairingError.unreachable
         }
     }
 
