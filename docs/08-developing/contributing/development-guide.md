@@ -75,9 +75,10 @@ old source does not roll back a database. A saved custom installation path is
 retained even if its environment is broken; repair that location rather than
 silently installing another copy in the default user directory.
 
-`uv sync --all-extras` installs both the `social` and `dev` optional
-dependency groups (equivalent to the `all` extra). For a minimal runtime
-without dev tooling, use `uv sync --extra social`.
+`uv sync --all-extras` installs every optional dependency group (chat apps,
+camera and `dev`; equivalent to the `all` extra). For a minimal runtime
+without dev tooling, use `uv sync`; chat apps and the camera install their
+packages when they are set up, as in a normal install.
 
 To run the backend and frontend in separate terminals instead, see
 [Development Modes](#development-modes) below.

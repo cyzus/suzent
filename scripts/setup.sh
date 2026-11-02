@@ -494,23 +494,52 @@ fi
 # uv sync --frozen downloads every wheel from the URL recorded in uv.lock
 # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode the
 # same locked, hash-pinned set is installed through the mirror instead.
-sync_python_deps_via_mirror() {
-    local requirements status
-    requirements="$(mktemp)"
-    uv export --frozen --extra social --quiet -o "$requirements" \
-        && uv venv --allow-existing --quiet \
-        && uv pip sync "$requirements"
-    status=$?
-    rm -f "$requirements"
-    return $status
+#
+# Chat apps and the camera are plugins whose packages are pyproject extras.
+# Only the extras of plugins the user has on are installed (none on a fresh
+# install; each installs its packages when it is set up), the same set
+# `suzent upgrade` and the desktop updater sync.
+sync_python_deps() {  # args: extras...
+    local extra_args=() extra requirements status
+    for extra in "$@"; do extra_args+=(--extra "$extra"); done
+    if china_mirror_enabled; then
+        requirements="$(mktemp)"
+        uv export --frozen ${extra_args[@]+"${extra_args[@]}"} --quiet -o "$requirements" \
+            && uv venv --allow-existing --quiet \
+            && uv pip sync "$requirements"
+        status=$?
+        rm -f "$requirements"
+        return $status
+    fi
+    uv sync --frozen ${extra_args[@]+"${extra_args[@]}"}
+}
+
+enabled_plugin_extras() {  # prints one extra per line
+    local script="$SUZENT_DIR/src/suzent/plugins/enablement.py"
+    local state="${SUZENT_DATA_DIR:-$HOME/.suzent}/config/plugins.json"
+    if [ ! -f "$script" ]; then echo social; return; fi  # checkout predates plugins
+    "$SUZENT_DIR/.venv/bin/python" - "$script" "$SUZENT_DIR" "$state" <<'PY' 2>/dev/null || echo social
+import json, runpy, sys
+script, checkout, state = sys.argv[1:]
+module = runpy.run_path(script)
+from pathlib import Path
+print("\n".join(module["builtin_plugin_extras"](Path(checkout), Path(state))))
+PY
 }
 
 if china_mirror_enabled; then
-    info "Syncing Python dependencies with social channel support through the PyPI mirror..."
-    sync_python_deps_via_mirror || die "Python dependency install failed — check errors above."
+    info "Syncing Python dependencies through the PyPI mirror..."
 else
-    info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
-    uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
+    info "Syncing Python dependencies (uv sync --frozen)..."
+fi
+sync_python_deps || die "Python dependency install failed — check errors above."
+plugin_extras=()
+while IFS= read -r extra; do
+    [ -n "$extra" ] && plugin_extras+=("$extra")
+done < <(enabled_plugin_extras)
+if [ ${#plugin_extras[@]} -gt 0 ]; then
+    info "Installing packages for enabled plugins: ${plugin_extras[*]}"
+    sync_python_deps "${plugin_extras[@]}" || die "Python dependency install failed — check errors above."
 fi
 ok "Python dependencies ready"
 
