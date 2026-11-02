@@ -43,6 +43,11 @@ dependencies = [
     # Document formats read_file converts; [all] would add audio transcription,
     # YouTube and Azure Document Intelligence, which nothing here uses.
     "markitdown[pdf,docx,pptx,xlsx,xls,outlook]",
+    # SpeechOutput decodes compressed TTS audio (MP3/OGG/AAC) with pydub. It
+    # used to arrive via markitdown[all]; declare it so trimming extras cannot
+    # drop it again. audioop left the stdlib in 3.13.
+    "pydub>=0.25.1",
+    "audioop-lts>=0.2.1; python_version >= '3.13'",
     "httpx>=0.28.1",
     "pytest>=9.0.0",
     "lancedb>=0.17.0",

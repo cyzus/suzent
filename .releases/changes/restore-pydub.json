@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency."
+}
