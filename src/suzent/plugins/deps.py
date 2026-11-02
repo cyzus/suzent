@@ -62,12 +62,24 @@ def extra_requirements(extra: str, distribution: str = "suzent") -> list[str]:
     return names
 
 
+def _dist_name(dist) -> str:
+    """A distribution's name, or "" for a half-removed ``*.dist-info``.
+
+    On Windows an upgrade can leave a ``.dist-info`` folder behind without its
+    METADATA (files the running backend held open); ``dist.metadata`` is then
+    None, or raises, depending on the importlib.metadata implementation.
+    """
+    try:
+        metadata = dist.metadata
+        return (metadata["Name"] if metadata is not None else None) or ""
+    except Exception:
+        return ""
+
+
 def _installed(name: str, path: list[str] | None = None) -> bool:
     wanted = _normalize(name)
     distributions = importlib.metadata.distributions(**({"path": path} if path else {}))
-    return any(
-        _normalize(dist.metadata["Name"] or "") == wanted for dist in distributions
-    )
+    return any(_normalize(_dist_name(dist)) == wanted for dist in distributions)
 
 
 def missing_packages(

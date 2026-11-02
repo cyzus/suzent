@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The Plugins settings page no longer fails with \"Failed to fetch\" when an upgrade left a half-removed package folder in the Python environment."
+}
