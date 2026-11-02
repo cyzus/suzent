@@ -16,7 +16,7 @@ import MarkdownUI
     }
 }
 
-private enum Route: Hashable { case conversation, settings }
+private enum Route: Hashable { case conversation }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
@@ -222,6 +222,7 @@ struct ContentView: View {
     @State private var showAllRecent = false
     @State private var expandedAgents: Set<String> = []
     @State private var regentPressed = false
+    @State private var tab: HomeTab = .chats
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
@@ -285,11 +286,18 @@ struct ContentView: View {
                 }.navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack(path: $path) {
-                    sidebar(home: true)
+                    VStack(spacing: 0) {
+                        switch tab {
+                        case .chats: sidebar(home: true)
+                        case .tasks: tasksTab
+                        case .settings: settingsTab
+                        }
+                        HomeTabBar(selection: $tab)
+                    }.ignoresSafeArea(.keyboard, edges: .bottom)
+                        .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
                             case .conversation: detail
-                            case .settings: settingsPage
                             }
                         }
                 }
@@ -297,7 +305,8 @@ struct ContentView: View {
         }
         .background(Color.suzentBackground)
         .foregroundStyle(Color.suzentText)
-        .overlay(alignment: .bottom) { toastHost(!conversationVisible) }
+        // The compact home keeps its tab bar uncovered.
+        .overlay(alignment: .bottom) { toastHost(!conversationVisible).padding(.bottom, !wide && model.connected && path.isEmpty ? 56 : 0) }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
@@ -315,14 +324,24 @@ struct ContentView: View {
             if !connected { showSettings = false }
         }
         .onChange(of: path) { _, path in
-            if !path.contains(.settings) { showSettings = false }
             if path.isEmpty { composing = false; attachmentsExpanded = false }
+        }
+        .onChange(of: model.activeDesktopId) { _, _ in
+            search = ""; expandedProject = nil; expandedAgents = []; showAllRecent = false
+            scheduledExpanded = false; showAllScheduled = false
+            if path.last == .conversation { path = [] }
         }
         .onChange(of: model.selected == nil) { _, missing in
             if missing && path.last == .conversation { path = [] }
         }
         .onChange(of: wide) { _, wide in
-            if !wide { path = showSettings ? [.settings] : model.selected != nil ? [.conversation] : [] }
+            if wide {
+                showSettings = tab == .settings
+            } else {
+                if showSettings { tab = .settings }
+                showSettings = false
+                path = tab != .settings && model.selected != nil ? [.conversation] : []
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
@@ -343,7 +362,7 @@ struct ContentView: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
-            showSettings = false; path = []; showModelPicker = false; showProjectPicker = false; composing = false
+            showSettings = false; path = []; tab = .chats; showModelPicker = false; showProjectPicker = false; composing = false
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
@@ -366,8 +385,7 @@ struct ContentView: View {
 
     private func openSettings() {
         composing = false
-        showSettings = true
-        if !wide { path = [.settings] }
+        if wide { showSettings = true } else { tab = .settings; path = [] }
     }
 
     private func newConversation() {
@@ -394,6 +412,12 @@ struct ContentView: View {
                         ReconnectIndicator(active: model.busy)
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
+                        if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
+                            HStack(spacing: 8) {
+                                DesktopSwatch(desktop: desktop)
+                                Text(desktop.name).lineLimit(1)
+                            }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                        }
                         Group {
                             if model.busy {
                                 if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
@@ -408,7 +432,10 @@ struct ContentView: View {
                 }.padding(.horizontal, 24).padding(.bottom, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
-                        Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                        ForEach(model.desktops.filter { $0.id != model.activeDesktopId }) { desktop in
+                            Button("Switch to \(desktop.name)") { Task { await model.switchDesktop(desktop.id) } }.disabled(model.busy)
+                        }
+                        Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
                         Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                         Button("Cancel", role: .cancel) { }
                     } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
@@ -444,11 +471,6 @@ struct ContentView: View {
         }
     }
 
-    private var settingsPage: some View {
-        settings.navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
-    }
-
     @ViewBuilder private var conversationTitle: some View {
         if let chat = model.selected, !chat.id.isEmpty {
             if chat.isRegent {
@@ -478,11 +500,16 @@ struct ContentView: View {
                     Text("SUZENT").tracking(2).suzentFont(14, weight: .bold)
                 }
                 Spacer()
-                Button(action: openSettings) {
-                    Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel("Settings")
-            }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
+                if !home {
+                    Button(action: openSettings) {
+                        Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Settings")
+                }
+            }.frame(minHeight: 44).padding(.horizontal, 20).padding(.top, 4).padding(.bottom, home ? 0 : 4)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            if let desktop = model.activeDesktop, !model.isDemo {
+                activeDesktopLine(desktop).padding(.horizontal, 20).padding(.bottom, 4)
+            }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
                     RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
@@ -547,7 +574,7 @@ struct ContentView: View {
                             Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
                         }
                     }
-                    scheduledSection
+                    if !home { scheduledSection }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -764,6 +791,16 @@ struct ContentView: View {
                     }.foregroundStyle(Color.suzentMuted)
                 }
             } else {
+                if let desktop = model.activeDesktop {
+                    Section {
+                        NavigationLink {
+                            DesktopsPage(model: model) { repairScanner = true }
+                        } label: {
+                            DesktopCard(desktop: desktop, origin: model.origin, count: model.desktops.count)
+                        }
+                    } header: { settingsHeader("Connection") }
+                }
+                // Everything here applies to the connected desktop only, so it lives in one section.
                 Section {
                     NavigationLink {
                         ScrollView {
@@ -772,25 +809,20 @@ struct ContentView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(PresentationTokens.spacePage)
                             }
                         }.background(Color.suzentBackground)
-                            .navigationTitle("Desktop access").navigationBarTitleDisplayMode(.inline)
-                    } label: {
+                            .navigationTitle("Permissions").navigationBarTitleDisplayMode(.inline)
+                    } label: { Text("Permissions") }.disabled(model.device == nil)
+                    Toggle(isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(model.device?.displayName ?? String(localized: "Desktop access"))
-                            Text(model.origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            Text("Enable foreground Node")
+                            if model.nodeEnabled {
+                                Text(model.nodeStatus).font(.caption).foregroundStyle(Color.suzentMuted)
+                            }
                         }
-                    }.disabled(model.device == nil)
-                } header: { settingsHeader("Desktop access") }
-                Section {
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
-                        .tint(Color(presentation: PresentationTokens.blue))
-                } header: { settingsHeader("This phone as a Node") } footer: {
-                    Text(model.nodeStatus).foregroundStyle(Color.suzentMuted)
-                }
-                Section {
-                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
-                    Button("Forget connection", role: .destructive) { confirmForget = true }
+                    }.tint(Color(presentation: PresentationTokens.blue))
+                    Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
+                    Button("Forget this desktop", role: .destructive) { confirmForget = true }
                         .foregroundStyle(Color.suzentDanger).disabled(model.busy)
-                } header: { settingsHeader("Connection") } footer: {
+                } header: { settingsHeader("This desktop") } footer: {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
             }
@@ -802,10 +834,58 @@ struct ContentView: View {
             } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
-        .alert("Forget connection?", isPresented: $confirmForget) {
+        .alert("Forget this desktop?", isPresented: $confirmForget) {
             Button("Cancel", role: .cancel) {}
-            Button("Forget connection", role: .destructive) { model.forget() }
+            Button("Forget", role: .destructive) { model.forget() }
         } message: { Text("This phone will need to pair again before it can reach your desktop.") }
+    }
+
+    private func activeDesktopLine(_ desktop: SavedDesktop) -> some View {
+        HStack(spacing: 6) {
+            DesktopSwatch(desktop: desktop, size: 8)
+            Text(desktop.name).lineLimit(1).truncationMode(.tail)
+        }.suzentFont(PresentationTokens.typeSidebarSection, weight: .semibold).foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Desktop: \(desktop.name)"))
+    }
+
+    private func tabHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title).suzentFont(PresentationTokens.typeControl, weight: .bold)
+            .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 4).padding(.bottom, 4)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var settingsTab: some View {
+        VStack(spacing: 0) {
+            tabHeader("Settings")
+            settings.scrollContentBackground(.hidden)
+        }.background(Color.suzentBackground)
+    }
+
+    private var tasksTab: some View {
+        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
+        return VStack(spacing: 0) {
+            tabHeader("Tasks")
+            List {
+                if groups.isEmpty {
+                    Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
+                        .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
+                }
+                ForEach(groups) { group in
+                    if let task = group.task {
+                        scheduledTaskRow(task, root: group.root).sidebarListRow()
+                    } else if let root = group.root { conversationRows([root], scope: "tasks") }
+                    conversationRows(group.children, scope: "tasks", spacing: 0)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
+            .refreshable { await model.refresh() }
+        }.background(Color.suzentSurface)
     }
 
     private func settingsHeader(_ title: LocalizedStringKey) -> some View {

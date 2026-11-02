@@ -31,6 +31,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -54,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -86,12 +91,16 @@ private fun MobileScreen(model: MobileModel) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var showHome by rememberSaveable { mutableStateOf(true) }
+    var tab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
+    var desktopsOpen by rememberSaveable { mutableStateOf(false) }
     val pageState = rememberSaveableStateHolder()
     val focus = LocalFocusManager.current
     LaunchedEffect(Unit) { if (model.canReconnect && !model.connected) model.connect() }
-    LaunchedEffect(model.connected, model.isDemo) {
+    LaunchedEffect(model.connected, model.isDemo, model.desktops.activeId) {
         showSettings = false
         showHome = true
+        desktopsOpen = false
+        tab = HomeTab.CHATS
         if (model.connected) model.watchNavigation()
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
@@ -99,22 +108,39 @@ private fun MobileScreen(model: MobileModel) {
         LaunchedEffect(showHome, showSettings, model.selected?.id, wide) {
             model.regentVisible = (wide || !showHome) && !showSettings && model.selected?.isRegent == true
         }
+        val openChat: (Chat) -> Unit = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; showHome = false }
+        val sidebar: @Composable () -> Unit = {
+            // On a phone the list is only visible after leaving the chat, so the last-opened row must not stay filled.
+            Sidebar(model, showSettings || !wide, tabs = !wide, open = openChat,
+                create = { projectId -> focus.clearFocus(); model.create(projectId); showSettings = false; showHome = false },
+                settings = { focus.clearFocus(); showSettings = true; showHome = false; desktopsOpen = false })
+        }
         val home: @Composable () -> Unit = {
             pageState.SaveableStateProvider("home") {
                 Surface(Modifier.fillMaxSize()) {
-                    // On a phone the list is only visible after leaving the chat, so the last-opened row must not stay filled.
-                    Sidebar(model, showSettings || !wide,
-                        open = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; showHome = false },
-                        create = { projectId -> focus.clearFocus(); model.create(projectId); showSettings = false; showHome = false },
-                        settings = { focus.clearFocus(); showSettings = true; showHome = false })
+                    if (wide) sidebar()
+                    else TabHome(tab, { focus.clearFocus(); tab = it }) {
+                        when (it) {
+                            HomeTab.CHATS -> sidebar()
+                            HomeTab.TASKS -> TasksTab(model, openChat)
+                            HomeTab.SETTINGS -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                                androidx.activity.compose.BackHandler(enabled = desktopsOpen) { desktopsOpen = false }
+                                if (desktopsOpen) DesktopsView(model, back = { desktopsOpen = false })
+                                else {
+                                    TabTitle(stringResource(R.string.settings))
+                                    SettingsView(model, openDesktops = { desktopsOpen = true })
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         val detail: @Composable (Boolean) -> Unit = { compact ->
-            DetailPane(model, showSettings,
+            DetailPane(model, showSettings, desktopsOpen, { desktopsOpen = it },
                 back = if (compact) ({ focus.clearFocus(); showHome = true }) else null,
                 newChat = { focus.clearFocus(); model.create(); showSettings = false },
-                repair = { model.error = null; repairScanner = true })
+                repair = { model.error = null; model.beginPairing(repairActive = true); repairScanner = true })
         }
         when {
             !model.connected -> detail(false)
@@ -163,8 +189,8 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailPane(model: MobileModel, showSettings: Boolean, back: (() -> Unit)?,
-                       newChat: () -> Unit, repair: () -> Unit) {
+private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: Boolean, openDesktops: (Boolean) -> Unit,
+                       back: (() -> Unit)?, newChat: () -> Unit, repair: () -> Unit) {
     Scaffold(topBar = {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -202,7 +228,8 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, back: (() -> U
             when {
                 !model.connected && model.canReconnect -> ReconnectView(model, repair)
                 !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
-                showSettings -> SettingsView(model)
+                showSettings && desktopsOpen -> DesktopsView(model, back = { openDesktops(false) })
+                showSettings -> SettingsView(model, openDesktops = { openDesktops(true) })
                 model.selected != null -> Conversation(model)
                 else -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     if (model.busy) CircularProgressIndicator() else Text(stringResource(R.string.select_conversation), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -221,8 +248,11 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
         Spacer(Modifier.weight(1f))
         Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             ReconnectIndicator(active = model.busy)
-            Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
-                fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
+                    fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                ActiveDesktopLabel(model)
+            }
             Box(Modifier.heightIn(min = 44.dp)) {
                 if (model.busy) {
                     if (model.reconnecting) SuzentTextButton(onClick = model::cancelReconnect) {
@@ -247,6 +277,12 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SettingsRow(stringResource(R.string.pair_again), { helpOpen = false; repair() }, enabled = !model.busy && !model.streaming)
             SettingsRow(stringResource(R.string.forget), { helpOpen = false; forgetting = true }, enabled = !model.busy, danger = true)
+            model.desktops.desktops.filter { it.id != model.desktops.activeId }.forEach { desktop ->
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingsRow(stringResource(R.string.switch_to_desktop, desktop.name), {
+                    helpOpen = false; model.switchDesktop(desktop.id)
+                })
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsRow(stringResource(R.string.cancel_reconnect), { helpOpen = false })
         }
@@ -265,7 +301,7 @@ private fun ForgetConnectionDialog(model: MobileModel, dismiss: () -> Unit) {
 }
 
 @Composable
-private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
+private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     var observedPinVersion by remember { mutableIntStateOf(model.pinnedVersion) }
@@ -324,8 +360,9 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
         // The wordmark fills the row to stay centred, so the settings button is layered over its end.
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
             SuzentWordmark()
-            IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp)) }
+            if (!tabs) IconButton(onClick = settings) { Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp)) }
         }
+        ActiveDesktopLabel(model, Modifier.align(Alignment.CenterHorizontally))
         model.chats.firstOrNull { it.isRegent }?.let { regent ->
             val selected = model.selected?.isRegent == true && !hideSelection
             val regentInteraction = remember { MutableInteractionSource() }
@@ -432,7 +469,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
             if (search.isEmpty() && recentRows.isEmpty() && pinnedRows.isEmpty()) item(key = "empty") {
                 Text(stringResource(R.string.sidebar_empty), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (scheduledGroups.isNotEmpty()) {
+            if (scheduledGroups.isNotEmpty() && !tabs) {
                 item(key = "scheduled-heading") {
                     SuzentTextButton(onClick = { scheduledExpanded = !scheduledExpanded }, modifier = Modifier.fillMaxWidth()) {
                         Icon(painterResource(R.drawable.ic_clock), contentDescription = null, modifier = Modifier.padding(end = 10.dp).size(18.dp))
@@ -467,7 +504,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, open: (Chat) -> 
             }
         }
         }
-        Spacer(Modifier.navigationBarsPadding())
+        if (!tabs) Spacer(Modifier.navigationBarsPadding())
     }
 }
 
@@ -652,7 +689,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
 }
 
 @Composable
-private fun SettingsView(model: MobileModel) {
+private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
@@ -667,23 +704,37 @@ private fun SettingsView(model: MobileModel) {
             SettingsFooter(stringResource(R.string.demo_intro))
             SettingsFooter(stringResource(R.string.demo_limits))
         } else {
-            SettingsSection(stringResource(R.string.desktop_access), divider = false)
-            ListItem(headlineContent = { Text(model.device?.name ?: stringResource(R.string.access), fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text(model.origin, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            SettingsSection(stringResource(R.string.connection_section), divider = false)
+            model.desktops.active?.let { desktop ->
+                ListItem(leadingContent = { DesktopSquare(desktop.id, 28.dp) },
+                    headlineContent = { Text(desktop.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = { Text(stringResource(R.string.desktop_connected, displayOrigin(model.origin)), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    trailingContent = { Row(verticalAlignment = Alignment.CenterVertically) {
+                        val count = model.desktops.desktops.size
+                        if (count > 1) Text(pluralStringResource(R.plurals.desktop_count, count, count),
+                            fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, modifier = Modifier.padding(start = 8.dp).size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } },
+                    modifier = Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.desktops), onClick = openDesktops))
+            }
+            // Everything here applies to the connected desktop only, so it lives in one section.
+            SettingsSection(stringResource(R.string.this_desktop))
+            ListItem(headlineContent = { Text(stringResource(R.string.permissions), fontWeight = FontWeight.SemiBold) },
                 trailingContent = { SuzentChevron(accessExpanded, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                modifier = Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.access)) { accessExpanded = !accessExpanded })
+                modifier = Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.permissions)) { accessExpanded = !accessExpanded })
             if (accessExpanded) model.device?.let {
                 Box(Modifier.padding(horizontal = PresentationTokens.spacePage.dp, vertical = PresentationTokens.spaceSmall.dp)) { ClientPermissionsView(it, model.origin) }
             }
-            SettingsSection(stringResource(R.string.node_heading))
-            ListItem(headlineContent = { Text(stringResource(R.string.enable_node)) },
-                supportingContent = { Text(model.nodeStatus) },
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ListItem(headlineContent = { Text(stringResource(R.string.enable_node), fontWeight = FontWeight.SemiBold) },
+                supportingContent = if (model.nodeEnabled) { { Text(model.nodeStatus) } } else null,
                 trailingContent = { Switch(checked = model.nodeEnabled, onCheckedChange = null) },
                 modifier = Modifier.toggleable(value = model.nodeEnabled, role = Role.Switch, onValueChange = model::toggleNode))
-            SettingsSection(stringResource(R.string.connection_section))
-            SettingsRow(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            SettingsRow(stringResource(R.string.forget), { forgetting = true }, enabled = !model.busy, danger = true)
+            SettingsRow(stringResource(R.string.pair_again), { model.error = null; model.beginPairing(repairActive = true); repairScanner = true }, enabled = !model.busy && !model.streaming)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SettingsRow(stringResource(R.string.forget_this_desktop), { forgetting = true }, enabled = !model.busy, danger = true)
             SettingsFooter(stringResource(R.string.revoke_help))
         }
         SettingsSection(stringResource(R.string.about))
@@ -943,5 +994,173 @@ private fun SidebarSectionHeading(label: String, count: Int? = null, start: Dp =
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         if (count != null) Text(count.toString(), fontWeight = FontWeight.Bold,
             fontSize = PresentationTokens.typeSidebarSection.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private enum class HomeTab(val label: Int, val icon: Int) {
+    CHATS(R.string.tab_chats, R.drawable.ic_tool_chat_bubble_left_right),
+    TASKS(R.string.tab_tasks, R.drawable.ic_clock),
+    SETTINGS(R.string.settings, R.drawable.ic_settings)
+}
+
+/** Phone home: one page per tab above a bottom bar. A pushed conversation covers the bar entirely. */
+@Composable
+private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, page: @Composable (HomeTab) -> Unit) {
+    // The keyboard covers the bar anyway; dropping it keeps the page's own ime padding exact.
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) { page(tab) }
+        if (!keyboardVisible) {
+            HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().selectableGroup()) {
+                HomeTab.entries.forEach { item ->
+                    val selected = item == tab
+                    val color = if (selected) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(Modifier.weight(1f).heightIn(min = 56.dp).selectable(selected, role = Role.Tab) { select(item) }.padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                        Text(stringResource(item.label), fontSize = PresentationTokens.typeMeta.sp, color = color,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabTitle(title: String, model: MobileModel? = null) {
+    Column(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        model?.let { ActiveDesktopLabel(it) }
+    }
+    HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+}
+
+@Composable
+private fun ActiveDesktopLabel(model: MobileModel, modifier: Modifier = Modifier) {
+    val desktop = model.desktops.active ?: return
+    if (model.isDemo) return
+    Row(modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        DesktopSquare(desktop.id, 8.dp)
+        Text(desktop.name, fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun DesktopSquare(id: String, size: Dp) {
+    Box(Modifier.size(size).background(Color(desktopColor(id))).border(1.5.dp, MaterialTheme.colorScheme.onSurface))
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TasksTab(model: MobileModel, open: (Chat) -> Unit) {
+    var expandedAgents by remember { mutableStateOf(setOf<String>()) }
+    fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
+    val groups = scheduledSidebarGroups(model.chats, model.scheduledTasks, "", expandedAgents)
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        TabTitle(stringResource(R.string.tab_tasks), model)
+        PullToRefreshBox(isRefreshing = refreshing, modifier = Modifier.weight(1f).fillMaxWidth(), onRefresh = {
+            refreshing = true
+            scope.launch { try { model.refresh().join() } finally { refreshing = false } }
+        }) {
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+                if (groups.isEmpty()) item(key = "empty") {
+                    Text(stringResource(R.string.tasks_empty), Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(groups, key = { it.id }) { group ->
+                    Column {
+                        val task = group.task
+                        val root = group.root
+                        if (task != null) ScheduledTaskRow(task, model, false, root?.childCount ?: 0, task.chatId in expandedAgents,
+                            { task.chatId?.let(::toggleAgents) }) {
+                            task.chatId?.let { id -> open(model.chats.firstOrNull { it.id == id } ?: Chat(id, task.name, task.running, emptyList())) }
+                        }
+                        else if (root != null) SidebarEntry(root, false, model, open, root.chat.id in expandedAgents) { toggleAgents(root.chat.id) }
+                        group.children.forEach { entry -> SidebarEntry(entry, false, model, open, false) {} }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopsView(model: MobileModel, back: () -> Unit) {
+    var scanner by remember { mutableStateOf(false) }
+    if (scanner) PairingScanner(model) { scanner = false }
+    var forgetting by remember { mutableStateOf<SavedDesktop?>(null) }
+    forgetting?.let { desktop ->
+        AlertDialog(onDismissRequest = { forgetting = null }, title = { Text(stringResource(R.string.forget_desktop_title, desktop.name)) },
+            text = { Text(stringResource(R.string.forget_warning)) },
+            confirmButton = { TextButton(onClick = { forgetting = null; model.forgetDesktop(desktop.id) }, enabled = !model.busy) {
+                Text(stringResource(R.string.forget_desktop), color = MaterialTheme.colorScheme.error)
+            } },
+            dismissButton = { TextButton(onClick = { forgetting = null }) { Text(stringResource(android.R.string.cancel)) } })
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            SuzentIconButton(onClick = back, label = stringResource(R.string.back)) {
+                Icon(painterResource(R.drawable.ic_chat_back), contentDescription = null, modifier = Modifier.size(20.dp))
+            }
+            Text(stringResource(R.string.desktops), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.size(PresentationTokens.controlHeight.dp))
+        }
+        HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            SettingsSection(stringResource(R.string.paired_desktops), divider = false)
+            model.desktops.desktops.forEach { desktop ->
+                key(desktop.id) { DesktopRow(model, desktop) { forgetting = desktop } }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            OutlinedButton(onClick = { model.error = null; model.beginPairing(repairActive = false); scanner = true },
+                enabled = !model.busy && !model.streaming, shape = RectangleShape,
+                border = androidx.compose.foundation.BorderStroke(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.padding(PresentationTokens.spacePage.dp).fillMaxWidth().heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.pair_another_desktop), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            }
+            SettingsFooter(stringResource(R.string.desktops_footer))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DesktopRow(model: MobileModel, desktop: SavedDesktop, forget: () -> Unit) {
+    val active = desktop.id == model.desktops.activeId
+    val checking = model.checkingDesktop == desktop.id
+    val forgetLabel = stringResource(R.string.forget_desktop)
+    val latestForget by rememberUpdatedState(forget)
+    // The swipe only asks; the dialog does the forgetting, so the row always springs back.
+    val swipe = rememberSwipeToDismissBoxState(confirmValueChange = {
+        if (it == SwipeToDismissBoxValue.EndToStart) latestForget()
+        false
+    })
+    SwipeToDismissBox(swipe, enableDismissFromStartToEnd = false, backgroundContent = {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.error).padding(horizontal = PresentationTokens.spacePage.dp),
+            contentAlignment = Alignment.CenterEnd) {
+            Text(forgetLabel, color = MaterialTheme.colorScheme.onError, fontWeight = FontWeight.SemiBold)
+        }
+    }) {
+        ListItem(leadingContent = { DesktopSquare(desktop.id, 14.dp) },
+            headlineContent = { Text(desktop.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            supportingContent = { Text(if (checking) stringResource(R.string.desktop_checking) else displayOrigin(desktop.connection.origin),
+                maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            trailingContent = {
+                when {
+                    checking -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    active -> Icon(painterResource(R.drawable.ic_message_check), contentDescription = stringResource(R.string.desktop_current),
+                        tint = suzentLink, modifier = Modifier.size(20.dp))
+                }
+            },
+            modifier = Modifier
+                .semantics { customActions = listOf(CustomAccessibilityAction(forgetLabel) { latestForget(); true }) }
+                .clickable(enabled = !active && model.checkingDesktop == null && !model.streaming, role = Role.Button) { model.switchDesktop(desktop.id) })
     }
 }

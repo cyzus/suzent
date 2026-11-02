@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import socket
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
@@ -111,6 +112,7 @@ async def session(request: Request) -> JSONResponse:
     return reply(
         {
             "device": authorize(request).model_dump(),
+            "desktop_name": socket.gethostname()[:100],
             "client_protocol": 1,
             "stream_protocols": [1],
             "attachments": 1,

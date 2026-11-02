@@ -67,7 +67,6 @@
     <string name="not_allowed">Not allowed</string>
     <string name="manage_access">Manage or revoke access in desktop Settings → Devices → Mobile access.</string>
     <string name="tool_approval_desktop">Tool requests follow the conversation policy. Node access is separate.</string>
-    <string name="access">Access</string>
     <string name="checking_addresses">Checking desktop addresses…</string>
     <string name="pairing_unreachable">None of the desktop addresses could be reached with a compatible protocol. Check Wi-Fi or Tailscale and update the desktop app.</string>
     <string name="confirm_connection_help">Confirm to connect with the permissions shown above. You do not need to approve again on desktop.</string>
@@ -92,7 +91,6 @@
     <string name="settings">Settings</string>
     <string name="desktop_model">Desktop model</string>
     <string name="conversation_default">Conversation default</string>
-    <string name="node_heading">This phone as a Node</string>
     <string name="greeting_night">Night owl?</string>
     <string name="greeting_morning">Good morning.</string>
     <string name="greeting_build">Keep building.</string>
@@ -229,4 +227,27 @@
     <string name="approval_show_all">Show all</string>
     <string name="approval_show_less">Show less</string>
     <string name="demo_section">Offline demo</string>
+    <string name="tab_chats">Chats</string>
+    <string name="tab_tasks">Tasks</string>
+    <string name="tasks_empty">No scheduled tasks on this desktop yet.</string>
+    <string name="desktops">Desktops</string>
+    <string name="paired_desktops">Paired desktops</string>
+    <string name="pair_another_desktop">Pair another desktop</string>
+    <string name="desktops_footer">Switching shows that desktop’s chats and tasks. Swipe left on a desktop to forget it.</string>
+    <string name="desktop_checking">Checking…</string>
+    <string name="desktop_connected">Connected · %1$s</string>
+    <string name="desktop_current">Current desktop</string>
+    <string name="this_desktop">This desktop</string>
+    <string name="switch_to_desktop">Switch to %1$s</string>
+    <string name="forget_this_desktop">Forget this desktop</string>
+    <string name="permissions">Permissions</string>
+    <string name="forget_desktop">Forget</string>
+    <string name="forget_desktop_title">Forget %1$s?</string>
+    <string name="desktop_unreachable">Couldn’t reach %1$s. You’re still on the current desktop.</string>
+    <string name="desktop_access_revoked">%1$s revoked this phone’s access, so it was removed.</string>
+    <string name="back">Back</string>
+    <plurals name="desktop_count">
+        <item quantity="one">%d desktop</item>
+        <item quantity="other">%d desktops</item>
+    </plurals>
 </resources>
