@@ -125,6 +125,23 @@ def test_prefetch_reads_the_live_social_config(checkout, tmp_path):
     assert "telegram" in json.loads(result.stdout.strip().splitlines()[-1])
 
 
+def test_tilde_in_the_state_path_is_expanded(checkout, tmp_path, monkeypatch):
+    """setup.sh passes "${SUZENT_DATA_DIR}/config/plugins.json" verbatim, so a
+    literal "~/custom" must resolve to the home directory."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    state = home / "custom" / "config" / "plugins.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"plugins": {"camera": {"enabled": True}}}), "utf-8")
+
+    extras = enablement.builtin_plugin_extras(
+        checkout, Path("~/custom/config/plugins.json")
+    )
+
+    assert "camera" in extras
+
+
 def test_runs_by_path_without_importing_suzent(checkout, tmp_path):
     """Copied out of the source tree and run in isolated mode: any import of
     Suzent would fail, as it would on an environment not yet synced."""

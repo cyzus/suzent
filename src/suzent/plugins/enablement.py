@@ -90,7 +90,9 @@ def builtin_plugin_extras(
     builtin_dir = checkout / "plugins"
     if not builtin_dir.is_dir():
         return ["social"]
-    state = read_state(state_file)
+    # Callers pass SUZENT_DATA_DIR verbatim (e.g. "~/custom" from a shell);
+    # expand it as get_data_dir() does, so the real plugin state is read.
+    state = read_state(Path(state_file).expanduser())
     social = read_json_dict(social_file or checkout / "config" / "social.json")
     extras: dict[str, None] = {}
     for manifest_path in sorted(builtin_dir.glob(f"*/{MANIFEST_FILENAME}")):
