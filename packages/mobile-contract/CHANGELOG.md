@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.6.0] - 2026-11-02
+
+### Release notes
+- The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
+
 ## [mobile-v0.5.4] - 2026-11-01
 
 ### Release notes
