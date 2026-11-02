@@ -412,22 +412,10 @@ async def test_render_ui_tool_headless_returns_result():
 
 @pytest.mark.asyncio
 async def test_webpage_tool_wraps_result(monkeypatch):
-    class _DummyResult:
-        markdown = "# title"
+    async def _fetch(url):
+        return {"url": url, "title": "title", "content": "# title"}
 
-    class _DummyCrawler:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def arun(self, url):
-            return _DummyResult()
-
-    monkeypatch.setattr(
-        "suzent.tools.webpage_tool.AsyncWebCrawler", lambda: _DummyCrawler()
-    )
+    monkeypatch.setattr("suzent.tools.webpage_tool._make_fetcher", lambda: _fetch)
 
     ctx = SimpleNamespace(deps=SimpleNamespace(citation_manager=None))
     result = await WebpageTool().forward(ctx, url="https://example.com")
