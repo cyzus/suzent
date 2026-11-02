@@ -88,7 +88,8 @@ jobs:
       - name: Install locked dependencies and Suzent (non-editable)
         shell: pwsh
         run: |
-          uv export --frozen --no-dev --no-editable --no-hashes --no-emit-project -o requirements-msix.txt
+          # Built-in plugin extras are bundled: the package cannot install them later.
+          uv export --frozen --no-dev --extra social --extra camera --no-editable --no-hashes --no-emit-project -o requirements-msix.txt
           uv pip install --python $env:PY --break-system-packages -r requirements-msix.txt
           uv pip install --python $env:PY --break-system-packages --no-deps .
           & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok')"
