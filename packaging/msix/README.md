@@ -12,7 +12,7 @@ pkg\
   suzent.exe                  Tauri release exe (built with tauri.conf.store.json)
   Assets\                     StoreLogo / Square44x44 / Square150x150 (from src-tauri/icons)
   runtime\python\             python-build-standalone CPython 3.12 + locked deps + suzent
-  app\config\  app\skills\  app\plugins\   tracked repo files (SUZENT_PROJECT_DIR)
+  app\config\  app\skills\  app\plugins\  app\extensions\browser\   tracked repo files (SUZENT_PROJECT_DIR)
 ```
 
 In packaged mode the app:
@@ -48,7 +48,8 @@ The CI workflow (`.github/workflows/msix.yml`) is the reference. By hand, on Win
 3. Delete the files that make signtool fail (`DLLs\tcl86t.dll`, `DLLs\tk86t.dll`,
    `vcruntime140.dll`, `vcruntime140_1.dll`) together with `tcl\`, `Lib\tkinter`,
    `Lib\idlelib`, `Lib\turtledemo`, `DLLs\_tkinter.pyd`; then `python -m compileall -q`.
-4. Copy `config\`, `skills\` and `plugins\` (tracked files only) to `pkg\app\`.
+4. Copy `config\`, `skills\`, `plugins\` and `extensions\browser\` (tracked files only)
+   to `pkg\app\`. The browser extension is served from there by Settings > Browser.
 5. `cd src-tauri; npx tauri build --no-bundle --config tauri.conf.store.json` and copy
    `target\release\suzent.exe` to `pkg\`.
 6. Render the manifest, then either `makeappx pack /d pkg /p Suzent.msix /o`, or for a

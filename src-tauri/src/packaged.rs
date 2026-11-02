@@ -76,7 +76,9 @@ pub fn app_resources_dir() -> Option<PathBuf> {
 /// both the backend and CLI invocations through the execution alias.
 pub fn python_command(python: &Path, data_dir: &Path) -> std::process::Command {
     let mut cmd = std::process::Command::new(python);
-    cmd.env("PYTHONDONTWRITEBYTECODE", "1")
+    // The same data dir as this app (honours the build-time name override).
+    cmd.env("SUZENT_DATA_DIR", data_dir)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONNOUSERSITE", "1");
     if let Some(app_dir) = app_resources_dir() {
         cmd.env("SUZENT_PROJECT_DIR", app_dir);

@@ -25,6 +25,7 @@ class VersionFile:
 VERSION_FILES = (
     VersionFile("src-tauri/tauri.conf.json", "json"),
     VersionFile("src-tauri/tauri.conf.prod.json", "json"),
+    VersionFile("src-tauri/tauri.conf.store.json", "json"),
     VersionFile("src-tauri/package.json", "json"),
     VersionFile("frontend/package.json", "json"),
     VersionFile("apps/suzent-installer/tauri.conf.json", "json"),
