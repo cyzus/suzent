@@ -98,6 +98,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
+            .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
         json("mobile/pairing/preview", JSONObject().put("pairing_id", invitation.id)), invitation)

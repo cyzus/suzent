@@ -26,6 +26,7 @@ public struct ClientSession: Decodable, Sendable {
     public let attachments: Int?
     public let scheduledTasks: Int?
     public var chatPagination: Int? = nil
+    public var desktopName: String? = nil
 
     public var supportsAttachments: Bool { attachments == 1 }
     public var supportsScheduledTasks: Bool { scheduledTasks == 1 }
