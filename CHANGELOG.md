@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.20.1] - 2026-11-02
+
+### Release notes
+- Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
+
 ## [v0.20.0] - 2026-11-01
 
 ### Release notes

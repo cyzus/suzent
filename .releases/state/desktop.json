@@ -1,5 +1,5 @@
 {
-  "version": "0.20.0",
+  "version": "0.20.1",
   "consumed": [
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -176,6 +176,7 @@
     ".releases/changes/silent-auto-update.json",
     ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/skill-default-enablement.json",
+    ".releases/changes/slim-deps-web-fetch.json",
     ".releases/changes/startup-retry-in-place.json",
     ".releases/changes/subagent-followup.json",
     ".releases/changes/subagent-fork-model-live-view.json",
