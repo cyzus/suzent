@@ -131,7 +131,8 @@ jobs:
       - name: Copy bundled resources
         shell: pwsh
         run: |
-          foreach ($f in git ls-files config skills plugins) {
+          # extensions/browser is served by Settings > Browser (PROJECT_DIR/extensions).
+          foreach ($f in git ls-files config skills plugins extensions/browser) {
             $dest = Join-Path "$env:PKG\app" $f
             New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
             Copy-Item $f $dest
