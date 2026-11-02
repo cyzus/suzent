@@ -21,7 +21,10 @@ Play yet, and some desktop features are missing (see [Limits](#limits)).
 | | Requirement | Where to get it |
 |---|---|---|
 | **Android** | Android 8 or later | Download the [latest APK](https://suzent.com/download/android/) and install it. Earlier versions are on [GitHub Releases](https://github.com/cyzus/suzent/releases) under `mobile-v...`. |
-| **iOS** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+| **iPhone and iPad** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+
+The app's [privacy policy](https://suzent.com/mobile-privacy) is also linked
+from the connection screen and from **Settings → About**.
 
 ## Try it without a computer
 

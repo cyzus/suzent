@@ -68,6 +68,9 @@ its own until you revoke it.
 Once connected, just ask: "take a photo with my phone", or "play this on the
 living-room speaker". You can see each device's abilities in the device list.
 
+A computer's webcam is offered only once the **Camera**
+[plugin](./plugins.md) is installed on it.
+
 ## Drive another Suzent
 
 If both computers run Suzent, one can ask the other's agent to do work using

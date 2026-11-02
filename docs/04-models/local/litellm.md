@@ -13,17 +13,22 @@ use it like any other provider.
 ## Set up
 
 1. Start your LiteLLM proxy and note its URL and master key.
-2. Open **Settings → Providers → LiteLLM Proxy** and fill in both fields.
-3. On the **MODELS** tab, click **FETCH** to load the models your proxy
-   exposes, tick the ones you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **LiteLLM Proxy**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, fill in **Base URL** and **Master Key**, clicking
+   **Save** for each.
+4. Click **Test connection & fetch models** to load the models your proxy
+   exposes, then tick the ones you want on the **Models** tab.
+
+Changes save on their own.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
 | **Master Key** | `LITELLM_MASTER_KEY` | `LITELLM_PROXY_API_KEY` also works. |
-| **Base URL** | — | For example `http://localhost:4000`. |
+| **Base URL** | `LITELLM_BASE_URL` | For example `http://localhost:4000`. |
 
-You can set the master key's environment variable before starting Suzent
-instead of pasting it. It then shows as **Set in env** and can't be changed
-from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.

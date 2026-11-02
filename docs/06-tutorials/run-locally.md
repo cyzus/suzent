@@ -24,8 +24,10 @@ ollama pull llama3.2
 
 ## 2. Connect it to Suzent
 
-1. Open **Settings → Providers → Ollama** and click **FETCH**.
-2. Tick the model you pulled and click **Save Changes**.
+1. Open **Settings → Providers**, find **Ollama** under **Add a provider**, and
+   click it to open its card.
+2. Click **Test connection & fetch models**.
+3. On the **Models** tab, tick the model you pulled. Changes save on their own.
 
 ## 3. Use it for everything
 

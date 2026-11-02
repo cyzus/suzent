@@ -99,26 +99,26 @@ suzent start
 
 **获取密钥：** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → 创建新密钥（以 `sk-...` 开头）
 
-在设置中打开 OpenAI 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **OpenAI** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **获取密钥：** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → 创建密钥（以 `sk-ant-...` 开头）
 
-在设置中打开 Anthropic 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **Anthropic** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **获取密钥（有免费额度）：** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → 创建 API 密钥（以 `AIza...` 开头）
 
-在设置中打开 Google Gemini 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **Google Gemini** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 </Tabs>
 
-使用 DeepSeek、Grok、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](../04-models/README.md)。
+使用 DeepSeek、通义千问、Kimi、GLM、各家编程套餐、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](../04-models/README.md)。
 
 ---
 

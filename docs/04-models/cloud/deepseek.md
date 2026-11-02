@@ -11,8 +11,14 @@ Use DeepSeek's low-cost chat and reasoning models.
 ## Set up
 
 1. Get an API key from [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys).
-2. Open **Settings → Providers → DeepSeek**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **DeepSeek**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection & fetch models**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and DeepSeek then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -20,8 +26,9 @@ Use DeepSeek's low-cost chat and reasoning models.
 |---|---|---|
 | **API Key** | `DEEPSEEK_API_KEY` | Starts with `sk-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 

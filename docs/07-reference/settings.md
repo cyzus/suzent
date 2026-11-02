@@ -22,6 +22,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **MCP Servers** | Add and test servers that give the agent extra tools. | [MCP servers](../03-features/tools/mcp.md) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](../03-features/tools/browser.md) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](../02-using/conversations.md#bring-in-another-coding-agent) |
+| **Plugins** | Install or remove plugins for chat apps, the webcam, and extra tools, commands, and skills. | [Plugins](../03-features/plugins.md) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](../03-features/nodes.md) |
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](../03-features/nodes.md) |
 | **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |

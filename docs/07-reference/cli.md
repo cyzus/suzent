@@ -227,7 +227,7 @@ Pair other computers and phones, and let devices use each other. See
 | `suzent nodes connect <url>` | Join another Suzent as a device, for example from a headless server. | `--name` / `-n` |
 | `suzent nodes connections` | List the connections this computer started. | |
 | `suzent nodes disconnect <url>` | Stop one of those connections. | |
-| `suzent nodes host` | Offer this computer's speaker and camera to Suzent, until you press Ctrl+C. | `--name` / `-n`, `--capabilities` / `-c`, `--url` |
+| `suzent nodes host` | Offer this computer's speaker and camera to Suzent, until you press Ctrl+C. The camera needs the Camera plugin (`suzent plugin install camera`). | `--name` / `-n`, `--capabilities` / `-c`, `--url` |
 
 ## Editors (ACP)
 

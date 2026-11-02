@@ -53,7 +53,9 @@ would delete or overwrite memory always asks first.
 
 Turn on **Auto-sync** to sync every few hours: Suzent pulls incoming changes and
 pushes your own automatically, and still asks before deleting or replacing
-memory.
+memory. If both computers changed different files since the last sync,
+Auto-sync combines the two. If they changed the same file, it stops and leaves
+the change for you to review, without touching your local files.
 
 ## Troubleshooting
 
