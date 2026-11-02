@@ -68,6 +68,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     class HttpFailure(val code: Int) : IOException("HTTP $code")
 
     var supportsPairingRepair = false
+    var supportsInstallationId = false
         private set
 
     suspend fun capabilities() {
@@ -75,6 +76,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             val value = json("mobile/capabilities")
             validateMobileCapabilities(value, pairing = true)
             supportsPairingRepair = value.optInt("pairing_repair") == 1
+            supportsInstallationId = value.optInt("installation_id") == 1
         }
         catch (failure: HttpFailure) {
             if (failure.code == 404 || failure.code == 405) throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)

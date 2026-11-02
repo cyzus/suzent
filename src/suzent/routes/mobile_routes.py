@@ -78,6 +78,7 @@ async def capabilities(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "pairing_protocol": 1,
             "pairing_repair": 1,
+            "installation_id": 1,
             "local_tls": 1,
         }
     )

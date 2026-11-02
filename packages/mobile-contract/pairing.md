@@ -114,13 +114,16 @@ When the user forgets the connection on the phone, it posts to
 desktop revokes that device, so a later scan from the same phone does not leave
 the old grant behind. The call is best effort; older desktops return 404.
 
-Claim also accepts `installation_id`, 32 lowercase hex characters the phone
+Backends that advertise `installation_id: 1` in `/mobile/capabilities` accept
+`installation_id` on claim; phones omit it for other backends, whose claim
+rejects unknown fields. It is 32 lowercase hex characters the phone
 generates once and keeps after forgetting the connection. The desktop stores only
 its SHA-256. When collect mints a new token without a repair proof and a finalized
 grant of the same platform has the same installation hash, the new grant takes
 that device ID and is provisional, exactly like a rotation. Phones post
 `/mobile/client/pairing/confirm` after every activation that has no pending
-rotation; confirming retires grants with the same device ID or installation hash.
+rotation, and activation fails if that confirmation fails, so a reconnect retries
+it; confirming retires grants with the same device ID or installation hash.
 An unconfirmed replacement expires and leaves the old grant intact. Grants from
 phones that send no installation ID are never matched, and names or IP addresses
 are never used to match devices.

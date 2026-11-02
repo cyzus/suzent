@@ -1563,3 +1563,8 @@ def test_forget_pairing_revokes_only_the_calling_device(setup_client):
     assert store.verify(forgotten["token"]) is None
     assert store.verify(kept["token"]) is not None
     assert [d["device_id"] for d in store.devices()] == [kept["device"]["device_id"]]
+
+
+def test_capabilities_advertise_installation_id_for_claims(setup_client):
+    client, _ = setup_client
+    assert client.get("/mobile/capabilities").json()["installation_id"] == 1

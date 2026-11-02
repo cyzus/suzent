@@ -32,10 +32,7 @@ it('includes deduplicated LAN and Tailscale candidates while retaining the legac
     ])
   );
   expect(payload.origin).toBe('http://192.168.1.2:25314');
-  expect(payload.origins).toEqual([
-    'http://100.64.1.2:25314',
-    'https://desktop.example',
-  ]);
+  expect(payload.origins).toEqual(['http://100.64.1.2:25314', 'https://desktop.example']);
   expect(() =>
     mobilePairingPayload('https://desktop.example', invitation, [
       'https://user:secret@other.example',

@@ -268,7 +268,7 @@ import SuzentCore
                                                       confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil,
                                                       repairProof: previous.map { pairingRepairProof(token: $0, invitation: invitation, side: "phone") },
                                                       rotate: connection?.origin != backend.url.absoluteString,
-                                                      installationID: try? CredentialStore.installationID())
+                                                      installationID: capabilities.installationId == 1 ? try? CredentialStore.installationID() : nil)
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
@@ -345,8 +345,9 @@ import SuzentCore
                 try CredentialStore.save(restored); connection = restored
                 saved = restored
             } else {
-                // A grant replacing a forgotten one stays provisional until confirmed; this is idempotent.
-                try? await candidate.confirmPairing()
+                // A grant replacing a forgotten one stays provisional until confirmed, so activation
+                // must not succeed without it. Confirming a finalized grant is a no-op.
+                try await candidate.confirmPairing()
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()

@@ -284,7 +284,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
                     rotate = connection?.origin != bootstrap.backend.origin.toString(),
-                    installationId = store.installationId())
+                    installationId = store.installationId().takeIf { bootstrap.supportsInstallationId })
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
@@ -363,8 +363,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 store.save(confirmed); connection = confirmed
                 saved = confirmed
             } else {
-                // A grant replacing a forgotten one stays provisional until confirmed; this is idempotent.
-                try { candidate.confirmPairing() } catch (failure: CancellationException) { throw failure } catch (_: Exception) { }
+                // A grant replacing a forgotten one stays provisional until confirmed, so activation
+                // must not succeed without it. Confirming a finalized grant is a no-op.
+                candidate.confirmPairing()
             }
             candidate.capabilities()
             val session = candidate.session()
