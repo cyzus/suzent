@@ -158,6 +158,7 @@
     ".releases/changes/resolve-from-regent.json",
     ".releases/changes/resonance-state-cues.json",
     ".releases/changes/restart-into-staged-update.json",
+    ".releases/changes/restore-pydub.json",
     ".releases/changes/restructure-user-docs.json",
     ".releases/changes/resume-keeps-approved-card.json",
     ".releases/changes/resume-without-empty-prompt.json",

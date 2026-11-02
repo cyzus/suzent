@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.20.1] - 2026-11-02
 
 ### Release notes
+- Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
 - Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
 
 ## [v0.20.0] - 2026-11-01
