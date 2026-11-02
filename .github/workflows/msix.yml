@@ -85,6 +85,17 @@ jobs:
           Copy-Item -Recurse $src "$env:PKG\runtime\python"
           & $env:PY -c "import sys; print(sys.version)"
 
+      - name: Install frontend dependencies and stage the web UI
+        run: |
+          cd frontend
+          npm ci
+          cd ../src-tauri
+          npm ci
+          cd ..
+          # `suzent web` and the backend's SPA routes serve src/suzent/webui/,
+          # a gitignored build artifact the wheel ships only when it exists.
+          python scripts/build_webui.py
+
       - name: Install locked dependencies and Suzent (non-editable)
         shell: pwsh
         run: |
