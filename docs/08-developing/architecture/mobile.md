@@ -65,6 +65,34 @@ HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
 
+### Several desktops
+
+A phone can hold credentials for several desktops but is connected to one at a
+time. Both platforms store one encrypted record of saved desktops
+(`{activeId, desktops: [{id, name, connection}]}`): a single Keychain item
+(`account "desktops"`) on iOS, the existing Keystore-encrypted preference on
+Android. A record from a single-connection build is read as one active desktop
+and rewritten; on iOS the old `"primary"` item is then deleted. The id is a
+local UUID. The name comes from the pairing preview and is refreshed from the
+optional `desktop_name` in `/mobile/client/session`, falling back to the origin
+host.
+
+Pairing re-pairs the active desktop for **Pair again**. Otherwise it looks for a
+saved desktop that matches the invitation: the same device-CA fingerprint when
+both have one, else any shared normalized origin. Only that desktop's token
+feeds the repair proof, rotation and reuse checks. A match replaces the entry;
+no match adds one. Switching probes and loads the target with the usual
+three-second-per-address and twenty-second limits before it resets any session
+state, so an unreachable desktop leaves the open session untouched. A 401 forgets
+only the desktop that returned it. Node tokens and remembered model choices stay
+per connection. The pure list logic lives in `Desktops.kt` and
+`SuzentCore/SavedDesktops.swift`, with unit tests on both platforms.
+
+Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
+conversation is open. The desktop card at the top of Settings opens the Desktops
+page (switch, swipe to forget, pair another). Tablets keep the split view with
+the settings button and the scheduled section in the sidebar.
+
 ### iOS
 
 Install full Xcode and XcodeGen. From `apps/ios`, run `xcodegen generate`, open

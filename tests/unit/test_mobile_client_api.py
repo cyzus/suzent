@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -1118,7 +1119,9 @@ def test_attachments_are_sent_by_issued_id_only(setup_client, monkeypatch):
         return JSONResponse({"chat_id": "shared"}, status_code=202)
 
     monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
-    assert client.get("/mobile/client/session").json()["attachments"] == 1
+    session = client.get("/mobile/client/session").json()
+    assert session["attachments"] == 1
+    assert session["desktop_name"] == socket.gethostname()[:100]
 
     photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
     response = client.post("/mobile/client/upload?chat_id=shared", files=photo)

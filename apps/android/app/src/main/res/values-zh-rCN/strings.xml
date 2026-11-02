@@ -67,7 +67,6 @@
     <string name="not_allowed">不允许</string>
     <string name="manage_access">在桌面端「设置 → 设备 → 移动端访问」管理或撤销访问。</string>
     <string name="tool_approval_desktop">工具请求遵循会话策略。Node 访问需单独开启。</string>
-    <string name="access">权限</string>
     <string name="checking_addresses">正在检查桌面端地址…</string>
     <string name="pairing_unreachable">所有候选地址均无法连接或协议不兼容。请检查 Wi-Fi、Tailscale 连接及桌面端版本。</string>
     <string name="confirm_connection_help">确认后将按上方权限连接，无需回到桌面再次批准。</string>
@@ -92,7 +91,6 @@
     <string name="settings">设置</string>
     <string name="desktop_model">桌面端管理模型</string>
     <string name="conversation_default">沿用会话模型</string>
-    <string name="node_heading">将此手机用作 Node</string>
     <string name="greeting_night">夜猫子？</string>
     <string name="greeting_morning">早上好。</string>
     <string name="greeting_build">继续创造。</string>
@@ -228,4 +226,26 @@
     <string name="approval_show_all">显示全部</string>
     <string name="approval_show_less">收起</string>
     <string name="demo_section">离线演示</string>
+    <string name="tab_chats">对话</string>
+    <string name="tab_tasks">任务</string>
+    <string name="tasks_empty">这台桌面上还没有定时任务。</string>
+    <string name="desktops">桌面</string>
+    <string name="paired_desktops">已配对的桌面</string>
+    <string name="pair_another_desktop">配对另一台桌面</string>
+    <string name="desktops_footer">切换后会显示那台桌面上的对话和任务。在某一台上左滑可以忘记它。</string>
+    <string name="desktop_checking">正在检查…</string>
+    <string name="desktop_connected">已连接 · %1$s</string>
+    <string name="desktop_current">当前桌面</string>
+    <string name="this_desktop">当前桌面</string>
+    <string name="switch_to_desktop">切换到 %1$s</string>
+    <string name="forget_this_desktop">忘记此桌面端</string>
+    <string name="permissions">权限</string>
+    <string name="forget_desktop">忘记</string>
+    <string name="forget_desktop_title">忘记 %1$s？</string>
+    <string name="desktop_unreachable">无法连接 %1$s，仍停留在当前桌面。</string>
+    <string name="desktop_access_revoked">%1$s 已撤销此手机的访问权限，已将其移除。</string>
+    <string name="back">返回</string>
+    <plurals name="desktop_count">
+        <item quantity="other">%d 台</item>
+    </plurals>
 </resources>

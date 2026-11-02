@@ -149,7 +149,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var nodeEnabled by mutableStateOf(false)
     var nodeStatus by mutableStateOf(text(R.string.node_off))
     private val store = CredentialStore(application)
-    private var connection: Connection? = null
+    var desktops by mutableStateOf(SavedDesktops())
+        private set
+    /** The saved desktop being probed before a switch; the current one stays usable meanwhile. */
+    var checkingDesktop by mutableStateOf<String?>(null)
+        private set
+    private var switchJob: Job? = null
+    private var repairActive = false
+    private val connection: Connection? get() = desktops.active?.connection
     private var client: MobileClient? = null
     private var streamJob: Job? = null
     private var socket: WebSocket? = null
@@ -161,7 +168,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     init {
         AttachmentFiles.clear(application)
         try {
-            connection = store.load()
+            desktops = store.load()
             origin = connection?.origin.orEmpty()
             canReconnect = connection?.clientProtocol == 1
         } catch (_: Exception) { error = text(R.string.secure_error) }
@@ -182,7 +189,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val navigation = demo.initialNavigation()
                 val taskList = demo.scheduledTasks()
                 val composer = demo.composer()
-                clearSession(removeCredentials = false)
+                clearSession()
                 error = null
                 client = demo
                 isDemo = true
@@ -222,9 +229,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun exitDemo() {
         if (!isDemo || busy) return
-        clearSession(removeCredentials = false)
+        clearSession()
         isDemo = false; demoPrompts = emptyList(); error = null
     }
+
+    /** Repairing re-pairs the active desktop; otherwise a scanned desktop that is already saved is recognised by its identity. */
+    fun beginPairing(repairActive: Boolean) { this.repairActive = repairActive }
 
     fun stageInvitation(value: String) {
         if (busy) return
@@ -273,16 +283,19 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingStatus = text(R.string.pairing_sending)
         pairingJob = viewModelScope.launch {
             val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "", deviceTrust = invitation.tls)
+            val target = if (repairActive) desktops.active else desktops.matching(invitation)
+            val known = target?.connection
+            val desktopName = pairingPreview?.desktopName
             try {
                 bootstrap.capabilities()
-                val previous = connection?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
+                val previous = known?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
                 val deviceName = pairingDeviceName(android.os.Build.MODEL) {
                     Settings.Global.getString(getApplication<Application>().contentResolver, Settings.Global.DEVICE_NAME)
                 }
                 val claim = bootstrap.claim(invitation, deviceName,
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
-                    rotate = connection?.origin != bootstrap.backend.origin.toString())
+                    rotate = known?.origin != bootstrap.backend.origin.toString())
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
@@ -296,20 +309,24 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         "denied" -> throw PairingFailure(PairingFailure.Reason.DENIED)
                         "approved" -> {
                             val reused = result.optBoolean("reused")
-                            require(!reused || (recognized && connection?.origin == bootstrap.backend.origin.toString()))
+                            require(!reused || (recognized && known?.origin == bootstrap.backend.origin.toString()))
                             val credential = if (reused) requireNotNull(previous) else result.getString("token")
                             require(credential.isNotEmpty())
                             val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
-                                credential, nodeToken = if (recognized) connection?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
-                                previousOrigin = if (recognized && !reused) connection?.origin.orEmpty() else "",
-                                origins = invitation.origins, tls = invitation.tls, previousTLS = connection?.tls, previousOrigins = connection?.origins.orEmpty())
-                            store.save(saved)
-                            connection = saved
-                            origin = saved.origin
-                            canReconnect = true
-                            activate(saved)
+                                credential, nodeToken = if (recognized) known?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
+                                previousOrigin = if (recognized && !reused) known?.origin.orEmpty() else "",
+                                origins = invitation.origins, tls = invitation.tls, previousTLS = known?.tls, previousOrigins = known?.origins.orEmpty())
+                            val name = desktopName ?: target?.name ?: defaultDesktopName(saved.origin)
+                            val desktop = target?.copy(name = name, connection = saved) ?: SavedDesktop.create(name, saved)
+                            var updated = desktops.upserting(desktop)
+                            // With nothing connected the new desktop must be the one the reconnect screen offers.
+                            if (!connected) updated = updated.copy(activeId = desktop.id)
+                            persist(updated)
+                            if (!connected) { origin = saved.origin; canReconnect = true }
+                            activate(desktop.id)
                             pairingVersion++
                             pairingInvitation = null
+                            busy = false; pairingCode = null; pairingStatus = null
                             return@launch
                         }
                         "pending" -> {
@@ -330,8 +347,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun activate(stored: Connection) {
-        var saved = stored
+    /**
+     * Connects to a saved desktop and only then makes it the active one, so a desktop that cannot be
+     * reached never tears down the session already open.
+     */
+    private suspend fun activate(id: String) {
+        var saved = requireNotNull(desktops.desktop(id)).connection
         run {
             var reachable: String? = null
             for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
@@ -353,12 +374,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     if (failure.code != 401) throw failure
                     currentCoroutineContext().ensureActive()
                     val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "", tls = saved.previousTLS, previousTLS = null, origins = saved.previousOrigins, previousOrigins = emptyList())
-                    store.save(restored); connection = restored; origin = restored.origin
-                    candidate.close(); activate(restored); return
+                    persist(desktops.updating(id, restored))
+                    candidate.close(); activate(id); return
                 }
                 val confirmed = saved.copy(previousToken = "", previousOrigin = "", previousTLS = null, previousOrigins = emptyList())
                 currentCoroutineContext().ensureActive()
-                store.save(confirmed); connection = confirmed
+                persist(desktops.updating(id, confirmed))
                 saved = confirmed
             }
             candidate.capabilities()
@@ -367,7 +388,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
-            store.save(saved); connection = saved; origin = saved.origin
+            if (id != desktops.activeId || connected) resetSession()
+            var updated = desktops.updating(id, saved).copy(activeId = id)
+            session.desktopName?.takeIf { it.isNotBlank() }?.let { updated = updated.renaming(id, it) }
+            persist(updated); origin = saved.origin; canReconnect = true
             client?.close()
             client = candidate
             device = session
@@ -382,13 +406,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun connect() {
         if (isDemo) return
-        val saved = connection ?: return
+        val id = desktops.activeId ?: return
         if (busy || !canReconnect) return
         busy = true
         reconnecting = true
         error = null
         reconnectJob = viewModelScope.launch {
-            try { withTimeout(20_000) { activate(saved) } }
+            try { withTimeout(20_000) { activate(id) } }
             catch (_: TimeoutCancellationException) { error = text(R.string.reconnect_unreachable) }
             catch (failure: CancellationException) { throw failure }
             catch (failure: java.io.IOException) {
@@ -804,6 +828,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         disconnectNode()
         val api = client as? BackendClient ?: return
         val saved = connection ?: return
+        val desktopId = desktops.activeId ?: return
         nodeStatus = text(R.string.node_connecting)
         socket = api.node(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -822,9 +847,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                             "connected" -> {
                                 val credential = message.optString("device_token")
                                 if (credential.isNotEmpty()) {
-                                    val updated = saved.copy(nodeToken = credential)
-                                    store.save(updated)
-                                    connection = updated
+                                    desktops.desktop(desktopId)?.let { persist(desktops.updating(desktopId, it.connection.copy(nodeToken = credential))) }
                                 }
                                 nodeStatus = text(R.string.node_online)
                             }
@@ -848,41 +871,91 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         })
     }
 
-    fun forget() {
-        if (isDemo) { exitDemo(); return }
-        clearSession(removeCredentials = true)
+    /** Keeps the current desktop open until the other one answers; a desktop that cannot be reached is reported, not switched to. */
+    fun switchDesktop(id: String) {
+        val desktop = desktops.desktop(id) ?: return
+        if (isDemo || streaming || checkingDesktop != null) return
+        if (id == desktops.activeId && connected) return
+        if (!connected) {
+            // Nothing open to protect: abandon the reconnect in progress and try this desktop instead.
+            val pending = reconnectJob
+            pending?.cancel()
+            viewModelScope.launch {
+                pending?.join()
+                persist(desktops.copy(activeId = id)); origin = desktop.connection.origin
+                canReconnect = desktop.connection.clientProtocol == 1
+                connect()
+            }
+            return
+        }
+        if (busy) return
+        checkingDesktop = id
+        error = null
+        switchJob = viewModelScope.launch {
+            try { withTimeout(20_000) { activate(id) } }
+            catch (_: TimeoutCancellationException) { error = text(R.string.desktop_unreachable, desktop.name) }
+            catch (failure: CancellationException) { throw failure }
+            catch (failure: BackendClient.HttpFailure) {
+                if (failure.code == 401) { removeDesktop(id); error = text(R.string.desktop_access_revoked, desktop.name) }
+                else error = text(R.string.desktop_unreachable, desktop.name)
+            }
+            catch (_: Exception) { error = text(R.string.desktop_unreachable, desktop.name) }
+            finally { checkingDesktop = null; switchJob = null }
+        }
     }
 
-    private fun clearSession(removeCredentials: Boolean) {
+    fun forget() { desktops.activeId?.let(::forgetDesktop) ?: exitDemo() }
+
+    /** Forgetting the open desktop moves on to the next saved one, if any. */
+    fun forgetDesktop(id: String) {
+        if (isDemo) { exitDemo(); return }
+        if (id != desktops.activeId) { removeDesktop(id); return }
+        switchJob?.cancel()
+        removeDesktop(id)
+        clearSession()
+        if (canReconnect) connect()
+    }
+
+    private fun removeDesktop(id: String) {
+        try { persist(desktops.removing(id)) } catch (_: Exception) { error = text(R.string.secure_error) }
+    }
+
+    private fun persist(value: SavedDesktops) {
+        desktops = value
+        store.save(value)
+    }
+
+    /** Drops everything that belongs to the open desktop's session; credentials stay. */
+    private fun resetSession() {
         scheduledTasks = emptyList()
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
-        pairingJob?.cancel()
-        reconnectJob?.cancel()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
-        if (removeCredentials) {
-            try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }
-        }
         generation++
         nodeEnabled = false
         disconnectNode()
         streamJob?.cancel()
         client?.close()
         client = null
-        if (removeCredentials) connection = null
         connected = false
-        busy = false
         selected = null
         chats = emptyList()
         chatPages = emptyMap(); loadingPages = emptySet(); navigationRevision++
-        canReconnect = connection?.clientProtocol == 1
         device = null
+        draft = ""
+        streaming = false
+        liveParts = emptyList()
+    }
+
+    private fun clearSession() {
+        pairingJob?.cancel()
+        reconnectJob?.cancel()
+        resetSession()
+        busy = false
+        canReconnect = connection?.clientProtocol == 1
         pairingInvitation = null
         pairingCode = null
         invitationText = ""
         origin = connection?.origin.orEmpty()
-        draft = ""
-        streaming = false
-        liveParts = emptyList()
     }
 
     override fun onCleared() { disconnectNode(); client?.close() }

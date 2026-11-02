@@ -78,6 +78,26 @@ The QR code works once and expires after a few minutes; click **New QR code**
 for another. Anyone who scans it gets the permissions you picked, so don't
 share it.
 
+### Pair more than one computer
+
+You can pair the same phone with several computers, for example your laptop
+and a home server. Open **Settings**, tap the computer at the top, and tap
+**Pair another desktop**, then scan or paste that computer's invitation as
+above. Pairing a computer the phone already knows replaces its old entry
+instead of adding a second one.
+
+The phone is connected to one computer at a time. Its name appears under the
+**SUZENT** title, and **Chats** and **Tasks** show that computer's
+conversations and scheduled tasks. To switch, open **Settings**, tap the
+computer at the top, and pick another one. If it can't be reached, you stay
+where you are. Swipe left on a computer in that list to forget it on the
+phone.
+
+Each computer keeps its own permissions for the phone. Everything under
+**This desktop** in **Settings** (**Permissions**, **Enable foreground Node**,
+**Pair again**, and **Forget this desktop**) applies to the computer you're
+connected to.
+
 ### Using it away from home
 
 The phone talks to your computer directly; there's no Suzent cloud in between.
@@ -89,12 +109,13 @@ keeps it running when the window is closed.
 
 ## What you can do on the phone
 
-- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
-  **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, your projects (tap one to open it, and **Load
-  more** for older chats), and your scheduled tasks. Search looks through the
-  titles of every chat the phone may read, not only the ones already loaded.
-  **Settings** is in the top toolbar.
+- **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
+  and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
+  and **New conversation** are at the top, then pinned chats, your three most
+  recent with **View all**, and your projects (tap one to open it, and **Load
+  more** for older chats). Search looks through the titles of every chat the
+  phone may read, not only the ones already loaded. On a tablet, everything is
+  in one list on the left, with **Settings** in its toolbar.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -119,14 +140,15 @@ keeps it running when the window is closed.
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Scheduled tasks** shows failed tasks first, then active and
+  started them. **Tasks** (on a tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
 The app is in English and Simplified Chinese, and follows your phone's light
 or dark mode. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
-**Pair again** and **Forget connection**.
+**Pair again**, **Forget connection**, and a way to switch to each other
+computer you've paired.
 
 ## Change or remove access
 
@@ -136,7 +158,9 @@ by name with what it may do. Click **Edit permissions**, pick another choice
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
-**Forget connection** in the app only removes the connection from the phone.
+**Forget this desktop** in the app's **Settings** (or **Forget connection** in
+**Connection help**) only removes that computer's connection from the phone;
+other paired computers stay.
 Also click **Revoke access** on the computer so its access is gone too.
 
 ## Limits

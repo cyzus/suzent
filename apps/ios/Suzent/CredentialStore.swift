@@ -2,45 +2,44 @@ import Foundation
 import Security
 import SuzentCore
 
-struct Connection: Codable {
-    var origins: [String]? = nil
-    var tls: DeviceTrust? = nil
-    var previousOrigins: [String]? = nil
-    var previousTLS: DeviceTrust? = nil
-    var origin: String
-    let hostToken: String
-    var nodeToken: String = ""
-    var clientProtocol: Int? = nil
-    var previousToken: String? = nil
-    var previousOrigin: String? = nil
-}
-
 enum CredentialStore {
-    private static var query: [String: Any] {
+    private static let desktopsAccount = "desktops"
+    /// Written by single-desktop versions; migrated into the list on first load.
+    private static let legacyAccount = "primary"
+
+    private static func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "com.suzent.mobile.connection",
-         kSecAttrAccount as String: "primary"]
+         kSecAttrAccount as String: account]
     }
 
-    static func load() throws -> Connection? {
-        var request = query
+    private static func read(_ account: String) throws -> Data? {
+        var request = query(account)
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(request as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw StoreError.failed(status)
-        }
-        return try JSONDecoder().decode(Connection.self, from: data)
+        guard status == errSecSuccess, let data = result as? Data else { throw StoreError.failed(status) }
+        return data
     }
 
-    static func save(_ connection: Connection) throws {
-        let data = try JSONEncoder().encode(connection)
+    static func load() throws -> SavedDesktops {
+        if let data = try read(desktopsAccount) { return try SavedDesktops.decode(data) }
+        guard let legacy = try read(legacyAccount) else { return SavedDesktops() }
+        let migrated = try SavedDesktops.decode(legacy)
+        try save(migrated)
+        try delete(legacyAccount)
+        return migrated
+    }
+
+    static func save(_ desktops: SavedDesktops) throws {
+        guard !desktops.desktops.isEmpty else { try clear(); return }
+        let data = try JSONEncoder().encode(desktops)
         let update = [kSecValueData as String: data]
-        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        let status = SecItemUpdate(query(desktopsAccount) as CFDictionary, update as CFDictionary)
         if status == errSecItemNotFound {
-            var item = query
+            var item = query(desktopsAccount)
             item[kSecValueData as String] = data
             item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             let added = SecItemAdd(item as CFDictionary, nil)
@@ -51,26 +50,31 @@ enum CredentialStore {
     /// Keychain items outlive app deletion. A reinstall gets a new container, so a credential older
     /// than the container was left by a previous installation; updates keep the container.
     static func clearIfFromPreviousInstall() throws {
-        var request = query
-        request[kSecReturnAttributes as String] = true
-        request[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(request as CFDictionary, &result)
-        if status == errSecItemNotFound { return }
-        guard status == errSecSuccess, let attributes = result as? [String: Any],
-              let saved = attributes[kSecAttrCreationDate as String] as? Date else {
-            throw StoreError.failed(status)
-        }
         let container = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         guard let installed = try container.resourceValues(forKeys: [.creationDateKey]).creationDate else { return }
-        if saved < installed { try clear() }
+        for account in [desktopsAccount, legacyAccount] {
+            var request = query(account)
+            request[kSecReturnAttributes as String] = true
+            request[kSecMatchLimit as String] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(request as CFDictionary, &result)
+            if status == errSecItemNotFound { continue }
+            guard status == errSecSuccess, let attributes = result as? [String: Any],
+                  let saved = attributes[kSecAttrCreationDate as String] as? Date else {
+                throw StoreError.failed(status)
+            }
+            if saved < installed { try delete(account) }
+        }
     }
 
     static func clear() throws {
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw StoreError.failed(status)
-        }
+        try delete(desktopsAccount)
+        try delete(legacyAccount)
+    }
+
+    private static func delete(_ account: String) throws {
+        let status = SecItemDelete(query(account) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw StoreError.failed(status) }
     }
 
     enum StoreError: Error, LocalizedError {

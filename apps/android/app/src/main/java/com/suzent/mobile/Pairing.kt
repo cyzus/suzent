@@ -22,7 +22,8 @@ data class ClientPermissions(val chatIds: List<String>, val allChats: Boolean,
     }
 }
 
-data class ClientDevice(val id: String, val name: String, val permissions: ClientPermissions) {
+/** [desktopName] is the paired desktop's own name, sent by backends new enough to have one. */
+data class ClientDevice(val id: String, val name: String, val permissions: ClientPermissions, val desktopName: String? = null) {
     companion object {
         fun parse(json: JSONObject) = ClientDevice(json.getString("device_id"),
             json.getString("display_name"), ClientPermissions.parse(json.getJSONObject("permissions")))
