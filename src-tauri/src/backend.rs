@@ -138,24 +138,8 @@ impl BackendProcess {
         let mut command = if let Some(ref py) = packaged {
             // Packaged mode (see packaged.rs): Suzent is installed in the
             // bundled runtime, so no repo checkout, .venv or uv is needed.
-            let mut cmd = Command::new(py);
+            let mut cmd = packaged::python_command(py, &data_dir);
             cmd.args(["-m", "suzent.server"]);
-            // The install dir is read-only and .pyc files are precompiled.
-            cmd.env("PYTHONDONTWRITEBYTECODE", "1")
-                .env("PYTHONNOUSERSITE", "1");
-            if let Some(app_dir) = packaged::app_resources_dir() {
-                cmd.env("SUZENT_PROJECT_DIR", app_dir);
-            }
-            // %LOCALAPPDATA% is virtualized per package; keep these shared
-            // caches in the data dir so they survive and are visible outside.
-            for (key, sub) in [
-                ("PLAYWRIGHT_BROWSERS_PATH", "ms-playwright"),
-                ("UV_CACHE_DIR", "uv-cache"),
-            ] {
-                if std::env::var_os(key).is_none() {
-                    cmd.env(key, data_dir.join(sub));
-                }
-            }
             cmd
         } else if let Some(ref py) = venv_python {
             let mut cmd = Command::new(py);

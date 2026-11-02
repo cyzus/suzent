@@ -69,6 +69,29 @@ pub fn app_resources_dir() -> Option<PathBuf> {
     resources_in(&exe_dir()?)
 }
 
+/// A command for the bundled python with the packaged-mode environment:
+/// bundled resources via `SUZENT_PROJECT_DIR`, no bytecode writes into the
+/// read-only install dir, no user site-packages, and the shared caches kept
+/// in `data_dir` because `%LOCALAPPDATA%` is virtualized per package. Used for
+/// both the backend and CLI invocations through the execution alias.
+pub fn python_command(python: &Path, data_dir: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new(python);
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONNOUSERSITE", "1");
+    if let Some(app_dir) = app_resources_dir() {
+        cmd.env("SUZENT_PROJECT_DIR", app_dir);
+    }
+    for (key, sub) in [
+        ("PLAYWRIGHT_BROWSERS_PATH", "ms-playwright"),
+        ("UV_CACHE_DIR", "uv-cache"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            cmd.env(key, data_dir.join(sub));
+        }
+    }
+    cmd
+}
+
 /// True for packaged builds: a bundled runtime exists, or `SUZENT_PACKAGED=1`.
 pub fn is_packaged() -> bool {
     std::env::var("SUZENT_PACKAGED").is_ok_and(|value| value.trim() == "1")

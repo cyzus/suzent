@@ -981,6 +981,24 @@ fn hide_command_window(_command: &mut Command) {}
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    // Packaged CLI mode (`suzent.exe <args>` through the execution alias):
+    // there is no uv or workspace, so run the bundled runtime's CLI.
+    if args.len() > 1 {
+        if let Some(python) = packaged::packaged_python() {
+            let status = packaged::python_command(&python, &backend::find_data_dir())
+                .args(["-m", "suzent.cli"])
+                .args(&args[1..])
+                .status();
+            match status {
+                Ok(s) => std::process::exit(s.code().unwrap_or(1)),
+                Err(e) => {
+                    eprintln!("Failed to run the bundled Suzent CLI: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
     // CLI mode: delegate to `uv run suzent <args>` in the repo directory.
     if args.len() > 1 {
         let repo_dir = backend::find_install_workspace_dir();
