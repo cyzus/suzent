@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
 - The Plugins settings page no longer fails with "Failed to fetch" when an upgrade left a half-removed package folder in the Python environment.
 - Installs and desktop updates now sync only the packages of the plugins you have on, as suzent upgrade does: a fresh install no longer downloads every chat app's SDK, a chat app you removed stays removed, and an update no longer uninstalls the Camera plugin's OpenCV.
+- Sessions started by Regent no longer have their tools refused as unrequested: the Smart mode reviewer now treats Regent's brief as the session's task.
 - Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
 - Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
 
