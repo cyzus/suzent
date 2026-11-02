@@ -5,6 +5,7 @@ dispatching to the same handlers as the standalone node host.
 No WebSocket overhead — runs inside the server process.
 """
 
+import importlib
 import sys
 import uuid
 from typing import Any
@@ -29,26 +30,36 @@ class LocalNode(NodeBase):
         platform: str = sys.platform,
         capabilities: list[str] | None = None,
     ):
-        handlers = available_handlers(capabilities)
-
-        caps = [
-            NodeCapability(
-                name=meta["name"],
-                description=meta["description"],
-                params_schema=meta["params_schema"],
-            )
-            for fn in handlers.values()
-            for meta in [fn._capability_meta]  # type: ignore[attr-defined]
-        ]
-
         node_id = f"local-{uuid.uuid4().hex[:8]}"
         super().__init__(
             node_id=node_id,
             display_name=display_name,
             platform=platform,
-            capabilities=caps,
+            capabilities=[],
         )
-        self._handlers = handlers
+        self._capability_filter = capabilities
+        self._handlers: dict = {}
+        self.refresh_capabilities()
+
+    def refresh_capabilities(self) -> list[str]:
+        """Recompute what this machine can serve, e.g. after a plugin install.
+
+        Capabilities with an optional dependency appear once it is importable
+        and disappear once it is removed, without restarting the server.
+        Returns the capability names now advertised.
+        """
+        importlib.invalidate_caches()  # find_spec caches directory listings
+        self._handlers = available_handlers(self._capability_filter)
+        self.capabilities = [
+            NodeCapability(
+                name=meta["name"],
+                description=meta["description"],
+                params_schema=meta["params_schema"],
+            )
+            for fn in self._handlers.values()
+            for meta in [fn._capability_meta]  # type: ignore[attr-defined]
+        ]
+        return [cap.name for cap in self.capabilities]
 
     async def invoke(
         self,

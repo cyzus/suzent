@@ -280,6 +280,30 @@ def test_api_code_plugin_loads_without_a_restart(plugin_api):
     assert data["enabled"] is False and data["restartRequired"] is False
 
 
+def test_api_install_refreshes_local_node_capabilities(plugin_api, monkeypatch):
+    """Installing camera support shows camera.snap on the running local node."""
+    from suzent.nodes import node_host
+    from suzent.nodes.local_node import LocalNode
+    from suzent.nodes.manager import NodeManager
+
+    client, *_ = plugin_api
+    available = {"cv2": False}
+    monkeypatch.setattr(
+        node_host, "_module_available", lambda module: available.get(module, True)
+    )
+    node_manager = NodeManager()
+    node = LocalNode()
+    node_manager.register_node(node)
+    client.app.state.node_manager = node_manager
+    assert "camera.snap" not in [c.name for c in node.capabilities]
+
+    available["cv2"] = True  # the plugin's packages just landed
+    assert client.post("/plugins/tg/install").status_code == 200
+
+    assert "camera.snap" in [c.name for c in node.capabilities]
+    assert "camera.snap" in node._handlers
+
+
 def test_api_rejects_unknown_plugins(plugin_api):
     client, *_ = plugin_api
 
