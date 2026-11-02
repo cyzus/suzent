@@ -1759,6 +1759,26 @@ The QR code works once and expires after a few minutes; click **New QR code**
 for another. Anyone who scans it gets the permissions you picked, so don't
 share it.
 
+### Pair more than one computer
+
+You can pair the same phone with several computers, for example your laptop
+and a home server. Open **Settings**, tap the computer at the top, and tap
+**Pair another desktop**, then scan or paste that computer's invitation as
+above. Pairing a computer the phone already knows replaces its old entry
+instead of adding a second one.
+
+The phone is connected to one computer at a time. Its name appears under the
+**SUZENT** title, and **Chats** and **Tasks** show that computer's
+conversations and scheduled tasks. To switch, open **Settings**, tap the
+computer at the top, and pick another one. If it can't be reached, you stay
+where you are. Swipe left on a computer in that list to forget it on the
+phone.
+
+Each computer keeps its own permissions for the phone. Everything under
+**This desktop** in **Settings** (**Permissions**, **Enable foreground Node**,
+**Pair again**, and **Forget this desktop**) applies to the computer you're
+connected to.
+
 ### Using it away from home
 
 The phone talks to your computer directly; there's no Suzent cloud in between.
@@ -1770,12 +1790,13 @@ keeps it running when the window is closed.
 
 ## What you can do on the phone
 
-- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
-  **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, your projects (tap one to open it, and **Load
-  more** for older chats), and your scheduled tasks. Search looks through the
-  titles of every chat the phone may read, not only the ones already loaded.
-  **Settings** is in the top toolbar.
+- **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
+  and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
+  and **New conversation** are at the top, then pinned chats, your three most
+  recent with **View all**, and your projects (tap one to open it, and **Load
+  more** for older chats). Search looks through the titles of every chat the
+  phone may read, not only the ones already loaded. On a tablet, everything is
+  in one list on the left, with **Settings** in its toolbar.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -1800,14 +1821,15 @@ keeps it running when the window is closed.
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Scheduled tasks** shows failed tasks first, then active and
+  started them. **Tasks** (on a tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
 The app is in English and Simplified Chinese, and follows your phone's light
 or dark mode. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
-**Pair again** and **Forget connection**.
+**Pair again**, **Forget connection**, and a way to switch to each other
+computer you've paired.
 
 ## Change or remove access
 
@@ -1817,9 +1839,11 @@ by name with what it may do. Click **Edit permissions**, pick another choice
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
-**Forget connection** in the app also asks the computer to revoke that phone's
-access. If the computer can't be reached at that moment, click **Revoke access**
-there yourself. Pairing the same phone again replaces its old entry instead of
+**Forget this desktop** in the app's **Settings** (or **Forget connection** in
+**Connection help**) removes that computer from the phone and also asks the
+computer to revoke the phone's access; other paired computers stay. If the
+computer can't be reached at that moment, click **Revoke access** there
+yourself. Pairing the same phone again replaces its old entry instead of
 adding a second one.
 
 ## Limits
@@ -6632,6 +6656,34 @@ An unreachable desktop leaves the saved connection intact so the user can retry 
 HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
+
+### Several desktops
+
+A phone can hold credentials for several desktops but is connected to one at a
+time. Both platforms store one encrypted record of saved desktops
+(`{activeId, desktops: [{id, name, connection}]}`): a single Keychain item
+(`account "desktops"`) on iOS, the existing Keystore-encrypted preference on
+Android. A record from a single-connection build is read as one active desktop
+and rewritten; on iOS the old `"primary"` item is then deleted. The id is a
+local UUID. The name comes from the pairing preview and is refreshed from the
+optional `desktop_name` in `/mobile/client/session`, falling back to the origin
+host.
+
+Pairing re-pairs the active desktop for **Pair again**. Otherwise it looks for a
+saved desktop that matches the invitation: the same device-CA fingerprint when
+both have one, else any shared normalized origin. Only that desktop's token
+feeds the repair proof, rotation and reuse checks. A match replaces the entry;
+no match adds one. Switching probes and loads the target with the usual
+three-second-per-address and twenty-second limits before it resets any session
+state, so an unreachable desktop leaves the open session untouched. A 401 forgets
+only the desktop that returned it. Node tokens and remembered model choices stay
+per connection. The pure list logic lives in `Desktops.kt` and
+`SuzentCore/SavedDesktops.swift`, with unit tests on both platforms.
+
+Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
+conversation is open. The desktop card at the top of Settings opens the Desktops
+page (switch, swipe to forget, pair another). Tablets keep the split view with
+the settings button and the scheduled section in the sidebar.
 
 ### iOS
 
