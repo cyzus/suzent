@@ -229,6 +229,31 @@ class AgentInboxOperationsMixin:
             session.commit()
             return True
 
+    def latest_agent_brief(
+        self, target_chat_id: str, sender_chat_ids: frozenset[str]
+    ) -> Optional[str]:
+        """The newest agent message one of ``sender_chat_ids`` handed the target.
+
+        Only local rows count: the runtime writes their sender, while a peer's
+        claimed identity is only text inside the message.
+        """
+        if not sender_chat_ids:
+            return None
+        statement = (
+            select(AgentInboxMessageModel.content)
+            .where(
+                AgentInboxMessageModel.target_chat_id == target_chat_id,
+                AgentInboxMessageModel.sender_chat_id.in_(sorted(sender_chat_ids)),
+                AgentInboxMessageModel.transport == "local",
+                AgentInboxMessageModel.kind == "agent_message",
+                AgentInboxMessageModel.status.in_(["processing", "delivered"]),
+            )
+            .order_by(AgentInboxMessageModel.created_at.desc())
+            .limit(1)
+        )
+        with self._session() as session:
+            return session.exec(statement).first()
+
     def list_agent_messages(
         self,
         *,

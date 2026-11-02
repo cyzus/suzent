@@ -136,25 +136,25 @@ def _latest_runtime_context(messages: list[Any]) -> str:
     return ""
 
 
-def compact_transcript(messages: list[Any]) -> str:
+def compact_transcript(messages: list[Any], *, delegated_task: str = "") -> str:
     """Project recent conversation context into a bounded classifier transcript.
 
     Every line names who wrote it, and the user's current request leads even
     when a long tool run has pushed it out of the recent window: without it the
     only instructions the reviewer could see were ones the agent wrote itself.
+    ``delegated_task`` is the brief the session's delegator handed it, which
+    the caller reads from where the runtime recorded its sender.
     """
-    request = latest_user_request(messages)
-    header = (
-        f"CURRENT USER REQUEST: {_clip(_inline(request), MAX_REQUEST_CHARS)}"
-        if request
-        else ""
-    )
-    runtime = _latest_runtime_context(messages)
-    if runtime:
-        runtime_header = (
-            f"CURRENT RUNTIME CONTEXT: {_clip(_inline(runtime), MAX_REQUEST_CHARS)}"
+    headers = [
+        f"{label}: {_clip(_inline(text.strip()), MAX_REQUEST_CHARS)}"
+        for label, text in (
+            ("CURRENT USER REQUEST", latest_user_request(messages)),
+            ("CURRENT DELEGATED TASK", delegated_task),
+            ("CURRENT RUNTIME CONTEXT", _latest_runtime_context(messages)),
         )
-        header = f"{header}\n\n{runtime_header}" if header else runtime_header
+        if text.strip()
+    ]
+    header = _clip("\n\n".join(headers), MAX_TRANSCRIPT_CHARS)
     remaining = MAX_TRANSCRIPT_CHARS - len(header)
     parts: list[str] = []
     for message in reversed(messages[-20:]):

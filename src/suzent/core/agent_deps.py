@@ -77,6 +77,8 @@ class AgentDeps:
     permission_mode: str = "default"
     interaction_profile: str = "interactive"
     permission_rules: list = field(default_factory=list)
+    # Chats whose agent messages hand this session its task on the user's behalf.
+    delegator_chat_ids: frozenset[str] = frozenset()
     permission_feedback: list[str] = field(default_factory=list)
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
