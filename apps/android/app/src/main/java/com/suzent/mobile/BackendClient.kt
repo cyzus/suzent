@@ -40,8 +40,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         .apply { if (body != null) post(body.toString().toRequestBody("application/json".toMediaType())) }
         .build()
 
-    private suspend fun json(path: String, body: JSONObject? = null): JSONObject =
-        execute(request(path, body), if (body == null) reads else http)
+    // `readOnly` marks a POST that only reads, so a stale pooled connection can be retried safely.
+    private suspend fun json(path: String, body: JSONObject? = null, readOnly: Boolean = body == null): JSONObject =
+        execute(request(path, body), if (readOnly) reads else http)
 
     private suspend fun execute(request: Request, transport: OkHttpClient): JSONObject = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
@@ -115,7 +116,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
         if (!supportsPagination) return super.chatPage(query, offset, limit)
         return ChatPage.parse(json("mobile/client/chat-page", JSONObject().put("kind", query.kind)
-            .put("value", query.value).put("offset", offset).put("limit", limit)))
+            .put("value", query.value).put("offset", offset).put("limit", limit), readOnly = true))
     }
     override suspend fun navigationMetadata(): NavigationMetadata {
         if (!supportsPagination) return super.navigationMetadata()
@@ -130,7 +131,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         if (ids.isEmpty()) return emptyList()
         if (!supportsPagination) return super.chatStatuses(ids)
         return ids.chunked(100).flatMap { batch ->
-            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch))).getJSONArray("chats")
+            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch)), readOnly = true).getJSONArray("chats")
             (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
         }
     }

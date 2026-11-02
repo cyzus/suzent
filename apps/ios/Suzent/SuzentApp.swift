@@ -16,7 +16,7 @@ import MarkdownUI
     }
 }
 
-private enum Route: Hashable { case conversation }
+private enum Route: Hashable { case search, conversation }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
@@ -216,6 +216,8 @@ struct ContentView: View {
     @State private var showConnectionHelp = false
     @State private var confirmForget = false
     @State private var search = ""
+    /// The phone search page's query; the inline `search` field only exists on wide layouts.
+    @State private var searchText = ""
     @State private var expandedProject: String? = nil
     @State private var showAllScheduled = false
     @State private var scheduledExpanded = false
@@ -297,6 +299,7 @@ struct ContentView: View {
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
+                            case .search: searchPage
                             case .conversation: detail
                             }
                         }
@@ -325,14 +328,15 @@ struct ContentView: View {
         }
         .onChange(of: path) { _, path in
             if path.isEmpty { composing = false; attachmentsExpanded = false }
+            if !path.contains(.search) { searchText = "" }
         }
         .onChange(of: model.activeDesktopId) { _, _ in
-            search = ""; expandedProject = nil; expandedAgents = []; showAllRecent = false
+            search = ""; searchText = ""; expandedProject = nil; expandedAgents = []; showAllRecent = false
             scheduledExpanded = false; showAllScheduled = false
-            if path.last == .conversation { path = [] }
+            if !path.isEmpty { path = [] }
         }
         .onChange(of: model.selected == nil) { _, missing in
-            if missing && path.last == .conversation { path = [] }
+            if missing && path.last == .conversation { path.removeLast() }
         }
         .onChange(of: wide) { _, wide in
             if wide {
@@ -380,7 +384,8 @@ struct ContentView: View {
     private func showConversation() {
         composing = false
         showSettings = false
-        if !wide && path != [.conversation] { path = [.conversation] }
+        // Opened from the search page, back returns to the results.
+        if !wide && path.last != .conversation { path = path.last == .search ? [.search, .conversation] : [.conversation] }
     }
 
     private func openSettings() {
@@ -530,13 +535,27 @@ struct ContentView: View {
             }.buttonStyle(.plain)
                 .disabled(model.busy || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
-                TextField("Search chats", text: $search).suzentFont(home ? 16 : 14)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(minHeight: 42)
-                .background(Color.suzentText.opacity(0.04))
-                .padding(.horizontal, 16).padding(.vertical, 12)
+            if home {
+                // Phones search on their own page, so results never share the screen with the home list.
+                Button { path = [.search] } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                        Text("Search chats").suzentFont(16)
+                        Spacer()
+                    }.foregroundStyle(Color.suzentMuted)
+                        .padding(.horizontal, 12).frame(minHeight: 42)
+                        .background(Color.suzentText.opacity(0.04)).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+                    TextField("Search chats", text: $search).suzentFont(14)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                }.padding(.horizontal, 12).frame(minHeight: 42)
+                    .background(Color.suzentText.opacity(0.04))
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+            }
             ScrollViewReader { reader in
                 List {
                     Color.clear.frame(height: 0).id("sidebar-top").sidebarListRow(0).accessibilityHidden(true)
@@ -597,6 +616,43 @@ struct ContentView: View {
         }
         .background(Color.suzentSurface)
         // The list keeps its branded header; pushed pages use the system bar and its back gesture.
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var searchPage: some View {
+        let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = ChatPageQuery("search", value: term)
+        return VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                SearchPageField(text: $searchText)
+                Button("Cancel") { path = [] }.buttonStyle(.plain).frame(minHeight: 44)
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            List {
+                if term.isEmpty {
+                    Text("Search the titles of every chat this phone can read.")
+                        .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                } else {
+                    let rows = sidebarChats(model.pageChats(query), search: term, expanded: expandedAgents)
+                    conversationRows(rows, scope: "search")
+                    pageFooter(query)
+                    if rows.isEmpty && model.chatPages[query] != nil {
+                        Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
+            .environment(\.defaultMinListRowHeight, 0)
+            .task(id: "\(term):\(model.navigationVersion)") {
+                guard !term.isEmpty else { return }
+                do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
+                catch { return }
+                await model.loadPage(query)
+            }
+        }
+        .background(Color.suzentSurface)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -1048,4 +1104,32 @@ struct ContentView: View {
 private extension View {
     /// Keeps lines readable when the conversation fills a wide iPad column.
     func readingWidth() -> some View { frame(maxWidth: 760).frame(maxWidth: .infinity) }
+}
+
+/// Owns its focus: focus state held by the root view does not reach a pushed navigation destination.
+private struct SearchPageField: View {
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+            TextField("Search chats", text: $text).suzentFont(16)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .submitLabel(.search).focused($focused)
+            if !text.isEmpty {
+                Button { text = ""; focused = true } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Color.suzentMuted)
+                }.buttonStyle(.plain).frame(minWidth: 32, minHeight: 42).accessibilityLabel("Clear search")
+            }
+        }.padding(.horizontal, 12).frame(minHeight: 42)
+            .background(Color.suzentText.opacity(0.04))
+            // Only on the way in: coming back from a result should not raise the keyboard again. Focus set
+            // during the push transition is dropped, so it waits for the page to settle.
+            .task {
+                guard text.isEmpty else { return }
+                try? await Task.sleep(for: .milliseconds(450))
+                focused = true
+            }
+    }
 }

@@ -113,9 +113,11 @@ keeps it running when the window is closed.
   and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
   and **New conversation** are at the top, then pinned chats, your three most
   recent with **View all**, and your projects (tap one to open it, and **Load
-  more** for older chats). Search looks through the titles of every chat the
-  phone may read, not only the ones already loaded. On a tablet, everything is
-  in one list on the left, with **Settings** in its toolbar.
+  more** for older chats). Tap **Search chats** to open a search page that looks
+  through the titles of every chat the phone may read, not only the ones
+  already loaded. Going back from a chat you opened there returns to the
+  results, and **Cancel** returns to **Chats**. On a tablet, everything is in
+  one list on the left, with **Settings** in its toolbar and search at the top.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your

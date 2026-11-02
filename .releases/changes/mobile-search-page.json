@@ -1,0 +1,1 @@
+{"products": {"mobile": "patch"}, "summary": "On phones, searching chats opens its own page with the keyboard ready, and going back from a result returns to the results; on Android, loading chats no longer fails with \"Backend request failed\" after the app has been idle for a moment."}
