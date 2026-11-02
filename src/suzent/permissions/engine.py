@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from suzent.logger import get_logger
 from suzent.permissions.actions import build_approval_decision
 from suzent.permissions.auto import AutoPermissionClassifier
 from suzent.permissions.auto.denial_tracker import (
@@ -18,6 +19,8 @@ from suzent.permissions.models import (
     PermissionRisk,
 )
 from suzent.permissions.rules import find_rule
+
+logger = get_logger(__name__)
 
 
 FILESYSTEM_WRITE_TOOLS = frozenset({"write_file", "edit_file"})
@@ -212,6 +215,7 @@ class PermissionEngine:
                 tool_name=request.tool_name,
                 args=request.args,
                 transcript=context.transcript,
+                delegated_task=_delegated_task(context),
             )
         except Exception as exc:
             if context.interaction_profile == "interactive":
@@ -489,6 +493,29 @@ class PermissionEngine:
         if request.tool_name == SOCIAL_TOOL:
             return bool(request.args.get("list_contacts"))
         return False
+
+
+def _delegated_task(context: PermissionContext) -> str:
+    """The brief this session's delegator handed it, read from the inbox rows.
+
+    A worker started by Regent has no user words of its own, so the brief is
+    its whole request. The reminder text carrying it can't be trusted to name
+    its sender, and a reminder-only turn hides it from the transcript entirely.
+    """
+    if not context.delegator_chat_ids:
+        return ""
+    try:
+        from suzent.database import get_database
+
+        return (
+            get_database().latest_agent_brief(
+                context.chat_id, context.delegator_chat_ids
+            )
+            or ""
+        )
+    except Exception as exc:
+        logger.warning("Could not read the delegated task for review: {}", exc)
+        return ""
 
 
 def _decision(
