@@ -34,8 +34,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     env:
-      PKG: ${{ github.workspace }}\pkg
-      PY: ${{ github.workspace }}\pkg\runtime\python\python.exe
+      # Outside the checkout: the backend reports `source_root` by walking up
+      # from its installed files to a pyproject.toml, which must not find the repo.
+      PKG: C:\msix-pkg
+      PY: C:\msix-pkg\runtime\python\python.exe
       # Partner Center values; test values keep the job usable before the
       # Store reservation exists.
       MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'Suzent.CITest' }}
