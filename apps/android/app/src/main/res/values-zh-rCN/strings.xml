@@ -217,6 +217,8 @@
     <string name="activity_full_details">显示完整详情</string>
     <string name="recent_chats">最近对话</string>
     <string name="recent_view_all">查看全部</string>
+    <string name="search_hint">搜索此手机可读取的所有对话标题。</string>
+    <string name="clear_search">清除搜索</string>
     <string name="search_results">搜索结果</string>
     <string name="load_more_chats">加载更多</string>
     <string name="connection_section">连接</string>
