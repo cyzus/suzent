@@ -274,6 +274,9 @@ jobs:
             $providers = @($keys.providers).Count
             "providers: $providers"
             if ($providers -le 0) { throw 'No providers listed: bundled config/ not found' }
+            $page = Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing -TimeoutSec 10
+            if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { throw "Web UI not served (HTTP $($page.StatusCode))" }
+            "web ui: HTTP $($page.StatusCode), $($page.Content.Length) bytes"
             "smoke: health ok, $providers providers" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           } finally {
             $proc.StandardInput.Close()
