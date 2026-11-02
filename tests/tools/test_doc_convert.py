@@ -316,6 +316,33 @@ def test_epub_follows_spine_order(tmp_path):
     assert text.index("Gears") < text.index("Sparks")
 
 
+def test_ipynb_fences_cannot_be_closed_by_cell_contents(tmp_path):
+    path = tmp_path / "fence.ipynb"
+    path.write_text(
+        json.dumps(
+            {
+                "cells": [
+                    {"cell_type": "raw", "source": "```python\nprint(1)\n```"},
+                    {"cell_type": "code", "source": "s = '````'"},
+                    {"cell_type": "markdown", "source": "# Next section"},
+                ],
+                "metadata": {"language_info": {"name": "python"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    text = doc_convert.convert(path)
+
+    assert "````\n```python\nprint(1)\n```\n````" in text
+    assert "`````python\ns = '````'\n`````" in text
+    # The heading after them is outside every fence.
+    tail = text.split("# Next section")[0]
+    import re
+
+    opens = [len(m) for m in re.findall(r"^(`{3,})", tail, flags=re.M)]
+    assert len(opens) % 2 == 0
+
+
 def test_ipynb_raw_cell_is_fenced(tmp_path):
     path = tmp_path / "r.ipynb"
     path.write_text(
