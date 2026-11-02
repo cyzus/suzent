@@ -11,7 +11,7 @@ from typing import Any
 
 from suzent.logger import get_logger
 from suzent.nodes.base import NodeBase, NodeCapability
-from suzent.nodes.node_host import _HANDLERS
+from suzent.nodes.node_host import available_handlers
 
 logger = get_logger(__name__)
 
@@ -29,10 +29,7 @@ class LocalNode(NodeBase):
         platform: str = sys.platform,
         capabilities: list[str] | None = None,
     ):
-        if capabilities:
-            handlers = {k: v for k, v in _HANDLERS.items() if k in capabilities}
-        else:
-            handlers = dict(_HANDLERS)
+        handlers = available_handlers(capabilities)
 
         caps = [
             NodeCapability(

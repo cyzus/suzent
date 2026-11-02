@@ -8,6 +8,7 @@ Usage:
 """
 
 import asyncio
+import importlib.util
 import json
 import logging
 import signal
@@ -43,19 +44,53 @@ def capability(
     name: str,
     description: str = "",
     params_schema: dict[str, str] | None = None,
+    requires_module: str | None = None,
 ):
-    """Decorator to register a command handler as a node capability."""
+    """Decorator to register a command handler as a node capability.
+
+    ``requires_module`` names an optional import the handler needs (e.g.
+    ``cv2``). Without it installed the capability is not advertised.
+    """
 
     def decorator(fn: Callable[..., Coroutine[Any, Any, dict[str, Any]]]):
         fn._capability_meta = {  # type: ignore[attr-defined]
             "name": name,
             "description": description,
             "params_schema": params_schema or {},
+            "requires_module": requires_module,
         }
         _HANDLERS[name] = fn
         return fn
 
     return decorator
+
+
+def _module_available(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
+def available_handlers(
+    capabilities: list[str] | None = None,
+) -> dict[str, Callable[..., Coroutine[Any, Any, dict[str, Any]]]]:
+    """Handlers this machine can actually serve, optionally filtered by name.
+
+    A capability whose optional dependency is missing is left out, so a node
+    never advertises a command it would only fail.
+    """
+    handlers = {}
+    for name, fn in _HANDLERS.items():
+        if capabilities and name not in capabilities:
+            continue
+        required = fn._capability_meta.get("requires_module")  # type: ignore[attr-defined]
+        if required and not _module_available(required):
+            logger.info(
+                "Skipping capability %s: optional module %r is not installed",
+                name,
+                required,
+            )
+            continue
+        handlers[name] = fn
+    return handlers
 
 
 # ─── Built-in handlers ───────────────────────────────────────────────
@@ -104,6 +139,7 @@ async def handle_speaker_speak(params: dict[str, Any]) -> dict[str, Any]:
     params_schema={
         "format": "(optional) Image format: 'png' or 'jpg' (default: png)",
     },
+    requires_module="cv2",
 )
 async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     """Capture a frame from the default camera."""
@@ -112,7 +148,12 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
         fmt = "png"
 
     def _capture() -> str:
-        import cv2
+        try:
+            import cv2
+        except ImportError as e:
+            raise RuntimeError(
+                "Camera support is not installed. Run `suzent plugin install camera`."
+            ) from e
 
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
@@ -213,10 +254,7 @@ class NodeHost:
         self.last_error: str | None = None
 
         # Filter handlers to requested capabilities
-        if capabilities:
-            self._handlers = {k: v for k, v in _HANDLERS.items() if k in capabilities}
-        else:
-            self._handlers = dict(_HANDLERS)
+        self._handlers = available_handlers(capabilities)
 
     @property
     def node_id(self) -> str | None:
