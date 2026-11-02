@@ -922,9 +922,9 @@ async def startup():
     # so the launch below is unconditional and outside this try.
     try:
         import json
-        from suzent.config import PROJECT_DIR
+        from suzent.config.paths import user_config_file
 
-        config_path = PROJECT_DIR / "config/social.json"
+        config_path = user_config_file("social.json")
         social_config = {}
 
         if config_path.exists():

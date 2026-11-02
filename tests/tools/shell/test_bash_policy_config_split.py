@@ -1,9 +1,19 @@
 from pathlib import Path
 
+import pytest
+
+from suzent.config import paths
 from suzent.permissions.loader import (
     load_permission_overrides,
     persist_global_command_rule,
 )
+
+
+@pytest.fixture(autouse=True)
+def _user_config_dir(tmp_path, monkeypatch):
+    """permissions.yaml lives in the data dir; isolate it per test. The
+    tmp_path/config files below are a pre-migration checkout's copies."""
+    monkeypatch.setattr(paths, "USER_CONFIG_DIR", tmp_path / "data" / "config")
 
 
 class _DummyLogger:
@@ -77,8 +87,8 @@ def test_persist_global_command_rule_creates_permissions_file(tmp_path: Path):
     )
 
     assert changed is True
-    user_path = tmp_path / "config" / "permissions.yaml"
-    assert user_path.exists()
+    assert (tmp_path / "data" / "config" / "permissions.yaml").exists()
+    assert not (tmp_path / "config" / "permissions.yaml").exists()
 
     loaded = load_permission_overrides(tmp_path, _DummyLogger())
     rules = loaded["permission_policies"]["ShellTool"]["command_rules"]

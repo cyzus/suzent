@@ -19,6 +19,7 @@ from suzent.config.paths import (
     DEFAULT_PORT,
     PROJECT_DIR,
     USER_CONFIG_DIR,
+    user_config_file,
 )
 
 
@@ -243,8 +244,20 @@ class ConfigModel(BaseModel):
         user_cfg_dir = USER_CONFIG_DIR
 
         example_path = cfg_dir / "default.example.yaml"
-        default_path = cfg_dir / "default.yaml"
-        user_default_path = user_cfg_dir / "default.yaml"
+        # default.yaml is user state and lives in the data dir. A source
+        # checkout that predates this kept it in config/; it is copied over
+        # once. When both already existed, the checkout copy stays a lower
+        # layer so nothing the user had set there is lost.
+        legacy_default_path = cfg_dir / "default.yaml"
+        had_user_default = (user_cfg_dir / "default.yaml").exists()
+        user_default_path = user_config_file(
+            "default.yaml", user_config_dir=user_cfg_dir, project_dir=PROJECT_DIR
+        )
+        default_path: Path | None = (
+            legacy_default_path
+            if had_user_default and legacy_default_path != user_default_path
+            else None
+        )
         # Machine-specific overrides — never synced across devices.
         # Put sandbox_volumes, sandbox_data_path, workspace_root, lancedb_uri etc. here.
         user_local_path = user_cfg_dir / "local.yaml"
@@ -277,7 +290,7 @@ class ConfigModel(BaseModel):
                 example_data = _normalize_keys(raw_example)
                 loaded_files.append(example_path)
 
-        if default_path.exists():
+        if default_path is not None and default_path.exists():
             raw_default = _read_file(default_path)
             if isinstance(raw_default, dict):
                 default_data = _normalize_keys(raw_default)

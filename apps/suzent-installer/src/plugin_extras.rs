@@ -59,6 +59,26 @@ fn data_dir(override_value: Option<String>, home: &Path) -> PathBuf {
     PathBuf::from(value)
 }
 
+/// The user's `social.json`: the data-dir copy beside `plugins.json`, else the
+/// live installation's `config/social.json`, where older versions kept it.
+pub fn social_config_file(install_root: &Path) -> PathBuf {
+    let state = plugin_state_file(install_root);
+    pick_social_file(&state, install_root)
+}
+
+fn pick_social_file(state_file: &Path, install_root: &Path) -> PathBuf {
+    let user = state_file.with_file_name("social.json");
+    if user.is_file() {
+        return user;
+    }
+    let checkout = install_root.join("config").join("social.json");
+    if checkout.is_file() {
+        checkout
+    } else {
+        user
+    }
+}
+
 fn legacy() -> Vec<String> {
     LEGACY_EXTRAS
         .iter()
@@ -90,7 +110,7 @@ pub fn enabled_plugin_extras(checkout: &Path, install_root: &Path, python: &Path
         .arg(&script)
         .arg(checkout)
         .arg(plugin_state_file(install_root))
-        .arg(install_root.join("config").join("social.json"))
+        .arg(social_config_file(install_root))
         .current_dir(checkout)
         .env_remove("PYTHONPATH")
         .env_remove("PYTHONHOME");
@@ -213,6 +233,24 @@ mod tests {
             data_dir(Some("data/~x".into()), home),
             PathBuf::from("data/~x")
         );
+    }
+
+    #[test]
+    fn data_dir_social_config_wins_over_the_checkout_copy() {
+        let base = env::temp_dir().join(format!("suzent-social-{}", std::process::id()));
+        let root = base.join("install");
+        let state = base.join("data").join("config").join("plugins.json");
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(state.parent().unwrap()).unwrap();
+        let user = state.with_file_name("social.json");
+        let checkout = root.join("config").join("social.json");
+
+        assert_eq!(pick_social_file(&state, &root), user);
+        std::fs::write(&checkout, "{}").unwrap();
+        assert_eq!(pick_social_file(&state, &root), checkout);
+        std::fs::write(&user, "{}").unwrap();
+        assert_eq!(pick_social_file(&state, &root), user);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

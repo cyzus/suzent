@@ -159,7 +159,11 @@ class SkillManager:
             source_ids=source_ids,
             default_enabled_roots=default_enabled_roots,
         )
-        self.persistence_file = USER_CONFIG_DIR / "skills.json"
+        from suzent.config.paths import user_config_file
+
+        self.persistence_file = user_config_file(
+            "skills.json", user_config_dir=USER_CONFIG_DIR
+        )
 
         # Initialize enabled state
         self.enabled_skills = set()

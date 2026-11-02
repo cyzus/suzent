@@ -125,6 +125,22 @@ def test_prefetch_reads_the_live_social_config(checkout, tmp_path):
     assert "telegram" in json.loads(result.stdout.strip().splitlines()[-1])
 
 
+def test_data_dir_social_config_wins_over_the_checkout(checkout, tmp_path):
+    """social.json now lives beside plugins.json in the data dir; the
+    checkout/live copy is only a fallback for installs not yet migrated."""
+    state = tmp_path / "data" / "config" / "plugins.json"
+    state.parent.mkdir(parents=True)
+    live = tmp_path / "live-social.json"
+    live.write_text(json.dumps({"telegram": {"bot_token": "123:abc"}}), "utf-8")
+
+    assert "telegram" in enablement.builtin_plugin_extras(checkout, state, live)
+
+    (state.parent / "social.json").write_text(
+        json.dumps({"telegram": {"enabled": False}}), "utf-8"
+    )
+    assert "telegram" not in enablement.builtin_plugin_extras(checkout, state, live)
+
+
 def test_tilde_in_the_state_path_is_expanded(checkout, tmp_path, monkeypatch):
     """setup.sh passes "${SUZENT_DATA_DIR}/config/plugins.json" verbatim, so a
     literal "~/custom" must resolve to the home directory."""

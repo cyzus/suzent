@@ -139,6 +139,48 @@ for _dir in (
     _dir.mkdir(parents=True, exist_ok=True)
 
 
+def user_config_file(
+    name: str,
+    *,
+    user_config_dir: Path | None = None,
+    project_dir: Path | None = None,
+    legacy_dir: Path | None = None,
+) -> Path:
+    """Path of the user-editable config file ``name`` in the data dir.
+
+    User state never lives under ``PROJECT_DIR``: a packaged install (MSIX)
+    ships it read-only. Older source checkouts kept these files in
+    ``PROJECT_DIR/config``; the first lookup copies such a file over (a copy,
+    not a move, so rolling back to an older version still finds it). Callers
+    read and write the returned path.
+    """
+    target_dir = Path(user_config_dir) if user_config_dir else USER_CONFIG_DIR
+    target = target_dir / name
+    if target.exists():
+        return target
+    legacy = (
+        Path(legacy_dir) if legacy_dir else Path(project_dir or PROJECT_DIR) / "config"
+    ) / name
+    try:
+        same = legacy.resolve() == target.resolve()
+    except OSError:
+        same = False
+    if not same and legacy.is_file():
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy, target)
+            get_logger(__name__).info(
+                "Migrated user config {} to {} (original left in place)",
+                legacy,
+                target,
+            )
+        except OSError as exc:
+            get_logger(__name__).warning(
+                "Failed to migrate user config {} to {}: {}", legacy, target, exc
+            )
+    return target
+
+
 def _external_source_id(path: Path) -> str:
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.name.strip()).strip("-")
     if not slug:

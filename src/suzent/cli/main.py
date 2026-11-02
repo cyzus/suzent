@@ -63,7 +63,7 @@ def _plugin_extras(root: Path) -> list[str]:
     builtin_dir = root / "plugins"
     if not builtin_dir.is_dir():
         return ["social"]
-    from suzent.config.paths import PLUGINS_DIR, USER_CONFIG_DIR
+    from suzent.config.paths import PLUGINS_DIR, USER_CONFIG_DIR, user_config_file
     from suzent.plugins import PluginManager
 
     manager = PluginManager(
@@ -71,7 +71,7 @@ def _plugin_extras(root: Path) -> list[str]:
         USER_CONFIG_DIR / "plugins.json",
         builtin_dirs=[builtin_dir],
         entry_point_group=None,
-        social_config_file=root / "config" / "social.json",
+        social_config_file=user_config_file("social.json", project_dir=root),
     )
     return manager.enabled_extras()
 

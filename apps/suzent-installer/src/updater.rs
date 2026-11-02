@@ -544,7 +544,7 @@ fn warm_python_cache(paths: &UpdatePaths, target_tag: &str, china: bool) -> Resu
             }
         };
         // Target release's manifests, but the live installation's chat-app
-        // configuration: the clean checkout has no config/social.json.
+        // configuration (data dir, else its config/social.json).
         let extras = crate::plugin_extras::enabled_plugin_extras(&checkout, &paths.root, &python);
         let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
         if china {

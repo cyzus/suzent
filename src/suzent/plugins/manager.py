@@ -505,9 +505,9 @@ def get_plugin_manager() -> PluginManager:
         from suzent.config.paths import (
             BUILTIN_PLUGINS_DIR,
             PLUGINS_DIR,
-            PROJECT_DIR,
             USER_CONFIG_DIR,
             get_external_plugin_dirs,
+            user_config_file,
         )
 
         _manager = PluginManager(
@@ -515,6 +515,6 @@ def get_plugin_manager() -> PluginManager:
             USER_CONFIG_DIR / "plugins.json",
             builtin_dirs=[BUILTIN_PLUGINS_DIR],
             deps_root=PLUGINS_DIR / ".deps",
-            social_config_file=PROJECT_DIR / "config" / "social.json",
+            social_config_file=user_config_file("social.json"),
         )
     return _manager

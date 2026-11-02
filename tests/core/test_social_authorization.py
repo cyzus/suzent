@@ -94,7 +94,7 @@ async def test_pairing_approval_is_scoped_to_the_requesting_platform(
     config_path.write_text(
         json.dumps({"telegram": {"enabled": True}, "discord": {"enabled": True}})
     )
-    monkeypatch.setattr("suzent.config.PROJECT_DIR", tmp_path)
+    monkeypatch.setattr("suzent.config.paths.USER_CONFIG_DIR", config_dir)
 
     brain = SocialBrain(None, platform_allowlists={})
     await brain._persist_approved_user("555", "telegram")
