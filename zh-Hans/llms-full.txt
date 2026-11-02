@@ -7671,6 +7671,14 @@ folder, for instance after a rollback) gets `--extra social`, as before.
 `_plugin_extras()` reads `config/social.json` from the checkout too, so a chat
 app that is set up but has no state entry keeps its packages.
 
+The desktop installer and updater (`apps/suzent-installer`) and the setup
+scripts sync the same set. They cannot import Suzent before its environment
+is synced, so the rules live in `suzent/plugins/enablement.py`, which imports
+nothing from Suzent: they run it by path on the environment's Python
+(`enablement.py <checkout> <plugins.json>` prints the extras as JSON), and
+`PluginManager` uses the same functions. A fresh install syncs no plugin
+extras; when the script is missing or fails, they fall back to `social`.
+
 `missing_packages()` compares what a plugin declares with what is installed,
 for `suzent plugin status` and the settings page.
 
@@ -8733,9 +8741,10 @@ old source does not roll back a database. A saved custom installation path is
 retained even if its environment is broken; repair that location rather than
 silently installing another copy in the default user directory.
 
-`uv sync --all-extras` installs both the `social` and `dev` optional
-dependency groups (equivalent to the `all` extra). For a minimal runtime
-without dev tooling, use `uv sync --extra social`.
+`uv sync --all-extras` installs every optional dependency group (chat apps,
+camera and `dev`; equivalent to the `all` extra). For a minimal runtime
+without dev tooling, use `uv sync`; chat apps and the camera install their
+packages when they are set up, as in a normal install.
 
 To run the backend and frontend in separate terminals instead, see
 [Development Modes](#development-modes) below.
@@ -11274,14 +11283,10 @@ Planned, in order:
    the option to block a call). The goal-turn accounting in
    `tools/plan_hooks.py` and the skill catalog reminder in `skills/hooks.py`
    would move onto these hooks as built-in plugins.
-3. **Desktop updater** — `apps/suzent-installer` still syncs `--extra social`,
-   which installs every chat app's packages, on every update. It should read
-   the enabled plugins' extras the way `suzent upgrade` does, so a user who
-   removed a chat app keeps its packages removed.
-4. **Import and sync** — restoring a data archive should mark plugin packages
+3. **Import and sync** — restoring a data archive should mark plugin packages
    as needing a sync rather than installing them during the import.
-5. **Providers as plugins** — model, image, video and speech providers.
-6. **Declared capabilities** — a manifest list of what a plugin needs
+4. **Providers as plugins** — model, image, video and speech providers.
+5. **Declared capabilities** — a manifest list of what a plugin needs
    (network, shell, sending messages) that the user grants when installing it.
 
 ## Chat storage
