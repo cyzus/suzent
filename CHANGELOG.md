@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.21.0] - 2026-11-02
 
+<!-- highlights -->
+### Highlights
+
+- **One phone, several computers.** Pair the mobile app with your laptop and a home server, and switch between them from Settings. The pairing QR code is much less dense and easier to scan, forgetting a computer on the phone also revokes the phone's access there, and pairing again replaces the old entry instead of adding another. Pair with mobile 0.6.0 to get these.
+- **A much lighter install.** Web pages are fetched with pydantic-ai's built-in web fetch instead of crawl4ai, documents are converted with small direct converters instead of MarkItDown, and webcam support is now an optional Camera plugin, so the Python environment is more than 500 MB smaller. Installs and updates download packages only for the plugins you have on. If you use camera.snap, turn on the Camera plugin under Settings → Plugins or run `suzent plugin install camera`.
+- **read_file is more precise.** Converted documents come back with line numbers and honour offset and limit like text files, and any other text file, such as .rs or .go, is read as text.
+- **Fixes you may have hit.** Sessions started by Regent no longer have their tools refused in Smart mode, the Plugins page no longer fails with "Failed to fetch" after an interrupted upgrade, spoken MP3 replies from OpenAI TTS play correctly again, and installs outside a source checkout show model providers during onboarding.
+<!-- /highlights -->
+
 ### Release notes
 - Messages that wake an ACP agent chat, such as another agent's request, now show in the chat as soon as the turn starts, and voice-call context reaches ACP agents.
 - Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
