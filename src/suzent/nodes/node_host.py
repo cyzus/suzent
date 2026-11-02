@@ -45,11 +45,15 @@ def capability(
     description: str = "",
     params_schema: dict[str, str] | None = None,
     requires_module: str | None = None,
+    requires_plugin: str | None = None,
 ):
     """Decorator to register a command handler as a node capability.
 
     ``requires_module`` names an optional import the handler needs (e.g.
-    ``cv2``). Without it installed the capability is not advertised.
+    ``cv2``); ``requires_plugin`` names the plugin that switches it on (e.g.
+    ``camera``). Unless both are satisfied the capability is not offered:
+    removing the plugin turns it off at once, even while its packages remain
+    installed until the next upgrade.
     """
 
     def decorator(fn: Callable[..., Coroutine[Any, Any, dict[str, Any]]]):
@@ -58,6 +62,7 @@ def capability(
             "description": description,
             "params_schema": params_schema or {},
             "requires_module": requires_module,
+            "requires_plugin": requires_plugin,
         }
         _HANDLERS[name] = fn
         return fn
@@ -69,19 +74,34 @@ def _module_available(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
 
 
+def _enabled_plugins() -> set[str]:
+    """Ids of enabled plugins. Fails closed: hardware stays off on error."""
+    try:
+        from suzent.plugins import get_plugin_manager
+
+        return get_plugin_manager().enabled_ids()
+    except Exception as e:
+        logger.warning(
+            "Could not read plugin state; plugin-gated capabilities off: %s", e
+        )
+        return set()
+
+
 def available_handlers(
     capabilities: list[str] | None = None,
 ) -> dict[str, Callable[..., Coroutine[Any, Any, dict[str, Any]]]]:
     """Handlers this machine can actually serve, optionally filtered by name.
 
-    A capability whose optional dependency is missing is left out, so a node
-    never advertises a command it would only fail.
+    A capability whose optional dependency is missing, or whose plugin is not
+    enabled, is left out, so a node never advertises (or runs) it.
     """
     handlers = {}
+    enabled: set[str] | None = None
     for name, fn in _HANDLERS.items():
         if capabilities and name not in capabilities:
             continue
-        required = fn._capability_meta.get("requires_module")  # type: ignore[attr-defined]
+        meta = fn._capability_meta  # type: ignore[attr-defined]
+        required = meta.get("requires_module")
         if required and not _module_available(required):
             logger.info(
                 "Skipping capability %s: optional module %r is not installed",
@@ -89,6 +109,15 @@ def available_handlers(
                 required,
             )
             continue
+        plugin = meta.get("requires_plugin")
+        if plugin:
+            if enabled is None:
+                enabled = _enabled_plugins()
+            if plugin not in enabled:
+                logger.info(
+                    "Skipping capability %s: plugin %r is not enabled", name, plugin
+                )
+                continue
         handlers[name] = fn
     return handlers
 
@@ -140,6 +169,7 @@ async def handle_speaker_speak(params: dict[str, Any]) -> dict[str, Any]:
         "format": "(optional) Image format: 'png' or 'jpg' (default: png)",
     },
     requires_module="cv2",
+    requires_plugin="camera",
 )
 async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     """Capture a frame from the default camera."""

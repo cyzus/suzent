@@ -280,23 +280,26 @@ def test_api_code_plugin_loads_without_a_restart(plugin_api):
     assert data["enabled"] is False and data["restartRequired"] is False
 
 
-def test_api_install_refreshes_local_node_capabilities(plugin_api, monkeypatch):
-    """Installing camera support shows camera.snap on the running local node."""
+def test_api_camera_install_and_removal_take_effect_live(
+    plugin_api, tmp_path, monkeypatch
+):
+    """Installing the camera plugin offers camera.snap on the running server;
+    removing it withdraws camera.snap at once, though OpenCV stays installed."""
     from suzent.nodes import node_host
     from suzent.nodes.local_node import LocalNode
     from suzent.nodes.manager import NodeManager
 
-    client, *_ = plugin_api
+    client, manager, installs, _ = plugin_api
+    _write(tmp_path / "builtin", "camera", "extras: [camera]\naliases: [webcam]\n")
     available = {"cv2": False}
     monkeypatch.setattr(
         node_host, "_module_available", lambda module: available.get(module, True)
     )
+    monkeypatch.setattr(node_host, "_enabled_plugins", manager.enabled_ids)
     node_manager = NodeManager()
     node = LocalNode()
     node_manager.register_node(node)
     client.app.state.node_manager = node_manager
-    assert "camera.snap" not in [c.name for c in node.capabilities]
-
     refreshed = []
 
     class _Outbound:
@@ -304,13 +307,21 @@ def test_api_install_refreshes_local_node_capabilities(plugin_api, monkeypatch):
             refreshed.append(True)
 
     client.app.state.outbound_manager = _Outbound()
+    assert "camera.snap" not in [c.name for c in node.capabilities]
 
-    available["cv2"] = True  # the plugin's packages just landed
-    assert client.post("/plugins/tg/install").status_code == 200
+    available["cv2"] = True  # the plugin's packages land during install
+    assert client.post("/plugins/webcam/install").status_code == 200
 
+    assert installs == ["camera"]
     assert "camera.snap" in [c.name for c in node.capabilities]
     assert "camera.snap" in node._handlers
     assert refreshed == [True]  # outbound connections re-advertise too
+
+    assert client.post("/plugins/camera/remove").status_code == 200
+
+    assert "camera.snap" not in [c.name for c in node.capabilities]
+    assert "camera.snap" not in node._handlers
+    assert refreshed == [True, True]
 
 
 def test_api_rejects_unknown_plugins(plugin_api):

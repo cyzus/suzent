@@ -16,6 +16,12 @@ from suzent.nodes.node_host import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _camera_plugin_enabled(monkeypatch):
+    """camera.snap is gated by the camera plugin; these tests assume it is on."""
+    monkeypatch.setattr("suzent.nodes.node_host._enabled_plugins", lambda: {"camera"})
+
+
 class TestCapabilityDecorator:
     """Test the @capability decorator."""
 
@@ -74,6 +80,16 @@ class TestNodeHost:
             host = NodeHost()
             local = LocalNode()
         assert "speaker.speak" in host._handlers
+        assert "camera.snap" not in host._handlers
+        assert "camera.snap" not in [c.name for c in local.capabilities]
+
+    def test_camera_hidden_when_plugin_disabled_even_with_opencv(self):
+        with (
+            patch("suzent.nodes.node_host._module_available", return_value=True),
+            patch("suzent.nodes.node_host._enabled_plugins", return_value=set()),
+        ):
+            host = NodeHost()
+            local = LocalNode()
         assert "camera.snap" not in host._handlers
         assert "camera.snap" not in [c.name for c in local.capabilities]
 
