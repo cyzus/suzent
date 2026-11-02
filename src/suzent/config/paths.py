@@ -169,6 +169,7 @@ def user_config_file(
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(legacy, target)
+            _migration_marker(target).write_text(f"{legacy}\n", encoding="utf-8")
             get_logger(__name__).info(
                 "Migrated user config {} to {} (original left in place)",
                 legacy,
@@ -179,6 +180,34 @@ def user_config_file(
                 "Failed to migrate user config {} to {}: {}", legacy, target, exc
             )
     return target
+
+
+def _migration_marker(target: Path) -> Path:
+    return target.with_name(f".{target.name}.migrated")
+
+
+def legacy_config_layer(
+    name: str,
+    *,
+    user_config_dir: Path | None = None,
+    project_dir: Path | None = None,
+) -> Path | None:
+    """A checkout's ``config/<name>`` that predates and is independent of the
+    data-dir copy, for loaders that layer it underneath (as they did before
+    the data-dir move). ``None`` once :func:`user_config_file` migrated it:
+    its contents are in the data-dir copy, and re-reading the stale original
+    would bring back settings the user since removed.
+    """
+    target = (Path(user_config_dir) if user_config_dir else USER_CONFIG_DIR) / name
+    legacy = Path(project_dir or PROJECT_DIR) / "config" / name
+    if _migration_marker(target).exists() or not legacy.is_file():
+        return None
+    try:
+        if legacy.resolve() == target.resolve():
+            return None
+    except OSError:
+        pass
+    return legacy
 
 
 def _external_source_id(path: Path) -> str:

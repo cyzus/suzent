@@ -19,6 +19,7 @@ from suzent.config.paths import (
     DEFAULT_PORT,
     PROJECT_DIR,
     USER_CONFIG_DIR,
+    legacy_config_layer,
     user_config_file,
 )
 
@@ -248,15 +249,11 @@ class ConfigModel(BaseModel):
         # checkout that predates this kept it in config/; it is copied over
         # once. When both already existed, the checkout copy stays a lower
         # layer so nothing the user had set there is lost.
-        legacy_default_path = cfg_dir / "default.yaml"
-        had_user_default = (user_cfg_dir / "default.yaml").exists()
         user_default_path = user_config_file(
             "default.yaml", user_config_dir=user_cfg_dir, project_dir=PROJECT_DIR
         )
-        default_path: Path | None = (
-            legacy_default_path
-            if had_user_default and legacy_default_path != user_default_path
-            else None
+        default_path = legacy_config_layer(
+            "default.yaml", user_config_dir=user_cfg_dir, project_dir=PROJECT_DIR
         )
         # Machine-specific overrides — never synced across devices.
         # Put sandbox_volumes, sandbox_data_path, workspace_root, lancedb_uri etc. here.

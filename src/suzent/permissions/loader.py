@@ -120,19 +120,18 @@ def load_permission_overrides(
     """
     cfg_dir = project_dir / "config"
     example_path = cfg_dir / "permissions.example.yaml"
-    legacy_path = cfg_dir / "permissions.yaml"
-    from suzent.config.paths import USER_CONFIG_DIR
+    from suzent.config.paths import legacy_config_layer
 
-    had_user_file = (
-        Path(user_config_dir or USER_CONFIG_DIR) / "permissions.yaml"
-    ).exists()
     data_user_path = _user_permissions_path(project_dir, user_config_dir)
+    # A checkout copy that existed independently of the data-dir one stays a
+    # lower layer; one that was migrated is read from the data dir only.
+    legacy_path = legacy_config_layer(
+        "permissions.yaml", user_config_dir=user_config_dir, project_dir=project_dir
+    )
 
     merged_tools: dict[str, dict[str, Any]] = {}
     paths = [example_path]
-    # A checkout copy that predates the data-dir one stays a lower layer;
-    # otherwise it was just migrated and is read from the data dir.
-    if had_user_file and legacy_path != data_user_path:
+    if legacy_path is not None:
         paths.append(legacy_path)
     paths.append(data_user_path)
 

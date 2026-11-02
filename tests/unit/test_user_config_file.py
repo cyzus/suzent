@@ -60,6 +60,45 @@ def test_migrates_a_checkout_copy_once_and_leaves_the_original(dirs):
     }
 
 
+def test_migrated_permissions_are_not_reloaded_from_the_checkout(dirs):
+    """Once copied, the checkout's permissions.yaml must not be layered back
+    in: rules would duplicate and deleted ones would come back."""
+    project, user = dirs
+    from suzent.logger import get_logger
+    from suzent.permissions.loader import load_permission_overrides
+
+    (project / "config" / "permissions.yaml").write_text(
+        "rules:\n"
+        "  - id: allow-npm-test\n"
+        "    tool: ShellTool\n"
+        "    behavior: allow\n"
+        "    matcher:\n"
+        "      type: exact_input\n"
+        "      value:\n"
+        "        command: npm test\n",
+        "utf-8",
+    )
+    logger = get_logger(__name__)
+    first = load_permission_overrides(project, logger, user)
+    assert len(first["permission_rules"]) == 1
+    assert (
+        len(load_permission_overrides(project, logger, user)["permission_rules"]) == 1
+    )
+
+    (user / "permissions.yaml").write_text("rules: []\n", "utf-8")
+    assert load_permission_overrides(project, logger, user)["permission_rules"] == []
+
+
+def test_independent_checkout_copy_stays_a_lower_layer(dirs):
+    project, user = dirs
+    from suzent.config.paths import legacy_config_layer
+
+    (project / "config" / "default.yaml").write_text("a: 1\n", "utf-8")
+    (user / "default.yaml").write_text("b: 2\n", "utf-8")
+    user_config_file("default.yaml")
+    assert legacy_config_layer("default.yaml") == project / "config" / "default.yaml"
+
+
 def test_social_routes_never_write_to_project_dir(dirs, monkeypatch):
     project, user = dirs
     from suzent.routes import config_routes
