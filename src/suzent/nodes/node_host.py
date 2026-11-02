@@ -254,11 +254,30 @@ class NodeHost:
         self.last_error: str | None = None
 
         # Filter handlers to requested capabilities
+        self._capability_filter = capabilities
         self._handlers = available_handlers(capabilities)
+        self._ws = None  # the live connection, while one is open
 
     @property
     def node_id(self) -> str | None:
         return self._node_id
+
+    async def refresh_capabilities(self) -> list[str]:
+        """Recompute capabilities, e.g. after a plugin installed OpenCV.
+
+        The server only learns capabilities from the connect handshake, so when
+        they change on a live connection this closes it; ``run()`` reconnects
+        at once and the new handshake advertises the new set.
+        Returns the capability names now advertised.
+        """
+        importlib.invalidate_caches()  # find_spec caches directory listings
+        handlers = available_handlers(self._capability_filter)
+        changed = handlers.keys() != self._handlers.keys()
+        self._handlers = handlers
+        if changed and self._ws is not None:
+            logger.info("Capabilities changed; reconnecting to re-advertise them")
+            await self._ws.close()
+        return list(handlers)
 
     def _build_connect_message(self) -> dict[str, Any]:
         """Build the handshake message."""
@@ -333,6 +352,7 @@ class NodeHost:
         self.status = "connecting"
 
         async with websockets.connect(self.gateway_url) as ws:
+            self._ws = ws  # cleared by run() once this connection ends
             # Handshake — may receive a "pending" while awaiting operator
             # approval (approve mode) before "connected" or "error".
             await ws.send(json.dumps(self._build_connect_message()))
@@ -407,7 +427,10 @@ class NodeHost:
 
         while not self._stop:
             try:
-                await self.run_once()
+                try:
+                    await self.run_once()
+                finally:
+                    self._ws = None
             except NodeAuthError as e:
                 self.status = "error"
                 self.last_error = str(e)

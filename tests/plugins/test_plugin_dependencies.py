@@ -297,11 +297,20 @@ def test_api_install_refreshes_local_node_capabilities(plugin_api, monkeypatch):
     client.app.state.node_manager = node_manager
     assert "camera.snap" not in [c.name for c in node.capabilities]
 
+    refreshed = []
+
+    class _Outbound:
+        async def refresh_capabilities(self):
+            refreshed.append(True)
+
+    client.app.state.outbound_manager = _Outbound()
+
     available["cv2"] = True  # the plugin's packages just landed
     assert client.post("/plugins/tg/install").status_code == 200
 
     assert "camera.snap" in [c.name for c in node.capabilities]
     assert "camera.snap" in node._handlers
+    assert refreshed == [True]  # outbound connections re-advertise too
 
 
 def test_api_rejects_unknown_plugins(plugin_api):
