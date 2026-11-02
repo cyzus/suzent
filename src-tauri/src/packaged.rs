@@ -94,6 +94,12 @@ pub fn python_command(python: &Path, data_dir: &Path) -> std::process::Command {
     cmd
 }
 
+/// CLI commands that update or reinstall a workspace install. The Store owns
+/// a packaged install, so these are refused instead of forwarded.
+pub fn is_store_managed_command(command: &str) -> bool {
+    matches!(command, "update" | "upgrade" | "repair")
+}
+
 /// True for packaged builds: a bundled runtime exists, or `SUZENT_PACKAGED=1`.
 pub fn is_packaged() -> bool {
     std::env::var("SUZENT_PACKAGED").is_ok_and(|value| value.trim() == "1")
@@ -264,6 +270,16 @@ mod tests {
         assert!(validate_backend_identity(&old, 25314)
             .unwrap_err()
             .contains("0.0.0"));
+    }
+
+    #[test]
+    fn store_owns_update_commands() {
+        for command in ["update", "upgrade", "repair"] {
+            assert!(is_store_managed_command(command));
+        }
+        for command in ["start", "logs", "--help", "service"] {
+            assert!(!is_store_managed_command(command));
+        }
     }
 
     #[test]
