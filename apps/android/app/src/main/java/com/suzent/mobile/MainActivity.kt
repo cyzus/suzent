@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,6 +94,7 @@ private fun MobileScreen(model: MobileModel) {
     var showHome by rememberSaveable { mutableStateOf(true) }
     var tab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var desktopsOpen by rememberSaveable { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
     val pageState = rememberSaveableStateHolder()
     val focus = LocalFocusManager.current
     LaunchedEffect(Unit) { if (model.canReconnect && !model.connected) model.connect() }
@@ -100,6 +102,7 @@ private fun MobileScreen(model: MobileModel) {
         showSettings = false
         showHome = true
         desktopsOpen = false
+        searching = false
         tab = HomeTab.CHATS
         if (model.connected) model.watchNavigation()
     }
@@ -112,6 +115,7 @@ private fun MobileScreen(model: MobileModel) {
         val sidebar: @Composable () -> Unit = {
             // On a phone the list is only visible after leaving the chat, so the last-opened row must not stay filled.
             Sidebar(model, showSettings || !wide, tabs = !wide, open = openChat,
+                openSearch = if (wide) null else ({ focus.clearFocus(); searching = true }),
                 create = { projectId -> focus.clearFocus(); model.create(projectId); showSettings = false; showHome = false },
                 settings = { focus.clearFocus(); showSettings = true; showHome = false; desktopsOpen = false })
         }
@@ -119,6 +123,7 @@ private fun MobileScreen(model: MobileModel) {
             pageState.SaveableStateProvider("home") {
                 Surface(Modifier.fillMaxSize()) {
                     if (wide) sidebar()
+                    else if (searching) SearchPage(model, openChat, close = { focus.clearFocus(); searching = false })
                     else TabHome(tab, { focus.clearFocus(); tab = it }) {
                         when (it) {
                             HomeTab.CHATS -> sidebar()
@@ -142,6 +147,8 @@ private fun MobileScreen(model: MobileModel) {
                 newChat = { focus.clearFocus(); model.create(); showSettings = false },
                 repair = { model.error = null; model.beginPairing(repairActive = true); repairScanner = true })
         }
+        // Back from the results closes search; back from a chat opened there returns to the results.
+        androidx.activity.compose.BackHandler(enabled = !wide && searching && showHome) { focus.clearFocus(); searching = false }
         when {
             !model.connected -> detail(false)
             wide -> Row(Modifier.fillMaxSize()) {
@@ -301,7 +308,69 @@ private fun ForgetConnectionDialog(model: MobileModel, dismiss: () -> Unit) {
 }
 
 @Composable
-private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
+private fun SearchPage(model: MobileModel, open: (Chat) -> Unit, close: () -> Unit) {
+    var search by rememberSaveable { mutableStateOf("") }
+    val term = search.trim()
+    val query = ChatPageQuery("search", term)
+    var expandedAgents by remember { mutableStateOf(setOf<String>()) }
+    val listState = rememberLazyListState()
+    val loaded = query in model.chatPages
+    var shownTop by rememberSaveable(term) { mutableStateOf(false) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    // Only on the way in: coming back from a result should not raise the keyboard again.
+    LaunchedEffect(Unit) { if (search.isEmpty()) focusRequester.requestFocus() }
+    // Results arrive above the footer, and the list would otherwise stay anchored on it at the bottom.
+    // Once per term, so coming back from a result keeps its scroll position.
+    LaunchedEffect(term, loaded) {
+        if (loaded && !shownTop) { listState.scrollToItem(0); shownTop = true }
+    }
+    LaunchedEffect(term, model.navigationVersion) {
+        if (term.isNotEmpty()) { kotlinx.coroutines.delay(300); model.loadPage(query) }
+    }
+    val focus = LocalFocusManager.current
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(value = search, onValueChange = { search = it },
+                placeholder = { Text(stringResource(R.string.search_chats)) },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                trailingIcon = if (search.isEmpty()) null else ({
+                    IconButton(onClick = { search = ""; focusRequester.requestFocus() }) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear_search), modifier = Modifier.size(18.dp))
+                    }
+                }),
+                singleLine = true, shape = RectangleShape,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focus.clearFocus() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f)),
+                modifier = Modifier.weight(1f).focusRequester(focusRequester))
+            TextButton(onClick = close) { Text(stringResource(android.R.string.cancel), color = MaterialTheme.colorScheme.onSurface) }
+        }
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
+            if (term.isEmpty()) item(key = "search-hint") {
+                Text(stringResource(R.string.search_hint), Modifier.padding(vertical = 24.dp),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                val results = sidebarChats(model.pageChats(query), term, expandedAgents)
+                items(results, key = { "search:${it.chat.id}" }) {
+                    SidebarEntry(it, false, model, { chat -> focus.clearFocus(); open(chat) }, it.chat.id in expandedAgents) {
+                        expandedAgents = if (it.chat.id in expandedAgents) expandedAgents - it.chat.id else expandedAgents + it.chat.id
+                    }
+                }
+                item(key = "search-more") { ChatPageFooter(model, query) }
+                if (results.isEmpty() && query in model.chatPages) item(key = "search-empty") {
+                    Text(stringResource(R.string.sidebar_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit,
+                    openSearch: (() -> Unit)? = null) {
     var search by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     var observedPinVersion by remember { mutableIntStateOf(model.pinnedVersion) }
@@ -390,7 +459,17 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
             Spacer(Modifier.width(10.dp))
             Text(stringResource(R.string.new_chat), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         }
-        OutlinedTextField(value = search, onValueChange = { search = it },
+        // Phones search on their own page, so results never share the screen with the home list.
+        if (openSearch != null) Row(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth().heightIn(min = 48.dp)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = .04f))
+            .clickable(role = Role.Button, onClick = openSearch).padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_search), contentDescription = null, modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            Text(stringResource(R.string.search_chats), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+        }
+        else OutlinedTextField(value = search, onValueChange = { search = it },
             placeholder = { Text(stringResource(R.string.search_chats)) },
             singleLine = true, shape = RectangleShape,
             colors = OutlinedTextFieldDefaults.colors(
