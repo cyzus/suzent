@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.21.0] - 2026-11-02
+
+<!-- highlights -->
+### Highlights
+
+- **One phone, several computers.** Pair the mobile app with your laptop and a home server, and switch between them from Settings. The pairing QR code is much less dense and easier to scan, forgetting a computer on the phone also revokes the phone's access there, and pairing again replaces the old entry instead of adding another. Pair with mobile 0.6.0 to get these.
+- **A much lighter install.** Web pages are fetched with pydantic-ai's built-in web fetch instead of crawl4ai, documents are converted with small direct converters instead of MarkItDown, and webcam support is now an optional Camera plugin, so the Python environment is more than 500 MB smaller. Installs and updates download packages only for the plugins you have on. If you use camera.snap, turn on the Camera plugin under Settings → Plugins or run `suzent plugin install camera`.
+- **read_file is more precise.** Converted documents come back with line numbers and honour offset and limit like text files, and any other text file, such as .rs or .go, is read as text.
+- **Fixes you may have hit.** Sessions started by Regent no longer have their tools refused in Smart mode, the Plugins page no longer fails with "Failed to fetch" after an interrupted upgrade, spoken MP3 replies from OpenAI TTS play correctly again, and installs outside a source checkout show model providers during onboarding.
+<!-- /highlights -->
+
+### Release notes
+- Messages that wake an ACP agent chat, such as another agent's request, now show in the chat as soon as the turn starts, and voice-call context reaches ACP agents.
+- Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
+- read_file shows EPUB authors and language, and fences raw notebook cells so their text is not rendered as markdown.
+- read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text.
+- Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones.
+- The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
+- Phones can now pair over Tailscale when the desktop has many network adapters, instead of failing with a trusted-connection error.
+- The Plugins settings page no longer fails with "Failed to fetch" when an upgrade left a half-removed package folder in the Python environment.
+- Installs and desktop updates now sync only the packages of the plugins you have on, as suzent upgrade does: a fresh install no longer downloads every chat app's SDK, a chat app you removed stays removed, and an update no longer uninstalls the Camera plugin's OpenCV.
+- Model providers and capability data load in installed and packaged builds too: they were looked up relative to the source checkout, so a non-repo install showed no providers during onboarding.
+- Sessions started by Regent no longer have their tools refused as unrequested: the Smart mode reviewer now treats Regent's brief as the session's task.
+- Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
+- Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
+
 ## [v0.20.0] - 2026-11-01
 
 ### Release notes
