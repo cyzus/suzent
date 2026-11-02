@@ -320,8 +320,9 @@ export function MobileAccessCard({
       invitationRef.current = next;
       try {
         const value = mobilePairingPayload(origin, next, candidates);
+        // Shown on a screen, not printed, so damage tolerance matters less than density.
         const image = await QRCode.toDataURL(value, {
-          errorCorrectionLevel: 'M',
+          errorCorrectionLevel: 'L',
           margin: 4,
           scale: 6,
           color: { dark: '#000000ff', light: '#ffffffff' },

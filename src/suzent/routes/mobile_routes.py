@@ -33,6 +33,7 @@ class ClaimRequest(BaseModel):
     confirm_permissions: StrictBool = False
     rotate: StrictBool = False
     repair_proof: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    installation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 class PickupRequest(BaseModel):
@@ -77,6 +78,7 @@ async def capabilities(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "pairing_protocol": 1,
             "pairing_repair": 1,
+            "installation_id": 1,
             "local_tls": 1,
         }
     )

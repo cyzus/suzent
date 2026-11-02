@@ -240,13 +240,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = viewModelScope.launch {
             try {
                 val selected = resolvePairingInvitation(invitation) { origin ->
-                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = invitation.tls)
+                    val trust = invitation.tls ?: invitation.tlsFingerprint?.let { DeviceTrust.fetch(origin, it) }
+                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = trust)
                     try {
                         probe.capabilities()
-                        if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
+                        trust to if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
                     } finally { probe.close() }
                 }
-                if (current == generation) { pairingPreview = selected.second; pairingInvitation = selected.first }
+                if (current == generation) { pairingPreview = selected.second.second; pairingInvitation = selected.first.copy(tls = selected.second.first) }
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure) }
             finally { if (current == generation) { busy = false; pairingStatus = null } }
@@ -282,7 +283,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val claim = bootstrap.claim(invitation, deviceName,
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
-                    rotate = connection?.origin != bootstrap.backend.origin.toString())
+                    rotate = connection?.origin != bootstrap.backend.origin.toString(),
+                    installationId = store.installationId().takeIf { bootstrap.supportsInstallationId })
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
@@ -360,6 +362,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 currentCoroutineContext().ensureActive()
                 store.save(confirmed); connection = confirmed
                 saved = confirmed
+            } else {
+                // A grant replacing a forgotten one stays provisional until confirmed, so activation
+                // must not succeed without it. Confirming a finalized grant is a no-op.
+                candidate.confirmPairing()
             }
             candidate.capabilities()
             val session = candidate.session()
@@ -850,7 +856,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun forget() {
         if (isDemo) { exitDemo(); return }
+        val forgotten = connection
         clearSession(removeCredentials = true)
+        // Best effort: otherwise the desktop keeps a grant no phone holds, and the next scan adds another.
+        forgotten?.let { saved ->
+            viewModelScope.launch {
+                val revoker = try { BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls) }
+                    catch (_: Exception) { return@launch }
+                try { revoker.forgetPairing() } catch (failure: CancellationException) { throw failure } catch (_: Exception) { }
+                finally { revoker.close() }
+            }
+        }
     }
 
     private fun clearSession(removeCredentials: Boolean) {

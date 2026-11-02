@@ -46,6 +46,45 @@ class DeviceTrustTest {
         try { PairingInvitation.parse(invitation.toString(), allowHttp = true, now = 1000.0); fail("HTTP downgrade accepted") }
         catch (_: PairingFailure) { }
     }
+    @Test fun fingerprintInvitationsRequireHttpsAndDeferTheCertificate() {
+        val fingerprint = fixture().getJSONObject("trust").getString("fingerprint")
+        val invitation = JSONObject().put("type", "suzent.mobile").put("pairing_protocol", 3)
+            .put("origin", "https://127.0.0.1:25443").put("pairing_id", "a".repeat(32))
+            .put("invitation", "b".repeat(43)).put("expires_at", 2000).put("tls_fingerprint", fingerprint)
+        val parsed = PairingInvitation.parse(invitation.toString(), now = 1000.0)
+        assertNull(parsed.tls)
+        assertEquals(fingerprint, parsed.tlsFingerprint)
+        assertTrue(parsed.secure)
+        for (bad in listOf(
+            JSONObject(invitation.toString()).put("origins", org.json.JSONArray().put("http://127.0.0.1:25443")),
+            JSONObject(invitation.toString()).put("tls_fingerprint", "A".repeat(64)),
+            JSONObject(invitation.toString()).apply { remove("tls_fingerprint") },
+            JSONObject(invitation.toString()).put("pairing_protocol", 2),
+        )) {
+            try { PairingInvitation.parse(bad.toString(), allowHttp = true, now = 1000.0); fail("Accepted $bad") }
+            catch (_: PairingFailure) { }
+        }
+    }
+
+    @Test fun onlyThePinnedAuthorityIsTakenFromTheChain() {
+        val fixture = fixture()
+        val decoder = Base64.getDecoder()
+        val chain = listOf(decoder.decode(fixture.getString("leaf")), decoder.decode(fixture.getJSONObject("trust").getString("ca_certificate")))
+        assertEquals(DeviceTrust.parse(fixture.getJSONObject("trust")), DeviceTrust.fromChain(chain, fixture.getJSONObject("trust").getString("fingerprint")))
+        assertNull(DeviceTrust.fromChain(chain, "0".repeat(64)))
+        assertNull(DeviceTrust.fromChain(listOf(decoder.decode(fixture.getString("wrong_ca"))), fixture.getJSONObject("trust").getString("fingerprint")))
+    }
+
+    @Test fun fingerprintFetchReadsTheLocalTlsFixtureAuthority() = kotlinx.coroutines.runBlocking {
+        val path = System.getenv("SUZENT_TLS_FIXTURE")
+        org.junit.Assume.assumeTrue(path != null)
+        val fixture = JSONObject(java.io.File(path!!).readText())
+        val expected = DeviceTrust.parse(fixture.getJSONObject("tls"))
+        assertEquals(expected, DeviceTrust.fetch(fixture.getString("origin"), expected.fingerprint))
+        try { DeviceTrust.fetch(fixture.getString("origin"), "0".repeat(64)); fail("Unpinned authority accepted") }
+        catch (_: PairingFailure) { }
+    }
+
     @Test fun nativeClientConnectsToTheLocalTlsFixture() = kotlinx.coroutines.runBlocking {
         val path = System.getenv("SUZENT_TLS_FIXTURE")
         org.junit.Assume.assumeTrue(path != null)
