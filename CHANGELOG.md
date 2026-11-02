@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.21.0] - 2026-11-02
 
 ### Release notes
+- Messages that wake an ACP agent chat, such as another agent's request, now show in the chat as soon as the turn starts, and voice-call context reaches ACP agents.
 - Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
 - read_file shows EPUB authors and language, and fences raw notebook cells so their text is not rendered as markdown.
 - read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text.
