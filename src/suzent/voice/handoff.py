@@ -666,6 +666,7 @@ class HandoffRouter:
                     self.chat_id,
                     sanitized,
                     {**chat_config, **config_override},
+                    system_reminders=reminders,
                     replay=queue.replay,
                     prewritten=bool(prewritten),
                 )

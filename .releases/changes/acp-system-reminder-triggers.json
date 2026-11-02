@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Messages that wake an ACP agent chat, such as another agent's request, now show in the chat as soon as the turn starts, and voice-call context reaches ACP agents."}

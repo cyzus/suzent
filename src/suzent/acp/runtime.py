@@ -6,6 +6,8 @@ import asyncio
 import contextlib
 import json
 import uuid
+from collections.abc import Sequence
+from types import SimpleNamespace
 from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
@@ -268,11 +270,16 @@ async def stream_acp_turn(
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
+    system_reminders: Sequence[str] | None = None,
     system_preamble: str | None = None,
     replay: Any | None = None,
     prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Run one ACP turn, claiming the replay's persistence contract for it.
+
+    *system_reminders* are runtime context for the agent, assembled by the same
+    builder the native runtime uses, so an ACP turn gets the same budget and the
+    same trigger row as a native one.
 
     The contract is claimed here rather than inside the turn so that it covers
     the turn's whole lifetime. A replay with no persistence future reports
@@ -283,6 +290,7 @@ async def stream_acp_turn(
     client trusts enough to replace what it is showing.
     """
     persistence = _attach_persistence(replay)
+    reminder = await _assemble_reminder(chat_id, message, system_reminders)
 
     # A stop this run was already given, before it existed to take one. The
     # steer route registers this run's replay and then cancels the turn it
@@ -297,7 +305,12 @@ async def stream_acp_turn(
         # or the reload the client trusts after a stop comes back without the
         # prompt in it.
         stored = _persist_stopped_prompt(
-            chat_id, message, runtime_authored, files, prewritten=prewritten
+            chat_id,
+            message,
+            runtime_authored,
+            files,
+            reminder=reminder,
+            prewritten=prewritten,
         )
         _resolve_persistence(persistence, stored)
         yield _sse(
@@ -320,6 +333,7 @@ async def stream_acp_turn(
             files=files,
             file_mentions=file_mentions,
             runtime_authored=runtime_authored,
+            reminder=reminder,
             system_preamble=system_preamble,
             prewritten=prewritten,
         ):
@@ -330,18 +344,56 @@ async def stream_acp_turn(
                 failed = True
             yield chunk
         if not failed:
-            await schedule_judgement(chat_id, message, reply, status_turn)
+            # With the reminder, as the native runtime judges it: on a
+            # reminder-only turn that block is the whole request.
+            await schedule_judgement(
+                chat_id, _with_reminder(message, reminder), reply, status_turn
+            )
     finally:
         # Anything that did not reach the assistant append — an early return, an
         # exception, a cancelled subscription — persisted nothing, and says so.
         _resolve_persistence(persistence, False)
 
 
-def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, str]:
+async def _assemble_reminder(
+    chat_id: str, message: str, system_reminders: Sequence[str] | None
+) -> str | None:
+    """Build the turn's reminder block the way the native runtime does.
+
+    Stateless, so no global or per-turn hooks run: their output (skill hints,
+    plan state, memory retrieval) points at Suzent's own tools, which an
+    external agent cannot call. Only the caller's reminders are delivered.
+
+    The trigger rule mirrors ``ChatProcessor.process_turn``: a reminder-only
+    turn is shown as the reminders it delivered; a turn the user typed is shown
+    as what they typed.
+    """
+    if not system_reminders:
+        return None
+    from suzent.core.system_reminder import build_combined_reminder
+
+    display_trigger = (
+        None
+        if message and message.strip()
+        else [r.strip() for r in system_reminders if r and r.strip()]
+    )
+    return await build_combined_reminder(
+        chat_id,
+        SimpleNamespace(stateless=True, chat_id=chat_id),
+        adhoc_reminders=list(system_reminders),
+        display_trigger=display_trigger,
+    )
+
+
+def _derive_user_row(
+    message: str, runtime_authored: bool, reminder: str | None = None
+) -> tuple[str, str, str]:
     """Sanitize a prompt and derive the transcript row it should leave.
 
-    Returns the text to send the agent, the role to store it under, and the
-    content to store. Shared with the stopped-before-it-started path, which
+    Returns the sanitized user text, the role to store it under, and the
+    content to store. The *reminder* is not part of the returned text: it is
+    appended after any file context, as the native runtime appends it after the
+    user's message. Shared with the stopped-before-it-started path, which
     stores the row without running anything.
     """
     from suzent.core.system_reminder import (
@@ -378,10 +430,12 @@ def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, st
             if runtime_authored
             else sanitize_untrusted_text(message)
         )
-    user_message = message
+    # The row is read back out of the block that is sent, as
+    # trigger_rows_for_snapshot does, so it records what the agent was shown.
+    rendered = _with_reminder(message, reminder)
 
-    display_trigger = extract_system_reminder_display_trigger(user_message)
-    visible_user_message = strip_system_reminders(user_message)
+    display_trigger = extract_system_reminder_display_trigger(rendered)
+    visible_user_message = strip_system_reminders(rendered)
     persisted_role = (
         "system_triggered" if display_trigger and not visible_user_message else "user"
     )
@@ -391,6 +445,13 @@ def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, st
         else visible_user_message
     )
     return message, persisted_role, persisted_content
+
+
+def _with_reminder(message: str, reminder: str | None) -> str:
+    """Append the reminder block after the prompt, where the native runtime puts it."""
+    if not reminder:
+        return message
+    return f"{message}\n\n{reminder}" if message and message.strip() else reminder
 
 
 def _display_files(files: list[Any] | None) -> list[dict]:
@@ -512,6 +573,7 @@ def _persist_stopped_prompt(
     runtime_authored: bool,
     files: list[Any] | None = None,
     *,
+    reminder: str | None = None,
     prewritten: bool = False,
 ) -> bool:
     """Store the prompt of a turn stopped before it ever ran.
@@ -527,7 +589,7 @@ def _persist_stopped_prompt(
         chat = db.get_chat(chat_id)
         if chat is None:
             return False
-        _, role, content = _derive_user_row(message, runtime_authored)
+        _, role, content = _derive_user_row(message, runtime_authored, reminder)
         return _append_user_row(
             db,
             chat_id,
@@ -556,6 +618,7 @@ async def _run_acp_turn(
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
+    reminder: str | None = None,
     system_preamble: str | None = None,
     replay: Any | None = None,
     prewritten: bool = False,
@@ -576,7 +639,7 @@ async def _run_acp_turn(
     # typed. Comparing the annotated text against the stored row defeated the
     # duplicate check below and persisted the message twice.
     message, persisted_role, persisted_content = _derive_user_row(
-        message, runtime_authored
+        message, runtime_authored, reminder
     )
     file_context = _build_acp_file_context(file_mentions, files)
     file_context += build_chat_mention_context(message or "", external_agent=True)
@@ -597,6 +660,10 @@ async def _run_acp_turn(
             if runtime_authored
             else sanitize_untrusted_text(message)
         )
+    # After the sanitizing above, not before it: the block carries this
+    # process's token and must survive, while everything ahead of it is the
+    # caller's text and must not gain that status.
+    message = _with_reminder(message, reminder)
 
     # Binary uploads can't be forwarded over the text-only ACP prompt channel.
     if files:
@@ -668,6 +735,17 @@ async def _run_acp_turn(
             files,
             prewritten=prewritten,
         )
+        if persisted_role == "system_triggered" and stored_prompt:
+            # The client reloads the display log the moment the stream opens,
+            # before this row lands, so the stream announces it — the same
+            # event the native runtime sends for its pre-saved trigger rows.
+            yield _sse(
+                {
+                    "type": "CUSTOM",
+                    "name": "incoming_message",
+                    "value": {"content": persisted_content, "persisted": True},
+                }
+            )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
         # through -- so every ACP chat stayed named "New Chat". The title comes
@@ -903,6 +981,7 @@ async def run_acp_turn_text(
     stream_queue: Any | None = None,
     *,
     runtime_authored: bool = False,
+    system_reminders: Sequence[str] | None = None,
     system_preamble: str | None = None,
     errors_out: list[str] | None = None,
 ) -> str:
@@ -917,6 +996,7 @@ async def run_acp_turn_text(
         message,
         config_override,
         runtime_authored=runtime_authored,
+        system_reminders=system_reminders,
         system_preamble=system_preamble,
         replay=getattr(stream_queue, "replay", None),
     ):
