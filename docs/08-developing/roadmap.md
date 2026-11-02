@@ -56,14 +56,10 @@ Planned, in order:
    the option to block a call). The goal-turn accounting in
    `tools/plan_hooks.py` and the skill catalog reminder in `skills/hooks.py`
    would move onto these hooks as built-in plugins.
-3. **Desktop updater** — `apps/suzent-installer` still syncs `--extra social`,
-   which installs every chat app's packages, on every update. It should read
-   the enabled plugins' extras the way `suzent upgrade` does, so a user who
-   removed a chat app keeps its packages removed.
-4. **Import and sync** — restoring a data archive should mark plugin packages
+3. **Import and sync** — restoring a data archive should mark plugin packages
    as needing a sync rather than installing them during the import.
-5. **Providers as plugins** — model, image, video and speech providers.
-6. **Declared capabilities** — a manifest list of what a plugin needs
+4. **Providers as plugins** — model, image, video and speech providers.
+5. **Declared capabilities** — a manifest list of what a plugin needs
    (network, shell, sending messages) that the user grants when installing it.
 
 ## Chat storage

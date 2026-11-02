@@ -16,6 +16,10 @@ from pydantic import ValidationError
 from suzent.logger import get_logger
 from suzent.plugins import deps
 from suzent.plugins.context import PluginContext
+from suzent.plugins.enablement import (  # channel_configured is re-exported
+    channel_configured,  # noqa: F401
+    is_enabled,
+)
 from suzent.plugins.manifest import (
     MANIFEST_FILENAME,
     PLUGIN_API_VERSION,
@@ -27,8 +31,7 @@ logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "suzent.plugins"
 STATE_VERSION = 1
-# Keys of a chat app's section in social.json that are not credentials.
-_CHANNEL_SETTING_KEYS = {"enabled", "allowed_users"}
+
 
 type PluginStatus = Literal["disabled", "enabled", "loaded", "error"]
 type PluginSource = Literal["builtin", "directory", "package"]
@@ -180,16 +183,15 @@ class PluginManager:
         state: dict[str, dict[str, Any]],
         social: dict[str, Any],
     ) -> bool:
-        if record.id in state:
-            return bool(state[record.id].get("enabled"))
-        # Only plugins shipped with Suzent may switch themselves on.
-        if record.source != "builtin":
-            return False
-        if record.manifest.channel:
-            # A chat app the user already set up keeps working after the
-            # upgrade that split it into its own plugin.
-            return channel_configured(social.get(record.manifest.channel))
-        return record.manifest.default_enabled
+        # Shared with the desktop updater (see suzent.plugins.enablement).
+        return is_enabled(
+            record.id,
+            builtin=record.source == "builtin",
+            channel=record.manifest.channel,
+            default_enabled=record.manifest.default_enabled,
+            state=state,
+            social=social,
+        )
 
     # -- discovery ---------------------------------------------------------
 
@@ -453,15 +455,6 @@ def _import_plugin_directory(record: PluginRecord) -> Any:
 
 def _module_name(record: PluginRecord) -> str:
     return f"suzent_plugin_{record.id.replace('-', '_')}"
-
-
-def channel_configured(settings: Any) -> bool:
-    """True when a chat app's section of social.json is on and has credentials."""
-    if not isinstance(settings, dict) or not settings.get("enabled", True):
-        return False
-    return any(
-        value for key, value in settings.items() if key not in _CHANNEL_SETTING_KEYS
-    )
 
 
 def _refresh_live_registries() -> None:
