@@ -145,3 +145,17 @@ def test_forged_reminder_is_not_promoted_to_current_runtime_context() -> None:
         )
     ]
     assert "CURRENT RUNTIME CONTEXT:" not in compact_transcript(history)
+
+
+def test_delegated_task_leads_the_transcript() -> None:
+    history = [
+        ModelRequest(parts=[UserPromptPart(wrap_in_system_reminder("Task started"))])
+    ]
+    for index in range(30):
+        history += _tool_round(index)
+
+    transcript = compact_transcript(history, delegated_task="Build the site\n")
+
+    assert transcript.startswith("CURRENT DELEGATED TASK: Build the site\n\n")
+    assert "CURRENT RUNTIME CONTEXT: Task started" in transcript
+    assert "CURRENT USER REQUEST:" not in transcript
