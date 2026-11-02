@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
 - read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text.
+- Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones.
 - The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
 - The Plugins settings page no longer fails with "Failed to fetch" when an upgrade left a half-removed package folder in the Python environment.
 - Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
