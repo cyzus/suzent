@@ -241,19 +241,55 @@ async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch, kind
 
     assert captured["message_content"] == ""
     assert captured["system_reminders"] == [
-        "Please review\n<!-- suzent-agent-inbox:msg-1 -->"
+        "<!-- suzent-agent-inbox:msg-1 -->\nPlease review"
     ]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["agent_message", "remote_agent_message"])
-async def test_acp_inbox_messages_use_local_reminder_wrapper(monkeypatch, kind):
-    from suzent.core.system_reminder import (
-        PUA_START,
-        RUNTIME_NONCE,
-        extract_system_reminder_display_trigger,
-    )
+async def test_a_long_task_result_keeps_its_delivery_marker_through_the_budget(
+    monkeypatch,
+):
+    from suzent.core.system_reminder import build_combined_reminder
 
+    captured = {}
+    target = SimpleNamespace(title="Target", config={"platform": "personal"})
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return target
+
+    class FakeProcessor:
+        async def process_background_turn(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.agent_manager.build_agent_config",
+        lambda base_config, require_social_tool=False: base_config,
+    )
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.ChatProcessor", lambda: FakeProcessor()
+    )
+    monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
+    message = {**_message(), "kind": "subagent_result", "content": "x" * 7000}
+    await AgentInboxDispatcher()._run_target_turn(message)
+
+    # A retry recognises a finished delivery only by this marker, so truncating
+    # an oversized result must not remove it.
+    reminder = await build_combined_reminder(
+        "agent-target",
+        None,
+        adhoc_reminders=captured["system_reminders"],
+        display_trigger=captured["system_reminders"],
+    )
+    assert "<!-- suzent-agent-inbox:msg-1 -->" in reminder
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["agent_message", "remote_agent_message"])
+async def test_acp_inbox_messages_go_through_the_shared_reminder_path(
+    monkeypatch, kind
+):
     captured = {}
     target = SimpleNamespace(title="Target", config={"runtime": "acp"})
 
@@ -274,11 +310,12 @@ async def test_acp_inbox_messages_use_local_reminder_wrapper(monkeypatch, kind):
     monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
     await AgentInboxDispatcher()._run_target_turn({**_message(), "kind": kind})
 
-    assert captured["runtime_authored"] is True
-    assert PUA_START + RUNTIME_NONCE in captured["content"]
-    trigger = extract_system_reminder_display_trigger(captured["content"])
-    assert "Please review" in trigger
-    assert "<!-- suzent-agent-inbox:msg-1 -->" in trigger
+    # Same inputs as the native background turn: no user text, the delivery as
+    # the reminder. The ACP runtime assembles the block, not the inbox.
+    assert captured["content"] == ""
+    (delivered,) = captured["system_reminders"]
+    assert "Please review" in delivered
+    assert "<!-- suzent-agent-inbox:msg-1 -->" in delivered
 
 
 def _acp_inbox(monkeypatch, run_turn) -> None:
