@@ -442,6 +442,17 @@ def test_stop_reports_when_no_server_is_running(monkeypatch):
     assert "No Suzent server running" in result.output
 
 
+def test_get_ui_binary_prefers_packaged_executable(monkeypatch, tmp_path):
+    packaged = tmp_path / "pkg" / "suzent.exe"
+    packaged.parent.mkdir()
+    packaged.write_bytes(b"exe")
+    monkeypatch.setenv("SUZENT_PACKAGED_UI", str(packaged))
+    assert cli_main._get_ui_binary(tmp_path / "app") == packaged
+
+    monkeypatch.setenv("SUZENT_PACKAGED_UI", str(tmp_path / "missing.exe"))
+    assert cli_main._get_ui_binary(tmp_path / "app") is None
+
+
 @pytest.mark.parametrize("development", [False, True])
 def test_get_ui_binary_selects_build_for_workspace(monkeypatch, tmp_path, development):
     if not development:

@@ -102,6 +102,11 @@ def _interrupted_update_message(root: Path) -> str | None:
 
 def _get_ui_binary(root: Path) -> Path | None:
     """Return the managed release UI, falling back to a local release build."""
+    # Packaged (MSIX) builds: the desktop exe runs this CLI through its
+    # execution alias and names itself, since it lives outside any workspace.
+    packaged_ui = os.environ.get("SUZENT_PACKAGED_UI")
+    if packaged_ui and Path(packaged_ui).is_file():
+        return Path(packaged_ui)
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
     release_name = "suzent.exe" if IS_WINDOWS else "suzent"
     managed_release = root / _BIN_DIR / name
