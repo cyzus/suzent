@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest template for the Microsoft Store build. Rendered by
+  .github/workflows/msix.yml (see packaging/msix/README.md):
+    {{IDENTITY_NAME}}           Partner Center: Package/Identity/Name
+    {{PUBLISHER}}               Partner Center: Package/Identity/Publisher (CN=...)
+    {{PUBLISHER_DISPLAY_NAME}}  Partner Center: Package/Properties/PublisherDisplayName
+    {{VERSION}}                 app version as four parts, e.g. 0.20.0.0
+  The StartupTask TaskId must match packaged::STARTUP_TASK_ID in
+  src-tauri/src/packaged.rs (a unit test checks this).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 desktop rescap">
+  <Identity Name="{{IDENTITY_NAME}}" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Suzent</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <!-- The bundled Python's vcruntime DLLs are removed (they break signtool);
+         the Store installs this framework package instead. -->
+    <PackageDependency Name="Microsoft.VCLibs.140.00.UWPDesktop" MinVersion="14.0.24217.0"
+                       Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="suzent.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Suzent" Description="Suzent - Your Personal Agent"
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <desktop:Extension Category="windows.startupTask" Executable="suzent.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="SuzentStartup" Enabled="false" DisplayName="Suzent" />
+        </desktop:Extension>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="suzent.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="suzent.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
