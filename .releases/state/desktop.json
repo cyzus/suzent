@@ -1,5 +1,5 @@
 {
-  "version": "0.21.1",
+  "version": "0.22.0",
   "consumed": [
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -119,6 +119,7 @@
     ".releases/changes/mobile-sidebar-pairing-polish.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/model-wait-ux.json",
+    ".releases/changes/msix-packaged-mode.json",
     ".releases/changes/native-notifications-only.json",
     ".releases/changes/native-visual-analysis.json",
     ".releases/changes/notification-audio-resume.json",
