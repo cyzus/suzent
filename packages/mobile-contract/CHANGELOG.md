@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.6.1] - 2026-11-03
+
+### Release notes
+- Optimize Android release size and improve edge-to-edge and large-screen compatibility.
+
 ## [mobile-v0.6.0] - 2026-11-02
 
 ### Release notes
