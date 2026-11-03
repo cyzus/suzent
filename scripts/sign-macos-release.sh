@@ -148,8 +148,14 @@ for binary in "$@"; do
   codesign --verify --strict --verbose=4 -R="notarized" --check-notarization "$binary"
 done
 if [[ -n "$installer_dmg" ]]; then
-  xcrun stapler staple "$installer_dmg"
-  xcrun stapler validate "$installer_dmg"
+  # Apple's ticket lookup sometimes drops the connection (stapler exits 68), so retry.
+  for action in staple validate; do
+    for attempt in 1 2 3 4 5; do
+      xcrun stapler "$action" "$installer_dmg" && break
+      [[ "$attempt" == 5 ]] && exit 1
+      sleep $((attempt * 10))
+    done
+  done
   spctl --assess --type open --context context:primary-signature --verbose=2 "$installer_dmg"
   mount_point="$signing_dir/mount"
   mkdir "$mount_point"
