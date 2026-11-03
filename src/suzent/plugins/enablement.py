@@ -73,6 +73,22 @@ def read_state(path: Path) -> dict[str, dict[str, Any]]:
     return {str(k): v for k, v in plugins.items() if isinstance(v, dict)}
 
 
+def user_social_file(
+    checkout: Path, state_file: Path, social_file: Path | None = None
+) -> Path:
+    """The user's social.json: the data-dir copy beside ``plugins.json`` wins;
+    else ``social_file`` (an older installer's pick); else the checkout's,
+    where versions before the data-dir move kept it."""
+    candidates = [Path(state_file).expanduser().parent / "social.json"]
+    if social_file is not None:
+        candidates.append(Path(social_file))
+    candidates.append(checkout / "config" / "social.json")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
 def builtin_plugin_extras(
     checkout: Path, state_file: Path, social_file: Path | None = None
 ) -> list[str]:
@@ -81,9 +97,9 @@ def builtin_plugin_extras(
     Only built-in plugins can name Suzent extras; third-party plugins keep
     their packages in their own directory, outside the synced environment.
     A checkout from before plugins existed gets ``social``, as it always did.
-    ``social_file`` is the user's chat-app configuration. It defaults to the
-    checkout's, but a clean checkout of a new release (the updater's prefetch)
-    has none, so the caller passes the live installation's.
+    The user's chat-app configuration is found by :func:`user_social_file`;
+    ``social_file`` is a fallback for a live installation that still keeps it
+    in its checkout (a clean checkout of a new release has none).
     """
     import yaml
 
@@ -92,8 +108,9 @@ def builtin_plugin_extras(
         return ["social"]
     # Callers pass SUZENT_DATA_DIR verbatim (e.g. "~/custom" from a shell);
     # expand it as get_data_dir() does, so the real plugin state is read.
-    state = read_state(Path(state_file).expanduser())
-    social = read_json_dict(social_file or checkout / "config" / "social.json")
+    state_file = Path(state_file).expanduser()
+    state = read_state(state_file)
+    social = read_json_dict(user_social_file(checkout, state_file, social_file))
     extras: dict[str, None] = {}
     for manifest_path in sorted(builtin_dir.glob(f"*/{MANIFEST_FILENAME}")):
         try:

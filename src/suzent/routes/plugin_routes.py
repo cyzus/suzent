@@ -46,10 +46,10 @@ def _has_packages(record: PluginRecord) -> bool:
 
 
 async def _reload_social(request: Request) -> None:
-    from suzent.config import PROJECT_DIR
+    from suzent.config.paths import user_config_file
     from suzent.server import reload_social
 
-    config_path = PROJECT_DIR / "config" / "social.json"
+    config_path = user_config_file("social.json")
     social_config = {}
     if config_path.exists():
         social_config = json.loads(config_path.read_text(encoding="utf-8"))

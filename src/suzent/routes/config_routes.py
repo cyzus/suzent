@@ -297,9 +297,9 @@ async def save_default_permission_mode(request: Request) -> JSONResponse:
 
 
 def _get_default_config_path() -> Path:
-    from suzent.config import PROJECT_DIR
+    from suzent.config.paths import user_config_file
 
-    return PROJECT_DIR / "config" / "default.yaml"
+    return user_config_file("default.yaml")
 
 
 def _load_default_config_file() -> dict[str, Any]:
@@ -800,10 +800,9 @@ def _merge_social_config(existing: dict, incoming: dict):
 async def get_social_config(request: Request) -> JSONResponse:
     """Get the current social configuration."""
     try:
-        from suzent.config import PROJECT_DIR
+        from suzent.config.paths import user_config_file
 
-        # Use PROJECT_DIR for correct path in frozen mode
-        config_path = PROJECT_DIR / "config" / "social.json"
+        config_path = user_config_file("social.json")
         if not config_path.exists():
             return JSONResponse({"config": {}})
 
@@ -893,9 +892,9 @@ async def save_social_config(request: Request) -> JSONResponse:
         data = await request.json()
         incoming_config = data.get("config", {})
 
-        from suzent.config import PROJECT_DIR
+        from suzent.config.paths import user_config_file
 
-        config_path = PROJECT_DIR / "config" / "social.json"
+        config_path = user_config_file("social.json")
         existing_config = {}
         if config_path.exists():
             with open(config_path, "r") as f:
@@ -904,6 +903,7 @@ async def save_social_config(request: Request) -> JSONResponse:
         # Merge incoming into existing (handling masks)
         _merge_social_config(existing_config, incoming_config)
 
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(config_path, "w") as f:
             json.dump(existing_config, f, indent=4)
 

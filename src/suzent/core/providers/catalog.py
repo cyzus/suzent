@@ -141,13 +141,16 @@ def user_providers_path() -> Path:
 def load_user_provider_entries() -> list[dict[str, Any]]:
     """User-defined provider entries.
 
-    Older versions wrote them into the install's ``config/``; that file is read
-    until the first save to the data dir, which then supersedes it.
+    Older versions wrote them into the install's ``config/``; that file is
+    copied to the data dir on first read.
     """
+    from suzent.config.paths import user_config_file
+
     path = user_providers_path()
-    if path.exists():
-        return _load_json_file(path)
-    return _load_json_file(_CONFIG_DIR / "providers.user.json")
+    path = user_config_file(
+        path.name, user_config_dir=path.parent, legacy_dir=_CONFIG_DIR
+    )
+    return _load_json_file(path)
 
 
 def save_user_provider_entries(entries: list[dict[str, Any]]) -> None:
