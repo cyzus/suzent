@@ -100,7 +100,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
             val cameraLive = allowed && !cameraFailed
             if (cameraLive) AndroidView(factory = { preview }, modifier = Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .75f), Color.Transparent, Color.Black.copy(alpha = .85f)))))
-            Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp)) {
+            Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal = 24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("▪ SUZENT ▪", fontSize = 21.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                     val cancelLabel = stringResource(R.string.cancel_pairing)
@@ -114,7 +114,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
             val offset by animateDpAsState(if (found) (-65).dp else (-20).dp, spring(dampingRatio = .9f), label = "scan frame")
             if (cameraLive) ScanFrame(active, found, Modifier.align(Alignment.Center).offset(y = offset).size(frameSize))
             else Text(stringResource(R.string.camera_unavailable), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(32.dp))
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding()) {
                 AnimatedVisibility(visible = !found, modifier = Modifier.align(Alignment.BottomCenter), exit = fadeOut(tween(120))) {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         AnimatedVisibility(model.error != null, enter = fadeIn() + slideInVertically { it / 4 }) {

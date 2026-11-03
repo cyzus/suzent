@@ -30,7 +30,12 @@ android {
         }
     }
     buildTypes {
-        getByName("release") { signingConfig = signingConfigs.getByName("release") }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
