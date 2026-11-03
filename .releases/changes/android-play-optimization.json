@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Optimize Android release size and improve edge-to-edge and large-screen compatibility."
+}

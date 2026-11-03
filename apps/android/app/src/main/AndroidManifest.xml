@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -14,6 +15,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Pairing embeds BarcodeView; the library's standalone scanner locks orientation. -->
+        <activity android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            tools:node="remove" />
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.attachments"
             android:exported="false" android:grantUriPermissions="true">
