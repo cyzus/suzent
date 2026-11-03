@@ -1,6 +1,7 @@
 {
-  "version": "0.6.0",
+  "version": "0.6.1",
   "consumed": [
+    ".releases/changes/android-play-optimization.json",
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/android-zxing-only-scanner.json",
