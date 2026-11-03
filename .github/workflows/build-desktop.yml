@@ -208,6 +208,14 @@ jobs:
         working-directory: apps/suzent-installer
         run: npm run build
 
+      # stapler's HTTP/3 (UDP 443) connection to Apple drops on GitHub's Intel Mac
+      # runners; blocking UDP 443 makes it fall back to TCP (actions/runner-images#14924).
+      - name: Make stapler use TCP to reach Apple
+        if: runner.os == 'macOS'
+        run: |
+          echo "block return out quick proto udp from any to any port 443" | sudo pfctl -f -
+          sudo pfctl -E
+
       - name: Sign and notarize macOS binaries and installer disk image
         if: runner.os == 'macOS'
         shell: bash
@@ -454,6 +462,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           ARCH: ${{ matrix.arch }}
+      # stapler's HTTP/3 (UDP 443) connection to Apple drops on GitHub's Intel Mac
+      # runners; blocking UDP 443 makes it fall back to TCP (actions/runner-images#14924).
+      - name: Make stapler use TCP to reach Apple
+        run: |
+          echo "block return out quick proto udp from any to any port 443" | sudo pfctl -f -
+          sudo pfctl -E
       - name: Sign, notarize and staple existing binaries and installer disk image
         run: bash scripts/sign-macos-release.sh signed-assets/*
         env:
