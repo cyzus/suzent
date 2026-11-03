@@ -1,0 +1,306 @@
+name: MSIX
+
+# Builds the Microsoft Store package (unsigned; the Store signs submissions)
+# on a clean runner and smoke-tests the bundled runtime. See packaging/msix/.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/msix/**'
+      - 'src-tauri/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/msix.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/msix/**'
+      - 'src-tauri/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/msix.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: msix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  msix:
+    name: Build MSIX
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # Outside the checkout: the backend reports `source_root` by walking up
+      # from its installed files to a pyproject.toml, which must not find the repo.
+      PKG: C:\msix-pkg
+      PY: C:\msix-pkg\runtime\python\python.exe
+      # Partner Center values; test values keep the job usable before the
+      # Store reservation exists.
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'Suzent.CITest' }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=SuzentCITest' }}
+      MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'Suzent' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        shell: pwsh
+        run: |
+          irm https://astral.sh/uv/install.ps1 | iex
+          "$env:USERPROFILE\.local\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            src-tauri/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      # python-build-standalone is what uv installs, so this is the same
+      # relocatable CPython the PoC validated.
+      - name: Fetch relocatable CPython 3.12
+        shell: pwsh
+        run: |
+          uv python install 3.12
+          $src = Split-Path -Parent (uv python find 3.12 --managed-python)
+          New-Item -ItemType Directory -Force "$env:PKG\runtime" | Out-Null
+          Copy-Item -Recurse $src "$env:PKG\runtime\python"
+          & $env:PY -c "import sys; print(sys.version)"
+
+      - name: Install frontend dependencies and stage the web UI
+        run: |
+          cd frontend
+          npm ci
+          cd ../src-tauri
+          npm ci
+          cd ..
+          # `suzent web` and the backend's SPA routes serve src/suzent/webui/,
+          # a gitignored build artifact the wheel ships only when it exists.
+          python scripts/build_webui.py
+
+      - name: Install locked dependencies and Suzent (non-editable)
+        shell: pwsh
+        run: |
+          # Built-in plugin extras are bundled: the package cannot install them later.
+          uv export --frozen --no-dev --extra social --extra camera --no-editable --no-hashes --no-emit-project -o requirements-msix.txt
+          uv pip install --python $env:PY --break-system-packages -r requirements-msix.txt
+          uv pip install --python $env:PY --break-system-packages --no-deps .
+          & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok')"
+
+      - name: Strip files that break signing, and test suites
+        shell: pwsh
+        run: |
+          $rt = "$env:PKG\runtime\python"
+          # signtool fails with 0x800700C1 on these PEs (PoC bisect). vcruntime
+          # comes from the VCLibs framework dependency instead.
+          $paths = @(
+            'DLLs\tcl86t.dll', 'DLLs\tk86t.dll', 'DLLs\_tkinter.pyd',
+            'vcruntime140.dll', 'vcruntime140_1.dll',
+            'tcl', 'Lib\tkinter', 'Lib\idlelib', 'Lib\turtledemo',
+            'Lib\test', 'Lib\unittest\test', 'Lib\lib2to3\tests'
+          )
+          foreach ($p in $paths) {
+            if (Test-Path "$rt\$p") { Remove-Item -Recurse -Force "$rt\$p"; "removed $p" }
+          }
+          # pip stays: without uv on the user's machine, plugins/deps.py installs
+          # third-party plugin dependencies with `python -m pip install --target`.
+          & $env:PY -m pip --version
+          # _test*.pyd extension modules are CPython's own test helpers.
+          Get-ChildItem "$rt\DLLs" -Filter '_test*.pyd' | Remove-Item -Force
+          & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok after strip')"
+
+      - name: Precompile bytecode
+        shell: pwsh
+        run: |
+          # The install dir is read-only, so every .pyc must exist up front.
+          # One known Python 2 file (olefile2.py) fails to compile; ignore it.
+          & $env:PY -m compileall -q -j 0 "$env:PKG\runtime\python" | Select-Object -Last 20
+          exit 0
+
+      - name: PE signability scan
+        shell: pwsh
+        run: python packaging/msix/pescan.py "$env:PKG\runtime\python"
+
+      - name: Copy bundled resources
+        shell: pwsh
+        run: |
+          # extensions/browser is served by Settings > Browser (PROJECT_DIR/extensions).
+          foreach ($f in git ls-files config skills plugins extensions/browser) {
+            $dest = Join-Path "$env:PKG\app" $f
+            New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
+            Copy-Item $f $dest
+          }
+          (Get-ChildItem -Recurse -File "$env:PKG\app").Count
+
+      - name: Build frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+          cd ../src-tauri
+          npm ci
+
+      - name: Build Tauri exe (store config)
+        working-directory: src-tauri
+        run: npx tauri build --no-bundle --config tauri.conf.store.json
+
+      - name: Render manifest and assets
+        id: manifest
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected app version $version" }
+          $v4 = "$version.0"
+          $t = Get-Content packaging/msix/AppxManifest.template.xml -Raw
+          $t = $t.Replace('{{IDENTITY_NAME}}', $env:MSIX_IDENTITY_NAME).Replace('{{PUBLISHER}}', $env:MSIX_PUBLISHER).Replace('{{PUBLISHER_DISPLAY_NAME}}', $env:MSIX_PUBLISHER_DISPLAY_NAME).Replace('{{VERSION}}', $v4)
+          if ($t -match '\{\{') { throw 'Unrendered placeholder in manifest' }
+          [IO.File]::WriteAllText("$env:PKG\AppxManifest.xml", $t)
+          Copy-Item src-tauri/target/release/suzent.exe "$env:PKG\suzent.exe"
+          New-Item -ItemType Directory -Force "$env:PKG\Assets" | Out-Null
+          foreach ($a in 'StoreLogo.png', 'Square44x44Logo.png', 'Square150x150Logo.png') {
+            Copy-Item "src-tauri/icons/$a" "$env:PKG\Assets\$a"
+          }
+          "version=$v4" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "Identity: $env:MSIX_IDENTITY_NAME / $env:MSIX_PUBLISHER / $v4"
+
+      - name: Pack MSIX
+        shell: pwsh
+        run: |
+          $sdk = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          "makeappx: $($sdk.FullName)"
+          "$($sdk.DirectoryName)" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          New-Item -ItemType Directory -Force out | Out-Null
+          $name = "suzent-${{ steps.manifest.outputs.version }}-x64.msix"
+          $t = Measure-Command { & $sdk.FullName pack /d $env:PKG /p "out\$name" /o | Select-Object -Last 5 | Out-Host }
+          if ($LASTEXITCODE -ne 0) { throw "makeappx failed ($LASTEXITCODE)" }
+          "pack seconds: $([int]$t.TotalSeconds)"
+
+      # Signing a throwaway copy with a test certificate catches PEs that
+      # signtool rejects (the Store would reject them too). The uploaded
+      # package stays unsigned.
+      - name: Signability check (test cert, not uploaded)
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem out\*.msix | Select-Object -First 1
+          Copy-Item $msix.FullName "$env:RUNNER_TEMP\signcheck.msix"
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $env:MSIX_PUBLISHER -CertStoreLocation Cert:\CurrentUser\My
+          signtool sign /fd SHA256 /sha1 $cert.Thumbprint "$env:RUNNER_TEMP\signcheck.msix"
+          $code = $LASTEXITCODE
+          Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)"
+          if ($code -ne 0) { throw "signtool rejected the package ($code)" }
+
+      - name: Size report
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse -File $env:PKG
+          $msix = Get-ChildItem out\*.msix | Select-Object -First 1
+          $top = Get-ChildItem "$env:PKG\runtime\python\Lib\site-packages" -Directory | ForEach-Object {
+            [pscustomobject]@{ Name = $_.Name; MB = [math]::Round((Get-ChildItem -Recurse -File $_.FullName | Measure-Object Length -Sum).Sum / 1MB, 1) }
+          } | Sort-Object MB -Descending | Select-Object -First 15
+          $report = @(
+            "msix: $($msix.Name) $([math]::Round($msix.Length / 1MB, 1)) MB"
+            "unpacked: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB, 1)) MB"
+            "suzent.exe: $([math]::Round((Get-Item "$env:PKG\suzent.exe").Length / 1MB, 1)) MB"
+            ''
+            'largest site-packages (MB):'
+            ($top | ForEach-Object { "  $($_.MB)`t$($_.Name)" })
+          )
+          $report | Set-Content out\size-report.txt -Encoding utf8
+          $report | Out-Host
+          $report | ForEach-Object { $_ } | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - name: Register package (loose files)
+        shell: powershell
+        run: |
+          $env:PSModulePath = "$env:WINDIR\system32\WindowsPowerShell\v1.0\Modules"
+          reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock /v AllowDevelopmentWithoutDevLicense /t REG_DWORD /d 1 /f
+          Add-AppxPackage -Register "$env:PKG\AppxManifest.xml"
+          $p = Get-AppxPackage $env:MSIX_IDENTITY_NAME
+          if (-not $p) { throw 'Package not registered' }
+          $p | Select-Object Name, Version, PackageFamilyName, InstallLocation | Format-List
+
+      - name: Smoke test bundled backend
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'suzent-data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $psi = [Diagnostics.ProcessStartInfo]::new($env:PY, '-m suzent.server')
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardInput = $true   # backend exits when stdin closes
+          $psi.WorkingDirectory = $data
+          $psi.Environment['SUZENT_PROJECT_DIR'] = "$env:PKG\app"
+          $psi.Environment['SUZENT_DATA_DIR'] = $data
+          $psi.Environment['SUZENT_HOST'] = '127.0.0.1'
+          $psi.Environment['SUZENT_PORT'] = '0'
+          $psi.Environment['SUZENT_RUN_MODE'] = 'desktop-child'
+          $psi.Environment['PYTHONDONTWRITEBYTECODE'] = '1'
+          $psi.Environment['PYTHONNOUSERSITE'] = '1'
+          $psi.Environment['PYTHONUNBUFFERED'] = '1'
+          $psi.Environment['LOG_FILE'] = "$data\server.log"
+          $proc = [Diagnostics.Process]::Start($psi)
+          $portFile = "$data\runtime\server.port"
+          $start = Get-Date
+          $health = $null
+          try {
+            while (((Get-Date) - $start).TotalSeconds -lt 300) {
+              if ($proc.HasExited) { throw "Backend exited with $($proc.ExitCode)" }
+              if (Test-Path $portFile) {
+                $port = (Get-Content $portFile -Raw).Trim()
+                try { $health = Invoke-RestMethod "http://127.0.0.1:$port/health" -TimeoutSec 3; break } catch {}
+              }
+              Start-Sleep 2
+            }
+            if (-not $health) { throw 'Backend did not become healthy within 300 s' }
+            "health after $([int]((Get-Date) - $start).TotalSeconds) s: $($health | ConvertTo-Json -Compress)"
+            if ($null -ne $health.source_root) { throw "Expected source_root null, got $($health.source_root)" }
+            $keys = Invoke-RestMethod "http://127.0.0.1:$port/config/api-keys" -TimeoutSec 10
+            $providers = @($keys.providers).Count
+            "providers: $providers"
+            if ($providers -le 0) { throw 'No providers listed: bundled config/ not found' }
+            $page = Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing -TimeoutSec 10
+            if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { throw "Web UI not served (HTTP $($page.StatusCode))" }
+            "web ui: HTTP $($page.StatusCode), $($page.Content.Length) bytes"
+            "smoke: health ok, $providers providers" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          } finally {
+            $proc.StandardInput.Close()
+            if (-not $proc.WaitForExit(15000)) { $proc.Kill() }
+            Get-ChildItem $data -Recurse -Filter *.log | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
+          }
+
+      # The GUI needs WebView2 and an interactive desktop session; hosted
+      # runners run as a service without one, so the app window is not
+      # launched here. The backend path it uses is tested above.
+
+      - name: Unregister package
+        if: always()
+        shell: powershell
+        run: |
+          $env:PSModulePath = "$env:WINDIR\system32\WindowsPowerShell\v1.0\Modules"
+          Get-AppxPackage $env:MSIX_IDENTITY_NAME | Remove-AppxPackage
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: suzent-msix
+          path: |
+            out/*.msix
+            out/size-report.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
