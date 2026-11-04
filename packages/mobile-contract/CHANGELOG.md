@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.6.2] - 2026-11-04
+
+### Release notes
+- When the default desktop can't be reached, the reconnect screen now lists your other paired desktops so you can switch with one tap, even mid-attempt, or pair a new one.
+
 ## [mobile-v0.6.1] - 2026-11-03
 
 ### Release notes
