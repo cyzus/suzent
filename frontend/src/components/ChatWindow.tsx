@@ -2399,8 +2399,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const wasOptimistic = optimisticStreaming;
       optimisticStreaming = false;
       if (!streamed || cancelled) {
-        // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
+        // A start registered while this probe was out (a send's 202, the bus's
+        // stream_started) was parked as pending. This probe may have reached
+        // the backend before that run existed, so its 204 says nothing about
+        // it: dropping the request here left the turn unattached. That is the
+        // usual case for a brand-new chat, whose mount probe races the
+        // /chat/send that created it, and why its first send seemed to vanish.
+        const startedMeanwhile = pendingConnectRef.current && !cancelled;
         pendingConnectRef.current = false;
+        if (startedMeanwhile) {
+          void tryConnect();
+          return;
+        }
         if (wasOptimistic && !streamed) setIsStreaming(false, chatIdAtMount);
         if (!cancelled) {
           resumeBasePartsRef.current.delete(chatIdAtMount);
