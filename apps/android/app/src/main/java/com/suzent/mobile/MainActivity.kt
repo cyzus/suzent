@@ -252,6 +252,8 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
 private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
     var helpOpen by remember { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf(false) }
+    var scanner by remember { mutableStateOf(false) }
+    if (scanner) PairingScanner(model) { scanner = false }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
         Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -272,8 +274,34 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
-        SuzentTextButton(onClick = { helpOpen = true }) {
-            Text(stringResource(R.string.connection_help), fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val others = model.desktops.desktops.filter { it.id != model.desktops.activeId }
+        if (others.isNotEmpty()) {
+            Text(stringResource(R.string.other_desktops), Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                others.forEach { desktop ->
+                    key(desktop.id) {
+                        // Tappable while the default desktop is still being tried: the switch abandons that attempt.
+                        ListItem(leadingContent = { DesktopSquare(desktop.id, 12.dp) },
+                            headlineContent = { Text(desktop.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(displayOrigin(desktop.connection.origin), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            modifier = Modifier.clickable(enabled = model.reconnecting || !model.busy, role = Role.Button,
+                                onClickLabel = stringResource(R.string.switch_to_desktop, desktop.name)) { model.switchDesktop(desktop.id) })
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            SuzentTextButton(onClick = { model.cancelReconnect(); model.error = null; model.beginPairing(repairActive = false); scanner = true },
+                enabled = model.reconnecting || !model.busy) {
+                Text(stringResource(R.string.pair_another_desktop), fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SuzentTextButton(onClick = { helpOpen = true }) {
+                Text(stringResource(R.string.connection_help), fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
     if (helpOpen) ModalBottomSheet(onDismissRequest = { helpOpen = false }, shape = RectangleShape,
@@ -285,12 +313,6 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SettingsRow(stringResource(R.string.pair_again), { helpOpen = false; repair() }, enabled = !model.busy && !model.streaming)
             SettingsRow(stringResource(R.string.forget), { helpOpen = false; forgetting = true }, enabled = !model.busy, danger = true)
-            model.desktops.desktops.filter { it.id != model.desktops.activeId }.forEach { desktop ->
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsRow(stringResource(R.string.switch_to_desktop, desktop.name), {
-                    helpOpen = false; model.switchDesktop(desktop.id)
-                })
-            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsRow(stringResource(R.string.cancel_reconnect), { helpOpen = false })
         }

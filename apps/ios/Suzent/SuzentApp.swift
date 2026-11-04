@@ -431,15 +431,18 @@ struct ContentView: View {
                             .buttonStyle(.plain).frame(minHeight: 44)
                     }
                     Spacer(minLength: 20)
-                    Button("Connection help") { showConnectionHelp = true }
-                        .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    otherDesktops
+                    HStack {
+                        Button("Pair another desktop") {
+                            model.cancelReconnect(); model.beginPairing(repairActive: false); repairScanner = true
+                        }.disabled(model.busy && !model.reconnecting)
+                        Spacer(minLength: 12)
+                        Button("Connection help") { showConnectionHelp = true }
+                    }.suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
                         .frame(minHeight: 44).buttonStyle(.plain)
                 }.padding(.horizontal, 24).padding(.bottom, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
-                        ForEach(model.desktops.filter { $0.id != model.activeDesktopId }) { desktop in
-                            Button("Switch to \(desktop.name)") { Task { await model.switchDesktop(desktop.id) } }.disabled(model.busy)
-                        }
                         Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
                         Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                         Button("Cancel", role: .cancel) { }
@@ -449,6 +452,45 @@ struct ContentView: View {
                 PairingView(model: model)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
+    }
+
+    /// Visible on the reconnect screen so an unreachable default desktop never hides the others behind a menu.
+    @ViewBuilder private var otherDesktops: some View {
+        let others = model.desktops.filter { $0.id != model.activeDesktopId }
+        if !others.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Other desktops").suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    .padding(.bottom, 6)
+                Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+                ViewThatFits(in: .vertical) {
+                    desktopRows(others)
+                    ScrollView { desktopRows(others) }.frame(maxHeight: 220)
+                }
+            }
+        }
+    }
+
+    private func desktopRows(_ desktops: [SavedDesktop]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(desktops) { desktop in
+                // Tappable while the default desktop is still being tried: the switch abandons that attempt.
+                Button { Task { await model.switchDesktop(desktop.id) } } label: {
+                    HStack(spacing: 12) {
+                        DesktopSwatch(desktop: desktop, size: 12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(desktop.name).suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                                .foregroundStyle(Color.suzentText).lineLimit(1)
+                            Text(displayOrigin(desktop.connection.origin)).font(.caption.monospaced())
+                                .foregroundStyle(Color.suzentMuted).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer(minLength: 8)
+                    }.frame(minHeight: 52).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .disabled(model.busy && !model.reconnecting)
+                    .accessibilityLabel("Switch to \(desktop.name)")
+                Rectangle().fill(Color.suzentOutline.opacity(0.5)).frame(height: PresentationTokens.borderWidth)
+            }
+        }
     }
 
     @ViewBuilder private var detail: some View {

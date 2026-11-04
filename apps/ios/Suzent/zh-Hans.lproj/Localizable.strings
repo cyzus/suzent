@@ -277,6 +277,7 @@
 "%lld desktops" = "%lld 台桌面端";
 "Desktop: %@" = "桌面端：%@";
 "Pair another desktop" = "配对其他桌面端";
+"Other desktops" = "其他桌面端";
 "Checking…" = "正在检查…";
 "Forget" = "忘记";
 "Forget this desktop?" = "忘记此桌面端？";

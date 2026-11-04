@@ -894,10 +894,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         if (id == desktops.activeId && connected) return
         if (!connected) {
             // Nothing open to protect: abandon the reconnect in progress and try this desktop instead.
-            val pending = reconnectJob
-            pending?.cancel()
             viewModelScope.launch {
-                pending?.join()
+                // A second tap must also cancel the attempt the first tap started, or two desktops race.
+                while (true) { val pending = reconnectJob ?: break; pending.cancel(); pending.join() }
+                if (busy || connected) return@launch
                 persist(desktops.copy(activeId = id)); origin = desktop.connection.origin
                 canReconnect = desktop.connection.clientProtocol == 1
                 connect()
