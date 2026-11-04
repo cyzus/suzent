@@ -418,7 +418,6 @@ import SuzentCore
         guard let id = store.activeId, let connection, canReconnect, !busy else { return }
         busy = true
         reconnecting = true
-        defer { busy = false; reconnecting = false; reconnectTask = nil }
         if !keepingError { error = nil }
         let attempt = Task {
             do {
@@ -434,16 +433,32 @@ import SuzentCore
         await withTaskCancellationHandler {
             await attempt.value
         } onCancel: { attempt.cancel() }
+        releaseReconnect(attempt)
+    }
+
+    /// A switch to another desktop may have cancelled this attempt and taken over; the newer attempt keeps the busy state.
+    private func releaseReconnect(_ attempt: Task<Void, Never>) {
+        guard reconnectTask == attempt else { return }
+        busy = false; reconnecting = false; reconnectTask = nil
     }
 
     /// Probes the target with the reconnect timeouts and keeps the current desktop if it cannot be reached.
     func switchDesktop(_ id: String) async {
-        guard !isDemo, checkingDesktopId == nil, !busy, let target = store.desktop(id) else { return }
+        guard !isDemo, let target = store.desktop(id) else { return }
         if connected && id == store.activeId { return }
         let idle = !connected
+        if idle, reconnecting, let pending = reconnectTask {
+            guard checkingDesktopId != id else { return }
+            // Nothing open to protect: abandon the attempt in progress and try this desktop instead.
+            pending.cancel()
+            await pending.value
+            // A later tap may already have taken over while this one waited.
+            guard !connected, reconnectTask == nil || reconnectTask == pending else { return }
+        } else {
+            guard checkingDesktopId == nil, !busy else { return }
+        }
         checkingDesktopId = id
         if idle { busy = true; reconnecting = true }
-        defer { checkingDesktopId = nil; reconnectTask = nil; if idle { busy = false; reconnecting = false } }
         error = nil
         let attempt = Task {
             do {
@@ -460,6 +475,12 @@ import SuzentCore
         await withTaskCancellationHandler {
             await attempt.value
         } onCancel: { attempt.cancel() }
+        guard reconnectTask == attempt else {
+            if checkingDesktopId == id { checkingDesktopId = nil }
+            return
+        }
+        checkingDesktopId = nil
+        if idle { releaseReconnect(attempt) } else { reconnectTask = nil }
     }
 
     func cancelReconnect() { reconnectTask?.cancel() }

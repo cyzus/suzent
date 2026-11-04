@@ -234,6 +234,7 @@
     <string name="desktops">桌面</string>
     <string name="paired_desktops">已配对的桌面</string>
     <string name="pair_another_desktop">配对另一台桌面</string>
+    <string name="other_desktops">其他桌面</string>
     <string name="desktops_footer">切换后会显示那台桌面上的对话和任务。在某一台上左滑可以忘记它。</string>
     <string name="desktop_checking">正在检查…</string>
     <string name="desktop_connected">已连接 · %1$s</string>
