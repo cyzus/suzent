@@ -607,11 +607,13 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const [status, setStatus] = useState<AGUIStatus>('idle');
   const [error, setError] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
-  // Set to true by stopSilently() so the next abort skips onFinish entirely.
-  // Used when abandoning a live background stream on chat switch — the backend
-  // persists the content, so the frontend must NOT addMessage (which would
-  // misroute the parts to whatever chat is now being viewed).
-  const suppressFinishRef = useRef(false);
+  // Attempts abandoned without finalizing: stopped silently on a chat switch,
+  // or replaced by a newer attempt. The backend persists their content, so the
+  // frontend must NOT run onFinish for them, which would misroute their parts
+  // into whatever chat is now being viewed. Keyed by controller rather than a
+  // single flag, so a silent stop that lands on no live attempt cannot linger
+  // and swallow the finish of the next one.
+  const silentAbortsRef = useRef<WeakSet<AbortController>>(new WeakSet());
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
   // The run the live stream is on; cleared when a new one starts.
@@ -722,8 +724,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   // persists the result, so the frontend discards its transient parts instead
   // of finalizing them into the (now different) currently-viewed chat.
   const stopSilently = useCallback(() => {
-    suppressFinishRef.current = true;
-    abortRef.current?.abort();
+    const controller = abortRef.current;
+    if (!controller) return;
+    silentAbortsRef.current.add(controller);
+    controller.abort();
   }, []);
 
   const getParts = useCallback(() => partsRef.current, []);
@@ -885,8 +889,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         resetApprovalTracking();
       }
 
+      // This hook holds one parts buffer, so it can only follow one stream. An
+      // attempt still running here would keep folding its events into the
+      // buffer the new one owns: with two chats streaming, one chat's tokens
+      // would land in the other until a reload. Retire it silently first.
+      const previous = abortRef.current;
+      if (previous && !previous.signal.aborted) {
+        silentAbortsRef.current.add(previous);
+        previous.abort();
+      }
       const controller = new AbortController();
       abortRef.current = controller;
+      const isCurrent = () => abortRef.current === controller;
 
       // A turn asked for here registers its run when the backend answers this
       // request. Until then a stop has nothing to name, so publish the moment
@@ -915,6 +929,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           observeBody,
           controller.signal,
           () => {
+            if (controller.signal.aborted) return;
             started = true;
             settleStartRegistration();
             setError(undefined);
@@ -924,6 +939,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           },
           isProbe ? undefined : { url: targetUrl, body: requestBody }
         )) {
+          // The generator can still hand over frames that were already
+          // buffered when the abort landed; they belong to a stream that is no
+          // longer followed and must not touch the shared buffer.
+          if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
           runIdRef.current = batch.runId;
           if (batch.startedAtMs !== undefined) opts?.onRunStartedAt?.(batch.startedAtMs);
           let currentParts = partsForBatch(batch.reset, partsRef.current, opts?.baseParts);
@@ -959,11 +978,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         }
         return started;
       } catch (err) {
-        if ((err as Error).name === 'AbortError') {
-          // Silent stop (chat switch): discard parts, never finalize.
-          if (suppressFinishRef.current) {
-            suppressFinishRef.current = false;
-            setStatus('idle');
+        if ((err as Error).name === 'AbortError' || controller.signal.aborted) {
+          // Silent stop (chat switch) or replaced by a newer attempt: discard
+          // parts, never finalize, and leave the newer attempt's status alone.
+          if (silentAbortsRef.current.has(controller)) {
+            if (isCurrent()) setStatus('idle');
           } else {
             publishParts(partsRef.current, true);
             setStatus('idle');

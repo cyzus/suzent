@@ -1123,6 +1123,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Holds the current effect's tryConnect so handleSend can call it directly
   // after /chat/send returns 202, without waiting for stream_started from the bus.
   const tryConnectRef = useRef<(() => void) | null>(null);
+  // Attach to the turn a start request just registered for `chatId`. If the
+  // user switched chats while the request was out, tryConnectRef belongs to
+  // the chat they are on now, and the global streaming flag would stay pinned
+  // to a chat nobody watches, refusing every send. Release it instead and let
+  // the reload-on-return path pick the turn up.
+  const connectAfterStart = useCallback(
+    (chatId: string) => {
+      if (activeChatIdRef.current === chatId) {
+        tryConnectRef.current?.();
+        return;
+      }
+      abandonedStreamChatsRef.current.add(chatId);
+      setIsStreaming(false, chatId);
+    },
+    [setIsStreaming]
+  );
   // Captures the final AGUI parts from a live background stream so the cleanup path can
   // convert them to a persisted rich message (with tool-step HTML) after clearParts.
   const liveStreamPartsRef = useRef<AGUIPart[]>([]);
@@ -1597,9 +1613,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       streamingChatIdRef.current = null;
       isLiveStreamRef.current = false;
       // Connect immediately rather than waiting for stream_started from the bus.
-      tryConnectRef.current?.();
+      connectAfterStart(chatId);
     },
-    [currentChatId, getStreamingParts, mintRunToken, retireRunToken, notify, trackPendingStart]
+    [
+      currentChatId,
+      connectAfterStart,
+      getStreamingParts,
+      mintRunToken,
+      retireRunToken,
+      notify,
+      trackPendingStart,
+    ]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -2236,6 +2260,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const chatIdAtMount = currentChatId;
     let cancelled = false;
+    let optimisticStreaming = false;
 
     // Restore stream seed saved before a page refresh so we can either:
     // (a) seed an in-progress reconnect with prior visual state, or
@@ -2371,9 +2396,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         connectingRef.current = false;
       }
 
+      const wasOptimistic = optimisticStreaming;
+      optimisticStreaming = false;
       if (!streamed || cancelled) {
         // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
         pendingConnectRef.current = false;
+        if (wasOptimistic && !streamed) setIsStreaming(false, chatIdAtMount);
         if (!cancelled) {
           resumeBasePartsRef.current.delete(chatIdAtMount);
           await loadChat(chatIdAtMount, { force: true }).catch(() => {});
@@ -2430,6 +2458,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     };
 
+    // The bus already knows this chat is mid-turn, so show it as streaming
+    // now rather than after /chat/live answers with the first snapshot, which
+    // on a busy turn leaves the chat looking idle for a noticeable moment.
+    // Released below if the probe finds nothing to attach to.
+    if (isBusStreaming(chatIdAtMount) && !streamingChatIdRef.current) {
+      optimisticStreaming = true;
+      setIsStreaming(true, chatIdAtMount);
+    }
+
     // If a stream is already active when this chat is opened, connect immediately.
     // Probe even before the event-bus snapshot arrives (including pending persistence).
     tryConnect();
@@ -2469,10 +2506,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     return () => {
       cancelled = true;
+      // A probe still waiting on /chat/live belongs to this chat too. Left
+      // running, it attaches after the switch, streams this chat's turn into
+      // the parts buffer the next chat shows, and pins the global streaming
+      // flag on a chat nobody is looking at -- which then refuses every send.
+      const probeInFlight = connectingRef.current && !isLiveStreamRef.current;
       pendingConnectRef.current = false;
       connectingRef.current = false;
       tryConnectRef.current = null;
       unsubEvents();
+      if (probeInFlight) {
+        stopAGUIStreamSilently();
+        abandonedStreamChatsRef.current.add(chatIdAtMount);
+        setIsStreaming(false, chatIdAtMount);
+      }
       // Only stop the AG-UI connection if this effect started a background live stream.
       // Leave user-initiated /chat streams alone (they use a different code path).
       if (isLiveStreamRef.current && streamingChatIdRef.current === chatIdAtMount) {
@@ -2493,6 +2540,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         clearParts();
         // Clear streaming state so the next chat's send button is not blocked.
         // The backend continues processing; reconnecting via /chat/live picks it up.
+        setIsStreaming(false, chatIdAtMount);
+      } else if (
+        streamingChatIdRef.current === chatIdAtMount &&
+        getStreamingParts().some(
+          (p) => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId
+        )
+      ) {
+        // Paused on approvals with no connection open. The streaming flag is
+        // global, so leaving it set here refuses every send in the next chat.
+        // Coming back re-reads the pending approvals from the backend.
+        streamingChatIdRef.current = null;
+        clearParts();
         setIsStreaming(false, chatIdAtMount);
       }
     };
@@ -2681,7 +2740,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
-            tryConnectRef.current?.();
+            connectAfterStart(steerChatId);
           })
           .catch((err) => {
             if (!isAbortError(err)) console.error('[send] /chat/steer-send failed:', err);
@@ -2821,7 +2880,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             return;
           }
           // 202: stream registered — connect to /chat/live immediately.
-          tryConnectRef.current?.();
+          connectAfterStart(chatIdForSend);
         })
         .catch((err) => {
           if (!isAbortError(err)) console.error('[send] /chat/send failed:', err);
@@ -2917,7 +2976,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             });
             return;
           }
-          tryConnectRef.current?.();
+          connectAfterStart(chatIdForRetry);
         })
         .catch((err) => {
           if (!isAbortError(err)) console.error('[handleRetry] /chat/send failed:', err);
@@ -2929,6 +2988,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     );
   }, [
     currentChatId,
+    connectAfterStart,
     isStreaming,
     messages,
     markChatRollbackExpected,
@@ -3015,7 +3075,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               });
               return;
             }
-            tryConnectRef.current?.();
+            connectAfterStart(chatIdForEdit);
           })
           .catch((err) => {
             if (!isAbortError(err))
@@ -3029,6 +3089,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     },
     [
       currentChatId,
+      connectAfterStart,
       isStreaming,
       messages,
       markChatRollbackExpected,
