@@ -235,6 +235,7 @@
     <string name="desktops">Desktops</string>
     <string name="paired_desktops">Paired desktops</string>
     <string name="pair_another_desktop">Pair another desktop</string>
+    <string name="other_desktops">Other desktops</string>
     <string name="desktops_footer">Switching shows that desktop’s chats and tasks. Swipe left on a desktop to forget it.</string>
     <string name="desktop_checking">Checking…</string>
     <string name="desktop_connected">Connected · %1$s</string>
