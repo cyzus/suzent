@@ -2027,6 +2027,8 @@ export const zhCN = {
     noTools: '未配置任何工具',
     tools: '工具',
     mcpServers: 'MCP 服务器',
+    services: '已连接的服务',
+    serviceBadge: '插件',
   },
   webActivities: {
     returnToBrowser: '返回浏览器',

@@ -2118,6 +2118,8 @@ export const en = {
     noTools: 'No tools configured',
     tools: 'Tools',
     mcpServers: 'MCP Servers',
+    services: 'Connected services',
+    serviceBadge: 'Plugin',
   },
   webActivities: {
     returnToBrowser: 'Return to Browser',

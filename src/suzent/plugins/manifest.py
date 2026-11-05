@@ -32,6 +32,8 @@ class PluginManifest(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     # Built-in plugins only: on until the user removes it.
     default_enabled: bool = False
+    # An SVG or PNG file in the plugin's directory, shown on the plugins page.
+    icon: str | None = None
 
     @property
     def display_name(self) -> str:

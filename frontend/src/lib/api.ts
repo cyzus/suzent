@@ -522,6 +522,8 @@ export interface PluginInfo {
   missing: string[];
   restartRequired: boolean;
   integrations?: PluginIntegration[];
+  /** The plugin's logo as a data URI, when it ships one. */
+  icon?: string | null;
 }
 
 export interface PluginIntegration {
