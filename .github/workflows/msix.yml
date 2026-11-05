@@ -229,6 +229,7 @@ jobs:
           foreach ($a in 'StoreLogo.png', 'Square44x44Logo.png', 'Square150x150Logo.png') {
             Copy-Item "src-tauri/icons/$a" "$env:PKG\Assets\$a"
           }
+          Copy-Item packaging/msix/assets/*.png "$env:PKG\Assets\"
           "version=$v4" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "Identity: $env:MSIX_IDENTITY_NAME / $env:MSIX_PUBLISHER / $v4"
 
@@ -238,6 +239,19 @@ jobs:
           $sdk = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1
           "makeappx: $($sdk.FullName)"
           "$($sdk.DirectoryName)" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          # The shell finds the unplated Square44x44Logo variants only through
+          # resources.pri. Index a copy holding just the manifest and Assets so
+          # makepri does not walk the bundled runtime.
+          $pri = "$env:RUNNER_TEMP\pri"
+          New-Item -ItemType Directory -Force $pri | Out-Null
+          Copy-Item "$env:PKG\AppxManifest.xml" $pri
+          Copy-Item -Recurse "$env:PKG\Assets" $pri
+          $makepri = Join-Path $sdk.DirectoryName makepri.exe
+          $cf = "$env:RUNNER_TEMP\priconfig.xml"
+          & $makepri createconfig /cf $cf /dq en-US /pv 10.0.0 /o | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed ($LASTEXITCODE)" }
+          & $makepri new /pr $pri /cf $cf /mn "$pri\AppxManifest.xml" /of "$env:PKG\resources.pri" /o | Select-Object -Last 5 | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "makepri new failed ($LASTEXITCODE)" }
           New-Item -ItemType Directory -Force out | Out-Null
           $name = "suzent-${{ steps.manifest.outputs.version }}-x64.msix"
           $t = Measure-Command { & $sdk.FullName pack /d $env:PKG /p "out\$name" /o | Select-Object -Last 5 | Out-Host }

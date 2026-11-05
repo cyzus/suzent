@@ -29,7 +29,6 @@ jobs:
       - name: Validate declarations and product versions
         env:
           EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -39,7 +38,10 @@ jobs:
           args=()
           product=''
           if [[ "$EVENT" == pull_request ]]; then
-            args+=(--base "$BASE_SHA")
+            # The checkout is the PR merge commit, whose first parent is the base
+            # it was merged with. pull_request.base.sha can be older than that, and
+            # then the base's own newer changes would count as this PR's.
+            args+=(--base HEAD^1)
             if [[ "$SAME_REPO" == true ]]; then
               case "$HEAD_BRANCH" in
                 release/next) product=desktop ;;
