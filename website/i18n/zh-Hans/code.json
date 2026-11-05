@@ -236,6 +236,12 @@
   "homepage.download.other": {
     "message": "其他系统"
   },
+  "homepage.download.store": {
+    "message": "Windows · 推荐"
+  },
+  "homepage.download.storeAlt": {
+    "message": "从 Microsoft 获取"
+  },
   "homepage.hero.description": {
     "message": "你的智能体，不止于模型。"
   },
