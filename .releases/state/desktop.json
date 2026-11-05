@@ -1,5 +1,5 @@
 {
-  "version": "0.22.1",
+  "version": "0.23.0",
   "consumed": [
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -75,6 +75,7 @@
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/ime-safe-keyboard.json",
+    ".releases/changes/inbound-webhooks.json",
     ".releases/changes/inchat-task-navigation.json",
     ".releases/changes/inline-canvas-default.json",
     ".releases/changes/input-suggestion-persist.json",

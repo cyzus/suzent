@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.22.1] - 2026-11-05
+## [v0.23.0] - 2026-11-05
 
 ### Release notes
 - GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it.
+- Add webhook tasks: give a task a private URL and any service that calls it, such as GitHub or your own scripts, runs the task with the request as its input.
 - Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
 - Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
 - The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
