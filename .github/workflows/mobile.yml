@@ -125,7 +125,7 @@ jobs:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v6
       - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
-      - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:testReleaseUnitTest :app:compileReleaseKotlin
+      - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:testReleaseUnitTest :app:optimizeReleaseResources
         working-directory: apps/android
       - uses: actions/upload-artifact@v7
         with:

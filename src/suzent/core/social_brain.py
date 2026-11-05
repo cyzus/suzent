@@ -573,9 +573,9 @@ class SocialBrain(BaseBrain):
         """
         try:
             import json as _json
-            from suzent.config import PROJECT_DIR
+            from suzent.config.paths import user_config_file
 
-            config_path = PROJECT_DIR / "config" / "social.json"
+            config_path = user_config_file("social.json")
             if not config_path.exists():
                 return
             with open(config_path) as f:

@@ -244,6 +244,14 @@ folder, for instance after a rollback) gets `--extra social`, as before.
 `_plugin_extras()` reads `config/social.json` from the checkout too, so a chat
 app that is set up but has no state entry keeps its packages.
 
+The desktop installer and updater (`apps/suzent-installer`) and the setup
+scripts sync the same set. They cannot import Suzent before its environment
+is synced, so the rules live in `suzent/plugins/enablement.py`, which imports
+nothing from Suzent: they run it by path on the environment's Python
+(`enablement.py <checkout> <plugins.json>` prints the extras as JSON), and
+`PluginManager` uses the same functions. A fresh install syncs no plugin
+extras; when the script is missing or fails, they fall back to `social`.
+
 `missing_packages()` compares what a plugin declares with what is installed,
 for `suzent plugin status` and the settings page.
 

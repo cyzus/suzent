@@ -63,7 +63,7 @@ def _plugin_extras(root: Path) -> list[str]:
     builtin_dir = root / "plugins"
     if not builtin_dir.is_dir():
         return ["social"]
-    from suzent.config.paths import PLUGINS_DIR, USER_CONFIG_DIR
+    from suzent.config.paths import PLUGINS_DIR, USER_CONFIG_DIR, user_config_file
     from suzent.plugins import PluginManager
 
     manager = PluginManager(
@@ -71,7 +71,7 @@ def _plugin_extras(root: Path) -> list[str]:
         USER_CONFIG_DIR / "plugins.json",
         builtin_dirs=[builtin_dir],
         entry_point_group=None,
-        social_config_file=root / "config" / "social.json",
+        social_config_file=user_config_file("social.json", project_dir=root),
     )
     return manager.enabled_extras()
 
@@ -102,6 +102,11 @@ def _interrupted_update_message(root: Path) -> str | None:
 
 def _get_ui_binary(root: Path) -> Path | None:
     """Return the managed release UI, falling back to a local release build."""
+    # Packaged (MSIX) builds: the desktop exe runs this CLI through its
+    # execution alias and names itself, since it lives outside any workspace.
+    packaged_ui = os.environ.get("SUZENT_PACKAGED_UI")
+    if packaged_ui and Path(packaged_ui).is_file():
+        return Path(packaged_ui)
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
     release_name = "suzent.exe" if IS_WINDOWS else "suzent"
     managed_release = root / _BIN_DIR / name

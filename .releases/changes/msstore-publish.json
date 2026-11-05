@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Submit the Microsoft Store package from CI on desktop release tags, or by hand with publish=true.",
+  "reason": "Only GitHub Actions workflows and packaging docs change; the shipped desktop app is unchanged."
+}

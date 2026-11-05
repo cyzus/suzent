@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Settings you change (chat apps, permissions, custom providers, skills and default config) are now always saved in your Suzent data folder instead of the app folder, so they work in read-only installs such as the Microsoft Store; existing settings are migrated automatically."
+}

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,10 @@ from suzent.core.repository_context import (
     resolve_repository_context,
 )
 from suzent.skills.manager import SkillManager
+
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="LocalWorkspace only runs on POSIX hosts"
+)
 
 
 def _write_skill(root: Path, folder: str, name: str, body: str) -> None:
@@ -291,6 +296,7 @@ def test_chat_skill_manager_reuses_persisted_repository_mount(
     assert all(str(repository) not in volume for volume in manager.required_mounts)
 
 
+@posix_only
 def test_context_roots_deduplicate_project_that_is_also_repository(tmp_path: Path):
     (tmp_path / ".git").mkdir()
     roots = RepositoryContextRoots(tmp_path, tmp_path, tmp_path, home_dir=None)
@@ -301,6 +307,13 @@ def test_context_roots_deduplicate_project_that_is_also_repository(tmp_path: Pat
     assert workspace.read_only
     assert workspace.working_dir == str(tmp_path.resolve())
     assert repo_context.home_dir == tmp_path.resolve()
+
+
+@pytest.mark.skipif(os.name == "posix", reason="covers the non-POSIX fallback")
+def test_repo_context_is_skipped_off_posix(tmp_path: Path):
+    roots = RepositoryContextRoots(tmp_path, tmp_path, tmp_path, home_dir=None)
+
+    assert build_repo_context_capabilities(roots) == []
 
 
 def test_discovers_walk_up_instruction_files_ancestor_first(tmp_path: Path):
@@ -412,6 +425,7 @@ async def test_repository_agent_files_use_custom_mount_paths(tmp_path: Path):
     assert str(repository) not in reminder
 
 
+@posix_only
 async def test_history_from_an_earlier_working_folder_still_runs(tmp_path: Path):
     """A project's working folder can change between turns of one chat."""
     from pydantic_ai import Agent

@@ -231,13 +231,15 @@
     "dashscope/qwen-image-2.0": {
       "mode": "image_generation",
       "supported_endpoints": [
-        "/v1/images/generations"
+        "/v1/images/generations",
+        "/v1/images/edits"
       ]
     },
     "dashscope/qwen-image-2.0-pro": {
       "mode": "image_generation",
       "supported_endpoints": [
-        "/v1/images/generations"
+        "/v1/images/generations",
+        "/v1/images/edits"
       ]
     },
     "dashscope/kimi/kimi-k2.6": {
@@ -584,7 +586,10 @@
       "mode": "chat"
     },
     "dashscope/qwen3-tts-flash": {
-      "mode": "chat"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "dashscope/qwen3-tts-flash-2025-09-18": {
       "mode": "chat"
@@ -938,13 +943,15 @@
     "dashscope/qwen-image-3.0": {
       "mode": "image_generation",
       "supported_endpoints": [
-        "/v1/images/generations"
+        "/v1/images/generations",
+        "/v1/images/edits"
       ]
     },
     "dashscope/qwen-image-3.0-pro": {
       "mode": "image_generation",
       "supported_endpoints": [
-        "/v1/images/generations"
+        "/v1/images/generations",
+        "/v1/images/edits"
       ]
     },
     "dashscope/qwen3.8-flash": {
@@ -1033,6 +1040,30 @@
       "mode": "video_generation",
       "supported_endpoints": [
         "/v1/videos"
+      ]
+    },
+    "dashscope/qwen-audio-3.1-tts-flash": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
+    },
+    "dashscope/qwen-audio-3.1-tts-plus": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
+    },
+    "dashscope/qwen-audio-3.0-tts-plus": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
+    },
+    "dashscope/qwen-audio-3.0-tts-flash": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
       ]
     }
   }

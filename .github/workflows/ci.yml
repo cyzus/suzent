@@ -23,13 +23,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: Validate declarations and product versions
         env:
           EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -39,7 +38,10 @@ jobs:
           args=()
           product=''
           if [[ "$EVENT" == pull_request ]]; then
-            args+=(--base "$BASE_SHA")
+            # The checkout is the PR merge commit, whose first parent is the base
+            # it was merged with. pull_request.base.sha can be older than that, and
+            # then the base's own newer changes would count as this PR's.
+            args+=(--base HEAD^1)
             if [[ "$SAME_REPO" == true ]]; then
               case "$HEAD_BRANCH" in
                 release/next) product=desktop ;;
@@ -71,7 +73,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Python 3.12
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: "3.12"
 
@@ -202,7 +204,7 @@ jobs:
       with:
         toolchain: stable
 
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       if: steps.changed.outputs.touched == 'true'
       with:
         workspaces: |
@@ -300,7 +302,7 @@ jobs:
         fetch-depth: 0
 
     - name: Set up Python 3.12
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: "3.12"
 

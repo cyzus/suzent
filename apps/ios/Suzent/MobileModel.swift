@@ -110,6 +110,47 @@ import SuzentCore
     var draft = ""
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
+    var voiceSupported = false
+    let voice = VoiceSession()
+
+    var voiceUnavailableReason: String? {
+        if isDemo { return String(localized: "Voice is unavailable in the offline demo. Connect to your desktop to talk with Suzent.") }
+        if !voiceSupported { return String(localized: "Update and restart your desktop, then configure a realtime model in Settings → Voice & audio.") }
+        if device?.permissions.send != true || device?.permissions.stop != true {
+            return String(localized: "Enable Send messages and Stop responses for this phone in desktop Settings → Devices.")
+        }
+        if selected?.id.isEmpty == true && device?.permissions.createChats != true {
+            return String(localized: "Enable Create conversations for this phone, or open an existing conversation.")
+        }
+        return nil
+    }
+
+    func startVoice() {
+        if let reason = voiceUnavailableReason { error = reason; return }
+        guard voiceSupported, !busy, !streaming, device?.permissions.send == true,
+              device?.permissions.stop == true, let client = client as? SuzentClient,
+              let chat = selected else { return }
+        let current = generation
+        error = nil
+        voice.onError = { [weak self] message in self?.error = message }
+        voice.onRefresh = { [weak self] in Task { await self?.refresh() } }
+        voice.start { [weak self] in
+            guard let self, self.generation == current else { throw CancellationError() }
+            var id = chat.id
+            if id.isEmpty {
+                guard self.device?.permissions.createChats == true else { throw CancellationError() }
+                self.busy = true
+                defer { self.busy = false }
+                let created = try await client.createChat(title: String(localized: "Voice conversation"), projectID: chat.projectId)
+                try Task.checkCancellation()
+                guard self.generation == current else { throw CancellationError() }
+                self.selected = created
+                self.chats.insert(created, at: 0)
+                id = created.id
+            }
+            return try client.voiceSocket(chatID: id)
+        }
+    }
     var liveParts: [MessagePart] = []
     var regentVisible = false
     var pendingApprovals: [ApprovalRequest] = []
@@ -117,13 +158,23 @@ import SuzentCore
     var approvalBusy = false
     var error: String?
     var busy = false
+    /// Loading the demo keeps the welcome screen up instead of the pairing progress view.
+    private(set) var startingDemo = false
     var streaming = false
+    var stopInFlight = false
     var isDemo = false
     var demoPrompts: [String] = []
     var connected = false
     var nodeEnabled = false
     var nodeStatus = String(localized: "Off")
-    private var connection: Connection?
+    private var store = SavedDesktops()
+    var desktops: [SavedDesktop] { store.desktops }
+    var activeDesktopId: String? { store.activeId }
+    var activeDesktop: SavedDesktop? { store.active }
+    /// The desktop a switch is probing; the current session stays usable until it succeeds.
+    var checkingDesktopId: String?
+    private var repairActive = false
+    private var connection: Connection? { store.active?.connection }
     private var client: (any MobileClient)?
     private var streamTask: Task<Void, Never>?
     private var nodeTask: Task<Void, Never>?
@@ -134,8 +185,10 @@ import SuzentCore
     init() {
         AttachmentStaging.clear()
         do {
-            if let saved = try CredentialStore.load() {
-                connection = saved
+            try CredentialStore.clearIfFromPreviousInstall()
+            store = try CredentialStore.load()
+            if store.active == nil { store.activeId = store.desktops.first?.id }
+            if let saved = connection {
                 origin = saved.origin
                 canReconnect = saved.clientProtocol == 1
             }
@@ -153,7 +206,8 @@ import SuzentCore
     func startDemo() async {
         guard !busy, !streaming else { return }
         busy = true
-        defer { busy = false }
+        startingDemo = true
+        defer { busy = false; startingDemo = false }
         do {
             let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                        appropriateFor: nil, create: true)
@@ -162,7 +216,7 @@ import SuzentCore
             let navigation = try await demo.initialNavigation()
             let taskList = try await demo.scheduledTasks()
             let composer = try await demo.composer()
-            clearSession(removeCredentials: false)
+            clearSession()
             error = nil
             client = demo
             isDemo = true
@@ -195,7 +249,7 @@ import SuzentCore
 
     func exitDemo() {
         guard isDemo, !busy else { return }
-        clearSession(removeCredentials: false)
+        clearSession()
         isDemo = false; demoPrompts = []; error = nil
     }
 
@@ -215,15 +269,21 @@ import SuzentCore
         pairingTask = Task {
             defer { if generation == current { busy = false; pairingStatus = nil } }
             do {
-                let selected = try await invitation.resolving { origin -> PairingPreview? in
-                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: invitation.tls)
+                let selected = try await invitation.resolving { origin -> (DeviceTrust?, PairingPreview?) in
+                    var trust = invitation.tls
+                    if trust == nil, let fingerprint = invitation.tlsFingerprint {
+                        trust = try await DeviceTrust.fetch(origin: origin, fingerprint: fingerprint)
+                    }
+                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
                     defer { probe.close() }
                     _ = try await probe.capabilities()
-                    return invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil
+                    return (trust, invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil)
                 }
                 guard generation == current, !Task.isCancelled else { return }
-                pairingPreview = selected.value
-                pairingInvitation = selected.invitation
+                pairingPreview = selected.value.1
+                var resolved = selected.invitation
+                resolved.tls = selected.value.0
+                pairingInvitation = resolved
             } catch { if generation == current, !Task.isCancelled { handle(error) } }
         }
     }
@@ -239,12 +299,22 @@ import SuzentCore
         generation = UUID()
     }
 
+    /// Repairing the active desktop reuses its credential; otherwise a saved desktop matching the invitation is the target.
+    func beginPairing(repairActive: Bool) {
+        self.repairActive = repairActive
+        error = nil
+    }
+
     func approveDestination() {
         guard let invitation = pairingInvitation, !busy else { return }
         busy = true
         error = nil
         let current = generation
+        let target = repairActive ? store.active : store.matching(invitation)
+        let existing = target?.connection
+        let previewName = pairingPreview?.desktopName
         pairingTask = Task {
+            var savedID = target?.id
             defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
             pairingStatus = String(localized: "Sending connection request…")
             do {
@@ -252,12 +322,13 @@ import SuzentCore
                 let bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
                 defer { bootstrap.close() }
                 let capabilities = try await bootstrap.capabilities()
-                let previous = capabilities.pairingRepair == 1 ? connection?.hostToken : nil
+                let previous = capabilities.pairingRepair == 1 ? existing?.hostToken : nil
                 try Task.checkCancellation()
                 let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name,
                                                       confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil,
                                                       repairProof: previous.map { pairingRepairProof(token: $0, invitation: invitation, side: "phone") },
-                                                      rotate: connection?.origin != backend.url.absoluteString)
+                                                      rotate: existing?.origin != backend.url.absoluteString,
+                                                      installationID: capabilities.installationId == 1 ? try? CredentialStore.installationID() : nil)
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
@@ -269,18 +340,25 @@ import SuzentCore
                     guard generation == current else { return }
                     if result.status == "denied" { throw PairingError.denied }
                     if result.status == "approved" {
-                        if result.reused == true && (!recognized || connection?.origin != backend.url.absoluteString) { throw ClientError.invalidResponse }
+                        if result.reused == true && (!recognized || existing?.origin != backend.url.absoluteString) { throw ClientError.invalidResponse }
                         guard let token = result.reused == true ? previous : result.token, !token.isEmpty, result.device != nil else {
                             throw ClientError.invalidResponse
                         }
-                        let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousOrigins: connection?.origins, previousTLS: connection?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
+                        let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousOrigins: existing?.origins, previousTLS: existing?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? existing?.nodeToken ?? "" : "", clientProtocol: 1,
                                                previousToken: recognized && result.reused != true ? previous : nil,
-                                               previousOrigin: recognized && result.reused != true ? connection?.origin : nil)
-                        try CredentialStore.save(saved)
-                        connection = saved
-                        origin = saved.origin
-                        canReconnect = true
-                        try await activate(saved)
+                                               previousOrigin: recognized && result.reused != true ? existing?.origin : nil)
+                        let id = target?.id ?? UUID().uuidString
+                        var next = store
+                        next.upsert(SavedDesktop(id: id, name: previewName ?? target?.name ?? saved.host, connection: saved))
+                        // Without a live session there is nothing to keep, so the new credential becomes the reconnect target at once.
+                        if !connected || next.activeId == nil { next.activeId = id }
+                        try CredentialStore.save(next)
+                        store = next
+                        savedID = id
+                        if store.activeId == id { origin = saved.origin; canReconnect = true }
+                        try await activate(id, saved)
+                        repairActive = false
+                        busy = false; pairingCode = nil; pairingStatus = nil
                         pairingVersion += 1
                         pairingInvitation = nil
                         return
@@ -292,13 +370,15 @@ import SuzentCore
             } catch {
                 if !Task.isCancelled, generation == current {
                     pairingInvitation = nil
-                    handle(error)
+                    if case ClientError.http(401) = error { revoke(savedID) } else { handle(error) }
                 }
             }
         }
     }
 
-    private func activate(_ stored: Connection) async throws {
+    /// Builds the session on a separate client and swaps it in only once everything has loaded,
+    /// so a failed switch leaves the current desktop untouched.
+    private func activate(_ id: String, _ stored: Connection) async throws {
         var saved = stored
         do {
             var reachable: String?
@@ -323,16 +403,21 @@ import SuzentCore
                 catch ClientError.http(401) {
                     try Task.checkCancellation()
                     restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
-                    try CredentialStore.save(restored); connection = restored; origin = restored.origin
-                    candidate.close(); try await activate(restored); return
+                    try storeConnection(id, restored)
+                    if store.activeId == id { origin = restored.origin }
+                    candidate.close(); try await activate(id, restored); return
                 }
                 restored.previousToken = nil
                 restored.previousOrigin = nil
                 restored.previousTLS = nil
                 restored.previousOrigins = nil
                 try Task.checkCancellation()
-                try CredentialStore.save(restored); connection = restored
+                try storeConnection(id, restored)
                 saved = restored
+            } else {
+                // A grant replacing a forgotten one stays provisional until confirmed, so activation
+                // must not succeed without it. Confirming a finalized grant is a no-op.
+                try await candidate.confirmPairing()
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
@@ -340,13 +425,22 @@ import SuzentCore
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
-            try CredentialStore.save(saved)
-            connection = saved
+            guard store.desktop(id) != nil else { throw CancellationError() }
+            var next = store
+            next.update(id, connection: saved)
+            if let name = session.desktopName { next.rename(id, to: name) }
+            let switching = next.activeId != id
+            next.activeId = id
+            try CredentialStore.save(next)
+            if switching { resetSessionState() }
+            store = next
             origin = saved.origin
+            canReconnect = true
             client?.close()
             client = candidate
             device = session.device
             attachmentsSupported = session.supportsAttachments
+            voiceSupported = session.voice == 1
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -355,16 +449,22 @@ import SuzentCore
         } catch { candidate.close(); throw error }
     }
 
-    func connect() async {
+    private func storeConnection(_ id: String, _ connection: Connection) throws {
+        var next = store
+        next.update(id, connection: connection)
+        try CredentialStore.save(next)
+        store = next
+    }
+
+    func connect(keepingError: Bool = false) async {
         guard !isDemo else { return }
-        guard let connection, canReconnect, !busy else { return }
+        guard let id = store.activeId, let connection, canReconnect, !busy else { return }
         busy = true
         reconnecting = true
-        defer { busy = false; reconnecting = false; reconnectTask = nil }
-        error = nil
+        if !keepingError { error = nil }
         let attempt = Task {
             do {
-                try await withConnectionTimeout { try await self.activate(connection) }
+                try await withConnectionTimeout { try await self.activate(id, connection) }
             } catch {
                 guard !Task.isCancelled else { return }
                 if let network = error as? URLError, [.timedOut, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .networkConnectionLost].contains(network.code) {
@@ -376,15 +476,66 @@ import SuzentCore
         await withTaskCancellationHandler {
             await attempt.value
         } onCancel: { attempt.cancel() }
+        releaseReconnect(attempt)
+    }
+
+    /// A switch to another desktop may have cancelled this attempt and taken over; the newer attempt keeps the busy state.
+    private func releaseReconnect(_ attempt: Task<Void, Never>) {
+        guard reconnectTask == attempt else { return }
+        busy = false; reconnecting = false; reconnectTask = nil
+    }
+
+    /// Probes the target with the reconnect timeouts and keeps the current desktop if it cannot be reached.
+    func switchDesktop(_ id: String) async {
+        guard !isDemo, let target = store.desktop(id) else { return }
+        if connected && id == store.activeId { return }
+        let idle = !connected
+        if idle, reconnecting, let pending = reconnectTask {
+            guard checkingDesktopId != id else { return }
+            // Nothing open to protect: abandon the attempt in progress and try this desktop instead.
+            pending.cancel()
+            await pending.value
+            // A later tap may already have taken over while this one waited.
+            guard !connected, reconnectTask == nil || reconnectTask == pending else { return }
+        } else {
+            guard checkingDesktopId == nil, !busy else { return }
+        }
+        checkingDesktopId = id
+        if idle { busy = true; reconnecting = true }
+        error = nil
+        let attempt = Task {
+            do {
+                try await withConnectionTimeout { try await self.activate(id, target.connection) }
+            } catch {
+                guard !Task.isCancelled else { return }
+                if case ClientError.http(401) = error {
+                    forgetDesktop(id, reconnectNext: false)
+                    self.error = String(localized: "Access to \(target.name) was revoked or expired. Pair it again.")
+                } else { self.error = String(localized: "Couldn't reach \(target.name)") }
+            }
+        }
+        reconnectTask = attempt
+        await withTaskCancellationHandler {
+            await attempt.value
+        } onCancel: { attempt.cancel() }
+        guard reconnectTask == attempt else {
+            if checkingDesktopId == id { checkingDesktopId = nil }
+            return
+        }
+        checkingDesktopId = nil
+        if idle { releaseReconnect(attempt) } else { reconnectTask = nil }
     }
 
     func cancelReconnect() { reconnectTask?.cancel() }
 
     private func handle(_ failure: Error) {
-        if case ClientError.http(401) = failure {
-            forget()
-            error = String(localized: "Access was revoked or expired. Pair this phone again.")
-        } else { error = failure.localizedDescription }
+        if case ClientError.http(401) = failure { revoke(store.activeId) }
+        else { error = failure.localizedDescription }
+    }
+
+    private func revoke(_ id: String?) {
+        if isDemo { exitDemo() } else if let id { forgetDesktop(id) }
+        error = String(localized: "Access was revoked or expired. Pair this phone again.")
     }
 
     func watchNavigation() async {
@@ -407,7 +558,13 @@ import SuzentCore
             guard generation == current else { return }
             device = session.device
             attachmentsSupported = session.supportsAttachments
+            voiceSupported = session.voice == 1
             scheduledTasks = taskList
+            if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
+                var next = store
+                next.rename(id, to: name)
+                if (try? CredentialStore.save(next)) != nil { store = next }
+            }
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
@@ -453,6 +610,7 @@ import SuzentCore
 
     func open(_ chat: Chat) async {
         guard let client, !busy else { return }
+        voice.stop()
         if let id = selected?.id { drafts[id] = draft }
         generation = UUID()
         streamTask?.cancel()
@@ -511,6 +669,7 @@ import SuzentCore
 
     func createChat(projectID: String? = nil) async {
         guard let client, device?.permissions.createChats == true, !busy else { return }
+        voice.stop()
         let current = generation
         busy = true
         defer { busy = false }
@@ -518,8 +677,10 @@ import SuzentCore
             if let id = selected?.id { drafts[id] = draft }
             var chat = try await client.composer()
             guard generation == current else { return }
-            chat.projectId = projectID
-            chat.projectName = projects.first { $0.id == projectID }?.name
+            if let projectID {
+                chat.projectId = projectID
+                chat.projectName = projects.first { $0.id == projectID }?.name
+            }
             generation = UUID()
             streamTask?.cancel()
             streamTask = nil
@@ -710,7 +871,9 @@ import SuzentCore
     }
 
     func stop() async {
-        guard device?.permissions.stop == true, let id = selected?.id, let client else { return }
+        guard !stopInFlight, device?.permissions.stop == true, let id = selected?.id, let client else { return }
+        stopInFlight = true
+        defer { stopInFlight = false }
         do { try await client.stop(id) }
         catch { handle(error) }
     }
@@ -749,7 +912,7 @@ import SuzentCore
 
     private func startNode() {
         disconnectNode()
-        guard !isDemo, let client = client as? SuzentClient, let connection, foreground else { return }
+        guard !isDemo, let client = client as? SuzentClient, let desktopID = store.activeId, let connection, foreground else { return }
         let ws = client.nodeSocket()
         socket = ws
         nodeStatus = String(localized: "Connecting")
@@ -770,11 +933,9 @@ import SuzentCore
                     switch value["type"] as? String {
                     case "pending": nodeStatus = String(localized: "Approve on desktop: \(value["pairing_code"] as? String ?? "")")
                     case "connected":
-                        if let credential = value["device_token"] as? String, !credential.isEmpty {
-                            var saved = connection
+                        if let credential = value["device_token"] as? String, !credential.isEmpty, var saved = store.desktop(desktopID)?.connection {
                             saved.nodeToken = credential
-                            try CredentialStore.save(saved)
-                            self.connection = saved
+                            try storeConnection(desktopID, saved)
                         }
                         nodeStatus = String(localized: "Online · device.status")
                     case "error":
@@ -797,39 +958,67 @@ import SuzentCore
 
     func forget() {
         if isDemo { exitDemo(); return }
-        clearSession(removeCredentials: true)
+        if let id = store.activeId { forgetDesktop(id) } else { clearSession() }
     }
 
-    private func clearSession(removeCredentials: Bool) {
+    /// Removes only this phone's credential for the desktop; revoking it remotely happens on the desktop.
+    func forgetDesktop(_ id: String, reconnectNext: Bool = true) {
+        guard !isDemo, let desktop = store.desktop(id) else { return }
+        revokeOnDesktop(desktop.connection)
+        // A switch still checking this desktop would otherwise activate an id that is no longer saved.
+        if checkingDesktopId == id { reconnectTask?.cancel() }
+        let wasActive = store.activeId == id
+        var next = store
+        next.remove(id)
+        do { try CredentialStore.save(next) }
+        catch { self.error = error.localizedDescription }
+        store = next
+        guard wasActive else { return }
+        clearSession()
+        if reconnectNext && canReconnect { Task { await connect(keepingError: true) } }
+    }
+
+    /// Best effort: otherwise the desktop keeps a grant no phone holds, and the next scan adds another.
+    private func revokeOnDesktop(_ saved: Connection) {
+        guard let backend = try? Backend(saved.origin, allowHTTP: allowsHTTP),
+              let revoker = try? SuzentClient(backend: backend, token: saved.hostToken, deviceTrust: saved.tls) else { return }
+        Task {
+            defer { revoker.close() }
+            try? await revoker.forgetPairing()
+        }
+    }
+
+    private func resetSessionState() {
+        voice.stop()
+        voiceSupported = false
         scheduledTasks = []
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
-        pairingTask?.cancel()
-        reconnectTask?.cancel()
-        if removeCredentials {
-            do { try CredentialStore.clear() }
-            catch { self.error = error.localizedDescription }
-        }
         generation = UUID()
         nodeEnabled = false
         disconnectNode()
         streamTask?.cancel()
-        client?.close()
-        client = nil
-        if removeCredentials { connection = nil }
-        connected = false
-        busy = false
+        streaming = false
+        liveParts = []
         selected = nil
         chats = []
         chatPages = [:]; loadingPages = []; navigationRevision = UUID()
-        canReconnect = connection?.clientProtocol == 1
         device = nil
+        draft = ""
+    }
+
+    private func clearSession() {
+        pairingTask?.cancel()
+        reconnectTask?.cancel()
+        resetSessionState()
+        client?.close()
+        client = nil
+        connected = false
+        busy = false
+        canReconnect = connection?.clientProtocol == 1
         pairingInvitation = nil
         pairingCode = nil
         invitationText = ""
         origin = connection?.origin ?? ""
-        draft = ""
-        streaming = false
-        liveParts = []
     }
 }

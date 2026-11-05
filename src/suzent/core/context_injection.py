@@ -236,6 +236,19 @@ def build_agent_deps(
     )
     request_rules = list(_get_config_value(config, "permission_rules", []) or [])
     permission_rules = [*global_rules, *chat_rules, *request_rules]
+    # Read from the stored chat, never the request: a request naming its own
+    # delegator would let any sender's brief count as the task.
+    from suzent.core.focal_agent import FOCAL_CHAT_ID
+
+    delegator_chat_ids = frozenset(
+        {
+            str((_chat_obj.config or {}).get("parent_chat_id") or "")
+            if _chat_obj is not None
+            else "",
+            FOCAL_CHAT_ID,
+        }
+        - {"", chat_id}
+    )
 
     from suzent.core.file_tracker import FileTracker
 
@@ -265,6 +278,7 @@ def build_agent_deps(
         permission_mode=permission_mode,
         interaction_profile=interaction_profile,
         permission_rules=permission_rules,
+        delegator_chat_ids=delegator_chat_ids,
         base_tool_names=base_tool_names,
         call_allowed_tools=(
             frozenset(call_allowed_tools) if call_allowed_tools is not None else None

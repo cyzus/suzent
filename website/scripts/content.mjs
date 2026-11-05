@@ -203,8 +203,19 @@ export function createContent() {
       author: id,
     })),
   ];
-  const privacyFile = path.join(root, "content/browser-privacy.md");
-  const privacy = read(privacyFile);
+  const privacyPages = ["privacy", "browser-privacy", "mobile-privacy"].map((slug) => {
+    const file = path.join(root, `content/${slug}.md`);
+    const page = read(file);
+    return {
+      kind: "privacy",
+      url: `/${slug}`,
+      file,
+      source: `website/content/${slug}.md`,
+      title: page.title,
+      description: page.data.description,
+      content: page.content,
+    };
+  });
   const other = [
     {
       kind: "home",
@@ -220,15 +231,7 @@ export function createContent() {
       description:
         "The four conditions of agent sovereignty and a five-question ownership test.",
     },
-    {
-      kind: "privacy",
-      url: "/browser-privacy",
-      file: privacyFile,
-      source: "website/content/browser-privacy.md",
-      title: privacy.title,
-      description: privacy.data.description,
-      content: privacy.content,
-    },
+    ...privacyPages,
     { kind: "notfound", url: "/404", title: "Page not found" },
   ];
   const redirects = Object.entries(JSON.parse(fs.readFileSync(

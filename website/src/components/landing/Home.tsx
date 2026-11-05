@@ -17,6 +17,11 @@ const GITHUB_LATEST =
   "https://github.com/cyzus/suzent/releases/latest/download";
 const MIRROR_RELEASES = "https://registry.npmmirror.com/-/binary/suzent";
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
+// Official "Get it from Microsoft" badge (apps.microsoft.com/badge); mode=full
+// opens the listing in the Store app.
+const MS_STORE_URL = "https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full";
+const MS_STORE_BADGE_EN = "https://get.microsoft.com/images/en-us%20dark.svg";
+const MS_STORE_BADGE_ZH = "https://get.microsoft.com/images/zh-cn%20dark.svg";
 
 async function reachable(url: string, ms: number): Promise<boolean> {
   const controller = new AbortController();
@@ -446,6 +451,19 @@ function InstallerDownloads(): ReactNode {
           </select>
         </div>
       </div>
+      <div className={styles.storeDownload}>
+        <span className={styles.storeLabel}>
+          {t({ id: "homepage.download.store", message: "Windows · Recommended" })}
+        </span>
+        <a href={MS_STORE_URL} target="_blank" rel="noopener noreferrer">
+          <img
+            src={locale === "zh-Hans" ? MS_STORE_BADGE_ZH : MS_STORE_BADGE_EN}
+            alt={t({ id: "homepage.download.storeAlt", message: "Get it from Microsoft" })}
+            width={160}
+            height={48}
+          />
+        </a>
+      </div>
       <div className={styles.terminalAlternative}>
         <div className={styles.terminalHeader}>
           <p className={styles.terminalLabel}>
@@ -687,8 +705,8 @@ export default function Home(): ReactNode {
 
       <footer className={styles.homeFooter}>
         <span>© 2026 SUZENT</span>
-        <Link href={localePath("/browser-privacy", locale)}>
-          {translate({ id: "home.browserPrivacy", message: "Browser privacy" })}
+        <Link href={localePath("/privacy", locale)}>
+          {translate({ id: "home.privacy", message: "Privacy" })}
         </Link>
       </footer>
     </div>

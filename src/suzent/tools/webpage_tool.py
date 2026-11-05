@@ -1,19 +1,30 @@
+import html
 from typing import Annotated
 
 from pydantic import Field
 from pydantic_ai import RunContext
+from pydantic_ai.exceptions import ModelRetry
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.citation_manager import CitationSourceType
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
+# Pages shorter than this are usually a JS shell ("enable JavaScript") rather
+# than real content; the agent is told to fall back to the browser tool.
+_MIN_CONTENT_CHARS = 200
+_MAX_CONTENT_CHARS = 200_000
+_TIMEOUT_SECONDS = 30
 
-def __getattr__(name):
-    if name == "AsyncWebCrawler":
-        from crawl4ai import AsyncWebCrawler
 
-        return AsyncWebCrawler
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+def _make_fetcher():
+    """Build pydantic-ai's local web fetcher (lazy: keeps startup imports light)."""
+    from pydantic_ai.common_tools.web_fetch import WebFetchLocalTool
+
+    return WebFetchLocalTool(
+        max_content_length=_MAX_CONTENT_CHARS,
+        allow_local_urls=False,
+        timeout=_TIMEOUT_SECONDS,
+    )
 
 
 def _title_from_markdown(markdown: str) -> str | None:
@@ -36,32 +47,51 @@ class WebpageTool(Tool):
     tool_name: str = "webpage_fetch"
     group: ToolGroup = ToolGroup.WEB
 
-    async def _crawl_url(self, url: str) -> ToolResult:
-        """Async helper to properly initialize and use the crawler."""
+    async def _fetch_url(self, url: str) -> tuple[ToolResult, str | None]:
+        """Fetch ``url`` as markdown. Returns the result and the page title, if known."""
         import suzent.tools.webpage_tool as _self
 
-        async with _self.AsyncWebCrawler() as crawler:
-            result = await crawler.arun(url=url)
-            if not result:
-                return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    "Unable to retrieve content from the specified URL.",
-                    metadata={"url": url},
-                )
-            # Convert to plain str to avoid pickle issues with StringCompatibleMarkdown
-            # (crawl4ai's str subclass fails to unpickle because its __new__ expects
-            #  a MarkdownGenerationResult object, not a raw string)
-            markdown = result.markdown
-            if not markdown:
-                return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    "Unable to retrieve content from the specified URL.",
-                    metadata={"url": url},
-                )
-            return ToolResult.success_result(
-                str(markdown),
-                metadata={"url": url},
+        try:
+            fetched = await _self._make_fetcher()(url)
+        except ModelRetry as e:
+            return (
+                ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED, str(e), metadata={"url": url}
+                ),
+                None,
             )
+
+        if not isinstance(fetched, dict):
+            media_type = getattr(fetched, "media_type", "binary")
+            return (
+                ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    f"The URL returned non-text content ({media_type}). "
+                    "Download it and use read_file to convert it instead.",
+                    metadata={"url": url, "media_type": media_type},
+                ),
+                None,
+            )
+
+        markdown = (fetched.get("content") or "").strip()
+        # pydantic-ai returns the raw <title> text, entities included (&#8212;).
+        title = html.unescape(fetched.get("title") or "").strip() or None
+        if not markdown:
+            return (
+                ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    "Unable to retrieve content from the specified URL. If the page "
+                    "needs JavaScript, open it with the browser tool instead.",
+                    metadata={"url": url},
+                ),
+                title,
+            )
+        if len(markdown) < _MIN_CONTENT_CHARS:
+            markdown += (
+                "\n\n[Note: very little text was extracted. If this page renders "
+                "with JavaScript, open it with the browser tool instead.]"
+            )
+        return ToolResult.success_result(markdown, metadata={"url": url}), title
 
     async def forward(
         self,
@@ -78,12 +108,16 @@ class WebpageTool(Tool):
         Args:
             url: The URL of the page to retrieve content from.
         """
-        result = await self._crawl_url(url)
+        result, page_title = await self._fetch_url(url)
         if result.success:
             mgr = getattr(ctx.deps, "citation_manager", None)
             if mgr is not None:
-                # Derive a display title from the first markdown heading, else host.
-                title = _title_from_markdown(result.message) or url
+                # Prefer the HTML <title>, then the first markdown heading, else the URL.
+                title = (
+                    (page_title[:120] if page_title else None)
+                    or _title_from_markdown(result.message)
+                    or url
+                )
                 source_id = mgr.register(
                     type=CitationSourceType.WEBPAGE,
                     title=title,

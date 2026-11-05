@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
@@ -95,6 +95,15 @@ jobs:
 
       - name: Start desktop release build
         run: gh workflow run build-desktop.yml --ref main -f "tag=$RELEASE_TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      # The tag push above does not trigger msix.yml (GITHUB_TOKEN pushes never
+      # start workflows), so run it on the tag. Its publish job waits on the
+      # microsoft-store environment.
+      - name: Start Microsoft Store build and submission
+        run: gh workflow run msix.yml --ref "$RELEASE_TAG" -f publish=true
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}

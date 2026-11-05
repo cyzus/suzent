@@ -55,6 +55,7 @@ async def _run_turn(
     prewritten=False,
     prompt_error=None,
     error_after_sent=False,
+    system_reminders=None,
 ):
     managed = _managed()
     managed.restored = restored
@@ -125,7 +126,12 @@ async def _run_turn(
             stream_acp_steer(chat_id, message, replay=replay, prewritten=prewritten)
             if steer
             else stream_acp_turn(
-                chat_id, message, replay=replay, files=files, prewritten=prewritten
+                chat_id,
+                message,
+                replay=replay,
+                files=files,
+                prewritten=prewritten,
+                system_reminders=system_reminders,
             )
         )
         chunks = [c async for c in turn]
@@ -804,3 +810,114 @@ async def test_a_prompt_that_failed_after_it_was_sent_leaves_the_session_idle(qu
     )
 
     assert q.replay.prompt_in_flight is False
+
+
+def _custom_events(chunks, name):
+    events = []
+    for chunk in chunks:
+        if not chunk.startswith("data: ") or chunk.strip() == "data: [DONE]":
+            continue
+        event = json.loads(chunk[6:])
+        if event.get("type") == "CUSTOM" and event.get("name") == name:
+            events.append(event["value"])
+    return events
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_only_turn_shows_its_trigger_while_it_streams(queue):
+    """The client reloads the log before the trigger row lands, so the stream
+    has to announce it, as the native runtime does."""
+    from suzent.core.system_reminder import (
+        RUNTIME_NONCE,
+        extract_system_reminder_display_trigger,
+    )
+
+    chat_id, q = queue
+    prompted = []
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("on it")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="",
+        prompted=prompted,
+        system_reminders=["Please review the draft"],
+    )
+
+    rows = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert rows[0] == {
+        "role": "system_triggered",
+        "content": "Please review the draft",
+    }
+    assert _custom_events(chunks, "incoming_message") == [
+        {"content": "Please review the draft", "persisted": True}
+    ]
+    (sent,) = prompted
+    assert RUNTIME_NONCE in sent
+    assert extract_system_reminder_display_trigger(sent) == "Please review the draft"
+
+
+@pytest.mark.asyncio
+async def test_reminders_on_a_typed_turn_reach_the_agent_but_not_the_transcript(
+    queue,
+):
+    chat_id, q = queue
+    prompted = []
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("sure")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="what changed?",
+        prompted=prompted,
+        system_reminders=["Spoken in a voice call"],
+    )
+
+    rows = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert rows[0] == {"role": "user", "content": "what changed?"}
+    assert _custom_events(chunks, "incoming_message") == []
+    (sent,) = prompted
+    assert sent.startswith("what changed?\n\n")
+    assert "Spoken in a voice call" in sent
+
+
+@pytest.mark.asyncio
+async def test_an_acp_turn_runs_no_reminder_hooks(queue, monkeypatch):
+    """Hook output names Suzent's own tools, which an external agent lacks."""
+
+    async def ambient_hook(chat_id, deps):
+        return "AMBIENT SKILL HINT"
+
+    monkeypatch.setattr("suzent.core.system_reminder._global_hooks", [ambient_hook])
+    chat_id, q = queue
+    prompted = []
+    await _run_turn(
+        chat_id,
+        [_text_chunk("ok")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="",
+        prompted=prompted,
+        system_reminders=["Scheduled check"],
+    )
+
+    (sent,) = prompted
+    assert "Scheduled check" in sent
+    assert "AMBIENT SKILL HINT" not in sent
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_only_turn_stopped_before_it_ran_keeps_its_trigger(queue):
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+    _, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="",
+        system_reminders=["Please review the draft"],
+    )
+
+    rows = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert rows == [{"role": "system_triggered", "content": "Please review the draft"}]

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "read_file shows EPUB authors and language, and fences raw notebook cells so their text is not rendered as markdown."
+}

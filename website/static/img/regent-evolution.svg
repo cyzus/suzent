@@ -1,221 +1,149 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" width="880" height="420" role="img" aria-label="Before and after Regent: moving from human-as-router across many chat tabs to a single point of attention.">
   <defs>
-    <!-- Subtle architectural grid -->
-    <pattern id="evo-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#ececec" stroke-width="1"/>
-    </pattern>
-    <!-- 45-degree hatch for noise / shadow texture -->
-    <pattern id="evo-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="8" stroke="#d4d4d4" stroke-width="2"/>
-    </pattern>
-    <pattern id="evo-hatch-dark" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="6" stroke="#000000" stroke-width="1.5"/>
-    </pattern>
-    <!-- Sharp arrow markers -->
-    <marker id="arrow-black" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1 L 9 5 L 0 9 z" fill="#000000"/>
+    <marker id="ev-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 8.5 5 L 1 8.5" fill="none" stroke="#6b6b6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
+    <marker id="ev-arrow-l" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 8.5 5 L 1 8.5" fill="none" stroke="#b0b0b0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <g id="ev-mark">
+      <path d="M3 3.6 Q12 0 21 3.6 L21 6.6 Q12 10.2 3 6.6 Z" fill="#1a1a1a"/>
+      <rect x="10.3" y="5.3" width="3.4" height="3.4" rx="0.8" transform="rotate(45 12 7)" fill="#ffffff"/>
+      <rect x="0" y="9.6" width="24" height="24" rx="5" fill="#1a1a1a"/>
+      <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill="#ffffff"/>
+      <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill="#ffffff"/>
+    </g>
+    <g id="ev-lines">
+      <rect x="10" y="38" width="66" height="3.5" rx="1.75" fill="#e6e6e6"/>
+      <rect x="10" y="47" width="54" height="3.5" rx="1.75" fill="#e6e6e6"/>
+      <rect x="10" y="56" width="62" height="3.5" rx="1.75" fill="#e6e6e6"/>
+      <rect x="10" y="65" width="40" height="3.5" rx="1.75" fill="#e6e6e6"/>
+    </g>
   </defs>
-
   <style>
     .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
     .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .box { fill: #ffffff; stroke: #000000; stroke-width: 2.5; }
-    .box-heavy { fill: #ffffff; stroke: #000000; stroke-width: 3; }
-    .shadow { fill: #000000; }
+    .card { fill: #ffffff; stroke: #dcdcdc; stroke-width: 1; }
+    .card-em { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.25; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+    .title { fill: #111111; font-weight: 650; }
+    .wire { fill: none; stroke: #8f8f8f; stroke-width: 1.25; }
+    .tangle { fill: none; stroke: #c2c2c2; stroke-width: 1.1; }
   </style>
 
-  <!-- Outer Frame -->
-  <rect x="0" y="0" width="880" height="420" fill="#ffffff"/>
-  <rect x="12" y="12" width="856" height="396" fill="url(#evo-grid)" stroke="#000000" stroke-width="3"/>
+  <rect x="0" y="0" width="880" height="420" rx="14" fill="#fafafa"/>
+  <line x1="440" y1="28" x2="440" y2="392" stroke="#e6e6e6"/>
 
-  <!-- Center Divider -->
-  <line x1="440" y1="12" x2="440" y2="408" stroke="#000000" stroke-width="3"/>
-  <rect x="422" y="192" width="36" height="36" fill="#000000"/>
-  <path d="M 433 210 L 447 210 M 442 204 L 448 210 L 442 216" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="square"/>
+  <!-- ============ LEFT: without Regent ============ -->
+  <text x="32" y="42" class="mono label" font-size="9.5" font-weight="600">01 · WITHOUT REGENT</text>
+  <text x="32" y="64" class="ui title" font-size="16">Human as router</text>
 
-  <!-- ===================================================================== -->
-  <!-- LEFT PANEL: BEFORE (YOU ARE THE ROUTER)                               -->
-  <!-- ===================================================================== -->
-  <g transform="translate(12, 12)">
-    <!-- Top Section Bar -->
-    <rect x="0" y="0" width="428" height="38" fill="#f4f4f4" stroke="#000000" stroke-width="3"/>
-    <rect x="14" y="10" width="28" height="18" fill="#000000"/>
-    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">01</text>
-    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#000000" letter-spacing="0.8">WITHOUT REGENT · HUMAN AS ROUTER</text>
+  <g transform="translate(134, 92)">
+    <rect width="180" height="50" rx="10" class="card"/>
+    <text x="90" y="22" class="ui title" font-size="14" text-anchor="middle">You</text>
+    <text x="90" y="39" class="mono" font-size="8.5" fill="#8a8a8a" text-anchor="middle">polling every tab</text>
+  </g>
+  <rect x="166" y="83" width="116" height="17" rx="8.5" fill="#f2f2f2" stroke="#dcdcdc"/>
+  <text x="224" y="94.5" class="mono" font-size="8" fill="#555555" text-anchor="middle" letter-spacing="0.06em">attention bottleneck</text>
 
-    <!-- YOU node under stress -->
-    <g transform="translate(114, 62)">
-      <rect x="5" y="5" width="200" height="58" fill="url(#evo-hatch-dark)" stroke="#000000" stroke-width="2"/>
-      <rect x="0" y="0" width="200" height="58" class="box-heavy"/>
-      <rect x="0" y="0" width="200" height="18" fill="#000000"/>
-      <text x="100" y="13" class="mono" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="1">ATTENTION BOTTLENECK</text>
-      <text x="100" y="37" class="ui" font-size="14" font-weight="800" fill="#000000" text-anchor="middle">YOU</text>
-      <text x="100" y="51" class="mono" font-size="10" fill="#555555" text-anchor="middle">manual polling · tab switching</text>
-    </g>
+  <!-- tangle -->
+  <line x1="74" y1="232" x2="190" y2="146" class="tangle" marker-start="url(#ev-arrow-l)" marker-end="url(#ev-arrow-l)"/>
+  <line x1="174" y1="232" x2="210" y2="146" class="tangle" marker-start="url(#ev-arrow-l)" marker-end="url(#ev-arrow-l)"/>
+  <line x1="274" y1="232" x2="238" y2="146" class="tangle" marker-start="url(#ev-arrow-l)" marker-end="url(#ev-arrow-l)"/>
+  <line x1="374" y1="232" x2="258" y2="146" class="tangle" marker-start="url(#ev-arrow-l)" marker-end="url(#ev-arrow-l)"/>
+  <rect x="174" y="179" width="100" height="20" rx="10" fill="#fafafa" stroke="#dcdcdc"/>
+  <text x="224" y="192.5" class="mono" font-size="8.5" fill="#666666" text-anchor="middle">raw transcripts</text>
 
-    <!-- Tangled bidirectional lines (You <-> Every Session) -->
-    <path d="M 164 120 L 62 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
-    <path d="M 194 120 L 164 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
-    <path d="M 234 120 L 266 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
-    <path d="M 264 120 L 366 212" stroke="#000000" stroke-width="2" marker-end="url(#arrow-black)" marker-start="url(#arrow-black)"/>
-
-    <!-- Cross-talk / manual copy-paste indicator -->
-    <rect x="118" y="156" width="192" height="22" fill="#ffffff" stroke="#000000" stroke-width="2"/>
-    <text x="214" y="171" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">4× UNFILTERED TRANSCRIPTS</text>
-
-    <!-- 4 Noisy Session Windows -->
-    <!-- Tab 1 -->
-    <g transform="translate(20, 218)">
-      <rect x="4" y="4" width="88" height="106" class="shadow"/>
-      <rect x="0" y="0" width="88" height="106" class="box"/>
-      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
-      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
-      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Research</text>
-      <line x1="10" y1="32" x2="76" y2="32" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="42" x2="68" y2="42" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="52" x2="78" y2="52" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="62" x2="54" y2="62" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="72" x2="72" y2="72" stroke="#b0b0b0" stroke-width="4"/>
-      <rect x="10" y="82" width="68" height="14" fill="#000000"/>
-      <text x="44" y="92" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">2,400 words</text>
-    </g>
-
-    <!-- Tab 2 -->
-    <g transform="translate(120, 218)">
-      <rect x="4" y="4" width="88" height="106" class="shadow"/>
-      <rect x="0" y="0" width="88" height="106" class="box"/>
-      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
-      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
-      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Coding</text>
-      <line x1="10" y1="32" x2="72" y2="32" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="42" x2="78" y2="42" stroke="#b0b0b0" stroke-width="4"/>
-      <rect x="8" y="50" width="72" height="14" fill="#000000"/>
-      <text x="44" y="60" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">BLOCKED?</text>
-      <line x1="10" y1="72" x2="64" y2="72" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="82" x2="74" y2="82" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="92" x2="50" y2="92" stroke="#b0b0b0" stroke-width="4"/>
-    </g>
-
-    <!-- Tab 3 -->
-    <g transform="translate(220, 218)">
-      <rect x="4" y="4" width="88" height="106" class="shadow"/>
-      <rect x="0" y="0" width="88" height="106" class="box"/>
-      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
-      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
-      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Writing</text>
-      <line x1="10" y1="32" x2="74" y2="32" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="42" x2="60" y2="42" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="52" x2="78" y2="52" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="62" x2="70" y2="62" stroke="#b0b0b0" stroke-width="4"/>
-      <rect x="10" y="76" width="68" height="18" fill="url(#evo-hatch)" stroke="#000000" stroke-width="1.5"/>
-      <text x="44" y="88" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">idle 2 hrs</text>
-    </g>
-
-    <!-- Tab 4 -->
-    <g transform="translate(320, 218)">
-      <rect x="4" y="4" width="88" height="106" class="shadow"/>
-      <rect x="0" y="0" width="88" height="106" class="box"/>
-      <rect x="0" y="0" width="88" height="20" fill="#e5e5e5" stroke="#000000" stroke-width="2"/>
-      <circle cx="9" cy="10" r="2.5" fill="#000000"/>
-      <text x="18" y="14" class="mono" font-size="9" font-weight="700" fill="#000000">Ops / Cron</text>
-      <line x1="10" y1="32" x2="68" y2="32" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="42" x2="76" y2="42" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="52" x2="54" y2="52" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="62" x2="78" y2="62" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="72" x2="66" y2="72" stroke="#b0b0b0" stroke-width="4"/>
-      <line x1="10" y1="82" x2="72" y2="82" stroke="#b0b0b0" stroke-width="4"/>
-    </g>
-
-    <!-- Bottom Caption -->
-    <rect x="20" y="344" width="388" height="34" fill="#f4f4f4" stroke="#000000" stroke-width="2"/>
-    <text x="214" y="365" class="ui" font-size="12" font-weight="600" fill="#000000" text-anchor="middle">Every new session adds another inbox you have to babysit.</text>
+  <!-- sessions -->
+  <g transform="translate(30, 236)">
+    <rect width="88" height="112" rx="8" class="card"/>
+    <circle cx="13" cy="17" r="2.5" fill="#bdbdbd"/>
+    <text x="21" y="20.5" class="ui" font-size="10.5" font-weight="600" fill="#333333">Research</text>
+    <line x1="0" y1="29" x2="88" y2="29" stroke="#efefef"/>
+    <use href="#ev-lines"/>
+    <rect x="10" y="84" width="68" height="16" rx="4" fill="#f2f2f2"/>
+    <text x="44" y="95" class="mono" font-size="8" fill="#555555" text-anchor="middle">2,400 words</text>
+  </g>
+  <g transform="translate(130, 236)">
+    <rect width="88" height="112" rx="8" class="card"/>
+    <circle cx="13" cy="17" r="2.5" fill="#bdbdbd"/>
+    <text x="21" y="20.5" class="ui" font-size="10.5" font-weight="600" fill="#333333">Coding</text>
+    <line x1="0" y1="29" x2="88" y2="29" stroke="#efefef"/>
+    <use href="#ev-lines"/>
+    <rect x="10" y="84" width="68" height="16" rx="4" fill="#ffffff" stroke="#1a1a1a"/>
+    <text x="44" y="95" class="mono" font-size="8" font-weight="600" fill="#1a1a1a" text-anchor="middle">blocked?</text>
+  </g>
+  <g transform="translate(230, 236)">
+    <rect width="88" height="112" rx="8" class="card"/>
+    <circle cx="13" cy="17" r="2.5" fill="#bdbdbd"/>
+    <text x="21" y="20.5" class="ui" font-size="10.5" font-weight="600" fill="#333333">Writing</text>
+    <line x1="0" y1="29" x2="88" y2="29" stroke="#efefef"/>
+    <use href="#ev-lines"/>
+    <rect x="10" y="84" width="68" height="16" rx="4" fill="#f2f2f2"/>
+    <text x="44" y="95" class="mono" font-size="8" fill="#555555" text-anchor="middle">idle 2 hrs</text>
+  </g>
+  <g transform="translate(330, 236)">
+    <rect width="88" height="112" rx="8" class="card"/>
+    <circle cx="13" cy="17" r="2.5" fill="#bdbdbd"/>
+    <text x="21" y="20.5" class="ui" font-size="10.5" font-weight="600" fill="#333333">Ops</text>
+    <line x1="0" y1="29" x2="88" y2="29" stroke="#efefef"/>
+    <use href="#ev-lines"/>
+    <rect x="10" y="74" width="58" height="3.5" rx="1.75" fill="#e6e6e6"/>
+    <rect x="10" y="83" width="66" height="3.5" rx="1.75" fill="#e6e6e6"/>
   </g>
 
-  <!-- ===================================================================== -->
-  <!-- RIGHT PANEL: AFTER (REGENT AS COO)                                    -->
-  <!-- ===================================================================== -->
-  <g transform="translate(440, 12)">
-    <!-- Top Section Bar -->
-    <rect x="0" y="0" width="428" height="38" fill="#000000" stroke="#000000" stroke-width="3"/>
-    <rect x="14" y="10" width="28" height="18" fill="#ffffff"/>
-    <text x="28" y="23" class="mono" font-size="10" font-weight="700" fill="#000000" text-anchor="middle">02</text>
-    <text x="52" y="24" class="mono" font-size="11" font-weight="700" fill="#ffffff" letter-spacing="0.8">WITH REGENT · SINGLE POINT OF ATTENTION</text>
+  <text x="224" y="384" class="ui" font-size="12.5" fill="#555555" text-anchor="middle">Every session is another inbox to babysit.</text>
 
-    <!-- YOU node (calm) -->
-    <g transform="translate(124, 58)">
-      <rect x="5" y="5" width="180" height="46" class="shadow"/>
-      <rect x="0" y="0" width="180" height="46" class="box-heavy"/>
-      <text x="90" y="21" class="ui" font-size="14" font-weight="800" fill="#000000" text-anchor="middle">YOU</text>
-      <text x="90" y="37" class="mono" font-size="10" fill="#000000" text-anchor="middle">1 conversation · decisions only</text>
-    </g>
+  <!-- transition -->
+  <circle cx="440" cy="214" r="15" fill="#fafafa" stroke="#e0e0e0"/>
+  <path d="M 433 214 H 446 M 441 209 L 446 214 L 441 219" fill="none" stroke="#6b6b6b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
 
-    <!-- Clean single link -->
-    <line x1="214" y1="109" x2="214" y2="142" stroke="#000000" stroke-width="3" marker-end="url(#arrow-black)"/>
+  <!-- ============ RIGHT: with Regent ============ -->
+  <text x="464" y="42" class="mono label" font-size="9.5" font-weight="600">02 · WITH REGENT</text>
+  <text x="464" y="64" class="ui title" font-size="16">Single point of attention</text>
 
-    <!-- REGENT Hero Node -->
-    <g transform="translate(64, 148)">
-      <rect x="6" y="6" width="300" height="64" class="shadow"/>
-      <rect x="0" y="0" width="300" height="64" fill="#000000" stroke="#000000" stroke-width="3"/>
-      <!-- Exact 2D RegentMark from RegentMark.tsx (inverted on black header) -->
-      <g transform="translate(18, 9) scale(1.35)">
-        <path d="M3 3.6 Q12 0 21 3.6 L21 6.6 Q12 10.2 3 6.6 Z" fill="#ffffff"/>
-        <path d="M4.6 4.2 Q12 6.9 19.4 4.2" fill="none" stroke="#000000" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
-        <rect x="10.3" y="5.3" width="3.4" height="3.4" rx="0.8" transform="rotate(45 12 7)" fill="#000000"/>
-        <rect x="0" y="9.6" width="24" height="24" rx="4" fill="#ffffff"/>
-        <rect x="5" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
-        <rect x="14" y="17.6" width="5" height="5" rx="1.5" fill="#000000"/>
-      </g>
-      <!-- Labels -->
-      <text x="64" y="29" class="ui" font-size="16" font-weight="900" fill="#ffffff" letter-spacing="1">REGENT</text>
-      <rect x="148" y="16" width="136" height="17" fill="#ffffff"/>
-      <text x="216" y="28" class="mono" font-size="9" font-weight="700" fill="#000000" text-anchor="middle">ORCHESTRATION LAYER</text>
-      <text x="64" y="49" class="mono" font-size="10" fill="#d4d4d4">dispatches work · filters reports</text>
-    </g>
-
-    <!-- Structured Dispatch Bus -->
-    <line x1="214" y1="218" x2="214" y2="238" stroke="#000000" stroke-width="2.5"/>
-    <line x1="64" y1="238" x2="364" y2="238" stroke="#000000" stroke-width="2.5"/>
-    <line x1="64" y1="238" x2="64" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
-    <line x1="164" y1="238" x2="164" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
-    <line x1="264" y1="238" x2="264" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
-    <line x1="364" y1="238" x2="364" y2="258" stroke="#000000" stroke-width="2.5" marker-end="url(#arrow-black)"/>
-
-    <!-- 4 Isolated Project Sessions -->
-    <g transform="translate(20, 264)">
-      <rect x="3" y="3" width="88" height="60" class="shadow"/>
-      <rect x="0" y="0" width="88" height="60" class="box"/>
-      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Research</text>
-      <rect x="12" y="34" width="64" height="16" fill="#f0f0f0" stroke="#000000" stroke-width="1.5"/>
-      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">● RUNNING</text>
-    </g>
-
-    <g transform="translate(120, 264)">
-      <rect x="3" y="3" width="88" height="60" class="shadow"/>
-      <rect x="0" y="0" width="88" height="60" class="box"/>
-      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Coding</text>
-      <rect x="12" y="34" width="64" height="16" fill="#000000"/>
-      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">▲ 1 BLOCKER</text>
-    </g>
-
-    <g transform="translate(220, 264)">
-      <rect x="3" y="3" width="88" height="60" class="shadow"/>
-      <rect x="0" y="0" width="88" height="60" class="box"/>
-      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Writing</text>
-      <rect x="12" y="34" width="64" height="16" fill="#f0f0f0" stroke="#000000" stroke-width="1.5"/>
-      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#000000" text-anchor="middle">● RUNNING</text>
-    </g>
-
-    <g transform="translate(320, 264)">
-      <rect x="3" y="3" width="88" height="60" class="shadow"/>
-      <rect x="0" y="0" width="88" height="60" class="box"/>
-      <text x="44" y="23" class="ui" font-size="11" font-weight="800" fill="#000000" text-anchor="middle">Ops / Cron</text>
-      <rect x="12" y="34" width="64" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
-      <text x="44" y="45" class="mono" font-size="8" font-weight="700" fill="#555555" text-anchor="middle">✓ QUIET OK</text>
-    </g>
-
-    <!-- Bottom Caption -->
-    <rect x="20" y="344" width="388" height="34" fill="#000000"/>
-    <text x="214" y="365" class="ui" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">You talk to Regent. Regent runs the projects.</text>
+  <g transform="translate(561, 92)">
+    <rect width="190" height="50" rx="10" class="card"/>
+    <text x="95" y="22" class="ui title" font-size="14" text-anchor="middle">You</text>
+    <text x="95" y="39" class="mono" font-size="8.5" fill="#8a8a8a" text-anchor="middle">decisions only</text>
   </g>
+  <line x1="656" y1="142" x2="656" y2="164" class="wire" marker-end="url(#ev-arrow)"/>
+
+  <g transform="translate(506, 168)">
+    <rect width="300" height="64" rx="12" class="card-em"/>
+    <use href="#ev-mark" transform="translate(18, 14) scale(1.05)"/>
+    <text x="58" y="30" class="ui title" font-size="16">Regent</text>
+    <text x="58" y="48" class="mono" font-size="9" fill="#8a8a8a">dispatches · filters</text>
+  </g>
+
+  <path d="M 656 232 V 250 M 509 268 V 258 Q 509 250 517 250 H 795 Q 803 250 803 258 V 268 M 607 250 V 268 M 705 250 V 268" class="wire" stroke="#bdbdbd"/>
+
+  <g text-anchor="middle">
+    <g transform="translate(465, 272)">
+      <rect width="88" height="70" rx="8" class="card"/>
+      <text x="44" y="26" class="ui title" font-size="12">Research</text>
+      <rect x="12" y="38" width="64" height="18" rx="9" fill="#f2f2f2"/>
+      <text x="44" y="50" class="mono" font-size="8" fill="#555555">● running</text>
+    </g>
+    <g transform="translate(563, 272)">
+      <rect width="88" height="70" rx="8" class="card"/>
+      <text x="44" y="26" class="ui title" font-size="12">Coding</text>
+      <rect x="12" y="38" width="64" height="18" rx="9" fill="#1a1a1a"/>
+      <text x="44" y="50" class="mono" font-size="8" fill="#ffffff">▲ 1 blocker</text>
+    </g>
+    <g transform="translate(661, 272)">
+      <rect width="88" height="70" rx="8" class="card"/>
+      <text x="44" y="26" class="ui title" font-size="12">Writing</text>
+      <rect x="12" y="38" width="64" height="18" rx="9" fill="#f2f2f2"/>
+      <text x="44" y="50" class="mono" font-size="8" fill="#555555">● running</text>
+    </g>
+    <g transform="translate(759, 272)">
+      <rect width="88" height="70" rx="8" class="card"/>
+      <text x="44" y="26" class="ui title" font-size="12">Ops</text>
+      <rect x="12" y="38" width="64" height="18" rx="9" fill="#f2f2f2"/>
+      <text x="44" y="50" class="mono" font-size="8" fill="#555555">✓ quiet ok</text>
+    </g>
+  </g>
+
+  <text x="656" y="384" class="ui" font-size="12.5" font-weight="650" fill="#111111" text-anchor="middle">You talk to Regent. Regent runs the projects.</text>
 </svg>

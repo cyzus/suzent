@@ -2,42 +2,51 @@
   "en": {
     "home": "Home",
     "project": "Weekend plans",
-    "welcome": "Welcome to the offline demo",
-    "trip": "A weekend in London",
-    "tools": "Try a tool approval",
-    "task": "Example morning briefing",
-    "intro": "## Your Suzent, wherever you are\n\nThis is an **offline demonstration** with scripted replies. No desktop, AI service, or API key is used.\n\n- Send any message to see a streamed example reply.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see local attachment handling.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nExample conversations also include a UI review, a failed tool call, and a daily note. Expand Worked for to inspect tool input and output.",
-    "prompt": "Plan a weekend trip to London",
-    "tool_prompt": "Try a tool approval",
-    "generic": "## Example response\n\nThanks for trying Suzent! This reply is generated from local demonstration data, not an AI model.\n\nYou can **copy**, **retry**, **edit**, or **branch** this conversation. Try asking about a trip, or type **tool approval** to explore an approval request.\n\n```text\nDesktop connection: not required\nAPI calls: 0\n```",
-    "plan": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
-    "attachment": "## Local attachment example\n\nYour selected files are listed with this message. In this demo they stay on your device: nothing is uploaded or analysed by AI.\n\nConnect your own desktop to process attachments with your configured model.",
-    "reasoning": "Preparing a scripted demonstration. No model or external tool is running.",
-    "approval_reason": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written.",
-    "allowed": "## Approved\n\nThe simulated tool created `weekend-plan.md` in the demo workspace. No real workspace file was written.\n\nYou can retry this turn and reject the request to compare the result.",
-    "denied": "## Request rejected\n\nThe simulated tool did not run. You remain in control of tool requests. No file was written.",
-    "stopped": "\n\n*Demo response stopped.*",
-    "interrupted": "*This demo response was interrupted when the app closed. Retry to run it again.*",
-    "source_title": "Suzent documentation",
-    "source_snippet": "Example citation. Opening the website is optional and requires an internet connection.",
+    "welcome": "Welcome to Suzent",
+    "trip": "Lisbon weekend",
+    "tools": "Tidy up Downloads",
+    "task": "Morning briefing",
+    "intro": "## Your Suzent, wherever you are\n\nYou are trying Suzent with sample conversations. Replies are prepared in advance and stay on this phone, so no computer or API key is needed.\n\n- Tap **Plan my Lisbon weekend** to see a plan built from your preferences.\n- Tap **Tidy up my Downloads folder** to approve or reject an action on your computer.\n- Send any message, or attach a file, to watch a reply stream in.\n\nThe sidebar holds a weekly project summary, tomorrow's priorities and a reading digest. Expand Worked for to see each tool's input and output. Settings lets you reset or leave the demo.",
+    "prompt": "Plan my Lisbon weekend",
+    "tool_prompt": "Tidy up my Downloads folder",
+    "generic": "## Got it\n\nOnce Suzent is paired with your computer, your own models answer here, with your memory, projects and tools.\n\nFor now, you can **copy**, **retry**, **edit**, or **branch** this message, or try **Plan my Lisbon weekend** and **Tidy up my Downloads folder**.",
+    "plan": "## Lisbon, Friday to Sunday\n\nBased on what you like: slow mornings, vegetarian food, and one museum a day at most.\n\n| Day | Daytime | Evening |\n| --- | --- | --- |\n| Fri | Land 10:40, check in near Alfama | Fado in a small tasca |\n| Sat | Tram 28 up to Graça | Dinner in Príncipe Real |\n| Sun | Gulbenkian Museum | Sunset at Santa Catarina |\n\nRain is likely on Saturday afternoon, so I kept that slot indoors. Online check-in opens Thursday at 18:00; I'll remind you. [[cite:demo-source]]",
+    "attachment": "## Attachments received\n\nYour files are listed with this message. In the demo they stay on this phone and are not analysed.\n\nPaired with your computer, Suzent reads them with your configured model.",
+    "reasoning": "Working through it step by step.",
+    "approval_reason": "Move 14 receipt PDFs from Downloads to Documents/Receipts?",
+    "allowed": "## Done\n\nMoved 14 receipts to `Documents/Receipts`.\n\nScreenshots and old installers are next. Say the word and I'll sort those too.",
+    "denied": "## Nothing moved\n\nYour Downloads folder is unchanged. Anything that touches your computer waits for your go-ahead.",
+    "stopped": "\n\n*Response stopped.*",
+    "interrupted": "*This response was interrupted when the app closed. Retry to run it again.*",
+    "source_title": "Visit Lisboa — official guide",
+    "source_snippet": "Neighbourhoods, transport and opening hours for Lisbon.",
     "branch": "Branch",
-    "model": "Demo · scripted",
-    "alternate_model": "Demo · alternate",
+    "model": "Default",
+    "alternate_model": "Fast",
     "keywords_tool": [
       "tool",
       "approval",
       "approve",
+      "tidy",
+      "download",
+      "organize",
       "工具",
       "审批",
-      "批准"
+      "批准",
+      "整理",
+      "下载"
     ],
     "keywords_trip": [
       "trip",
       "travel",
+      "lisbon",
       "london",
+      "weekend",
       "旅行",
       "旅游",
-      "伦敦"
+      "里斯本",
+      "伦敦",
+      "周末"
     ],
     "projects": [
       {
@@ -45,8 +54,12 @@
         "name": "Home"
       },
       {
+        "id": "demo-work",
+        "name": "Work"
+      },
+      {
         "id": "demo-travel",
-        "name": "Weekend plans"
+        "name": "Travel"
       }
     ],
     "chats": [
@@ -55,10 +68,10 @@
         "title": "Regent",
         "platform": "focal",
         "isRunning": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "regent": {
           "waiting": 1,
@@ -76,7 +89,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "Checking the example project status.",
+                "text": "Checking your projects and calendar.",
                 "state": "completed"
               },
               {
@@ -91,7 +104,7 @@
                 "toolName": "send_message",
                 "toolCallId": "demo-regent-send",
                 "state": "completed",
-                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"Your weekend plan is ready. Only the departure time needs your decision.\", \"This is an offline Regent example; no real tasks were started.\"]}}"
+                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"PR #482 has been waiting for your review since yesterday.\", \"Online check-in for Friday's Lisbon flight opens at 18:00.\"]}}"
               }
             ],
             "_streaming_run_id": "demo-regent-example",
@@ -103,52 +116,52 @@
       },
       {
         "id": "demo-welcome",
-        "title": "Welcome to the offline demo",
+        "title": "Welcome to Suzent",
         "projectId": "demo-home",
         "projectName": "Home",
         "isRunning": false,
         "pinned": true,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## Your Suzent, wherever you are\n\nThis is an **offline demonstration** with scripted replies. No desktop, AI service, or API key is used.\n\n- Send any message to see a streamed example reply.\n- Ask about a **trip** to try a planning scenario.\n- Include **tool** or **approval** to try allowing or rejecting an action.\n- Attach a file to see local attachment handling.\n\nUse the sidebar to manage conversations. Settings lets you reset or leave the demo.\n\nExample conversations also include a UI review, a failed tool call, and a daily note. Expand Worked for to inspect tool input and output.",
-            "model": "Demo · scripted",
+            "content": "## Your Suzent, wherever you are\n\nYou are trying Suzent with sample conversations. Replies are prepared in advance and stay on this phone, so no computer or API key is needed.\n\n- Tap **Plan my Lisbon weekend** to see a plan built from your preferences.\n- Tap **Tidy up my Downloads folder** to approve or reject an action on your computer.\n- Send any message, or attach a file, to watch a reply stream in.\n\nThe sidebar holds a weekly project summary, tomorrow's priorities and a reading digest. Expand Worked for to see each tool's input and output. Settings lets you reset or leave the demo.",
+            "model": "Default",
             "timestamp": "2026-01-01T09:00:00Z"
           }
         ]
       },
       {
         "id": "demo-ui",
-        "title": "Mobile UI refinements",
-        "projectId": "demo-home",
-        "projectName": "Home",
+        "title": "What changed this week",
+        "projectId": "demo-work",
+        "projectName": "Work",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "Review the mobile navigation layout.",
+            "content": "What changed in my projects while I was away?",
             "timestamp": "2026-10-30T08:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**Example checks: 3 passed.** This is an offline demonstration; no real project files were read or changed.",
-            "model": "Demo · scripted",
+            "content": "## While you were away\n\n| Project | What changed | Needs you |\n| --- | --- | --- |\n| Launch site | Pricing copy approved, 3 PRs merged | Review PR #482 |\n| Beta | 1,284 sign-ups, up 18% | — |\n| Payments | 2% of webhooks fail to retry | Pick a fix |\n\nI drafted a fix for the webhook retries in `payments/retry.py`. Want me to open a pull request?",
+            "model": "Default",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "Reviewing the example layout and touch targets.",
+                "text": "Reading this week's notes and commits.",
                 "state": "completed"
               },
               {
@@ -156,58 +169,62 @@
                 "toolName": "read_file",
                 "toolCallId": "demo-ui-read",
                 "state": "completed",
-                "args": "{\"path\": \"navigation.md\"}",
-                "output": "{\"success\": true, \"message\": \"# Navigation\\nRegent / New conversation / Recent / Projects\"}"
+                "args": "{\"path\": \"~/Projects/launch/notes/2026-W44.md\"}",
+                "output": "{\"success\": true, \"message\": \"# Week 44\\n- Pricing copy approved\\n- Beta sign-ups: 1,284 (+18%)\\n- Payment webhook retries failing\"}"
               },
               {
                 "type": "tool",
                 "toolName": "run_command",
                 "toolCallId": "demo-ui-check",
                 "state": "completed",
-                "args": "{\"command\": \"check-layout --demo\"}",
-                "output": "{\"success\": true, \"message\": \"3 checks passed · simulated\"}"
+                "args": "{\"command\": \"git log --since='7 days ago' --oneline\"}",
+                "output": "{\"success\": true, \"message\": \"12 commits, 3 merged pull requests\"}"
               },
               {
                 "type": "text",
-                "text": "## Navigation review complete\n\n- Keep Regent separate from new conversations.\n- Place recent conversations before projects.\n- Fold tool activity while keeping the answer visible.\n\n**Example checks: 3 passed.** This is an offline demonstration; no real project files were read or changed."
+                "text": "## While you were away\n\n| Project | What changed | Needs you |\n| --- | --- | --- |\n| Launch site | Pricing copy approved, 3 PRs merged | Review PR #482 |\n| Beta | 1,284 sign-ups, up 18% | — |\n| Payments | 2% of webhooks fail to retry | Pick a fix |\n\nI drafted a fix for the webhook retries in `payments/retry.py`. Want me to open a pull request?"
               }
             ],
             "_streaming_run_id": "demo-ui-run",
             "run_started_at": "2026-10-30T09:00:00Z",
-            "run_finished_at": "2026-10-30T09:00:12Z",
-            "run_active_seconds": 12
+            "run_finished_at": "2026-10-30T09:00:12Z"
           }
         ]
       },
       {
         "id": "demo-trip",
-        "title": "A weekend in London",
+        "title": "Lisbon weekend",
         "projectId": "demo-travel",
-        "projectName": "Weekend plans",
+        "projectName": "Travel",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
+            "role": "user",
+            "content": "Plan my Lisbon weekend",
+            "timestamp": "2026-10-29T18:59:00Z"
+          },
+          {
             "role": "assistant",
-            "content": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
-            "model": "Demo · scripted",
-            "timestamp": "2026-01-01T09:00:00Z",
+            "content": "## Lisbon, Friday to Sunday\n\nBased on what you like: slow mornings, vegetarian food, and one museum a day at most.\n\n| Day | Daytime | Evening |\n| --- | --- | --- |\n| Fri | Land 10:40, check in near Alfama | Fado in a small tasca |\n| Sat | Tram 28 up to Graça | Dinner in Príncipe Real |\n| Sun | Gulbenkian Museum | Sunset at Santa Catarina |\n\nRain is likely on Saturday afternoon, so I kept that slot indoors. Online check-in opens Thursday at 18:00; I'll remind you. [[cite:demo-source]]",
+            "model": "Default",
+            "timestamp": "2026-10-29T19:00:00Z",
             "parts": [
               {
                 "type": "text",
-                "text": "## A relaxed weekend in London\n\n| Day | Morning | Afternoon |\n| --- | --- | --- |\n| Saturday | Walk along the South Bank | Explore Borough Market |\n| Sunday | Visit a museum | Relax in a park |\n\nPack comfortable shoes and a rain jacket. This itinerary is a scripted example, not live travel advice. [[cite:demo-source]]",
+                "text": "## Lisbon, Friday to Sunday\n\nBased on what you like: slow mornings, vegetarian food, and one museum a day at most.\n\n| Day | Daytime | Evening |\n| --- | --- | --- |\n| Fri | Land 10:40, check in near Alfama | Fado in a small tasca |\n| Sat | Tram 28 up to Graça | Dinner in Príncipe Real |\n| Sun | Gulbenkian Museum | Sunset at Santa Catarina |\n\nRain is likely on Saturday afternoon, so I kept that slot indoors. Online check-in opens Thursday at 18:00; I'll remind you. [[cite:demo-source]]",
                 "citationSources": [
                   {
                     "id": "demo-source",
                     "type": "web",
-                    "title": "Suzent documentation",
-                    "url": "https://suzent.com/docs",
-                    "snippet": "Example citation. Opening the website is optional and requires an internet connection."
+                    "title": "Visit Lisboa — official guide",
+                    "url": "https://www.visitlisboa.com",
+                    "snippet": "Neighbourhoods, transport and opening hours for Lisbon."
                   }
                 ]
               }
@@ -217,123 +234,134 @@
       },
       {
         "id": "demo-note",
-        "title": "A note for tomorrow",
+        "title": "Tomorrow's priorities",
         "projectId": "demo-home",
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "Help me organize tomorrow’s priorities.",
-            "timestamp": "2026-10-30T08:59:00Z"
+            "content": "What should I focus on tomorrow?",
+            "timestamp": "2026-10-30T20:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## Leave a little room\n\n1. **Morning** — Finish the one thing that matters most.\n2. **Afternoon** — Leave 30 minutes to organize notes.\n3. **Evening** — Confirm the weekend departure time.\n\n> You do not need to fill every minute.\n\nThis is an offline example note. Long-press the conversation to pin or rename it, or copy and branch this reply.",
-            "model": "Demo · scripted",
-            "timestamp": "2026-10-30T09:00:00Z"
+            "content": "## Tomorrow\n\n1. **9:30 — Review PR #482.** It unblocks the launch.\n2. **11:00 — Call with Mia** about the beta numbers. The summary is in your notes.\n3. **Afternoon — Pack for Lisbon.** Bring a rain jacket.\n\n> Your calendar is free after 16:00, so I kept it that way.",
+            "model": "Default",
+            "timestamp": "2026-10-30T21:00:00Z"
           }
         ]
       },
       {
         "id": "demo-failure",
-        "title": "Research: a source is unavailable",
+        "title": "Reading digest",
         "projectId": "demo-home",
         "projectName": "Home",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "Look up the source for this note.",
-            "timestamp": "2026-10-30T08:59:00Z"
+            "content": "Summarize what I saved to read this week",
+            "timestamp": "2026-10-28T19:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## The source could not be reached\n\nThe example source timed out, so there is no result to summarize. Expand the activity above to inspect the error.\n\nWhen connected to your desktop, you could supply another source or try again later. **This failure is simulated; no network request was made.**",
-            "model": "Demo · scripted",
-            "timestamp": "2026-10-30T09:00:00Z",
+            "content": "## This week's reading\n\n- **Local-first software** — keep your data on your own devices and sync when you can. Worth reading in full.\n- **Designing for interruptions** — short tasks beat long ones when your day is fragmented.\n- **The case for boring tech** — five of your saved pieces argue the same point; I merged them into one note.\n\nOne article was behind a paywall, so I summarized its abstract instead. The highlights are in `Reading/2026-W44.md`.",
+            "model": "Default",
+            "timestamp": "2026-10-28T20:00:00Z",
             "parts": [
               {
                 "type": "tool",
-                "toolName": "web_search",
+                "toolName": "read_file",
                 "toolCallId": "demo-failed-search",
-                "state": "failed",
-                "args": "{\"query\": \"example reference\"}",
-                "output": "{\"success\": false, \"error\": \"Example source timed out (simulated).\"}"
+                "state": "completed",
+                "args": "{\"path\": \"~/Reading/saved.md\"}",
+                "output": "{\"success\": true, \"message\": \"7 saved articles\"}"
+              },
+              {
+                "type": "tool",
+                "toolName": "webpage_fetch",
+                "toolCallId": "demo-failed-fetch",
+                "state": "error",
+                "args": "{\"url\": \"https://example.com/designing-for-interruptions\"}",
+                "output": "{\"success\": false, \"error\": \"403 Forbidden: subscription required\"}"
               },
               {
                 "type": "text",
-                "text": "## The source could not be reached\n\nThe example source timed out, so there is no result to summarize. Expand the activity above to inspect the error.\n\nWhen connected to your desktop, you could supply another source or try again later. **This failure is simulated; no network request was made.**"
+                "text": "## This week's reading\n\n- **Local-first software** — keep your data on your own devices and sync when you can. Worth reading in full.\n- **Designing for interruptions** — short tasks beat long ones when your day is fragmented.\n- **The case for boring tech** — five of your saved pieces argue the same point; I merged them into one note.\n\nOne article was behind a paywall, so I summarized its abstract instead. The highlights are in `Reading/2026-W44.md`."
               }
             ],
             "_streaming_run_id": "demo-failure-run",
-            "run_started_at": "2026-10-30T09:00:00Z",
-            "run_finished_at": "2026-10-30T09:00:12Z",
-            "run_active_seconds": 12
+            "run_started_at": "2026-10-28T20:00:00Z",
+            "run_finished_at": "2026-10-28T20:00:12Z"
           }
         ]
       },
       {
         "id": "demo-tools",
-        "title": "Try a tool approval",
-        "projectId": "demo-home",
-        "projectName": "Home",
+        "title": "Tidy up Downloads",
+        "projectId": "demo-work",
+        "projectName": "Work",
         "isRunning": false,
         "pinned": false,
-        "model": "Demo · scripted",
+        "model": "Default",
         "models": [
-          "Demo · scripted",
-          "Demo · alternate"
+          "Default",
+          "Fast"
         ],
         "messages": [
           {
+            "role": "user",
+            "content": "Tidy up my Downloads folder",
+            "timestamp": "2026-10-27T16:59:00Z"
+          },
+          {
             "role": "assistant",
-            "content": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written.",
-            "model": "Demo · scripted",
-            "timestamp": "2026-01-01T09:00:00Z",
-            "_streaming_run_id": "demo-tools-example",
-            "run_started_at": "2026-10-29T12:00:00Z",
-            "run_finished_at": "2026-10-29T12:00:08Z",
-            "run_active_seconds": 8,
+            "content": "## Downloads tidied\n\n| Files | Count | Moved to |\n| --- | --- | --- |\n| Receipts | 14 | Documents/Receipts |\n| Screenshots | 23 | Pictures/Screenshots |\n| Old installers | 6 | Trash |\n\n18 files didn't match a rule, so I left them where they were.",
+            "model": "Default",
+            "timestamp": "2026-10-27T17:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "A scripted example of reading a file and checking it. No real tools run.",
+                "text": "Grouping files in Downloads by type before moving anything.",
                 "state": "completed"
               },
               {
                 "type": "tool",
-                "toolName": "read_file",
+                "toolName": "run_command",
                 "toolCallId": "demo-read",
                 "state": "completed",
-                "args": "{\"path\": \"weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"# Weekend plan\\n\\n- Saturday: museum\\n- Sunday: park\"}"
+                "args": "{\"command\": \"ls ~/Downloads\"}",
+                "output": "{\"success\": true, \"message\": \"61 files: 14 receipts, 23 screenshots, 6 installers, 18 other\"}"
               },
               {
                 "type": "tool",
                 "toolName": "run_command",
                 "toolCallId": "demo-command",
                 "state": "completed",
-                "args": "{\"command\": \"check-plan weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"2 checks passed (offline example)\"}"
+                "args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
+                "output": "{\"success\": true, \"message\": \"14 files moved\"}"
               },
               {
                 "type": "text",
-                "text": "Demo only: allow or reject creating a note in the simulated workspace. No real file will be written."
+                "text": "## Downloads tidied\n\n| Files | Count | Moved to |\n| --- | --- | --- |\n| Receipts | 14 | Documents/Receipts |\n| Screenshots | 23 | Pictures/Screenshots |\n| Old installers | 6 | Trash |\n\n18 files didn't match a rule, so I left them where they were."
               }
-            ]
+            ],
+            "_streaming_run_id": "demo-tools-example",
+            "run_started_at": "2026-10-27T17:00:00Z",
+            "run_finished_at": "2026-10-27T17:00:12Z"
           }
         ]
       }
@@ -341,54 +369,66 @@
     "tasks": [
       {
         "id": "demo-briefing",
-        "name": "Example morning briefing",
+        "name": "Morning briefing",
         "chatId": null,
         "active": false,
         "isRunning": false,
         "hasError": false
       }
     ],
-    "regent_reply": "I can help you check progress across your projects and bring back decisions that need you.\n\nThis is a local demonstration reply, with no AI call."
+    "regent_reply": "I'll keep watching your projects, inbox and calendar, and bring back only what needs you.",
+    "approval_tool": "run_command",
+    "approval_args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
+    "source_url": "https://www.visitlisboa.com"
   },
   "zh": {
     "home": "主页",
     "project": "周末计划",
-    "welcome": "欢迎体验离线演示",
-    "trip": "伦敦周末计划",
-    "tools": "体验工具审批",
-    "task": "示例晨间简报",
-    "intro": "## 随时随地使用 Suzent\n\n这是使用预设回复的**离线演示**，不连接电脑或 AI 服务，也不使用 API Key。\n\n- 发送任意消息，体验流式回复。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，体验本地附件操作。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n示例会话还包括界面检查、工具失败和日常笔记。展开 Worked for 查看工具输入与输出。",
-    "prompt": "帮我安排伦敦周末旅行",
-    "tool_prompt": "体验工具审批",
-    "generic": "## 示例回复\n\n感谢体验 Suzent！这条回复来自本地演示数据，并非 AI 模型生成。\n\n你可以**复制**、**重试**、**编辑**消息，或创建**会话分支**。试着询问旅行，或输入**工具审批**体验操作审批。\n\n```text\n无需连接电脑\nAPI 调用次数：0\n```",
-    "plan": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
-    "attachment": "## 本地附件示例\n\n你选择的文件会显示在消息中。演示模式下，文件留在设备本地，不会上传，也不会交给 AI 分析。\n\n连接自己的电脑后，即可使用配置的模型处理附件。",
-    "reasoning": "正在准备预设演示，不调用模型或外部工具。",
-    "approval_reason": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。",
-    "allowed": "## 已允许\n\n模拟工具已在演示工作区创建 `weekend-plan.md`，没有写入真实工作区文件。\n\n你可以重试本轮并拒绝请求，对比两种结果。",
-    "denied": "## 已拒绝请求\n\n模拟工具未执行。工具操作由你控制，没有写入任何文件。",
-    "stopped": "\n\n*演示回复已停止。*",
-    "interrupted": "*应用关闭时演示回复被中断，请重试。*",
-    "source_title": "Suzent 使用文档",
-    "source_snippet": "示例引用。打开网站是可选操作，需要网络连接。",
+    "welcome": "欢迎使用 Suzent",
+    "trip": "里斯本周末",
+    "tools": "整理下载文件夹",
+    "task": "晨间简报",
+    "intro": "## 随时随地使用 Suzent\n\n你正在用示例对话体验 Suzent。回复是预先准备好的，只保存在这台手机上，无需电脑或 API Key。\n\n- 点 **安排我的里斯本周末**，看看 Suzent 如何按你的偏好做计划。\n- 点 **整理一下我的下载文件夹**，批准或拒绝一次电脑上的操作。\n- 发送任意消息或添加文件，看回复实时呈现。\n\n侧栏里还有本周项目变化、明天的安排和阅读摘要。展开「用时」可以查看每个工具的输入与输出。在设置中可以重置或退出演示。",
+    "prompt": "安排我的里斯本周末",
+    "tool_prompt": "整理一下我的下载文件夹",
+    "generic": "## 收到\n\n与电脑配对后，这里会由你自己的模型回答，并用上你的记忆、项目和工具。\n\n现在你可以**复制**、**重试**、**编辑**消息，或创建**会话分支**；也可以试试 **安排我的里斯本周末** 和 **整理一下我的下载文件夹**。",
+    "plan": "## 里斯本，周五到周日\n\n按你的习惯安排：早上不赶时间，吃素，每天最多一个博物馆。\n\n| 日期 | 白天 | 晚上 |\n| --- | --- | --- |\n| 周五 | 10:40 落地，入住阿尔法玛附近 | 小酒馆听法朵 |\n| 周六 | 坐 28 路电车上格拉萨 | 在王子区吃晚饭 |\n| 周日 | 古尔本基安博物馆 | 圣卡塔琳娜观景台看日落 |\n\n周六下午可能下雨，所以那段安排在室内。周四 18:00 开放网上值机，到时我提醒你。[[cite:demo-source]]",
+    "attachment": "## 已收到附件\n\n文件会显示在这条消息中。演示中文件只留在这台手机上，不会被分析。\n\n与电脑配对后，Suzent 会用你配置的模型读取它们。",
+    "reasoning": "正在一步步处理。",
+    "approval_reason": "把下载文件夹里的 14 张收据 PDF 移到 Documents/Receipts？",
+    "allowed": "## 已完成\n\n14 张收据已移到 `Documents/Receipts`。\n\n接下来是截图和旧安装包，说一声我就一起整理。",
+    "denied": "## 没有移动任何文件\n\n下载文件夹保持原样。任何会改动你电脑的操作，都会先等你点头。",
+    "stopped": "\n\n*回复已停止。*",
+    "interrupted": "*应用关闭时回复被中断，请重试。*",
+    "source_title": "Visit Lisboa 官方旅游指南",
+    "source_snippet": "里斯本的街区、交通和开放时间。",
     "branch": "分支",
-    "model": "演示 · 预设回复",
-    "alternate_model": "演示 · 另一模型",
+    "model": "默认",
+    "alternate_model": "快速",
     "keywords_tool": [
       "tool",
       "approval",
       "approve",
+      "tidy",
+      "download",
+      "organize",
       "工具",
       "审批",
-      "批准"
+      "批准",
+      "整理",
+      "下载"
     ],
     "keywords_trip": [
       "trip",
       "travel",
+      "lisbon",
       "london",
+      "weekend",
       "旅行",
       "旅游",
-      "伦敦"
+      "里斯本",
+      "伦敦",
+      "周末"
     ],
     "projects": [
       {
@@ -396,8 +436,12 @@
         "name": "主页"
       },
       {
+        "id": "demo-work",
+        "name": "工作"
+      },
+      {
         "id": "demo-travel",
-        "name": "周末计划"
+        "name": "旅行"
       }
     ],
     "chats": [
@@ -406,10 +450,10 @@
         "title": "Regent",
         "platform": "focal",
         "isRunning": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "regent": {
           "waiting": 1,
@@ -427,7 +471,7 @@
             "parts": [
               {
                 "type": "reasoning",
-                "text": "查看各项目的示例进度。",
+                "text": "正在查看你的项目和日程。",
                 "state": "completed"
               },
               {
@@ -442,7 +486,7 @@
                 "toolName": "send_message",
                 "toolCallId": "demo-regent-send",
                 "state": "completed",
-                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"周末计划已整理好。你只需要确认出发时间。\", \"这是 Regent 的离线演示；没有启动真实任务。\"]}}"
+                "output": "{\"success\": true, \"metadata\": {\"regent_messages\": [\"PR #482 从昨天起就在等你审。\", \"周五飞里斯本的航班 18:00 开放网上值机。\"]}}"
               }
             ],
             "_streaming_run_id": "demo-regent-example",
@@ -454,52 +498,52 @@
       },
       {
         "id": "demo-welcome",
-        "title": "欢迎体验离线演示",
+        "title": "欢迎使用 Suzent",
         "projectId": "demo-home",
         "projectName": "主页",
         "isRunning": false,
         "pinned": true,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
             "role": "assistant",
-            "content": "## 随时随地使用 Suzent\n\n这是使用预设回复的**离线演示**，不连接电脑或 AI 服务，也不使用 API Key。\n\n- 发送任意消息，体验流式回复。\n- 询问**旅行**，体验计划场景。\n- 输入**工具**或**审批**，体验允许或拒绝操作。\n- 添加文件，体验本地附件操作。\n\n在侧栏中管理会话；在设置中重置或退出演示。\n\n示例会话还包括界面检查、工具失败和日常笔记。展开 Worked for 查看工具输入与输出。",
-            "model": "演示 · 预设回复",
+            "content": "## 随时随地使用 Suzent\n\n你正在用示例对话体验 Suzent。回复是预先准备好的，只保存在这台手机上，无需电脑或 API Key。\n\n- 点 **安排我的里斯本周末**，看看 Suzent 如何按你的偏好做计划。\n- 点 **整理一下我的下载文件夹**，批准或拒绝一次电脑上的操作。\n- 发送任意消息或添加文件，看回复实时呈现。\n\n侧栏里还有本周项目变化、明天的安排和阅读摘要。展开「用时」可以查看每个工具的输入与输出。在设置中可以重置或退出演示。",
+            "model": "默认",
             "timestamp": "2026-01-01T09:00:00Z"
           }
         ]
       },
       {
         "id": "demo-ui",
-        "title": "手机界面优化",
-        "projectId": "demo-home",
-        "projectName": "主页",
+        "title": "本周项目变化",
+        "projectId": "demo-work",
+        "projectName": "工作",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "帮我整理手机界面的改进点。",
+            "content": "我不在的时候，项目有什么变化？",
             "timestamp": "2026-10-30T08:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**示例检查：3 项通过。** 这是离线演示，没有读取或修改真实项目文件。",
-            "model": "演示 · 预设回复",
+            "content": "## 你不在的这几天\n\n| 项目 | 变化 | 需要你 |\n| --- | --- | --- |\n| 官网上线 | 定价文案通过，合并 3 个 PR | 审 PR #482 |\n| 内测 | 注册 1,284，增长 18% | — |\n| 支付 | 2% 的回调重试失败 | 选一个修复方案 |\n\n我在 `payments/retry.py` 里起草了回调重试的修复。要我开一个 PR 吗？",
+            "model": "默认",
             "timestamp": "2026-10-30T09:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "检查演示布局与点击区域。",
+                "text": "正在读取本周的笔记和提交记录。",
                 "state": "completed"
               },
               {
@@ -507,58 +551,62 @@
                 "toolName": "read_file",
                 "toolCallId": "demo-ui-read",
                 "state": "completed",
-                "args": "{\"path\": \"navigation.md\"}",
-                "output": "{\"success\": true, \"message\": \"# Navigation\\nRegent / New conversation / Recent / Projects\"}"
+                "args": "{\"path\": \"~/Projects/launch/notes/2026-W44.md\"}",
+                "output": "{\"success\": true, \"message\": \"# 第 44 周\\n- 定价文案已通过\\n- 内测注册：1,284（+18%）\\n- 支付回调重试失败\"}"
               },
               {
                 "type": "tool",
                 "toolName": "run_command",
                 "toolCallId": "demo-ui-check",
                 "state": "completed",
-                "args": "{\"command\": \"check-layout --demo\"}",
-                "output": "{\"success\": true, \"message\": \"3 checks passed · simulated\"}"
+                "args": "{\"command\": \"git log --since='7 days ago' --oneline\"}",
+                "output": "{\"success\": true, \"message\": \"12 次提交，合并 3 个 PR\"}"
               },
               {
                 "type": "text",
-                "text": "## 界面检查完成\n\n- Regent 与新建对话保持独立。\n- 最近对话放在项目列表前面。\n- 工具过程默认收起，答复保持可见。\n\n**示例检查：3 项通过。** 这是离线演示，没有读取或修改真实项目文件。"
+                "text": "## 你不在的这几天\n\n| 项目 | 变化 | 需要你 |\n| --- | --- | --- |\n| 官网上线 | 定价文案通过，合并 3 个 PR | 审 PR #482 |\n| 内测 | 注册 1,284，增长 18% | — |\n| 支付 | 2% 的回调重试失败 | 选一个修复方案 |\n\n我在 `payments/retry.py` 里起草了回调重试的修复。要我开一个 PR 吗？"
               }
             ],
             "_streaming_run_id": "demo-ui-run",
             "run_started_at": "2026-10-30T09:00:00Z",
-            "run_finished_at": "2026-10-30T09:00:12Z",
-            "run_active_seconds": 12
+            "run_finished_at": "2026-10-30T09:00:12Z"
           }
         ]
       },
       {
         "id": "demo-trip",
-        "title": "伦敦周末计划",
+        "title": "里斯本周末",
         "projectId": "demo-travel",
-        "projectName": "周末计划",
+        "projectName": "旅行",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
+            "role": "user",
+            "content": "安排我的里斯本周末",
+            "timestamp": "2026-10-29T18:59:00Z"
+          },
+          {
             "role": "assistant",
-            "content": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
-            "model": "演示 · 预设回复",
-            "timestamp": "2026-01-01T09:00:00Z",
+            "content": "## 里斯本，周五到周日\n\n按你的习惯安排：早上不赶时间，吃素，每天最多一个博物馆。\n\n| 日期 | 白天 | 晚上 |\n| --- | --- | --- |\n| 周五 | 10:40 落地，入住阿尔法玛附近 | 小酒馆听法朵 |\n| 周六 | 坐 28 路电车上格拉萨 | 在王子区吃晚饭 |\n| 周日 | 古尔本基安博物馆 | 圣卡塔琳娜观景台看日落 |\n\n周六下午可能下雨，所以那段安排在室内。周四 18:00 开放网上值机，到时我提醒你。[[cite:demo-source]]",
+            "model": "默认",
+            "timestamp": "2026-10-29T19:00:00Z",
             "parts": [
               {
                 "type": "text",
-                "text": "## 轻松的伦敦周末\n\n| 日期 | 上午 | 下午 |\n| --- | --- | --- |\n| 周六 | 漫步南岸 | 逛博罗市场 |\n| 周日 | 参观博物馆 | 公园散步 |\n\n带上舒适的鞋和雨衣。这是预设示例，不是实时旅行建议。[[cite:demo-source]]",
+                "text": "## 里斯本，周五到周日\n\n按你的习惯安排：早上不赶时间，吃素，每天最多一个博物馆。\n\n| 日期 | 白天 | 晚上 |\n| --- | --- | --- |\n| 周五 | 10:40 落地，入住阿尔法玛附近 | 小酒馆听法朵 |\n| 周六 | 坐 28 路电车上格拉萨 | 在王子区吃晚饭 |\n| 周日 | 古尔本基安博物馆 | 圣卡塔琳娜观景台看日落 |\n\n周六下午可能下雨，所以那段安排在室内。周四 18:00 开放网上值机，到时我提醒你。[[cite:demo-source]]",
                 "citationSources": [
                   {
                     "id": "demo-source",
                     "type": "web",
-                    "title": "Suzent 使用文档",
-                    "url": "https://suzent.com/docs",
-                    "snippet": "示例引用。打开网站是可选操作，需要网络连接。"
+                    "title": "Visit Lisboa 官方旅游指南",
+                    "url": "https://www.visitlisboa.com",
+                    "snippet": "里斯本的街区、交通和开放时间。"
                   }
                 ]
               }
@@ -568,123 +616,134 @@
       },
       {
         "id": "demo-note",
-        "title": "明天的小计划",
+        "title": "明天的安排",
         "projectId": "demo-home",
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "帮我把明天要做的事整理一下。",
-            "timestamp": "2026-10-30T08:59:00Z"
+            "content": "明天我该先做什么？",
+            "timestamp": "2026-10-30T20:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## 留一点余地\n\n1. **上午** — 完成最重要的一件事。\n2. **下午** — 留 30 分钟整理笔记。\n3. **晚上** — 确认周末出发时间。\n\n> 不必排满每一分钟。\n\n这是一份离线示例笔记。你可以长按会话置顶、重命名，也可以复制或分支这条回复。",
-            "model": "演示 · 预设回复",
-            "timestamp": "2026-10-30T09:00:00Z"
+            "content": "## 明天\n\n1. **9:30 — 审 PR #482。** 它卡着上线。\n2. **11:00 — 和 Mia 通话**，聊内测数据。摘要已放进你的笔记。\n3. **下午 — 收拾去里斯本的行李。** 记得带雨衣。\n\n> 16:00 之后你的日程是空的，我没有往里排东西。",
+            "model": "默认",
+            "timestamp": "2026-10-30T21:00:00Z"
           }
         ]
       },
       {
         "id": "demo-failure",
-        "title": "资料搜索：需要重试",
+        "title": "本周阅读摘要",
         "projectId": "demo-home",
         "projectName": "主页",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
             "role": "user",
-            "content": "查一下这份资料。",
-            "timestamp": "2026-10-30T08:59:00Z"
+            "content": "总结一下我这周收藏的文章",
+            "timestamp": "2026-10-28T19:59:00Z"
           },
           {
             "role": "assistant",
-            "content": "## 暂时无法访问资料\n\n示例来源返回了超时，所以这里没有编造结果。你可以展开上方工具过程，查看错误详情。\n\n连接桌面后，可以提供另一个来源或稍后重试。**此失败是模拟的，没有发出网络请求。**",
-            "model": "演示 · 预设回复",
-            "timestamp": "2026-10-30T09:00:00Z",
+            "content": "## 本周阅读\n\n- **本地优先软件** — 数据留在自己的设备上，有网时再同步。值得读完整篇。\n- **为打断而设计** — 一天被切碎时，短任务比长任务更容易完成。\n- **选择无聊的技术** — 你收藏的五篇文章观点一致，我把它们合成了一条笔记。\n\n有一篇文章需要订阅才能看全文，我改用了它的摘要。要点已写入 `Reading/2026-W44.md`。",
+            "model": "默认",
+            "timestamp": "2026-10-28T20:00:00Z",
             "parts": [
               {
                 "type": "tool",
-                "toolName": "web_search",
+                "toolName": "read_file",
                 "toolCallId": "demo-failed-search",
-                "state": "failed",
-                "args": "{\"query\": \"example reference\"}",
-                "output": "{\"success\": false, \"error\": \"Example source timed out (simulated).\"}"
+                "state": "completed",
+                "args": "{\"path\": \"~/Reading/saved.md\"}",
+                "output": "{\"success\": true, \"message\": \"7 篇收藏文章\"}"
+              },
+              {
+                "type": "tool",
+                "toolName": "webpage_fetch",
+                "toolCallId": "demo-failed-fetch",
+                "state": "error",
+                "args": "{\"url\": \"https://example.com/designing-for-interruptions\"}",
+                "output": "{\"success\": false, \"error\": \"403 Forbidden：需要订阅\"}"
               },
               {
                 "type": "text",
-                "text": "## 暂时无法访问资料\n\n示例来源返回了超时，所以这里没有编造结果。你可以展开上方工具过程，查看错误详情。\n\n连接桌面后，可以提供另一个来源或稍后重试。**此失败是模拟的，没有发出网络请求。**"
+                "text": "## 本周阅读\n\n- **本地优先软件** — 数据留在自己的设备上，有网时再同步。值得读完整篇。\n- **为打断而设计** — 一天被切碎时，短任务比长任务更容易完成。\n- **选择无聊的技术** — 你收藏的五篇文章观点一致，我把它们合成了一条笔记。\n\n有一篇文章需要订阅才能看全文，我改用了它的摘要。要点已写入 `Reading/2026-W44.md`。"
               }
             ],
             "_streaming_run_id": "demo-failure-run",
-            "run_started_at": "2026-10-30T09:00:00Z",
-            "run_finished_at": "2026-10-30T09:00:12Z",
-            "run_active_seconds": 12
+            "run_started_at": "2026-10-28T20:00:00Z",
+            "run_finished_at": "2026-10-28T20:00:12Z"
           }
         ]
       },
       {
         "id": "demo-tools",
-        "title": "体验工具审批",
-        "projectId": "demo-home",
-        "projectName": "主页",
+        "title": "整理下载文件夹",
+        "projectId": "demo-work",
+        "projectName": "工作",
         "isRunning": false,
         "pinned": false,
-        "model": "演示 · 预设回复",
+        "model": "默认",
         "models": [
-          "演示 · 预设回复",
-          "演示 · 另一模型"
+          "默认",
+          "快速"
         ],
         "messages": [
           {
+            "role": "user",
+            "content": "整理一下我的下载文件夹",
+            "timestamp": "2026-10-27T16:59:00Z"
+          },
+          {
             "role": "assistant",
-            "content": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。",
-            "model": "演示 · 预设回复",
-            "timestamp": "2026-01-01T09:00:00Z",
-            "_streaming_run_id": "demo-tools-example",
-            "run_started_at": "2026-10-29T12:00:00Z",
-            "run_finished_at": "2026-10-29T12:00:08Z",
-            "run_active_seconds": 8,
+            "content": "## 下载文件夹已整理\n\n| 文件 | 数量 | 移到 |\n| --- | --- | --- |\n| 收据 | 14 | Documents/Receipts |\n| 截图 | 23 | Pictures/Screenshots |\n| 旧安装包 | 6 | 废纸篓 |\n\n有 18 个文件不符合任何规则，我没有动它们。",
+            "model": "默认",
+            "timestamp": "2026-10-27T17:00:00Z",
             "parts": [
               {
                 "type": "reasoning",
-                "text": "演示如何检查文件并运行验证，不会执行真实工具。",
+                "text": "移动文件之前，先按类型给下载文件夹里的文件分组。",
                 "state": "completed"
               },
               {
                 "type": "tool",
-                "toolName": "read_file",
+                "toolName": "run_command",
                 "toolCallId": "demo-read",
                 "state": "completed",
-                "args": "{\"path\": \"weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"# Weekend plan\\n\\n- Saturday: museum\\n- Sunday: park\"}"
+                "args": "{\"command\": \"ls ~/Downloads\"}",
+                "output": "{\"success\": true, \"message\": \"61 个文件：14 张收据、23 张截图、6 个安装包、18 个其他\"}"
               },
               {
                 "type": "tool",
                 "toolName": "run_command",
                 "toolCallId": "demo-command",
                 "state": "completed",
-                "args": "{\"command\": \"check-plan weekend-plan.md\"}",
-                "output": "{\"success\": true, \"message\": \"2 checks passed (offline example)\"}"
+                "args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
+                "output": "{\"success\": true, \"message\": \"14 files moved\"}"
               },
               {
                 "type": "text",
-                "text": "仅作演示：允许或拒绝在模拟工作区创建笔记，不会写入真实文件。"
+                "text": "## 下载文件夹已整理\n\n| 文件 | 数量 | 移到 |\n| --- | --- | --- |\n| 收据 | 14 | Documents/Receipts |\n| 截图 | 23 | Pictures/Screenshots |\n| 旧安装包 | 6 | 废纸篓 |\n\n有 18 个文件不符合任何规则，我没有动它们。"
               }
-            ]
+            ],
+            "_streaming_run_id": "demo-tools-example",
+            "run_started_at": "2026-10-27T17:00:00Z",
+            "run_finished_at": "2026-10-27T17:00:12Z"
           }
         ]
       }
@@ -692,13 +751,16 @@
     "tasks": [
       {
         "id": "demo-briefing",
-        "name": "示例晨间简报",
+        "name": "晨间简报",
         "chatId": null,
         "active": false,
         "isRunning": false,
         "hasError": false
       }
     ],
-    "regent_reply": "收到。我可以帮你了解各项目的进度，并把需要你决定的事情带回来。\n\n这是本地演示回复，没有调用 AI。"
+    "regent_reply": "我会持续关注你的项目、收件箱和日程，只把需要你决定的事带回来。",
+    "approval_tool": "run_command",
+    "approval_args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
+    "source_url": "https://www.visitlisboa.com"
   }
 }

@@ -569,27 +569,58 @@ if (-not (Test-Path ".env")) {
 }
 
 # -- Python dependencies -------------------------------------------------------
-if ($UseChinaMirror) {
-    # uv sync --frozen downloads every wheel from the URL recorded in uv.lock
-    # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode
-    # the same locked, hash-pinned set is installed through the mirror instead.
-    Write-Info "Syncing Python dependencies with social channel support through the PyPI mirror..."
-    Write-Info "The first install can take 10+ minutes on Windows while antivirus scans the new files. Please keep this window open."
-    $requirements = [System.IO.Path]::GetTempFileName()
-    try {
-        uv export --frozen --extra social --quiet -o $requirements
-        if ($LASTEXITCODE -eq 0) { uv venv --allow-existing --quiet }
-        if ($LASTEXITCODE -eq 0) { uv pip sync $requirements }
-        $syncExit = $LASTEXITCODE
-    } finally {
-        Remove-Item -Force $requirements -ErrorAction SilentlyContinue
+# Chat apps and the camera are plugins whose packages are pyproject extras.
+# Only the extras of plugins the user has on are installed (none on a fresh
+# install; each installs its packages when it is set up), the same set
+# `suzent upgrade` and the desktop updater sync.
+function Sync-PythonDeps([string[]]$Extras) {
+    $extraArgs = @()
+    foreach ($extra in $Extras) { $extraArgs += @("--extra", $extra) }
+    if ($UseChinaMirror) {
+        # uv sync --frozen downloads every wheel from the URL recorded in uv.lock
+        # (files.pythonhosted.org) and ignores UV_DEFAULT_INDEX, so in mirror mode
+        # the same locked, hash-pinned set is installed through the mirror instead.
+        $requirements = [System.IO.Path]::GetTempFileName()
+        try {
+            uv export --frozen @extraArgs --quiet -o $requirements
+            if ($LASTEXITCODE -eq 0) { uv venv --allow-existing --quiet }
+            if ($LASTEXITCODE -eq 0) { uv pip sync $requirements }
+            $syncExit = $LASTEXITCODE
+        } finally {
+            Remove-Item -Force $requirements -ErrorAction SilentlyContinue
+        }
+        if ($syncExit -ne 0) { Write-Fail "Python dependency install failed - check errors above." }
+    } else {
+        uv sync --frozen @extraArgs
+        if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen $($extraArgs -join ' ') failed - check errors above." }
     }
-    if ($syncExit -ne 0) { Write-Fail "Python dependency install failed - check errors above." }
+}
+
+function Get-EnabledPluginExtras {
+    $python = Join-Path $SuzentDir ".venv\Scripts\python.exe"
+    $script = Join-Path $SuzentDir "src\suzent\plugins\enablement.py"
+    if (-not (Test-Path $script)) { return @("social") }  # checkout predates plugins
+    $dataDir = if ($env:SUZENT_DATA_DIR) { $env:SUZENT_DATA_DIR.Trim() } else { Join-Path $HOME ".suzent" }
+    # Expand a leading ~ as the backend does (os.path.expanduser).
+    if ($dataDir -eq "~") { $dataDir = $HOME }
+    elseif ($dataDir -match '^~[\\/](.*)$') { $dataDir = Join-Path $HOME $Matches[1] }
+    $state = Join-Path $dataDir "config\plugins.json"
+    $output = & $python $script $SuzentDir $state 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $output) { return @("social") }
+    try { return @(($output | Select-Object -Last 1) | ConvertFrom-Json) } catch { return @("social") }
+}
+
+if ($UseChinaMirror) {
+    Write-Info "Syncing Python dependencies through the PyPI mirror..."
 } else {
-    Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
-    Write-Info "The first install can take 10+ minutes on Windows while antivirus scans the new files. Please keep this window open."
-    uv sync --frozen --extra social
-    if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed - check errors above." }
+    Write-Info "Syncing Python dependencies (uv sync --frozen)..."
+}
+Write-Info "The first install can take 10+ minutes on Windows while antivirus scans the new files. Please keep this window open."
+Sync-PythonDeps @()
+$pluginExtras = @(Get-EnabledPluginExtras | Where-Object { $_ })
+if ($pluginExtras.Count -gt 0) {
+    Write-Info "Installing packages for enabled plugins: $($pluginExtras -join ', ')"
+    Sync-PythonDeps $pluginExtras
 }
 Write-Ok "Python dependencies ready"
 

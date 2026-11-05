@@ -262,8 +262,11 @@ class AuthBoundaryMiddleware:
 
         # This dedicated surface authenticates every request in its handlers,
         # including loopback, and never accepts host/Node tokens as client grants.
-        if scope["type"] == "http" and scope.get("path", "").startswith(
-            "/mobile/client/"
+        if (
+            scope["type"] == "http"
+            and scope.get("path", "").startswith("/mobile/client/")
+        ) or (
+            scope["type"] == "websocket" and scope.get("path") == "/mobile/client/voice"
         ):
             return await self.app(scope, receive, send)
 

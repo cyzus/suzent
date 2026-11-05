@@ -15,6 +15,7 @@ data class Connection(val origin: String, val hostToken: String, val nodeToken: 
 
 class CredentialStore(context: Context) {
     private val preferences = context.getSharedPreferences("secure_connection", Context.MODE_PRIVATE)
+    private val installation = context.getSharedPreferences("installation", Context.MODE_PRIVATE)
     private val alias = "com.suzent.mobile.connection"
 
     private fun key(): SecretKey {
@@ -27,26 +28,33 @@ class CredentialStore(context: Context) {
         }.generateKey()
     }
 
-    fun save(value: Connection) {
+    fun save(value: SavedDesktops) {
+        if (value.desktops.isEmpty()) { clear(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-        val plain = JSONObject().put("origin", value.origin).put("hostToken", value.hostToken)
-            .put("previousOrigins", org.json.JSONArray(value.previousOrigins))
-            .put("origins", org.json.JSONArray(value.origins)).put("tls", value.tls?.json()).put("previousTLS", value.previousTLS?.json())
-            .put("previousOrigin", value.previousOrigin).put("previousToken", value.previousToken).put("clientProtocol", value.clientProtocol).put("nodeToken", value.nodeToken).toString().toByteArray(Charsets.UTF_8)
-        val encrypted = cipher.doFinal(plain)
+        val encrypted = cipher.doFinal(value.json().toString().toByteArray(Charsets.UTF_8))
         check(preferences.edit().putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString("data", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit())
     }
 
-    fun load(): Connection? {
-        val encoded = preferences.getString("data", null) ?: return null
+    /** A record saved by a single-connection version comes back as one desktop and is rewritten in the new shape. */
+    fun load(): SavedDesktops {
+        val encoded = preferences.getString("data", null) ?: return SavedDesktops()
         val iv = requireNotNull(preferences.getString("iv", null))
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
         }
         val json = JSONObject(String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8))
-        return Connection(json.getString("origin"), json.getString("hostToken"), json.optString("nodeToken"), json.optInt("clientProtocol"), json.optString("previousToken"), json.optString("previousOrigin"), json.optJSONArray("origins")?.let { array -> (0 until array.length()).map { array.getString(it) } }.orEmpty(), json.optJSONObject("tls")?.let { DeviceTrust.parse(it) }, json.optJSONObject("previousTLS")?.let { DeviceTrust.parse(it) }, json.optJSONArray("previousOrigins")?.let { array -> (0 until array.length()).map { array.getString(it) } }.orEmpty())
+        return SavedDesktops.parse(json).also { if (!json.has("desktops")) save(it) }
     }
 
     fun clear() { check(preferences.edit().clear().commit()) }
+
+    /** Survives forgetting the connection so the desktop can retire this phone's stale grant. */
+    fun installationId(): String {
+        installation.getString("id", null)?.let { return it }
+        val id = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(installation.edit().putString("id", id).commit())
+        return id
+    }
 }

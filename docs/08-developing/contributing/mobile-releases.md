@@ -126,10 +126,12 @@ Suggested English review notes (include your real pairing video link separately)
 > Suzent is a companion client for a user's self-hosted Suzent backend. To explore
 > the app without setting up a backend, launch the app and select "Try offline
 > demo" at the bottom of the connection screen. If already paired, open Settings,
-> expand About, and select "Try offline demo". The visible demo banner identifies
-> scripted, on-device sample data.
-> On the start page, select the trip prompt to see a streamed example response,
-> or the tool-approval prompt to allow or reject a simulated note-writing action.
+> expand About, and select "Try offline demo". The demo uses scripted, on-device
+> sample data and calls no AI service; the pinned "Welcome to Suzent"
+> conversation explains this, and Settings offers Reset demo and Exit demo.
+> On the start page, select "Plan my Lisbon weekend" to see a streamed example
+> response, or "Tidy up my Downloads folder" to allow or reject a simulated
+> command on the computer.
 > You can also enter arbitrary text, stop a response, select attachments, and use
 > message copy, edit, retry, and branch actions. Long-press a conversation in the
 > sidebar to pin, rename, move, or delete it. Open Settings to reset the sample

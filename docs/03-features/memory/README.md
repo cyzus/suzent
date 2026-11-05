@@ -29,6 +29,8 @@ said or guessed is not. Each saved fact carries the words it came from, so you
 can see why it was kept. Facts the agent read in a file or on a web page are kept
 too, with where they were read. Scheduled tasks are left out of facts about you,
 and so is anything that only matters today.
+Facts are saved in the language you write in, so if you chat in Chinese, your
+memory is in Chinese too.
 
 Lessons come from a separate check. When something goes wrong (a command fails,
 or you tell the agent it got something wrong) and the same exchanges then show

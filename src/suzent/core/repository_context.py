@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 ASSISTANT_ROOTS = (".claude", ".agents", ".codex", ".grok")
@@ -313,6 +318,11 @@ def discover_instruction_files(
 
 def build_repo_context_capabilities(roots: RepositoryContextRoots) -> list[object]:
     """Create a RepoContext capability, and the workspace it reads, for working-tree instructions."""
+    if os.name != "posix":
+        # LocalWorkspace refuses non-POSIX hosts, so repository instructions are skipped there.
+        logger.warning("Repository instructions are unavailable on this platform")
+        return []
+
     from pydantic_ai_harness import RepoContext
     from pydantic_ai import RunContext
     from pydantic_ai.capabilities import LocalWorkspace

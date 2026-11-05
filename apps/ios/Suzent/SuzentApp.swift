@@ -10,13 +10,14 @@ import MarkdownUI
         WindowGroup {
             ContentView(model: model)
                 .onChange(of: phase) { _, phase in
+                    if phase == .background { model.voice.stop() }
                     Task { await model.setForeground(phase == .active) }
                 }
         }
     }
 }
 
-private enum Route: Hashable { case conversation, settings }
+private enum Route: Hashable { case search, conversation }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
@@ -216,12 +217,15 @@ struct ContentView: View {
     @State private var showConnectionHelp = false
     @State private var confirmForget = false
     @State private var search = ""
+    /// The phone search page's query; the inline `search` field only exists on wide layouts.
+    @State private var searchText = ""
     @State private var expandedProject: String? = nil
     @State private var showAllScheduled = false
     @State private var scheduledExpanded = false
     @State private var showAllRecent = false
     @State private var expandedAgents: Set<String> = []
     @State private var regentPressed = false
+    @State private var tab: HomeTab = .chats
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
@@ -285,11 +289,19 @@ struct ContentView: View {
                 }.navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack(path: $path) {
-                    sidebar(home: true)
+                    VStack(spacing: 0) {
+                        switch tab {
+                        case .chats: sidebar(home: true)
+                        case .tasks: tasksTab
+                        case .settings: settingsTab
+                        }
+                        HomeTabBar(selection: $tab)
+                    }.ignoresSafeArea(.keyboard, edges: .bottom)
+                        .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
+                            case .search: searchPage
                             case .conversation: detail
-                            case .settings: settingsPage
                             }
                         }
                 }
@@ -297,7 +309,8 @@ struct ContentView: View {
         }
         .background(Color.suzentBackground)
         .foregroundStyle(Color.suzentText)
-        .overlay(alignment: .bottom) { toastHost(!conversationVisible) }
+        // The compact home keeps its tab bar uncovered.
+        .overlay(alignment: .bottom) { toastHost(!conversationVisible).padding(.bottom, !wide && model.connected && path.isEmpty ? 56 : 0) }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
@@ -315,14 +328,25 @@ struct ContentView: View {
             if !connected { showSettings = false }
         }
         .onChange(of: path) { _, path in
-            if !path.contains(.settings) { showSettings = false }
             if path.isEmpty { composing = false; attachmentsExpanded = false }
+            if !path.contains(.search) { searchText = "" }
+        }
+        .onChange(of: model.activeDesktopId) { _, _ in
+            search = ""; searchText = ""; expandedProject = nil; expandedAgents = []; showAllRecent = false
+            scheduledExpanded = false; showAllScheduled = false
+            if !path.isEmpty { path = [] }
         }
         .onChange(of: model.selected == nil) { _, missing in
-            if missing && path.last == .conversation { path = [] }
+            if missing && path.last == .conversation { path.removeLast() }
         }
         .onChange(of: wide) { _, wide in
-            if !wide { path = showSettings ? [.settings] : model.selected != nil ? [.conversation] : [] }
+            if wide {
+                showSettings = tab == .settings
+            } else {
+                if showSettings { tab = .settings }
+                showSettings = false
+                path = tab != .settings && model.selected != nil ? [.conversation] : []
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
@@ -343,7 +367,7 @@ struct ContentView: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
-            showSettings = false; path = []; showModelPicker = false; showProjectPicker = false; composing = false
+            showSettings = false; path = []; tab = .chats; showModelPicker = false; showProjectPicker = false; composing = false
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
@@ -361,13 +385,13 @@ struct ContentView: View {
     private func showConversation() {
         composing = false
         showSettings = false
-        if !wide && path != [.conversation] { path = [.conversation] }
+        // Opened from the search page, back returns to the results.
+        if !wide && path.last != .conversation { path = path.last == .search ? [.search, .conversation] : [.conversation] }
     }
 
     private func openSettings() {
         composing = false
-        showSettings = true
-        if !wide { path = [.settings] }
+        if wide { showSettings = true } else { tab = .settings; path = [] }
     }
 
     private func newConversation() {
@@ -394,6 +418,12 @@ struct ContentView: View {
                         ReconnectIndicator(active: model.busy)
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
+                        if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
+                            HStack(spacing: 8) {
+                                DesktopSwatch(desktop: desktop)
+                                Text(desktop.name).lineLimit(1)
+                            }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                        }
                         Group {
                             if model.busy {
                                 if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
@@ -402,13 +432,19 @@ struct ContentView: View {
                             .buttonStyle(.plain).frame(minHeight: 44)
                     }
                     Spacer(minLength: 20)
-                    Button("Connection help") { showConnectionHelp = true }
-                        .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    otherDesktops
+                    HStack {
+                        Button("Pair another desktop") {
+                            model.cancelReconnect(); model.beginPairing(repairActive: false); repairScanner = true
+                        }.disabled(model.busy && !model.reconnecting)
+                        Spacer(minLength: 12)
+                        Button("Connection help") { showConnectionHelp = true }
+                    }.suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
                         .frame(minHeight: 44).buttonStyle(.plain)
                 }.padding(.horizontal, 24).padding(.bottom, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
-                        Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                        Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
                         Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                         Button("Cancel", role: .cancel) { }
                     } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
@@ -419,15 +455,42 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
     }
 
-    @ViewBuilder private var demoBanner: some View {
-        if model.isDemo {
-            HStack {
-                Text("Offline demo · Scripted replies, no AI calls").font(.footnote)
-                Spacer()
-                Button("Exit demo") { model.exitDemo() }.font(.footnote.bold()).buttonStyle(.plain)
-                    .frame(minHeight: 44).disabled(model.busy)
-            }.padding(.horizontal, 16)
-                .background(Color(presentation: PresentationTokens.yellow), ignoresSafeAreaEdges: []).foregroundStyle(.black)
+    /// Visible on the reconnect screen so an unreachable default desktop never hides the others behind a menu.
+    @ViewBuilder private var otherDesktops: some View {
+        let others = model.desktops.filter { $0.id != model.activeDesktopId }
+        if !others.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Other desktops").suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    .padding(.bottom, 6)
+                Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+                ViewThatFits(in: .vertical) {
+                    desktopRows(others)
+                    ScrollView { desktopRows(others) }.frame(maxHeight: 220)
+                }
+            }
+        }
+    }
+
+    private func desktopRows(_ desktops: [SavedDesktop]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(desktops) { desktop in
+                // Tappable while the default desktop is still being tried: the switch abandons that attempt.
+                Button { Task { await model.switchDesktop(desktop.id) } } label: {
+                    HStack(spacing: 12) {
+                        DesktopSwatch(desktop: desktop, size: 12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(desktop.name).suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                                .foregroundStyle(Color.suzentText).lineLimit(1)
+                            Text(displayOrigin(desktop.connection.origin)).font(.caption.monospaced())
+                                .foregroundStyle(Color.suzentMuted).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer(minLength: 8)
+                    }.frame(minHeight: 52).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .disabled(model.busy && !model.reconnecting)
+                    .accessibilityLabel("Switch to \(desktop.name)")
+                Rectangle().fill(Color.suzentOutline.opacity(0.5)).frame(height: PresentationTokens.borderWidth)
+            }
         }
     }
 
@@ -442,7 +505,6 @@ struct ContentView: View {
             }
         }
         .background(Color.suzentBackground)
-        .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
@@ -455,12 +517,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    private var settingsPage: some View {
-        settings.navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .top, spacing: 0) { demoBanner }
-            .toolbarRole(.editor)
     }
 
     @ViewBuilder private var conversationTitle: some View {
@@ -492,12 +548,16 @@ struct ContentView: View {
                     Text("SUZENT").tracking(2).suzentFont(14, weight: .bold)
                 }
                 Spacer()
-                Button(action: openSettings) {
-                    Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel("Settings")
-            }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
+                if !home {
+                    Button(action: openSettings) {
+                        Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Settings")
+                }
+            }.frame(minHeight: 44).padding(.horizontal, 20).padding(.top, 4).padding(.bottom, home ? 0 : 4)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-            if home { demoBanner }
+            if let desktop = model.activeDesktop, !model.isDemo {
+                activeDesktopLine(desktop).padding(.horizontal, 20).padding(.bottom, 4)
+            }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
                     RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
@@ -518,13 +578,27 @@ struct ContentView: View {
             }.buttonStyle(.plain)
                 .disabled(model.busy || model.device?.permissions.createChats != true)
                 .padding(.horizontal, 16).padding(.top, 12)
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
-                TextField("Search chats", text: $search).suzentFont(home ? 16 : 14)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(minHeight: 42)
-                .background(Color.suzentText.opacity(0.04))
-                .padding(.horizontal, 16).padding(.vertical, 12)
+            if home {
+                // Phones search on their own page, so results never share the screen with the home list.
+                Button { path = [.search] } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                        Text("Search chats").suzentFont(16)
+                        Spacer()
+                    }.foregroundStyle(Color.suzentMuted)
+                        .padding(.horizontal, 12).frame(minHeight: 42)
+                        .background(Color.suzentText.opacity(0.04)).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+                    TextField("Search chats", text: $search).suzentFont(14)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                }.padding(.horizontal, 12).frame(minHeight: 42)
+                    .background(Color.suzentText.opacity(0.04))
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+            }
             ScrollViewReader { reader in
                 List {
                     Color.clear.frame(height: 0).id("sidebar-top").sidebarListRow(0).accessibilityHidden(true)
@@ -562,7 +636,7 @@ struct ContentView: View {
                             Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
                         }
                     }
-                    scheduledSection
+                    if !home { scheduledSection }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -585,6 +659,43 @@ struct ContentView: View {
         }
         .background(Color.suzentSurface)
         // The list keeps its branded header; pushed pages use the system bar and its back gesture.
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var searchPage: some View {
+        let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = ChatPageQuery("search", value: term)
+        return VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                SearchPageField(text: $searchText)
+                Button("Cancel") { path = [] }.buttonStyle(.plain).frame(minHeight: 44)
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            List {
+                if term.isEmpty {
+                    Text("Search the titles of every chat this phone can read.")
+                        .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                } else {
+                    let rows = sidebarChats(model.pageChats(query), search: term, expanded: expandedAgents)
+                    conversationRows(rows, scope: "search")
+                    pageFooter(query)
+                    if rows.isEmpty && model.chatPages[query] != nil {
+                        Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
+            .environment(\.defaultMinListRowHeight, 0)
+            .task(id: "\(term):\(model.navigationVersion)") {
+                guard !term.isEmpty else { return }
+                do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
+                catch { return }
+                await model.loadPage(query)
+            }
+        }
+        .background(Color.suzentSurface)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -779,6 +890,16 @@ struct ContentView: View {
                     }.foregroundStyle(Color.suzentMuted)
                 }
             } else {
+                if let desktop = model.activeDesktop {
+                    Section {
+                        NavigationLink {
+                            DesktopsPage(model: model) { repairScanner = true }
+                        } label: {
+                            DesktopCard(desktop: desktop, origin: model.origin, count: model.desktops.count)
+                        }
+                    } header: { settingsHeader("Connection") }
+                }
+                // Everything here applies to the connected desktop only, so it lives in one section.
                 Section {
                     NavigationLink {
                         ScrollView {
@@ -787,37 +908,83 @@ struct ContentView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(PresentationTokens.spacePage)
                             }
                         }.background(Color.suzentBackground)
-                            .navigationTitle("Desktop access").navigationBarTitleDisplayMode(.inline)
-                    } label: {
+                            .navigationTitle("Permissions").navigationBarTitleDisplayMode(.inline)
+                    } label: { Text("Permissions") }.disabled(model.device == nil)
+                    Toggle(isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(model.device?.displayName ?? String(localized: "Desktop access"))
-                            Text(model.origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            Text("Enable foreground Node")
+                            if model.nodeEnabled {
+                                Text(model.nodeStatus).font(.caption).foregroundStyle(Color.suzentMuted)
+                            }
                         }
-                    }.disabled(model.device == nil)
-                } header: { settingsHeader("Desktop access") }
-                Section {
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
-                        .tint(Color(presentation: PresentationTokens.blue))
-                } header: { settingsHeader("This phone as a Node") } footer: {
-                    Text(model.nodeStatus).foregroundStyle(Color.suzentMuted)
-                }
-                Section {
-                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
-                    Button("Forget connection", role: .destructive) { confirmForget = true }
+                    }.tint(Color(presentation: PresentationTokens.blue))
+                    Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
+                    Button("Forget this desktop", role: .destructive) { confirmForget = true }
                         .foregroundStyle(Color.suzentDanger).disabled(model.busy)
-                } header: { settingsHeader("Connection") } footer: {
+                } header: { settingsHeader("This desktop") } footer: {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
-                Section {
-                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
-                } header: { settingsHeader("About") }
             }
+            Section {
+                if !model.isDemo {
+                    Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
+                }
+                Link("Privacy policy", destination: suzentPrivacyPolicyURL)
+            } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
-        .alert("Forget connection?", isPresented: $confirmForget) {
+        .alert("Forget this desktop?", isPresented: $confirmForget) {
             Button("Cancel", role: .cancel) {}
-            Button("Forget connection", role: .destructive) { model.forget() }
+            Button("Forget", role: .destructive) { model.forget() }
         } message: { Text("This phone will need to pair again before it can reach your desktop.") }
+    }
+
+    private func activeDesktopLine(_ desktop: SavedDesktop) -> some View {
+        HStack(spacing: 6) {
+            DesktopSwatch(desktop: desktop, size: 8)
+            Text(desktop.name).lineLimit(1).truncationMode(.tail)
+        }.suzentFont(PresentationTokens.typeSidebarSection, weight: .semibold).foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Desktop: \(desktop.name)"))
+    }
+
+    private func tabHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title).suzentFont(PresentationTokens.typeControl, weight: .bold)
+            .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 4).padding(.bottom, 4)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var settingsTab: some View {
+        VStack(spacing: 0) {
+            tabHeader("Settings")
+            settings.scrollContentBackground(.hidden)
+        }.background(Color.suzentBackground)
+    }
+
+    private var tasksTab: some View {
+        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
+        return VStack(spacing: 0) {
+            tabHeader("Tasks")
+            List {
+                if groups.isEmpty {
+                    Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
+                        .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
+                }
+                ForEach(groups) { group in
+                    if let task = group.task {
+                        scheduledTaskRow(task, root: group.root).sidebarListRow()
+                    } else if let root = group.root { conversationRows([root], scope: "tasks") }
+                    conversationRows(group.children, scope: "tasks", spacing: 0)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
+            .refreshable { await model.refresh() }
+        }.background(Color.suzentSurface)
     }
 
     private func settingsHeader(_ title: LocalizedStringKey) -> some View {
@@ -869,7 +1036,7 @@ struct ContentView: View {
                             }
                         }
                         Color.clear.frame(height: 1).id("bottom")
-                    }.padding(16)
+                    }.padding(16).readingWidth()
             }.id(chat.id)
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
@@ -877,10 +1044,10 @@ struct ContentView: View {
                     ApprovalCards(model: model)
                     ScrollView { ApprovalCards(model: model) }
                 }.frame(maxHeight: viewport.size.height * 0.4)
-                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8).readingWidth()
             }
             toastHost(conversationVisible)
-            composer(chat)
+            composer(chat).readingWidth()
         }.frame(width: viewport.size.width, height: viewport.size.height)
             .offset(y: attachmentsExpanded ? -200 : 0)
         if !chat.isRegent { AttachmentPanel(model: model, expanded: $attachmentsExpanded)
@@ -891,10 +1058,23 @@ struct ContentView: View {
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
+            .onDisappear { model.voice.stop() }
     }
 
     private func composer(_ chat: Chat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if model.voice.active {
+                VoiceCubeView(voice: model.voice).frame(height: 112).accessibilityHidden(true)
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.voice.status).suzentFont(14, weight: .medium)
+                        if !model.voice.transcript.isEmpty {
+                            Text(model.voice.transcript).suzentFont(14).lineLimit(3)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+
+                }.padding(.horizontal, 4)
+            }
             PendingAttachmentStrip(model: model)
             HStack(alignment: .center) {
                 if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
@@ -944,7 +1124,7 @@ struct ContentView: View {
                 Text(greeting).textCase(.uppercase).suzentFont(30, weight: .black)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
-            SuzentSelectionTrigger(value: chat.projectName ?? "Home", prefix: String(localized: "Creating in")) {
+            SuzentSelectionTrigger(value: chat.projectName ?? String(localized: "Home"), prefix: String(localized: "Creating in")) {
                 composing = false; showProjectPicker = true
             }.disabled(model.busy || model.projects.isEmpty)
             if model.isDemo {
@@ -957,22 +1137,82 @@ struct ContentView: View {
     }
 
     private func sendAction(_ chat: Chat) -> some View {
-        let stopping = model.streaming || chat.isRunning == true
-        let enabled = stopping ? model.device?.permissions.stop == true :
-            !model.busy && model.device?.permissions.send == true &&
-            (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
+        let action = ComposerAction.resolve(
+            hasContent: !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty,
+            busy: model.busy, running: model.streaming || chat.isRunning == true,
+            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting")
+        let loading = action == .loading || (action == .stop && model.stopInFlight)
+        let label: String = switch action {
+        case .voice: String(localized: "Start voice conversation")
+        case .send: String(localized: "Send")
+        case .loading: String(localized: "Processing…")
+        case .connecting: String(localized: "Cancel voice connection")
+        case .hangUp: String(localized: "End voice conversation")
+        case .stop: model.stopInFlight ? String(localized: "Stopping…") : String(localized: "Stop")
+        }
+        let symbol = action == .stop ? "stop.fill" : action == .hangUp ? "phone.down.fill" : action == .voice ? "waveform" : "arrow.up"
         return Button {
-            if !stopping { sends += 1 }
-            Task { if stopping { await model.stop() } else { await model.send() } }
+            switch action {
+            case .voice: composing = false; model.startVoice()
+            case .hangUp, .connecting: model.voice.stop()
+            case .loading: break
+            case .stop:
+                guard model.device?.permissions.stop == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                Task { await model.stop() }
+            case .send:
+                guard model.device?.permissions.send == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                guard !chat.id.isEmpty || model.device?.permissions.createChats == true else {
+                    model.error = String(localized: "Enable Create conversations for this phone, or open an existing conversation."); return
+                }
+                sends += 1
+                Task { await model.send() }
+            }
         } label: {
-            Image(systemName: stopping ? "stop.fill" : "arrow.up")
-                .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(stopping ? Color.suzentDanger : Color.suzentLink)
+            Group {
+                if loading || action == .connecting { ProgressView().tint(.white) }
+                else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
+            }.foregroundStyle(.white).frame(width: 36, height: 36)
+                .background(Color(presentation: action == .stop || action == .hangUp ? PresentationTokens.danger : PresentationTokens.blue))
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
-            .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
+        }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
+}
+
+private extension View {
+    /// Keeps lines readable when the conversation fills a wide iPad column.
+    func readingWidth() -> some View { frame(maxWidth: 760).frame(maxWidth: .infinity) }
+}
+
+/// Owns its focus: focus state held by the root view does not reach a pushed navigation destination.
+private struct SearchPageField: View {
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+            TextField("Search chats", text: $text).suzentFont(16)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .submitLabel(.search).focused($focused)
+            if !text.isEmpty {
+                Button { text = ""; focused = true } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Color.suzentMuted)
+                }.buttonStyle(.plain).frame(minWidth: 32, minHeight: 42).accessibilityLabel("Clear search")
+            }
+        }.padding(.horizontal, 12).frame(minHeight: 42)
+            .background(Color.suzentText.opacity(0.04))
+            // Only on the way in: coming back from a result should not raise the keyboard again. Focus set
+            // during the push transition is dropped, so it waits for the page to settle.
+            .task {
+                guard text.isEmpty else { return }
+                try? await Task.sleep(for: .milliseconds(450))
+                focused = true
+            }
+    }
 }

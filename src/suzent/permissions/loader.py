@@ -11,6 +11,16 @@ LEGACY_DEFAULT_MODES = frozenset({"accept_edits", "plan", "strict_readonly"})
 LEGACY_SHELL_TOOL_NAMES = frozenset({"bash_execute", "BashTool"})
 
 
+def _user_permissions_path(project_dir: Path, user_config_dir: Path | None) -> Path:
+    """The user's permissions.yaml: always in the data dir, never PROJECT_DIR
+    (read-only in packaged installs). A checkout copy is migrated once."""
+    from suzent.config.paths import user_config_file
+
+    return user_config_file(
+        "permissions.yaml", user_config_dir=user_config_dir, project_dir=project_dir
+    )
+
+
 def migrate_permission_tool_name(tool_name: str) -> str:
     """Map legacy shell permission keys to the unified capability."""
     return "ShellTool" if tool_name in LEGACY_SHELL_TOOL_NAMES else tool_name
@@ -110,13 +120,20 @@ def load_permission_overrides(
     """
     cfg_dir = project_dir / "config"
     example_path = cfg_dir / "permissions.example.yaml"
-    user_path = cfg_dir / "permissions.yaml"
-    data_user_path = user_config_dir / "permissions.yaml" if user_config_dir else None
+    from suzent.config.paths import legacy_config_layer
+
+    data_user_path = _user_permissions_path(project_dir, user_config_dir)
+    # A checkout copy that existed independently of the data-dir one stays a
+    # lower layer; one that was migrated is read from the data dir only.
+    legacy_path = legacy_config_layer(
+        "permissions.yaml", user_config_dir=user_config_dir, project_dir=project_dir
+    )
 
     merged_tools: dict[str, dict[str, Any]] = {}
-    paths = [example_path, user_path]
-    if data_user_path is not None:
-        paths.append(data_user_path)
+    paths = [example_path]
+    if legacy_path is not None:
+        paths.append(legacy_path)
+    paths.append(data_user_path)
 
     for path in paths:
         if not path.exists():
@@ -224,8 +241,7 @@ def persist_global_command_rule(
     if cleaned_match not in {"exact", "prefix"}:
         raise ValueError(f"Unsupported match_type: {match_type}")
 
-    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
-    user_path = cfg_dir / "permissions.yaml"
+    user_path = _user_permissions_path(project_dir, user_config_dir)
 
     document, has_wrapper = _load_permissions_user_file(user_path, logger)
 
@@ -292,7 +308,7 @@ def persist_global_command_rule(
     if not updated and user_path.exists():
         return False
 
-    cfg_dir.mkdir(parents=True, exist_ok=True)
+    user_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         import yaml  # type: ignore
     except Exception as exc:
@@ -313,8 +329,7 @@ def persist_global_permission_rule(
     *,
     user_config_dir: Path | None = None,
 ) -> bool:
-    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
-    user_path = cfg_dir / "permissions.yaml"
+    user_path = _user_permissions_path(project_dir, user_config_dir)
     document, has_wrapper = _load_permissions_user_file(user_path, logger)
     if has_wrapper:
         wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"
@@ -334,7 +349,7 @@ def persist_global_permission_rule(
         if not isinstance(existing, dict) or existing.get("id") != rule.id
     ]
     rules.append(serialized)
-    cfg_dir.mkdir(parents=True, exist_ok=True)
+    user_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml  # type: ignore
 
     with user_path.open("w", encoding="utf-8") as fh:
@@ -357,8 +372,7 @@ def persist_default_permission_mode(
     if cleaned not in VALID_DEFAULT_MODES:
         raise ValueError(f"Unsupported default permission mode: {mode}")
 
-    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
-    user_path = cfg_dir / "permissions.yaml"
+    user_path = _user_permissions_path(project_dir, user_config_dir)
     document, has_wrapper = _load_permissions_user_file(user_path, logger)
     if has_wrapper:
         wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"
@@ -373,7 +387,7 @@ def persist_default_permission_mode(
         return False
     payload["default_permission_mode"] = cleaned
 
-    cfg_dir.mkdir(parents=True, exist_ok=True)
+    user_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml  # type: ignore
 
     with user_path.open("w", encoding="utf-8") as fh:
@@ -440,8 +454,7 @@ def delete_global_permission_rule(
     *,
     user_config_dir: Path | None = None,
 ) -> bool:
-    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
-    user_path = cfg_dir / "permissions.yaml"
+    user_path = _user_permissions_path(project_dir, user_config_dir)
     document, has_wrapper = _load_permissions_user_file(user_path, logger)
     if has_wrapper:
         wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"

@@ -31,10 +31,33 @@ don't need a computer, an API key, or an internet connection: you can send
 messages, try a trip-planning example, approve or reject a pretend tool request,
 attach files, and organize chats.
 
-Replies are scripted and nothing reaches an AI model; a banner says so the whole
-time. Attachments stay on the phone. **Reset demo** in Settings restores the
+Replies are scripted and nothing reaches an AI model; the pinned **Welcome to
+Suzent** conversation explains this. Attachments stay on the phone. **Reset demo** in Settings restores the
 examples, and **Exit demo** takes you back to the connection screen. An existing
 pairing is kept while you're in the demo.
+
+## Talk with Suzent
+
+In a conversation, leave the message box empty and tap the waveform button to
+start a voice conversation. Allow microphone access when prompted. The input
+area shows the same animated cube as desktop, together with call status and live
+captions. The cube responds to your microphone and to Suzent listening, thinking,
+and speaking. Tap the hang-up button to end the call.
+During a call, the action stays **Hang up** (or **Cancel** while connecting).
+Outside a call, typing a message or attaching a file switches the waveform button
+to **Send**, and a running agent task shows **Stop**. A progress indicator
+replaces the action while a message is being processed. If voice needs setup or
+additional permissions, tapping its button explains what to change.
+
+Use a desktop version that supports mobile voice and configure a realtime voice
+model in **Settings → Voice & audio** on the desktop first. Your phone needs both **Send
+messages** and **Stop responses** permissions, because voice can start and cancel
+agent tasks. Starting a call in a new conversation also requires **Create
+conversations**. Voice is unavailable in the offline demo.
+
+Calls end when you leave the conversation, switch desktops, or put the app in
+the background. Ending a call does not stop an agent task that voice already
+started; use **Stop** if you also want to cancel that task.
 
 ## Pair your phone
 
@@ -42,17 +65,29 @@ pairing is kept while you're in the demo.
    turn it on, and restart Suzent. See
    [Make this computer reachable](./nodes.md#step-1-make-this-computer-reachable).
 2. **Choose what the phone may do.** Open **Settings → Devices → Mobile access**
-   and expand **Phone permissions**. Everything is on except managing
-   conversations:
+   and expand **Phone permissions**. Pick one of these; **Full control** is
+   selected for you:
+
+   | Choice | Lets the phone |
+   |---|---|
+   | **Full control** | Do everything you can do in a chat on the computer: read and organize every conversation, chat with the agent, and answer its approval requests. Best for your own phone. |
+   | **Chat only** | Read every conversation and chat with the agent, but not answer approval requests or rename, move, or delete chats. |
+   | **Read only** | See every conversation without sending anything. |
+   | **Custom** | Choose each permission yourself, and pick which conversations the phone can read. |
+
+   With **Custom**, the permissions are:
 
    | Permission | Lets the phone |
    |---|---|
    | **Read all conversations, including future ones** | See every chat. Untick it to pick chats one by one under **Conversations this phone can read**. |
    | **Create conversations** | Start new chats, and branch a conversation. |
-   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. Off by default. |
+   | **Manage conversations (pin, rename, move, delete)** | Organize chats, and, together with **Send messages**, edit and resend or retry a reply. |
    | **Send messages** | Write to the agent, which can then use its tools under the chat's usual [permission mode](./tools/human-in-the-loop.md). |
    | **Stop responses** | Stop a reply in progress. |
    | **Approve tool requests** | Answer the agent's approval requests. |
+
+   Whatever you pick, the agent's tools still follow each chat's permission
+   mode, and you can change or revoke the phone's access at any time.
 
 3. **Check the address.** Under **Connection settings**, **Backend address
    reachable from your phone** is filled in for your home network. Connections on your home network are
@@ -66,6 +101,26 @@ The QR code works once and expires after a few minutes; click **New QR code**
 for another. Anyone who scans it gets the permissions you picked, so don't
 share it.
 
+### Pair more than one computer
+
+You can pair the same phone with several computers, for example your laptop
+and a home server. Open **Settings**, tap the computer at the top, and tap
+**Pair another desktop**, then scan or paste that computer's invitation as
+above. Pairing a computer the phone already knows replaces its old entry
+instead of adding a second one.
+
+The phone is connected to one computer at a time. Its name appears under the
+**SUZENT** title, and **Chats** and **Tasks** show that computer's
+conversations and scheduled tasks. To switch, open **Settings**, tap the
+computer at the top, and pick another one. If it can't be reached, you stay
+where you are. Swipe left on a computer in that list to forget it on the
+phone.
+
+Each computer keeps its own permissions for the phone. Everything under
+**This desktop** in **Settings** (**Permissions**, **Enable foreground Node**,
+**Pair again**, and **Forget this desktop**) applies to the computer you're
+connected to.
+
 ### Using it away from home
 
 The phone talks to your computer directly; there's no Suzent cloud in between.
@@ -77,17 +132,20 @@ keeps it running when the window is closed.
 
 ## What you can do on the phone
 
-- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
-  **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, your projects (tap one to open it, and **Load
-  more** for older chats), and your scheduled tasks. Search looks through the
-  titles of every chat the phone may read, not only the ones already loaded.
-  **Settings** is in the top toolbar.
+- **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
+  and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
+  and **New conversation** are at the top, then pinned chats, your three most
+  recent with **View all**, and your projects (tap one to open it, and **Load
+  more** for older chats). Tap **Search chats** to open a search page that looks
+  through the titles of every chat the phone may read, not only the ones
+  already loaded. Going back from a chat you opened there returns to the
+  results, and **Cancel** returns to **Chats**. On a tablet, everything is in
+  one list on the left, with **Settings** in its toolbar and search at the top.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
-  last message, retry a reply, or branch a conversation. Edit and retry also
-  need the manage permission.
+  last message, retry a reply, or branch a conversation. Edit and retry need
+  **Full control** (or the manage permission under **Custom**).
 - **Talk to Regent.** If the phone may read all conversations, you can talk to
   [Suzent Regent](../02-using/regent.md) as on the computer, see when it's
   working or needs you, and open the conversations it handed work to. You
@@ -104,34 +162,40 @@ keeps it running when the window is closed.
   appears above the message box with **Allow once** and **Reject** for each
   request.
 - **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
-  it to pin or delete, if the phone may manage conversations.
+  it to pin or delete, if the phone has **Full control** (or may manage
+  conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Scheduled tasks** shows failed tasks first, then active and
+  started them. **Tasks** (on a tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
 The app is in English and Simplified Chinese, and follows your phone's light
 or dark mode. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
-**Pair again** and **Forget connection**.
+**Pair again**, **Forget connection**, and a way to switch to each other
+computer you've paired.
 
 ## Change or remove access
 
 On your computer, **Paired phones** under **Mobile access** lists each phone
-by name with what it may do. Click **Edit permissions** to change any of them
-and **Save**; the phone keeps working with the new permissions straight away.
+by name with what it may do. Click **Edit permissions**, pick another choice
+(or **Custom**), and **Save**; the phone keeps working with the new permissions straight away.
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
-**Forget connection** in the app only removes the connection from the phone.
-Also click **Revoke access** on the computer so its access is gone too.
+**Forget this desktop** in the app's **Settings** (or **Forget connection** in
+**Connection help**) removes that computer from the phone and also asks the
+computer to revoke the phone's access; other paired computers stay. If the
+computer can't be reached at that moment, click **Revoke access** there
+yourself. Pairing the same phone again replaces its old entry instead of
+adding a second one.
 
 ## Limits
 
 The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
-- voice input, or the agent's interactive forms and buttons;
+- the agent's interactive forms and buttons;
 - memory, settings, or tool permissions, which stay on the computer;
 - offline access to your conversations.
 

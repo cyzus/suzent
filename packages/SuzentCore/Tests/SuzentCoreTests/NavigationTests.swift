@@ -13,9 +13,9 @@ import Testing
     let second = try await client.chatPage(ChatPageQuery(), offset: 30, limit: 30)
     #expect(second.nextOffset == nil)
     #expect(Set(initial.recent.chats.map(\.id)).isDisjoint(with: second.chats.map(\.id)))
-    let search = try await client.chatPage(ChatPageQuery("search", value: "unavailable"), offset: 0, limit: 30)
+    let search = try await client.chatPage(ChatPageQuery("search", value: "digest"), offset: 0, limit: 30)
     #expect(search.chats.map(\.id) == ["demo-failure"])
-    #expect(initial.metadata.projects.first { $0.id == "demo-home" }?.chatCount == 39)
+    #expect(initial.metadata.projects.first { $0.id == "demo-home" }?.chatCount == 37)
 }
 
 @Test func appendedPagesDeduplicateUpdatedRows() {

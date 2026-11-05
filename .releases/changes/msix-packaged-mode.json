@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add an MSIX packaged mode for the Microsoft Store build: the desktop app runs its bundled Python runtime, leaves updates to the Store, and uses the Windows StartupTask for start at login."
+}

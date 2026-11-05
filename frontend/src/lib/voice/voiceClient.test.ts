@@ -79,6 +79,14 @@ describe('VoiceClient', () => {
     expect(new URL(FakeSocket.instances[0].url).searchParams.has('chat_id')).toBe(false);
   });
 
+  it('sends project_id only when starting a new chat', () => {
+    const { client } = setup();
+    client.connect(null, 'work');
+    expect(new URL(FakeSocket.instances[0].url).searchParams.get('project_id')).toBe('work');
+    client.connect('abc', 'work');
+    expect(new URL(FakeSocket.instances[1].url).searchParams.has('project_id')).toBe(false);
+  });
+
   it('appends the remote host auth token to /ws/voice when present', async () => {
     const authToken = await import('../authToken');
     const spy = vi

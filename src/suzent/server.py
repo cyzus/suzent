@@ -199,6 +199,7 @@ from suzent.routes.plugin_routes import (
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
+    get_system_idle,
     get_system_version,
     list_host_files,
     open_in_explorer,
@@ -927,9 +928,9 @@ async def startup():
     # so the launch below is unconditional and outside this try.
     try:
         import json
-        from suzent.config import PROJECT_DIR
+        from suzent.config.paths import user_config_file
 
-        config_path = PROJECT_DIR / "config/social.json"
+        config_path = user_config_file("social.json")
         social_config = {}
 
         if config_path.exists():
@@ -1365,6 +1366,7 @@ app = Starlette(
         Route("/ops/service/enabled", set_ops_service_enabled, methods=["POST"]),
         Route("/ops/logs", get_ops_logs, methods=["GET"]),
         Route("/system/version", get_system_version, methods=["GET"]),
+        Route("/system/idle", get_system_idle, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
         Route("/memory/core", get_core_memory, methods=["GET"]),

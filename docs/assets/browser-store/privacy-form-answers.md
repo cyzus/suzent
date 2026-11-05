@@ -60,7 +60,7 @@ Transfers to a configured AI provider must be disclosed; do not interpret these 
 
 ## Privacy policy URL
 
-Enter https://suzent.com/browser-privacy. Publisher: Yizhou Chi. Privacy contact: cyzus@outlook.com.
+Enter https://suzent.com/browser-privacy. Publisher: Yizhou Chi. Privacy contact: support@suzent.com.
 
 ## Sources
 

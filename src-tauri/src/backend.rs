@@ -3,6 +3,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::packaged;
+
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 const BACKEND_READY_TIMEOUT: Duration = Duration::from_secs(120);
@@ -70,6 +72,11 @@ impl BackendProcess {
         let Some(payload) = health_payload(port) else {
             return Ok(None);
         };
+        // A packaged build leaves dev/source backends alone and spawns its
+        // bundled one instead.
+        if packaged::is_packaged() && !packaged::may_attach(&payload) {
+            return Ok(None);
+        }
         validate_backend_identity(&payload, workspace, port)?;
         Ok(Some(Self::attached(port)))
     }
@@ -127,7 +134,14 @@ impl BackendProcess {
 
         let venv_python = find_venv_python(repo_dir);
         let control_token = uuid::Uuid::new_v4().simple().to_string();
-        let mut command = if let Some(ref py) = venv_python {
+        let packaged = packaged::packaged_python();
+        let mut command = if let Some(ref py) = packaged {
+            // Packaged mode (see packaged.rs): Suzent is installed in the
+            // bundled runtime, so no repo checkout, .venv or uv is needed.
+            let mut cmd = packaged::python_command(py, &data_dir);
+            cmd.args(["-m", "suzent.server"]);
+            cmd
+        } else if let Some(ref py) = venv_python {
             let mut cmd = Command::new(py);
             cmd.args(["-m", "suzent.server"]);
             cmd
@@ -150,7 +164,12 @@ impl BackendProcess {
             .env("SUZENT_SERVICE_CONTROL_TOKEN", &control_token)
             .env("PYTHONUNBUFFERED", "1")
             .env("LOG_FILE", &log_file)
-            .current_dir(repo_dir)
+            // There is no repo in packaged mode; run from the data dir instead.
+            .current_dir(if packaged.is_some() {
+                data_dir.as_path()
+            } else {
+                repo_dir
+            })
             .stdout(Stdio::from(log_handle))
             .stderr(Stdio::from(log_handle_stderr))
             .stdin(Stdio::piped()); // keep pipe open; Python monitor_stdin blocks on it until Tauri exits
@@ -285,6 +304,9 @@ fn validate_backend_identity(
 ) -> Result<(), String> {
     let actual_version = payload.get("version").and_then(|value| value.as_str());
     let actual_root = payload.get("source_root").and_then(|value| value.as_str());
+    if packaged::is_packaged() {
+        return packaged::validate_backend_identity(payload, port);
+    }
     let expected_root = std::fs::canonicalize(workspace).map_err(|error| {
         format!(
             "Cannot identify Suzent installation {}: {error}",
@@ -530,7 +552,12 @@ pub fn find_data_dir() -> PathBuf {
             return PathBuf::from(dir);
         }
     }
-    dirs_home().join(".suzent")
+    // Build-time override of the default dir name, e.g. `.suzent-preview` for
+    // a side-by-side test build. Product builds leave it unset.
+    let name = option_env!("SUZENT_DATA_DIR_NAME")
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(".suzent");
+    dirs_home().join(name)
 }
 
 /// Locate the `uv` executable (PATH, ~/.cargo/bin, ~/.local/bin).

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions."
+}

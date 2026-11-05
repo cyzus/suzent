@@ -1,0 +1,5 @@
+<resources>
+    <string name="voice_preview_title">Voice animation preview</string>
+    <string name="voice_preview_notice">Animation only. The microphone is off.</string>
+    <string name="voice_preview_close">Close preview</string>
+</resources>

@@ -88,12 +88,17 @@ export function mobilePairingPayload(
   if (candidates.length > 6) throw new Error('Too many backend addresses');
   if (invitation.tls && candidates.some((candidate) => new URL(candidate).protocol !== 'https:'))
     throw new Error('Device trust requires HTTPS');
+  // Phones merge `origin` into `origins`, so repeating it only makes the QR denser.
+  // Protocol 3 carries only the CA fingerprint; phones read the CA from the TLS handshake.
+  const { origins: _origins, tls, expires_at, ...rest } = invitation;
   const value = JSON.stringify({
     type: 'suzent.mobile',
-    pairing_protocol: invitation.tls ? 2 : 1,
+    pairing_protocol: tls ? 3 : 1,
     origin: primary,
-    ...(candidates.length > 1 ? { origins: candidates } : {}),
-    ...invitation,
+    ...(candidates.length > 1 ? { origins: candidates.slice(1) } : {}),
+    ...rest,
+    ...(tls ? { tls_fingerprint: tls.fingerprint } : {}),
+    expires_at: Math.floor(expires_at),
   });
   if (new TextEncoder().encode(value).length > 4096)
     throw new Error('Pairing invitation too large');

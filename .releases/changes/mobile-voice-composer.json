@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "minor"},
+  "summary": "Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control."
+}

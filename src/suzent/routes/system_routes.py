@@ -6,6 +6,7 @@ import os
 import sys
 import subprocess
 import platform
+import time
 from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -38,6 +39,14 @@ async def get_system_version(_request: Request) -> JSONResponse:
     """Return version information for the running backend."""
 
     return JSONResponse(get_system_identity())
+
+
+async def get_system_idle(_request: Request) -> JSONResponse:
+    """Report whether no agent work has run recently, so the desktop app can
+    restart into a staged update without interrupting anyone."""
+    from suzent.service.auto_update import agents_idle
+
+    return JSONResponse({"idle": agents_idle(time.time())})
 
 
 def _get_resolver(chat_id: str) -> PathResolver:

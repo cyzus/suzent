@@ -19,12 +19,15 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import Field, TypeAdapter, ValidationError
 
+from suzent.config.paths import PROJECT_DIR
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
 # Root of the project (two levels up from this file → src/suzent/core/providers/)
-_PROJECT_DIR = Path(__file__).resolve().parents[4]
+# Same root as the rest of Suzent, so installed and packaged builds (where
+# this file is in site-packages, not the repo) still find config/.
+_PROJECT_DIR = Path(PROJECT_DIR)
 _CONFIG_DIR = _PROJECT_DIR / "config"
 
 
@@ -138,13 +141,16 @@ def user_providers_path() -> Path:
 def load_user_provider_entries() -> list[dict[str, Any]]:
     """User-defined provider entries.
 
-    Older versions wrote them into the install's ``config/``; that file is read
-    until the first save to the data dir, which then supersedes it.
+    Older versions wrote them into the install's ``config/``; that file is
+    copied to the data dir on first read.
     """
+    from suzent.config.paths import user_config_file
+
     path = user_providers_path()
-    if path.exists():
-        return _load_json_file(path)
-    return _load_json_file(_CONFIG_DIR / "providers.user.json")
+    path = user_config_file(
+        path.name, user_config_dir=path.parent, legacy_dir=_CONFIG_DIR
+    )
+    return _load_json_file(path)
 
 
 def save_user_provider_entries(entries: list[dict[str, Any]]) -> None:

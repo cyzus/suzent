@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -1118,7 +1119,9 @@ def test_attachments_are_sent_by_issued_id_only(setup_client, monkeypatch):
         return JSONResponse({"chat_id": "shared"}, status_code=202)
 
     monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
-    assert client.get("/mobile/client/session").json()["attachments"] == 1
+    session = client.get("/mobile/client/session").json()
+    assert session["attachments"] == 1
+    assert session["desktop_name"] == socket.gethostname()[:100]
 
     photo = {"files": ("photo.jpg", b"abc", "image/jpeg")}
     response = client.post("/mobile/client/upload?chat_id=shared", files=photo)
@@ -1551,3 +1554,112 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
     )
     assert sent[0]["chat_id"] == focal.id
     assert sent[0]["config"]["platform"] == "focal"
+
+
+def test_forget_pairing_revokes_only_the_calling_device(setup_client):
+    client, store = setup_client
+    assert client.post("/mobile/client/pairing/forget", json={}).status_code == 401
+    kept = grant(store, chat_ids=["shared"])
+    forgotten = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {forgotten['token']}"
+    assert client.post("/mobile/client/pairing/forget", json={}).status_code == 200
+    assert store.verify(forgotten["token"]) is None
+    assert store.verify(kept["token"]) is not None
+    assert [d["device_id"] for d in store.devices()] == [kept["device"]["device_id"]]
+
+
+def test_capabilities_advertise_installation_id_for_claims(setup_client):
+    client, _ = setup_client
+    assert client.get("/mobile/capabilities").json()["installation_id"] == 1
+
+
+@pytest.mark.parametrize(
+    ("permissions", "chat_id"),
+    [
+        ({"chat_ids": ["shared"], "stop": True}, "shared"),
+        ({"chat_ids": ["shared"], "send": True}, "shared"),
+        ({"chat_ids": ["shared"], "send": True, "stop": True}, "private"),
+        ({"all_chats": True, "send": True, "stop": True}, "missing"),
+        ({"all_chats": True, "send": True, "stop": True}, ""),
+    ],
+)
+def test_voice_requires_shared_existing_chat_and_task_permissions(
+    setup_client, permissions, chat_id
+):
+    from starlette.websockets import WebSocketDisconnect
+
+    client, store = setup_client
+    result = grant(store, **permissions)
+    with pytest.raises(WebSocketDisconnect) as failure:
+        with client.websocket_connect(
+            f"/mobile/client/voice?chat_id={chat_id}",
+            headers={"Authorization": f"Bearer {result['token']}"},
+        ):
+            pytest.fail("Unauthorized voice connection accepted")
+    assert failure.value.code == 1008
+
+
+@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer invalid"}])
+def test_voice_never_accepts_missing_or_host_credentials(setup_client, headers):
+    from starlette.websockets import WebSocketDisconnect
+
+    client, _ = setup_client
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/mobile/client/voice?chat_id=shared", headers=headers
+        ):
+            pytest.fail("Unauthenticated voice connection accepted")
+
+
+def test_voice_stream_reuses_bridge_and_revocation_releases_it(setup_client):
+    from threading import Event
+
+    from starlette.websockets import WebSocketDisconnect
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, stop=True)
+    released = Event()
+
+    class Bridge:
+        def __init__(self, websocket, chat_id):
+            self.websocket = websocket
+            assert chat_id == "shared"
+
+        async def run(self):
+            try:
+                await self.websocket.send_json({"type": "ready"})
+                audio = await self.websocket.receive_bytes()
+                await self.websocket.send_bytes(audio)
+                await asyncio.Event().wait()
+            finally:
+                released.set()
+
+    client.app.state.voice_bridge_factory = Bridge
+    with client.websocket_connect(
+        "/mobile/client/voice?chat_id=shared",
+        headers={"Authorization": f"Bearer {result['token']}"},
+    ) as websocket:
+        assert websocket.receive_json() == {"type": "ready"}
+        websocket.send_bytes(b"\x01\x00\x02\x00")
+        assert websocket.receive_bytes() == b"\x01\x00\x02\x00"
+        store.revoke(result["device"]["device_id"])
+        with pytest.raises(WebSocketDisconnect) as failure:
+            websocket.receive_json()
+        assert failure.value.code == 1008
+    assert released.wait(2)
+
+
+def test_voice_rejects_browser_origin(setup_client):
+    from starlette.websockets import WebSocketDisconnect
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, stop=True)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/mobile/client/voice?chat_id=shared",
+            headers={
+                "Authorization": f"Bearer {result['token']}",
+                "Origin": "https://untrusted.example",
+            },
+        ):
+            pytest.fail("Cross-origin voice connection accepted")

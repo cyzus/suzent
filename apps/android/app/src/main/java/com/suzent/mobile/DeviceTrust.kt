@@ -1,13 +1,19 @@
 package com.suzent.mobile
 
+import java.net.InetSocketAddress
+import java.net.URI
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.Base64
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
@@ -44,5 +50,34 @@ data class DeviceTrust(val version: Int, val caCertificate: String, val fingerpr
     companion object {
         fun parse(json: JSONObject): DeviceTrust = DeviceTrust(json.getInt("version"),
             json.getString("ca_certificate"), json.getString("fingerprint")).also { it.certificate() }
+
+        /** Pick the CA whose hash the QR pinned out of the chain a desktop presents. */
+        fun fromChain(chain: List<ByteArray>, fingerprint: String): DeviceTrust? = chain.firstNotNullOfOrNull { der ->
+            DeviceTrust(1, Base64.getEncoder().encodeToString(der), fingerprint).takeIf { runCatching { it.certificate() }.isSuccess }
+        }
+
+        /**
+         * Protocol 3 QR codes carry only the CA fingerprint. The handshake is aborted as soon as the
+         * chain is read, so nothing is sent before the CA is pinned.
+         */
+        suspend fun fetch(origin: String, fingerprint: String): DeviceTrust = withContext(Dispatchers.IO) {
+            val url = URI(origin)
+            var found: DeviceTrust? = null
+            val capture = object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = throw CertificateException()
+                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                    found = fromChain(chain.map { it.encoded }, fingerprint)
+                    throw CertificateException("Chain captured")
+                }
+                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+            }
+            val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf(capture), null) }
+            (context.socketFactory.createSocket() as SSLSocket).use { socket ->
+                socket.soTimeout = 5000
+                socket.connect(InetSocketAddress(url.host.trim('[', ']'), if (url.port == -1) 443 else url.port), 5000)
+                try { socket.startHandshake() } catch (_: java.io.IOException) { }
+            }
+            found ?: throw PairingFailure(PairingFailure.Reason.SECURE_CONNECTION)
+        }
     }
 }

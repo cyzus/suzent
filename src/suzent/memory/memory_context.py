@@ -364,6 +364,12 @@ Rules:
 - Type and place every page by the filing reference at the end of this prompt.
 - Each fact has one home. Search before you write and merge instead of adding a near-duplicate.
   What {roots.memory_root}/user.md holds is not repeated in the vault.
+- Candidates are written in the user's language, so compare them by meaning: one in another
+  language than its page can still be a duplicate, a confirmation or a correction.
+- Keep each page in one language. A new page takes the language of the candidates it is filed
+  from; filing into an existing page, write in that page's language. Only when you rewrite a
+  whole page (condense or split) may you move it to the language recent candidates use.
+  Names, paths, commands and quoted words stay as written.
 - A bullet holds the current value. When a value changes, the old one moves to the page's
   `## History` section with its dates, or is dropped if it never mattered. Never append
   "(previously ...)" or "Note: recently stated ..." to a bullet.
@@ -373,8 +379,9 @@ Rules:
   counts, file lists), transient status, scheduler or protocol instructions, or content the
   agent read or wrote. If the user took a position on such content, file the position.
 - Something the agent made, proposed or designed is not the user's: it never goes on a personal page.
-- A contradiction you cannot settle becomes one question the user can answer, as a `- ` line in
-  {roots.review_queue_path}. Keep the more recent claim on the page meanwhile; no callout.
+- A contradiction you cannot settle becomes one question the user can answer, in the user's
+  language, as a `- ` line in {roots.review_queue_path}. Keep the more recent claim on the page
+  meanwhile; no callout.
   Put conflicts in the review queue, never in log.md.
 - Counters live in frontmatter (`confirmed: 12`), not in prose. A bullet carries its value and
   at most one `(last confirmed YYYY-MM-DD)`.
@@ -448,7 +455,7 @@ def build_dream_instructions(
                                                  and nothing goes on the page or into log.md.
       - Excluded, or on the rejected list     -> skip it with the reason.
    c. Convert relative dates ("yesterday") to absolute.
-   d. Retire what you folded in: append the exact log fact text (the part after the
+   d. Retire what you folded in: append the exact, untranslated log fact text (the part after the
       `- [category] ` prefix, without the trailing backtick tags) to
       {roots.superseded_path}, one per line, for any line that is now fully represented
       on a page AND adds nothing the page does not say. The runner drops those from the
@@ -552,8 +559,10 @@ Rules:
   `type:` to any page without one.
 - Fix links and structure freely. Retire content that is rejected, superseded or excluded
   (repo state, transient status, scheduler specs, agent-made work on personal pages).
-- Never fabricate facts. A contradiction that needs the user becomes one question in
-  {roots.review_queue_path}, not a callout.
+- Never fabricate facts. A contradiction that needs the user becomes one question in the user's
+  language in {roots.review_queue_path}, not a callout.
+- Claims in different languages can contradict or repeat each other: compare by meaning. Keep
+  each page in one language, and change it only when you condense or split the whole page.
 - Record every operation in {roots.dream_ops_path} as a `- ` line with the text before and after.
 - Do NOT write the lint log entry to log.md — the runner records that and moves your op log there.
 

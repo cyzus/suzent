@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Fix chats failing on Windows with a LocalWorkspaceBackend error; repository instruction files are skipped there for now."
+}

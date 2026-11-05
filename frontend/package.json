@@ -1,7 +1,7 @@
 {
   "name": "suzent-frontend",
   "private": true,
-  "version": "0.18.0",
+  "version": "0.22.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,9 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
-    "i18n:check-ui": "node scripts/check-ui-english.mjs"
+    "i18n:check-ui": "node scripts/check-ui-english.mjs",
+    "build:mobile-voice": "node scripts/build-mobile-voice.mjs",
+    "check:mobile-voice": "node scripts/build-mobile-voice.mjs --check"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

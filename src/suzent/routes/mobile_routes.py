@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from starlette.exceptions import HTTPException
-from starlette.requests import Request
+from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -33,6 +33,7 @@ class ClaimRequest(BaseModel):
     confirm_permissions: StrictBool = False
     rotate: StrictBool = False
     repair_proof: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    installation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 class PickupRequest(BaseModel):
@@ -56,7 +57,7 @@ class ManagementRequest(BaseModel):
     enabled: StrictBool
 
 
-def get_mobile_store(request: Request) -> PairingStore:
+def get_mobile_store(request: HTTPConnection) -> PairingStore:
     state = request.app.state
     if not hasattr(state, "mobile_store"):
         try:
@@ -77,6 +78,7 @@ async def capabilities(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "pairing_protocol": 1,
             "pairing_repair": 1,
+            "installation_id": 1,
             "local_tls": 1,
         }
     )

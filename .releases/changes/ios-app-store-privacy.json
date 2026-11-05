@@ -1,0 +1,1 @@
+{"products": {"mobile": "patch"}, "summary": "The iOS app now ships a privacy manifest, declares its encryption use, and no longer reuses a pairing left behind by a previous installation."}

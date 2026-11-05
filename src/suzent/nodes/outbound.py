@@ -58,6 +58,14 @@ class OutboundConnectionManager:
             )
         return out
 
+    async def refresh_capabilities(self) -> None:
+        """Re-advertise capabilities on every live outbound connection."""
+        for gateway_url, c in list(self._conns.items()):
+            if c["task"].done():
+                continue
+            names = await c["host"].refresh_capabilities()
+            logger.info(f"Outbound {gateway_url}: capabilities {', '.join(names)}")
+
     async def stop(self, gateway_url: str) -> bool:
         """Stop and forget an outbound connection."""
         c = self._conns.pop(gateway_url, None)

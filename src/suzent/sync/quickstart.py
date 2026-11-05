@@ -155,6 +155,7 @@ def quickstart_github_sync(
         remote=remote,
         auto_sync_enabled=auto_sync_enabled,
         interval_hours=interval_hours,
+        fresh_clone=cloned_existing_remote,
     )
 
     git_status: dict | None = None
@@ -192,6 +193,7 @@ def _save_default_profile(
     remote: str,
     auto_sync_enabled: bool,
     interval_hours: int,
+    fresh_clone: bool = False,
 ) -> SyncProfile:
     from suzent.sync.service import GitHubSyncService
 
@@ -206,6 +208,10 @@ def _save_default_profile(
     profile.remote = remote
     profile.auto_sync_enabled = auto_sync_enabled
     profile.interval_hours = max(1, interval_hours)
+    if fresh_clone:
+        # This device has not restored the cloned brain yet; the first pull
+        # must replace local files wholesale. See GitHubSyncService.pull.
+        profile.last_sync_at = None
     return service.save_profile(profile)
 
 

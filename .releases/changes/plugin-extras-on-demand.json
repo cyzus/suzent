@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Installs and desktop updates now sync only the packages of the plugins you have on, as suzent upgrade does: a fresh install no longer downloads every chat app's SDK, a chat app you removed stays removed, and an update no longer uninstalls the Camera plugin's OpenCV."
+}
