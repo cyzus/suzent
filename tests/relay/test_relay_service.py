@@ -11,11 +11,11 @@ import pytest
 from starlette.requests import Request
 
 from suzent.core.secrets import is_private_key
-from suzent.relay.agent import RelayState
+from suzent.relay.agent import RelayState, token_hash
 from suzent.relay.service import KEY_SECRET, WEBHOOK_CHANNEL_SECRET, RelayService
 from suzent.routes import cron_routes, mobile_routes
 
-from .test_relay_agent import FakeRelay, backend
+from .test_relay_agent import Channel, FakeRelay, backend
 
 
 class MemorySecrets:
@@ -99,12 +99,13 @@ async def test_webhook_channel_only_reaches_hooks(
         service = make_service(tmp_path, secrets)
         await service.configure(url=relay.url, key=None, enabled=True)
         await wait_for(service, RelayState.CONNECTED)
-        await relay.send(
+        channel = Channel(relay, token_hash(secrets.values[WEBHOOK_CHANNEL_SECRET]))
+        await channel.send(
             {"t": "hreq", "id": "1", "method": "GET", "path": "/secret", "headers": {}}
         )
-        head, _ = await relay.response("1")
+        head, _ = await channel.response("1")
         assert head["status"] == 404
-        await relay.send(
+        await channel.send(
             {
                 "t": "hreq",
                 "id": "2",
@@ -113,7 +114,7 @@ async def test_webhook_channel_only_reaches_hooks(
                 "headers": {},
             }
         )
-        head, _ = await relay.response("2")
+        head, _ = await channel.response("2")
         assert head["status"] == 200
         await service.stop()
 

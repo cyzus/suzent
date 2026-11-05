@@ -92,3 +92,62 @@ Operator routes (host authorization, like the rest of `/mobile/` outside
 | `GET /mobile/relay` | `{url, enabled, has_key, state, detail, protocol}`. The key itself is never returned. |
 | `POST /mobile/relay` | `{url, key?, enabled}`. `key` omitted or `null` keeps the stored key, `""` removes it. `400` for a URL that isn't http(s). |
 | `POST /mobile/relay/reset` | New channel tokens. |
+
+## Phones: end-to-end encryption
+
+Phones use a second channel, the **phone channel**, whose relay can see only
+ciphertext. Its agent serves `E2EEndpoint` (`src/suzent/relay/e2e.py`), which
+answers every plaintext `hreq` with `403` and every WebSocket except
+`/__suzent_e2e__` with `werr`: those could only have come from the relay.
+
+The pairing QR code (and `GET /mobile/client/session` for phones paired
+earlier) carries
+
+```json
+{"relay": {"version": 1, "url": "https://relay.example", "channel": "<phone channel token>", "key": "<base64url P-256 public key>"}}
+```
+
+`key` is the desktop's static relay key, `relay_identity.pem` in the user
+config directory. It is separate from the mobile TLS CA key and survives a
+channel reset.
+
+### Handshake (`suzent-e2e/1`)
+
+A Noise-NK-style exchange over P-256, chosen because Android's minimum SDK
+lacks X25519 and both CryptoKit and `javax.crypto` have P-256, HKDF and
+AES-GCM.
+
+1. The phone opens `wss://<relay>/c/<channel>/__suzent_e2e__` and sends its
+   ephemeral public key `e` (65 bytes, uncompressed X9.62) as one binary message.
+2. The desktop picks an ephemeral `e'` and replies with `e' || tag` (65 + 16
+   bytes).
+
+Both sides compute:
+
+```
+th   = SHA-256("suzent-e2e/1" || SHA-256(channel token) || S || e || e')
+okm  = HKDF-SHA256(ikm = ECDH(e, S) || ECDH(e, e'), salt = th, info = "suzent-e2e/1 keys", L = 96)
+confirm, phone_to_desktop, desktop_to_phone = okm[0:32], okm[32:64], okm[64:96]
+tag  = AES-256-GCM(confirm, nonce = 0, plaintext = "", aad = th)
+```
+
+The phone checks `tag`; only the holder of the static key can produce it. The
+phone itself is not authenticated by the handshake: it proves who it is with
+its mobile bearer token inside the channel, exactly as on the LAN gateway.
+
+### Messages
+
+Every later WebSocket message is binary: `AES-256-GCM(key for the direction,
+nonce = 4 zero bytes || u64 big-endian counter, aad = none)`. Each direction's
+counter starts at 0 and goes up by one per message, so a replayed, dropped or
+reordered message fails and the desktop closes the socket (`1008`).
+
+The plaintext is one relay frame: `0x00` followed by a JSON frame, or `0x01`
+followed by a binary frame. The phone plays the relay's part (`hreq`, `HBODY`,
+`wopen`, ...) and the desktop answers through the same `_Tunnel` code that
+serves the relay socket, with the app wrapped in `MobileGateway`. A phone over
+the relay therefore reaches exactly the paths the LAN mobile gateway allows,
+with `client = ("mobile-gateway", 0)`.
+
+`tests/relay/e2e_vectors.json` fixes every value of one handshake and four
+messages from fixed private keys. The mobile apps test against the same file.

@@ -22,10 +22,20 @@ from suzent.relay.agent import (
     normalize_relay_url,
 )
 
+from suzent.relay.e2e import E2EEndpoint, RelayIdentity, b64url
+
 logger = get_logger(__name__)
 
 KEY_SECRET = "SUZENT_RELAY::registration_key"
 WEBHOOK_CHANNEL_SECRET = "SUZENT_RELAY::webhook_channel"
+PHONE_CHANNEL_SECRET = "SUZENT_RELAY::phone_channel"
+_SEVERITY = {
+    RelayState.CONNECTED: 0,
+    RelayState.STOPPED: 1,
+    RelayState.CONNECTING: 2,
+    RelayState.REPLACED: 3,
+    RelayState.REJECTED: 4,
+}
 
 
 def _suzent_version() -> str:
@@ -56,6 +66,8 @@ class RelayService:
         self.url: str | None = None
         self.enabled = False
         self.webhook_agent: RelayAgent | None = None
+        self.phone_agent: RelayAgent | None = None
+        self._identity: RelayIdentity | None = None
         self._load()
 
     def _load(self) -> None:
@@ -93,25 +105,55 @@ class RelayService:
         async with self.lock:
             await self._stop_agents()
 
-    async def _stop_agents(self) -> None:
-        agent, self.webhook_agent = self.webhook_agent, None
-        if agent is not None:
-            await agent.stop()
+    @property
+    def identity(self) -> RelayIdentity:
+        if self._identity is None:
+            self._identity = RelayIdentity(
+                self.config_path.parent / "relay_identity.pem"
+            )
+        return self._identity
 
-    async def _restart(self) -> None:
-        await self._stop_agents()
-        if not (self.enabled and self.url):
-            return
-        self.webhook_agent = RelayAgent(
+    async def _stop_agents(self) -> None:
+        agents = (self.webhook_agent, self.phone_agent)
+        self.webhook_agent = self.phone_agent = None
+        for agent in agents:
+            if agent is not None:
+                await agent.stop()
+
+    def _agent(self, token: str, app: ASGIApp, label: str) -> RelayAgent:
+        assert self.url is not None
+        agent = RelayAgent(
             self.url,
-            self._channel_token(WEBHOOK_CHANNEL_SECRET),
-            PathGate(self.app, http_prefixes=("/hooks/",)),
+            token,
+            app,
             key=self.secrets.get_backend_only(KEY_SECRET),
             name=socket.gethostname()[:100],
             version=_suzent_version(),
-            label="webhooks",
+            label=label,
         )
-        self.webhook_agent.start()
+        agent.start()
+        return agent
+
+    async def _restart(self) -> None:
+        # Imported here: the gateway module pulls in uvicorn and TLS helpers.
+        from suzent.mobile.tls import MobileGateway
+
+        await self._stop_agents()
+        if not (self.enabled and self.url):
+            return
+        self.webhook_agent = self._agent(
+            self._channel_token(WEBHOOK_CHANNEL_SECRET),
+            PathGate(self.app, http_prefixes=("/hooks/",)),
+            "webhooks",
+        )
+        # Phones get the same surface as the LAN mobile gateway, but only
+        # inside the encrypted tunnel; the relay itself can reach nothing.
+        phone_token = self._channel_token(PHONE_CHANNEL_SECRET)
+        self.phone_agent = self._agent(
+            phone_token,
+            E2EEndpoint(MobileGateway(self.app), self.identity, phone_token),
+            "phones",
+        )
 
     async def configure(
         self, *, url: str | None, key: str | None, enabled: bool
@@ -140,6 +182,7 @@ class RelayService:
         """Issue new channel tokens, so every old relay URL stops working."""
         async with self.lock:
             self.secrets.delete(WEBHOOK_CHANNEL_SECRET)
+            self.secrets.delete(PHONE_CHANNEL_SECRET)
             await self._restart()
         logger.info("Relay channels reset")
 
@@ -149,9 +192,26 @@ class RelayService:
             return None
         return self.webhook_agent.public_url(path)
 
+    def phone_descriptor(self) -> dict[str, Any] | None:
+        """What a phone needs to reach this desktop through the relay.
+
+        Goes into the pairing QR code and the paired session, never anywhere
+        the relay can read it.
+        """
+        if self.phone_agent is None:
+            return None
+        return {
+            "version": 1,
+            "url": self.phone_agent.base_url,
+            "channel": self.phone_agent.token,
+            "key": b64url(self.identity.public),
+        }
+
     def status(self) -> dict[str, Any]:
-        agent = self.webhook_agent
-        state = agent.status if agent is not None else None
+        # Both channels share the relay and the key, so show whichever is
+        # doing worse.
+        statuses = [a.status for a in (self.webhook_agent, self.phone_agent) if a]
+        state = max(statuses, key=lambda s: _SEVERITY[s.state], default=None)
         return {
             "url": self.url,
             "enabled": self.enabled,

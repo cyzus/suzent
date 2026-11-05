@@ -109,6 +109,9 @@ async def invite(request: Request) -> JSONResponse:
                 )
             if not transport["origins"]:
                 return reply({"error": "No local network address available"}, 503)
+        relay = getattr(request.app.state, "relay", None)
+        if relay is not None and (descriptor := relay.phone_descriptor()):
+            transport["relay"] = descriptor
         return reply(
             {
                 **get_mobile_store(request).invite(

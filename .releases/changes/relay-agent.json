@@ -1,1 +1,1 @@
-{"products": {"desktop": "minor"}, "summary": "Connect Suzent to a relay you deploy yourself (Settings → Devices → Relay) so webhooks can reach it from the internet without a tunnel."}
+{"products": {"desktop": "minor"}, "summary": "Connect Suzent to a relay you deploy yourself (Settings → Devices → Relay): webhooks can reach it from the internet without a tunnel, and pairing QR codes carry an end-to-end encrypted relay route for the phone apps."}

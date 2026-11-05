@@ -105,6 +105,9 @@ class FakeRelay:
         self.registered = asyncio.Event()
         self.frames: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self.paths: list[str] = []
+        # Every registered agent by token hash, for tests with several channels.
+        self.agents: dict[str, ServerConnection] = {}
+        self.queues: dict[str, asyncio.Queue[dict[str, Any]]] = {}
 
     async def __aenter__(self) -> FakeRelay:
         self.server = await serve(self.handler, "127.0.0.1", 0, max_size=None)
@@ -129,16 +132,19 @@ class FakeRelay:
             reply["proto"] = self.proto
         await ws.send(json.dumps(reply))
         self.agent = ws
+        th = register["tokenHash"]
+        self.agents[th] = ws
+        queue = self.queues.setdefault(th, asyncio.Queue())
         self.registered.set()
         try:
             async for message in ws:
                 if isinstance(message, bytes):
                     kind, frame_id, payload = decode_binary(message)
-                    self.frames.put_nowait(
-                        {"kind": kind, "id": frame_id, "data": payload}
-                    )
+                    frame = {"kind": kind, "id": frame_id, "data": payload}
                 else:
-                    self.frames.put_nowait(json.loads(message))
+                    frame = json.loads(message)
+                self.frames.put_nowait(frame)
+                queue.put_nowait(frame)
         except Exception:
             pass
 
@@ -167,6 +173,38 @@ class FakeRelay:
                 body += frame["data"]
             elif frame.get("t") == "hchunk":
                 body += base64.b64decode(frame["b"])
+            elif frame.get("t") in ("hend", "herr"):
+                head.setdefault("end", frame["t"])
+                return head, body
+
+
+class Channel:
+    """One agent socket on FakeRelay, chosen by its token hash."""
+
+    def __init__(self, relay: FakeRelay, th: str) -> None:
+        self.ws = relay.agents[th]
+        self.queue = relay.queues[th]
+
+    async def send(self, frame: dict[str, Any]) -> None:
+        await self.ws.send(json.dumps(frame))
+
+    async def send_binary(self, kind: int, frame_id: str, payload: bytes) -> None:
+        await self.ws.send(encode_binary(kind, frame_id, payload))
+
+    async def next(self) -> dict[str, Any]:
+        return await asyncio.wait_for(self.queue.get(), 5)
+
+    async def response(self, frame_id: str) -> tuple[dict[str, Any], bytes]:
+        head: dict[str, Any] = {}
+        body = b""
+        while True:
+            frame = await self.next()
+            if frame.get("id") != frame_id:
+                continue
+            if frame.get("t") == "hres":
+                head = frame
+            elif frame.get("kind") == HCHUNK:
+                body += frame["data"]
             elif frame.get("t") in ("hend", "herr"):
                 head.setdefault("end", frame["t"])
                 return head, body
