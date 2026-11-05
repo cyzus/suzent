@@ -76,6 +76,10 @@ def normalize_relay_url(url: str) -> str:
     scheme = {"ws": "http", "wss": "https"}.get(parts.scheme, parts.scheme)
     if scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("Relay URL must start with https://")
+    # Credentials belong in the registration key, which is kept as a secret;
+    # an address with user:password@ would end up in relay.json and the logs.
+    if parts.username or parts.password:
+        raise ValueError("Relay URL must not contain a user name or password")
     return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
 
 
@@ -144,6 +148,7 @@ class RelayAgent:
         self.label = label
         self.status = RelayStatus()
         self._task: asyncio.Task | None = None
+        self._registered = False
 
     @property
     def agent_url(self) -> str:
@@ -174,8 +179,9 @@ class RelayAgent:
         attempt = 0
         while True:
             self.status = RelayStatus(RelayState.CONNECTING, self.status.detail)
+            self._registered = False
             try:
-                registered = await self._session()
+                await self._session()
             except RelayClosed as exc:
                 logger.warning("Relay {} stopped: {}", self.label, exc.detail)
                 self.status = RelayStatus(exc.state, exc.detail)
@@ -183,16 +189,19 @@ class RelayAgent:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                registered = False
                 self.status = RelayStatus(RelayState.CONNECTING, _describe(exc))
                 logger.debug("Relay {} connection failed: {}", self.label, exc)
-            attempt = 0 if registered else attempt + 1
+            # A session that registered was healthy: whatever ended it, start
+            # the backoff over.
+            attempt = 0 if self._registered else attempt + 1
             delay = min(MAX_BACKOFF_S, 2 ** min(attempt, 6))
-            await asyncio.sleep(delay * random.uniform(0.5, 1.0))
+            await self._pause(delay * random.uniform(0.5, 1.0))
 
-    async def _session(self) -> bool:
-        """One connection. Returns whether it got as far as registering."""
-        registered = False
+    async def _pause(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+
+    async def _session(self) -> None:
+        """One connection; sets ``_registered`` once the relay accepts us."""
         try:
             async with connect(
                 self.agent_url,
@@ -202,7 +211,7 @@ class RelayAgent:
                 ping_timeout=20,
             ) as ws:
                 protocol = await self._register(ws)
-                registered = True
+                self._registered = True
                 self.status = RelayStatus(RelayState.CONNECTED, None, protocol)
                 logger.info(
                     "Relay {} connected to {} (protocol {})",
@@ -215,10 +224,9 @@ class RelayAgent:
             code = exc.rcvd.code if exc.rcvd else None
             if code in _FATAL_CLOSE_CODES:
                 raise RelayClosed(*_FATAL_CLOSE_CODES[code]) from None
-            if registered:
+            if self._registered:
                 logger.info("Relay {} disconnected ({})", self.label, code)
             raise
-        return registered
 
     async def _register(self, ws: ClientConnection) -> int:
         frame: dict[str, Any] = {

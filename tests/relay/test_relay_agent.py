@@ -243,6 +243,8 @@ def test_relay_url_normalization() -> None:
         normalize_relay_url("ftp://relay.example.com")
     with pytest.raises(ValueError):
         normalize_relay_url("relay.example.com")
+    with pytest.raises(ValueError):
+        normalize_relay_url("https://user:secret@relay.example.com")
 
 
 def test_token_format_and_urls(token: str) -> None:
@@ -554,3 +556,28 @@ async def test_unreachable_relay_keeps_trying(token: str) -> None:
     assert agent.status.state == RelayState.CONNECTING
     assert agent.status.detail
     await agent.stop()
+
+
+async def test_backoff_resets_after_a_registered_session(
+    token: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delays: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def record(self: RelayAgent, delay: float) -> None:
+        delays.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr("suzent.relay.agent.random.uniform", lambda a, b: 1.0)
+    monkeypatch.setattr(RelayAgent, "_pause", record)
+    async with FakeRelay() as relay:
+        agent = await connected(relay, token)
+        try:
+            for _ in range(3):
+                assert relay.agent is not None
+                relay.registered.clear()
+                await relay.agent.close(1012, "restart")
+                await asyncio.wait_for(relay.registered.wait(), 5)
+            assert delays[:3] == [1, 1, 1]
+        finally:
+            await agent.stop()
