@@ -1,0 +1,5 @@
+<resources>
+    <string name="voice_preview_title">语音动画预览</string>
+    <string name="voice_preview_notice">仅展示动画，麦克风未开启。</string>
+    <string name="voice_preview_close">关闭预览</string>
+</resources>

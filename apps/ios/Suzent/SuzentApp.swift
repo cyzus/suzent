@@ -10,6 +10,7 @@ import MarkdownUI
         WindowGroup {
             ContentView(model: model)
                 .onChange(of: phase) { _, phase in
+                    if phase == .background { model.voice.stop() }
                     Task { await model.setForeground(phase == .active) }
                 }
         }
@@ -1057,10 +1058,23 @@ struct ContentView: View {
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
+            .onDisappear { model.voice.stop() }
     }
 
     private func composer(_ chat: Chat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if model.voice.active {
+                VoiceCubeView(voice: model.voice).frame(height: 112).accessibilityHidden(true)
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.voice.status).suzentFont(14, weight: .medium)
+                        if !model.voice.transcript.isEmpty {
+                            Text(model.voice.transcript).suzentFont(14).lineLimit(3)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+
+                }.padding(.horizontal, 4)
+            }
             PendingAttachmentStrip(model: model)
             HStack(alignment: .center) {
                 if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
@@ -1123,22 +1137,49 @@ struct ContentView: View {
     }
 
     private func sendAction(_ chat: Chat) -> some View {
-        let stopping = model.streaming || chat.isRunning == true
-        let enabled = stopping ? model.device?.permissions.stop == true :
-            !model.busy && model.device?.permissions.send == true &&
-            (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
+        let action = ComposerAction.resolve(
+            hasContent: !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty,
+            busy: model.busy, running: model.streaming || chat.isRunning == true,
+            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting")
+        let loading = action == .loading || (action == .stop && model.stopInFlight)
+        let label: String = switch action {
+        case .voice: String(localized: "Start voice conversation")
+        case .send: String(localized: "Send")
+        case .loading: String(localized: "Processing…")
+        case .connecting: String(localized: "Cancel voice connection")
+        case .hangUp: String(localized: "End voice conversation")
+        case .stop: model.stopInFlight ? String(localized: "Stopping…") : String(localized: "Stop")
+        }
+        let symbol = action == .stop ? "stop.fill" : action == .hangUp ? "phone.down.fill" : action == .voice ? "waveform" : "arrow.up"
         return Button {
-            if !stopping { sends += 1 }
-            Task { if stopping { await model.stop() } else { await model.send() } }
+            switch action {
+            case .voice: composing = false; model.startVoice()
+            case .hangUp, .connecting: model.voice.stop()
+            case .loading: break
+            case .stop:
+                guard model.device?.permissions.stop == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                Task { await model.stop() }
+            case .send:
+                guard model.device?.permissions.send == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                guard !chat.id.isEmpty || model.device?.permissions.createChats == true else {
+                    model.error = String(localized: "Enable Create conversations for this phone, or open an existing conversation."); return
+                }
+                sends += 1
+                Task { await model.send() }
+            }
         } label: {
-            Image(systemName: stopping ? "stop.fill" : "arrow.up")
-                .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(stopping ? Color.suzentDanger : Color.suzentLink)
+            Group {
+                if loading || action == .connecting { ProgressView().tint(.white) }
+                else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
+            }.foregroundStyle(.white).frame(width: 36, height: 36)
+                .background(Color(presentation: action == .stop || action == .hangUp ? PresentationTokens.danger : PresentationTokens.blue))
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
-            .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
+        }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
 }

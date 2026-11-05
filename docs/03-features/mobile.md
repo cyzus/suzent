@@ -36,6 +36,29 @@ Suzent** conversation explains this. Attachments stay on the phone. **Reset demo
 examples, and **Exit demo** takes you back to the connection screen. An existing
 pairing is kept while you're in the demo.
 
+## Talk with Suzent
+
+In a conversation, leave the message box empty and tap the waveform button to
+start a voice conversation. Allow microphone access when prompted. The input
+area shows the same animated cube as desktop, together with call status and live
+captions. The cube responds to your microphone and to Suzent listening, thinking,
+and speaking. Tap the hang-up button to end the call.
+During a call, the action stays **Hang up** (or **Cancel** while connecting).
+Outside a call, typing a message or attaching a file switches the waveform button
+to **Send**, and a running agent task shows **Stop**. A progress indicator
+replaces the action while a message is being processed. If voice needs setup or
+additional permissions, tapping its button explains what to change.
+
+Use a desktop version that supports mobile voice and configure a realtime voice
+model in **Settings → Voice & audio** on the desktop first. Your phone needs both **Send
+messages** and **Stop responses** permissions, because voice can start and cancel
+agent tasks. Starting a call in a new conversation also requires **Create
+conversations**. Voice is unavailable in the offline demo.
+
+Calls end when you leave the conversation, switch desktops, or put the app in
+the background. Ending a call does not stop an agent task that voice already
+started; use **Stop** if you also want to cancel that task.
+
 ## Pair your phone
 
 1. **Make your computer reachable.** Open **Settings → Mesh → Network access**,
@@ -172,7 +195,7 @@ adding a second one.
 The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
-- voice input, or the agent's interactive forms and buttons;
+- the agent's interactive forms and buttons;
 - memory, settings, or tool permissions, which stay on the computer;
 - offline access to your conversations.
 

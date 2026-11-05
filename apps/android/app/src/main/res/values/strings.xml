@@ -253,4 +253,21 @@
         <item quantity="one">%d desktop</item>
         <item quantity="other">%d desktops</item>
     </plurals>
+    <string name="voice_start">Start voice conversation</string>
+    <string name="voice_end">End voice conversation</string>
+    <string name="voice_connecting">Connecting voice…</string>
+    <string name="voice_listening">Listening…</string>
+    <string name="voice_speaking">Speaking…</string>
+    <string name="voice_thinking">Thinking…</string>
+    <string name="voice_permission">Allow microphone access in Settings to use voice.</string>
+    <string name="voice_failed">Voice connection failed. Check voice settings on your desktop and try again.</string>
+    <string name="voice_conversation">Voice conversation</string>
+    <string name="voice_demo_unavailable">Voice is unavailable in the offline demo. Connect to your desktop to talk with Suzent.</string>
+    <string name="voice_setup_required">Update and restart your desktop, then configure a realtime model in Settings → Voice &amp; audio.</string>
+    <string name="voice_grant_required">Enable Send messages and Stop responses for this phone in desktop Settings → Devices.</string>
+    <string name="composer_create_required">Enable Create conversations for this phone, or open an existing conversation.</string>
+    <string name="composer_grant_required">Change this phone’s permissions in desktop Settings → Devices to use this action.</string>
+    <string name="composer_processing">Processing…</string>
+    <string name="composer_stopping">Stopping…</string>
+    <string name="voice_cancel_connection">Cancel voice connection</string>
 </resources>

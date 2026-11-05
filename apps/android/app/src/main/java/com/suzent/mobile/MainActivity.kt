@@ -872,6 +872,7 @@ private fun SettingsFooter(text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
+    DisposableEffect(model) { onDispose { model.voice.stop() } }
     val chat = model.selected ?: return
     var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -880,6 +881,19 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     androidx.activity.compose.BackHandler(enabled = attachmentsExpanded) { attachmentsExpanded = false }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Keep the permission callback alive when hiding the keyboard moves the action button.
+    val microphonePermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) model.startVoice() else model.error = context.getString(R.string.voice_permission) }
+    val startVoice: () -> Unit = {
+        val reason = model.voiceUnavailableReason
+        if (reason != null) model.error = context.getString(reason)
+        else {
+            focus.clearFocus(); keyboard?.hide()
+            microphonePermission.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
     // Top-down like iOS, so a disclosure grows and shrinks below its header; a bottom-up (reversed) list held
     // each message's bottom edge instead and dragged the header along. Sticking to the end is done here.
     val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
@@ -994,6 +1008,16 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline)
         .animateContentSize(animationSpec = androidx.compose.animation.core.tween(180)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (model.voice.active) {
+            VoiceCubeView(model.voice.animationState, model.voice.working, model.voice.micLevel, Modifier.fillMaxWidth().height(112.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(model.voice.status), fontSize = 14.sp)
+                if (model.voice.transcript.isNotEmpty()) Text(model.voice.transcript, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+
+            }
+        }
         PendingAttachmentStrip(model)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!chat.isRegent && model.attachmentsSupported && model.device?.permissions?.send == true)
@@ -1009,7 +1033,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat) else Spacer(Modifier.width(44.dp))
+        if (!expanded) SendAction(model, chat, startVoice) else Spacer(Modifier.width(44.dp))
         }
         if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
@@ -1023,7 +1047,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
                 }
 
             }
-            SendAction(model, chat)
+            SendAction(model, chat, startVoice)
         }
     }
     }
@@ -1043,17 +1067,44 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 }
 
 @Composable
-private fun SendAction(model: MobileModel, chat: Chat) {
-    val stopping = model.streaming || chat.running
+private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
+    val action = ComposerAction.resolve(model.draft.isNotBlank() || model.attachments.isNotEmpty(),
+        model.busy, model.streaming || chat.running, model.voice.active, model.voice.animationState == "connecting")
     val view = LocalView.current
-    val enabled = if (stopping) model.device?.permissions?.stop == true else
-        !model.busy && (model.draft.isNotBlank() || model.attachments.isNotEmpty()) && model.device?.permissions?.send == true
-    SuzentIconButton(onClick = { if (stopping) model.stop() else { view.suzentHaptic(SuzentHaptic.Light); model.send() } },
-        label = stringResource(if (stopping) R.string.stop else R.string.send), enabled = enabled) {
-        Box(Modifier.size(36.dp).background(if (stopping) MaterialTheme.colorScheme.error else suzentLink)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val loading = action == ComposerAction.LOADING || (action == ComposerAction.STOP && model.stopInFlight)
+    val label = stringResource(when (action) {
+        ComposerAction.VOICE -> R.string.voice_start
+        ComposerAction.SEND -> R.string.send
+        ComposerAction.CONNECTING -> R.string.voice_cancel_connection
+        ComposerAction.HANG_UP -> R.string.voice_end
+        ComposerAction.STOP -> if (model.stopInFlight) R.string.composer_stopping else R.string.stop
+        ComposerAction.LOADING -> R.string.composer_processing
+    })
+    Box(Modifier.size(44.dp).clickable(enabled = !loading, role = Role.Button, onClickLabel = label) {
+        when (action) {
+            ComposerAction.STOP -> if (model.device?.permissions?.stop == true) model.stop()
+                else model.error = context.getString(R.string.composer_grant_required)
+            ComposerAction.HANG_UP, ComposerAction.CONNECTING -> model.voice.stop()
+            ComposerAction.VOICE -> startVoice()
+            ComposerAction.SEND -> when {
+                model.device?.permissions?.send != true -> model.error = context.getString(R.string.composer_grant_required)
+                chat.id.isEmpty() && model.device?.permissions?.createChats != true -> model.error = context.getString(R.string.composer_create_required)
+                else -> { view.suzentHaptic(SuzentHaptic.Light); model.send() }
+            }
+            ComposerAction.LOADING -> Unit
+        }
+    }.semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        val danger = action == ComposerAction.STOP || action == ComposerAction.HANG_UP
+        Box(Modifier.size(36.dp).background(if (danger) Color(PresentationTokens.danger) else MaterialTheme.colorScheme.primary)
             .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
-            Icon(painterResource(if (stopping) R.drawable.ic_stop else R.drawable.ic_send), contentDescription = null,
-                tint = if (stopping) MaterialTheme.colorScheme.onError else Color.White, modifier = Modifier.size(20.dp))
+            if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+            else Icon(painterResource(when (action) {
+                ComposerAction.STOP -> R.drawable.ic_stop
+                ComposerAction.HANG_UP -> R.drawable.ic_hang_up
+                ComposerAction.VOICE -> R.drawable.ic_voice
+                else -> R.drawable.ic_send
+            }), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
     }
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import okhttp3.ConnectionPool
 import okhttp3.Callback
 import okhttp3.Response
 import okhttp3.Call
@@ -29,10 +30,13 @@ import org.json.JSONObject
 class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) : MobileClient {
     init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        // Mutations and voice handshakes must not inherit idle sockets from polling.
+        // Keep reads pooled; never replay a non-idempotent write to recover a socket.
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS)
         .apply { deviceTrust?.configure(this) }.build()
-    private val reads = http.newBuilder().retryOnConnectionFailure(true).build()
+    private val reads = http.newBuilder().connectionPool(ConnectionPool()).retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 
     private fun request(path: String, body: JSONObject? = null): Request = Request.Builder()
@@ -90,6 +94,14 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsScheduledTasks = false
         private set
 
+    var supportsVoice = false
+        private set
+
+    fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
+        val url = backend.endpoint("mobile/client/voice").newBuilder().addQueryParameter("chat_id", chatId).build()
+        return http.newWebSocket(request("mobile/client/voice").newBuilder().url(url).build(), listener)
+    }
+
     private var supportsPagination = false
 
     override suspend fun session(): ClientDevice {
@@ -98,6 +110,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsAttachments = value.optInt("attachments") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
+        supportsVoice = value.optInt("voice") == 1
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
     }
@@ -265,6 +278,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         http.dispatcher.executorService.execute {
             http.dispatcher.cancelAll()
             http.connectionPool.evictAll()
+            reads.connectionPool.evictAll()
         }
     }
 }
