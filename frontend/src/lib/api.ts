@@ -524,6 +524,10 @@ export interface PluginInfo {
   integrations?: PluginIntegration[];
   /** The plugin's logo as a data URI, when it ships one. */
   icon?: string | null;
+  /** The chat app a chat-app plugin provides; set up under Social Channels. */
+  channel?: string | null;
+  /** `service` for plugins that connect a hosted service. */
+  category?: 'service' | null;
 }
 
 export interface PluginIntegration {

@@ -97,6 +97,8 @@ class PluginRecord:
             "description": self.manifest.description,
             "source": self.source,
             "aliases": self.manifest.aliases,
+            "channel": self.manifest.channel,
+            "category": self.manifest.category,
             "hasCode": self.has_code,
             "path": str(self.path) if self.path else None,
             "enabled": self.enabled,

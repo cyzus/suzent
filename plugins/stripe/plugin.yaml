@@ -4,3 +4,4 @@ version: 1.0.0
 description: Let the agent look up customers, payments and subscriptions in Stripe, and make changes you approve. Sign in with your Stripe account.
 api_version: 2
 icon: icon.svg
+category: service

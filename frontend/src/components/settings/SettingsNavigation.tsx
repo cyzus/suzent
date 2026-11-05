@@ -103,7 +103,8 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
     labelKey: 'settings.groups.connections',
     categories: [
       { id: 'social', labelKey: 'settings.categories.social', icon: ChatBubbleLeftRightIcon },
-      { id: 'mcp', labelKey: 'settings.categories.mcp', icon: WrenchScrewdriverIcon },
+      { id: 'mcp', labelKey: 'settings.categories.services', icon: WrenchScrewdriverIcon },
+      { id: 'plugins', labelKey: 'settings.categories.plugins', icon: PuzzlePieceIcon },
       {
         id: 'browser',
         labelKey: 'settings.browser.title',
@@ -114,7 +115,6 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
         desktopOnly: true,
       },
       { id: 'acp-agents', labelKey: 'settings.categories.acpAgents', icon: BoltIcon },
-      { id: 'plugins', labelKey: 'settings.categories.plugins', icon: PuzzlePieceIcon },
       { id: 'devices', labelKey: 'settings.categories.devices', icon: ComputerDesktopIcon },
       { id: 'mesh', labelKey: 'settings.categories.mesh', icon: ShareIcon },
     ],

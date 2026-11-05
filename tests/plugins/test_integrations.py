@@ -77,6 +77,8 @@ def test_builtin_plugins_declare_their_service(plugins):
     ):
         record = _record(plugins, plugin_id)
         assert record.status == "loaded", record.error
+        # Listed on the Services page rather than the Plugins page.
+        assert record.to_dict()["category"] == "service"
         [integration] = record.integrations
         assert integration.auth == auth
         assert integration.url.startswith("https://")
