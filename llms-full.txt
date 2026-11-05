@@ -2068,14 +2068,18 @@ keeps it running when the window is closed.
 ## What you can do on the phone
 
 - **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
-  and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
-  and **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, and your projects (tap one to open it, and **Load
-  more** for older chats). Tap **Search chats** to open a search page that looks
+  and **Settings**. **Chats** opens on your conversations, with a search icon
+  and a yellow **New conversation** icon at the top right and **SUZENT Regent**
+  below them. Switch between **Recent** (pinned chats, then your conversations newest first) and
+  **Projects** (tap one to open it). **Load more** brings in older chats. The
+  app remembers which list you last used. Tap the search icon to open a search page that looks
   through the titles of every chat the phone may read, not only the ones
   already loaded. Going back from a chat you opened there returns to the
-  results, and **Cancel** returns to **Chats**. On a tablet, everything is in
-  one list on the left, with **Settings** in its toolbar and search at the top.
+  results, and **Cancel** returns to **Chats**. On a tablet, the lists sit in a
+  sidebar on the left, with **Settings** and the yellow **New conversation**
+  icon in its header and search below them. On
+  an iPad, the sidebar button next to **Settings** hides it so a chat can use the
+  full width.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -2100,7 +2104,7 @@ keeps it running when the window is closed.
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Tasks** (on a tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
+  started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
@@ -7034,9 +7038,14 @@ per connection. The pure list logic lives in `Desktops.kt` and
 Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
-the settings button and the scheduled section in the sidebar.
+the settings button in the sidebar. The Chats list shows one of Recent (pinned,
+then the recent page) or Projects at a time, picked with a segmented switch under
+the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
+saved state. On iPad the switch adds Tasks, which replaces the scheduled section,
+and the sidebar can be hidden from its header and shown again from the detail
+toolbar. Android tablets keep the scheduled section below the list.
 
-On phones the Chats search field is a button that opens a separate search page
+On phones a header search icon (beside the New conversation icon) opens a separate search page
 (iOS: a `Route.search` pushed under the conversation; Android: a `searching`
 flag that replaces the tab home). Its query survives opening a result, so back
 from that chat returns to the results; Cancel or back from the page clears it.
@@ -7064,6 +7073,9 @@ needed by `swift test`.
 
 Install JDK 17 and Android SDK 36. Open `apps/android` in Android Studio or run
 `./gradlew :app:assembleDebug :app:testDebugUnitTest`. Android 8/API 26+ is required.
+Debug builds install as Suzent Dev (`com.suzent.mobile.dev`, version name `-dev`), beside a
+Play Store copy they could not replace because they are signed with the local debug key; the dev
+app keeps its own pairing.
 Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disabled.
 
 ### Preview flow
