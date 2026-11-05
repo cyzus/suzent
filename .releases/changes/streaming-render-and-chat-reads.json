@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Streaming replies no longer re-parse the whole message every frame, and loading chats or the chat list no longer stalls other chats that are streaming."}

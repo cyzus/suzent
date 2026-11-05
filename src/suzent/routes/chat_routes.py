@@ -1152,32 +1152,40 @@ async def get_chats(request: Request) -> JSONResponse:
             else False
         )
 
-        chats = db.list_chats(
-            limit=limit,
-            offset=offset,
-            search=search,
-            platform=platform,
-            project_id=project_id,
-            archived=archived,
-        )
-        total = db.get_chat_count(
-            search=search, platform=platform, project_id=project_id, archived=archived
-        )
-        kind_counts = db.get_chat_kind_counts(
-            search=search, platform=platform, project_id=project_id, archived=archived
-        )
+        # Listing, counting and the summary backfill are all synchronous
+        # SQLite work; on the event loop they stall every stream in flight.
+        def build() -> dict[str, Any]:
+            chats = db.list_chats(
+                limit=limit,
+                offset=offset,
+                search=search,
+                platform=platform,
+                project_id=project_id,
+                archived=archived,
+            )
+            total = db.get_chat_count(
+                search=search,
+                platform=platform,
+                project_id=project_id,
+                archived=archived,
+            )
+            kind_counts = db.get_chat_kind_counts(
+                search=search,
+                platform=platform,
+                project_id=project_id,
+                archived=archived,
+            )
 
-        # Convert Pydantic models to dicts, annotating live background streams
-        chats_data = [
-            {
-                **c.model_dump(mode="json", by_alias=True),
-                "isRunning": is_background_streaming(c.id),
-            }
-            for c in chats
-        ]
+            # Convert Pydantic models to dicts, annotating live background streams
+            chats_data = [
+                {
+                    **c.model_dump(mode="json", by_alias=True),
+                    "isRunning": is_background_streaming(c.id),
+                }
+                for c in chats
+            ]
 
-        return JSONResponse(
-            {
+            return {
                 "chats": chats_data,
                 "pinnedChats": [
                     {
@@ -1196,110 +1204,119 @@ async def get_chats(request: Request) -> JSONResponse:
                 "search": search,
                 "projectId": project_id,
             }
-        )
+
+        return JSONResponse(await asyncio.to_thread(build))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _chat_payload(chat_id: str, include_runtime: bool) -> dict[str, Any] | None:
+    """Build the GET /chats/{id} body, or None when the chat does not exist.
+
+    Synchronous on purpose: it reads the whole row (messages and agent state)
+    and may fold the chat log and estimate tokens, which is far too much work
+    to do on the event loop while other chats are streaming.
+    """
+    db = get_database()
+
+    chat = db.get_chat(chat_id)
+    if not chat and chat_id == FOCAL_CHAT_ID:
+        chat = get_or_create_focal_chat()
+    if not chat:
+        return None
+
+    response_chat = chat.model_dump(mode="json", by_alias=True, exclude={"agent_state"})
+    response_chat["projectId"] = db.get_chat_project_id(chat_id)
+    if isinstance(response_chat.get("messages"), list):
+        from suzent.core.display_log import recover_logged_run_timing
+
+        chat_log = getattr(db, "chat_log", None)
+        if chat_log is not None:
+            response_chat["messages"] = recover_logged_run_timing(
+                response_chat["messages"],
+                chat_log.events(chat_id),
+            )
+        from suzent.core.chat_processor import (
+            _attach_latest_file_changes,
+            _preserve_citation_sources,
+        )
+        from suzent.core.retry import load_retry_checkpoint
+
+        response_chat["messages"] = _preserve_citation_sources(
+            response_chat["messages"], []
+        )
+        checkpoint = load_retry_checkpoint(chat_id)
+        response_chat["messages"] = _attach_latest_file_changes(
+            response_chat["messages"],
+            list(getattr(checkpoint, "file_snapshot", []) or []),
+        )
+    if not include_runtime:
+        return {
+            "id": response_chat["id"],
+            "title": response_chat["title"],
+            "messages": response_chat.get("messages", []),
+            "isRunning": is_background_streaming(chat_id),
+        }
+    context_usage = dict(chat.context_usage or {})
+
+    if chat.agent_state and context_usage.get("context_tokens") is None:
+        try:
+            from suzent.core.agent_serializer import deserialize_state
+            from suzent.core.context_compressor import (
+                estimate_tokens,
+                resolve_context_limit,
+            )
+
+            state = deserialize_state(chat.agent_state)
+            if state and state.get("message_history"):
+                budget = estimate_tokens(
+                    state["message_history"],
+                    resolve_context_limit(state.get("model_id")),
+                )
+                response_chat["contextTokens"] = budget.estimated_tokens
+                context_usage["context_tokens"] = budget.estimated_tokens
+        except Exception:
+            pass
+
+    # Every load reports the budget of the model this chat runs on, even when
+    # the usage counters are older than the model it now uses: a stored limit
+    # from a previous model (or none at all, on a chat that predates them)
+    # would otherwise be what the panel drew its percentage against.
+    try:
+        from suzent.core.context_compressor import resolve_context_limit
+        from suzent.core.providers import get_default_chat_model
+
+        chat_model = (chat.config or {}).get("model") or get_default_chat_model()
+        context_usage["context_limit"] = resolve_context_limit(chat_model)
+    except Exception:
+        pass
+
+    response_chat.pop("context_usage", None)
+    if context_usage:
+        response_chat["contextUsage"] = context_usage
+
+    hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+    if hb_path.exists():
+        try:
+            if "config" not in response_chat:
+                response_chat["config"] = {}
+            response_chat["config"]["heartbeat_instructions"] = hb_path.read_text(
+                encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    return response_chat
 
 
 async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONResponse:
     """Return a specific chat by ID (excluding binary agent_state)."""
     try:
         chat_id = request.path_params["chat_id"]
-        db = get_database()
-
-        chat = db.get_chat(chat_id)
-        if not chat and chat_id == FOCAL_CHAT_ID:
-            chat = get_or_create_focal_chat()
-        if not chat:
+        payload = await asyncio.to_thread(_chat_payload, chat_id, include_runtime)
+        if payload is None:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
-
-        response_chat = chat.model_dump(
-            mode="json", by_alias=True, exclude={"agent_state"}
-        )
-        response_chat["projectId"] = db.get_chat_project_id(chat_id)
-        if isinstance(response_chat.get("messages"), list):
-            from suzent.core.display_log import recover_logged_run_timing
-
-            chat_log = getattr(db, "chat_log", None)
-            if chat_log is not None:
-                response_chat["messages"] = await asyncio.to_thread(
-                    recover_logged_run_timing,
-                    response_chat["messages"],
-                    chat_log.events(chat_id),
-                )
-            from suzent.core.chat_processor import (
-                _attach_latest_file_changes,
-                _preserve_citation_sources,
-            )
-            from suzent.core.retry import load_retry_checkpoint
-
-            response_chat["messages"] = _preserve_citation_sources(
-                response_chat["messages"], []
-            )
-            checkpoint = load_retry_checkpoint(chat_id)
-            response_chat["messages"] = _attach_latest_file_changes(
-                response_chat["messages"],
-                list(getattr(checkpoint, "file_snapshot", []) or []),
-            )
-        if not include_runtime:
-            return JSONResponse(
-                {
-                    "id": response_chat["id"],
-                    "title": response_chat["title"],
-                    "messages": response_chat.get("messages", []),
-                    "isRunning": is_background_streaming(chat_id),
-                }
-            )
-        context_usage = dict(chat.context_usage or {})
-
-        if chat.agent_state and context_usage.get("context_tokens") is None:
-            try:
-                from suzent.core.agent_serializer import deserialize_state
-                from suzent.core.context_compressor import (
-                    estimate_tokens,
-                    resolve_context_limit,
-                )
-
-                state = deserialize_state(chat.agent_state)
-                if state and state.get("message_history"):
-                    budget = estimate_tokens(
-                        state["message_history"],
-                        resolve_context_limit(state.get("model_id")),
-                    )
-                    response_chat["contextTokens"] = budget.estimated_tokens
-                    context_usage["context_tokens"] = budget.estimated_tokens
-            except Exception:
-                pass
-
-        # Every load reports the budget of the model this chat runs on, even when
-        # the usage counters are older than the model it now uses: a stored limit
-        # from a previous model (or none at all, on a chat that predates them)
-        # would otherwise be what the panel drew its percentage against.
-        try:
-            from suzent.core.context_compressor import resolve_context_limit
-            from suzent.core.providers import get_default_chat_model
-
-            chat_model = (chat.config or {}).get("model") or get_default_chat_model()
-            context_usage["context_limit"] = resolve_context_limit(chat_model)
-        except Exception:
-            pass
-
-        response_chat.pop("context_usage", None)
-        if context_usage:
-            response_chat["contextUsage"] = context_usage
-
-        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-        if hb_path.exists():
-            try:
-                if "config" not in response_chat:
-                    response_chat["config"] = {}
-                response_chat["config"]["heartbeat_instructions"] = hb_path.read_text(
-                    encoding="utf-8"
-                )
-            except Exception:
-                pass
-
-        return JSONResponse(response_chat)
+        return JSONResponse(payload)
     except Exception as e:
         logger.error(f"Error in get_chat: {e}")
         traceback.print_exc()
@@ -1331,7 +1348,10 @@ async def get_chat_states(request: Request) -> JSONResponse:
     from suzent.core.chat_status import count_states, list_chat_states
 
     try:
-        rows = list_chat_states(
+        # Polled, and refetched on every stream start and end: keep its
+        # queries off the event loop the streams run on.
+        rows = await asyncio.to_thread(
+            list_chat_states,
             request.query_params.get("project_id") or None,
             request.query_params.get("chat_id") or None,
         )
