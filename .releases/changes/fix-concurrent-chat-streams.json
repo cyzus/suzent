@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Fixed replies from one chat leaking into another while two chats stream, the send button sometimes ignoring the first click, and a delay before a streaming chat shows as streaming after switching to it."}
