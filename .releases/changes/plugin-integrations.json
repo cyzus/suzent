@@ -2,5 +2,5 @@
   "products": {
     "desktop": "minor"
   },
-  "summary": "Connect Notion, Linear and GitHub from Settings → Plugins. Sign-ins stay in your keychain, and changes the agent makes there ask for approval."
+  "summary": "Connect Notion, Linear, GitHub, Cloudflare and Stripe from Settings → Plugins. Sign-ins stay in your keychain, and changes the agent makes there ask for approval."
 }

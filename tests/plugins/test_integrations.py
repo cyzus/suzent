@@ -41,7 +41,16 @@ def secrets(monkeypatch):
 @pytest.fixture
 def plugins(tmp_path, monkeypatch):
     state = tmp_path / "plugins.json"
-    enabled = {pid: {"enabled": True} for pid in ("notion", "linear", "github")}
+    enabled = {
+        pid: {"enabled": True}
+        for pid in (
+            "notion",
+            "linear",
+            "github",
+            "cloudflare",
+            "stripe",
+        )
+    }
     state.write_text(json.dumps({"version": 1, "plugins": enabled}))
     manager = PluginManager(
         [], state, builtin_dirs=[BUILTIN_DIR], entry_point_group=None
@@ -63,12 +72,22 @@ def test_builtin_plugins_declare_their_service(plugins):
         ("notion", "oauth"),
         ("linear", "oauth"),
         ("github", "token"),
+        ("cloudflare", "oauth"),
+        ("stripe", "oauth"),
     ):
         record = _record(plugins, plugin_id)
         assert record.status == "loaded", record.error
         [integration] = record.integrations
         assert integration.auth == auth
         assert integration.url.startswith("https://")
+
+
+def test_generic_tool_names_are_prefixed(plugins, secrets):
+    """Cloudflare's ``execute`` must not collide with another server's tool."""
+    for plugin_id in ("cloudflare", "stripe"):
+        [integration] = _record(plugins, plugin_id).integrations
+        toolset = integration.build("https://example.invalid/mcp")
+        assert toolset.prefix == plugin_id
 
 
 def test_no_toolset_until_signed_in(plugins, secrets):

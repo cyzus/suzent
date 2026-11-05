@@ -132,8 +132,11 @@ def register(ctx):
     )
 ```
 
-`plugins/notion`, `plugins/linear` and `plugins/github` are the built-in
-ones. They use the hosted-MCP capabilities from `pydantic-ai-harness`.
+`plugins/notion`, `plugins/linear` and `plugins/github` use the hosted-MCP
+capabilities from `pydantic-ai-harness`. `plugins/cloudflare` and
+`plugins/stripe` have no harness capability, so `build` wraps the client in a
+plain `MCPToolset`, prefixed because their servers use generic tool names such
+as `execute`.
 
 - **`auth="oauth"`**: `build` gets a FastMCP `Client` that adds the user's
   access token and refreshes it. `core/mcp_oauth.py` runs the sign-in with
