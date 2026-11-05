@@ -56,19 +56,21 @@ function PluginAction({
   disabled,
   onClick,
   t,
+  installLabel,
 }: {
   plugin: PluginInfo;
   busy: boolean;
   disabled: boolean;
   onClick: () => void;
   t: (key: string) => string;
+  installLabel: string;
 }): React.ReactElement {
   const retry = plugin.enabled && plugin.missing.length > 0;
   const [Icon, label] = retry
     ? [ArrowPathIcon, t('settings.plugins.retry')]
     : plugin.enabled
       ? [TrashIcon, t('settings.plugins.remove')]
-      : [PlusIcon, t('settings.plugins.install')];
+      : [PlusIcon, installLabel];
   const tone = plugin.enabled && !retry ? 'red' : 'blue';
   return (
     <SettingsListAction
@@ -274,8 +276,27 @@ export function IntegrationRow({
   );
 }
 
-export function PluginsTab(): React.ReactElement {
+/** Plugins that connect a hosted service; listed on the Services page. */
+export function isServicePlugin(plugin: PluginInfo): boolean {
+  return plugin.category === 'service';
+}
+
+interface PluginsTabProps {
+  /**
+   * `services`: the hosted services, for the Services page. `extensions`:
+   * everything else except chat apps, which the chat apps page installs.
+   */
+  scope?: 'extensions' | 'services';
+  /** Render only the list card, inside another page. */
+  embedded?: boolean;
+}
+
+export function PluginsTab({
+  scope = 'extensions',
+  embedded = false,
+}: PluginsTabProps): React.ReactElement {
   const { t } = useI18n();
+  const prefix = scope === 'services' ? 'settings.services' : 'settings.plugins';
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -324,103 +345,113 @@ export function PluginsTab(): React.ReactElement {
     }
   };
 
+  const shown = plugins.filter((plugin) =>
+    scope === 'services' ? isServicePlugin(plugin) : !isServicePlugin(plugin) && !plugin.channel
+  );
+
+  const card = (
+    <SettingsCard className="space-y-3">
+      <SectionCardHeader
+        title={t(`${prefix}.listTitle`)}
+        description={t(`${prefix}.listDesc`)}
+        actions={
+          <RefreshButton
+            spinning={loading}
+            disabled={loading || busy !== null}
+            onClick={() => void load()}
+          />
+        }
+      />
+      {error && (
+        <p
+          role="alert"
+          className="whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+        >
+          {error}
+        </p>
+      )}
+      <SettingsHelp title={t(`${prefix}.helpTitle`)}>
+        <p>{t(`${prefix}.helpPackages`)}</p>
+        <p>{t(`${prefix}.helpCode`)}</p>
+      </SettingsHelp>
+
+      {loading && plugins.length === 0 ? (
+        <div className="p-8 text-center font-bold uppercase text-neutral-500 dark:text-neutral-400">
+          {t('common.loading')}
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="py-8 text-center font-bold uppercase text-neutral-600 dark:text-neutral-300">
+          {t(`${prefix}.empty`)}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {shown.map((plugin) => (
+            <SettingsListItem key={plugin.id}>
+              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 flex-1 gap-3">
+                  <PluginIcon plugin={plugin} />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-black">{plugin.name}</span>
+                      <StatusBadge plugin={plugin} t={t} />
+                      {plugin.source === 'builtin' && (
+                        <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
+                      )}
+                    </div>
+                    {plugin.description && (
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {plugin.description}
+                      </p>
+                    )}
+                    {plugin.error && (
+                      <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
+                    )}
+                    {plugin.missing.length > 0 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {t('settings.plugins.missing')} {plugin.missing.join(', ')}
+                      </p>
+                    )}
+                    {plugin.enabled && plugin.restartRequired && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {t('settings.plugins.restartHint')}
+                      </p>
+                    )}
+                    {plugin.enabled &&
+                      plugin.integrations?.map((integration) => (
+                        <IntegrationRow
+                          key={integration.id}
+                          pluginId={plugin.id}
+                          integration={integration}
+                          onChange={refresh}
+                          t={t}
+                        />
+                      ))}
+                  </div>
+                </div>
+                <PluginAction
+                  plugin={plugin}
+                  busy={busy === plugin.id}
+                  disabled={busy !== null || plugin.status === 'error'}
+                  onClick={() => void toggle(plugin)}
+                  t={t}
+                  installLabel={t(`${prefix}.install`)}
+                />
+              </div>
+            </SettingsListItem>
+          ))}
+        </div>
+      )}
+    </SettingsCard>
+  );
+
+  if (embedded) return card;
   return (
     <SettingsPage>
       <SettingsHeader
         title={t('settings.plugins.title')}
         subtitle={t('settings.plugins.subtitle')}
       />
-      <SettingsCard className="space-y-3">
-        <SectionCardHeader
-          title={t('settings.plugins.listTitle')}
-          description={t('settings.plugins.listDesc')}
-          actions={
-            <RefreshButton
-              spinning={loading}
-              disabled={loading || busy !== null}
-              onClick={() => void load()}
-            />
-          }
-        />
-        {error && (
-          <p
-            role="alert"
-            className="whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
-          >
-            {error}
-          </p>
-        )}
-        <SettingsHelp title={t('settings.plugins.helpTitle')}>
-          <p>{t('settings.plugins.helpPackages')}</p>
-          <p>{t('settings.plugins.helpCode')}</p>
-        </SettingsHelp>
-
-        {loading && plugins.length === 0 ? (
-          <div className="p-8 text-center font-bold uppercase text-neutral-500 dark:text-neutral-400">
-            {t('common.loading')}
-          </div>
-        ) : plugins.length === 0 ? (
-          <div className="py-8 text-center font-bold uppercase text-neutral-600 dark:text-neutral-300">
-            {t('settings.plugins.empty')}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {plugins.map((plugin) => (
-              <SettingsListItem key={plugin.id}>
-                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex min-w-0 flex-1 gap-3">
-                    <PluginIcon plugin={plugin} />
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-black">{plugin.name}</span>
-                        <StatusBadge plugin={plugin} t={t} />
-                        {plugin.source === 'builtin' && (
-                          <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
-                        )}
-                      </div>
-                      {plugin.description && (
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                          {plugin.description}
-                        </p>
-                      )}
-                      {plugin.error && (
-                        <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
-                      )}
-                      {plugin.missing.length > 0 && (
-                        <p className="text-xs text-amber-700 dark:text-amber-300">
-                          {t('settings.plugins.missing')} {plugin.missing.join(', ')}
-                        </p>
-                      )}
-                      {plugin.enabled && plugin.restartRequired && (
-                        <p className="text-xs text-amber-700 dark:text-amber-300">
-                          {t('settings.plugins.restartHint')}
-                        </p>
-                      )}
-                      {plugin.enabled &&
-                        plugin.integrations?.map((integration) => (
-                          <IntegrationRow
-                            key={integration.id}
-                            pluginId={plugin.id}
-                            integration={integration}
-                            onChange={refresh}
-                            t={t}
-                          />
-                        ))}
-                    </div>
-                  </div>
-                  <PluginAction
-                    plugin={plugin}
-                    busy={busy === plugin.id}
-                    disabled={busy !== null || plugin.status === 'error'}
-                    onClick={() => void toggle(plugin)}
-                    t={t}
-                  />
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        )}
-      </SettingsCard>
+      {card}
     </SettingsPage>
   );
 }

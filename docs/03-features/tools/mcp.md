@@ -12,7 +12,7 @@ address (URL) or a program on your computer that Suzent starts (stdio).
 
 ## Adding a server
 
-1. Open **Settings → MCP Servers** and click **Add** on the **Add new server** card.
+1. Open **Settings → Services** and, under **Custom MCP servers**, click **Add** on the **Add new server** card.
 2. Choose **URL** or **Stdio** and, if you like, type a **Name (optional)**.
    Without one, Suzent uses the URL's host or the command.
 3. Fill in the details for that kind of server:
@@ -37,9 +37,9 @@ click **Test**, which allows more time.
 
 ## Choosing where a server is used
 
-The switch next to each server in **Settings → MCP Servers** turns it on or off.
+The switch next to each server in **Settings → Services** turns it on or off.
 You can also flip servers from a chat: open the sidebar, choose the **Tools**
-tab, and find them under **MCP Servers**, below the built-in tools. Flipping a
+tab, and find them under **Custom MCP**, below the built-in tools. Flipping a
 server there changes the same switch in Settings.
 
 [Chat apps](../../05-chat-apps/README.md) can use a different set: in
