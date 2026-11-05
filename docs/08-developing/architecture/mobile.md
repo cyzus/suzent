@@ -91,9 +91,14 @@ per connection. The pure list logic lives in `Desktops.kt` and
 Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
-the settings button and the scheduled section in the sidebar.
+the settings button in the sidebar. The Chats list shows one of Recent (pinned,
+then the recent page) or Projects at a time, picked with a segmented switch under
+the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
+saved state. On iPad the switch adds Tasks, which replaces the scheduled section,
+and the sidebar can be hidden from its header and shown again from the detail
+toolbar. Android tablets keep the scheduled section below the list.
 
-On phones the Chats search field is a button that opens a separate search page
+On phones a header search icon (beside the New conversation icon) opens a separate search page
 (iOS: a `Route.search` pushed under the conversation; Android: a `searching`
 flag that replaces the tab home). Its query survives opening a result, so back
 from that chat returns to the results; Cancel or back from the page clears it.
@@ -121,6 +126,9 @@ needed by `swift test`.
 
 Install JDK 17 and Android SDK 36. Open `apps/android` in Android Studio or run
 `./gradlew :app:assembleDebug :app:testDebugUnitTest`. Android 8/API 26+ is required.
+Debug builds install as Suzent Dev (`com.suzent.mobile.dev`, version name `-dev`), beside a
+Play Store copy they could not replace because they are signed with the local debug key; the dev
+app keeps its own pairing.
 Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disabled.
 
 ### Preview flow

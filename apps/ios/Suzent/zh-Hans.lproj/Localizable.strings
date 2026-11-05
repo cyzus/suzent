@@ -221,6 +221,9 @@
 "Failed calls: %d" = "%d 次调用失败";
 
 "No chats yet" = "还没有对话";
+"No projects yet" = "还没有项目";
+"Hide sidebar" = "隐藏侧边栏";
+"Show sidebar" = "显示侧边栏";
 "No matching chats" = "没有匹配的对话";
 
 "QR code recognized. Connecting to your desktop…" = "已识别二维码，正在连接桌面端…";

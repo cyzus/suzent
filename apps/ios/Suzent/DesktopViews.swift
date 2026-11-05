@@ -11,6 +11,9 @@ struct DesktopSwatch: View {
 
 enum HomeTab: Hashable { case chats, tasks, settings }
 
+/// Which list fills the home sidebar. Tasks is only offered on wide layouts, where there is no tab bar.
+enum HomeListMode: String { case recent, projects, tasks }
+
 /// Compact-width home navigation. It lives in the stack's root view, so pushed pages cover it.
 struct HomeTabBar: View {
     @Binding var selection: HomeTab
@@ -32,13 +35,60 @@ struct HomeTabBar: View {
         let selected = selection == tab
         return Button { selection = tab } label: {
             VStack(spacing: 3) {
+                // A fixed icon box keeps the filled and outline symbols from shifting the labels.
                 Image(systemName: selected ? "\(icon).fill" : icon).font(.system(size: 19, weight: selected ? .semibold : .regular))
+                    .frame(height: 24)
                 Text(title).suzentFont(11, weight: selected ? .bold : .medium)
-            }.foregroundStyle(selected ? Color(presentation: PresentationTokens.blue) : Color.suzentMuted)
+            }.foregroundStyle(selected ? Color.suzentText : Color.suzentMuted)
                 .frame(maxWidth: .infinity, minHeight: 52).padding(.top, PresentationTokens.borderWidth)
+                .overlay(alignment: .top) {
+                    if selected { Rectangle().fill(Color.suzentText).frame(width: 32, height: 3).accessibilityHidden(true) }
+                }
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+    }
+}
+
+/// The desktop's BrutalSegmentedTabs, lightened to sit with the sidebar: a thin-bordered track whose solid block slides under the active list.
+struct HomeListPicker: View {
+    @Binding var selection: HomeListMode
+    let modes: [HomeListMode]
+    @Namespace private var slider
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(modes, id: \.self) { mode in
+                let selected = selection == mode
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { selection = mode }
+                } label: {
+                    Text(title(mode)).textCase(.uppercase).tracking(0.6)
+                        .suzentFont(PresentationTokens.typeLabel, weight: selected ? .semibold : .regular)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(selected ? Color.suzentTabBlockText : Color.suzentMuted)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background {
+                            if selected { Rectangle().fill(Color.suzentTabBlock).matchedGeometryEffect(id: "slider", in: slider) }
+                        }
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+            }
+        }
+        .padding(3)
+        .background(Color.suzentTabTrack)
+        .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+
+    private func title(_ mode: HomeListMode) -> LocalizedStringKey {
+        switch mode {
+        case .recent: "Recent"
+        case .projects: "Projects"
+        case .tasks: "Tasks"
+        }
     }
 }
 
@@ -49,7 +99,12 @@ struct DesktopCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            DesktopSwatch(desktop: desktop, size: 14)
+            // The same computer mark as the home screen's desktop line; colour swatches stay in the desktops list.
+            Image(systemName: "desktopcomputer").font(.system(size: 17, weight: .medium))
+                .frame(width: 38, height: 38)
+                .background(Color.suzentTabTrack)
+                .overlay(Rectangle().strokeBorder(Color.suzentOutline.opacity(0.3), lineWidth: 1))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(desktop.name).suzentFont(PresentationTokens.typeControl, weight: .semibold).lineLimit(1)
                 Text("Connected · \(displayOrigin(origin))").font(.caption.monospaced()).foregroundStyle(Color.suzentMuted).lineLimit(1).truncationMode(.middle)
