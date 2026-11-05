@@ -104,6 +104,8 @@ describe('MarkdownRenderer', () => {
     'Partial $\\frac{x}{',
     String.raw`\[ (13-13)\times 11+4!=24 \]`,
     String.raw`Partial \(\frac{x}{`,
+    '# Plan\n\nFirst paragraph.\n\n## Steps\n\n- a\n\n- b\n\nClosing **note**.',
+    'Code:\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nDone.',
   ])('keeps streaming and completed markup identical for %s', (content) => {
     expect(render(content, { isStreaming: true })).toBe(render(content));
   });

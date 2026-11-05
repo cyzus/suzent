@@ -13,6 +13,7 @@ import { hasCitationMarker, renderTextWithCitations, useCitationSources } from '
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
+import { splitStreamingBlocks } from '../../lib/streamingMarkdown';
 
 const ALLOWED_LANGUAGES = new Set([
   'python',
@@ -235,9 +236,29 @@ function safeUrlTransform(url: string): string {
   return normalizedUrl;
 }
 
+/**
+ * One parsed run of markdown. Memoized on its text, so while a reply streams
+ * the blocks that are already finished are not parsed again every frame.
+ */
+const MarkdownBlock = React.memo<{ content: string; components: object }>(
+  ({ content, components }) => {
+    const RM: any = ReactMarkdown;
+    return (
+      <RM
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        urlTransform={safeUrlTransform}
+        components={components}
+      >
+        {content}
+      </RM>
+    );
+  }
+);
+MarkdownBlock.displayName = 'MarkdownBlock';
+
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
   ({ content, onFileClick, isStreaming = false, compact = false, caret = false }) => {
-    const RM: any = ReactMarkdown;
     const sourcesMap = useCitationSources();
     const openingLinksRef = React.useRef(new Map<string, number>());
 
@@ -341,6 +362,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
 
     // Sanitize code block languages
     const sanitized = sanitizeMarkdownCodeFenceLanguages(normalized);
+    // react-markdown renders no wrapper, so the blocks land as siblings in the
+    // same container and the result looks like one parse. Once the stream ends
+    // the text is parsed whole, so anything that spans blocks comes out right.
+    const blocks = React.useMemo(
+      () => (isStreaming ? splitStreamingBlocks(sanitized) : [sanitized]),
+      [isStreaming, sanitized]
+    );
 
     const components = React.useMemo(
       () => ({
@@ -585,14 +613,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
         <div
           className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text${compact ? ' markdown-compact' : ''}${isStreaming && caret ? ' streaming-caret' : ''}`}
         >
-          <RM
-            remarkPlugins={REMARK_PLUGINS}
-            rehypePlugins={REHYPE_PLUGINS}
-            urlTransform={safeUrlTransform}
-            components={components}
-          >
-            {sanitized}
-          </RM>
+          {blocks.map((block, index) => (
+            <React.Fragment key={index}>
+              {/* The newline one parse leaves between top-level blocks. */}
+              {index > 0 && '\n'}
+              <MarkdownBlock content={block} components={components} />
+            </React.Fragment>
+          ))}
         </div>
       </MarkdownStreamingContext.Provider>
     );
