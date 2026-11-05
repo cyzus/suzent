@@ -521,6 +521,52 @@ export interface PluginInfo {
   commands: string[];
   missing: string[];
   restartRequired: boolean;
+  integrations?: PluginIntegration[];
+}
+
+export interface PluginIntegration {
+  id: string;
+  name: string;
+  auth: 'oauth' | 'token';
+  connected: boolean;
+  tokenHelpUrl: string | null;
+  /** Why the last connection failed, e.g. the sign-in expired. */
+  error?: string;
+  signIn?: { state: 'waiting' | 'failed'; error: string | null };
+  /** Set by connect for OAuth: the page to open so the user can sign in. */
+  authorizeUrl?: string | null;
+}
+
+/** Start a sign-in (OAuth) or save a pasted token for a plugin's service. */
+export async function connectPluginIntegration(
+  pluginId: string,
+  integrationId: string,
+  token?: string
+): Promise<PluginIntegration> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/integrations/${encodeURIComponent(integrationId)}/connect`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(token ? { token } : {}),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to connect: ${res.status}`);
+  return data;
+}
+
+export async function disconnectPluginIntegration(
+  pluginId: string,
+  integrationId: string
+): Promise<PluginIntegration> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/integrations/${encodeURIComponent(integrationId)}/disconnect`,
+    { method: 'POST' }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to disconnect: ${res.status}`);
+  return data;
 }
 
 export async function fetchPlugins(): Promise<PluginInfo[]> {
