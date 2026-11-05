@@ -158,6 +158,40 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var repairActive = false
     private val connection: Connection? get() = desktops.active?.connection
     private var client: MobileClient? = null
+    val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
+    val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
+
+    val voiceUnavailableReason: Int? get() = when {
+        isDemo -> R.string.voice_demo_unavailable
+        !voiceSupported -> R.string.voice_setup_required
+        device?.permissions?.send != true || device?.permissions?.stop != true -> R.string.voice_grant_required
+        selected?.id?.isEmpty() == true && device?.permissions?.createChats != true -> R.string.composer_create_required
+        else -> null
+    }
+
+    fun startVoice() {
+        voiceUnavailableReason?.let { error = text(it); return }
+        val api = client as? BackendClient ?: return
+        val chat = selected ?: return
+        if (!voiceSupported || busy || streaming || device?.permissions?.send != true || device?.permissions?.stop != true) return
+        error = null
+        val current = generation
+        voice.start {
+            var id = chat.id
+            if (id.isEmpty()) {
+                check(device?.permissions?.createChats == true)
+                busy = true
+                val created = try { api.create(text(R.string.voice_conversation), chat.projectId) } finally { busy = false }
+                currentCoroutineContext().ensureActive()
+                check(current == generation)
+                selected = created
+                chats = listOf(created) + chats
+                id = created.id
+            }
+            api to id
+        }
+    }
+
     private var streamJob: Job? = null
     private var socket: WebSocket? = null
     private var foreground = false
@@ -533,6 +567,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun open(chat: Chat) {
         if (busy) return
+        voice.stop()
         selected?.id?.let { drafts[it] = draft }
         generation++
         client?.cancelLive()
@@ -602,6 +637,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun create(projectId: String? = null) {
         val api = client ?: return
         if (busy || device?.permissions?.createChats != true) return
+        voice.stop()
         val current = generation
         busy = true
         viewModelScope.launch {
@@ -799,18 +835,24 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    var stopInFlight by mutableStateOf(false)
+        private set
+
     fun stop() {
-        if (device?.permissions?.stop != true) return
+        if (stopInFlight || device?.permissions?.stop != true) return
         val api = client ?: return
         val id = selected?.id ?: return
+        stopInFlight = true
         viewModelScope.launch {
             try { api.stop(id) } catch (failure: Exception) { handle(failure) }
+            finally { stopInFlight = false }
         }
     }
 
     fun setForeground(active: Boolean) {
         foreground = active
         if (!active) {
+            voice.stop()
             cancelReconnect()
             client?.cancelLive()
             streamJob?.cancel()
@@ -956,6 +998,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     /** Drops everything that belongs to the open desktop's session; credentials stay. */
     private fun resetSession() {
+        voice.stop()
         scheduledTasks = emptyList()
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
@@ -987,5 +1030,5 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         origin = connection?.origin.orEmpty()
     }
 
-    override fun onCleared() { disconnectNode(); client?.close() }
+    override fun onCleared() { voice.stop(); disconnectNode(); client?.close() }
 }

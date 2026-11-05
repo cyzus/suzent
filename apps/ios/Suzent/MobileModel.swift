@@ -110,6 +110,47 @@ import SuzentCore
     var draft = ""
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
+    var voiceSupported = false
+    let voice = VoiceSession()
+
+    var voiceUnavailableReason: String? {
+        if isDemo { return String(localized: "Voice is unavailable in the offline demo. Connect to your desktop to talk with Suzent.") }
+        if !voiceSupported { return String(localized: "Update and restart your desktop, then configure a realtime model in Settings → Voice & audio.") }
+        if device?.permissions.send != true || device?.permissions.stop != true {
+            return String(localized: "Enable Send messages and Stop responses for this phone in desktop Settings → Devices.")
+        }
+        if selected?.id.isEmpty == true && device?.permissions.createChats != true {
+            return String(localized: "Enable Create conversations for this phone, or open an existing conversation.")
+        }
+        return nil
+    }
+
+    func startVoice() {
+        if let reason = voiceUnavailableReason { error = reason; return }
+        guard voiceSupported, !busy, !streaming, device?.permissions.send == true,
+              device?.permissions.stop == true, let client = client as? SuzentClient,
+              let chat = selected else { return }
+        let current = generation
+        error = nil
+        voice.onError = { [weak self] message in self?.error = message }
+        voice.onRefresh = { [weak self] in Task { await self?.refresh() } }
+        voice.start { [weak self] in
+            guard let self, self.generation == current else { throw CancellationError() }
+            var id = chat.id
+            if id.isEmpty {
+                guard self.device?.permissions.createChats == true else { throw CancellationError() }
+                self.busy = true
+                defer { self.busy = false }
+                let created = try await client.createChat(title: String(localized: "Voice conversation"), projectID: chat.projectId)
+                try Task.checkCancellation()
+                guard self.generation == current else { throw CancellationError() }
+                self.selected = created
+                self.chats.insert(created, at: 0)
+                id = created.id
+            }
+            return try client.voiceSocket(chatID: id)
+        }
+    }
     var liveParts: [MessagePart] = []
     var regentVisible = false
     var pendingApprovals: [ApprovalRequest] = []
@@ -120,6 +161,7 @@ import SuzentCore
     /// Loading the demo keeps the welcome screen up instead of the pairing progress view.
     private(set) var startingDemo = false
     var streaming = false
+    var stopInFlight = false
     var isDemo = false
     var demoPrompts: [String] = []
     var connected = false
@@ -398,6 +440,7 @@ import SuzentCore
             client = candidate
             device = session.device
             attachmentsSupported = session.supportsAttachments
+            voiceSupported = session.voice == 1
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -515,6 +558,7 @@ import SuzentCore
             guard generation == current else { return }
             device = session.device
             attachmentsSupported = session.supportsAttachments
+            voiceSupported = session.voice == 1
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -566,6 +610,7 @@ import SuzentCore
 
     func open(_ chat: Chat) async {
         guard let client, !busy else { return }
+        voice.stop()
         if let id = selected?.id { drafts[id] = draft }
         generation = UUID()
         streamTask?.cancel()
@@ -624,6 +669,7 @@ import SuzentCore
 
     func createChat(projectID: String? = nil) async {
         guard let client, device?.permissions.createChats == true, !busy else { return }
+        voice.stop()
         let current = generation
         busy = true
         defer { busy = false }
@@ -825,7 +871,9 @@ import SuzentCore
     }
 
     func stop() async {
-        guard device?.permissions.stop == true, let id = selected?.id, let client else { return }
+        guard !stopInFlight, device?.permissions.stop == true, let id = selected?.id, let client else { return }
+        stopInFlight = true
+        defer { stopInFlight = false }
         do { try await client.stop(id) }
         catch { handle(error) }
     }
@@ -941,6 +989,8 @@ import SuzentCore
     }
 
     private func resetSessionState() {
+        voice.stop()
+        voiceSupported = false
         scheduledTasks = []
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false

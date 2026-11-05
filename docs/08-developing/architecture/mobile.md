@@ -622,3 +622,31 @@ project counts and pin discovery do not depend on the recent page.
 
 The demo implements the same paging contract locally. Paging, old-title search,
 independent pins, duplicate merges and access-scoped counts have regression tests.
+
+### Voice composer and shared animation
+
+The paired-device `/mobile/client/voice` WebSocket reuses `VoiceBridge` and checks
+conversation access plus send/stop permissions. Native audio capture and playback
+remain in each app's `VoiceSession`; the server's state and working events and the
+microphone level drive the animation.
+
+Desktop and mobile use `frontend/src/lib/voice/voiceCubeRenderer.ts` and
+`voiceCubeSim.ts`. Run `npm run build:mobile-voice` in `frontend/` after changing
+these files. This bundles an offline HTML asset in SuzentCore's resources, which
+both apps already package. `npm run check:mobile-voice` and the frontend test
+check that this asset matches the shared source. The mobile views host only the
+animation in a transparent WebView. The canvas uses explicit positioning because
+a flex-positioned canvas could render pixels without appearing on screen in
+Android WebView. The WebView has no audio, remote assets, or native
+JavaScript bridge; controls, captions, and permissions remain native. Dark mode
+and reduced-motion preferences are passed to the shared renderer.
+
+`ComposerAction` in each client prioritizes cancel/hang-up during a call, so task
+stopping never appears alongside hang-up. Outside calls it shows stop for running
+tasks, progress while busy, send for text/attachments, or voice for an empty
+composer. Voice setup and permission errors
+produce actionable messages instead of a disabled empty-composer button.
+
+Android uses a separate non-pooling transport for mutations and voice handshakes
+so they do not inherit idle sockets from background polling. Read requests keep
+their own connection pool and safe retry policy.

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from starlette.exceptions import HTTPException
-from starlette.requests import Request
+from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -57,7 +57,7 @@ class ManagementRequest(BaseModel):
     enabled: StrictBool
 
 
-def get_mobile_store(request: Request) -> PairingStore:
+def get_mobile_store(request: HTTPConnection) -> PairingStore:
     state = request.app.state
     if not hasattr(state, "mobile_store"):
         try:
