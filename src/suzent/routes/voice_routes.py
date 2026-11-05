@@ -30,7 +30,16 @@ async def voice_websocket_endpoint(websocket: WebSocket) -> None:
 
         config: dict = {}
         seed_default_permission_mode(config)
-        db.create_chat(title="Voice conversation", config=config, chat_id=chat_id)
+        # An unknown project falls back to the default one, as plain chats do.
+        project_id = (websocket.query_params.get("project_id") or "").strip()
+        if project_id and db.get_project(project_id) is None:
+            project_id = ""
+        db.create_chat(
+            title="Voice conversation",
+            config=config,
+            chat_id=chat_id,
+            project_id=project_id or None,
+        )
 
     await websocket.accept()
     bridge_factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)
