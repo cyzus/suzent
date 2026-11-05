@@ -208,6 +208,19 @@ Get Suzent running in a few minutes.
 
 ## 1. Install
 
+### From the Microsoft Store (Windows, recommended)
+
+<a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200" /></a>
+
+Click **Get** in the Store, then open Suzent from the Start menu. Python, Git and everything else are bundled, so there is nothing else to install. Then continue with [step 3](#3-add-your-model-provider).
+
+How the Store build differs from the installer:
+
+- **Updates come from the Microsoft Store.** `suzent update`, `suzent upgrade` and `suzent repair` are turned off in the Store build.
+- **Your data stays in `~/.suzent`** (chats, memory, settings, API keys), the same folder the installer uses, so uninstalling the app does not delete it.
+- **Start at login** (Settings → Background service) uses Windows' startup-app setting. You can also switch it off in Settings → Apps → Startup.
+- **Side by side with the installer version.** You can have both installed, and they share `~/.suzent`. Don't run them at the same time, though. The Store app never attaches to a backend started by the installer version, so it starts a second backend on the same data. Quit one, including its background service, before opening the other, and turn on start at login in only one of them.
+
 ### Use the installer
 
 Download the installer for your platform from the [landing page](https://suzent.com/#download). On macOS, choose Apple Silicon for M-series Macs or Intel for Intel-based Macs. Windows and Linux downloads target x86_64.
@@ -380,6 +393,15 @@ Source: https://suzent.com/docs/getting-started/updating
 
 
 
+
+<Callout type="info" title="Installed from the Microsoft Store?">
+
+The Microsoft Store updates the Store build, like any other Store app. The rest of
+this page covers the installer and terminal versions: in the Store build, `suzent update`,
+`suzent upgrade` and `suzent repair` are turned off, and so is the in-app updater.
+Your data in `~/.suzent` is kept across updates.
+
+</Callout>
 
 ## Automatic updates
 
