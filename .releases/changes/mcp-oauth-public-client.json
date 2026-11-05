@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Fix plugin sign-in failing with \"Client must not use multiple authentication methods\" for services such as Cloudflare."}
