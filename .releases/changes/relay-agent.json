@@ -1,0 +1,1 @@
+{"products": {"desktop": "none"}, "reason": "Adds the relay client library and tests only; nothing uses it until the relay settings land.", "summary": "Internal: desktop client for self-hosted relays."}
