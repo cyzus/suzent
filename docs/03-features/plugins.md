@@ -39,8 +39,8 @@ save your choice and Suzent loads it the next time it starts.
 ## Chat apps
 
 Chat-app plugins are off until you use them. Setting up an app under
-**Settings → Social Channels** installs its plugin for you, so in most cases
-you never need the Plugins page for chat apps. If you already had an app set
+**Settings → Social Channels** installs its plugin for you, so chat apps are
+not listed on the Plugins page. If you already had an app set
 up before plugins existed, its plugin is on after the upgrade and keeps
 working.
 
@@ -50,7 +50,8 @@ WeChat needs no extra packages, so it has no plugin and always works.
 ## Notion, Linear, GitHub, Cloudflare and Stripe
 
 These built-in plugins connect the agent to your account on each service.
-Each one is off until you install it and connect your account.
+They are listed under **Settings → Services**, not on the Plugins page, and
+each one is off until you add it and connect your account.
 
 | Plugin | What the agent can do |
 |---|---|
@@ -60,7 +61,7 @@ Each one is off until you install it and connect your account.
 | Cloudflare | Look up and change anything in the Cloudflare API, such as DNS records, Workers, R2 buckets and analytics, plus search Cloudflare's docs. |
 | Stripe | Look up customers, payments, invoices and subscriptions, search Stripe's docs, and make changes such as creating a refund or a payment link. |
 
-1. Open **Settings → Plugins** and choose **Install** on the service.
+1. Open **Settings → Services** and choose **Add** on the service.
 2. Connect your account:
    - **Notion, Linear, Cloudflare and Stripe:** choose **Sign in**. A browser window opens on the
      service's own sign-in page. Do this on the computer that runs Suzent.
@@ -83,7 +84,7 @@ service marks as read-only run without asking. Your permission mode and
 **Always allow** choices apply as usual.
 
 If a sign-in expires or the service can't be reached, chats keep working
-without that service's tools, and the Plugins page shows **Sign in again**.
+without that service's tools, and the Services page shows **Sign in again**.
 Choose **Disconnect** to sign out and forget the token.
 
 ## Plugins from other people

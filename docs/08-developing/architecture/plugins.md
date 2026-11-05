@@ -51,6 +51,7 @@ api_version: 1         # plugin API this plugin was written against
 | `dependencies` | pip requirements of a third-party plugin. |
 | `default_enabled` | On until the user removes it. Honoured only for built-in plugins. |
 | `icon` | An SVG or PNG file in the plugin folder (under 64 KB), shown on the plugins page. Built-in service logos come from [Simple Icons](https://simpleicons.org) (CC0). |
+| `category` | `service` lists the plugin under **Settings → Services** instead of **Plugins**. Chat-app plugins (those with `channel`) are left off the Plugins page, because Social Channels installs them. |
 
 A plugin with no `__init__.py` only brings packages; `plugins/telegram/` is one.
 
