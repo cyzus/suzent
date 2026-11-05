@@ -1477,11 +1477,16 @@ export interface CronJob {
   updated_at: string;
 }
 
-/** A saved task, plus its webhook URL path when this save minted one.
- *  The path is never returned again, so it has to be shown now. */
-export interface CronJobSaveResult {
-  job: CronJob;
+/** A freshly minted webhook: its path on this machine, and its address
+ *  through the relay when one is set up. Never returned again. */
+export interface WebhookUrls {
   webhook_path?: string;
+  webhook_relay_url?: string;
+}
+
+/** A saved task, plus its webhook URLs when this save minted one. */
+export interface CronJobSaveResult extends WebhookUrls {
+  job: CronJob;
 }
 
 /** The full URL for a webhook path the backend returned. */
@@ -1571,8 +1576,8 @@ export async function updateCronJob(
   return res.json();
 }
 
-/** Issue a new URL for a webhook task; the old one stops working. Returns the path. */
-export async function regenerateWebhook(jobId: number): Promise<string> {
+/** Issue a new URL for a webhook task; the old one stops working. */
+export async function regenerateWebhook(jobId: number): Promise<WebhookUrls> {
   const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}/webhook/regenerate`, {
     method: 'POST',
   });
@@ -1580,8 +1585,7 @@ export async function regenerateWebhook(jobId: number): Promise<string> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to issue a new webhook URL');
   }
-  const data = await res.json();
-  return data.webhook_path;
+  return res.json();
 }
 
 export async function deleteCronJob(jobId: number): Promise<void> {

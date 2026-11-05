@@ -67,3 +67,28 @@ body chunks of at most 1 MiB (`HCHUNK` binary frames in protocol 2), then
 | `stopped` | `stop()` was called. |
 
 Tokens and the registration key are never logged.
+
+## Settings and channels
+
+`RelayService` (`src/suzent/relay/service.py`) is created in the server
+lifespan as `app.state.relay` and owns the user's relay settings:
+
+- `relay.json` in the user config directory holds `{url, enabled}`.
+- The registration key and the channel tokens live in the secret store under
+  `SUZENT_RELAY::*`, a private prefix that is never exported to the
+  environment.
+- The **webhook channel** is one `RelayAgent` behind
+  `PathGate(http_prefixes=("/hooks/",))`. Its public URL for a webhook is
+  `<relay>/c/<channel token>/hooks/<webhook token>`; the cron routes return it
+  as `webhook_relay_url` next to `webhook_path` whenever they mint a webhook.
+- Resetting deletes the channel tokens, so new ones are minted and every old
+  relay URL stops resolving.
+
+Operator routes (host authorization, like the rest of `/mobile/` outside
+`/mobile/client/`):
+
+| Route | Purpose |
+| --- | --- |
+| `GET /mobile/relay` | `{url, enabled, has_key, state, detail, protocol}`. The key itself is never returned. |
+| `POST /mobile/relay` | `{url, key?, enabled}`. `key` omitted or `null` keeps the stored key, `""` removes it. `400` for a URL that isn't http(s). |
+| `POST /mobile/relay/reset` | New channel tokens. |

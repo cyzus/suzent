@@ -1,1 +1,1 @@
-{"products": {"desktop": "none"}, "reason": "Adds the relay client library and tests only; nothing uses it until the relay settings land.", "summary": "Internal: desktop client for self-hosted relays."}
+{"products": {"desktop": "minor"}, "summary": "Connect Suzent to a relay you deploy yourself (Settings → Devices → Relay) so webhooks can reach it from the internet without a tunnel."}
