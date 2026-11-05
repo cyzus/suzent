@@ -4,3 +4,4 @@ version: 1.0.0
 description: Let the agent look up and change your Cloudflare account (DNS, Workers, R2, and the rest of the Cloudflare API). Sign in with your Cloudflare account.
 api_version: 2
 icon: icon.svg
+category: service

@@ -127,7 +127,7 @@ def _oauth_class():
         async def redirect_handler(self, authorization_url: str) -> None:
             if self._on_authorize is None:
                 raise SignInRequired(
-                    "Sign in again from Settings → Plugins to use this service."
+                    "Sign in again from Settings → Services to use this service."
                 )
             self._on_authorize(authorization_url)
 

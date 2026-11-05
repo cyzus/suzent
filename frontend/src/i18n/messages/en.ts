@@ -926,9 +926,9 @@ export const en = {
       },
     },
     mcp: {
-      title: 'MCP Servers',
+      title: 'Custom MCP servers',
       viewTools: 'Tools',
-      subtitle: 'Connect external tools and resources via MCP',
+      subtitle: 'Add any other MCP server by its URL or command.',
       addNewServerTitle: 'Add new server',
       addNewServerDesc: 'Add a new MCP server to connect external tools and resources.',
       nameOptionalPlaceholder: 'Name (optional)',
@@ -954,15 +954,29 @@ export const en = {
       commandLabel: 'Command',
       stdinMode: 'stdin mode',
     },
+    services: {
+      title: 'Services',
+      subtitle:
+        'Let the agent work in the apps you use. Sign in once; tokens stay on this computer.',
+      listTitle: 'Services',
+      listDesc: 'Add a service, then sign in or paste a token.',
+      helpTitle: 'How services work',
+      helpPackages:
+        'Each service connects through its official MCP server. Your sign-in is kept in the system keychain and never shown to the agent.',
+      helpCode:
+        'Reading is allowed straight away. Anything that changes data in the service asks for your approval first, unless you allow it.',
+      install: 'Add',
+      empty: 'No services available',
+    },
     plugins: {
       title: 'Plugins',
       subtitle:
-        'Add chat apps, tools and commands. Changes apply straight away and survive upgrades.',
+        'Add tools and commands to Suzent. Changes apply straight away and survive upgrades.',
       listTitle: 'Installed plugins',
       listDesc: 'Plugins shipped with Suzent and any you put in the plugins folder.',
       helpTitle: 'How plugins work',
       helpPackages:
-        'Each chat app is its own plugin. Installing one downloads only the packages it needs, and setting up a chat app under Social Channels installs it for you. Upgrades keep what you installed.',
+        'Installing a plugin downloads only the packages it needs, and upgrades keep what you installed. Chat apps are set up under Social Channels and services under Services, so they are not listed here.',
       helpCode:
         'Plugins that add tools or commands run their code inside Suzent with your permissions. Install and Remove take effect straight away, no restart needed. Only install plugins you trust.',
       empty: 'No plugins found',
@@ -1090,6 +1104,7 @@ export const en = {
       devices: 'Devices',
       mesh: 'Mesh',
       mcp: 'MCP Servers',
+      services: 'Services',
       acpAgents: 'ACP Agents',
       plugins: 'Plugins',
       automation: 'Automation',
@@ -2117,8 +2132,8 @@ export const en = {
     loading: 'Loading…',
     noTools: 'No tools configured',
     tools: 'Tools',
-    mcpServers: 'MCP Servers',
-    services: 'Connected services',
+    mcpServers: 'Custom MCP',
+    services: 'Services',
     serviceBadge: 'Plugin',
   },
   webActivities: {

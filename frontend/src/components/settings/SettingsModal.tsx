@@ -30,12 +30,12 @@ import { AppearanceTab } from './AppearanceTab';
 import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
-import { McpTab } from './McpTab';
 import { PluginsTab } from './PluginsTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
 import { NotificationsTab } from './NotificationsTab';
 import { ProvidersTab } from './ProvidersTab';
+import { ServicesTab } from './ServicesTab';
 import { SocialTab } from './SocialTab';
 import { DevicesTab } from './DevicesTab';
 import { MeshTab } from './MeshTab';
@@ -675,7 +675,7 @@ export function SettingsModal({
       {activeCategory === 'mesh' && <MeshTab />}
 
       {activeCategory === 'mcp' && (
-        <McpTab
+        <ServicesTab
           serverList={mcpServerList}
           onServerListChange={setMcpServerList}
           onMcpServersRefresh={setMcpServers}
