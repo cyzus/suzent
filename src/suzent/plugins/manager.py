@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import sys
@@ -29,6 +30,9 @@ from suzent.plugins.manifest import (
 from suzent.tools.base import Tool
 
 logger = get_logger(__name__)
+
+_ICON_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+_MAX_ICON_BYTES = 64 * 1024
 
 ENTRY_POINT_GROUP = "suzent.plugins"
 STATE_VERSION = 1
@@ -66,6 +70,25 @@ class PluginRecord:
     def names(self) -> set[str]:
         return {self.id, *self.manifest.aliases}
 
+    def icon_data_uri(self) -> str | None:
+        """The manifest's icon as a data URI, so the page needs no file route."""
+        if not self.manifest.icon or self.path is None:
+            return None
+        try:
+            root = self.path.resolve()
+            icon = (root / self.manifest.icon).resolve()
+            mime = _ICON_TYPES.get(icon.suffix.lower())
+            if mime is None or not icon.is_relative_to(root) or not icon.is_file():
+                return None
+            data = icon.read_bytes()
+        except OSError as exc:
+            # A broken logo must not keep the plugin list from loading.
+            logger.debug("Plugin {} icon unreadable: {}", self.id, exc)
+            return None
+        if len(data) > _MAX_ICON_BYTES:
+            return None
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -83,6 +106,7 @@ class PluginRecord:
             "commands": self.command_names,
             "skillDirs": [str(path) for path in self.skill_dirs],
             "integrations": [i.id for i in self.integrations],
+            "icon": self.icon_data_uri(),
         }
 
 

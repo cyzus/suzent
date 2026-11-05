@@ -294,7 +294,7 @@ export function SettingsListAction({
 
   return (
     <button
-      className={`px-3 py-1 border text-[11px] font-bold uppercase transition-colors disabled:opacity-50 rounded-sm ${colorClasses} ${className}`}
+      className={`px-3 py-1 border text-[11px] font-bold uppercase whitespace-nowrap transition-colors disabled:opacity-50 rounded-sm ${colorClasses} ${className}`}
       {...props}
     >
       {children}
