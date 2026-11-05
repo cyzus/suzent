@@ -128,7 +128,13 @@ private enum VoiceFailure: Error { case audio, permission, connection }
     private func startAudio(inputRate: Double, outputRate: Double, socket: URLSessionWebSocketTask) throws {
         guard engine == nil else { return }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
+        #if compiler(>=6.2)
+        options.insert(.allowBluetoothHFP)
+        #else
+        options.insert(.allowBluetooth)
+        #endif
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
         try session.setActive(true)
         let engine = AVAudioEngine()
         self.engine = engine
