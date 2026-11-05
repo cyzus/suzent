@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
+- Voice conversations started from the new-chat screen now go into the project you picked instead of the default project.
 
 ## [v0.22.0] - 2026-11-05
 
