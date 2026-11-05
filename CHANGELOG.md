@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.22.0] - 2026-11-05
 
+<!-- highlights -->
+### Highlights
+
+- **Suzent is on the Microsoft Store.** Install it from https://apps.microsoft.com/detail/9MZQ1HHXHVZT and let the Store keep it up to date. The Store build runs its own bundled Python, needs no setup step, and uses Windows' own start-at-login switch.
+- **Your settings live with your data.** Chat apps, permissions, custom providers, skills and default config are now always saved in your Suzent data folder rather than the app folder, so they survive reinstalls and work in read-only installs. Existing settings move over automatically on first launch.
+- **Several chats at once, without the mix-ups.** Replies no longer leak into another chat while two are streaming, the send button no longer ignores the first click, and switching to a streaming chat shows it streaming straight away.
+- **Smoother streaming.** Long replies no longer re-parse the whole message on every frame, and opening a chat or the chat list no longer stalls the ones that are still streaming.
+<!-- /highlights -->
+
 ### Release notes
 - Fixed replies from one chat leaking into another while two chats stream, the send button sometimes ignoring the first click, and a delay before a streaming chat shows as streaming after switching to it.
 - Add an MSIX packaged mode for the Microsoft Store build: the desktop app runs its bundled Python runtime, leaves updates to the Store, and uses the Windows StartupTask for start at login.
