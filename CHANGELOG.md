@@ -5,10 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.22.0] - 2026-11-04
+## [v0.22.0] - 2026-11-05
 
 ### Release notes
+- Fixed replies from one chat leaking into another while two chats stream, the send button sometimes ignoring the first click, and a delay before a streaming chat shows as streaming after switching to it.
 - Add an MSIX packaged mode for the Microsoft Store build: the desktop app runs its bundled Python runtime, leaves updates to the Store, and uses the Windows StartupTask for start at login.
+- Streaming replies no longer re-parse the whole message every frame, and loading chats or the chat list no longer stalls other chats that are streaming.
 - Settings you change (chat apps, permissions, custom providers, skills and default config) are now always saved in your Suzent data folder instead of the app folder, so they work in read-only installs such as the Microsoft Store; existing settings are migrated automatically.
 
 ## [v0.21.0] - 2026-11-02
