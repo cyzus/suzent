@@ -62,9 +62,13 @@ class FakeSession:
 class FakeDatabase:
     def __init__(self):
         self.chats = {}
+        self.projects = {"work"}
 
     def get_chat(self, chat_id):
         return self.chats.get(chat_id)
+
+    def get_project(self, project_id):
+        return project_id if project_id in self.projects else None
 
     def create_chat(self, *, chat_id, **kwargs):
         self.chats[chat_id] = kwargs
@@ -90,6 +94,7 @@ def _app(monkeypatch, session):
 
     app = Starlette(routes=[WebSocketRoute("/ws/voice", voice_websocket_endpoint)])
     app.state.voice_bridge_factory = bridge_factory
+    app.state.fake_db = db
     return app
 
 
@@ -154,3 +159,22 @@ def test_voice_websocket_rejects_bad_origin(monkeypatch):
             ):
                 pass
         assert excinfo.value.code == 1008
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [("?project_id=work", "work"), ("?project_id=gone", None), ("", None)],
+)
+def test_voice_websocket_new_chat_project(monkeypatch, query, expected):
+    app = _app(monkeypatch, FakeSession())
+    with (
+        TestClient(app) as client,
+        client.websocket_connect(
+            f"/ws/voice{query}", headers={"origin": "tauri://localhost"}
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "ready"
+        websocket.send_json({"type": "stop"})
+        _drain(websocket, lambda f: isinstance(f, dict) and f.get("type") == "closed")
+    [created] = app.state.fake_db.chats.values()
+    assert created["project_id"] == expected
