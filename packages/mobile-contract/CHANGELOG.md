@@ -2,6 +2,12 @@
 
 ## [mobile-v0.6.2] - 2026-11-05
 
+<!-- highlights -->
+### Highlights
+
+- **Switch computers when one is offline.** If your default desktop can't be reached, the reconnect screen now lists your other paired computers. Tap one to switch, even mid-attempt, or pair a new one from the same screen.
+<!-- /highlights -->
+
 ### Release notes
 - When the default desktop can't be reached, the reconnect screen now lists your other paired desktops so you can switch with one tap, even mid-attempt, or pair a new one.
 
