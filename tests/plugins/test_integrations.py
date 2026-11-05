@@ -321,3 +321,23 @@ def test_an_icon_outside_the_plugin_folder_is_ignored(tmp_path):
         path=folder,
     )
     assert record.icon_data_uri() is None
+
+
+def test_a_chat_can_turn_a_connected_service_off(plugins, secrets, monkeypatch):
+    from suzent import agent_manager
+
+    github = _record(plugins, "github").integrations[0]
+    secrets.values[integrations.token_key("github", github)] = "token"
+    monkeypatch.setattr(
+        "suzent.core.mcp_store.as_agent_config",
+        lambda: {
+            "mcp_enabled": {},
+            "mcp_headers": {},
+            "mcp_stdio_params": {},
+            "mcp_urls": {},
+        },
+    )
+
+    assert len(agent_manager._build_mcp_servers({})) == 1
+    off = {"mcp_enabled": {"github.github": False}}
+    assert agent_manager._build_mcp_servers(off) == []

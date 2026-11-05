@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useChatCoreStore } from '../../hooks/useChatStore';
 import { useActivatedToolsStore } from '../../hooks/useActivatedToolsStore';
-import { deactivateTool, fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
+import { deactivateTool, fetchMcpServers, fetchPlugins, setMcpServerEnabled } from '../../lib/api';
 import { CapabilityToolPicker } from '../tools/CapabilityToolPicker';
 import { useI18n } from '../../i18n';
+
+/** A service a plugin connected, such as Notion, keyed like the agent keys it. */
+type ConnectedService = {
+  key: string;
+  name: string;
+  icon?: string | null;
+};
 
 type MCPServer = {
   name: string;
@@ -20,6 +27,27 @@ export function ToolsPanel(): React.ReactElement | null {
   const { activatedByAI, removeActivatedTool } = useActivatedToolsStore();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [mcpLoading, setMcpLoading] = useState(false);
+  const [services, setServices] = useState<ConnectedService[]>([]);
+
+  useEffect(() => {
+    fetchPlugins()
+      .then((plugins) =>
+        setServices(
+          plugins
+            .filter((plugin) => plugin.enabled)
+            .flatMap((plugin) =>
+              (plugin.integrations ?? [])
+                .filter((integration) => integration.connected)
+                .map((integration) => ({
+                  key: `${plugin.id}.${integration.id}`,
+                  name: integration.name,
+                  icon: plugin.icon,
+                }))
+            )
+        )
+      )
+      .catch(() => {});
+  }, [backendConfig]);
 
   useEffect(() => {
     fetchMcpServers()
@@ -73,7 +101,7 @@ export function ToolsPanel(): React.ReactElement | null {
       await setMcpServerEnabled(name, !server.enabled);
       const updated = servers.map((s) => (s.name === name ? { ...s, enabled: !s.enabled } : s));
       setServers(updated);
-      const mcp_enabled: Record<string, boolean> = {};
+      const mcp_enabled: Record<string, boolean> = { ...config.mcp_enabled };
       const mcp_urls: Record<string, string> = {};
       for (const s of updated) {
         mcp_enabled[s.name] = s.enabled;
@@ -83,6 +111,16 @@ export function ToolsPanel(): React.ReactElement | null {
     } finally {
       setMcpLoading(false);
     }
+  };
+
+  const serviceOn = (key: string): boolean => config.mcp_enabled?.[key] !== false;
+
+  const toggleService = (key: string): void => {
+    // A chat's mcp_enabled replaces the global one, so it must list every server.
+    const serverStates = Object.fromEntries(servers.map((s) => [s.name, s.enabled]));
+    update({
+      mcp_enabled: { ...config.mcp_enabled, ...serverStates, [key]: !serviceOn(key) },
+    });
   };
 
   if (available.length === 0)
@@ -118,6 +156,28 @@ export function ToolsPanel(): React.ReactElement | null {
           compact
         />
 
+        {services.length > 0 && (
+          <>
+            <div className="px-3 pt-3 pb-1.5 border-t border-brutal-black/10 dark:border-neutral-700 mt-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                {t('toolsPanel.services')}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 px-1.5 pb-3">
+              {services.map((service) => (
+                <ToggleRow
+                  key={service.key}
+                  label={service.name}
+                  on={serviceOn(service.key)}
+                  onClick={() => toggleService(service.key)}
+                  icon={service.icon}
+                  badge={t('toolsPanel.serviceBadge')}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {/* MCP Servers section */}
         {servers.length > 0 && (
           <>
@@ -128,44 +188,79 @@ export function ToolsPanel(): React.ReactElement | null {
             </div>
             <div className="flex flex-col gap-1 px-1.5 pb-3">
               {servers.map((server) => (
-                <button
+                <ToggleRow
                   key={server.name}
-                  type="button"
-                  onClick={() => !mcpLoading && toggleMcp(server.name)}
+                  label={server.name}
+                  on={server.enabled}
                   disabled={mcpLoading}
-                  className={`flex items-center gap-2.5 px-2.5 py-1.5 border-2 text-[10px] font-bold uppercase transition-all w-full text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 ${
-                    server.enabled
-                      ? 'bg-brutal-green text-brutal-black border-brutal-black'
-                      : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700'
-                  }`}
-                >
-                  <div
-                    className={`w-3.5 h-3.5 border-2 border-brutal-black flex-shrink-0 flex items-center justify-center ${server.enabled ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
-                  >
-                    {server.enabled && (
-                      <svg
-                        className="w-2.5 h-2.5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={4}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  <span className="truncate flex-1">{server.name}</span>
-                  <span
-                    className={`text-[9px] px-1 py-0.5 border font-bold flex-shrink-0 ${server.enabled ? 'border-brutal-black bg-white text-brutal-black' : 'border-neutral-400 bg-neutral-100 dark:bg-zinc-700 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400'}`}
-                  >
-                    MCP
-                  </span>
-                </button>
+                  onClick={() => !mcpLoading && toggleMcp(server.name)}
+                  badge="MCP"
+                />
               ))}
             </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  on,
+  onClick,
+  badge,
+  icon,
+  disabled,
+}: {
+  label: string;
+  on: boolean;
+  onClick: () => void;
+  badge: string;
+  icon?: string | null;
+  disabled?: boolean;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={on}
+      className={`flex items-center gap-2.5 px-2.5 py-1.5 border-2 text-[10px] font-bold uppercase transition-all w-full text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 ${
+        on
+          ? 'bg-brutal-green text-brutal-black border-brutal-black'
+          : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700'
+      }`}
+    >
+      <div
+        className={`w-3.5 h-3.5 border-2 border-brutal-black flex-shrink-0 flex items-center justify-center ${on ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
+      >
+        {on && (
+          <svg
+            className="w-2.5 h-2.5 text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={4}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </div>
+      {icon && (
+        <img
+          src={icon}
+          alt=""
+          aria-hidden="true"
+          className="h-3.5 w-3.5 flex-shrink-0 rounded-sm bg-white object-contain"
+        />
+      )}
+      <span className="truncate flex-1">{label}</span>
+      <span
+        className={`text-[9px] px-1 py-0.5 border font-bold flex-shrink-0 ${on ? 'border-brutal-black bg-white text-brutal-black' : 'border-neutral-400 bg-neutral-100 dark:bg-zinc-700 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400'}`}
+      >
+        {badge}
+      </span>
+    </button>
   );
 }
