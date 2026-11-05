@@ -35,7 +35,8 @@ export const DEFAULT_SCHEDULE: ScheduleValue = {
   catch_up: 'skip',
 };
 
-type Frequency = 'interval' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'once' | 'advanced';
+type Frequency =
+  'interval' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'once' | 'webhook' | 'advanced';
 
 /** Frequencies that repeat, and so can meaningfully jitter or miss a run. */
 const REPEATING: Frequency[] = ['interval', 'hourly', 'daily', 'weekly', 'monthly', 'advanced'];
@@ -177,6 +178,8 @@ export function describeSchedule(
       return job.run_at
         ? t('settings.automation.summaryOnce', { time: new Date(job.run_at).toLocaleString() })
         : t('settings.automation.summaryOnceUnset');
+    case 'webhook':
+      return t('settings.automation.summaryWebhook');
     default: {
       const base = describeCron(job.cron_expr, t);
       return job.timezone ? `${base} (${job.timezone})` : base;
@@ -245,13 +248,16 @@ function fromValue(value: ScheduleValue): BuilderState {
   if (value.schedule_kind === 'once') {
     return { ...DEFAULTS, ...common, frequency: 'once' };
   }
+  if (value.schedule_kind === 'webhook') {
+    return { ...DEFAULTS, ...common, frequency: 'webhook' };
+  }
   return { ...parsed, ...common };
 }
 
 function toValue(s: BuilderState): ScheduleValue {
   const policy = {
     timezone: s.timezone || null,
-    jitter_seconds: s.frequency === 'once' ? 0 : s.jitter,
+    jitter_seconds: REPEATING.includes(s.frequency) ? s.jitter : 0,
     catch_up: s.catchUp,
   };
 
@@ -261,6 +267,15 @@ function toValue(s: BuilderState): ScheduleValue {
       schedule_kind: 'interval',
       cron_expr: '',
       interval_minutes: Math.max(1, s.interval),
+      run_at: null,
+    };
+  }
+  if (s.frequency === 'webhook') {
+    return {
+      ...policy,
+      schedule_kind: 'webhook',
+      cron_expr: '',
+      interval_minutes: null,
       run_at: null,
     };
   }
@@ -407,6 +422,7 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): Reac
       { value: 'weekly', label: t('settings.automation.freqWeekly') },
       { value: 'monthly', label: t('settings.automation.freqMonthly') },
       { value: 'once', label: t('settings.automation.freqOnce') },
+      { value: 'webhook', label: t('settings.automation.freqWebhook') },
       { value: 'advanced', label: t('settings.automation.freqAdvanced') },
     ],
     [t]
@@ -433,7 +449,7 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): Reac
     [t]
   );
 
-  const isCron = state.frequency !== 'interval' && state.frequency !== 'once';
+  const isCron = !['interval', 'once', 'webhook'].includes(state.frequency);
   const repeats = REPEATING.includes(state.frequency);
 
   return (
@@ -566,10 +582,16 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): Reac
         </div>
       )}
 
-      {state.frequency !== 'advanced' && (
+      {state.frequency === 'webhook' ? (
         <p className="text-xs text-neutral-600 dark:text-neutral-300">
-          {describeSchedule(toValue(state), t)}
+          {t('settings.automation.webhookHint')}
         </p>
+      ) : (
+        state.frequency !== 'advanced' && (
+          <p className="text-xs text-neutral-600 dark:text-neutral-300">
+            {describeSchedule(toValue(state), t)}
+          </p>
+        )
       )}
     </div>
   );
