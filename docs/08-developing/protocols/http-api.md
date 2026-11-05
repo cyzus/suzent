@@ -90,6 +90,28 @@ a curated map, not a fact store — see
 | POST | `/cron/jobs/{job_id}/trigger` | Trigger immediate run |
 | GET | `/cron/status` | Scheduler health and job counts |
 | GET | `/cron/notifications` | Drain pending announce notifications |
+| POST | `/cron/jobs/{job_id}/webhook/regenerate` | Mint a new URL for a webhook task (`{"webhook_path": "/hooks/<token>"}`) |
+| POST | `/hooks/{token}` | Fire a webhook task with the request body as its input |
+
+### Webhooks
+
+A task with `schedule_kind: "webhook"` has no `next_run_at`; the clock skips it
+and `POST /hooks/{token}` fires it instead. Creating one (or switching a task to
+that kind) returns `webhook_path` once. Only `sha256(token)` is stored, in
+`cron_jobs.webhook_token_hash`, and switching the task to another kind clears it.
+
+`/hooks/` is in the auth boundary's exempt prefixes, so remote callers need no
+device grant; the route itself looks the task up by token hash and answers 404
+for an unknown token, a paused task, or a task that is no longer a webhook. The
+body is capped at 64 KB (413), and a webhook whose previous run is still going,
+or whose bound chat is mid-turn, answers 429 instead of queueing.
+
+`SchedulerBrain.fire_webhook` starts the run and returns 202 immediately. The
+body is pretty-printed if it is JSON, wrapped in `<webhook_payload>` (with any
+closing tag inside it escaped) alongside a short allowlist of event headers,
+and appended to the task's prompt with a note that it is untrusted data. A
+webhook run is never deferred or retried, because the payload exists only for
+that request.
 
 
 ### Heartbeat

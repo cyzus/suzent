@@ -1388,7 +1388,7 @@ export async function fetchSocialConfig(): Promise<SocialConfig> {
 // Cron Jobs / Automation
 // -----------------------------------------------------------------------------
 
-export type ScheduleKind = 'cron' | 'interval' | 'once';
+export type ScheduleKind = 'cron' | 'interval' | 'once' | 'webhook';
 export type ContextMode = 'isolated' | 'bound';
 export type TaskSource = 'user' | 'agent' | 'preset' | 'heartbeat';
 
@@ -1401,7 +1401,8 @@ export interface CronJob {
   delivery_mode: 'announce' | 'none';
   model_override: string | null;
   retry_count: number;
-  /** How next_run_at is computed: a cron expression, a fixed gap, or a single run_at. */
+  /** How next_run_at is computed: a cron expression, a fixed gap, a single run_at,
+   *  or never, for a webhook task that runs when its URL is called. */
   schedule_kind: ScheduleKind;
   interval_minutes: number | null;
   run_at: string | null;
@@ -1426,6 +1427,18 @@ export interface CronJob {
   unread_count: number;
   created_at: string;
   updated_at: string;
+}
+
+/** A saved task, plus its webhook URL path when this save minted one.
+ *  The path is never returned again, so it has to be shown now. */
+export interface CronJobSaveResult {
+  job: CronJob;
+  webhook_path?: string;
+}
+
+/** The full URL for a webhook path the backend returned. */
+export function webhookUrl(path: string): string {
+  return `${getApiBase() || window.location.origin}${path}`;
 }
 
 export interface CronNotification {
@@ -1481,7 +1494,7 @@ export async function createCronJob(job: {
   chat_id?: string | null;
   context_mode?: ContextMode;
   suppress_ok?: boolean;
-}): Promise<CronJob> {
+}): Promise<CronJobSaveResult> {
   const res = await fetch(`${getApiBase()}/cron/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1491,11 +1504,13 @@ export async function createCronJob(job: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to create cron job');
   }
-  const data = await res.json();
-  return data.job;
+  return res.json();
 }
 
-export async function updateCronJob(jobId: number, updates: Partial<CronJob>): Promise<CronJob> {
+export async function updateCronJob(
+  jobId: number,
+  updates: Partial<CronJob>
+): Promise<CronJobSaveResult> {
   const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -1505,8 +1520,20 @@ export async function updateCronJob(jobId: number, updates: Partial<CronJob>): P
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to update cron job');
   }
+  return res.json();
+}
+
+/** Issue a new URL for a webhook task; the old one stops working. Returns the path. */
+export async function regenerateWebhook(jobId: number): Promise<string> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}/webhook/regenerate`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to issue a new webhook URL');
+  }
   const data = await res.json();
-  return data.job;
+  return data.webhook_path;
 }
 
 export async function deleteCronJob(jobId: number): Promise<void> {

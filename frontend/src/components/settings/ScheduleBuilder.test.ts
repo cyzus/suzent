@@ -51,6 +51,16 @@ describe('normalizeSchedule', () => {
     expect(normalizeSchedule(value)).toEqual(value);
   });
 
+  it('keeps a webhook task a webhook, with no timing policy', () => {
+    const normalized = normalizeSchedule(
+      schedule({ schedule_kind: 'webhook', cron_expr: '', jitter_seconds: 60 })
+    );
+
+    expect(normalized.schedule_kind).toBe('webhook');
+    expect(normalized.cron_expr).toBe('');
+    expect(normalized.jitter_seconds).toBe(0);
+  });
+
   it('carries an interval longer than an hour, which cron could not express', () => {
     // "*/90 * * * *" is not a valid 90-minute schedule, which is why long
     // intervals are their own kind rather than a cron expression.
@@ -126,6 +136,12 @@ describe('describeSchedule', () => {
     expect(
       describeSchedule({ schedule_kind: 'cron', cron_expr: '0 9 * * *', timezone: 'Asia/Tokyo' }, t)
     ).toContain('(Asia/Tokyo)');
+  });
+
+  it('describes a webhook task by what fires it', () => {
+    expect(describeSchedule({ schedule_kind: 'webhook', cron_expr: '' }, t)).toBe(
+      'settings.automation.summaryWebhook'
+    );
   });
 
   it('says so when a one-shot has no time yet', () => {

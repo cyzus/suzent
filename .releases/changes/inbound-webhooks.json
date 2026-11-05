@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add webhook tasks: give a task a private URL and any service that calls it, such as GitHub or your own scripts, runs the task with the request as its input."
+}

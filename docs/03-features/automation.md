@@ -1,7 +1,7 @@
 ---
 sidebar_position: 6
 title: Automation
-description: Scheduled tasks, reminders, heartbeat check-ins, goal mode, and keeping Suzent running in the background.
+description: Scheduled tasks, webhooks, reminders, heartbeat check-ins, goal mode, and keeping Suzent running in the background.
 ---
 
 # Automation
@@ -31,6 +31,7 @@ Each task answers two questions.
 | **Every N minutes** | "Check the build every 15 minutes" |
 | **Hourly, daily, weekly, monthly**, or a cron expression | "Every weekday at 9:00" |
 | **Once**, at a set time | "Remind me about the migration on Friday at 10:00" |
+| **When called**, by a webhook | "When GitHub tells you about a new issue, triage it" (see [Webhooks](#webhooks)) |
 
 **Where does it run?**
 
@@ -84,6 +85,62 @@ month, month, day of week (0 is Sunday).
 | `0 9,18 * * *` | At 9:00 and 18:00 |
 | `0 0 * * 0` | Sundays at midnight |
 | `0 0 1 * *` | The first of every month |
+
+## Webhooks
+
+A webhook task runs when another program calls it, instead of on a clock. Use it
+to let GitHub, Home Assistant, a CI pipeline, or your own scripts hand work to
+Suzent: "a build failed, find out why", "a new issue came in, label it".
+
+1. In **Settings → Automation**, add a task and set **Repeat** to
+   **When called (webhook)**. Write the prompt as usual, for example
+   "Summarize this GitHub push and tell me if anything looks risky."
+2. Save it. Suzent shows the task's **webhook URL**. Copy it now: it is shown
+   only once.
+3. Paste the URL into the other service's webhook settings, or call it
+   yourself:
+
+   ```bash
+   curl -X POST http://127.0.0.1:25314/hooks/<token> \
+     -H "Content-Type: application/json" \
+     -d '{"build": "nightly", "status": "failed"}'
+   ```
+
+Each call runs the task once. The body of the request (up to 64 KB) is passed to
+the agent along with your prompt, so the prompt can say what to do with it.
+JSON is shown to the agent formatted, and event headers such as
+`X-GitHub-Event` are included so it can tell what kind of event arrived.
+
+**Who can call it.** The URL is the password: anyone who has it can run the
+task, so treat it like one. If it leaks, click the link button on the task to
+issue a new URL; the old one stops working immediately. Pausing or deleting the
+task also stops the URL. The agent is told that the request comes from outside
+and must not be obeyed as instructions, but the request still reaches it, so
+give webhook tasks prompts that only read and report unless you trust the
+sender.
+
+**What the caller gets back.** Suzent answers right away with `202 Accepted`
+and runs the task in the background, where its result goes to the task's chat
+and notifications like any other task. If the task is still busy with an earlier
+call, the new call gets `429 Too Many Requests` and is not queued, so the caller
+should retry. Failed webhook runs are not retried automatically, because the
+request they were carrying is gone; check the task's history instead.
+
+**Reaching it from the internet.** Suzent only listens on your own computer, so
+a script on the same machine can call the URL directly. A service on the
+internet, such as GitHub, needs a tunnel that forwards to Suzent, such as
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+or [Tailscale Funnel](https://tailscale.com/kb/1223/funnel). Point the tunnel at
+`http://127.0.0.1:25314`, add the tunnel's host name to the `SUZENT_ALLOWED_HOSTS`
+environment variable (for example `SUZENT_ALLOWED_HOSTS=hooks.example.com`), and
+give the service the tunnel address with the same `/hooks/<token>` path. Only
+the `/hooks/` path works without signing in through the tunnel; the rest of
+Suzent still requires an approved device.
+
+Webhooks work only while Suzent is running, and the URL keeps the same address
+only when it runs as the [background service](#keep-suzent-running-in-the-background),
+which always uses port 25314. Turn the background service on before you hand the
+URL to anything.
 
 ## Heartbeat
 
@@ -167,6 +224,8 @@ suzent cron add --name "poll-ci" --every 15 --prompt "Check the build"
 suzent cron add --name "follow-up" --at "2026-01-02T09:00" --prompt "Revisit the migration"
 suzent cron add --name "report" --cron "0 9 * * *" --timezone Asia/Shanghai --prompt "Morning report"
 suzent cron add --name "watch-pr" --every 30 --chat <chat_id> --quiet --prompt "Has CI finished?"
+suzent cron add --name "gh-push" --webhook --prompt "Summarize this push"
+suzent cron webhook-url <job_id>   # issue a new webhook URL
 suzent cron trigger <job_id>   # run now
 suzent cron toggle <job_id>    # switch on or off
 suzent cron remove <job_id>
@@ -184,6 +243,14 @@ is in the future. If you closed the app, turn on the background service.
 **A task keeps failing.** Read its last error in **Settings → Automation** and
 fix the cause; the next scheduled run uses the fix. A one-time task that failed
 is switched off, so switch it back on after fixing it.
+
+**A webhook call gets 404.** The URL is wrong, was replaced with a new one, or
+the task is switched off. Issue a new URL from **Settings → Automation** if
+you no longer have the current one.
+
+**A webhook call from the internet gets 421 or 401.** Add the tunnel's host name
+to `SUZENT_ALLOWED_HOSTS` (421), and check that the path starts with `/hooks/`
+(401 means the call reached some other part of Suzent).
 
 **A heartbeat seems to do nothing.** That usually means it ran and found
 nothing to report, so it removed itself from the chat. Use **Run Now** in the
