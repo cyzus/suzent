@@ -98,3 +98,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      # The tag push above does not trigger msix.yml (GITHUB_TOKEN pushes never
+      # start workflows), so run it on the tag. Its publish job waits on the
+      # microsoft-store environment.
+      - name: Start Microsoft Store build and submission
+        run: gh workflow run msix.yml --ref "$RELEASE_TAG" -f publish=true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
