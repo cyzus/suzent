@@ -103,6 +103,8 @@ private struct ChatSidebarRow: View {
     @State private var renaming = false
     @State private var deleting = false
     @State private var title = ""
+    @State private var swipedPin = 0
+    @State private var swipedDelete = 0
     private var pinned: Bool { chat.pinned == true }
     private var running: Bool { chat.isRunning == true }
     private var swipeable: Bool { enabled && canManage && !running }
@@ -152,18 +154,20 @@ private struct ChatSidebarRow: View {
             .contextMenu { if enabled { menuItems } }
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if swipeable {
-                    Button { manage(pinned ? "unpin" : "pin", nil) } label: {
+                    Button { swipedPin += 1; manage(pinned ? "unpin" : "pin", nil) } label: {
                         Label(pinned ? LocalizedStringKey("Unpin") : LocalizedStringKey("Pin"), systemImage: pinned ? "pin.slash" : "pin")
-                    }.tint(Color(presentation: PresentationTokens.blue))
+                    }.tint(pinned ? Color.suzentMuted : Color(presentation: PresentationTokens.blue))
                 }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if swipeable {
                     // Not role: .destructive, which would animate the row away before the confirmation.
-                    Button { deleting = true } label: { Label("Delete", systemImage: "trash") }
+                    Button { swipedDelete += 1; deleting = true } label: { Label("Delete", systemImage: "trash") }
                         .tint(Color.suzentDanger)
                 }
             }
+            .sensoryFeedback(.success, trigger: swipedPin)
+            .sensoryFeedback(.warning, trigger: swipedDelete)
             .accessibilityActions {
                 if enabled && canManage {
                     Button("Rename") { startRename() }
@@ -220,12 +224,11 @@ struct ContentView: View {
     /// The phone search page's query; the inline `search` field only exists on wide layouts.
     @State private var searchText = ""
     @State private var expandedProject: String? = nil
-    @State private var showAllScheduled = false
-    @State private var scheduledExpanded = false
-    @State private var showAllRecent = false
+    @AppStorage("homeListMode") private var listMode: HomeListMode = .recent
     @State private var expandedAgents: Set<String> = []
     @State private var regentPressed = false
     @State private var tab: HomeTab = .chats
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
@@ -276,14 +279,10 @@ struct ContentView: View {
         Group {
             if !model.connected { unconnected }
             else if wide {
-                NavigationSplitView(columnVisibility: .constant(.all)) {
+                NavigationSplitView(columnVisibility: $sidebarVisibility) {
                     sidebar(home: false)
                         .navigationSplitViewColumnWidth(PresentationTokens.sidebarWidth)
                         .toolbar(removing: .sidebarToggle)
-                        .overlay(alignment: .trailing) {
-                            Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
-                                .ignoresSafeArea().accessibilityHidden(true)
-                        }
                 } detail: {
                     NavigationStack { detail }
                 }.navigationSplitViewStyle(.balanced)
@@ -332,8 +331,7 @@ struct ContentView: View {
             if !path.contains(.search) { searchText = "" }
         }
         .onChange(of: model.activeDesktopId) { _, _ in
-            search = ""; searchText = ""; expandedProject = nil; expandedAgents = []; showAllRecent = false
-            scheduledExpanded = false; showAllScheduled = false
+            search = ""; searchText = ""; expandedProject = nil; expandedAgents = []
             if !path.isEmpty { path = [] }
         }
         .onChange(of: model.selected == nil) { _, missing in
@@ -419,8 +417,8 @@ struct ContentView: View {
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
                         if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
-                            HStack(spacing: 8) {
-                                DesktopSwatch(desktop: desktop)
+                            HStack(spacing: 6) {
+                                Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
                                 Text(desktop.name).lineLimit(1)
                             }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
                         }
@@ -508,16 +506,26 @@ struct ContentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
+            if wide && sidebarVisibility == .detailOnly {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { sidebarVisibility = .all } } label: {
+                        Image(systemName: "sidebar.left")
+                    }.accessibilityLabel("Show sidebar")
+                }
+            }
             if !showSettings {
                 ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
-                ToolbarItem(placement: .topBarTrailing) {
+                if !sidebarShown { ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newConversation) { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel("New conversation")
                         .disabled(model.busy || model.device?.permissions.createChats != true)
-                }
+                } }
             }
         }
     }
+
+    /// The iPad sidebar already carries the wordmark and the create button.
+    private var sidebarShown: Bool { wide && sidebarVisibility != .detailOnly }
 
     @ViewBuilder private var conversationTitle: some View {
         if let chat = model.selected, !chat.id.isEmpty {
@@ -532,28 +540,38 @@ struct ContentView: View {
                         .lineLimit(1).truncationMode(.tail)
                 }.padding(.horizontal, 8).multilineTextAlignment(.center)
             }
-        } else { SuzentWordmark() }
+        } else if !sidebarShown { SuzentWordmark() }
     }
 
     private func sidebar(home: Bool) -> some View {
         let searchQuery = ChatPageQuery("search", value: search.trimmingCharacters(in: .whitespacesAndNewlines))
         let recentRows = sidebarChats(model.pageChats(ChatPageQuery()), search: "", expanded: expandedAgents)
         let pinnedRows = sidebarChats(model.pageChats(ChatPageQuery("pinned")), search: "", expanded: expandedAgents)
+        // Phones keep scheduled tasks in their own tab.
+        let mode: HomeListMode = home && listMode == .tasks ? .recent : listMode
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                if home {
-                    SuzentWordmark()
-                } else {
-                    SuzentLogoMark().frame(width: 24, height: 24)
-                    Text("SUZENT").tracking(2).suzentFont(14, weight: .bold)
-                }
+                // The wordmark, not the logo face: Regent's row right below already shows the face.
+                SuzentWordmark()
                 Spacer()
-                if !home {
-                    Button(action: openSettings) {
-                        Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel("Settings")
+                if home {
+                    // Phones search on their own page, so results never share the screen with the home list.
+                    Button { path = [.search] } label: {
+                        Image(systemName: "magnifyingglass").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Search chats")
+                    newConversationIcon
+                } else {
+                    HStack(spacing: 2) {
+                        Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { sidebarVisibility = .detailOnly } } label: {
+                            Image(systemName: "sidebar.left").font(.system(size: 18)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Hide sidebar")
+                        Button(action: openSettings) {
+                            Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Settings")
+                        newConversationIcon
+                    }
                 }
-            }.frame(minHeight: 44).padding(.horizontal, 20).padding(.top, 4).padding(.bottom, home ? 0 : 4)
+            }.frame(minHeight: 44).padding(.leading, 20).padding(.trailing, home ? 20 : 14).padding(.top, 4).padding(.bottom, home ? 0 : 4)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             if let desktop = model.activeDesktop, !model.isDemo {
                 activeDesktopLine(desktop).padding(.horizontal, 20).padding(.bottom, 4)
@@ -568,36 +586,23 @@ struct ContentView: View {
                         .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
                 }.buttonStyle(PressReportingButtonStyle(pressed: $regentPressed)).disabled(model.busy).padding(.horizontal, 16)
             }
-            Button(action: newConversation) {
-                Label("New conversation", systemImage: "square.and.pencil")
-                    .suzentFont(home ? 16 : PresentationTokens.typeCaption, weight: .semibold)
-                    .foregroundStyle(Color.black)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .background(Color(presentation: PresentationTokens.yellow))
-            }.buttonStyle(.plain)
-                .disabled(model.busy || model.device?.permissions.createChats != true)
-                .padding(.horizontal, 16).padding(.top, 12)
-            if home {
-                // Phones search on their own page, so results never share the screen with the home list.
-                Button { path = [.search] } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                        Text("Search chats").suzentFont(16)
-                        Spacer()
-                    }.foregroundStyle(Color.suzentMuted)
-                        .padding(.horizontal, 12).frame(minHeight: 42)
-                        .background(Color.suzentText.opacity(0.04)).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-            } else {
+            if !home {
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+                    Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .medium))
                     TextField("Search chats", text: $search).suzentFont(14)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                }.padding(.horizontal, 12).frame(minHeight: 42)
-                    .background(Color.suzentText.opacity(0.04))
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)) }
+                            .buttonStyle(.plain).frame(minWidth: 28, minHeight: 36).accessibilityLabel("Clear search")
+                    }
+                }.padding(.horizontal, 10).frame(minHeight: 38)
+                    .background(Color.suzentBackground)
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
+            }
+            if search.isEmpty {
+                HomeListPicker(selection: $listMode, modes: home ? [.recent, .projects] : [.recent, .projects, .tasks])
+                    .padding(.horizontal, 16).padding(.top, home ? 12 : 0).padding(.bottom, 4)
             }
             ScrollViewReader { reader in
                 List {
@@ -611,32 +616,28 @@ struct ContentView: View {
                             Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
                         }
                     } else {
-                        if !pinnedRows.isEmpty {
-                            sidebarHeading("Pinned").sidebarListRow()
-                            conversationRows(pinnedRows, scope: "pinned")
-                            pageFooter(ChatPageQuery("pinned"))
-                        }
-                        let recent = recentRows.filter { $0.depth == 0 }
-                        if !recent.isEmpty {
-                            HStack {
-                                sidebarHeading("Recent")
-                                Spacer()
-                                if (model.chatPages[ChatPageQuery()]?.total ?? 0) > 3 {
-                                    Button(showAllRecent ? "Show fewer" : "View all") { showAllRecent.toggle() }
-                                        .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44).buttonStyle(.plain)
-                                }
-                            }.sidebarListRow()
-                            let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
-                            conversationRows(recentRows.filter { recentIDs.contains($0.root.id) }, scope: "recent")
-                        }
-                        if showAllRecent { pageFooter(ChatPageQuery()) }
-                        if !projects.isEmpty { sidebarHeading("Projects").sidebarListRow() }
-                        ForEach(projects) { project in projectSection(project) }
-                        if pinnedRows.isEmpty && recentRows.isEmpty {
-                            Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                        switch mode {
+                        case .recent:
+                            if !pinnedRows.isEmpty {
+                                sidebarHeading("Pinned").sidebarListRow()
+                                conversationRows(pinnedRows, scope: "pinned")
+                                pageFooter(ChatPageQuery("pinned"))
+                                if !recentRows.isEmpty { sidebarHeading("Recent").sidebarListRow() }
+                            }
+                            conversationRows(recentRows, scope: "recent")
+                            pageFooter(ChatPageQuery())
+                            if pinnedRows.isEmpty && recentRows.isEmpty {
+                                Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                            }
+                        case .projects:
+                            ForEach(projects) { project in projectSection(project) }
+                            if projects.isEmpty {
+                                Text("No projects yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                            }
+                        case .tasks:
+                            taskRows(scope: "scheduled")
                         }
                     }
-                    if !home { scheduledSection }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -660,6 +661,16 @@ struct ContentView: View {
         .background(Color.suzentSurface)
         // The list keeps its branded header; pushed pages use the system bar and its back gesture.
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    /// The sidebar header's create button, shared by the phone home and the iPad sidebar; drawn like the
+    /// header's other icons so nothing in the header is heavier than the rest.
+    private var newConversationIcon: some View {
+        Button(action: newConversation) {
+            Image(systemName: "square.and.pencil").font(.system(size: 20, weight: .medium))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel("New conversation")
+            .disabled(model.busy || model.device?.permissions.createChats != true)
     }
 
     private var searchPage: some View {
@@ -801,38 +812,6 @@ struct ContentView: View {
         return raw.flatMap(suzentParseDate)?.suzentStamp ?? String(localized: "Not yet")
     }
 
-    @ViewBuilder private var scheduledSection: some View {
-        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents)
-        // Matches the desktop automation preview: five rows, then View all.
-        let previewLimit = 5
-        let visible = showAllScheduled || !search.isEmpty ? groups : Array(groups.prefix(previewLimit))
-        if !groups.isEmpty {
-            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { scheduledExpanded.toggle() } } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "clock")
-                    Text("Scheduled tasks")
-                    Spacer()
-                    Text("\(groups.count)").font(.caption).foregroundStyle(Color.suzentMuted)
-                    Image(systemName: scheduledExpanded || !search.isEmpty ? "chevron.down" : "chevron.right").font(.caption)
-                }.suzentFont(14, weight: .medium).frame(minHeight: 48).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityValue(scheduledExpanded ? Text("Expanded") : Text("Collapsed"))
-                .sidebarListRow()
-            ForEach(scheduledExpanded || !search.isEmpty ? visible : []) { group in
-                if let task = group.task {
-                    scheduledTaskRow(task, root: group.root).sidebarListRow()
-                } else if let root = group.root { conversationRows([root], scope: "scheduled") }
-                conversationRows(group.children, scope: "scheduled", spacing: 0)
-            }
-            if scheduledExpanded && search.isEmpty && groups.count > previewLimit {
-                Button { showAllScheduled.toggle() } label: {
-                    Text(showAllScheduled ? "Show fewer" : "View all \(groups.count) scheduled tasks")
-                        .suzentFont(PresentationTokens.typeCaption, weight: .bold)
-                        .frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
-                }.buttonStyle(.plain).sidebarListRow()
-            }
-        }
-    }
-
     private func scheduledTaskRow(_ task: ScheduledTask, root: SidebarChatEntry?) -> some View {
         Button {
             if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
@@ -941,7 +920,7 @@ struct ContentView: View {
 
     private func activeDesktopLine(_ desktop: SavedDesktop) -> some View {
         HStack(spacing: 6) {
-            DesktopSwatch(desktop: desktop, size: 8)
+            Image(systemName: "desktopcomputer").font(.system(size: 11, weight: .medium))
             Text(desktop.name).lineLimit(1).truncationMode(.tail)
         }.suzentFont(PresentationTokens.typeSidebarSection, weight: .semibold).foregroundStyle(Color.suzentMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -964,27 +943,29 @@ struct ContentView: View {
     }
 
     private var tasksTab: some View {
-        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             tabHeader("Tasks")
-            List {
-                if groups.isEmpty {
-                    Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
-                        .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
-                }
-                ForEach(groups) { group in
-                    if let task = group.task {
-                        scheduledTaskRow(task, root: group.root).sidebarListRow()
-                    } else if let root = group.root { conversationRows([root], scope: "tasks") }
-                    conversationRows(group.children, scope: "tasks", spacing: 0)
-                }
-            }
+            List { taskRows(scope: "tasks") }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 0)
             .refreshable { await model.refresh() }
         }.background(Color.suzentSurface)
+    }
+
+    @ViewBuilder private func taskRows(scope: String) -> some View {
+        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
+        if groups.isEmpty {
+            Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
+                .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
+        }
+        ForEach(groups) { group in
+            if let task = group.task {
+                scheduledTaskRow(task, root: group.root).sidebarListRow()
+            } else if let root = group.root { conversationRows([root], scope: scope) }
+            conversationRows(group.children, scope: scope, spacing: 0)
+        }
     }
 
     private func settingsHeader(_ title: LocalizedStringKey) -> some View {

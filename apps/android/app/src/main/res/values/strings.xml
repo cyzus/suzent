@@ -195,6 +195,7 @@
     <string name="rail_summary_failed">Failed calls: %1$d</string>
     <string name="sidebar_projects">Projects</string>
     <string name="sidebar_empty">No chats yet</string>
+    <string name="sidebar_no_projects">No projects yet</string>
     <string name="sidebar_no_results">No matching chats</string>
     <string name="pairing_recognized_connecting">QR code recognized. Connecting to your desktop…</string>
     <string name="pairing_sending">Sending connection request…</string>

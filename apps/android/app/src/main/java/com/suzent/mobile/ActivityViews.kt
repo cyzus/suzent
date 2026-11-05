@@ -71,7 +71,7 @@ import kotlin.math.sin
 
 @Composable
 fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolean = false, compact: Boolean = false,
-                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList()) {
+                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList(), onBubbleLongPress: (() -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(live) { if (!live) expanded = false }
     val start = activityFinalStart(parts)
@@ -102,7 +102,7 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
             ActivityDisclosure(expanded || pending) {
                 Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent) }
             }
-            ActivityContent(persistent + parts.drop(start), false, citationSources, regent)
+            ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
     }
 }

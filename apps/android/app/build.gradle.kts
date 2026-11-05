@@ -30,6 +30,12 @@ android {
         }
     }
     buildTypes {
+        // Debug builds are signed with the local debug key, so they cannot replace the Play Store app;
+        // their own ID lets them install beside it.
+        getByName("debug") {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true

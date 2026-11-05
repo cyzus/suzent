@@ -20,6 +20,10 @@ extension Color {
     static let suzentCodeHeader = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.code_header_dark))
     static let suzentDanger = Color(uiColor: .suzentAdaptive(light: PresentationTokens.danger, dark: PresentationTokens.danger_dark))
     static let suzentErrorSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.error_surface, dark: PresentationTokens.error_surface_dark))
+    /// Segmented tabs, as the desktop's BrutalSegmentedTabs: grey track, black block (yellow in dark).
+    static let suzentTabTrack = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.code_header_dark))
+    static let suzentTabBlock = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.yellow))
+    static let suzentTabBlockText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.black))
 
     init(presentation value: UInt32) {
         self.init(.sRGB, red: Double((value >> 16) & 255) / 255,
@@ -142,7 +146,8 @@ struct MessageView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 ActivityTurn(parts: message.parts, regent: regent, compact: !isLatest,
-                             workedSeconds: message.workedSeconds, citationSources: message.citationSources)
+                             workedSeconds: message.workedSeconds, citationSources: message.citationSources,
+                             bubbleMenu: regent ? AnyView(menuItems) : nil)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         if let reaction = message.reaction, !reaction.isEmpty {
@@ -155,7 +160,8 @@ struct MessageView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing).accessibilityLabel(Text("Regent reacted \(reaction)"))
         }
         if ["user", "assistant"].contains(message.role) {
-            // Reply text stays selectable, so assistant replies take the long-press menu on this row instead.
+            // Long replies keep their text selectable, so they take the long-press menu on this row; Regent's
+            // short bubbles carry the menu themselves as well.
             footer.contentShape(Rectangle()).contentShape(.contextMenuPreview, Rectangle()).contextMenu { menuItems }
         }
         }
@@ -257,11 +263,12 @@ struct MessageView: View {
             }
             if isLatest, !user, let model = message.model ?? fallbackModel, !model.isEmpty {
                 Button { modelDetails = model } label: {
-                    Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
-                        .suzentFont(PresentationTokens.typeMeta, weight: .medium).lineLimit(1).truncationMode(.tail)
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .frame(maxWidth: 180, alignment: .leading)
-                        .overlay(Rectangle().strokeBorder(Color.secondary.opacity(0.3)))
+                    HStack(spacing: 4) {
+                        Image(systemName: "cpu").font(.system(size: 10))
+                        Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
+                            .suzentFont(PresentationTokens.typeMeta, weight: .medium).lineLimit(1).truncationMode(.tail)
+                        if message.timestamp != nil { Text("·").suzentFont(PresentationTokens.typeMeta) }
+                    }.frame(minHeight: 36).contentShape(Rectangle())
                 }.layoutPriority(-1).accessibilityLabel(model)
                     .accessibilityHint(String(localized: "View full model name"))
             }
@@ -441,7 +448,7 @@ struct SuzentWordmark: View {
     var body: some View {
         HStack(spacing: 10) {
             Rectangle().frame(width: 10, height: 10)
-            Text("SUZENT").suzentFont(PresentationTokens.typeTitle, weight: .black)
+            Text("SUZENT").suzentFont(PresentationTokens.typeTitle, weight: .black).lineLimit(1).minimumScaleFactor(0.75)
             Rectangle().frame(width: 10, height: 10)
         }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
@@ -702,20 +709,25 @@ struct SuzentMarkdown: View {
     let text: String
     var citationSources: [CitationSource] = []
     var textSize: Double = PresentationTokens.typeChat
+    /// Off where a long press should open a context menu instead of starting a text selection.
+    var selectable = true
     @State private var pendingLink: URL?
     @State private var browserLink: URL?
     @StateObject private var icons = CitationIcons()
     @State private var contentCache = CitationContentCache()
     @ScaledMetric(relativeTo: .body) private var scale: Double = 100
+    @ViewBuilder private var markdown: some View {
+        let rendered = Markdown(contentCache.content(text, sources: citationSources)).markdownTheme(suzentMarkdownTheme)
+        if selectable { rendered.textSelection(.enabled) } else { rendered }
+    }
+
     var body: some View {
-        Markdown(contentCache.content(text, sources: citationSources))
-            .markdownTheme(suzentMarkdownTheme)
+        markdown
             .environment(\.openURL, OpenURLAction { url in
                 guard ["http", "https", "suzent-citation"].contains(url.scheme?.lowercased()) else { return .discarded }
                 pendingLink = url
                 return .handled
             })
-            .textSelection(.enabled)
             .task(id: citationSources.compactMap(\.favicon)) { await icons.load(citationSources.compactMap(\.favicon)) }
             .sheet(isPresented: Binding(
                 get: { pendingLink != nil },
@@ -834,14 +846,20 @@ struct ActivityContent: View {
     var live = false
     var citationSources: [CitationSource] = []
     var regent = false
+    /// Regent's reply actions, opened by a long press on its bubbles like the user's own messages.
+    var bubbleMenu: AnyView?
     var body: some View {
         let chunks = activityChunks(parts)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
                 if chunk.first?.type == "text" {
-                    SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources)
+                    let shape = RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble)
+                    let bubble = SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources, selectable: bubbleMenu == nil)
                         .padding(regent ? 12 : 0)
-                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble))
+                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: shape)
+                    if regent, let bubbleMenu {
+                        bubble.contentShape(.contextMenuPreview, shape).contextMenu { bubbleMenu }
+                    } else { bubble }
                 }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
             }

@@ -38,6 +38,7 @@ struct ActivityTurn: View {
     var compact = false
     var workedSeconds: Int?
     var citationSources: [CitationSource] = []
+    var bubbleMenu: AnyView?
     @State private var expanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -70,7 +71,8 @@ struct ActivityTurn: View {
                     ActivityReveal(expanded: expanded || pending) {
                         ActivityContent(parts: work, citationSources: citationSources, regent: regent).padding(.bottom, 10)
                     }
-                    ActivityContent(parts: persistent + Array(parts.dropFirst(start)), citationSources: citationSources, regent: regent)
+                    ActivityContent(parts: persistent + Array(parts.dropFirst(start)), citationSources: citationSources, regent: regent,
+                                    bubbleMenu: bubbleMenu)
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
