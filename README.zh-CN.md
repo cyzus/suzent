@@ -38,7 +38,13 @@
 
 ## **快速开始**
 
-SUZENT 可运行在 Windows、macOS 和 Linux 上。Git 是唯一的前置条件，其他一切都会自动安装。
+SUZENT 可运行在 Windows、macOS 和 Linux 上。
+
+**Windows：从 Microsoft Store 获取**（推荐）。无需任何前置条件，由 Store 自动更新。
+
+<a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" alt="从 Microsoft 获取" width="200" /></a>
+
+也可以改用下面的终端命令或[桌面安装程序](https://suzent.com/zh-Hans/#download)。Git 是唯一的前置条件，其他一切都会自动安装。
 
 **macOS / Linux**
 ```bash
