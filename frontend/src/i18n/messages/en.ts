@@ -1501,6 +1501,15 @@ export const en = {
       summaryMinutes: 'Runs every {n} minutes',
       summaryOnce: 'Runs once at {time}',
       freqOnce: 'Once',
+      freqWebhook: 'When called (webhook)',
+      summaryWebhook: 'Runs when its webhook URL is called',
+      webhookHint:
+        'Suzent gives this task a URL. Any POST to it runs the task, with the request body passed along as data. Turn on the Background Service so the URL keeps working after you close the window.',
+      webhookUrlTitle: 'Webhook URL',
+      webhookUrlOnce:
+        'Copy it now: it is shown only once. Anyone who has this URL can run the task, so keep it private.',
+      webhookRegenerate: 'New webhook URL',
+      webhookRegenerateConfirm: 'Issue a new URL? The current one stops working right away.',
       runAtLabel: 'At',
       timezone: 'Timezone',
       tzLocal: 'Machine local time',

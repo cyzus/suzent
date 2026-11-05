@@ -151,6 +151,7 @@ The same tasks as in **Settings → Automation**. See
 | `suzent cron remove <id>` | Delete a task. | |
 | `suzent cron history <id>` | Show a task's recent runs. | `--limit` / `-l` (default 10) |
 | `suzent cron status` | Show whether the scheduler is running and how many tasks there are. | |
+| `suzent cron webhook-url <id>` | Issue a new URL for a [webhook](../03-features/automation.md#webhooks) task. The old URL stops working. | |
 | `suzent cron install-presets` | Add or update the built-in notebook upkeep tasks. | `--activate-existing` |
 
 `suzent cron add` needs a `--name`, a `--prompt`, and exactly one schedule:
@@ -160,6 +161,7 @@ The same tasks as in **Settings → Automation**. See
 | `--cron`, `-c` | Run on a [cron expression](../03-features/automation.md#cron-expressions), such as `"0 9 * * 1-5"`. |
 | `--every` | Run every N minutes. |
 | `--at` | Run once at a time, such as `"2026-01-02T09:00"`. |
+| `--webhook` | Run whenever the task's [webhook URL](../03-features/automation.md#webhooks) is called. The URL is printed once. |
 | `--chat` | Run inside an existing conversation instead of the task's own chat. |
 | `--quiet` | With `--chat`, leave the conversation untouched when there is nothing to report. |
 | `--timezone` | Time zone for a cron schedule, such as `Asia/Shanghai`. |

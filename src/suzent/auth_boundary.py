@@ -46,6 +46,9 @@ _HTTP_EXEMPT_PREFIXES = (
     # makes an agent discoverable — and the route itself 404s unless the
     # operator opted in. It authorizes nothing: /a2a/v1 still needs a grant.
     "/.well-known/agent-card.json",
+    # Inbound webhooks. External services can't hold a device grant; the
+    # unguessable token in the URL is the credential, checked by the route.
+    "/hooks/",
 )
 
 

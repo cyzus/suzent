@@ -261,7 +261,9 @@ from suzent.routes.cron_routes import (
     get_cron_notifications,
     get_cron_job_runs,
     install_cron_presets,
+    regenerate_webhook,
 )
+from suzent.routes.webhook_routes import receive_webhook
 from suzent.routes.heartbeat_routes import (
     get_heartbeat_status,
     enable_heartbeat,
@@ -1512,6 +1514,12 @@ app = Starlette(
         Route("/cron/status", get_cron_status, methods=["GET"]),
         Route("/cron/notifications", get_cron_notifications, methods=["GET"]),
         Route("/cron/jobs/{job_id:int}/runs", get_cron_job_runs, methods=["GET"]),
+        Route(
+            "/cron/jobs/{job_id:int}/webhook/regenerate",
+            regenerate_webhook,
+            methods=["POST"],
+        ),
+        Route("/hooks/{token}", receive_webhook, methods=["POST"]),
         Route("/heartbeat/status", get_heartbeat_status, methods=["GET"]),
         Route("/heartbeat/enable", enable_heartbeat, methods=["POST"]),
         Route("/heartbeat/disable", disable_heartbeat, methods=["POST"]),

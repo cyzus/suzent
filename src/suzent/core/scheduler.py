@@ -24,6 +24,7 @@ from croniter import croniter
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.core.heartbeat import HEARTBEAT_OK, ChatBusyError
+from suzent.core.webhooks import WEBHOOK_KIND, build_webhook_section
 from suzent.database import get_database
 from suzent.database.cron import normalize_delivery_mode
 from suzent.logger import get_logger
@@ -43,8 +44,14 @@ def build_cron_reminder(
     *,
     triggered_at: Optional[datetime] = None,
     last_run_at: Optional[datetime] = None,
+    intro: str = "You were automatically woken by the cron scheduler.",
+    trailer: str = "",
 ) -> str:
-    """Build the time-aware reminder delivered to a scheduled agent turn."""
+    """Build the time-aware reminder delivered to a scheduled agent turn.
+
+    ``trailer`` follows the task's own prompt; a webhook run puts the request
+    that triggered it there.
+    """
     local_now = triggered_at or datetime.now().astimezone()
     if local_now.tzinfo is None:
         local_now = local_now.astimezone()
@@ -65,10 +72,10 @@ def build_cron_reminder(
 
     return (
         f"**Scheduled Task: {job_name}**\n\n"
-        "You were automatically woken by the cron scheduler.\n"
+        f"{intro}\n"
         f"Current local time: {current_time} ({timezone_name}, {formatted_offset})\n\n"
         f"Last run: {last_run}\n\n"
-        f"{prompt}"
+        f"{prompt}{trailer}"
     )
 
 
@@ -79,6 +86,8 @@ def build_bound_task_reminder(
     quiet: bool = False,
     triggered_at: Optional[datetime] = None,
     last_run_at: Optional[datetime] = None,
+    webhook: bool = False,
+    trailer: str = "",
 ) -> str:
     """Reminder for a task firing inside an existing conversation.
 
@@ -91,13 +100,14 @@ def build_bound_task_reminder(
     invites a polite "nothing to report" that then sits in the transcript
     forever. So ask for the token by name.
     """
-    body = build_cron_reminder(
-        job_name, prompt, triggered_at=triggered_at, last_run_at=last_run_at
+    trigger = (
+        "A webhook attached to this conversation was just called."
+        if webhook
+        else "A scheduled task attached to this conversation just fired."
     )
     intro = (
-        "A scheduled task attached to this conversation just fired. "
-        "The conversation above is your context; continue it rather than "
-        "starting over."
+        f"{trigger} The conversation above is your context; continue it "
+        "rather than starting over."
     )
     if quiet:
         intro += (
@@ -106,7 +116,14 @@ def build_bound_task_reminder(
             "from the conversation. Answer normally only if something needs "
             "attention."
         )
-    return body.replace("You were automatically woken by the cron scheduler.", intro, 1)
+    return build_cron_reminder(
+        job_name,
+        prompt,
+        triggered_at=triggered_at,
+        last_run_at=last_run_at,
+        intro=intro,
+        trailer=trailer,
+    )
 
 
 def _resolve_timezone(name: Optional[str]):
@@ -134,6 +151,9 @@ def compute_next_run(job, *, after: Optional[datetime] = None) -> Optional[datet
     """
     base = after or datetime.now()
     kind = job.schedule_kind or "cron"
+
+    if kind == WEBHOOK_KIND:
+        return None
 
     if kind == "once":
         # A one-shot fires exactly once; last_run_at marks it spent.
@@ -456,6 +476,34 @@ class SchedulerBrain(BaseBrain):
             return
         asyncio.create_task(self._execute_job(job_id))
 
+    def fire_webhook(self, job, payload: str) -> bool:
+        """Start a webhook task's run, or return False if it can't start now.
+
+        A webhook run is never deferred or retried: the request that carried
+        its payload is gone by then, so a run that can't start now is refused
+        and the caller is told to try again.
+        """
+        bound = (job.context_mode or "isolated") == "bound" and bool(job.chat_id)
+        chat_id = job.chat_id if bound else f"cron-{job.id}"
+        if job.id in self._in_flight or chat_id in stream_controls:
+            return False
+        self._in_flight.add(job.id)
+        asyncio.create_task(self._run_webhook(job.id, chat_id, bound, payload))
+        return True
+
+    async def _run_webhook(
+        self, job_id: int, chat_id: str, bound: bool, payload: str
+    ) -> None:
+        try:
+            db = get_database()
+            job = db.get_cron_job(job_id)
+            if job and job.active:
+                await self._run_scheduled_task(
+                    db, job, chat_id, bound=bound, payload=payload
+                )
+        finally:
+            self._in_flight.discard(job_id)
+
     def drain_notifications(self) -> list:
         """Drain durable notifications, with the in-memory queue as fallback."""
         notifications = []
@@ -517,6 +565,11 @@ class SchedulerBrain(BaseBrain):
 
     def _arm(self, db, job, *, after: Optional[datetime] = None) -> None:
         """Set a task's next fire time, deactivating it when it has none left."""
+        if (job.schedule_kind or "cron") == WEBHOOK_KIND:
+            # Never due by the clock, but not finished either.
+            if job.next_run_at:
+                db.update_cron_job_run_state(job.id, clear_next_run=True)
+            return
         try:
             nxt = compute_next_run(job, after=after)
         except Exception as e:
@@ -562,6 +615,9 @@ class SchedulerBrain(BaseBrain):
             if job.id in self._in_flight:
                 continue
 
+            if (job.schedule_kind or "cron") == WEBHOOK_KIND:
+                continue
+
             if not job.next_run_at:
                 self._arm(db, job, after=now)
                 continue
@@ -590,6 +646,11 @@ class SchedulerBrain(BaseBrain):
         chat_id = job.chat_id if bound else f"cron-{job_id}"
 
         if chat_id in stream_controls:
+            if (job.schedule_kind or "cron") == WEBHOOK_KIND:
+                logger.info(
+                    f"Chat {chat_id} is busy, not running webhook task {job_id}"
+                )
+                return
             if bound:
                 # The chat this task rides on is mid-turn. Competing with the
                 # user is the normal case for a bound task, not a failure, so
@@ -657,10 +718,20 @@ class SchedulerBrain(BaseBrain):
         )
         runner.mark_heartbeat_pending(job.chat_id)
 
-    async def _run_scheduled_task(self, db, job, chat_id: str, *, bound: bool):
+    async def _run_scheduled_task(
+        self,
+        db,
+        job,
+        chat_id: str,
+        *,
+        bound: bool,
+        payload: Optional[str] = None,
+    ):
         """Advance the schedule, run the turn, and record the outcome."""
         job_id = job.id
         one_shot = (job.schedule_kind or "cron") == "once"
+        webhook = (job.schedule_kind or "cron") == WEBHOOK_KIND
+        trailer = build_webhook_section(payload) if webhook else ""
         # Preserve the previous value before advancing the schedule for this run.
         last_run_at = job.last_run_at
         now = datetime.now()
@@ -698,11 +769,17 @@ class SchedulerBrain(BaseBrain):
         try:
             if bound:
                 response_text = await self._run_bound_turn(
-                    chat_id, job, last_run_at=last_run_at
+                    chat_id, job, last_run_at=last_run_at, trailer=trailer
                 )
             else:
                 response_text = await self._run_chat_turn(
-                    chat_id, job, db, job_id, run_id, last_run_at=last_run_at
+                    chat_id,
+                    job,
+                    db,
+                    job_id,
+                    run_id,
+                    last_run_at=last_run_at,
+                    trailer=trailer,
                 )
 
             db.update_cron_job_run_state(
@@ -739,6 +816,10 @@ class SchedulerBrain(BaseBrain):
             # The chat started a run between dispatch and this turn. Like the
             # busy check at dispatch, that is not a failure: try again shortly
             # without spending a retry, and never retire a one-shot over it.
+            if webhook:
+                db.finish_cron_run(run_id, "skipped", error="Chat was busy")
+                logger.debug(f"Chat {chat_id} became busy; dropped webhook {job_id}")
+                return
             db.finish_cron_run(run_id, "skipped", error="Chat was busy; retrying")
             db.update_cron_job_run_state(
                 job_id, next_run_at=datetime.now() + BUSY_CHAT_RETRY
@@ -752,7 +833,12 @@ class SchedulerBrain(BaseBrain):
             self._handle_retry(db, job_id, job.retry_count or 0, now, str(e))
 
     async def _run_bound_turn(
-        self, chat_id: str, job, *, last_run_at: Optional[datetime] = None
+        self,
+        chat_id: str,
+        job,
+        *,
+        last_run_at: Optional[datetime] = None,
+        trailer: str = "",
     ) -> str:
         """Run a task turn inside the chat it is bound to.
 
@@ -771,7 +857,12 @@ class SchedulerBrain(BaseBrain):
 
         quiet = bool(job.suppress_ok)
         reminder = build_bound_task_reminder(
-            job.name, job.prompt, quiet=quiet, last_run_at=last_run_at
+            job.name,
+            job.prompt,
+            quiet=quiet,
+            last_run_at=last_run_at,
+            webhook=(job.schedule_kind or "cron") == WEBHOOK_KIND,
+            trailer=trailer,
         )
         return await runner.run_bound_turn(
             chat_id,
@@ -797,11 +888,22 @@ class SchedulerBrain(BaseBrain):
         run_id: int,
         *,
         last_run_at: Optional[datetime] = None,
+        trailer: str = "",
     ) -> str:
         """Run a ChatProcessor turn for a cron job and return the response."""
         from suzent.core.chat_processor import ChatProcessor
 
-        cron_msg = build_cron_reminder(job.name, job.prompt, last_run_at=last_run_at)
+        if (job.schedule_kind or "cron") == WEBHOOK_KIND:
+            intro = "You were triggered by an incoming webhook."
+        else:
+            intro = "You were automatically woken by the cron scheduler."
+        cron_msg = build_cron_reminder(
+            job.name,
+            job.prompt,
+            last_run_at=last_run_at,
+            intro=intro,
+            trailer=trailer,
+        )
 
         processor = ChatProcessor()
         config_override = self._build_config_override(
@@ -861,6 +963,10 @@ class SchedulerBrain(BaseBrain):
         """
         job = db.get_cron_job(job_id)
         if job is None:
+            return
+        if (job.schedule_kind or "cron") == WEBHOOK_KIND:
+            # The payload went with the request; a retry would run without it.
+            db.update_cron_job_run_state(job_id, last_error=error, retry_count=0)
             return
         one_shot = (job.schedule_kind or "cron") == "once"
         retryable = _is_retryable_error(error)
