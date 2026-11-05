@@ -10,7 +10,10 @@ Suzent installed in it. The Tauri exe detects this layout and runs in
 pkg\
   AppxManifest.xml            rendered from AppxManifest.template.xml
   suzent.exe                  Tauri release exe (built with tauri.conf.store.json)
-  Assets\                     StoreLogo / Square44x44 / Square150x150 (from src-tauri/icons)
+  Assets\                     StoreLogo / Square44x44 / Square150x150 (from src-tauri/icons),
+                              plus unplated Square44x44 targetsize icons (from packaging/msix/assets)
+  resources.pri               makepri index of Assets; without it the shell ignores the
+                              unplated icons and draws the logo on an accent-coloured plate
   runtime\python\             python-build-standalone CPython 3.12 + locked deps + suzent
   app\config\  app\skills\  app\plugins\  app\extensions\browser\   tracked repo files (SUZENT_PROJECT_DIR)
 ```
@@ -25,6 +28,13 @@ In packaged mode the app:
 - disables the self-updater and installer ("updated through the Microsoft Store");
 - implements the Settings > Background service toggle with the package's
   `StartupTask` (`TaskId="SuzentStartup"`, disabled by default).
+
+## Icons
+
+`assets\` holds `Square44x44Logo.targetsize-<n>_altform-unplated.png` and
+`..._altform-lightunplated.png` for sizes 16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96
+and 256, each a Lanczos downscale of `src-tauri/icons/icon.png`. Regenerate them when the app
+icon changes.
 
 ## Manifest placeholders
 
@@ -52,7 +62,8 @@ The CI workflow (`.github/workflows/msix.yml`) is the reference. By hand, on Win
    to `pkg\app\`. The browser extension is served from there by Settings > Browser.
 5. `cd src-tauri; npx tauri build --no-bundle --config tauri.conf.store.json` and copy
    `target\release\suzent.exe` to `pkg\`.
-6. Render the manifest, then either `makeappx pack /d pkg /p Suzent.msix /o`, or for a
+6. Render the manifest, copy `packaging\msix\assets\*.png` into `pkg\Assets\`, and build
+   `pkg\resources.pri` with `makepri` as the Pack step in `msix.yml` does. Then either `makeappx pack /d pkg /p Suzent.msix /o`, or for a
    quick test with Developer Mode on: `Add-AppxPackage -Register pkg\AppxManifest.xml`.
 
 To run a test build next to an existing Suzent, give it its own identifier
