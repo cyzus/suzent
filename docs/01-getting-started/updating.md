@@ -6,6 +6,13 @@ description: How to update Suzent, repair shortcuts, and what to check when upgr
 
 # Updating Suzent
 
+:::note Installed from the Microsoft Store?
+The Microsoft Store updates the Store build, like any other Store app. The rest of
+this page covers the installer and terminal versions: in the Store build, `suzent update`,
+`suzent upgrade` and `suzent repair` are turned off, and so is the in-app updater.
+Your data in `~/.suzent` is kept across updates.
+:::
+
 ## Automatic updates
 
 Suzent keeps itself up to date. Every few hours it checks for a new release and

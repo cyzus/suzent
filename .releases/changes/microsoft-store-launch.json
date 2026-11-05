@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Announce the Microsoft Store release: Store badge and recommended Windows install path in the READMEs, website and docs, plus a launch blog post.",
+  "reason": "Only README, documentation and website content change; the shipped desktop app is unchanged."
+}

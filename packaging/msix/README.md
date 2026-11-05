@@ -59,3 +59,48 @@ To run a test build next to an existing Suzent, give it its own identifier
 (a copy of `tauri.conf.store.json` with another `identifier`), its own manifest
 `Identity Name`, and its own data dir by building with the environment variable
 `SUZENT_DATA_DIR_NAME=.suzent-preview`.
+
+## Publishing to the Microsoft Store
+
+The `publish` job in `msix.yml` submits the built package with the
+[Microsoft Store Developer CLI](https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/github-actions)
+(`microsoft/microsoft-store-apppublisher`, then `msstore reconfigure` and
+`msstore publish <msix> -id 9MZQ1HHXHVZT`). It downloads the artifact from the
+build job, so the package it submits is the one that passed the smoke test.
+
+**Environment and secrets.** The job runs in the GitHub Environment
+`microsoft-store` and is the only job that reads these secrets:
+
+| Secret | Value |
+|---|---|
+| `AZURE_AD_TENANT_ID` | Entra ID tenant linked to Partner Center |
+| `AZURE_AD_APPLICATION_CLIENT_ID` | Client ID of the Entra app added in Partner Center (User management > Microsoft Entra applications, Manager role) |
+| `AZURE_AD_APPLICATION_SECRET` | A client secret of that app |
+| `SELLER_ID` | Partner Center Seller ID (Account settings > Legal info) |
+
+Restrict the environment's deployment branches and tags to `main` and `v*`,
+and add required reviewers if every submission should be approved by hand. The
+repo variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER` and
+`MSIX_PUBLISHER_DISPLAY_NAME` must hold the Partner Center identity; the job
+refuses to publish the CI test identity.
+
+**Triggers.**
+
+- A desktop release: `release-on-merge.yml` tags `vX.Y.Z` and dispatches
+  `msix.yml` on that tag with `publish=true`. Pushing a `v*` tag by hand also
+  publishes.
+- By hand: `gh workflow run msix.yml --ref vX.Y.Z -f publish=true` (or from
+  `main`). Without `-f publish=true` a manual run only builds and smoke-tests.
+- Pull requests and branch pushes never publish.
+
+**Versions.** The manifest version is the app version from
+`src-tauri/tauri.conf.json` plus `.0` (the Store requires the fourth part to be
+0, and each submission must be higher than the last). On a tag, the build fails
+before doing any work if the tag is not `v<app version>`. Re-running a publish
+for a version the Store already has will be rejected by Partner Center.
+
+**After submission.** The Store still certifies every submission. For a second
+gate, set the submission option *Publish this submission manually* (Partner
+Center > the app > Pricing and availability > Publishing) so a certified
+build waits until someone releases it. Runs never overlap: the publish job
+uses the `msstore-publish` concurrency group and is never cancelled.
