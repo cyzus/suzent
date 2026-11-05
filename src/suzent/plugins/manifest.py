@@ -6,7 +6,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 MANIFEST_FILENAME = "plugin.yaml"
-PLUGIN_API_VERSION = 1
+PLUGIN_API_VERSION = 2
 
 
 class PluginManifest(BaseModel):

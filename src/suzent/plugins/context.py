@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from suzent.logger import get_logger
+from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import PluginManifest
 from suzent.tools.base import Tool
 
@@ -33,6 +34,7 @@ class PluginContext:
         self.tool_classes: list[type[Tool]] = []
         self.skill_dirs: list[Path] = []
         self.commands: list[PendingCommand] = []
+        self.integrations: list[Integration] = []
 
     @property
     def id(self) -> str:
@@ -59,6 +61,20 @@ class PluginContext:
         if not skills_dir.is_dir():
             raise FileNotFoundError(f"skills directory not found: {skills_dir}")
         self.skill_dirs.append(skills_dir.resolve())
+
+    def register_integration(self, integration: Integration) -> None:
+        """Connect the agent to a hosted service once the user signs in.
+
+        The plugins page shows the sign-in; the agent gets the toolset that
+        ``integration.build`` returns from the next message after it.
+        """
+        if not isinstance(integration, Integration):
+            raise TypeError(f"{integration!r} is not an Integration")
+        if any(i.id == integration.id for i in self.integrations):
+            raise ValueError(f"integration '{integration.id}' registered twice")
+        if not integration.url.startswith("https://"):
+            raise ValueError("integration url must be https://")
+        self.integrations.append(integration)
 
     def register_command(
         self, aliases: list[str], **options: Any
