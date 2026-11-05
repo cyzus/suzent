@@ -1,5 +1,14 @@
 # Mobile changelog
 
+## [mobile-v0.7.0] - 2026-11-05
+
+### Release notes
+- Keep voice and send buttons vivid blue with white icons in both light and dark mode.
+- Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
+- Fix the voice cube animation appearing blank on Android devices.
+- Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
+- Keep one call control during voice conversations and avoid stale Android connections when starting actions.
+
 ## [mobile-v0.6.2] - 2026-11-05
 
 <!-- highlights -->

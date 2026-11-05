@@ -1,5 +1,5 @@
 {
-  "version": "0.6.2",
+  "version": "0.7.0",
   "consumed": [
     ".releases/changes/android-play-optimization.json",
     ".releases/changes/android-settings-button.json",
@@ -22,6 +22,7 @@
     ".releases/changes/mobile-chat-pagination.json",
     ".releases/changes/mobile-chat-title-header.json",
     ".releases/changes/mobile-component-parity.json",
+    ".releases/changes/mobile-composer-dark-colors.json",
     ".releases/changes/mobile-conversation-home.json",
     ".releases/changes/mobile-demo-copy.json",
     ".releases/changes/mobile-desktop-composer.json",
@@ -53,6 +54,10 @@
     ".releases/changes/mobile-streaming-performance.json",
     ".releases/changes/mobile-system-reminders.json",
     ".releases/changes/mobile-turn-badge-fix.json",
+    ".releases/changes/mobile-voice-animation-actions.json",
+    ".releases/changes/mobile-voice-canvas-presentation.json",
+    ".releases/changes/mobile-voice-composer.json",
+    ".releases/changes/mobile-voice-controls-connections.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/restructure-user-docs.json"
   ],
