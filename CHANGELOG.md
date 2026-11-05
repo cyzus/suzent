@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it.
 - Add webhook tasks: give a task a private URL and any service that calls it, such as GitHub or your own scripts, runs the task with the request as its input.
+- Fix plugin sign-in failing with "Client must not use multiple authentication methods" for services such as Cloudflare.
 - Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
 - Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
 - The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
