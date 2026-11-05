@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.core.scheduler import compute_next_run
+from suzent.core.webhooks import WEBHOOK_KIND, new_webhook_token, webhook_path
 from suzent.core.stream_registry import is_background_streaming
 from suzent.database import ChatDatabase, CronJobModel, get_database
 
@@ -18,6 +19,13 @@ def _task_chat_id(job: CronJobModel) -> str:
     if (job.context_mode or "isolated") == "bound" and job.chat_id:
         return job.chat_id
     return f"cron-{job.id}"
+
+
+def _mint_webhook(db: ChatDatabase, job_id: int) -> str:
+    """Give a task a fresh webhook URL, retiring any previous one."""
+    token, token_hash = new_webhook_token()
+    db.update_cron_job(job_id, webhook_token_hash=token_hash)
+    return webhook_path(token)
 
 
 def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
@@ -113,6 +121,13 @@ async def create_cron_job(request: Request) -> JSONResponse:
         source=data.get("source", "user"),
     )
 
+    if schedule_kind == WEBHOOK_KIND:
+        path = _mint_webhook(db, job_id)
+        job = db.get_cron_job(job_id)
+        return JSONResponse(
+            {"job": _job_to_dict(job, db), "webhook_path": path}, status_code=201
+        )
+
     # Set initial next_run_at
     job = db.get_cron_job(job_id)
     next_run = compute_next_run(job)
@@ -155,6 +170,8 @@ def _validate_schedule(schedule_kind: str, cron_expr: str, data: dict):
     if schedule_kind == "once":
         if _parse_run_at(data.get("run_at")) is None:
             return "run_at must be an ISO 8601 timestamp for a one-shot task"
+        return None
+    if schedule_kind == WEBHOOK_KIND:
         return None
     return f"Unknown schedule_kind: {schedule_kind}"
 
@@ -217,14 +234,23 @@ async def update_cron_job(request: Request) -> JSONResponse:
         db.update_cron_job(job_id, **updates)
 
     job = db.get_cron_job(job_id)
+    response: dict = {}
     if schedule_touched:
         next_run = compute_next_run(job)
         db.update_cron_job_run_state(
             job_id, next_run_at=next_run, clear_next_run=next_run is None
         )
+        # Becoming a webhook mints its URL; leaving that kind retires the URL,
+        # so a link handed out earlier can't fire a task that no longer
+        # expects it.
+        if job.schedule_kind == WEBHOOK_KIND and not job.webhook_token_hash:
+            response["webhook_path"] = _mint_webhook(db, job_id)
+        elif job.schedule_kind != WEBHOOK_KIND and job.webhook_token_hash:
+            db.update_cron_job(job_id, webhook_token_hash=None)
         job = db.get_cron_job(job_id)
 
-    return JSONResponse({"job": _job_to_dict(job, db)})
+    response["job"] = _job_to_dict(job, db)
+    return JSONResponse(response)
 
 
 async def delete_cron_job(request: Request) -> JSONResponse:
@@ -252,6 +278,18 @@ async def trigger_cron_job(request: Request) -> JSONResponse:
 
     await scheduler.trigger_job_now(job_id)
     return JSONResponse({"success": True, "message": f"Job {job_id} triggered"})
+
+
+async def regenerate_webhook(request: Request) -> JSONResponse:
+    """Replace a webhook task's URL; the old one stops working at once."""
+    job_id = int(request.path_params["job_id"])
+    db = get_database()
+    job = db.get_cron_job(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    if job.schedule_kind != WEBHOOK_KIND:
+        return JSONResponse({"error": "This task is not a webhook"}, status_code=400)
+    return JSONResponse({"webhook_path": _mint_webhook(db, job_id)})
 
 
 async def get_cron_status(request: Request) -> JSONResponse:

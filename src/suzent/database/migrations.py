@@ -79,6 +79,7 @@ class DatabaseMigrationMixin:
                     ("context_mode", "TEXT DEFAULT 'isolated'"),
                     ("suppress_ok", "BOOLEAN DEFAULT 0"),
                     ("source", "TEXT DEFAULT 'user'"),
+                    ("webhook_token_hash", "TEXT"),
                 ):
                     if column not in columns:
                         conn.execute(
@@ -89,6 +90,13 @@ class DatabaseMigrationMixin:
                         text(
                             "CREATE INDEX IF NOT EXISTS ix_cron_jobs_chat_id "
                             "ON cron_jobs(chat_id)"
+                        )
+                    )
+                if "webhook_token_hash" not in columns:
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_cron_jobs_webhook_token_hash "
+                            "ON cron_jobs(webhook_token_hash)"
                         )
                     )
                 conn.commit()

@@ -445,5 +445,7 @@ class ScheduleTool(Tool):
             return f"once at {when}"
         if kind == "interval":
             return f"every {job.interval_minutes}m"
+        if kind == "webhook":
+            return "on webhook"
         tz = f" ({job.timezone})" if job.timezone else ""
         return f"cron {job.cron_expr}{tz}"
