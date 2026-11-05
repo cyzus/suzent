@@ -7,7 +7,7 @@ import pytest
 from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
 from suzent.sync.provider import GitHubSyncProvider, SyncConflictError
-from suzent.sync.service import GitHubSyncService
+from suzent.sync.service import DestructiveSyncPlanError, GitHubSyncService
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -313,3 +313,74 @@ def test_conflicting_push_raises_instead_of_reporting_success(
     assert git(repo_b, "rev-parse", "HEAD") == head_before
     assert git(repo_b, "status", "--porcelain") == ""
     assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "from b\n"
+
+
+def test_pull_keeps_unpushed_local_edits_to_other_files(tmp_path: Path, monkeypatch):
+    a, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "v2\n")
+    asyncio.run(a.push())
+    _write(tmp_path / "b" / "skills" / "mine" / "SKILL.md", "local skill\n")
+
+    asyncio.run(b.pull())
+
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "v2\n"
+    skill = tmp_path / "b" / "skills" / "mine" / "SKILL.md"
+    assert skill.read_text() == "local skill\n"
+
+    asyncio.run(b.push())
+    remote_files = git(repo_b, "ls-tree", "-r", "--name-only", "origin/master")
+    assert f"{PAYLOAD_DIR_NAME}/skills/mine/SKILL.md" in remote_files
+
+
+def test_pull_asks_before_replacing_an_unpushed_edit_to_the_same_file(
+    tmp_path: Path, monkeypatch
+):
+    a, b, _, _ = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "a" / "config" / "config.yaml", "from a\n")
+    asyncio.run(a.push())
+    _write(tmp_path / "b" / "config" / "config.yaml", "from b\n")
+
+    with pytest.raises(DestructiveSyncPlanError) as exc_info:
+        asyncio.run(b.pull())
+
+    assert any("config/config.yaml" in w for w in exc_info.value.plan.warnings)
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "from b\n"
+
+    asyncio.run(b.pull(confirm_destructive=True))
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "from a\n"
+
+
+def test_auto_sync_pushes_a_commit_left_behind_by_a_failed_push(
+    tmp_path: Path, monkeypatch
+):
+    a, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "b" / "sandbox" / "shared" / "memory" / "notes.md", "from b\n")
+    b.payload_builder.build(repo_b)
+    GitHubSyncProvider(repo_b, branch="master").commit_payload()
+    _write(tmp_path / "a" / "config" / "config.yaml", "v2\n")
+    asyncio.run(a.push())
+
+    plan = asyncio.run(b.preview_sync_plan_safe("auto"))
+    assert [f.path for f in plan.files] == ["config/config.yaml"]
+
+    result = asyncio.run(b.auto_sync())
+
+    assert result["success"] is True
+    assert (tmp_path / "b" / "config" / "config.yaml").read_text() == "v2\n"
+    remote_files = git(repo_b, "ls-tree", "-r", "--name-only", "origin/master")
+    assert f"{PAYLOAD_DIR_NAME}/memory/notes.md" in remote_files
+    assert git(repo_b, "rev-parse", "HEAD") == git(repo_b, "rev-parse", "origin/master")
+
+
+def test_auto_sync_pushes_unpushed_commit_when_nothing_else_changed(
+    tmp_path: Path, monkeypatch
+):
+    _, b, _, repo_b = _two_synced_devices(tmp_path, monkeypatch)
+    _write(tmp_path / "b" / "sandbox" / "shared" / "memory" / "notes.md", "from b\n")
+    b.payload_builder.build(repo_b)
+    GitHubSyncProvider(repo_b, branch="master").commit_payload()
+
+    result = asyncio.run(b.auto_sync())
+
+    assert result["success"] is True
+    assert git(repo_b, "rev-parse", "HEAD") == git(repo_b, "rev-parse", "origin/master")
