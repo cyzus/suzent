@@ -1348,7 +1348,8 @@ there in **Settings → Providers**.
 4. Click **Quick start**.
 
 On your other computer, repeat the same steps with the same repository name,
-then **Pull** to bring everything down.
+then **Pull** to bring everything down. Auto-sync waits for this first pull, so
+the new computer's default settings never overwrite your synced brain.
 
 ## Everyday use
 
@@ -1362,9 +1363,15 @@ Suzent compares your computer with the repository and shows what changed:
 Click a file to see exactly what changed before you confirm. Anything that
 would delete or overwrite memory always asks first.
 
+**Pull** only updates the files that changed in the repository. Local changes
+you haven't pushed yet stay in place and go up with your next push. If the same
+file changed on both computers, Suzent asks before replacing your local copy.
+
 Turn on **Auto-sync** to sync every few hours: Suzent pulls incoming changes and
-pushes your own automatically, and still asks before deleting or replacing
-memory.
+pushes your own automatically, even when each computer changed different files.
+It stops and asks only when the same file changed on both computers, or before
+deleting or replacing memory. If a push failed earlier (for example, while you
+were offline), the next sync sends it.
 
 ## Troubleshooting
 
