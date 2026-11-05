@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.22.1] - 2026-11-05
 
 ### Release notes
+- GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it.
 - The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
 - Voice conversations started from the new-chat screen now go into the project you picked instead of the default project.
 
