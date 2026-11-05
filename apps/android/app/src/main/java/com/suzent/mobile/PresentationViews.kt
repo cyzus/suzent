@@ -161,7 +161,8 @@ fun SuzentChevron(expanded: Boolean, modifier: Modifier = Modifier, size: Dp = 1
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat()) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat(),
+                 onLongPress: (() -> Unit)? = null) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -233,7 +234,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     }
                 }
             } else {
-                MarkdownProse(binding(block.body), renderer, tablePlugin, Modifier.fillMaxWidth())
+                MarkdownProse(binding(block.body), renderer, tablePlugin, Modifier.fillMaxWidth(), onLongPress)
             }
         }
     }
@@ -277,10 +278,13 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
 
 
 @Composable
-private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier) {
+private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier,
+                          onLongPress: (() -> Unit)? = null) {
     AndroidView(modifier = modifier, factory = { ctx ->
-        StableTableTextView(ctx).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+        StableTableTextView(ctx).apply { setTextIsSelectable(onLongPress == null); setLineSpacing(0f, 1.2f) }
     }, update = update@ { view ->
+        // Set on every update so the listener sees the current menu callback; selection stays off when it is set.
+        view.setOnLongClickListener(onLongPress?.let { action -> android.view.View.OnLongClickListener { action(); true } })
         if (view.tag == binding) return@update
         view.tag = binding
         view.textSize = binding.textSize
@@ -410,7 +414,9 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             }
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources)
+        // Regent's bubbles open the reply actions on a long press, like the user's own messages.
+        ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources,
+            onBubbleLongPress = if (regent) ({ view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
     }
     message.reaction?.takeIf { it.isNotEmpty() }?.let { reaction ->
         val label = stringResource(R.string.regent_reaction, reaction)
@@ -505,11 +511,14 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
                 Text("${message.citationSources.size}", fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
             }
             if (showActions && !user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
-                Text(model.substringAfter('/'), Modifier.weight(1f, fill = false)
-                    .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model }
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant).padding(horizontal = 6.dp, vertical = 3.dp),
-                    fontSize = PresentationTokens.typeMeta.sp, fontWeight = FontWeight.Medium, color = ink,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.weight(1f, fill = false).heightIn(min = 32.dp)
+                    .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model },
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(painterResource(R.drawable.ic_tool_cpu_chip), contentDescription = null, modifier = Modifier.size(12.dp), tint = ink)
+                    Text(model.substringAfter('/'), Modifier.weight(1f, fill = false), fontSize = PresentationTokens.typeMeta.sp,
+                        fontWeight = FontWeight.Medium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (message.timestamp != null) Text("·", fontSize = PresentationTokens.typeMeta.sp, color = ink)
+                }
             }
             message.timestamp?.let { raw ->
                 Text(formattedTimestamp(raw), Modifier.widthIn(max = 120.dp), fontSize = PresentationTokens.typeMeta.sp, color = ink,
@@ -738,9 +747,10 @@ fun SuzentTextInput(value: String, onValueChange: (String) -> Unit, placeholder:
 }
 
 @Composable
-fun SuzentWordmark() {
+fun SuzentWordmark(leading: Boolean = false) {
     Row(Modifier.fillMaxWidth().heightIn(min = PresentationTokens.controlHeight.dp).padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, androidx.compose.ui.Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(10.dp,
+            if (leading) androidx.compose.ui.Alignment.Start else androidx.compose.ui.Alignment.CenterHorizontally),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.onSurface))
         Text("SUZENT", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
@@ -772,14 +782,18 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
-fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false) {
+fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false,
+                    onBubbleLongPress: (() -> Unit)? = null) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") {
-                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp)).padding(12.dp) else Modifier) {
-                        MarkdownText(chunk.first().text, citationSources)
+                    val bubbleMenu = onBubbleLongPress.takeIf { regent }
+                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
+                        .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { bubbleMenu() }) } else Modifier)
+                        .padding(12.dp) else Modifier) {
+                        MarkdownText(chunk.first().text, citationSources, onLongPress = bubbleMenu)
                     }
                 }
                 else ActivityRail(chunk, live, index == chunks.lastIndex)

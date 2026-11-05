@@ -194,6 +194,7 @@
     <string name="rail_summary_failed">%1$d 次调用失败</string>
     <string name="sidebar_projects">项目</string>
     <string name="sidebar_empty">还没有对话</string>
+    <string name="sidebar_no_projects">还没有项目</string>
     <string name="sidebar_no_results">没有匹配的对话</string>
     <string name="pairing_recognized_connecting">已识别二维码，正在连接桌面端…</string>
     <string name="pairing_sending">正在发送连接请求…</string>

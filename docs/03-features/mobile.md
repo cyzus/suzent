@@ -133,14 +133,18 @@ keeps it running when the window is closed.
 ## What you can do on the phone
 
 - **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
-  and **Settings**. **Chats** opens on your conversations: **SUZENT Regent**
-  and **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, and your projects (tap one to open it, and **Load
-  more** for older chats). Tap **Search chats** to open a search page that looks
+  and **Settings**. **Chats** opens on your conversations, with a search icon
+  and a yellow **New conversation** icon at the top right and **SUZENT Regent**
+  below them. Switch between **Recent** (pinned chats, then your conversations newest first) and
+  **Projects** (tap one to open it). **Load more** brings in older chats. The
+  app remembers which list you last used. Tap the search icon to open a search page that looks
   through the titles of every chat the phone may read, not only the ones
   already loaded. Going back from a chat you opened there returns to the
-  results, and **Cancel** returns to **Chats**. On a tablet, everything is in
-  one list on the left, with **Settings** in its toolbar and search at the top.
+  results, and **Cancel** returns to **Chats**. On a tablet, the lists sit in a
+  sidebar on the left, with **Settings** and the yellow **New conversation**
+  icon in its header and search below them. On
+  an iPad, the sidebar button next to **Settings** hides it so a chat can use the
+  full width.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -165,7 +169,7 @@ keeps it running when the window is closed.
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Tasks** (on a tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
+  started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
