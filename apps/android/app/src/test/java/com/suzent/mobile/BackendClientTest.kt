@@ -13,6 +13,47 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
+    @Test(timeout = 5000) fun creatingChatDoesNotReusePollingConnection() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"chats":[]}"""))
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"id":"new","title":"New","messages":[]}"""))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "token")
+        try {
+            client.chats()
+            client.create("New", null)
+            assertEquals(0, server.takeRequest().sequenceNumber)
+            assertEquals("Creation must use a fresh connection", 0, server.takeRequest().sequenceNumber)
+        } finally { client.close(); server.shutdown() }
+    }
+
+    @Test(timeout = 5000) fun voiceSocketUsesPairedCredentialAndEncodedChatId() {
+        val server = MockWebServer()
+        val received = java.util.concurrent.CountDownLatch(1)
+        server.enqueue(MockResponse().setBody("""{"chats":[]}"""))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
+            override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                webSocket.send("ready")
+            }
+        }))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "paired-token")
+        runBlocking { client.chats() }
+        server.takeRequest()
+        val socket = client.voiceSocket("chat + 中文", object : okhttp3.WebSocketListener() {
+            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) { received.countDown() }
+        })
+        try {
+            assertTrue(received.await(2, TimeUnit.SECONDS))
+            val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+            assertEquals("Voice must not reuse the polling socket", 0, request.sequenceNumber)
+            assertEquals("/mobile/client/voice", request.requestUrl!!.encodedPath)
+            assertEquals("chat + 中文", request.requestUrl!!.queryParameter("chat_id"))
+            assertEquals("Bearer paired-token", request.getHeader("Authorization"))
+            assertNull(request.requestUrl!!.queryParameter("token"))
+        } finally { socket.cancel(); client.close(); server.shutdown() }
+    }
+
     @Test fun paginationCapabilityUsesBoundedEndpoints() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("""{"client_protocol":1,"stream_protocols":[1],"chat_pagination":1,"device":{"device_id":"phone","display_name":"Phone","permissions":{"chat_ids":[],"all_chats":true,"create_chats":true,"send":true,"stop":true}}}"""))

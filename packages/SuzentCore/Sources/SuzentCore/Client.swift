@@ -73,6 +73,15 @@ public final class SuzentClient: Sendable {
         try validate(response)
     }
 
+    public func voiceSocket(chatID: String) throws -> URLSessionWebSocketTask {
+        var request = try request("mobile/client/voice")
+        var url = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
+        url.scheme = url.scheme == "https" ? "wss" : "ws"
+        url.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
+        request.url = url.url
+        return session.webSocketTask(with: request)
+    }
+
     public func nodeSocket() -> URLSessionWebSocketTask {
         session.webSocketTask(with: backend.webSocketURL)
     }
