@@ -2375,8 +2375,8 @@ save your choice and Suzent loads it the next time it starts.
 ## Chat apps
 
 Chat-app plugins are off until you use them. Setting up an app under
-**Settings → Social Channels** installs its plugin for you, so in most cases
-you never need the Plugins page for chat apps. If you already had an app set
+**Settings → Social Channels** installs its plugin for you, so chat apps are
+not listed on the Plugins page. If you already had an app set
 up before plugins existed, its plugin is on after the upgrade and keeps
 working.
 
@@ -2386,7 +2386,8 @@ WeChat needs no extra packages, so it has no plugin and always works.
 ## Notion, Linear, GitHub, Cloudflare and Stripe
 
 These built-in plugins connect the agent to your account on each service.
-Each one is off until you install it and connect your account.
+They are listed under **Settings → Services**, not on the Plugins page, and
+each one is off until you add it and connect your account.
 
 | Plugin | What the agent can do |
 |---|---|
@@ -2396,7 +2397,7 @@ Each one is off until you install it and connect your account.
 | Cloudflare | Look up and change anything in the Cloudflare API, such as DNS records, Workers, R2 buckets and analytics, plus search Cloudflare's docs. |
 | Stripe | Look up customers, payments, invoices and subscriptions, search Stripe's docs, and make changes such as creating a refund or a payment link. |
 
-1. Open **Settings → Plugins** and choose **Install** on the service.
+1. Open **Settings → Services** and choose **Add** on the service.
 2. Connect your account:
    - **Notion, Linear, Cloudflare and Stripe:** choose **Sign in**. A browser window opens on the
      service's own sign-in page. Do this on the computer that runs Suzent.
@@ -2419,7 +2420,7 @@ service marks as read-only run without asking. Your permission mode and
 **Always allow** choices apply as usual.
 
 If a sign-in expires or the service can't be reached, chats keep working
-without that service's tools, and the Plugins page shows **Sign in again**.
+without that service's tools, and the Services page shows **Sign in again**.
 Choose **Disconnect** to sign out and forget the token.
 
 ## Plugins from other people
@@ -2975,7 +2976,7 @@ address (URL) or a program on your computer that Suzent starts (stdio).
 
 ## Adding a server
 
-1. Open **Settings → MCP Servers** and click **Add** on the **Add new server** card.
+1. Open **Settings → Services** and, under **Custom MCP servers**, click **Add** on the **Add new server** card.
 2. Choose **URL** or **Stdio** and, if you like, type a **Name (optional)**.
    Without one, Suzent uses the URL's host or the command.
 3. Fill in the details for that kind of server:
@@ -3000,9 +3001,9 @@ click **Test**, which allows more time.
 
 ## Choosing where a server is used
 
-The switch next to each server in **Settings → MCP Servers** turns it on or off.
+The switch next to each server in **Settings → Services** turns it on or off.
 You can also flip servers from a chat: open the sidebar, choose the **Tools**
-tab, and find them under **MCP Servers**, below the built-in tools. Flipping a
+tab, and find them under **Custom MCP**, below the built-in tools. Flipping a
 server there changes the same switch in Settings.
 
 [Chat apps](https://suzent.com/docs/chat-apps) can use a different set: in
@@ -5179,7 +5180,8 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](https://suzent.com/docs/features/memory) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](https://suzent.com/docs/features/automation) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](https://suzent.com/docs/chat-apps) |
-| **MCP Servers** | Add and test servers that give the agent extra tools. | [MCP servers](https://suzent.com/docs/features/tools/mcp) |
+| **Services** | Connect Notion, Linear, GitHub, Cloudflare and Stripe, and add your own MCP servers. | [Services](https://suzent.com/docs/features/plugins#notion-linear-github-cloudflare-and-stripe), [MCP servers](https://suzent.com/docs/features/tools/mcp) |
+| **Plugins** | Install or remove plugins that add tools, commands and skills. | [Plugins](https://suzent.com/docs/features/plugins) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](https://suzent.com/docs/features/tools/browser) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](https://suzent.com/docs/using/conversations#bring-in-another-coding-agent) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](https://suzent.com/docs/features/nodes) |
@@ -7944,6 +7946,7 @@ api_version: 1         # plugin API this plugin was written against
 | `dependencies` | pip requirements of a third-party plugin. |
 | `default_enabled` | On until the user removes it. Honoured only for built-in plugins. |
 | `icon` | An SVG or PNG file in the plugin folder (under 64 KB), shown on the plugins page. Built-in service logos come from [Simple Icons](https://simpleicons.org) (CC0). |
+| `category` | `service` lists the plugin under **Settings → Services** instead of **Plugins**. Chat-app plugins (those with `channel`) are left off the Plugins page, because Social Channels installs them. |
 
 A plugin with no `__init__.py` only brings packages; `plugins/telegram/` is one.
 
