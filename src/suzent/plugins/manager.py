@@ -74,12 +74,17 @@ class PluginRecord:
         """The manifest's icon as a data URI, so the page needs no file route."""
         if not self.manifest.icon or self.path is None:
             return None
-        root = self.path.resolve()
-        icon = (root / self.manifest.icon).resolve()
-        mime = _ICON_TYPES.get(icon.suffix.lower())
-        if mime is None or not icon.is_relative_to(root) or not icon.is_file():
+        try:
+            root = self.path.resolve()
+            icon = (root / self.manifest.icon).resolve()
+            mime = _ICON_TYPES.get(icon.suffix.lower())
+            if mime is None or not icon.is_relative_to(root) or not icon.is_file():
+                return None
+            data = icon.read_bytes()
+        except OSError as exc:
+            # A broken logo must not keep the plugin list from loading.
+            logger.debug("Plugin {} icon unreadable: {}", self.id, exc)
             return None
-        data = icon.read_bytes()
         if len(data) > _MAX_ICON_BYTES:
             return None
         return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"

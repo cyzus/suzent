@@ -341,3 +341,21 @@ def test_a_chat_can_turn_a_connected_service_off(plugins, secrets, monkeypatch):
     assert len(agent_manager._build_mcp_servers({})) == 1
     off = {"mcp_enabled": {"github.github": False}}
     assert agent_manager._build_mcp_servers(off) == []
+
+
+def test_an_unreadable_icon_is_skipped(tmp_path, monkeypatch):
+    from suzent.plugins.manager import PluginRecord
+    from suzent.plugins.manifest import PluginManifest
+
+    (tmp_path / "icon.svg").write_text("<svg/>")
+    record = PluginRecord(
+        manifest=PluginManifest(id="p", icon="icon.svg"),
+        source="directory",
+        path=tmp_path,
+    )
+
+    def denied(self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_bytes", denied)
+    assert record.icon_data_uri() is None
