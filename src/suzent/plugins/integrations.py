@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from collections.abc import Collection
 from typing import Any, Callable, Literal
 
 from suzent.logger import get_logger
@@ -177,13 +178,18 @@ def build_toolset(plugin_id: str, integration: Integration) -> Any | None:
     return _tolerant(integration.build(credential), namespace(plugin_id, integration))
 
 
-def connected_toolsets() -> list[Any]:
-    """Toolsets of every connected integration of every loaded plugin."""
+def connected_toolsets(disabled: Collection[str] = ()) -> list[Any]:
+    """Toolsets of every connected integration of every loaded plugin.
+
+    ``disabled`` holds namespaces (``plugin.integration``) a chat turned off.
+    """
     from suzent.plugins import get_plugin_manager
 
     toolsets = []
     for record in get_plugin_manager().records():
         for integration in record.integrations:
+            if namespace(record.id, integration) in disabled:
+                continue
             try:
                 toolset = build_toolset(record.id, integration)
             except Exception as exc:

@@ -4,3 +4,4 @@ version: 1.0.0
 description: Chat with Suzent from Discord.
 channel: discord
 extras: [discord]
+icon: icon.svg

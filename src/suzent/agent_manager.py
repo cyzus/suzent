@@ -138,7 +138,12 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     # Hosted services a plugin connects, once the user signed in to them.
     from suzent.plugins.integrations import connected_toolsets
 
-    for toolset in connected_toolsets():
+    # A chat turns a service off with ``mcp_enabled[namespace] = False``;
+    # unlike MCP servers, a connected service is on unless turned off.
+    turned_off = {
+        name for name, on in (config.get("mcp_enabled") or {}).items() if on is False
+    }
+    for toolset in connected_toolsets(turned_off):
         servers.append(_as_mcp_toolset(toolset))
 
     return servers

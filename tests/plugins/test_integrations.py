@@ -300,3 +300,62 @@ def _ctx():
     from pydantic_ai.usage import RunUsage
 
     return RunContext(deps=None, model=TestModel(), usage=RunUsage())
+
+
+def test_builtin_service_plugins_ship_their_logo(plugins):
+    for plugin_id in ("notion", "linear", "github", "cloudflare", "stripe"):
+        icon = _record(plugins, plugin_id).to_dict()["icon"]
+        assert icon.startswith("data:image/svg+xml;base64,")
+
+
+def test_an_icon_outside_the_plugin_folder_is_ignored(tmp_path):
+    from suzent.plugins.manager import PluginRecord
+    from suzent.plugins.manifest import PluginManifest
+
+    (tmp_path / "secret.svg").write_text("<svg/>")
+    folder = tmp_path / "p"
+    folder.mkdir()
+    record = PluginRecord(
+        manifest=PluginManifest(id="p", icon="../secret.svg"),
+        source="directory",
+        path=folder,
+    )
+    assert record.icon_data_uri() is None
+
+
+def test_a_chat_can_turn_a_connected_service_off(plugins, secrets, monkeypatch):
+    from suzent import agent_manager
+
+    github = _record(plugins, "github").integrations[0]
+    secrets.values[integrations.token_key("github", github)] = "token"
+    monkeypatch.setattr(
+        "suzent.core.mcp_store.as_agent_config",
+        lambda: {
+            "mcp_enabled": {},
+            "mcp_headers": {},
+            "mcp_stdio_params": {},
+            "mcp_urls": {},
+        },
+    )
+
+    assert len(agent_manager._build_mcp_servers({})) == 1
+    off = {"mcp_enabled": {"github.github": False}}
+    assert agent_manager._build_mcp_servers(off) == []
+
+
+def test_an_unreadable_icon_is_skipped(tmp_path, monkeypatch):
+    from suzent.plugins.manager import PluginRecord
+    from suzent.plugins.manifest import PluginManifest
+
+    (tmp_path / "icon.svg").write_text("<svg/>")
+    record = PluginRecord(
+        manifest=PluginManifest(id="p", icon="icon.svg"),
+        source="directory",
+        path=tmp_path,
+    )
+
+    def denied(self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_bytes", denied)
+    assert record.icon_data_uri() is None
