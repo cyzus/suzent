@@ -120,6 +120,8 @@
     ".releases/changes/mobile-sidebar-agents-schedules.json",
     ".releases/changes/mobile-sidebar-align.json",
     ".releases/changes/mobile-sidebar-pairing-polish.json",
+    ".releases/changes/mobile-voice-animation-actions.json",
+    ".releases/changes/mobile-voice-composer.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/model-wait-ux.json",
     ".releases/changes/msix-packaged-mode.json",
