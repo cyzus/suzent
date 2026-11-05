@@ -1,4 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowPathIcon,
+  CameraIcon,
+  ChatBubbleLeftRightIcon,
+  PlusIcon,
+  PuzzlePieceIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import {
   connectPluginIntegration,
@@ -18,6 +26,70 @@ import {
   SettingsPage,
 } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
+
+/** Plugins that ship no logo of their own. */
+const FALLBACK_ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+  camera: CameraIcon,
+  slack: ChatBubbleLeftRightIcon,
+  feishu: ChatBubbleLeftRightIcon,
+};
+
+function PluginIcon({ plugin }: { plugin: PluginInfo }): React.ReactElement {
+  const Fallback = FALLBACK_ICONS[plugin.id] ?? PuzzlePieceIcon;
+  return (
+    <div
+      aria-hidden="true"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-brutal-black/20 bg-white dark:border-white/10"
+    >
+      {plugin.icon ? (
+        <img src={plugin.icon} alt="" className="h-6 w-6 object-contain" />
+      ) : (
+        <Fallback className="h-6 w-6 text-neutral-700" />
+      )}
+    </div>
+  );
+}
+
+function PluginAction({
+  plugin,
+  busy,
+  disabled,
+  onClick,
+  t,
+}: {
+  plugin: PluginInfo;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  t: (key: string) => string;
+}): React.ReactElement {
+  const retry = plugin.enabled && plugin.missing.length > 0;
+  const [Icon, label] = retry
+    ? [ArrowPathIcon, t('settings.plugins.retry')]
+    : plugin.enabled
+      ? [TrashIcon, t('settings.plugins.remove')]
+      : [PlusIcon, t('settings.plugins.install')];
+  const tone = plugin.enabled && !retry ? 'red' : 'blue';
+  return (
+    <SettingsListAction
+      tone={tone}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex shrink-0 items-center gap-1.5 self-start ${
+        tone === 'blue'
+          ? '!border-brutal-blue !text-brutal-blue dark:!border-blue-400 dark:!text-blue-400'
+          : ''
+      }`}
+    >
+      {busy ? (
+        <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+      ) : (
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      {busy ? t('settings.plugins.working') : label}
+    </SettingsListAction>
+  );
+}
 
 function StatusBadge({
   plugin,
@@ -296,56 +368,53 @@ export function PluginsTab(): React.ReactElement {
             {plugins.map((plugin) => (
               <SettingsListItem key={plugin.id}>
                 <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-black">{plugin.name}</span>
-                      <StatusBadge plugin={plugin} t={t} />
-                      {plugin.source === 'builtin' && (
-                        <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
+                  <div className="flex min-w-0 flex-1 gap-3">
+                    <PluginIcon plugin={plugin} />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black">{plugin.name}</span>
+                        <StatusBadge plugin={plugin} t={t} />
+                        {plugin.source === 'builtin' && (
+                          <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
+                        )}
+                      </div>
+                      {plugin.description && (
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {plugin.description}
+                        </p>
                       )}
+                      {plugin.error && (
+                        <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
+                      )}
+                      {plugin.missing.length > 0 && (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          {t('settings.plugins.missing')} {plugin.missing.join(', ')}
+                        </p>
+                      )}
+                      {plugin.enabled && plugin.restartRequired && (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          {t('settings.plugins.restartHint')}
+                        </p>
+                      )}
+                      {plugin.enabled &&
+                        plugin.integrations?.map((integration) => (
+                          <IntegrationRow
+                            key={integration.id}
+                            pluginId={plugin.id}
+                            integration={integration}
+                            onChange={refresh}
+                            t={t}
+                          />
+                        ))}
                     </div>
-                    {plugin.description && (
-                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                        {plugin.description}
-                      </p>
-                    )}
-                    {plugin.error && (
-                      <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
-                    )}
-                    {plugin.missing.length > 0 && (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {t('settings.plugins.missing')} {plugin.missing.join(', ')}
-                      </p>
-                    )}
-                    {plugin.enabled && plugin.restartRequired && (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {t('settings.plugins.restartHint')}
-                      </p>
-                    )}
-                    {plugin.enabled &&
-                      plugin.integrations?.map((integration) => (
-                        <IntegrationRow
-                          key={integration.id}
-                          pluginId={plugin.id}
-                          integration={integration}
-                          onChange={refresh}
-                          t={t}
-                        />
-                      ))}
                   </div>
-                  <SettingsListAction
-                    tone={plugin.enabled ? 'red' : 'blue'}
+                  <PluginAction
+                    plugin={plugin}
+                    busy={busy === plugin.id}
                     disabled={busy !== null || plugin.status === 'error'}
                     onClick={() => void toggle(plugin)}
-                  >
-                    {busy === plugin.id
-                      ? t('settings.plugins.working')
-                      : plugin.enabled && plugin.missing.length > 0
-                        ? t('settings.plugins.retry')
-                        : plugin.enabled
-                          ? t('settings.plugins.remove')
-                          : t('settings.plugins.install')}
-                  </SettingsListAction>
+                    t={t}
+                  />
                 </div>
               </SettingsListItem>
             ))}

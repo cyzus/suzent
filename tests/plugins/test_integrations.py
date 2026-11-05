@@ -300,3 +300,24 @@ def _ctx():
     from pydantic_ai.usage import RunUsage
 
     return RunContext(deps=None, model=TestModel(), usage=RunUsage())
+
+
+def test_builtin_service_plugins_ship_their_logo(plugins):
+    for plugin_id in ("notion", "linear", "github", "cloudflare", "stripe"):
+        icon = _record(plugins, plugin_id).to_dict()["icon"]
+        assert icon.startswith("data:image/svg+xml;base64,")
+
+
+def test_an_icon_outside_the_plugin_folder_is_ignored(tmp_path):
+    from suzent.plugins.manager import PluginRecord
+    from suzent.plugins.manifest import PluginManifest
+
+    (tmp_path / "secret.svg").write_text("<svg/>")
+    folder = tmp_path / "p"
+    folder.mkdir()
+    record = PluginRecord(
+        manifest=PluginManifest(id="p", icon="../secret.svg"),
+        source="directory",
+        path=folder,
+    )
+    assert record.icon_data_uri() is None
