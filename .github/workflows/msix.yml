@@ -38,8 +38,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: msix-${{ github.ref }}
-  # Superseded PR/branch builds may be cancelled; a run that may publish never is.
+  # Runs that may publish get their own group per ref, so a later build-only
+  # run on the same ref can never cancel a Store submission. Superseded
+  # build-only runs may be cancelled; publish runs queue instead.
+  group: msix-${{ github.ref }}-${{ (github.ref_type == 'tag' || inputs.publish) && 'publish' || 'build' }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && !inputs.publish }}
 
 jobs:
