@@ -11,7 +11,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
 
-data class Connection(val origin: String, val hostToken: String, val nodeToken: String = "", val clientProtocol: Int = 0, val previousToken: String = "", val previousOrigin: String = "", val origins: List<String> = emptyList(), val tls: DeviceTrust? = null, val previousTLS: DeviceTrust? = null, val previousOrigins: List<String> = emptyList())
+data class Connection(val origin: String, val hostToken: String, val nodeToken: String = "", val clientProtocol: Int = 0, val previousToken: String = "", val previousOrigin: String = "", val origins: List<String> = emptyList(), val tls: DeviceTrust? = null, val previousTLS: DeviceTrust? = null, val previousOrigins: List<String> = emptyList(), val relay: RelayRoute? = null)
 
 class CredentialStore(context: Context) {
     private val preferences = context.getSharedPreferences("secure_connection", Context.MODE_PRIVATE)
