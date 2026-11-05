@@ -149,5 +149,5 @@ serves the relay socket, with the app wrapped in `MobileGateway`. A phone over
 the relay therefore reaches exactly the paths the LAN mobile gateway allows,
 with `client = ("mobile-gateway", 0)`.
 
-`tests/relay/e2e_vectors.json` fixes every value of one handshake and four
+`packages/mobile-contract/relay-e2e-vectors.json` fixes every value of one handshake and four
 messages from fixed private keys. The mobile apps test against the same file.

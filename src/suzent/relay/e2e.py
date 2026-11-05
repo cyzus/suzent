@@ -19,7 +19,7 @@ relay's part, so everything the relay protocol tunnels (HTTP, SSE, streamed
 bodies, WebSockets) also works inside the encrypted channel.
 
 docs/08-developing/protocols/relay.md describes the format;
-tests/relay/e2e_vectors.json pins it for the mobile apps.
+packages/mobile-contract/relay-e2e-vectors.json pins it for the mobile apps.
 """
 
 from __future__ import annotations

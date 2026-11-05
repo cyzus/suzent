@@ -22,7 +22,11 @@ from suzent.relay.service import PHONE_CHANNEL_SECRET, RelayService
 from .test_relay_agent import Channel, FakeRelay
 from .test_relay_service import MemorySecrets, wait_for
 
-VECTORS = json.loads((Path(__file__).parent / "e2e_vectors.json").read_text())
+VECTORS = json.loads(
+    (
+        Path(__file__).parents[2] / "packages/mobile-contract/relay-e2e-vectors.json"
+    ).read_text()
+)
 
 
 def scalar(hex_value: str) -> ec.EllipticCurvePrivateKey:
@@ -257,7 +261,12 @@ async def test_reset_changes_the_phone_channel(tmp_path: Path) -> None:
 
 class StubRelay:
     def phone_descriptor(self) -> dict[str, Any]:
-        return {"version": 1, "url": "https://r.example", "channel": "c" * 43, "key": "k"}
+        return {
+            "version": 1,
+            "url": "https://r.example",
+            "channel": "c" * 43,
+            "key": "k",
+        }
 
 
 def test_invite_and_session_carry_the_relay(tmp_path: Path) -> None:
@@ -286,7 +295,9 @@ def test_session_includes_relay() -> None:
 
     from suzent.mobile.client_api import relay_field
 
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(relay=StubRelay())))
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(relay=StubRelay()))
+    )
     assert relay_field(request)["relay"]["url"] == "https://r.example"  # type: ignore[arg-type]
     empty = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
     assert relay_field(empty) == {}  # type: ignore[arg-type]
