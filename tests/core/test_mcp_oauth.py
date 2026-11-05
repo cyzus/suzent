@@ -74,3 +74,9 @@ async def test_a_sign_in_hands_the_url_to_the_caller(secrets):
     provider = mcp_oauth.build_oauth("notion.notion", URL, on_authorize=seen.append)
     await provider.redirect_handler("https://auth.example.com/authorize?x=1")
     assert seen == ["https://auth.example.com/authorize?x=1"]
+
+
+async def test_registers_as_a_public_client(secrets):
+    """No client secret: token requests carry only client_id and the PKCE verifier."""
+    provider = mcp_oauth.build_oauth("cloudflare.cloudflare", URL)
+    assert provider.context.client_metadata.token_endpoint_auth_method == "none"

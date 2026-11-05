@@ -146,6 +146,11 @@ def build_oauth(
         url,
         scopes=scopes,
         client_name="Suzent",
+        # A desktop app can't keep a client secret, so register as a public
+        # client (PKCE only). Left unset, servers default to a secret sent as
+        # HTTP Basic, and some (Cloudflare's OAuth provider) then reject the
+        # token request for also carrying client_id in its body.
+        additional_client_metadata={"token_endpoint_auth_method": "none"},
         token_storage=SecretKeyValueStore(namespace),
         callback_host="127.0.0.1",
         callback_timeout=SIGN_IN_TIMEOUT_SECONDS,
