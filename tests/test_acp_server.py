@@ -684,3 +684,58 @@ async def test_citations_survive_approval_resume(tmp_path):
     assert text == (
         "First [1]. Second [2].\n\nSources:\n[1] First source\n[2] Second source"
     )
+
+
+# ── the desktop sees the prompt ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_prompt_names_the_client_and_asks_for_a_live_stream(tmp_path):
+    backend = FakeBackend([[sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"})]])
+    server = ACPAgentServer(backend, Wire())
+    await server.dispatch(request(1, "initialize", {"clientInfo": {"name": "Zed"}}))
+    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "hi"}]},
+        )
+    )
+    await server.drain()
+
+    [payload] = backend.payloads
+    assert payload["origin"] == {"kind": "acp", "client": "Zed"}
+    assert payload["protocol"] == 1
+    assert isinstance(payload["client_run_token"], str)
+    assert payload["client_run_token"]
+
+
+def test_the_live_stream_envelopes_are_unwrapped_once_each():
+    translator = TurnTranslator()
+    frames = b"".join(
+        [
+            sse(
+                {
+                    "type": "STREAM_SNAPSHOT",
+                    "run_id": "r",
+                    "seq": 1,
+                    "events": [{"type": "TEXT_MESSAGE_CONTENT", "delta": "Hel"}],
+                }
+            ),
+            sse(
+                {
+                    "type": "STREAM_EVENT",
+                    "run_id": "r",
+                    "seq": 2,
+                    "event": {"type": "TEXT_MESSAGE_CONTENT", "delta": "lo"},
+                }
+            ),
+            sse({"type": "STREAM_END", "run_id": "r", "seq": 2, "persisted": True}),
+        ]
+    )
+
+    texts = [item.payload["content"]["text"] for item in translator.feed(frames)]
+
+    assert texts == ["Hel", "lo"]

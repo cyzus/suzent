@@ -629,12 +629,9 @@ class HandoffRouter:
             bind_producer_replay,
             register_background_stream,
         )
+        from suzent.core.prompt_row import prewrite_prompt
         from suzent.database import get_database
-        from suzent.routes.chat_routes import (
-            _prewrite_user_display_message,
-            _resolve_chat_runtime,
-            _sanitized_for_display_and_turn,
-        )
+        from suzent.routes.chat_routes import _resolve_chat_runtime
 
         def _load_chat_config() -> tuple[dict[str, Any], str]:
             chat = get_database().get_chat(self.chat_id)
@@ -648,13 +645,12 @@ class HandoffRouter:
 
         chat_config, effective_runtime = await asyncio.to_thread(_load_chat_config)
         config_override = build_agent_config(chat_config, require_social_tool=False)
-        sanitized = _sanitized_for_display_and_turn(content)
 
         # The same path as /chat/send: the user row is written up front through
         # the revision-safe helper, and the turn streams on the background bus,
         # where the chat window attaches on `stream_started`.
-        prewritten = await asyncio.to_thread(
-            _prewrite_user_display_message, self.chat_id, sanitized, []
+        sanitized, prewritten = await asyncio.to_thread(
+            prewrite_prompt, self.chat_id, content
         )
         queue = register_background_stream(self.chat_id)
         try:
