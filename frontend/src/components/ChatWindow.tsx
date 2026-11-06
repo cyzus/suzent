@@ -646,14 +646,12 @@ const MessageList: React.FC<{
               data-message-index={globalIdx}
               className="chat-msg-row chat-msg-row-user w-full flex flex-col items-end group/message"
             >
-              <span className="mb-1 pr-1 text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-                {t('chatMessage.sentByRegent')}
-              </span>
               <UserMessage
                 message={{ ...m, role: 'user', content: focalRequest }}
                 chatId={chatId}
                 onImageClick={onImageClick}
                 onFileClick={onFileClick}
+                senderLabel={t('chatMessage.sentByRegent')}
               />
             </div>
           );

@@ -34,6 +34,7 @@ from suzent.core.focal_agent import (
     focal_wakeups,
     get_or_create_focal_chat,
 )
+from suzent.core.prompt_row import display_name, prewrite_prompt
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
@@ -170,75 +171,6 @@ async def undo_chat_files(request: Request) -> JSONResponse:
     )
 
 
-def _display_file_metadata(files_list: list) -> list[dict]:
-    """Return JSON-safe file metadata for immediate user-message display."""
-    result: list[dict] = []
-    for file in files_list or []:
-        if isinstance(file, dict):
-            result.append(file)
-    return result
-
-
-def _sanitized_for_display_and_turn(message: str) -> str:
-    """Neutralize forged reminder delimiters before anything records the message.
-
-    The pre-written display row and the row the ACP turn later reconciles
-    against have to be the same string. Sanitizing only inside the turn left the
-    raw text in the pre-written row and appended a second, escaped copy beside
-    it. Doing it here means both see one value; the turn's own pass is then a
-    no-op, since escaping is idempotent.
-    """
-    from suzent.core.system_reminder import sanitize_untrusted_text
-
-    return sanitize_untrusted_text(message) if message else message
-
-
-def _prewrite_user_display_message(
-    chat_id: str,
-    message: str,
-    files_list: list,
-    client_message_id: str | None = None,
-) -> bool | None:
-    """Append the user's display row before stream_started can trigger reloads.
-
-    Returns whether that row is really in the transcript. The turn uses this as
-    its licence to recognize the row and not write it again, and a write that
-    failed leaves the previous turn's row in that position -- which the same
-    prompt sent again matches exactly. Believing the prewrite then loses the
-    message.
-    """
-    if not chat_id:
-        return False
-
-    content = (message or "").strip()
-    files = _display_file_metadata(files_list)
-    if not content and not files:
-        return False
-
-    entry: dict = {"role": "user", "content": content}
-    if files:
-        entry["files"] = files
-
-    try:
-        if client_message_id is not None:
-            status = get_database().append_chat_message_once(
-                chat_id, entry, client_message_id
-            )
-            if status == "duplicate":
-                return None
-            return status == "created"
-        return bool(get_database().append_chat_message(chat_id, entry))
-    except Exception as exc:
-        # The type only. A database error carries its statement's bound
-        # parameters, which here are the user's prompt and their attachments'
-        # names -- exactly what must not reach a log.
-        logger.debug(
-            f"Failed to prewrite user display message for {chat_id}: "
-            f"{type(exc).__name__}"
-        )
-        return False
-
-
 def _recoverable_response(
     chat_id: str,
     make_generator: Callable[[Any], AsyncGenerator[str, None]],
@@ -274,6 +206,20 @@ def _recoverable_response(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _origin_metadata(origin: Any) -> dict[str, str] | None:
+    """The display metadata for a prompt another program sent on someone's behalf.
+
+    Only the ACP server sends one today, naming the client the prompt came from.
+    """
+    if not isinstance(origin, dict) or origin.get("kind") != "acp":
+        return None
+    return {
+        "source": "acp",
+        "sender": display_name(origin.get("client"), "ACP client"),
+        "channel": "ACP",
+    }
 
 
 def _is_text(value: Any) -> bool:
@@ -348,6 +294,7 @@ async def chat(request: Request) -> StreamingResponse:
             is_heartbeat = False
             recovery_protocol = form.get("protocol") == "1"
             client_run_token = form.get("client_run_token")
+            origin = None
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -361,6 +308,7 @@ async def chat(request: Request) -> StreamingResponse:
             is_heartbeat = data.get("is_heartbeat", False)
             recovery_protocol = data.get("protocol") == 1
             client_run_token = data.get("client_run_token")
+            origin = _origin_metadata(data.get("origin"))
 
         if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
@@ -450,6 +398,22 @@ async def chat(request: Request) -> StreamingResponse:
             except Exception as _hb_err:
                 logger.warning(f"Heartbeat pre-processing failed: {_hb_err}")
 
+        # A prompt another program sent (the ACP server's) has no client of
+        # ours to show it, so it is written to the transcript before the turn
+        # starts, as /chat/send does for the desktop's own messages.
+        prewritten: bool | None = False
+        if (
+            origin
+            and stream
+            and recovery_protocol
+            and chat_id
+            and not resume_approvals
+            and not message.startswith("/")
+        ):
+            message, prewritten = prewrite_prompt(
+                chat_id, message, files_list, metadata=origin
+            )
+
         def _make_generator(replay: Any | None = None) -> AsyncGenerator[str, None]:
             if effective_runtime == "acp":
                 from suzent.acp.runtime import stream_acp_turn
@@ -461,6 +425,7 @@ async def chat(request: Request) -> StreamingResponse:
                     files=files_list or None,
                     file_mentions=file_mentions or None,
                     replay=replay,
+                    prewritten=prewritten,
                 )
             return processor.process_turn(
                 chat_id=chat_id,
@@ -572,11 +537,10 @@ async def chat_send(request: Request) -> JSONResponse:
     # Whether this route wrote the turn's user row, which the turn cannot infer:
     # a prompt sent again after being stopped looks exactly like the row the
     # stopped turn left behind.
-    prewritten = False
-    if not resume_approvals and not message.strip().startswith("/"):
-        message = _sanitized_for_display_and_turn(message)
-        prewritten = _prewrite_user_display_message(
-            chat_id, message, files_list, client_message_id
+    prewritten: bool | None = False
+    if not resume_approvals and not message.startswith("/"):
+        message, prewritten = prewrite_prompt(
+            chat_id, message, files_list, client_message_id=client_message_id
         )
         if prewritten is None:
             return JSONResponse(
@@ -664,8 +628,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     config_override = build_agent_config(config, require_social_tool=False)
     effective_runtime = _resolve_chat_runtime(chat_id, config)
     stop_stream(chat_id, reason="Steered by user")
-    message = _sanitized_for_display_and_turn(message)
-    prewritten = _prewrite_user_display_message(chat_id, message, [])
+    message, prewritten = prewrite_prompt(chat_id, message)
 
     stream_queue = register_background_stream(chat_id)
     attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))

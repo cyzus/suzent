@@ -48,8 +48,8 @@ async def test_a_send_whose_token_is_not_a_name_is_refused_before_it_writes(
 ):
     prewritten: list[str] = []
     monkeypatch.setattr(
-        "suzent.routes.chat_routes._prewrite_user_display_message",
-        lambda chat_id, message, files: prewritten.append(message),
+        "suzent.routes.chat_routes.prewrite_prompt",
+        lambda chat_id, message, *_a, **_k: (prewritten.append(message), True),
     )
 
     response = await chat_send(
@@ -65,7 +65,7 @@ async def test_a_send_whose_token_is_not_a_name_is_refused_before_it_writes(
 @pytest.mark.asyncio
 async def test_a_steer_whose_token_is_not_a_name_is_refused(monkeypatch):
     monkeypatch.setattr(
-        "suzent.routes.chat_routes._prewrite_user_display_message",
+        "suzent.routes.chat_routes.prewrite_prompt",
         MagicMock(),
     )
 
@@ -113,9 +113,7 @@ async def test_a_stop_naming_the_empty_string_is_refused(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_send_whose_token_is_the_empty_string_is_refused(monkeypatch):
-    monkeypatch.setattr(
-        "suzent.routes.chat_routes._prewrite_user_display_message", MagicMock()
-    )
+    monkeypatch.setattr("suzent.routes.chat_routes.prewrite_prompt", MagicMock())
 
     response = await chat_send(
         request({"chat_id": "c", "message": "hi", "client_run_token": ""}, "/chat/send")

@@ -15,6 +15,7 @@ from suzent.channels.base import UnifiedMessage
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.core.approval_manager import PendingApprovalSession
+from suzent.core.prompt_row import display_name, prewrite_prompt
 from suzent.core.stream_parser import ApprovalRequest
 from suzent.core.run_state import ChatRunState
 from suzent.database import get_database
@@ -765,6 +766,18 @@ class SocialBrain(BaseBrain):
                     )
                     collected_approvals.append(event)
 
+            # The transcript shows what was said and who said it; the envelope
+            # above is for the model.
+            await asyncio.to_thread(
+                prewrite_prompt,
+                social_chat_id,
+                steer_text if is_steer else message.content,
+                metadata={
+                    "source": "social",
+                    "sender": display_name(message.sender_name, "Unknown sender"),
+                    "channel": message.platform.title(),
+                },
+            )
             stream_queue = register_background_stream(social_chat_id)
             # The frontend can attach to this queue and stop the turn by name;
             # a control that never learned its run refuses such a stop.

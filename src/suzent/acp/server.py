@@ -31,12 +31,14 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from suzent.core.citation_codec import CitationStreamRenderer
+from suzent.core.prompt_row import display_name
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -250,7 +252,28 @@ class TurnTranslator:
                     logger.debug(f"[acp-server] unparseable SSE payload: {raw[:120]}")
                     continue
                 if isinstance(event, dict):
+                    yield from self._unwrap(event)
+
+    def _unwrap(self, frame: dict[str, Any]) -> Iterator[TurnItem]:
+        """Translate the turn events inside one recoverable-stream frame.
+
+        Turns run on the recoverable stream so the desktop can watch them, and
+        that stream wraps every event: a snapshot of the run so far first, then
+        one envelope per event, then an end marker carrying nothing to show.
+        """
+        match frame.get("type"):
+            case "STREAM_SNAPSHOT":
+                for event in frame.get("events") or []:
+                    if isinstance(event, dict):
+                        yield from self._translate(event)
+            case "STREAM_EVENT":
+                event = frame.get("event")
+                if isinstance(event, dict):
                     yield from self._translate(event)
+            case "STREAM_END":
+                return
+            case _:
+                yield from self._translate(frame)
 
     def finish(self) -> Iterator[Update]:
         """Append portable source references after all stream events arrive."""
@@ -546,14 +569,9 @@ class ACPAgentServer:
             capabilities if isinstance(capabilities, dict) else {}
         )
         info = params.get("clientInfo") or {}
-        client_name = info.get("name") if isinstance(info, dict) else None
-        if (
-            not isinstance(client_name, str)
-            or not client_name.strip()
-            or len(client_name) > 100
-            or any(ord(c) < 32 or ord(c) == 127 for c in client_name)
-        ):
-            client_name = "ACP client"
+        client_name = display_name(
+            info.get("name") if isinstance(info, dict) else None, "ACP client"
+        )
         if self._require_auth and self._token_loader:
             self._token = self._token_loader(client_name)
         self._client_name = client_name
@@ -768,11 +786,18 @@ class ACPAgentServer:
 
         while True:
             await self._authorize(session)
+            # The recoverable protocol registers the turn as the chat's live
+            # stream, which is what lets the desktop follow it, and the origin
+            # has the prompt written to the transcript before the turn starts,
+            # labelled with the client that sent it.
             payload: dict[str, Any] = {
                 "message": message,
                 "chat_id": session.chat_id,
                 "stream": True,
                 "config": session.config,
+                "protocol": 1,
+                "client_run_token": uuid.uuid4().hex,
+                "origin": {"kind": "acp", "client": self._client_name},
             }
             if resume_approvals:
                 payload["resume_approvals"] = resume_approvals
