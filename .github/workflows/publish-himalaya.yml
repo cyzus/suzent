@@ -1,0 +1,61 @@
+name: Publish himalaya npm packages
+
+# Repackages the pinned himalaya release (scripts/pack_himalaya_npm.py) as
+# @suzent/himalaya-<platform> so the email plugin can download it from npm
+# or npmmirror. Runs when the pin changes on main; a version already on npm
+# is left alone, so a rerun only fills in what is missing.
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/pack_himalaya_npm.py
+  workflow_dispatch:
+
+concurrency:
+  group: publish-himalaya
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download, verify and pack the pinned release
+        run: python3 scripts/pack_himalaya_npm.py npm-himalaya
+
+      - name: Publish to npm and ask npmmirror to sync
+        shell: bash
+        run: |
+          # Trusted Publishing needs npm 11.5.1 or newer.
+          npm install --global npm@^11.5.1
+          for directory in npm-himalaya/*/; do
+            name="$(node -p "require('./${directory}package.json').name")"
+            version="$(node -p "require('./${directory}package.json').version")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              (cd "$directory" && npm publish --access public)
+            fi
+            curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$name/syncs" \
+              || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
+            # The plugin pins this hash in plugin.yaml.
+            tarball="$(npm view "$name@$version" dist.tarball)"
+            echo "$name@$version sha256 $(curl -fsSL "$tarball" | sha256sum | cut -d' ' -f1)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          done
