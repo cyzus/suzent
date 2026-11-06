@@ -21,8 +21,16 @@ export interface MobilePending {
   platform: 'ios' | 'android';
   expires_at: number;
 }
+/** How a phone reaches this desktop through the user's relay, end-to-end encrypted. */
+export interface MobileRelay {
+  version: number;
+  url: string;
+  channel: string;
+  key: string;
+}
 export interface MobileInvitation {
   tls?: { version: number; ca_certificate: string; fingerprint: string };
+  relay?: MobileRelay;
   origins?: string[];
   approval?: 'phone';
   pairing_id: string;

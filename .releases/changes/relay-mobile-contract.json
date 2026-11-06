@@ -1,0 +1,1 @@
+{"products": {"mobile": "none"}, "reason": "Adds the relay route spec and test vectors to the mobile contract; the apps don't use them yet.", "summary": "Mobile contract: relay route and E2E test vectors."}

@@ -1162,9 +1162,12 @@ async def lifespan(app):
     await startup()
     from suzent.config import USER_CONFIG_DIR
     from suzent.mobile.tls import MobileTLS
+    from suzent.relay.service import RelayService
 
     app.state.mobile_tls = MobileTLS(app, USER_CONFIG_DIR / "mobile_tls")
+    app.state.relay = RelayService(app, USER_CONFIG_DIR / "relay.json")
     try:
+        await app.state.relay.start()
         if (USER_CONFIG_DIR / "mobile_tls/identity.pem").exists():
             try:
                 await app.state.mobile_tls.start()
@@ -1174,6 +1177,7 @@ async def lifespan(app):
                 )
         yield
     finally:
+        await app.state.relay.stop()
         await app.state.mobile_tls.stop()
         await shutdown()
 

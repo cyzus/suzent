@@ -74,6 +74,7 @@ dependencies = [
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
     "pydantic-ai-harness>=0.64,<0.65",
+    "websockets>=15",
 ]
 
 [project.urls]
