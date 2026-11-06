@@ -46,6 +46,10 @@ public protocol MobileSocket: AnyObject, Sendable {
 
 extension URLSessionWebSocketTask: MobileSocket {}
 
+/// URLSessionWebSocketTask rejects messages over 1 MiB by default with "Message too long";
+/// a long chat or an image easily exceeds that.
+let maxWebSocketMessageSize = 64 * 1024 * 1024
+
 public final class SuzentClient: Sendable {
     private let navigationCapability = NavigationCapability()
     public let backend: Backend
@@ -119,7 +123,10 @@ public final class SuzentClient: Sendable {
     }
 
     private func webSocket(_ request: URLRequest) -> any MobileSocket {
-        tunnel?.webSocket(for: request) ?? session.webSocketTask(with: request)
+        if let tunnel { return tunnel.webSocket(for: request) }
+        let task = session.webSocketTask(with: request)
+        task.maximumMessageSize = maxWebSocketMessageSize
+        return task
     }
 
     private func request(_ path: String, body: [String: String]? = nil) throws -> URLRequest {

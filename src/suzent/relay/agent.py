@@ -33,8 +33,9 @@ logger = get_logger(__name__)
 
 PROTOCOL = 2
 HCHUNK, HBODY, WBIN, WTEXT = 1, 2, 3, 4
-# The relay caps one agent frame at 32 MiB; stay well under it.
-MAX_CHUNK = 1024 * 1024
+# The relay caps one agent frame at 32 MiB, but older iOS app builds drop any
+# WebSocket message over 1 MiB, so chunks leave room for the frame header and encryption.
+MAX_CHUNK = 256 * 1024
 REGISTER_TIMEOUT_S = 10.0
 MAX_BACKOFF_S = 60.0
 # The client address tunneled requests carry. Never a loopback host, so the
