@@ -1923,10 +1923,41 @@ connected to.
 
 The phone talks to your computer directly; there's no Suzent cloud in between.
 On your home Wi-Fi that just works. To use it elsewhere, put both devices on
-[Tailscale](https://tailscale.com/), or give Suzent a public HTTPS address of
+[Tailscale](https://tailscale.com/), go through a [relay you deploy
+yourself](#through-your-own-relay), or give Suzent a public HTTPS address of
 your own. Your computer has to be on and running Suzent; the
 [background service](https://suzent.com/zh-Hans/docs/features/automation#keep-suzent-running-in-the-background)
 keeps it running when the window is closed.
+
+### Through your own relay
+
+A relay lets the phone reach your computer from any network without a VPN or
+port forwarding. Your computer connects out to the relay and keeps that
+connection open; the phone sends its requests to the relay, which passes them
+down. Suzent has no hosted relay: you run
+[suzent-relay](https://github.com/cyzus/suzent-relay) yourself, for free on
+Cloudflare Workers or with Docker on any server. Its README walks through each
+option.
+
+Everything between the phone and your computer is end-to-end encrypted. The
+QR code carries your computer's key, and the phone checks it before sending
+anything, so the relay only passes on data it can't read or change.
+
+1. Deploy suzent-relay and note its `https://` address. Setting a
+   registration key is recommended, so only your Suzent can use the relay.
+2. On your computer, open **Settings → Devices → Relay**, enter the **Relay
+   address** and **Registration key**, and save. The status changes to
+   **Connected**.
+3. Pair the phone by scanning a new QR code. The code now includes the relay.
+
+The phone always tries your computer's direct addresses first and only uses
+the relay when none of them answers. A phone paired before you set up the relay
+learns about it the next time it connects to your computer directly.
+
+**Reset relay addresses** issues new relay addresses. Use it if another Suzent
+took over the address, or to cut off phones and webhook callers that have the
+old one; pair the phone again afterwards. The same relay also gives
+[webhook tasks](https://suzent.com/zh-Hans/docs/features/automation) an address on the internet.
 
 ## What you can do on the phone
 
