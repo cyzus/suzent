@@ -1,5 +1,5 @@
 ---
-sidebar_position: 13
+sidebar_position: 19
 title: OpenRouter
 description: Reach hundreds of models from many providers with one OpenRouter key.
 ---
@@ -11,8 +11,14 @@ Reach hundreds of models (GPT, Claude, Gemini, Llama, Mistral, and more) with a 
 ## Set up
 
 1. Get an API key from [openrouter.ai/keys](https://openrouter.ai/keys).
-2. Open **Settings → Providers → OpenRouter**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **OpenRouter**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and OpenRouter then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -20,9 +26,10 @@ Reach hundreds of models (GPT, Claude, Gemini, Llama, Mistral, and more) with a 
 |---|---|---|
 | **API Key** | `OPENROUTER_API_KEY` | Starts with `sk-or-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 
-**FETCH** loads OpenRouter's full catalog, so tick only the models you plan to use.
+Fetching loads OpenRouter's full catalog, so tick only the models you plan to use.

@@ -14,7 +14,7 @@
 
 一个开源、本地优先的个人 AI 智能体，它的记忆、权限、运行环境与连续性始终属于你。
 
-记忆由它自己整理，存在你拥有的文件里 · 16 家模型提供商，云端或你自己的硬件 · 每个行动都按你的规则审查 · 你不在时由 Regent 推进每个项目 · 桌面、手机、编辑器，以及你已经在用的聊天应用
+记忆由它自己整理，存在你拥有的文件里 · 26 家模型提供商与套餐，云端或你自己的硬件 · 每个行动都按你的规则审查 · 你不在时由 Regent 推进每个项目 · 桌面、手机、编辑器，以及你已经在用的聊天应用
 
 [![版本](https://badgen.net/github/release/cyzus/suzent?label=%E7%89%88%E6%9C%AC)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![许可证](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-加入聊天-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
@@ -135,7 +135,7 @@ suzent update
 | 问题 | SUZENT 的回答 |
 |---|---|
 | 谁拥有它的记忆？ | **你。** 你磁盘上的普通文件就是唯一可信来源。 |
-| 谁选择它的智能？ | **你。** 内置 16 家提供商，还能接入任何兼容的端点。 |
+| 谁选择它的智能？ | **你。** 内置 26 家提供商，还能接入任何兼容的端点。 |
 | 谁定义它能做什么？ | **你。** 权限模式、规则和沙盒边界都是明确的。 |
 | 它住在哪里？ | **在你掌控的基础设施上。** |
 | 它能迁移吗？ | 记忆、技能和配置可以迁移；凭证留在本机。 |
@@ -151,9 +151,10 @@ suzent update
 |---|---|
 | **前沿实验室** | [OpenAI](docs/04-models/cloud/openai.md)（也支持 Azure OpenAI）· [ChatGPT 订阅](docs/04-models/cloud/chatgpt-subscription.md)（用 ChatGPT 账号登录，无需 API Key）· [Anthropic Claude](docs/04-models/cloud/anthropic.md) · [Google Gemini](docs/04-models/cloud/gemini.md) · [xAI Grok](docs/04-models/cloud/xai.md) |
 | **开放权重模型** | [DeepSeek](docs/04-models/cloud/deepseek.md) · [通义千问（DashScope）](docs/04-models/cloud/dashscope.md) · [Kimi（月之暗面）](docs/04-models/cloud/moonshot.md) · [GLM（智谱 AI）](docs/04-models/cloud/zhipu.md) · [MiniMax](docs/04-models/cloud/minimax.md) · [小米 MiMo](docs/04-models/cloud/xiaomi-mimo.md) |
-| **聚合网关** | [OpenRouter](docs/04-models/cloud/openrouter.md)（一个 Key 用数百个模型）· [LiteLLM Proxy](docs/04-models/local/litellm.md) |
+| **Coding / Token 套餐** | [Kimi Code](docs/04-models/cloud/kimi-code.md) · [百炼套餐](docs/04-models/cloud/bailian-plan.md) · [腾讯云](docs/04-models/cloud/tencent.md) · [火山方舟](docs/04-models/cloud/volcengine.md) · [阶跃星辰](docs/04-models/cloud/stepfun.md) · [百度千帆](docs/04-models/cloud/qianfan.md) · [华为云 MaaS](docs/04-models/cloud/huaweicloud.md)，另有上面卡片里的 GLM Coding Plan 和 MiMo Token Plan |
+| **聚合网关与订阅** | [OpenRouter](docs/04-models/cloud/openrouter.md)（一个 Key 用数百个模型）· [OpenCode Go](docs/04-models/cloud/opencode-go.md) · [ClinePass](docs/04-models/cloud/clinepass.md) · [Ollama Cloud](docs/04-models/cloud/ollama-cloud.md) · [LiteLLM Proxy](docs/04-models/local/litellm.md) |
 | **你自己的硬件** | [Ollama](docs/04-models/local/ollama.md) · [vLLM](docs/04-models/local/vllm.md) · [SGLang](docs/04-models/local/sglang.md) |
-| **其他任何服务** | 为任意 OpenAI 兼容端点添加自定义提供商，或在上面任一提供商里添加自定义模型 ID。 |
+| **其他任何服务** | 为任意 OpenAI 或 Anthropic 兼容端点添加自定义提供商，或在上面任一提供商里添加自定义模型 ID。 |
 
 密钥保存在操作系统的钥匙串中，从不写进明文配置。[模型角色](docs/04-models/model-roles.md)让小而便宜的模型负责起标题、提取记忆和权限审查，最好的模型专心对话；每个角色还可以配置备用模型，首选失败时自动接替。
 
@@ -247,7 +248,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 | [什么是 Suzent？](docs/01-getting-started/intro.md) | 什么是主权智能体，以及 Suzent 能做什么 |
 | [快速上手](docs/01-getting-started/quickstart.md) | 安装、连接模型、开始对话 |
 | [Regent](docs/02-using/regent.md) | 看得到所有项目、在你离开时持续跟进的那个对话 |
-| [模型与提供商](docs/04-models/README.md) | 全部 16 家提供商、自定义端点和模型角色 |
+| [模型与提供商](docs/04-models/README.md) | 全部 26 家提供商、自定义端点和模型角色 |
 | [记忆](docs/03-features/memory/README.md) | 智能体记住了什么、存在哪里、如何修改 |
 | [笔记本](docs/03-features/memory/llm-wiki.md) | 由智能体维护、兼容 Obsidian 的知识库 |
 | [工具](docs/03-features/tools/README.md) | 智能体能做的所有事，以及如何开关 |

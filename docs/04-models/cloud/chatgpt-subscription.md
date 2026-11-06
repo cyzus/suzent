@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 2
 title: ChatGPT Subscription
 description: Use the models in your ChatGPT plan by signing in with your ChatGPT account, with no API key.
 ---
@@ -11,7 +11,8 @@ You sign in with your ChatGPT account; no API key is involved.
 
 ## Set up
 
-1. Open **Settings → Providers → ChatGPT Subscription** and click **Sign in**.
+1. Open **Settings → Providers**. Under **Add a provider**, find **ChatGPT
+   Subscription** and click **Sign In** on its card.
 2. Open the link Suzent shows, enter the code, and approve.
 3. Back in Suzent, wait until the card says it is connected, then enable the
    `chatgpt/...` models you want.

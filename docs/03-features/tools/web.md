@@ -49,6 +49,11 @@ the page as plain text with headings, lists, and links kept. This works for
 public pages only: it doesn't use your logins, so for your email or an
 internal site use [your own browser](./browser.md#option-2-your-own-browser-with-the-suzent-extension).
 
+The page is fetched directly, without running its scripts, and addresses on
+your own computer or local network (such as `localhost`) aren't fetched. If a
+page only shows its content once JavaScript runs, the agent is told to open it
+with the [browser](./browser.md) instead.
+
 Very long pages are cut short in the agent's view, at about 30,000
 characters. The full text is saved to a file the agent can open if it needs
 the rest. These files are deleted after 24 hours.

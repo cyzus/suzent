@@ -12,7 +12,7 @@ WeChat connects through Tencent's iLink bot service by scanning a QR code.
 
 1. Make sure the WeChat ClawBot (OpenClaw) feature is available for your
    account.
-2. In **Settings → Social Channels → WeChat**, click **Log in with WeChat**.
+2. In **Settings → Social Channels → WeChat**, click **Connect WeChat**.
 3. Scan the QR code with WeChat and keep the panel open until it connects.
 
 Suzent saves the connection and adds the account that scanned the code to

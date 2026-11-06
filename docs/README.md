@@ -28,8 +28,10 @@ five-question ownership test, see
 ## Models
 
 - [Models & Providers](04-models/README.md) and [Model roles](04-models/model-roles.md)
-- Cloud: [OpenAI](04-models/cloud/openai.md), [ChatGPT Subscription](04-models/cloud/chatgpt-subscription.md), [Anthropic](04-models/cloud/anthropic.md), [Google Gemini](04-models/cloud/gemini.md), [xAI](04-models/cloud/xai.md), [DeepSeek](04-models/cloud/deepseek.md), [DashScope](04-models/cloud/dashscope.md), [Moonshot](04-models/cloud/moonshot.md), [Zhipu AI](04-models/cloud/zhipu.md), [MiniMax](04-models/cloud/minimax.md), [Xiaomi MiMo](04-models/cloud/xiaomi-mimo.md), [OpenRouter](04-models/cloud/openrouter.md)
-- Local and self-hosted: [Ollama](04-models/local/ollama.md), [vLLM](04-models/local/vllm.md), [SGLang](04-models/local/sglang.md), [LiteLLM Proxy](04-models/local/litellm.md)
+- Model vendors: [OpenAI](04-models/cloud/openai.md), [ChatGPT Subscription](04-models/cloud/chatgpt-subscription.md), [Anthropic](04-models/cloud/anthropic.md), [Google Gemini](04-models/cloud/gemini.md), [xAI](04-models/cloud/xai.md)
+- China vendors and coding plans: [Qwen (DashScope)](04-models/cloud/dashscope.md), [DeepSeek](04-models/cloud/deepseek.md), [MiniMax](04-models/cloud/minimax.md), [Kimi (Moonshot)](04-models/cloud/moonshot.md), [Kimi Code](04-models/cloud/kimi-code.md), [Zhipu GLM / Z.ai](04-models/cloud/zhipu.md), [Xiaomi MiMo](04-models/cloud/xiaomi-mimo.md), [Bailian Plan](04-models/cloud/bailian-plan.md), [Tencent Cloud](04-models/cloud/tencent.md), [Volcengine Ark](04-models/cloud/volcengine.md), [StepFun](04-models/cloud/stepfun.md), [Baidu Qianfan](04-models/cloud/qianfan.md), [Huawei Cloud MaaS](04-models/cloud/huaweicloud.md)
+- Relays and subscriptions: [OpenRouter](04-models/cloud/openrouter.md), [OpenCode Go](04-models/cloud/opencode-go.md), [ClinePass](04-models/cloud/clinepass.md), [Ollama Cloud](04-models/cloud/ollama-cloud.md), [LiteLLM Proxy](04-models/local/litellm.md)
+- Local and self-hosted: [Ollama](04-models/local/ollama.md), [vLLM](04-models/local/vllm.md), [SGLang](04-models/local/sglang.md)
 
 ## Chat apps
 
