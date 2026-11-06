@@ -338,12 +338,17 @@ export function MobileAccessCard({
     });
   const decide = (id: string, permissions: MobilePermissions | null) =>
     void act(async () => {
-      await mobileRequest(`pairing/${id}/decide`, { permissions });
-      if (invitation?.pairing_id === id) {
-        setInvitation(null);
-        setPayload('');
-        setQR('');
+      // Detach before sending: leaving the page mid-request must not cancel what is being decided.
+      const active = invitationRef.current;
+      const detached = active?.pairing_id === id;
+      if (detached) invitationRef.current = null;
+      try {
+        await mobileRequest(`pairing/${id}/decide`, { permissions });
+      } catch (error) {
+        if (detached && mounted.current) invitationRef.current = active;
+        throw error;
       }
+      if (detached) clearInvitation();
     });
   const expired = invitation !== null && invitation.expires_at * 1000 <= now;
   const invitationActive = invitation !== null && !expired;
