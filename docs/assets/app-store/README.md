@@ -40,7 +40,7 @@ conversations, hosts or tokens appear.
    captures with their captions into `store-upload/app-store/<locale>/`, at
    1206 × 2622 for iPhone and 2064 × 2752 for iPad, plus the header and
    search results artwork in the Play feature graphic's style: copy on the
-   left, iPhone captures 1 and 2 tilted on the right, the hand-held cube
+   left, iPhone captures 1 and 2 (plan and weekly summary) tilted on the right, the hand-held cube
    between them. The App Store rounds
    screenshot corners, so nothing is drawn along the image edge.
 

@@ -25,8 +25,8 @@ CAPTIONS = {
             "Suzent remembers your preferences and cites its sources.",
         ),
         (
-            "Nothing happens\nwithout your OK.",
-            "Approve or reject actions on your computer from your phone.",
+            "Catch up in\none question.",
+            "Ask what changed while you were away.",
         ),
         (
             "Your whole week,\nin one place.",
@@ -40,7 +40,7 @@ CAPTIONS = {
     ],
     "zh-Hans": [
         ("按你的习惯，\n安排好一切。", "记得你的偏好，并附上信息来源。"),
-        ("你点头，\n它才动手。", "在手机上批准或拒绝电脑上的操作。"),
+        ("一句话，\n跟上进度。", "问问你不在时有什么变化。"),
         ("一周的事，\n一处看清。", "对话、项目和 Regent，从电脑同步过来。"),
         ("扫一扫，\n就连上。", "在电脑的“设置 → 设备”中扫码。"),
         ("Regent，\n替你盯着。", "常驻智能体，只提醒需要你处理的事。"),
@@ -60,7 +60,7 @@ ARTWORK = (
     ROOT.parents[1]
     / "apps/android/app/src/main/res/drawable-nodpi/suzent_launcher_artwork.png"
 )
-# The Play feature graphic's layout: copy on the left, approval and plan
+# The Play feature graphic's layout: copy on the left, plan and summary
 # captures tilted on the right, the hand-held cube between them. Positions are
 # (left, top, width) in pixels.
 PLACEMENTS = {

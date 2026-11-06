@@ -79,8 +79,8 @@ built by `scripts/build_app_store_assets.py`, which holds the same text.
 | # | iPhone screen | iPad screen | English | 简体中文 |
 | --- | --- | --- | --- | --- |
 | 1 | "Plan my Lisbon weekend" reply | Same, with sidebar | Plans built around you. — Suzent remembers your preferences and cites its sources. | 按你的习惯，安排好一切。— 记得你的偏好，并附上信息来源。 |
-| 2 | "Tidy up my Downloads folder" approval | Same | Nothing happens without your OK. — Approve or reject actions on your computer from your phone. | 你点头，它才动手。— 在手机上批准或拒绝电脑上的操作。 |
-| 3 | Chats home | "What changed this week" | Your whole week, in one place. — Chats, projects and Regent from your computer. | 一周的事，一处看清。— 对话、项目和 Regent，从电脑同步过来。 |
+| 2 | "What changed this week" summary | Same | Catch up in one question. — Ask what changed while you were away. | 一句话，跟上进度。— 问问你不在时有什么变化。 |
+| 3 | Chats home | Projects sidebar with "Tomorrow's priorities" | Your whole week, in one place. — Chats, projects and Regent from your computer. | 一周的事，一处看清。— 对话、项目和 Regent，从电脑同步过来。 |
 | 4 | Connection screen | Same | Pair with one QR code. — Scan it from Settings → Devices on your computer. | 扫一扫，就连上。— 在电脑的“设置 → 设备”中扫码。 |
 | 5 | Regent | Same | Regent keeps watch. — Your always-on agent flags only what needs you. | Regent，替你盯着。— 常驻智能体，只提醒需要你处理的事。 |
 
