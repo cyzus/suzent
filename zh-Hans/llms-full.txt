@@ -10949,6 +10949,34 @@ GitHub Actions, and enter owner `cyzus`, repository `suzent` and workflow
 The three product branches may be reviewed and merged independently. When one
 merges, refresh the others against main before merging it.
 
+### Plugin programs on npm
+
+Programs that plugins download (see `binaries` in
+[the plugin architecture](https://suzent.com/zh-Hans/docs/developing/architecture/plugins#binaries)) also come from
+npm, so the same mirror covers them. When an upstream project publishes no npm
+package of its own, Suzent republishes its release unchanged under `@suzent`:
+
+- **himalaya** (the email plugin's CLI, MIT OR Apache-2.0):
+  `scripts/pack_himalaya_npm.py` pins the version and the SHA-256 of each
+  GitHub release archive, takes only the `himalaya` binary and the license
+  files out of it, and writes `@suzent/himalaya-<platform>`. The
+  **Publish himalaya npm packages** workflow (`publish-himalaya.yml`) runs
+  when that file changes on main, or by hand. It skips versions already on
+  npm and writes each published tarball's SHA-256 to the run summary; that is
+  the hash to pin in the plugin's `plugin.yaml`.
+
+To update himalaya, change `VERSION`, `ARCHIVES` and `LICENSES` in the script
+from the new release's asset digests, and merge.
+
+Like the desktop packages, each new package name has to be published once by
+hand before Trusted Publishing can be set up for it, with workflow
+`publish-himalaya.yml` as the trusted publisher:
+
+```bash
+npm login
+python scripts/pack_himalaya_npm.py --bootstrap --publish npm-bootstrap
+```
+
 ## Browser extension releases
 
 Extension code PRs now add a `browser` declaration instead of changing
