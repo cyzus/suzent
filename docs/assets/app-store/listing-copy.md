@@ -86,7 +86,7 @@ built by `scripts/build_app_store_assets.py`, which holds the same text.
 
 ## Header and search results
 
-Headline and subline on both placements, over iPhone captures 1, 2 and 5.
+Headline and subline on both placements, beside iPhone captures 1 and 2.
 
 | English | 简体中文 |
 | --- | --- |
