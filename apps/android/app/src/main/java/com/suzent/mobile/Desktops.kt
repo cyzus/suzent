@@ -78,11 +78,12 @@ fun Connection.json(): JSONObject = JSONObject().put("origin", origin).put("host
     .put("previousOrigins", JSONArray(previousOrigins))
     .put("origins", JSONArray(origins)).put("tls", tls?.json()).put("previousTLS", previousTLS?.json())
     .put("previousOrigin", previousOrigin).put("previousToken", previousToken).put("clientProtocol", clientProtocol).put("nodeToken", nodeToken)
+    .put("relay", relay?.json())
 
 fun parseConnection(json: JSONObject) = Connection(json.getString("origin"), json.getString("hostToken"), json.optString("nodeToken"),
     json.optInt("clientProtocol"), json.optString("previousToken"), json.optString("previousOrigin"), strings(json.optJSONArray("origins")),
     json.optJSONObject("tls")?.let { DeviceTrust.parse(it) }, json.optJSONObject("previousTLS")?.let { DeviceTrust.parse(it) },
-    strings(json.optJSONArray("previousOrigins")))
+    strings(json.optJSONArray("previousOrigins")), RelayRoute.parse(json.optJSONObject("relay"), allowHttp = true))
 
 /** The scheme is noise in a narrow row and pushes the host and port out of view. */
 fun displayOrigin(origin: String): String = origin.removePrefix("https://").removePrefix("http://").removeSuffix("/")
