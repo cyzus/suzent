@@ -2,6 +2,7 @@
   "version": "0.7.0",
   "consumed": [
     ".releases/changes/android-play-optimization.json",
+    ".releases/changes/android-relay.json",
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/android-zxing-only-scanner.json",
