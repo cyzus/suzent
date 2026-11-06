@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.24.0] - 2026-11-06
 
 ### Release notes
+- Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
 - Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
 - Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
