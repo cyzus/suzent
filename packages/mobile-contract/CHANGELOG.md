@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.7.0] - 2026-11-05
+## [mobile-v0.7.0] - 2026-11-06
 
 ### Release notes
 - Keep voice and send buttons vivid blue with white icons in both light and dark mode.
