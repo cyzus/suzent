@@ -311,3 +311,39 @@ def test_install_route_needs_confirmation(tmp_path: Path, monkeypatch):
     )
     assert response.status_code == 200
     assert installed == ["tool"]
+
+
+def test_concurrent_installs_download_once(tmp_path: Path):
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class SlowSource(FakeSource):
+        def download(self, url: str, max_bytes: int) -> bytes:
+            started.set()
+            release.wait(5)
+            return super().download(url, max_bytes)
+
+    source = SlowSource({NPM: TARBALL})
+    root = tmp_path / "tool" / "1.0.0"
+    results: list[dict] = []
+
+    def run() -> None:
+        results.append(
+            binaries.install(
+                "acme", _spec(), source=source, root=root, platform_key="linux-x64"
+            )
+        )
+
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    started.wait(5)
+    release.set()
+    for thread in threads:
+        thread.join(10)
+
+    assert len(results) == 2
+    assert source.requested == [NPM]
+    assert (root / "tool").is_file()

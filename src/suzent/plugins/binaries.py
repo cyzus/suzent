@@ -23,6 +23,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -41,6 +42,10 @@ _SHA256 = r"^[0-9a-f]{64}$"
 _FILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 
 type Source = Literal["override", "managed", "path"]
+
+
+_install_locks: dict[Path, threading.Lock] = {}
+_install_locks_guard = threading.Lock()
 
 
 class BinaryInstallError(Exception):
@@ -242,15 +247,40 @@ def install(
         raise BinaryInstallError(f"{spec.name} {spec.version} is not built for {key}.")
     destination = root or install_dir(plugin_id, spec)
     executable = destination / entry.executable
-    if executable.is_file() and os.access(executable, os.X_OK):
-        return _result(spec, executable, None, _after(spec, executable, run_after))
+    # Two settings tabs installing at once would share the staging directory.
+    with _install_lock(destination):
+        url = _install_into(destination, executable, entry, spec, source)
+    if url is not None:
+        logger.info(
+            "Installed {} {} for plugin {} from {}",
+            spec.name,
+            spec.version,
+            plugin_id,
+            url,
+        )
+    return _result(spec, executable, url, _after(spec, executable, run_after))
 
+
+def _install_lock(destination: Path) -> threading.Lock:
+    with _install_locks_guard:
+        return _install_locks.setdefault(destination.resolve(), threading.Lock())
+
+
+def _install_into(
+    destination: Path,
+    executable: Path,
+    entry: PlatformFiles,
+    spec: BinarySpec,
+    source: TarballSource | None,
+) -> str | None:
+    """Unpack into ``destination``; None when a usable copy is already there."""
+    if executable.is_file() and os.access(executable, os.X_OK):
+        return None
     package = spec.package_for(entry)
     expected = spec.sha256_for(entry)
     payload, url = _download_verified(
         source or TarballSource(), package, spec, expected
     )
-
     staging = destination.with_name(f".{destination.name}.partial")
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
@@ -270,10 +300,7 @@ def install(
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    logger.info(
-        "Installed {} {} for plugin {} from {}", spec.name, spec.version, plugin_id, url
-    )
-    return _result(spec, executable, url, _after(spec, executable, run_after))
+    return url
 
 
 def _download_verified(
