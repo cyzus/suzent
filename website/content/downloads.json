@@ -1,4 +1,6 @@
 {
   "repository": "cyzus/suzent",
-  "testflight": "https://testflight.apple.com/join/gjcSRyZj"
+  "appStore": "https://apps.apple.com/cn/app/suzent/id6822390016",
+  "testflight": "https://testflight.apple.com/join/gjcSRyZj",
+  "microsoftStore": "https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"
 }

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { pages, getPage } from "@/lib/content";
 import { localePath } from "@/lib/locales";
 import { messages } from "@/lib/messages";
+import Downloads from "@/components/downloads/Downloads";
 import Home from "@/components/landing/Home";
 import Sovereign, { COPY } from "@/components/sovereign/Sovereign";
 import { Document } from "@/components/document";
@@ -68,6 +69,7 @@ export default async function Page({ params }: Props) {
   if (page.kind === "redirect") return <DocRedirect target={page.redirectTo!} />;
   const text = messages(page.locale);
   if (page.kind === "home") return <Home />;
+  if (page.kind === "downloads") return <><Downloads /><SiteFooter locale={page.locale} /></>;
   if (page.kind === "sovereign")
     return (
       <>

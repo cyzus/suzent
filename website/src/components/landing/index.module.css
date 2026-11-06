@@ -2009,29 +2009,6 @@
   }
 }
 
-.storeDownload {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-  padding: 0.6rem 0;
-  border-top: 1px solid var(--h-border-faint);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.storeDownload a {
-  display: inline-flex;
-  line-height: 0;
-}
-.storeDownload img {
-  width: 160px;
-  height: auto;
-}
-.storeLabel {
-  color: var(--h-text);
-}
 .mobileDownloads {
   display: flex;
   flex-wrap: wrap;
@@ -2050,4 +2027,39 @@
 }
 .mobileDownloads .mobileLabel {
   opacity: 0.6;
+}
+
+.directDownload {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  color: var(--h-text-dim);
+  font-size: 0.75rem;
+  text-underline-offset: 4px;
+}
+.mobileDownloads {
+  margin-top: 0;
+  padding: 1rem 0;
+  border-top: 1px solid var(--h-border-faint);
+}
+.mobileDownloads a {
+  padding: 0.25rem 0;
+}
+.installCompact .terminalAlternative {
+  border: 0;
+  border-top: 1px solid var(--h-border-faint);
+  background: transparent;
+}
+.installCompact .terminalAlternative summary {
+  padding: 0.9rem 0;
+  color: var(--h-text-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.installCompact .terminalAlternative[open] summary {
+  border-bottom: 1px solid var(--h-border-faint);
+}
+.mobileDownloads a:focus-visible,
+.directDownload:focus-visible {
+  outline: 2px solid var(--h-text);
+  outline-offset: 4px;
 }

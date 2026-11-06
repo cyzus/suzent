@@ -7,93 +7,14 @@ import { SiteNav } from "../site-nav";
 import { HeroArt } from "./HeroArt";
 import { DotCube, type DotFieldPointer } from "./DotSphere";
 import styles from "./index.module.css";
+import { GITHUB_LATEST, MIRROR_RELEASES, MS_STORE_URL, useDownloadSource } from "../../lib/download-source";
+import { detectDownloadPlatform, type DownloadPlatform } from "../../lib/download-platform";
 
 const UNIX_CMD = `curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash`;
 const WIN_CMD = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"`;
 // raw.githubusercontent.com is often unreachable from mainland China.
 const CN_UNIX_CMD = `curl -fsSL https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.sh | bash`;
 const CN_WIN_CMD = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/cyzus/suzent@main/scripts/setup.ps1 | iex"`;
-const GITHUB_LATEST =
-  "https://github.com/cyzus/suzent/releases/latest/download";
-const MIRROR_RELEASES = "https://registry.npmmirror.com/-/binary/suzent";
-const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
-// Official "Get it from Microsoft" badge (apps.microsoft.com/badge); mode=full
-// opens the listing in the Store app.
-const MS_STORE_URL = "https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full";
-const MS_STORE_BADGE_EN = "https://get.microsoft.com/images/en-us%20dark.svg";
-const MS_STORE_BADGE_ZH = "https://get.microsoft.com/images/zh-cn%20dark.svg";
-
-async function reachable(url: string, ms: number): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), ms);
-  try {
-    // An opaque response still proves the host answered.
-    await fetch(url, {
-      mode: "no-cors",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-function newestMirroredTag(entries: unknown): string | null {
-  if (!Array.isArray(entries)) return null;
-  const versions = entries
-    .map((entry) =>
-      String((entry as { name?: unknown })?.name ?? "").replace(/\/$/, ""),
-    )
-    .filter((tag) => RELEASE_TAG.test(tag))
-    .map((tag) => ({ tag, parts: tag.slice(1).split(".").map(Number) }));
-  versions.sort(
-    (a, b) =>
-      b.parts[0] - a.parts[0] ||
-      b.parts[1] - a.parts[1] ||
-      b.parts[2] - a.parts[2],
-  );
-  return versions[0]?.tag ?? null;
-}
-
-/**
- * Where to download from, decided by the visitor's network rather than their
- * language: a browser that cannot reach Google but can reach npmmirror gets
- * the mainland mirror. Anything uncertain falls back to GitHub.
- */
-function useDownloadSource(): { china: boolean; mirrorTag: string | null } {
-  const [source, setSource] = useState<{
-    china: boolean;
-    mirrorTag: string | null;
-  }>({
-    china: false,
-    mirrorTag: null,
-  });
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (await reachable("https://www.google.com/generate_204", 4000)) return;
-      if (!(await reachable(`${MIRROR_RELEASES}/`, 4000))) return;
-      let mirrorTag: string | null = null;
-      try {
-        const response = await fetch(`${MIRROR_RELEASES}/`, {
-          cache: "no-store",
-        });
-        if (response.ok) mirrorTag = newestMirroredTag(await response.json());
-      } catch {
-        // Not mirrored yet, or the listing is not readable cross-origin.
-      }
-      if (!cancelled) setSource({ china: true, mirrorTag });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return source;
-}
-
 const getFeatureCards = (translate: ReturnType<typeof useTranslator>) => [
   {
     arcana: translate({
@@ -268,7 +189,7 @@ function ScrambleTitle({ text }: { text: string }): ReactNode {
   );
 }
 
-type InstallerOS = "macos" | "windows" | "linux";
+type InstallerOS = DownloadPlatform;
 
 function OSIcon({ os }: { os: InstallerOS }): ReactNode {
   return (
@@ -281,8 +202,10 @@ function OSIcon({ os }: { os: InstallerOS }): ReactNode {
     >
       {os === "windows" ? (
         <path d="M2 4l9-1.2v8.3H2zm10-1.4L22 1v10.1H12zM2 12h9v8.3L2 19zm10 0h10v11l-10-1.6z" />
-      ) : os === "macos" ? (
+      ) : os === "macos" || os === "ios" ? (
         <path d="M16.7 1c.2 1.5-.5 3-1.4 4-.9 1-2.4 1.6-3.8 1.5-.2-1.5.5-3 1.4-4C13.9 1.5 15.5 1 16.7 1zM20.8 17.2c-.5 1.2-.8 1.8-1.5 2.8-1 1.4-2.4 3-4.1 3-1.5 0-1.9-1-4-1s-2.5 1-4 1c-1.7 0-3-1.5-4-3C.4 15.8 1 9.7 5.3 7.5c1.5-.8 3.1-.8 4.6-.2 1.1.4 1.8.5 2.5.5s1.7-.4 3-.7c1.6-.3 3.4.3 4.6 1.7-4 2.2-3.4 6.9.8 8.4z" />
+      ) : os === "android" ? (
+        <path d="M11 3h2v11l4-4 1.4 1.4L12 18l-6.4-6.6L7 10l4 4zM4 20h16v2H4z" />
       ) : (
         <>
           <path d="M8 9c-1-6 1-8 4-8s5 2 4 8l3 8-3 4H8l-3-4z" />
@@ -340,19 +263,21 @@ function InstallerDownloads(): ReactNode {
   const [terminalOS, setTerminalOS] = useState<"unix" | "windows" | null>(null);
   const { china, mirrorTag } = useDownloadSource();
   useEffect(() => {
-    const ua = navigator.userAgent;
-    if (
-      !/Android|iPhone|iPad/.test(ua) &&
-      !(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-    ) {
-      if (/Windows/.test(ua)) {
-        setOS("windows");
-      } else if (/Mac/.test(ua)) {
-        setOS("macos");
-      } else if (/Linux/.test(ua)) {
-        setOS("linux");
+    const revealTerminal = (): void => {
+      if (window.location.hash === "#terminal") {
+        document.querySelector<HTMLDetailsElement>("#terminal")?.setAttribute("open", "");
       }
-    }
+    };
+    revealTerminal();
+    window.addEventListener("hashchange", revealTerminal);
+    return () => window.removeEventListener("hashchange", revealTerminal);
+  }, []);
+  useEffect(() => {
+    setOS(detectDownloadPlatform(
+      navigator.userAgent,
+      navigator.platform,
+      navigator.maxTouchPoints,
+    ));
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setDetecting(false);
       return;
@@ -383,6 +308,16 @@ function InstallerDownloads(): ReactNode {
   const downloadUrl = mirrorTag
     ? `${MIRROR_RELEASES}/${mirrorTag}/${asset}`
     : `${GITHUB_LATEST}/${asset}`;
+  const primaryUrl = os === "ios" ? "/download/ios/"
+    : os === "android" ? "/download/android/"
+    : os === "windows" ? MS_STORE_URL : downloadUrl;
+  const primaryLabel = os === "ios"
+    ? t({ id: "homepage.download.appStore", message: "Download on the App Store" })
+    : os === "android"
+      ? t({ id: "homepage.download.androidPrimary", message: "Download Android APK" })
+      : os === "windows"
+        ? t({ id: "homepage.download.microsoftStore", message: "Microsoft Store" })
+        : t({ id: `homepage.download.for.${os}`, message: `Download for ${name}` });
   return (
     <section
       id="download"
@@ -402,17 +337,14 @@ function InstallerDownloads(): ReactNode {
           {os ? (
             <a
               className={styles.downloadPrimary}
-              href={detecting ? undefined : downloadUrl}
+              href={detecting ? undefined : primaryUrl}
               aria-disabled={detecting}
               tabIndex={detecting ? -1 : undefined}
             >
               <OSIcon os={os} />
               <ResolvingLabel
                 detecting={detecting}
-                label={t({
-                  id: `homepage.download.for.${os}`,
-                  message: `Download for ${name}`,
-                })}
+                label={primaryLabel}
               />
             </a>
           ) : (
@@ -444,6 +376,8 @@ function InstallerDownloads(): ReactNode {
                 message: "CHOOSE YOUR SYSTEM",
               })}
             </option>
+            <option value="ios">iOS · App Store</option>
+            <option value="android">Android · APK</option>
             <option value="macos-aarch64">macOS · Apple Silicon</option>
             <option value="macos-x86_64">macOS · Intel</option>
             <option value="windows">Windows · x86_64</option>
@@ -451,20 +385,15 @@ function InstallerDownloads(): ReactNode {
           </select>
         </div>
       </div>
-      <div className={styles.storeDownload}>
-        <span className={styles.storeLabel}>
-          {t({ id: "homepage.download.store", message: "Windows · Recommended" })}
-        </span>
-        <a href={MS_STORE_URL} target="_blank" rel="noopener noreferrer">
-          <img
-            src={locale === "zh-Hans" ? MS_STORE_BADGE_ZH : MS_STORE_BADGE_EN}
-            alt={t({ id: "homepage.download.storeAlt", message: "Get it from Microsoft" })}
-            width={160}
-            height={48}
-          />
-        </a>
+      <div className={styles.mobileDownloads}>
+        <Link href={localePath("/downloads", locale)}>
+          {t({ id: "homepage.download.all", message: "All downloads & installation options" })} ↗
+        </Link>
       </div>
-      <div className={styles.terminalAlternative}>
+      <details id="terminal" className={styles.terminalAlternative}>
+        <summary>
+          {t({ id: "homepage.download.commandLine", message: "Install with the command line" })}
+        </summary>
         <div className={styles.terminalHeader}>
           <p className={styles.terminalLabel}>
             {t({
@@ -505,18 +434,7 @@ function InstallerDownloads(): ReactNode {
           <pre className={styles.cmdText}>suzent start</pre>
           <CopyButton text="suzent start" />
         </div>
-      </div>
-      <div className={styles.mobileDownloads}>
-        <Link className={styles.mobileLabel} href={localePath("/docs/getting-started/platforms#phone", locale)}>
-          {t({ id: "homepage.download.mobile", message: "Mobile" })}
-        </Link>
-        <a href="/download/ios/">
-          {t({ id: "homepage.download.iosBeta", message: "iOS · TestFlight" })}
-        </a>
-        <a href="/download/android/">
-          {t({ id: "homepage.download.androidApk", message: "Android · APK" })}
-        </a>
-      </div>
+      </details>
     </section>
   );
 }
