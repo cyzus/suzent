@@ -293,26 +293,26 @@ suzent start
 
 **获取密钥：** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → 创建新密钥（以 `sk-...` 开头）
 
-在设置中打开 OpenAI 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **OpenAI** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **获取密钥：** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → 创建密钥（以 `sk-ant-...` 开头）
 
-在设置中打开 Anthropic 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **Anthropic** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **获取密钥（有免费额度）：** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → 创建 API 密钥（以 `AIza...` 开头）
 
-在设置中打开 Google Gemini 卡片 → **API 密钥** 标签页 → **修改** → 粘贴密钥。然后切到 **模型** 标签页 → **获取**，勾选需要的模型，点击 **保存更改**。
+在设置的 **添加提供商** 里找到 **Google Gemini** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 </Tabs>
 
-使用 DeepSeek、Grok、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](https://suzent.com/zh-Hans/docs/models)。
+使用 DeepSeek、通义千问、Kimi、GLM、各家编程套餐、OpenRouter、Ollama、ChatGPT 订阅或其他提供商？请查看[模型与提供商](https://suzent.com/zh-Hans/docs/models)。
 
 ---
 
@@ -1132,7 +1132,7 @@ fixed port. There is no Suzent-run relay; you use your own.
    if you set one, its registration key.
 2. In Suzent, open **Settings → Devices → Relay**, enter the address and the key,
    and turn it on. The badge shows **Connected** once Suzent reaches it.
-3. Create a webhook task, or choose **New webhook URL** on an existing one. Suzent
+3. Create a webhook task, or choose **Regenerate URL** on an existing one. Suzent
    now shows two URLs: one for this machine and one through the relay. Give the
    relay URL to GitHub or any other service.
 
@@ -1433,7 +1433,7 @@ there in **Settings → Providers**.
 ## Set up
 
 1. Open **Settings → Data & Sync → GitHub Sync**.
-2. Click **Sign in with GitHub**, open the link shown, and enter the code.
+2. Click **Sign in to GitHub**, open the link shown, and enter the code.
 3. Accept the suggested repository name (`suzent-brain`) or type your own.
    Suzent creates it as a private repository if it doesn't exist.
 4. Click **Quick start**.
@@ -1448,8 +1448,10 @@ Suzent compares your computer with the repository and shows what changed:
 
 - **Push** appears when you have local changes to upload.
 - **Pull** appears when the repository has changes to download.
-- **Discard** undoes local changes you don't want to keep, one file or all.
-- **Use cloud** replaces your local copy with the repository's version.
+- **Discard** undoes a local change to one file, and **Discard local changes**
+  undoes them all.
+- **Pull remote changes** replaces your local synced files with the
+  repository's version.
 
 Click a file to see exactly what changed before you confirm. Anything that
 would delete or overwrite memory always asks first.
@@ -1819,7 +1821,10 @@ Play yet, and some desktop features are missing (see [Limits](#limits)).
 | | Requirement | Where to get it |
 |---|---|---|
 | **Android** | Android 8 or later | Download the [latest APK](https://suzent.com/download/android/) and install it. Earlier versions are on [GitHub Releases](https://github.com/cyzus/suzent/releases) under `mobile-v...`. |
-| **iOS** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+| **iPhone and iPad** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+
+The app's [privacy policy](https://suzent.com/zh-Hans/mobile-privacy) is also linked
+from the connection screen and from **Settings → About**.
 
 ## Try it without a computer
 
@@ -2109,6 +2114,9 @@ its own until you revoke it.
 Once connected, just ask: "take a photo with my phone", or "play this on the
 living-room speaker". You can see each device's abilities in the device list.
 
+A computer's webcam is offered only once the **Camera**
+[plugin](https://suzent.com/zh-Hans/docs/features/plugins) is installed on it.
+
 ## Drive another Suzent
 
 If both computers run Suzent, one can ask the other's agent to do work using
@@ -2239,7 +2247,9 @@ Source: https://suzent.com/zh-Hans/docs/features/plugins
 A plugin adds something to Suzent and brings along whatever it needs to run.
 Some plugins only bring packages: each chat app (Telegram, Slack, Discord and
 Feishu/Lark) is its own built-in plugin, so you only download the packages for
-the apps you use. Others add tools, slash commands and skills of their own.
+the apps you use. The built-in **Camera** plugin lets the agent take photos
+with this computer's webcam; it's off until you install it. Others add tools,
+slash commands and skills of their own.
 
 Suzent remembers which plugins you installed, so an upgrade keeps them, and a
 plugin you removed stays removed. Your setup stays yours: nothing is turned on
@@ -2562,10 +2572,10 @@ never on private or incognito tabs, and only on the one tab the agent has
 selected. It never reads what you've typed into form fields. Chrome or Edge
 shows a banner while the agent is attached; closing that banner disconnects it.
 
-**To stop,** click **Disconnect and forget** in Settings, or Disconnect in the
+**To stop,** click **Forget connection** in Settings, or Disconnect in the
 extension's popup. Your tabs stay open.
 
-If your organization blocks the Web Store, expand **Setup help & options**,
+If your organization blocks the Web Store, expand **Manual installation**,
 click **Download extension**, unzip it into a permanent folder, and load it
 from your browser's Extensions page with Developer mode on (**Load unpacked**).
 
@@ -2641,12 +2651,17 @@ so it can work through a big log or data file in pieces.
 Documents are converted to text first, so the agent can read:
 
 - PDF files
-- Word documents
-- Excel spreadsheets
-- PowerPoint presentations
+- Word documents (`.docx`)
+- Excel spreadsheets (`.xlsx`, `.xlsm`, and older `.xls`)
+- PowerPoint presentations (`.pptx`), including speaker notes and charts
+- Outlook emails (`.msg`)
+- Jupyter notebooks (`.ipynb`)
+- EPUB e-books
+- ZIP archives: the agent sees the list of files inside, and the text of any of
+  the documents above that the archive contains
 
-Files larger than 50 MB can't be read, and other binary files (such as programs
-or archives) are refused rather than read as garbled text. To understand what is
+Files larger than 50 MB can't be read, and other binary files (such as programs)
+are refused rather than read as garbled text. To understand what is
 in a picture, the agent uses your **Vision** model instead; see
 [Model roles](https://suzent.com/zh-Hans/docs/models/model-roles).
 
@@ -2986,14 +3001,14 @@ reference image; your video model must support this.
 Choose how the agent speaks in **Settings → Voice & audio**, under
 **Speech engine**:
 
-- **System speech (no API)** uses the voices installed on the device playing the
+- **Device voices** uses the voices installed on the device playing the
   message. No model or API key is needed, but the audio can't be saved, and it
   only plays in the Suzent chat window, not in [chat apps](https://suzent.com/zh-Hans/docs/chat-apps).
-- **API speech** uses your **TTS** model and saves audio you can replay. Pick the
+- **AI speech** uses your **TTS** model and saves audio you can replay. Pick the
   model under **Speech model** on the same page. Voices, formats, speed, and
   style instructions depend on the provider.
 
-New speech plays automatically. Turn off **Automatically play new tool speech**
+New speech plays automatically. Turn off **Auto-play speech**
 if you prefer to press **Play** yourself.
 
 The **Creative** group also holds the tool for sending messages through your
@@ -3390,6 +3405,11 @@ the page as plain text with headings, lists, and links kept. This works for
 public pages only: it doesn't use your logins, so for your email or an
 internal site use [your own browser](https://suzent.com/zh-Hans/docs/features/tools/browser#option-2-your-own-browser-with-the-suzent-extension).
 
+The page is fetched directly, without running its scripts, and addresses on
+your own computer or local network (such as `localhost`) aren't fetched. If a
+page only shows its content once JavaScript runs, the agent is told to open it
+with the [browser](https://suzent.com/zh-Hans/docs/features/tools/browser) instead.
+
 Very long pages are cut short in the agent's view, at about 30,000
 characters. The full text is saved to a file the agent can open if it needs
 the rest. These files are deleted after 24 hours.
@@ -3424,8 +3444,14 @@ Use Claude models with an API key from the Anthropic Console.
 ## Set up
 
 1. Get an API key from [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys).
-2. Open **Settings → Providers → Anthropic**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **Anthropic**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Anthropic then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -3433,8 +3459,62 @@ Use Claude models with an API key from the Anthropic Console.
 |---|---|---|
 | **API Key** | `ANTHROPIC_API_KEY` | Starts with `sk-ant-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+
+---
+
+# Bailian Plan
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/bailian-plan
+
+
+
+
+Use a Bailian Token Plan or Coding Plan subscription from Alibaba Cloud. One plan covers Qwen and other popular models such as GLM, Kimi, and MiniMax.
+
+## Set up
+
+1. Get an API key from [bailian.console.aliyun.com](https://bailian.console.aliyun.com/).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Bailian Plan**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Bailian Plan then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Token Plan · Beijing** | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1` |
+| **Token Plan · Singapore** | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` |
+| **Qwen Token Plan (Qwen AI platform)** | `https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1` |
+| **Coding Plan** | `https://coding.dashscope.aliyuncs.com/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **Plan API Key** | `BAILIAN_PLAN_API_KEY` | The plan's own key, starting with `sk-sp-`. A pay-as-you-go key won't work here. |
+| **Base URL** | `BAILIAN_PLAN_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+## Good to know
+
+Paying as you go instead of on a plan? Use [Qwen (DashScope)](https://suzent.com/zh-Hans/docs/models/cloud/dashscope).
 
 
 ---
@@ -3451,7 +3531,8 @@ You sign in with your ChatGPT account; no API key is involved.
 
 ## Set up
 
-1. Open **Settings → Providers → ChatGPT Subscription** and click **Sign in**.
+1. Open **Settings → Providers**. Under **Add a provider**, find **ChatGPT
+   Subscription** and click **Sign In** on its card.
 2. Open the link Suzent shows, enter the code, and approve.
 3. Back in Suzent, wait until the card says it is connected, then enable the
    `chatgpt/...` models you want.
@@ -3466,33 +3547,89 @@ You sign in with your ChatGPT account; no API key is involved.
 
 ---
 
-# DashScope (Alibaba Cloud)
+# ClinePass
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/clinepass
+
+
+
+
+Use the models included in a ClinePass subscription from Cline, such as GLM, Kimi, DeepSeek, Qwen, MiniMax, and MiMo.
+
+## Set up
+
+1. Get an API key from [app.cline.bot](https://app.cline.bot).
+2. Open **Settings → Providers**. Under **Add a provider**, find **ClinePass**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and ClinePass then moves up to the providers you
+have set up.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `CLINEPASS_API_KEY` | |
+
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+
+---
+
+# Qwen (DashScope)
 
 Source: https://suzent.com/zh-Hans/docs/models/cloud/dashscope
 
 
 
 
-Use Qwen models through Alibaba Cloud Model Studio (Bailian).
+Use Qwen models with a pay-as-you-go API key from Alibaba Cloud Model Studio (Bailian).
 
 ## Set up
 
-1. Get an API key from [bailian.console.aliyun.com](https://bailian.console.aliyun.com).
-2. Open **Settings → Providers → Dashscope**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [bailian.console.aliyun.com](https://bailian.console.aliyun.com/).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Qwen (DashScope)**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Qwen (DashScope) then moves up to the providers you
+have set up.
+
+## Region choices
+
+Pick the region your key was created for. It decides where Suzent sends requests.
+
+| Region | Base URL |
+|---|---|
+| **China** | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| **International** | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **API Key** | `DASHSCOPE_API_KEY` |  |
+| **API Key** | `DASHSCOPE_API_KEY` | |
+| **Base URL** | `DASHSCOPE_BASE_URL` | Filled in by your **Region** choice; shown only for **Custom URL**. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 
-Suzent connects to the mainland China endpoint, `https://dashscope.aliyuncs.com/compatible-mode/v1`.
+Have a Bailian Token Plan or Coding Plan subscription instead? Use [Bailian Plan](https://suzent.com/zh-Hans/docs/models/cloud/bailian-plan).
 
 
 ---
@@ -3509,8 +3646,14 @@ Use DeepSeek's low-cost chat and reasoning models.
 ## Set up
 
 1. Get an API key from [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys).
-2. Open **Settings → Providers → DeepSeek**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **DeepSeek**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and DeepSeek then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -3518,8 +3661,9 @@ Use DeepSeek's low-cost chat and reasoning models.
 |---|---|---|
 | **API Key** | `DEEPSEEK_API_KEY` | Starts with `sk-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 
@@ -3539,9 +3683,15 @@ Use Gemini models with an API key from Google AI Studio. A free tier is availabl
 
 ## Set up
 
-1. Get an API key from [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
-2. Open **Settings → Providers → Google Gemini**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Google Gemini**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Google Gemini then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -3549,9 +3699,109 @@ Use Gemini models with an API key from Google AI Studio. A free tier is availabl
 |---|---|---|
 | **API Key** | `GEMINI_API_KEY` | Starts with `AIza`. `GOOGLE_API_KEY` also works. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
+
+---
+
+# Huawei Cloud MaaS
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/huaweicloud
+
+
+
+
+Use the models on Huawei Cloud's ModelArts MaaS, on the Token Plan or pay as you go.
+
+## Set up
+
+1. Get an API key from [console.huaweicloud.com/modelarts](https://console.huaweicloud.com/modelarts/?#/model-studio/authmanage).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Huawei Cloud MaaS**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Huawei Cloud MaaS then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Token Plan** | `https://api.modelarts-maas.com/plan/v2` |
+| **Pay as you go** | `https://api.modelarts-maas.com/openai/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `HUAWEICLOUD_API_KEY` | |
+| **Base URL** | `HUAWEICLOUD_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+
+---
+
+# Kimi Code
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/kimi-code
+
+
+
+
+Use the models in your Kimi Code subscription, Kimi's coding plan, with the API key from its console.
+
+## Set up
+
+1. Get an API key from [www.kimi.com/code/console](https://www.kimi.com/code/console).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Kimi Code**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Kimi Code then moves up to the providers you
+have set up.
+
+## Region choices
+
+Pick the region your key was created for. It decides where Suzent sends requests.
+
+| Region | Base URL |
+|---|---|
+| **China** | `https://api.kimi.com/coding/v1` |
+| **Global** | `https://api.kimi.ai/coding/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `KIMI_CODE_API_KEY` | Starts with `sk-`. |
+| **Base URL** | `KIMI_CODE_BASE_URL` | Filled in by your **Region** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+## Good to know
+
+A Kimi Code key only works here. For a pay-as-you-go Moonshot key, use [Kimi (Moonshot)](https://suzent.com/zh-Hans/docs/models/cloud/moonshot).
 
 
 ---
@@ -3567,45 +3817,131 @@ Use MiniMax models with an API key from the MiniMax platform.
 
 ## Set up
 
-1. Get an API key from [platform.minimaxi.com](https://platform.minimaxi.com).
-2. Open **Settings → Providers → MiniMax**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [platform.minimaxi.com](https://platform.minimaxi.com/).
+2. Open **Settings → Providers**. Under **Add a provider**, find **MiniMax**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and MiniMax then moves up to the providers you
+have set up.
+
+## Region choices
+
+Pick the region your key was created for. It decides where Suzent sends requests.
+
+| Region | Base URL |
+|---|---|
+| **China** | `https://api.minimaxi.com/v1` |
+| **Global** | `https://api.minimax.io/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **API Key** | `MINIMAX_API_KEY` |  |
+| **API Key** | `MINIMAX_API_KEY` | |
+| **Base URL** | `MINIMAX_BASE_URL` | Filled in by your **Region** choice; shown only for **Custom URL**. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
 
-# Moonshot (Kimi)
+# Kimi (Moonshot)
 
 Source: https://suzent.com/zh-Hans/docs/models/cloud/moonshot
 
 
 
 
-Use Kimi models, known for long context, with an API key from Moonshot.
+Use Kimi models, known for long context, with a pay-as-you-go API key from Moonshot.
 
 ## Set up
 
-1. Get an API key from [platform.moonshot.cn](https://platform.moonshot.cn).
-2. Open **Settings → Providers → Moonshot (Kimi)**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [platform.moonshot.cn/console/api-keys](https://platform.moonshot.cn/console/api-keys).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Kimi (Moonshot)**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Kimi (Moonshot) then moves up to the providers you
+have set up.
+
+## Region choices
+
+Pick the region your key was created for. It decides where Suzent sends requests.
+
+| Region | Base URL |
+|---|---|
+| **China** | `https://api.moonshot.cn/v1` |
+| **Global** | `https://api.moonshot.ai/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
 | **API Key** | `MOONSHOT_API_KEY` | Starts with `sk-`. |
+| **Base URL** | `MOONSHOT_BASE_URL` | Filled in by your **Region** choice; shown only for **Custom URL**. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+## Good to know
+
+Subscribed to Kimi's coding plan? Use [Kimi Code](https://suzent.com/zh-Hans/docs/models/cloud/kimi-code) instead.
+
+
+---
+
+# Ollama Cloud
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/ollama-cloud
+
+
+
+
+Use the models Ollama hosts in its cloud, with an API key from your ollama.com account.
+
+## Set up
+
+1. Get an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama Cloud**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Ollama Cloud then moves up to the providers you
+have set up.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `OLLAMA_CLOUD_API_KEY` | |
+
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+## Good to know
+
+To run models on your own computer instead, use [Ollama](https://suzent.com/zh-Hans/docs/models/local/ollama).
 
 
 ---
@@ -3622,22 +3958,63 @@ Use GPT and other OpenAI models with an API key from your OpenAI account.
 ## Set up
 
 1. Get an API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
-2. Open **Settings → Providers → OpenAI**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **OpenAI**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and OpenAI then moves up to the providers you
+have set up.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
 | **API Key** | `OPENAI_API_KEY` | Starts with `sk-`. |
-| **Base URL (Optional)** | — | Leave empty for OpenAI. Set it for Azure OpenAI or another OpenAI-compatible endpoint. |
+| **Base URL (Optional)** | `OPENAI_BASE_URL` | Leave empty for OpenAI. Set it for Azure OpenAI or another OpenAI-compatible endpoint. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 
 Already pay for ChatGPT Plus or Pro? The [ChatGPT Subscription](https://suzent.com/zh-Hans/docs/models/cloud/chatgpt-subscription) provider uses your plan instead of API credit.
+
+
+---
+
+# OpenCode Go
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/opencode-go
+
+
+
+
+Use the models included in an OpenCode Go subscription.
+
+## Set up
+
+1. Get an API key from [opencode.ai/auth](https://opencode.ai/auth).
+2. Open **Settings → Providers**. Under **Add a provider**, find **OpenCode Go**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and OpenCode Go then moves up to the providers you
+have set up.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `OPENCODE_GO_API_KEY` | |
+
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3654,8 +4031,14 @@ Reach hundreds of models (GPT, Claude, Gemini, Llama, Mistral, and more) with a 
 ## Set up
 
 1. Get an API key from [openrouter.ai/keys](https://openrouter.ai/keys).
-2. Open **Settings → Providers → OpenRouter**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **OpenRouter**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and OpenRouter then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -3663,12 +4046,215 @@ Reach hundreds of models (GPT, Claude, Gemini, Llama, Mistral, and more) with a 
 |---|---|---|
 | **API Key** | `OPENROUTER_API_KEY` | Starts with `sk-or-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 ## Good to know
 
-**FETCH** loads OpenRouter's full catalog, so tick only the models you plan to use.
+Fetching loads OpenRouter's full catalog, so tick only the models you plan to use.
+
+
+---
+
+# Baidu Qianfan
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/qianfan
+
+
+
+
+Use the models on Baidu Qianfan, through a personal or enterprise Token Plan or pay as you go.
+
+## Set up
+
+1. Get an API key from [console.bce.baidu.com/qianfan/resource/token-plan](https://console.bce.baidu.com/qianfan/resource/token-plan).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Baidu Qianfan**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Baidu Qianfan then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Token Plan Personal** | `https://qianfan.baidubce.com/v2/tokenplan/personal` |
+| **Token Plan Enterprise** | `https://qianfan.baidubce.com/v2/tokenplan/team` |
+| **Pay as you go** | `https://qianfan.baidubce.com/v2` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `QIANFAN_API_KEY` | |
+| **Base URL** | `QIANFAN_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+## Good to know
+
+Token Plan keys come from the Token Plan page; pay-as-you-go keys come from Baidu Cloud's API key list. **Get a Baidu Qianfan API key** links to the right one for the plan you pick.
+
+
+---
+
+# StepFun
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/stepfun
+
+
+
+
+Use StepFun's Step models, on the Step Plan or pay as you go.
+
+## Set up
+
+1. Get an API key from [platform.stepfun.com/interface-key](https://platform.stepfun.com/interface-key).
+2. Open **Settings → Providers**. Under **Add a provider**, find **StepFun**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and StepFun then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Step Plan · China** | `https://api.stepfun.com/step_plan/v1` |
+| **Pay as you go · China** | `https://api.stepfun.com/v1` |
+| **Step Plan · Global** | `https://api.stepfun.ai/step_plan/v1` |
+| **Pay as you go · Global** | `https://api.stepfun.ai/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `STEPFUN_API_KEY` | |
+| **Base URL** | `STEPFUN_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+
+---
+
+# Tencent Cloud
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/tencent
+
+
+
+
+Use Hunyuan and the other models on Tencent Cloud, through a Token Plan, a Coding Plan, an enterprise plan, or pay as you go.
+
+## Set up
+
+1. Get an API key from [console.cloud.tencent.com/tokenhub](https://console.cloud.tencent.com/tokenhub).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Tencent Cloud**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Tencent Cloud then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Token Plan** | `https://api.lkeap.cloud.tencent.com/plan/v3` |
+| **Coding Plan** | `https://api.lkeap.cloud.tencent.com/coding/v3` |
+| **Pay as you go · China** | `https://tokenhub.tencentmaas.com/v1` |
+| **Pay as you go · Global** | `https://tokenhub-intl.tencentmaas.com/v1` |
+| **Enterprise plan · China** | `https://tokenhub.tencentmaas.com/plan/v3` |
+| **Enterprise plan · Global** | `https://tokenhub-intl.tencentmaas.com/plan/v3` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `TENCENT_API_KEY` | |
+| **Base URL** | `TENCENT_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
+
+---
+
+# Volcengine Ark
+
+Source: https://suzent.com/zh-Hans/docs/models/cloud/volcengine
+
+
+
+
+Use Doubao and the other models on Volcengine Ark (ByteDance), through the Coding Plan, the Agent Plan, or pay as you go.
+
+## Set up
+
+1. Get an API key from [console.volcengine.com/ark](https://console.volcengine.com/ark).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Volcengine Ark**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Volcengine Ark then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Coding Plan** | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| **Agent Plan** | `https://ark.cn-beijing.volces.com/api/plan/v3` |
+| **Pay as you go** | `https://ark.cn-beijing.volces.com/api/v3` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+## Settings
+
+| Field | Environment variable | Notes |
+|---|---|---|
+| **API Key** | `VOLCENGINE_API_KEY` | |
+| **Base URL** | `VOLCENGINE_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3684,9 +4270,15 @@ Use Grok models with an API key from xAI.
 
 ## Set up
 
-1. Get an API key from [console.x.ai](https://console.x.ai).
-2. Open **Settings → Providers → xAI (Grok)**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [console.x.ai](https://console.x.ai/).
+2. Open **Settings → Providers**. Under **Add a provider**, find **xAI (Grok)**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and xAI (Grok) then moves up to the providers you
+have set up.
 
 ## Settings
 
@@ -3694,8 +4286,9 @@ Use Grok models with an API key from xAI.
 |---|---|---|
 | **API Key** | `XAI_API_KEY` | Starts with `xai-`. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set the environment variable before starting Suzent instead of typing the key in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3707,50 +4300,95 @@ Source: https://suzent.com/zh-Hans/docs/models/cloud/xiaomi-mimo
 
 
 
-Use Xiaomi MiMo models through their OpenAI-compatible API.
+Use Xiaomi MiMo models through their OpenAI-compatible API, pay as you go or on a Token Plan.
 
 ## Set up
 
 1. Get an API key from the Xiaomi MiMo developer console.
-2. Open **Settings → Providers → Xiaomi MiMo**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **Xiaomi MiMo**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Xiaomi MiMo then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Pay as you go** | `https://api.xiaomimimo.com/v1` |
+| **Token Plan · China** | `https://token-plan-cn.xiaomimimo.com/v1` |
+| **Token Plan · Singapore** | `https://token-plan-sgp.xiaomimimo.com/v1` |
+| **Token Plan · Europe** | `https://token-plan-ams.xiaomimimo.com/v1` |
+
+**Custom URL** lets you type any other address, such as a proxy.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **API Key** | `XIAOMI_MIMO_API_KEY` |  |
-| **Base URL (Optional)** | — | Defaults to `https://api.xiaomimimo.com/v1`. |
+| **API Key** | `XIAOMI_MIMO_API_KEY` | |
+| **Base URL** | `XIAOMI_MIMO_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
 
-# Zhipu AI (GLM)
+# Zhipu GLM / Z.ai
 
 Source: https://suzent.com/zh-Hans/docs/models/cloud/zhipu
 
 
 
 
-Use GLM models with an API key from Zhipu AI.
+Use GLM models with an API key from Zhipu's BigModel platform in China or from Z.ai outside it. Both pay as you go and the GLM Coding Plan work.
 
 ## Set up
 
-1. Get an API key from [open.bigmodel.cn](https://open.bigmodel.cn).
-2. Open **Settings → Providers → Zhipu AI (GLM)**, click **CHANGE** on the **API KEYS** tab, and paste the key.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click **Save Changes**.
+1. Get an API key from [open.bigmodel.cn/usercenter/apikeys](https://open.bigmodel.cn/usercenter/apikeys).
+2. Open **Settings → Providers**. Under **Add a provider**, find **Zhipu GLM / Z.ai**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
+   then paste the key and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own, and Zhipu GLM / Z.ai then moves up to the providers you
+have set up.
+
+## Plan choices
+
+Pick the plan your key was created for. It decides where Suzent sends requests.
+
+| Plan | Base URL |
+|---|---|
+| **Pay as you go · China** | `https://open.bigmodel.cn/api/paas/v4` |
+| **Coding Plan · China** | `https://open.bigmodel.cn/api/coding/paas/v4` |
+| **Pay as you go · Global (Z.ai)** | `https://api.z.ai/api/paas/v4` |
+| **Coding Plan · Global (Z.ai)** | `https://api.z.ai/api/coding/paas/v4` |
+
+**Custom URL** lets you type any other address, such as a proxy.
+
+China and Global accounts are separate, so a key from one won't work with the other.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
 | **API Key** | `ZAI_API_KEY` | `ZHIPUAI_API_KEY` also works. |
+| **Base URL** | `ZAI_BASE_URL` | Filled in by your **Plan** choice; shown only for **Custom URL**. |
 
-You can set the key's environment variable before starting Suzent instead of
-pasting it. It then shows as **Set in env** and can't be changed from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3769,20 +4407,25 @@ use it like any other provider.
 ## Set up
 
 1. Start your LiteLLM proxy and note its URL and master key.
-2. Open **Settings → Providers → LiteLLM Proxy** and fill in both fields.
-3. On the **MODELS** tab, click **FETCH** to load the models your proxy
-   exposes, tick the ones you want, and click **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **LiteLLM Proxy**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, fill in **Base URL** and **Master Key**, clicking
+   **Save** for each.
+4. Click **Test connection** to load the models your proxy
+   exposes, then tick the ones you want on the **Models** tab.
+
+Changes save on their own.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
 | **Master Key** | `LITELLM_MASTER_KEY` | `LITELLM_PROXY_API_KEY` also works. |
-| **Base URL** | — | For example `http://localhost:4000`. |
+| **Base URL** | `LITELLM_BASE_URL` | For example `http://localhost:4000`. |
 
-You can set the master key's environment variable before starting Suzent
-instead of pasting it. It then shows as **Set in env** and can't be changed
-from the app.
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3804,10 +4447,12 @@ you say leaves your machine.
    ```bash
    ollama pull llama3.2
    ```
+2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama**
+   (or type its name in the search box) and click it to open its card.
+3. Click **Test connection** to list the models you have pulled,
+   then tick the ones you want on the **Models** tab.
 
-2. Open **Settings → Providers → Ollama** and click **FETCH** to list the
-   models you have pulled.
-3. Tick the models you want and click **Save Changes**.
+Changes save on their own.
 
 ## Settings
 
@@ -3816,11 +4461,17 @@ you say leaves your machine.
 | **Base URL** | `OLLAMA_BASE_URL` | Change it only if Ollama isn't running at `http://localhost:11434`. |
 | **API Key (Optional)** | `OLLAMA_API_KEY` | Only if your Ollama server requires one. |
 
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
+
 ## Good to know
 
 The agent relies on tool calling, so choose a model that supports tools. Small
 local models work well for the **Cheap** [model role](https://suzent.com/zh-Hans/docs/models/model-roles) even
 if you keep a cloud model for your main conversations.
+
+Ollama's hosted models need an account and a key; use [Ollama Cloud](https://suzent.com/zh-Hans/docs/models/cloud/ollama-cloud) for those.
 
 
 ---
@@ -3838,16 +4489,24 @@ server you control, Suzent can talk to it directly.
 ## Set up
 
 1. Start the SGLang server with an OpenAI-compatible API.
-2. Open **Settings → Providers → SGLang** and enter its base URL.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click
-   **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **SGLang**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **Base URL** | — | Defaults to `http://127.0.0.1:30000/v1`. |
+| **Base URL** | `SGLANG_BASE_URL` | Defaults to `http://127.0.0.1:30000/v1`. |
 | **API Key (Optional)** | `SGLANG_API_KEY` | Only if you started the server with an API key. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3865,16 +4524,24 @@ server you control, Suzent can talk to it directly.
 ## Set up
 
 1. Start the vLLM server with an OpenAI-compatible API.
-2. Open **Settings → Providers → vLLM** and enter its base URL.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click
-   **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **vLLM**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **Base URL** | — | Defaults to `http://127.0.0.1:8000/v1`. |
+| **Base URL** | `VLLM_BASE_URL` | Defaults to `http://127.0.0.1:8000/v1`. |
 | **API Key (Optional)** | `VLLM_API_KEY` | Only if you started the server with an API key. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.
 
 
 ---
@@ -3923,16 +4590,20 @@ Suzent 支持所有主流模型提供商，也支持你自己运行的模型。�
 
 ## 添加提供商
 
-1. 打开 **设置 → 提供商**，点击你要配置的提供商。
-2. 在 **API 密钥** 标签页点击 **修改**，粘贴你的密钥。
-3. 在 **模型** 标签页点击 **获取**。这一步会验证密钥并加载可用模型。
-4. 勾选需要的模型，然后点击 **保存更改**。
+1. 打开 **设置 → 提供商**。已配置的提供商列在最上方，其余的都在 **添加提供商**
+   里，按海外模型厂商、国内厂商与编程套餐、中转与订阅、本地与自部署分组。在搜索框里输入名称可以快速找到。
+2. 点击提供商打开它的卡片。如果它有 **地域** 或 **套餐** 选项，选择你的密钥所属的那一个。
+3. 在 **API 密钥** 标签页粘贴密钥，点击 **保存**。**去 … 申请 API 密钥** 链接会带你到创建密钥的页面。
+4. 点击 **测试连接**。这一步会验证密钥并加载可用模型。
+5. 在 **模型** 标签页勾选需要的模型。
 
-密钥保存在操作系统的钥匙串中（没有钥匙串时，保存在你电脑上的加密文件里），绝不会以明文写入配置文件。
+改动会自动保存。密钥保存在操作系统的钥匙串中（没有钥匙串时，保存在你电脑上的加密文件里），绝不会以明文写入配置文件。
 
 <a id="supported-providers"></a>
 
 ## 支持的提供商
+
+**海外模型厂商**
 
 | 提供商 | 你需要 |
 |---|---|
@@ -3941,27 +4612,65 @@ Suzent 支持所有主流模型提供商，也支持你自己运行的模型。�
 | [Anthropic](https://suzent.com/zh-Hans/docs/models/cloud/anthropic) | API 密钥。 |
 | [Google Gemini](https://suzent.com/zh-Hans/docs/models/cloud/gemini) | API 密钥，有免费额度。 |
 | [xAI（Grok）](https://suzent.com/zh-Hans/docs/models/cloud/xai) | API 密钥。 |
+
+**国内厂商与编程套餐**
+
+设置里的提供商名称是英文的，可以在搜索框里输入 Qwen、Kimi、Zhipu、Tencent 这样的英文名来找。
+
+| 提供商 | 你需要 |
+|---|---|
+| [通义千问（DashScope）](https://suzent.com/zh-Hans/docs/models/cloud/dashscope) | 阿里云按量付费密钥，国内或国际站。 |
 | [DeepSeek](https://suzent.com/zh-Hans/docs/models/cloud/deepseek) | API 密钥。 |
-| [DashScope（阿里云百炼）](https://suzent.com/zh-Hans/docs/models/cloud/dashscope) | API 密钥，用于通义千问模型。 |
-| [Moonshot（Kimi）](https://suzent.com/zh-Hans/docs/models/cloud/moonshot) | API 密钥。 |
-| [智谱 AI（GLM）](https://suzent.com/zh-Hans/docs/models/cloud/zhipu) | API 密钥。 |
-| [MiniMax](https://suzent.com/zh-Hans/docs/models/cloud/minimax) | API 密钥。 |
-| [小米 MiMo](https://suzent.com/zh-Hans/docs/models/cloud/xiaomi-mimo) | API 密钥。 |
+| [MiniMax](https://suzent.com/zh-Hans/docs/models/cloud/minimax) | API 密钥，国内或国际站。 |
+| [Kimi（Moonshot）](https://suzent.com/zh-Hans/docs/models/cloud/moonshot) | API 密钥，国内或国际站。 |
+| [Kimi Code](https://suzent.com/zh-Hans/docs/models/cloud/kimi-code) | Kimi Code 订阅密钥。 |
+| [智谱（Zhipu GLM / Z.ai）](https://suzent.com/zh-Hans/docs/models/cloud/zhipu) | API 密钥，按量付费或 GLM Coding Plan。 |
+| [小米 MiMo](https://suzent.com/zh-Hans/docs/models/cloud/xiaomi-mimo) | API 密钥，按量付费或 Token Plan。 |
+| [百炼套餐（Bailian Plan）](https://suzent.com/zh-Hans/docs/models/cloud/bailian-plan) | 阿里云 Token Plan 或 Coding Plan 密钥。 |
+| [腾讯云（Tencent Cloud）](https://suzent.com/zh-Hans/docs/models/cloud/tencent) | Token Plan、Coding Plan 或按量付费密钥。 |
+| [火山方舟（Volcengine Ark）](https://suzent.com/zh-Hans/docs/models/cloud/volcengine) | Coding Plan、Agent Plan 或按量付费密钥。 |
+| [阶跃星辰（StepFun）](https://suzent.com/zh-Hans/docs/models/cloud/stepfun) | Step Plan 或按量付费密钥。 |
+| [百度千帆（Baidu Qianfan）](https://suzent.com/zh-Hans/docs/models/cloud/qianfan) | Token Plan 或按量付费密钥。 |
+| [华为云 MaaS（Huawei Cloud MaaS）](https://suzent.com/zh-Hans/docs/models/cloud/huaweicloud) | Token Plan 或按量付费密钥。 |
+
+**中转与订阅**
+
+| 提供商 | 你需要 |
+|---|---|
 | [OpenRouter](https://suzent.com/zh-Hans/docs/models/cloud/openrouter) | 一个密钥即可使用数百个模型。 |
+| [OpenCode Go](https://suzent.com/zh-Hans/docs/models/cloud/opencode-go) | OpenCode Go 订阅密钥。 |
+| [ClinePass](https://suzent.com/zh-Hans/docs/models/cloud/clinepass) | ClinePass 订阅密钥。 |
+| [Ollama Cloud](https://suzent.com/zh-Hans/docs/models/cloud/ollama-cloud) | ollama.com 的 API 密钥。 |
 | [LiteLLM Proxy](https://suzent.com/zh-Hans/docs/models/local/litellm) | 你自己的 LiteLLM 代理。 |
+
+**本地与自部署**
+
+| 提供商 | 你需要 |
+|---|---|
 | [Ollama](https://suzent.com/zh-Hans/docs/models/local/ollama) | 在你电脑上运行的 Ollama，无需密钥。 |
 | [vLLM](https://suzent.com/zh-Hans/docs/models/local/vllm) | 你自己的 vLLM 服务。 |
 | [SGLang](https://suzent.com/zh-Hans/docs/models/local/sglang) | 你自己的 SGLang 服务。 |
+
+## 自定义端点
+
+任何兼容 OpenAI 或 Anthropic 接口的服务，比如中转站或自建网关，即使不在列表里也能添加。在 **添加提供商** 的最后点击 **自定义端点**，填写：
+
+- **名称**，显示在提供商卡片上。
+- **协议**：**OpenAI 兼容** 或 **Anthropic 兼容**。
+- **Base URL**。OpenAI 兼容端点通常以 `/v1` 结尾，Suzent 会自动拼接 `/chat/completions`；Anthropic 兼容端点不要带 `/v1/messages`，Suzent 会自动拼接。
+- **API 密钥**，端点不需要密钥时可留空。
+
+点击 **添加提供商**。新提供商会有自己的卡片，之后可以在上面修改密钥和 Base URL、获取模型，或用 **删除提供商** 移除它。
 
 有了模型之后，在[模型角色](https://suzent.com/zh-Hans/docs/models/model-roles)中决定每项工作由哪个模型负责。
 
 ## 小贴士
 
-**环境变量。** 你可以在启动 Suzent 前设置 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 等环境变量。它们会在设置中显示为"来自环境变量"，无法在应用里修改。每个提供商的页面都列出了对应的变量。
+**环境变量。** 你可以在启动 Suzent 前设置 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 等环境变量。它们会在设置中标为 **环境变量**；在应用里保存的密钥优先生效。每个提供商的页面都列出了对应的变量。
 
-**自定义模型。** 如果列表里没有你想要的模型，可以在提供商卡片中添加模型 ID，例如 `openai/gpt-4o-2024-11-20`。
+**自定义模型。** 如果列表里没有你想要的模型，可以在提供商卡片的 **模型** 标签页里，通过 **添加模型 ID...** 输入框添加，例如 `openai/gpt-4o-2024-11-20`。
 
-**模型信息。** Suzent 会记录每个模型的上下文窗口、价格，以及是否支持图片和工具调用。点击 **获取** 时会自动更新，通常你完全不需要操心。
+**模型信息。** Suzent 会记录每个模型的上下文窗口、价格，以及是否支持图片和工具调用。获取模型时会自动更新，通常你完全不需要操心。
 
 
 ---
@@ -4250,7 +4959,7 @@ WeChat connects through Tencent's iLink bot service by scanning a QR code.
 
 1. Make sure the WeChat ClawBot (OpenClaw) feature is available for your
    account.
-2. In **Settings → Social Channels → WeChat**, click **Log in with WeChat**.
+2. In **Settings → Social Channels → WeChat**, click **Connect WeChat**.
 3. Scan the QR code with WeChat and keep the panel open until it connects.
 
 Suzent saves the connection and adds the account that scanned the code to
@@ -4393,8 +5102,10 @@ ollama pull llama3.2
 
 ## 2. Connect it to Suzent
 
-1. Open **Settings → Providers → Ollama** and click **FETCH**.
-2. Tick the model you pulled and click **Save Changes**.
+1. Open **Settings → Providers**, find **Ollama** under **Add a provider**, and
+   click it to open its card.
+2. Click **Test connection**.
+3. On the **Models** tab, tick the model you pulled. Changes save on their own.
 
 ## 3. Use it for everything
 
@@ -4659,7 +5370,7 @@ Pair other computers and phones, and let devices use each other. See
 | `suzent nodes connect <url>` | Join another Suzent as a device, for example from a headless server. | `--name` / `-n` |
 | `suzent nodes connections` | List the connections this computer started. | |
 | `suzent nodes disconnect <url>` | Stop one of those connections. | |
-| `suzent nodes host` | Offer this computer's speaker and camera to Suzent, until you press Ctrl+C. | `--name` / `-n`, `--capabilities` / `-c`, `--url` |
+| `suzent nodes host` | Offer this computer's speaker and camera to Suzent, until you press Ctrl+C. The camera needs the Camera plugin (`suzent plugin install camera`). | `--name` / `-n`, `--capabilities` / `-c`, `--url` |
 
 ## Editors (ACP)
 
@@ -5044,7 +5755,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](https://suzent.com/zh-Hans/docs/features/automation) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](https://suzent.com/zh-Hans/docs/chat-apps) |
 | **Services** | Connect Notion, Linear, GitHub, Cloudflare and Stripe, and add your own MCP servers. | [Services](https://suzent.com/zh-Hans/docs/features/plugins#notion-linear-github-cloudflare-and-stripe), [MCP servers](https://suzent.com/zh-Hans/docs/features/tools/mcp) |
-| **Plugins** | Install or remove plugins that add tools, commands and skills. | [Plugins](https://suzent.com/zh-Hans/docs/features/plugins) |
+| **Plugins** | Install or remove plugins for chat apps, the webcam, and extra tools, commands and skills. | [Plugins](https://suzent.com/zh-Hans/docs/features/plugins) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](https://suzent.com/zh-Hans/docs/features/tools/browser) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](https://suzent.com/zh-Hans/docs/using/conversations#bring-in-another-coding-agent) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes) |
@@ -5074,7 +5785,7 @@ there:
 ## Notifications
 
 When a chat finishes while you're looking elsewhere, Suzent can tell you.
-Under **When to notify**, choose **Always**, **Only in background** (only when
+Under **Task completion notifications**, choose **Always**, **Only in background** (only when
 the Suzent window isn't in front), or **Never**. Under **Sound**, choose
 **Chime**, **Ping**, **Bell**, **Resonance**, **Success**, or **None**.
 **Resonance** uses a different cue depending on how the reply ended, for
@@ -11945,8 +12656,10 @@ five-question ownership test, see
 ## Models
 
 - [Models & Providers](https://suzent.com/zh-Hans/docs/models) and [Model roles](https://suzent.com/zh-Hans/docs/models/model-roles)
-- Cloud: [OpenAI](https://suzent.com/zh-Hans/docs/models/cloud/openai), [ChatGPT Subscription](https://suzent.com/zh-Hans/docs/models/cloud/chatgpt-subscription), [Anthropic](https://suzent.com/zh-Hans/docs/models/cloud/anthropic), [Google Gemini](https://suzent.com/zh-Hans/docs/models/cloud/gemini), [xAI](https://suzent.com/zh-Hans/docs/models/cloud/xai), [DeepSeek](https://suzent.com/zh-Hans/docs/models/cloud/deepseek), [DashScope](https://suzent.com/zh-Hans/docs/models/cloud/dashscope), [Moonshot](https://suzent.com/zh-Hans/docs/models/cloud/moonshot), [Zhipu AI](https://suzent.com/zh-Hans/docs/models/cloud/zhipu), [MiniMax](https://suzent.com/zh-Hans/docs/models/cloud/minimax), [Xiaomi MiMo](https://suzent.com/zh-Hans/docs/models/cloud/xiaomi-mimo), [OpenRouter](https://suzent.com/zh-Hans/docs/models/cloud/openrouter)
-- Local and self-hosted: [Ollama](https://suzent.com/zh-Hans/docs/models/local/ollama), [vLLM](https://suzent.com/zh-Hans/docs/models/local/vllm), [SGLang](https://suzent.com/zh-Hans/docs/models/local/sglang), [LiteLLM Proxy](https://suzent.com/zh-Hans/docs/models/local/litellm)
+- Model vendors: [OpenAI](https://suzent.com/zh-Hans/docs/models/cloud/openai), [ChatGPT Subscription](https://suzent.com/zh-Hans/docs/models/cloud/chatgpt-subscription), [Anthropic](https://suzent.com/zh-Hans/docs/models/cloud/anthropic), [Google Gemini](https://suzent.com/zh-Hans/docs/models/cloud/gemini), [xAI](https://suzent.com/zh-Hans/docs/models/cloud/xai)
+- China vendors and coding plans: [Qwen (DashScope)](https://suzent.com/zh-Hans/docs/models/cloud/dashscope), [DeepSeek](https://suzent.com/zh-Hans/docs/models/cloud/deepseek), [MiniMax](https://suzent.com/zh-Hans/docs/models/cloud/minimax), [Kimi (Moonshot)](https://suzent.com/zh-Hans/docs/models/cloud/moonshot), [Kimi Code](https://suzent.com/zh-Hans/docs/models/cloud/kimi-code), [Zhipu GLM / Z.ai](https://suzent.com/zh-Hans/docs/models/cloud/zhipu), [Xiaomi MiMo](https://suzent.com/zh-Hans/docs/models/cloud/xiaomi-mimo), [Bailian Plan](https://suzent.com/zh-Hans/docs/models/cloud/bailian-plan), [Tencent Cloud](https://suzent.com/zh-Hans/docs/models/cloud/tencent), [Volcengine Ark](https://suzent.com/zh-Hans/docs/models/cloud/volcengine), [StepFun](https://suzent.com/zh-Hans/docs/models/cloud/stepfun), [Baidu Qianfan](https://suzent.com/zh-Hans/docs/models/cloud/qianfan), [Huawei Cloud MaaS](https://suzent.com/zh-Hans/docs/models/cloud/huaweicloud)
+- Relays and subscriptions: [OpenRouter](https://suzent.com/zh-Hans/docs/models/cloud/openrouter), [OpenCode Go](https://suzent.com/zh-Hans/docs/models/cloud/opencode-go), [ClinePass](https://suzent.com/zh-Hans/docs/models/cloud/clinepass), [Ollama Cloud](https://suzent.com/zh-Hans/docs/models/cloud/ollama-cloud), [LiteLLM Proxy](https://suzent.com/zh-Hans/docs/models/local/litellm)
+- Local and self-hosted: [Ollama](https://suzent.com/zh-Hans/docs/models/local/ollama), [vLLM](https://suzent.com/zh-Hans/docs/models/local/vllm), [SGLang](https://suzent.com/zh-Hans/docs/models/local/sglang)
 
 ## Chat apps
 
