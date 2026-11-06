@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.23.1] - 2026-11-06
 
 ### Release notes
+- Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
 
 ## [v0.23.0] - 2026-11-06
