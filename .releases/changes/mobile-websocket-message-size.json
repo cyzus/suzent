@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch", "mobile": "patch"}, "summary": "Fix \"Message too long\" errors on iPhone when opening long chats or images, especially through the relay."}
