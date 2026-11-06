@@ -231,6 +231,7 @@ export function createContent() {
       description:
         "The four conditions of agent sovereignty and a five-question ownership test.",
     },
+    { kind: "downloads", url: "/downloads", title: "Downloads", description: "Download Suzent for desktop and mobile. Official stores, standalone installers, and beta releases." },
     ...privacyPages,
     { kind: "notfound", url: "/404", title: "Page not found" },
   ];
@@ -314,6 +315,11 @@ export function createContent() {
         url: localize(original.url, locale),
         translated: locale === "en",
       };
+      if (locale === "zh-Hans" && original.kind === "downloads") {
+        doc.title = "下载";
+        doc.description = "下载 Suzent 桌面端与移动端：官方商店、独立安装包和测试版。";
+        doc.translated = true;
+      }
       if (locale === "zh-Hans" && original.kind === "doc") {
         const file = translated.get(original.url);
         if (file) {
