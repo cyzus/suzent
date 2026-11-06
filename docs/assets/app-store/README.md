@@ -11,8 +11,8 @@ generated images go to `store-upload/app-store/` and stay out of Git.
 | Name, subtitle, promotional text, keywords, description, What's New | `listing-copy.md` | English (U.S.) and Simplified Chinese |
 | iPhone screenshots | `store-upload/app-store/<locale>/iphone-0N.png` | 1206 × 2622 or 1179 × 2556, required |
 | iPad screenshots | `store-upload/app-store/<locale>/ipad-0N.png` | 2064 × 2752, required because the app supports iPad |
-| Product page header | `store-upload/app-store/<locale>/header.jpg` | 3840 × 1646 (21:9), Product Page Information → Header and Search Results |
-| Search results | `store-upload/app-store/<locale>/search.jpg` | 3840 × 2560 (3:2), same section; text kept centered because the two placements crop differently |
+| Product page header | `store-upload/app-store/<locale>/header.png` | 3840 × 1646 (21:9) PNG without alpha, Product Page Information → Header and Search Results |
+| Search results | `store-upload/app-store/<locale>/search.png` | 3840 × 2560 (3:2) PNG without alpha, same section |
 | Screenshot captions | `listing-copy.md` → Screenshot captions | Same order on iPhone and iPad |
 | Privacy Policy URL | https://suzent.com/mobile-privacy | Source: `website/content/mobile-privacy.md` |
 | Support URL | https://github.com/cyzus/suzent/issues | Same as the browser extension |
@@ -39,7 +39,9 @@ conversations, hosts or tokens appear.
 3. Run `uv run --no-sync python scripts/build_app_store_assets.py`. It frames the
    captures with their captions into `store-upload/app-store/<locale>/`, at
    1206 × 2622 for iPhone and 2064 × 2752 for iPad, plus the header and
-   search results artwork from iPhone captures 1, 2 and 5. The App Store rounds
+   search results artwork in the Play feature graphic's style: copy on the
+   left, iPhone captures 1 and 2 tilted on the right, the hand-held cube
+   between them. The App Store rounds
    screenshot corners, so nothing is drawn along the image edge.
 
 ## Before submitting
