@@ -41,9 +41,11 @@ class RelayTunnelTest {
         KeyAgreement.getInstance("ECDH").apply { init(secret); doPhase(RelayCrypto.decode(peer), true) }.generateSecret()
 
     /** Answers the handshake, then serves hreq/wopen frames like the desktop's tunnel. */
-    private inner class Desktop(private val forge: Boolean = false) : WebSocketListener() {
+    private inner class Desktop(private val forge: Boolean = false, private val stall: Boolean = false) : WebSocketListener() {
         private var session: RelaySession? = null
         val requests = mutableListOf<JSONObject>()
+        val cancelled = CountDownLatch(1)
+        private val bodies = mutableMapOf<String, java.io.ByteArrayOutputStream>()
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
             val current = session
@@ -60,13 +62,28 @@ class RelayTunnelTest {
                 return
             }
             val plaintext = current.decrypt(bytes.toByteArray())
+            fun reply(json: JSONObject) = webSocket.send(current.encrypt(byteArrayOf(0) + json.toString().toByteArray()).toByteString())
+            if (plaintext[0].toInt() == 1) {
+                val length = plaintext[2].toInt() and 0xff
+                val bodyId = String(plaintext, 3, length)
+                val payload = plaintext.copyOfRange(3 + length, plaintext.size)
+                bodies.getOrPut(bodyId) { java.io.ByteArrayOutputStream() }.write(payload)
+                reply(JSONObject().put("t", "hack").put("id", bodyId).put("n", payload.size))
+                return
+            }
             val frame = JSONObject(String(plaintext, 1, plaintext.size - 1))
             requests += frame
             val id = frame.getString("id")
-            fun reply(json: JSONObject) = webSocket.send(current.encrypt(byteArrayOf(0) + json.toString().toByteArray()).toByteString())
             fun binary(kind: Int, payload: ByteArray) = webSocket.send(current.encrypt(byteArrayOf(1, kind.toByte(), id.length.toByte()) + id.toByteArray() + payload).toByteString())
             when (frame.getString("t")) {
+                "hcancel" -> cancelled.countDown()
+                "hreqend" -> {
+                    reply(JSONObject().put("t", "hres").put("id", id).put("status", 200).put("headers", JSONObject()))
+                    binary(1, "received ${bodies[id]?.size() ?: 0}".toByteArray())
+                    reply(JSONObject().put("t", "hend").put("id", id))
+                }
                 "hreq" -> {
+                    if (stall || frame.optBoolean("stream")) return
                     if (forge) { webSocket.send(ByteArray(40).toByteString()); return }
                     reply(JSONObject().put("t", "hres").put("id", id).put("status", 200)
                         .put("headers", JSONObject().put("content-type", "application/json").put("set-cookie", org.json.JSONArray(listOf("a=1", "b=2")))))
@@ -123,6 +140,41 @@ class RelayTunnelTest {
             assertTrue(received.await(3, TimeUnit.SECONDS))
             assertEquals("hello /ws/node", greeting)
             socket.close(1000, null)
+        } finally { tunnel.close(); server.shutdown() }
+    }
+
+    @Test(timeout = 30000) fun largeBodiesStreamPacedByTheDesktop() {
+        val server = MockWebServer()
+        val desktop = Desktop()
+        server.enqueue(MockResponse().withWebSocketUpgrade(desktop))
+        server.start()
+        val (tunnel, http) = tunnelClient(server)
+        try {
+            val body = ByteArray(9 * 1024 * 1024) { it.toByte() }
+            val request = Request.Builder().url(RelayRoute.placeholder.resolve("mobile/client/upload")!!)
+                .post(body.toRequestBody("application/octet-stream".toMediaType())).build()
+            http.newCall(request).execute().use { response ->
+                assertEquals(200, response.code)
+                assertEquals("received ${body.size}", response.body!!.string())
+            }
+            val sent = desktop.requests.first()
+            assertTrue(sent.getBoolean("stream"))
+            assertFalse(sent.has("b"))
+        } finally { tunnel.close(); server.shutdown() }
+    }
+
+    @Test(timeout = 10000) fun stalledRequestsTimeOutAndCancel() {
+        val server = MockWebServer()
+        val desktop = Desktop(stall = true)
+        server.enqueue(MockResponse().withWebSocketUpgrade(desktop))
+        server.start()
+        val tunnel = RelayTunnel(route(server), OkHttpClient())
+        val http = OkHttpClient.Builder().readTimeout(500, TimeUnit.MILLISECONDS).addInterceptor(RelayInterceptor(tunnel)).build()
+        try {
+            assertThrows(java.net.SocketTimeoutException::class.java) {
+                http.newCall(Request.Builder().url(RelayRoute.placeholder.resolve("mobile/capabilities")!!).build()).execute()
+            }
+            assertTrue(desktop.cancelled.await(2, TimeUnit.SECONDS))
         } finally { tunnel.close(); server.shutdown() }
     }
 

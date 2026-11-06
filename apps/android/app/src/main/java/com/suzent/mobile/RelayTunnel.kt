@@ -2,6 +2,7 @@ package com.suzent.mobile
 
 import java.util.Base64
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -175,6 +176,7 @@ class RelayTunnel(private val route: RelayRoute, private val transport: OkHttpCl
             when (frame.optString("t")) {
                 "hres" -> http[id]?.head(frame)
                 "hchunk" -> http[id]?.chunk(Base64.getDecoder().decode(frame.getString("b")))
+                "hack" -> http[id]?.ack(frame.optLong("n"))
                 "hend" -> http.remove(id)?.end()
                 "herr" -> http.remove(id)?.fail(IOException(frame.optString("message", "Request failed")))
                 "wopened" -> sockets[id]?.peerOpened()
@@ -200,11 +202,14 @@ class RelayTunnel(private val route: RelayRoute, private val transport: OkHttpCl
         }
     }
 
-    /** Runs [request] through the tunnel. Blocks like a network call and honours [call]'s cancellation. */
-    fun execute(call: Call, request: Request): Response {
+    /**
+     * Runs [request] through the tunnel. Blocks like a network call and honours [call]'s
+     * cancellation and, between messages from the desktop, [readTimeoutMillis] (0 waits forever).
+     */
+    fun execute(call: Call, request: Request, readTimeoutMillis: Long = 0): Response {
         val link = connect()
         val id = "h${ids.incrementAndGet()}"
-        val exchange = HttpExchange(link, id, call)
+        val exchange = HttpExchange(link, id, call, readTimeoutMillis)
         link.http[id] = exchange
         val body = request.body?.let { body -> Buffer().also { body.writeTo(it) }.readByteArray() }
         val headers = JSONObject()
@@ -214,8 +219,25 @@ class RelayTunnel(private val route: RelayRoute, private val transport: OkHttpCl
         val url = request.url
         val frame = JSONObject().put("t", "hreq").put("id", id).put("method", request.method)
             .put("path", url.encodedPath + (url.encodedQuery?.let { "?$it" } ?: "")).put("headers", headers)
-        if (body != null && body.isNotEmpty()) frame.put("b", Base64.getEncoder().encodeToString(body))
-        try { link.send(frame) } catch (error: IOException) { link.http.remove(id); throw error }
+        // A large body inline would be one oversized WebSocket message, so it streams in chunks
+        // paced by the desktop's acknowledgements instead.
+        val streamed = body != null && body.size > STREAM_THRESHOLD
+        if (streamed) frame.put("stream", true)
+        else if (body != null && body.isNotEmpty()) frame.put("b", Base64.getEncoder().encodeToString(body))
+        try {
+            link.send(frame)
+            if (streamed) {
+                for (start in body!!.indices step BODY_CHUNK) {
+                    val chunk = body.copyOfRange(start, minOf(body.size, start + BODY_CHUNK))
+                    exchange.reserve(chunk.size)
+                    link.sendBinary(HBODY, id, chunk)
+                }
+                link.send(JSONObject().put("t", "hreqend").put("id", id))
+            }
+        } catch (error: IOException) {
+            if (link.http.remove(id) != null) runCatching { link.send(JSONObject().put("t", "hcancel").put("id", id)) }
+            throw error
+        }
         val head = exchange.awaitHead()
         val responseHeaders = Headers.Builder().apply {
             val names = head.optJSONObject("headers") ?: JSONObject()
@@ -259,42 +281,65 @@ class RelayTunnel(private val route: RelayRoute, private val transport: OkHttpCl
         return socket
     }
 
-    private class HttpExchange(private val link: Link, private val id: String, private val call: Call) {
+    private class HttpExchange(private val link: Link, private val id: String, private val call: Call, private val readTimeoutMillis: Long) {
         private val head = LinkedBlockingQueue<Result<JSONObject>>()
         private val chunks = LinkedBlockingQueue<Result<ByteArray>>()
+        private val window = java.lang.Object()
+        private var inFlight = 0L
         @Volatile private var finished = false
 
         fun head(frame: JSONObject) { head.offer(Result.success(frame)) }
         fun chunk(bytes: ByteArray) { if (bytes.isNotEmpty()) chunks.offer(Result.success(bytes)) }
-        fun end() { finished = true; head.offer(Result.failure(IOException("Response ended without a head"))); chunks.offer(Result.success(ByteArray(0))) }
-        fun fail(error: IOException) { finished = true; head.offer(Result.failure(error)); chunks.offer(Result.failure(error)) }
+        fun ack(count: Long) = synchronized(window) { inFlight = maxOf(0, inFlight - count); window.notifyAll() }
+        fun end() { finished = true; head.offer(Result.failure(IOException("Response ended without a head"))); chunks.offer(Result.success(ByteArray(0))); wake() }
+        fun fail(error: IOException) { finished = true; head.offer(Result.failure(error)); chunks.offer(Result.failure(error)); wake() }
+        private fun wake() = synchronized(window) { window.notifyAll() }
 
-        private fun cancel(): Nothing {
+        private fun abandon(error: IOException): Nothing {
             if (link.http.remove(id) != null) runCatching { link.send(JSONObject().put("t", "hcancel").put("id", id)) }
-            throw IOException("Canceled")
+            throw error
         }
 
-        fun awaitHead(): JSONObject {
+        private fun deadline() = if (readTimeoutMillis > 0) System.nanoTime() + readTimeoutMillis * 1_000_000 else Long.MAX_VALUE
+
+        private fun check(deadline: Long) {
+            if (call.isCanceled()) abandon(IOException("Canceled"))
+            if (System.nanoTime() > deadline) abandon(SocketTimeoutException("The desktop did not answer through the relay"))
+        }
+
+        /** Waits until the desktop has read enough of the body for [size] more bytes to fit its window. */
+        fun reserve(size: Int) {
+            val deadline = deadline()
+            synchronized(window) {
+                while (inFlight > 0 && inFlight + size > BODY_WINDOW) {
+                    if (finished) throw IOException("Request ended")
+                    check(deadline)
+                    window.wait(250)
+                }
+                inFlight += size
+            }
+        }
+
+        private fun <T> await(queue: LinkedBlockingQueue<Result<T>>): T {
+            val deadline = deadline()
             while (true) {
-                if (call.isCanceled()) cancel()
-                val next = head.poll(250, TimeUnit.MILLISECONDS) ?: continue
+                check(deadline)
+                val next = queue.poll(250, TimeUnit.MILLISECONDS) ?: continue
                 return next.getOrThrow()
             }
         }
+
+        fun awaitHead(): JSONObject = await(head)
 
         fun source(): Source = object : Source {
             private var done = false
 
             override fun read(sink: Buffer, byteCount: Long): Long {
                 if (done) return -1
-                while (true) {
-                    if (call.isCanceled()) cancel()
-                    val next = chunks.poll(250, TimeUnit.MILLISECONDS) ?: continue
-                    val bytes = next.getOrThrow()
-                    if (bytes.isEmpty()) { done = true; return -1 }
-                    sink.write(bytes)
-                    return bytes.size.toLong()
-                }
+                val bytes = await(chunks)
+                if (bytes.isEmpty()) { done = true; return -1 }
+                sink.write(bytes)
+                return bytes.size.toLong()
             }
 
             override fun timeout(): Timeout = Timeout.NONE
@@ -364,12 +409,18 @@ class RelayTunnel(private val route: RelayRoute, private val transport: OkHttpCl
 
     private companion object {
         const val HCHUNK = 1
+        const val HBODY = 2
         const val WBIN = 3
         const val WTEXT = 4
+        const val STREAM_THRESHOLD = 256 * 1024
+        const val BODY_CHUNK = 256 * 1024
+        /** The desktop acknowledges body bytes as it reads them; the relay protocol allows 4 MiB in flight. */
+        const val BODY_WINDOW = 4L * 1024 * 1024
     }
 }
 
 /** Answers every request of a relay-backed client from its tunnel instead of the network. */
 class RelayInterceptor(private val tunnel: RelayTunnel) : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response = tunnel.execute(chain.call(), chain.request())
+    override fun intercept(chain: Interceptor.Chain): Response =
+        tunnel.execute(chain.call(), chain.request(), chain.readTimeoutMillis().toLong())
 }
