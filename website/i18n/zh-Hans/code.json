@@ -329,13 +329,31 @@
   "homepage.openSource.open": {
     "message": "完全开源。"
   },
-  "homepage.download.iosBeta": {
-    "message": "iOS · TestFlight"
-  },
   "homepage.download.mobile": {
     "message": "移动端"
   },
   "homepage.download.androidApk": {
     "message": "Android · APK"
+  },
+  "homepage.download.iosStore": {
+    "message": "iOS · App Store"
+  },
+  "homepage.download.commandLine": {
+    "message": "使用命令行安装"
+  },
+  "homepage.download.microsoftStore": {
+    "message": "从 Microsoft Store 获取"
+  },
+  "homepage.download.direct": {
+    "message": "或直接下载 Windows 安装程序"
+  },
+  "homepage.download.appStore": {
+    "message": "从 App Store 下载"
+  },
+  "homepage.download.androidPrimary": {
+    "message": "下载 Android APK"
+  },
+  "homepage.download.all": {
+    "message": "所有下载与安装方式"
   }
 }

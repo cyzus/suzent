@@ -12,6 +12,7 @@ export type PageKind =
   | "authors"
   | "author"
   | "home"
+  | "downloads"
   | "sovereign"
   | "privacy"
   | "notfound";
