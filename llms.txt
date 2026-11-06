@@ -24,6 +24,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Features](https://suzent.com/docs/features)
 - [Skills](https://suzent.com/docs/features/skills)
 - [Browser](https://suzent.com/docs/features/tools/browser)
+- [Desktop apps](https://suzent.com/docs/features/tools/desktop)
 - [Files](https://suzent.com/docs/features/tools/files)
 - [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop)
 - [Questions, canvas & messages](https://suzent.com/docs/features/tools/interaction)
