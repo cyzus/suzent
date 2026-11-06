@@ -483,7 +483,7 @@ final class RelayURLProtocol: URLProtocol, RelayHTTPSink, @unchecked Sendable {
         guard let tunnel = RelayTunnel.tunnel(for: request.url?.host) else { fail(URLError(.cannotFindHost)); return }
         let body = Self.body(of: request)
         let timeout = request.timeoutInterval > 0 ? request.timeoutInterval : 60
-        let task = Task {
+        let task = Task { @Sendable in
             do {
                 try await tunnel.send(request, body: body, sink: self, onStart: { link, id in
                     let cancelled = self.lock.withLock { () -> Bool in
@@ -496,7 +496,7 @@ final class RelayURLProtocol: URLProtocol, RelayHTTPSink, @unchecked Sendable {
         }
         // A custom protocol gets no read timeout from URLSession, so an exchange the desktop stops
         // answering ends here, as an idle direct connection would.
-        let watchdog = Task { [weak self] in
+        let watchdog = Task { @Sendable [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
