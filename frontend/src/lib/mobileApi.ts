@@ -12,6 +12,8 @@ export interface MobilePermissions {
 export interface MobileDevice {
   device_id: string;
   display_name: string;
+  /** Set on the desktop; when present it is shown instead of the phone's reported name. */
+  custom_name?: string | null;
   platform: 'ios' | 'android';
   permissions: MobilePermissions;
 }

@@ -284,6 +284,8 @@ export const en = {
     webhooksNote: 'Webhook tasks get a relay URL as well. The relay can see webhook payloads.',
   },
   mobileAccess: {
+    rename: 'Rename',
+    renameLabel: 'Phone name',
     editPermissions: 'Edit permissions',
     cancelEdit: 'Cancel',
     savePermissions: 'Save',
