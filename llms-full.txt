@@ -2186,6 +2186,12 @@ by name with what it may do. Click **Edit permissions**, pick another choice
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
+Click **Rename** to give a phone a name you'll recognize, then **Save**. This
+helps with iPhones, which only tell the computer "iPhone". The name the phone
+reported still shows in small text next to the platform, and your name stays
+when the phone pairs again. Clear the field and save to go back to the phone's
+own name.
+
 **Forget this desktop** in the app's **Settings** (or **Forget connection** in
 **Connection help**) removes that computer from the phone and also asks the
 computer to revoke the phone's access; other paired computers stay. If the
