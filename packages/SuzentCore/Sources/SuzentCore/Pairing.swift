@@ -28,6 +28,8 @@ public struct ClientSession: Decodable, Sendable {
     public var chatPagination: Int? = nil
     public var voice: Int? = nil
     public var desktopName: String? = nil
+    /// The desktop's current relay, so a phone paired before the relay was set up learns it.
+    public var relay: RelayRoute? = nil
 
     public var supportsAttachments: Bool { attachments == 1 }
     public var supportsScheduledTasks: Bool { scheduledTasks == 1 }
@@ -64,6 +66,8 @@ public struct PairingInvitation: Decodable, Sendable {
     public let pairingId: String
     public let invitation: String
     public let expiresAt: Double
+    /// Set when the desktop has a relay: the fallback when none of the origins answer.
+    public var relay: RelayRoute?
 
     public static func parse(_ text: String, allowHTTP: Bool = false, now: Date = Date()) throws -> Self {
         guard text.utf8.count <= 4096 else { throw PairingError.invalidInvitation }
@@ -99,6 +103,7 @@ public struct PairingInvitation: Decodable, Sendable {
         guard let first = usable.first else { throw PairingError.invalidInvitation }
         value.origin = first
         value.origins = usable
+        value.relay = value.relay?.validated(allowHTTP: allowHTTP)
         return value
     }
 

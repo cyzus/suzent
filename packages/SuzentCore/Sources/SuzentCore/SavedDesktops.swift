@@ -12,13 +12,15 @@ public struct Connection: Codable, Sendable, Equatable {
     public var clientProtocol: Int?
     public var previousToken: String?
     public var previousOrigin: String?
+    /// The desktop's relay, tried after the direct origins.
+    public var relay: RelayRoute?
 
     public init(origins: [String]? = nil, tls: DeviceTrust? = nil, previousOrigins: [String]? = nil, previousTLS: DeviceTrust? = nil,
                 origin: String, hostToken: String, nodeToken: String = "", clientProtocol: Int? = nil,
-                previousToken: String? = nil, previousOrigin: String? = nil) {
+                previousToken: String? = nil, previousOrigin: String? = nil, relay: RelayRoute? = nil) {
         self.origins = origins; self.tls = tls; self.previousOrigins = previousOrigins; self.previousTLS = previousTLS
         self.origin = origin; self.hostToken = hostToken; self.nodeToken = nodeToken; self.clientProtocol = clientProtocol
-        self.previousToken = previousToken; self.previousOrigin = previousOrigin
+        self.previousToken = previousToken; self.previousOrigin = previousOrigin; self.relay = relay
     }
 
     public init(from decoder: any Decoder) throws {
@@ -33,6 +35,7 @@ public struct Connection: Codable, Sendable, Equatable {
         clientProtocol = try values.decodeIfPresent(Int.self, forKey: .clientProtocol)
         previousToken = try values.decodeIfPresent(String.self, forKey: .previousToken)
         previousOrigin = try values.decodeIfPresent(String.self, forKey: .previousOrigin)
+        relay = try? values.decodeIfPresent(RelayRoute.self, forKey: .relay)
     }
 
     public var host: String { URLComponents(string: origin)?.host ?? origin }
