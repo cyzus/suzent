@@ -31,9 +31,10 @@ the background when the agent tries to use the tool.
    to sit beside it are kept. On a Mac, the Accessibility guide opens after
    a successful install.
 
-   When Suzent detects it is in mainland China (see
-   [Installing from mainland China](../../01-getting-started/quickstart.md#installing-from-mainland-china)),
-   the download comes from npmmirror first and falls back to npm; otherwise the other way round.
+   When Suzent detects it is in mainland China (the same check setup uses,
+   see [Quickstart](../../01-getting-started/quickstart.md)), the download
+   comes from npmmirror first and falls back to npm; otherwise the other way
+   round.
    No GitHub access is needed either way.
 
    From a terminal, `suzent plugin install desktop` asks the same question
