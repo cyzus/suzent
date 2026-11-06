@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import SuzentCore
 
 private final class VoiceCapture: @unchecked Sendable {
     let converter: AVAudioConverter
