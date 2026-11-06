@@ -2,8 +2,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n';
-import type { PluginIntegration } from '../../lib/api';
-import { IntegrationRow } from './PluginsTab';
+import type { PluginBinary, PluginIntegration } from '../../lib/api';
+import { BinaryRow, IntegrationRow } from './PluginsTab';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -60,5 +60,42 @@ describe('plugin service sign-in', () => {
     expect(html).toContain('settings.plugins.connected');
     expect(html).not.toContain('settings.plugins.connect<');
     expect(html).toContain('settings.plugins.disconnect');
+  });
+});
+
+const binary: PluginBinary = {
+  name: 'agent-desktop',
+  version: '1.0.2',
+  package: 'agent-desktop',
+  supported: true,
+  installed: false,
+  path: null,
+  source: null,
+  env: 'SUZENT_AGENT_DESKTOP_BIN',
+  notice: '',
+};
+
+const renderBinary = (value: PluginBinary): string =>
+  renderToStaticMarkup(
+    <BinaryRow pluginId="desktop" binary={value} onChange={async () => {}} t={(key) => key} />
+  );
+
+describe('plugin programs', () => {
+  it('offers to install a missing program', () => {
+    const html = renderBinary(binary);
+    expect(html).toContain('settings.plugins.installBinary');
+    expect(html).toContain('settings.plugins.binaryMissing');
+  });
+
+  it('shows where an installed program lives, with no install button', () => {
+    const html = renderBinary({ ...binary, installed: true, path: '/data/agent-desktop' });
+    expect(html).toContain('/data/agent-desktop');
+    expect(html).not.toContain('settings.plugins.installBinary');
+  });
+
+  it('says so when there is no build for this computer', () => {
+    const html = renderBinary({ ...binary, supported: false });
+    expect(html).toContain('settings.plugins.binaryUnsupported');
+    expect(html).not.toContain('settings.plugins.installBinary');
   });
 });

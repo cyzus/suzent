@@ -6,8 +6,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from suzent.plugins.binaries import BinarySpec
+
 MANIFEST_FILENAME = "plugin.yaml"
-PLUGIN_API_VERSION = 2
+PLUGIN_API_VERSION = 3
 
 
 class PluginManifest(BaseModel):
@@ -38,6 +40,8 @@ class PluginManifest(BaseModel):
     # "service" puts a plugin that connects a hosted service (Notion, GitHub)
     # on the Services page instead of the Plugins page.
     category: Literal["service"] | None = None
+    # Programs the plugin runs on the host, installed after the user agrees.
+    binaries: list[BinarySpec] = Field(default_factory=list)
 
     @property
     def display_name(self) -> str:

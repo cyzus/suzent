@@ -498,6 +498,14 @@ def _name_indexes() -> tuple[Dict[str, str], Dict[str, str]]:
     )
 
 
+def get_tool_class(name: str) -> Optional[type]:
+    """The tool class for a model-facing name or a class name."""
+    for cls in _all_tool_classes():
+        if name in (cls.tool_name, cls.name):
+            return cls
+    return None
+
+
 def get_tool_class_name(runtime_name: str) -> Optional[str]:
     """Resolve a model-facing function name to its Suzent tool class name."""
     return _name_indexes()[0].get(runtime_name)

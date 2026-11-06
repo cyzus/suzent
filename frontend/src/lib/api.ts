@@ -528,6 +528,24 @@ export interface PluginInfo {
   channel?: string | null;
   /** `service` for plugins that connect a hosted service. */
   category?: 'service' | null;
+  /** Programs the plugin runs on this computer, downloaded after the user agrees. */
+  binaries?: PluginBinary[];
+}
+
+export interface PluginBinary {
+  name: string;
+  version: string;
+  /** The npm package the program is downloaded from. */
+  package: string | null;
+  /** False when no build exists for this computer. */
+  supported: boolean;
+  installed: boolean;
+  path: string | null;
+  source: 'override' | 'managed' | 'path' | null;
+  /** Environment variable that points at a copy the user already has. */
+  env: string | null;
+  /** The plugin's own warning, shown with the consent prompt. */
+  notice: string;
 }
 
 export interface PluginIntegration {
@@ -579,6 +597,21 @@ export async function fetchPlugins(): Promise<PluginInfo[]> {
   const res = await fetch(`${getApiBase()}/plugins`);
   if (!res.ok) throw new Error(`Failed to load plugins: ${res.status}`);
   return res.json();
+}
+
+/** Download a program a plugin declares. Call only after the user has agreed. */
+export async function installPluginBinary(pluginId: string, binary: string): Promise<PluginBinary> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/binaries/${encodeURIComponent(binary)}/install`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed: true }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to install ${binary}: ${res.status}`);
+  return data;
 }
 
 /** Install or remove a plugin. Throws with the server's message on failure. */

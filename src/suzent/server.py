@@ -193,6 +193,7 @@ from suzent.routes.ops_routes import (
 from suzent.routes.plugin_routes import (
     connect_integration,
     disconnect_integration,
+    install_binary,
     install_plugin,
     list_plugins,
     remove_plugin,
@@ -1411,6 +1412,11 @@ app = Starlette(
         Route("/plugins", list_plugins, methods=["GET"]),
         Route("/plugins/{name}/install", install_plugin, methods=["POST"]),
         Route("/plugins/{name}/remove", remove_plugin, methods=["POST"]),
+        Route(
+            "/plugins/{name}/binaries/{binary}/install",
+            install_binary,
+            methods=["POST"],
+        ),
         Route(
             "/plugins/{name}/integrations/{integration}/connect",
             connect_integration,

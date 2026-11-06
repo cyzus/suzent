@@ -80,6 +80,10 @@ class PermissionEngine:
                 source=PermissionDecisionSource.RULE,
             )
 
+        invalid = self._invalid_call(request)
+        if invalid is not None:
+            return invalid
+
         if context.mode == PermissionMode.PLAN:
             mode_decision = self._evaluate_plan_mode(request, context)
             if mode_decision.behavior == CommandDecision.DENY:
@@ -492,7 +496,29 @@ class PermissionEngine:
             return True
         if request.tool_name == SOCIAL_TOOL:
             return bool(request.args.get("list_contacts"))
-        return False
+        tool = _tool_class(request.tool_name)
+        return tool is not None and tool.is_readonly_call(request.args)
+
+    @staticmethod
+    def _invalid_call(request: ToolPermissionRequest) -> PermissionDecision | None:
+        """Refuse a call the tool says can never run, before any mode allows it.
+
+        The tool rejects the same call when it runs, but approval comes first,
+        and a call that cannot run must not be offered as something to approve.
+        """
+        tool = _tool_class(request.tool_name)
+        reason = tool.invalid_call_reason(request.args) if tool is not None else None
+        if reason is None:
+            return None
+        return _decision(
+            CommandDecision.DENY, reason, "invalid_tool_call", PermissionRisk.HIGH
+        )
+
+
+def _tool_class(name: str) -> type | None:
+    from suzent.tools.registry import get_tool_class
+
+    return get_tool_class(name)
 
 
 def _delegated_task(context: PermissionContext) -> str:

@@ -12,9 +12,10 @@ import {
   connectPluginIntegration,
   disconnectPluginIntegration,
   fetchPlugins,
+  installPluginBinary,
   setPluginInstalled,
 } from '../../lib/api';
-import type { PluginInfo, PluginIntegration } from '../../lib/api';
+import type { PluginBinary, PluginInfo, PluginIntegration } from '../../lib/api';
 import { RefreshButton } from '../RefreshButton';
 import {
   Badge,
@@ -276,6 +277,83 @@ export function IntegrationRow({
 }
 
 /** Plugins that connect a hosted service; listed on the Services page. */
+type Translate = (key: string, params?: Record<string, unknown>) => string;
+
+/** A program the plugin runs on this computer, downloaded only after a yes. */
+export function BinaryRow({
+  pluginId,
+  binary,
+  onChange,
+  t,
+}: {
+  pluginId: string;
+  binary: PluginBinary;
+  onChange: () => Promise<void>;
+  t: Translate;
+}): React.ReactElement {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const params = {
+    name: binary.name,
+    version: binary.version,
+    package: binary.package ?? binary.name,
+  };
+
+  const install = async (): Promise<void> => {
+    const consent = [
+      t('settings.plugins.confirmBinary', params),
+      binary.notice,
+      t('settings.plugins.confirmBinaryQuestion', params),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    if (!window.confirm(consent)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await installPluginBinary(pluginId, binary.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      await onChange();
+    }
+  };
+
+  return (
+    <div className="space-y-2 border-t-2 border-dashed border-neutral-300 pt-3 dark:border-white/15">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold">{binary.name}</span>
+          {binary.installed ? (
+            <Badge tone="green">{t('settings.plugins.binaryReady', params)}</Badge>
+          ) : (
+            <Badge tone="amber">{t('settings.plugins.statusMissing')}</Badge>
+          )}
+        </div>
+        {!binary.installed && binary.supported && (
+          <SettingsListAction onClick={() => void install()} disabled={busy}>
+            {busy ? t('settings.plugins.working') : t('settings.plugins.installBinary', params)}
+          </SettingsListAction>
+        )}
+      </div>
+      {binary.installed && binary.path && (
+        <p className="break-all font-mono text-xs text-neutral-600 dark:text-neutral-400">
+          {binary.path}
+        </p>
+      )}
+      {!binary.installed && (
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          {binary.supported
+            ? t('settings.plugins.binaryMissing', params)
+            : t('settings.plugins.binaryUnsupported', params)}
+        </p>
+      )}
+      {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+    </div>
+  );
+}
+
 export function isServicePlugin(plugin: PluginInfo): boolean {
   return plugin.category === 'service';
 }
@@ -411,6 +489,16 @@ export function PluginsTab({
                         {t('settings.plugins.restartHint')}
                       </p>
                     )}
+                    {plugin.enabled &&
+                      plugin.binaries?.map((binary) => (
+                        <BinaryRow
+                          key={binary.name}
+                          pluginId={plugin.id}
+                          binary={binary}
+                          onChange={refresh}
+                          t={t}
+                        />
+                      ))}
                     {plugin.enabled &&
                       plugin.integrations?.map((integration) => (
                         <IntegrationRow

@@ -18,6 +18,7 @@ world asks first (see [Permissions & approvals](./human-in-the-loop.md)).
 | **Filesystem** | Read files, including PDFs and Office documents, write and edit them, and find files by name or content. | [Files](./files.md) |
 | **Shell** | Run commands, or start long ones in the background and check on them later. | [Commands](./shell.md) |
 | **Web** | Search the web, read pages, and drive a browser. | [Web search & pages](./web.md), [Browser](./browser.md) |
+| **Desktop** | Read and operate native apps on this computer. Off until you install the Desktop plugin and agent-desktop. | [Desktop apps](./desktop.md) |
 | **Orchestration** | Hand work to helper agents and load [skills](../skills.md). | [Sub-agents](./sub-agents.md) |
 | **Tasks & goals** | Track tasks, pursue a goal across many turns, and schedule its own follow-ups. | [Tasks & planning](./tasks.md) |
 | **Interaction** | Ask you a focused question, or show tables, forms, and buttons you can answer. | [Questions, canvas & messages](./interaction.md) |

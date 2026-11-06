@@ -12,8 +12,8 @@ and asks, under rules you set. See
 [what makes an agent sovereign](https://suzent.com/sovereign).
 
 Reading is free. Anything that changes something, such as running a command,
-writing or editing a file, sending a message, or generating an image, goes
-through a permission check first.
+writing or editing a file, sending a message, generating an image, or
+clicking and typing in a desktop app, goes through a permission check first.
 
 ## Permission modes
 

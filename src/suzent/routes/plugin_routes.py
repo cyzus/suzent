@@ -6,6 +6,7 @@ POST /plugins/{name}/install  -> enable a plugin (by id or alias), install its p
 POST /plugins/{name}/remove   -> disable a plugin and unload it
 POST /plugins/{name}/integrations/{id}/connect     -> start a sign-in, or save a token
 POST /plugins/{name}/integrations/{id}/disconnect  -> sign out and forget the credential
+POST /plugins/{name}/binaries/{binary}/install     -> download a declared program; body {"confirmed": true}
 
 Both take effect in the running server: tools, commands and skills from the
 next message on, chat apps once the social stack has been rebuilt.
@@ -224,3 +225,40 @@ async def disconnect_integration(request: Request) -> JSONResponse:
         sign_out(integrations.namespace(record.id, integration))
     _rebuild_agent()
     return JSONResponse(integrations.describe(record.id, integration))
+
+
+async def install_binary(request: Request) -> JSONResponse:
+    """Download a program the plugin declares. ``confirmed`` must be true.
+
+    The settings page and the CLI send it only after showing the consent
+    text. No tool call reaches this route.
+    """
+    from suzent.plugins import binaries
+
+    record = get_plugin_manager().resolve(request.path_params["name"])
+    if record is None:
+        return JSONResponse({"error": "No such plugin"}, status_code=404)
+    spec = next(
+        (
+            b
+            for b in record.manifest.binaries
+            if b.name == request.path_params["binary"]
+        ),
+        None,
+    )
+    if spec is None:
+        return JSONResponse({"error": "No such program"}, status_code=404)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+        return JSONResponse(
+            {"error": f"Confirm before {spec.name} is downloaded."}, status_code=400
+        )
+    try:
+        result = await asyncio.to_thread(binaries.install, record.id, spec)
+    except binaries.BinaryInstallError as exc:
+        logger.warning("Installing {} for {} failed: {}", spec.name, record.id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    return JSONResponse(result)
