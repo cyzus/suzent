@@ -12,13 +12,21 @@ server you control, Suzent can talk to it directly.
 ## Set up
 
 1. Start the SGLang server with an OpenAI-compatible API.
-2. Open **Settings → Providers → SGLang** and enter its base URL.
-3. On the **MODELS** tab, click **FETCH**, tick the models you want, and click
-   **Save Changes**.
+2. Open **Settings → Providers**. Under **Add a provider**, find **SGLang**
+   (or type its name in the search box) and click it to open its card.
+3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
+4. Click **Test connection**, then tick the models you want on the
+   **Models** tab.
+
+Changes save on their own.
 
 ## Settings
 
 | Field | Environment variable | Notes |
 |---|---|---|
-| **Base URL** | — | Defaults to `http://127.0.0.1:30000/v1`. |
+| **Base URL** | `SGLANG_BASE_URL` | Defaults to `http://127.0.0.1:30000/v1`. |
 | **API Key (Optional)** | `SGLANG_API_KEY` | Only if you started the server with an API key. |
+
+You can set these environment variables before starting Suzent instead of typing the values in.
+Settings then marks the value **Environment**. A value you save in the app
+takes priority over it.

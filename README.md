@@ -14,7 +14,7 @@
 
 An open-source, local-first personal AI agent whose memory, authority, runtime, and continuity stay yours.
 
-A memory it curates in files you own · 16 model providers, cloud or your own hardware · actions reviewed against your rules · Regent keeps every project moving while you're away · desktop, phone, editor, and the chat apps you already use
+A memory it curates in files you own · 26 model providers and coding plans, cloud or your own hardware · actions reviewed against your rules · Regent keeps every project moving while you're away · desktop, phone, editor, and the chat apps you already use
 
 [![Version](https://badgen.net/github/release/cyzus/suzent?label=version)](https://github.com/cyzus/suzent/releases) [![Stars](https://badgen.net/github/stars/cyzus/suzent)](https://github.com/cyzus/suzent/stargazers) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
@@ -151,9 +151,10 @@ Models are engines, not identities. Add as many providers as you like, pick a mo
 |---|---|
 | **Frontier labs** | [OpenAI](docs/04-models/cloud/openai.md) (also Azure OpenAI) · [ChatGPT Subscription](docs/04-models/cloud/chatgpt-subscription.md) (sign in with your ChatGPT plan, no API key) · [Anthropic Claude](docs/04-models/cloud/anthropic.md) · [Google Gemini](docs/04-models/cloud/gemini.md) · [xAI Grok](docs/04-models/cloud/xai.md) |
 | **Open-weight labs** | [DeepSeek](docs/04-models/cloud/deepseek.md) · [Qwen (DashScope)](docs/04-models/cloud/dashscope.md) · [Kimi (Moonshot)](docs/04-models/cloud/moonshot.md) · [GLM (Zhipu AI)](docs/04-models/cloud/zhipu.md) · [MiniMax](docs/04-models/cloud/minimax.md) · [Xiaomi MiMo](docs/04-models/cloud/xiaomi-mimo.md) |
-| **Gateways** | [OpenRouter](docs/04-models/cloud/openrouter.md) (hundreds of models, one key) · [LiteLLM Proxy](docs/04-models/local/litellm.md) |
+| **Coding & token plans** | [Kimi Code](docs/04-models/cloud/kimi-code.md) · [Bailian Plan](docs/04-models/cloud/bailian-plan.md) · [Tencent Cloud](docs/04-models/cloud/tencent.md) · [Volcengine Ark](docs/04-models/cloud/volcengine.md) · [StepFun](docs/04-models/cloud/stepfun.md) · [Baidu Qianfan](docs/04-models/cloud/qianfan.md) · [Huawei Cloud MaaS](docs/04-models/cloud/huaweicloud.md), plus the GLM Coding Plan and MiMo Token Plan on their cards above |
+| **Gateways & subscriptions** | [OpenRouter](docs/04-models/cloud/openrouter.md) (hundreds of models, one key) · [OpenCode Go](docs/04-models/cloud/opencode-go.md) · [ClinePass](docs/04-models/cloud/clinepass.md) · [Ollama Cloud](docs/04-models/cloud/ollama-cloud.md) · [LiteLLM Proxy](docs/04-models/local/litellm.md) |
 | **Your own hardware** | [Ollama](docs/04-models/local/ollama.md) · [vLLM](docs/04-models/local/vllm.md) · [SGLang](docs/04-models/local/sglang.md) |
-| **Anything else** | Add a custom provider for any OpenAI-compatible endpoint, or a custom model ID on any card above. |
+| **Anything else** | Add a custom provider for any OpenAI- or Anthropic-compatible endpoint, or a custom model ID on any card above. |
 
 Keys live in your operating system's keychain, never in plain-text config. [Model roles](docs/04-models/model-roles.md) let a small, cheap model handle titles, memory extraction, and permission review while your best model holds the conversation, and every role can carry backup models that take over when the first one fails.
 
@@ -247,7 +248,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 | [What is Suzent?](docs/01-getting-started/intro.md) | What a sovereign agent is and what Suzent can do |
 | [Quickstart](docs/01-getting-started/quickstart.md) | Install, connect a model, and start chatting |
 | [Regent](docs/02-using/regent.md) | The one chat that watches every project and follows up while you're away |
-| [Models & Providers](docs/04-models/README.md) | All 16 providers, custom endpoints, and model roles |
+| [Models & Providers](docs/04-models/README.md) | All 26 providers, custom endpoints, and model roles |
 | [Memory](docs/03-features/memory/README.md) | What the agent remembers, where it lives, and how to edit it |
 | [Notebook](docs/03-features/memory/llm-wiki.md) | Agent-maintained, Obsidian-compatible knowledge vault |
 | [Tools](docs/03-features/tools/README.md) | Everything the agent can do, and how to turn it on or off |

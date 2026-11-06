@@ -9,7 +9,9 @@ description: Add chat apps, tools, slash commands and skills with plugins, and k
 A plugin adds something to Suzent and brings along whatever it needs to run.
 Some plugins only bring packages: each chat app (Telegram, Slack, Discord and
 Feishu/Lark) is its own built-in plugin, so you only download the packages for
-the apps you use. Others add tools, slash commands and skills of their own.
+the apps you use. The built-in **Camera** plugin lets the agent take photos
+with this computer's webcam; it's off until you install it. Others add tools,
+slash commands and skills of their own.
 
 Suzent remembers which plugins you installed, so an upgrade keeps them, and a
 plugin you removed stays removed. Your setup stays yours: nothing is turned on

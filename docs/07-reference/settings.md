@@ -20,7 +20,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](../03-features/automation.md) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](../05-chat-apps/README.md) |
 | **Services** | Connect Notion, Linear, GitHub, Cloudflare and Stripe, and add your own MCP servers. | [Services](../03-features/plugins.md#notion-linear-github-cloudflare-and-stripe), [MCP servers](../03-features/tools/mcp.md) |
-| **Plugins** | Install or remove plugins that add tools, commands and skills. | [Plugins](../03-features/plugins.md) |
+| **Plugins** | Install or remove plugins for chat apps, the webcam, and extra tools, commands and skills. | [Plugins](../03-features/plugins.md) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](../03-features/tools/browser.md) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](../02-using/conversations.md#bring-in-another-coding-agent) |
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](../03-features/nodes.md) |
@@ -50,7 +50,7 @@ there:
 ## Notifications
 
 When a chat finishes while you're looking elsewhere, Suzent can tell you.
-Under **When to notify**, choose **Always**, **Only in background** (only when
+Under **Task completion notifications**, choose **Always**, **Only in background** (only when
 the Suzent window isn't in front), or **Never**. Under **Sound**, choose
 **Chime**, **Ping**, **Bell**, **Resonance**, **Success**, or **None**.
 **Resonance** uses a different cue depending on how the reply ended, for

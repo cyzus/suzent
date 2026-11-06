@@ -49,10 +49,10 @@ never on private or incognito tabs, and only on the one tab the agent has
 selected. It never reads what you've typed into form fields. Chrome or Edge
 shows a banner while the agent is attached; closing that banner disconnects it.
 
-**To stop,** click **Disconnect and forget** in Settings, or Disconnect in the
+**To stop,** click **Forget connection** in Settings, or Disconnect in the
 extension's popup. Your tabs stay open.
 
-If your organization blocks the Web Store, expand **Setup help & options**,
+If your organization blocks the Web Store, expand **Manual installation**,
 click **Download extension**, unzip it into a permanent folder, and load it
 from your browser's Extensions page with Developer mode on (**Load unpacked**).
 

@@ -151,7 +151,7 @@ fixed port. There is no Suzent-run relay; you use your own.
    if you set one, its registration key.
 2. In Suzent, open **Settings → Devices → Relay**, enter the address and the key,
    and turn it on. The badge shows **Connected** once Suzent reaches it.
-3. Create a webhook task, or choose **New webhook URL** on an existing one. Suzent
+3. Create a webhook task, or choose **Regenerate URL** on an existing one. Suzent
    now shows two URLs: one for this machine and one through the relay. Give the
    relay URL to GitHub or any other service.
 

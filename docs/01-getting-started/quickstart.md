@@ -106,7 +106,7 @@ This starts the backend and opens the desktop interface.
 ## 3. Add Your Model Provider
 
 On a new installation with no configured model provider, the chat screen opens a setup
-flow. You can also open **Run setup again** from **Settings → About**. The standalone
+flow. You can also open **Setup guide** from **Settings → About**. The standalone
 `/setup` page hides the application sidebars while you configure your agent:
 
 1. Connect a provider, enable your models, and choose a default chat model.
@@ -129,26 +129,26 @@ Once the UI is open, go to **Settings → Providers** to configure your API key.
 
 **Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key (starts with `sk-...`)
 
-In Settings, open the OpenAI card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
+In Settings, find **OpenAI** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → Create Key (starts with `sk-ant-...`)
 
-In Settings, open the Anthropic card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
+In Settings, find **Anthropic** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key (starts with `AIza...`)
 
-In Settings, open the Google Gemini card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
+In Settings, find **Google Gemini** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
 
 </TabItem>
 </Tabs>
 
-Using DeepSeek, Grok, OpenRouter, Ollama, your ChatGPT subscription, or another provider? See [Models & Providers](../04-models/README.md).
+Using DeepSeek, Qwen, Kimi, GLM, a coding plan, OpenRouter, Ollama, your ChatGPT subscription, or another provider? See [Models & Providers](../04-models/README.md).
 
 ---
 

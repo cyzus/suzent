@@ -60,14 +60,14 @@ reference image; your video model must support this.
 Choose how the agent speaks in **Settings → Voice & audio**, under
 **Speech engine**:
 
-- **System speech (no API)** uses the voices installed on the device playing the
+- **Device voices** uses the voices installed on the device playing the
   message. No model or API key is needed, but the audio can't be saved, and it
   only plays in the Suzent chat window, not in [chat apps](../../05-chat-apps/README.md).
-- **API speech** uses your **TTS** model and saves audio you can replay. Pick the
+- **AI speech** uses your **TTS** model and saves audio you can replay. Pick the
   model under **Speech model** on the same page. Voices, formats, speed, and
   style instructions depend on the provider.
 
-New speech plays automatically. Turn off **Automatically play new tool speech**
+New speech plays automatically. Turn off **Auto-play speech**
 if you prefer to press **Play** yourself.
 
 The **Creative** group also holds the tool for sending messages through your
