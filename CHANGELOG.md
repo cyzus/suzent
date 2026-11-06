@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
 - Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
 - Rename paired phones under Mobile access so each one is easy to recognize, even iPhones that only report "iPhone".
+- Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
 - Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
 
