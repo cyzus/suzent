@@ -199,6 +199,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     private fun text(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 
+    private fun relayClient(route: RelayRoute, token: String, probeOnly: Boolean = false) =
+        BackendClient(Backend(RelayRoute.placeholder), token, probeOnly, relay = route)
+
     init {
         AttachmentFiles.clear(application)
         try {
@@ -283,13 +286,26 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingStatus = text(R.string.pairing_recognized_connecting)
         pairingJob = viewModelScope.launch {
             try {
-                val selected = resolvePairingInvitation(invitation) { origin ->
-                    val trust = invitation.tls ?: invitation.tlsFingerprint?.let { DeviceTrust.fetch(origin, it) }
-                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = trust)
+                val selected = try {
+                    resolvePairingInvitation(invitation) { origin ->
+                        val trust = invitation.tls ?: invitation.tlsFingerprint?.let { DeviceTrust.fetch(origin, it) }
+                        val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = trust)
+                        try {
+                            probe.capabilities()
+                            trust to if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
+                        } finally { probe.close() }
+                    }
+                } catch (failure: PairingFailure) {
+                    // No direct address answered: try the desktop's relay, if it offered one.
+                    val relay = invitation.relay
+                    if (relay == null || failure.reason == PairingFailure.Reason.EXPIRED) throw failure
+                    val probe = relayClient(relay, "", probeOnly = true)
                     try {
                         probe.capabilities()
-                        trust to if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
-                    } finally { probe.close() }
+                        invitation.copy(viaRelay = true) to (invitation.tls to if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null)
+                    } catch (error: CancellationException) { throw error }
+                    catch (_: Exception) { throw failure }
+                    finally { probe.close() }
                 }
                 if (current == generation) { pairingPreview = selected.second.second; pairingInvitation = selected.first.copy(tls = selected.second.first) }
             } catch (failure: CancellationException) { throw failure }
@@ -317,7 +333,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val current = generation
         pairingStatus = text(R.string.pairing_sending)
         pairingJob = viewModelScope.launch {
-            val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "", deviceTrust = invitation.tls)
+            val bootstrap = invitation.relay?.takeIf { invitation.viaRelay }?.let { relayClient(it, "") }
+                ?: BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "", deviceTrust = invitation.tls)
+            val bootstrapOrigin = if (invitation.viaRelay) invitation.origin else bootstrap.backend.origin.toString()
             val target = if (repairActive) desktops.active else desktops.matching(invitation)
             val known = target?.connection
             val desktopName = pairingPreview?.desktopName
@@ -330,7 +348,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val claim = bootstrap.claim(invitation, deviceName,
                     confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
                     repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
-                    rotate = known?.origin != bootstrap.backend.origin.toString(),
+                    rotate = known?.origin != bootstrapOrigin,
                     installationId = store.installationId().takeIf { bootstrap.supportsInstallationId })
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
@@ -345,13 +363,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         "denied" -> throw PairingFailure(PairingFailure.Reason.DENIED)
                         "approved" -> {
                             val reused = result.optBoolean("reused")
-                            require(!reused || (recognized && known?.origin == bootstrap.backend.origin.toString()))
+                            require(!reused || (recognized && known?.origin == bootstrapOrigin))
                             val credential = if (reused) requireNotNull(previous) else result.getString("token")
                             require(credential.isNotEmpty())
                             val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
                                 credential, nodeToken = if (recognized) known?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
                                 previousOrigin = if (recognized && !reused) known?.origin.orEmpty() else "",
-                                origins = invitation.origins, tls = invitation.tls, previousTLS = known?.tls, previousOrigins = known?.origins.orEmpty())
+                                origins = invitation.origins, tls = invitation.tls, previousTLS = known?.tls, previousOrigins = known?.origins.orEmpty(),
+                                relay = invitation.relay ?: known?.relay)
                             val name = desktopName ?: target?.name ?: defaultDesktopName(saved.origin)
                             val desktop = target?.copy(name = name, connection = saved) ?: SavedDesktop.create(name, saved)
                             var updated = desktops.upserting(desktop)
@@ -398,6 +417,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun activate(id: String) {
         var saved = requireNotNull(desktops.desktop(id)).connection
+        var viaRelay = false
         run {
             var reachable: String? = null
             for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
@@ -408,10 +428,21 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 catch (_: Exception) { }
                 finally { probe.close() }
             }
-            saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
+            // Direct addresses always win; the relay is only the way in when none answers.
+            val relay = saved.relay
+            if (reachable == null && relay != null) {
+                currentCoroutineContext().ensureActive()
+                val probe = relayClient(relay, "", probeOnly = true)
+                try { probe.capabilities(); viaRelay = true }
+                catch (failure: CancellationException) { throw failure }
+                catch (_: Exception) { }
+                finally { probe.close() }
+            }
+            if (!viaRelay) saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
         }
         require(saved.clientProtocol == 1)
-        val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
+        val candidate = saved.relay?.takeIf { viaRelay }?.let { relayClient(it, saved.hostToken) }
+            ?: BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
             if (saved.previousToken.isNotEmpty()) {
                 try { candidate.confirmPairing() }
@@ -439,6 +470,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             currentCoroutineContext().ensureActive()
             if (desktops.desktop(id) == null) throw CancellationException("desktop forgotten")
             if (id != desktops.activeId || connected) resetSession()
+            // A desktop that switched its relay on (or reset it) since pairing hands over the new route.
+            if (candidate.sessionRelay != null && candidate.sessionRelay != saved.relay) saved = saved.copy(relay = candidate.sessionRelay)
             var updated = desktops.updating(id, saved).copy(activeId = id)
             session.desktopName?.takeIf { it.isNotBlank() }?.let { updated = updated.renaming(id, it) }
             persist(updated); origin = saved.origin; canReconnect = true

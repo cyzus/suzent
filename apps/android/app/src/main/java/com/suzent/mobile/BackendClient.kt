@@ -27,15 +27,29 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) : MobileClient {
-    init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
+/**
+ * Talks to one desktop, directly at [backend] or, when [relay] is set, through an end-to-end
+ * encrypted tunnel over the user's relay. A relay-backed client is given [RelayRoute.placeholder]
+ * as its backend; none of its requests reach the network as plain HTTP.
+ */
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null, val relay: RelayRoute? = null) : MobileClient {
+    init {
+        require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" }
+        require(relay == null || (deviceTrust == null && backend.origin == RelayRoute.placeholder)) { "Relay clients use the relay placeholder" }
+    }
+    private val tunnel: RelayTunnel? = relay?.let {
+        RelayTunnel(it, OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS).build())
+    }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         // Mutations and voice handshakes must not inherit idle sockets from polling.
         // Keep reads pooled; never replay a non-idempotent write to recover a socket.
         .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS)
-        .apply { deviceTrust?.configure(this) }.build()
+        // A relay probe also dials the relay and runs a handshake, so it gets longer.
+        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (!probeOnly) 0 else if (relay != null) 10 else 3, TimeUnit.SECONDS)
+        .apply { deviceTrust?.configure(this) }
+        .apply { tunnel?.let { addInterceptor(RelayInterceptor(it)) } }.build()
     private val reads = http.newBuilder().connectionPool(ConnectionPool()).retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 
@@ -99,10 +113,15 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
         val url = backend.endpoint("mobile/client/voice").newBuilder().addQueryParameter("chat_id", chatId).build()
-        return http.newWebSocket(request("mobile/client/voice").newBuilder().url(url).build(), listener)
+        val voice = request("mobile/client/voice").newBuilder().url(url).build()
+        return tunnel?.webSocket(voice, listener) ?: http.newWebSocket(voice, listener)
     }
 
     private var supportsPagination = false
+
+    /** The relay route the desktop offered in its session, if it has a relay switched on. */
+    var sessionRelay: RelayRoute? = null
+        private set
 
     override suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
@@ -111,6 +130,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
+        sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
     }
@@ -262,8 +282,10 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     private class StreamRejected(message: String) : IOException(message)
 
-    fun node(listener: WebSocketListener): WebSocket = http.newWebSocket(
-        Request.Builder().url(backend.endpoint("ws/node")).build(), listener)
+    fun node(listener: WebSocketListener): WebSocket {
+        val request = Request.Builder().url(backend.endpoint("ws/node")).build()
+        return tunnel?.webSocket(request, listener) ?: http.newWebSocket(request, listener)
+    }
 
     fun cancelNode(socket: WebSocket) {
         http.dispatcher.executorService.execute { socket.cancel() }
@@ -276,6 +298,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override fun close() {
         // TLS shutdown can write close_notify, including when evicting an idle socket.
         http.dispatcher.executorService.execute {
+            tunnel?.close()
             http.dispatcher.cancelAll()
             http.connectionPool.evictAll()
             reads.connectionPool.evictAll()

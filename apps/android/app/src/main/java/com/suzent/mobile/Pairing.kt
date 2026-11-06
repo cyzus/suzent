@@ -38,7 +38,7 @@ fun validateMobileCapabilities(json: JSONObject, pairing: Boolean = false) {
     }
 }
 
-data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false, val tls: DeviceTrust? = null, val tlsFingerprint: String? = null) {
+data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false, val tls: DeviceTrust? = null, val tlsFingerprint: String? = null, val relay: RelayRoute? = null, val viaRelay: Boolean = false) {
     val secure: Boolean get() = tls != null || tlsFingerprint != null
 
     companion object {
@@ -70,7 +70,8 @@ data class PairingInvitation(val origin: String, val id: String, val secret: Str
                 val id = json.getString("pairing_id")
                 val secret = json.getString("invitation")
                 require(id.matches(Regex("[a-f0-9]{32}")) && secret.matches(Regex("[A-Za-z0-9_-]{40,64}")))
-                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone", tls, fingerprint)
+                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone", tls, fingerprint,
+                    RelayRoute.parse(json.optJSONObject("relay"), allowHttp))
             } catch (failure: PairingFailure) { throw failure }
             catch (_: Exception) { throw PairingFailure(PairingFailure.Reason.INVALID) }
         }
