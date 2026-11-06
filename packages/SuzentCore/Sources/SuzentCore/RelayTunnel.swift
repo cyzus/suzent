@@ -133,7 +133,11 @@ public final class RelayTunnel: @unchecked Sendable {
     public convenience init(route: RelayRoute) throws {
         let session = URLSession(configuration: .ephemeral)
         guard let url = route.socketURL else { throw ClientError.invalidAddress }
-        try self.init(route: route) { WebSocketTransport(task: session.webSocketTask(with: url)) }
+        try self.init(route: route) {
+            let task = session.webSocketTask(with: url)
+            task.resume()
+            return WebSocketTransport(task: task)
+        }
     }
 
     init(route: RelayRoute, dialer: @escaping @Sendable () -> RelayTransport) throws {
