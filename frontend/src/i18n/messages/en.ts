@@ -1042,6 +1042,13 @@ export const en = {
       createToken: 'Create a token',
       tokenHint:
         'Give the token only the access you want the agent to have. It is kept in your system keychain and never shown to the agent.',
+      installBinary: 'Install {name}',
+      binaryReady: '{name} is ready',
+      binaryMissing: '{name} is not installed yet. The plugin needs it on this computer.',
+      binaryUnsupported: '{name} has no build for this computer.',
+      confirmBinary:
+        'Suzent will download {name} {version} (the npm package {package}), check it against the SHA-256 pinned in this plugin, and keep it in its own folder. In China mode it downloads from npmmirror first.',
+      confirmBinaryQuestion: 'Install {name} now?',
     },
     acp: {
       title: 'ACP Agents',

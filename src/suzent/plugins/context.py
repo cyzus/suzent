@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from suzent.logger import get_logger
+from suzent.plugins.binaries import PluginBinary
 from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import PluginManifest
 from suzent.tools.base import Tool
@@ -47,6 +48,17 @@ class PluginContext:
         if not tool_cls.name or not tool_cls.tool_name:
             raise ValueError(f"{tool_cls.__name__} must set name and tool_name")
         self.tool_classes.append(tool_cls)
+
+    def binary(self, name: str) -> PluginBinary:
+        """A handle on a program declared under ``binaries`` in ``plugin.yaml``.
+
+        Tools call ``locate()`` on it; installing is left to the user, from
+        the plugins page or ``suzent plugin install``.
+        """
+        for spec in self.manifest.binaries:
+            if spec.name == name:
+                return PluginBinary(self.id, spec)
+        raise KeyError(f"plugin.yaml declares no binary named {name!r}")
 
     def register_skills(self, path: str | Path) -> None:
         """Add a directory of skill folders (each holding a SKILL.md).

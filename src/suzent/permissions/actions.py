@@ -78,6 +78,13 @@ def _rule_update(
     )
 
 
+def _tool_remember_as(tool_name: str, args: dict[str, Any]):
+    from suzent.tools.registry import get_tool_class
+
+    tool = get_tool_class(tool_name)
+    return tool.remember_as(args) if tool is not None else None
+
+
 def build_approval_decision(
     tool_name: str,
     args: dict[str, Any] | None,
@@ -111,6 +118,7 @@ def build_approval_decision(
     # with one choice; fall back to the exact command only when no stable prefix
     # can be derived. This keeps the prompt to at most one session + one global
     # remember option instead of offering both prefix and exact variants.
+    remember = None if is_shell else _tool_remember_as(tool_name, args)
     if is_shell_command:
         command = str(args.get("content") or args.get("command") or "").strip()
         prefix = derive_command_prefix(command)
@@ -122,6 +130,15 @@ def build_approval_decision(
             matcher = {"type": "exact_input", "value": {"command": command}}
             session_label = "Allow this command for session"
             global_label = "Always allow this command"
+    elif remember is not None and remember.match is None:
+        rememberable = False
+        matcher = {"type": "all"}
+        session_label = "Always allow for session"
+        global_label = "Always allow globally"
+    elif remember is not None:
+        matcher = {"type": "exact_input", "value": dict(remember.match)}
+        session_label = f"Allow {remember.label} for session"
+        global_label = f"Always allow {remember.label}"
     else:
         matcher = {"type": "all"}
         session_label = "Always allow for session"

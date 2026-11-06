@@ -701,6 +701,10 @@ export const zhCN = {
         interaction: { name: '交互', description: '向用户提问，并在对话中渲染界面。' },
         creative: { name: '创作', description: '生成、分析、朗读或分享多媒体及社交内容。' },
         'memory-recall': { name: '记忆与回忆', description: '搜索长期记忆并查找相关历史会话。' },
+        desktop: {
+          name: '桌面',
+          description: '通过系统辅助功能读取并操作这台电脑上的原生应用。',
+        },
       },
       tools: {
         SkillTool: {
@@ -798,6 +802,10 @@ export const zhCN = {
         SocialMessageTool: {
           name: '社交消息',
           description: '经审批后通过已配置的社交渠道发送消息。',
+        },
+        DesktopTool: {
+          name: '桌面操作',
+          description: '读取并操作本机桌面应用。只读操作直接运行，会改变桌面的操作需要批准。',
         },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
         MemoryUpdateTool: { name: '更新记忆', description: '按用户要求记住、撤回或更正一条记忆。' },
@@ -1112,6 +1120,13 @@ export const zhCN = {
       saveToken: '保存',
       createToken: '创建令牌',
       tokenHint: '令牌只给 agent 需要的权限。它保存在系统钥匙串里，agent 看不到。',
+      installBinary: '安装 {name}',
+      binaryReady: '{name} 已就绪',
+      binaryMissing: '尚未安装 {name}。这个插件需要在这台电脑上使用它。',
+      binaryUnsupported: '{name} 没有适用于这台电脑的版本。',
+      confirmBinary:
+        'Suzent 会下载 {name} {version}（npm 包 {package}），用插件里固定的 SHA-256 核对，再放到它自己的文件夹里。开启国内镜像时优先从 npmmirror 下载。',
+      confirmBinaryQuestion: '现在安装 {name}？',
     },
     acp: {
       title: 'ACP 智能体',

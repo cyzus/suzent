@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree."
+}

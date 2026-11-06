@@ -14,6 +14,8 @@ from suzent.permissions.models import (
     PermissionMode,
 )
 from suzent.permissions.rules import parse_rules
+from suzent.tools import registry
+from suzent.tools.base import RememberAs, Tool
 
 
 class Resolver:
@@ -593,3 +595,139 @@ async def test_auto_review_ignores_a_brief_not_yet_delivered(
         )
         == ""
     )
+
+
+class _PickyTool(Tool):
+    """A plugin-style tool that classifies its own calls."""
+
+    name = "PickyTool"
+    tool_name = "picky"
+    requires_approval = True
+
+    @classmethod
+    def is_readonly_call(cls, args: dict) -> bool:
+        return args.get("command") == "look"
+
+    @classmethod
+    def invalid_call_reason(cls, args: dict) -> str | None:
+        if args.get("command") in {"look", "poke", "prod", None}:
+            return None
+        return f"unknown command {args.get('command')!r}"
+
+    @classmethod
+    def remember_as(cls, args: dict) -> RememberAs:
+        command = args.get("command")
+        if not command:
+            return RememberAs(None)
+        return RememberAs({"command": command}, f"picky {command}")
+
+
+@pytest.fixture
+def picky(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = registry.get_tool_class
+    monkeypatch.setattr(
+        registry,
+        "get_tool_class",
+        lambda name: _PickyTool if name in {"picky", "PickyTool"} else real(name),
+    )
+
+
+def _picky(command: str | None) -> ToolPermissionRequest:
+    return ToolPermissionRequest(
+        "picky", {} if command is None else {"command": command}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_tool_can_mark_a_call_read_only(tmp_path: Path, picky) -> None:
+    decision = await PermissionEngine().evaluate(_picky("look"), context(tmp_path))
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "readonly_operation"
+
+
+@pytest.mark.asyncio
+async def test_a_tool_chooses_what_always_allow_remembers(
+    tmp_path: Path, picky
+) -> None:
+    decision = await PermissionEngine().evaluate(_picky("poke"), context(tmp_path))
+
+    assert decision.behavior == CommandDecision.ASK
+    remembered = next(
+        action for action in decision.actions if action.id == "allow_session"
+    )
+    assert remembered.label == "Allow picky poke for session"
+    assert remembered.permission_updates[0].payload["matcher"] == {
+        "type": "exact_input",
+        "value": {"command": "poke"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_call_without_a_remember_key_is_allowed_once_only(
+    tmp_path: Path, picky
+) -> None:
+    decision = await PermissionEngine().evaluate(_picky(None), context(tmp_path))
+
+    assert decision.behavior == CommandDecision.ASK
+    assert {action.id for action in decision.actions} == {"allow_once", "reject"}
+
+
+@pytest.mark.asyncio
+async def test_remembering_one_command_does_not_allow_another(
+    tmp_path: Path, picky
+) -> None:
+    rules = [
+        {
+            "tool": "picky",
+            "behavior": "allow",
+            "matcher": {"type": "exact_input", "value": {"command": "poke"}},
+        }
+    ]
+    poke = await PermissionEngine().evaluate(
+        _picky("poke"), context(tmp_path, permission_rules=rules)
+    )
+    prod = await PermissionEngine().evaluate(
+        _picky("prod"), context(tmp_path, permission_rules=rules)
+    )
+
+    assert poke.behavior == CommandDecision.ALLOW
+    assert poke.reason_code == "normalized_rule_allow"
+    assert prod.behavior == CommandDecision.ASK
+
+
+@pytest.mark.asyncio
+async def test_tool_read_only_calls_follow_the_permission_modes(
+    tmp_path: Path, picky
+) -> None:
+    full = await PermissionEngine().evaluate(
+        _picky("poke"), context(tmp_path, mode=PermissionMode.FULL_ACCESS)
+    )
+    strict = await PermissionEngine().evaluate(
+        _picky("poke"), context(tmp_path, mode=PermissionMode.STRICT_READONLY)
+    )
+    plan_look = await PermissionEngine().evaluate(
+        _picky("look"), context(tmp_path, mode=PermissionMode.PLAN)
+    )
+    plan_poke = await PermissionEngine().evaluate(
+        _picky("poke"), context(tmp_path, mode=PermissionMode.PLAN)
+    )
+
+    assert full.behavior == CommandDecision.ALLOW
+    assert strict.behavior == CommandDecision.DENY
+    assert strict.reason_code == "strict_readonly"
+    assert plan_look.behavior == CommandDecision.ALLOW
+    assert plan_poke.behavior == CommandDecision.DENY
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_tool_call_is_refused_without_a_prompt(
+    tmp_path: Path, picky
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        _picky("smash"), context(tmp_path, mode=PermissionMode.FULL_ACCESS)
+    )
+
+    assert decision.behavior == CommandDecision.DENY
+    assert decision.reason_code == "invalid_tool_call"
+    assert "smash" in decision.reason

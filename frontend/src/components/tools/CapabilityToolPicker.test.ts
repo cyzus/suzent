@@ -95,6 +95,7 @@ const translatedCapabilityIds = [
   'interaction',
   'creative',
   'memory-recall',
+  'desktop',
 ];
 
 const translatedToolIds = [
@@ -126,6 +127,7 @@ const translatedToolIds = [
   'VisualAnalysisTool',
   'SpeakTool',
   'SocialMessageTool',
+  'DesktopTool',
   'MemorySearchTool',
   'MemoryUpdateTool',
   'SessionSearchTool',

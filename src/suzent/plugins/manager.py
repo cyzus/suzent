@@ -21,6 +21,7 @@ from suzent.plugins.enablement import (  # channel_configured is re-exported
     channel_configured,  # noqa: F401
     is_enabled,
 )
+from suzent.plugins import binaries
 from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import (
     MANIFEST_FILENAME,
@@ -109,6 +110,9 @@ class PluginRecord:
             "skillDirs": [str(path) for path in self.skill_dirs],
             "integrations": [i.id for i in self.integrations],
             "icon": self.icon_data_uri(),
+            "binaries": [
+                binaries.status(self.id, spec) for spec in self.manifest.binaries
+            ],
         }
 
 
