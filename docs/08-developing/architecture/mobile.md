@@ -65,6 +65,45 @@ HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
 
+### Several desktops
+
+A phone can hold credentials for several desktops but is connected to one at a
+time. Both platforms store one encrypted record of saved desktops
+(`{activeId, desktops: [{id, name, connection}]}`): a single Keychain item
+(`account "desktops"`) on iOS, the existing Keystore-encrypted preference on
+Android. A record from a single-connection build is read as one active desktop
+and rewritten; on iOS the old `"primary"` item is then deleted. The id is a
+local UUID. The name comes from the pairing preview and is refreshed from the
+optional `desktop_name` in `/mobile/client/session`, falling back to the origin
+host.
+
+Pairing re-pairs the active desktop for **Pair again**. Otherwise it looks for a
+saved desktop that matches the invitation: the same device-CA fingerprint when
+both have one, else any shared normalized origin. Only that desktop's token
+feeds the repair proof, rotation and reuse checks. A match replaces the entry;
+no match adds one. Switching probes and loads the target with the usual
+three-second-per-address and twenty-second limits before it resets any session
+state, so an unreachable desktop leaves the open session untouched. A 401 forgets
+only the desktop that returned it. Node tokens and remembered model choices stay
+per connection. The pure list logic lives in `Desktops.kt` and
+`SuzentCore/SavedDesktops.swift`, with unit tests on both platforms.
+
+Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
+conversation is open. The desktop card at the top of Settings opens the Desktops
+page (switch, swipe to forget, pair another). Tablets keep the split view with
+the settings button in the sidebar. The Chats list shows one of Recent (pinned,
+then the recent page) or Projects at a time, picked with a segmented switch under
+the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
+saved state. On iPad the switch adds Tasks, which replaces the scheduled section,
+and the sidebar can be hidden from its header and shown again from the detail
+toolbar. Android tablets keep the scheduled section below the list.
+
+On phones a header search icon (beside the New conversation icon) opens a separate search page
+(iOS: a `Route.search` pushed under the conversation; Android: a `searching`
+flag that replaces the tab home). Its query survives opening a result, so back
+from that chat returns to the results; Cancel or back from the page clears it.
+Tablets keep the inline sidebar field.
+
 ### iOS
 
 Install full Xcode and XcodeGen. From `apps/ios`, run `xcodegen generate`, open
@@ -87,6 +126,9 @@ needed by `swift test`.
 
 Install JDK 17 and Android SDK 36. Open `apps/android` in Android Studio or run
 `./gradlew :app:assembleDebug :app:testDebugUnitTest`. Android 8/API 26+ is required.
+Debug builds install as Suzent Dev (`com.suzent.mobile.dev`, version name `-dev`), beside a
+Play Store copy they could not replace because they are signed with the local debug key; the dev
+app keeps its own pairing.
 Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disabled.
 
 ### Preview flow
@@ -125,7 +167,7 @@ list so the stop control cannot retain a stale list flag.
    Invoke `device.status` from the desktop to verify the phone role.
 5. Backgrounding disconnects Node. Foregrounding reconnects an enabled Node.
    Disabling Node closes the connection but retains its pairing credential.
-   Forgetting the connection removes local credentials; revoke remotely on desktop.
+   Forgetting the connection asks the desktop to revoke the device, then removes local credentials.
 
 ## Limits
 
@@ -373,9 +415,13 @@ change rotate it while preserving the desktop device entry. The previous token i
 retired after the replacement is saved securely. Failed or interrupted rotation
 retains recovery credentials and can resume on reconnect.
 
-Forgetting the connection or clearing app storage removes that proof. Those phones
-pair as new installations; revoke stale entries explicitly from desktop. Existing
-duplicates are not deleted based on device names.
+Forgetting the connection revokes the device on the desktop when it is reachable,
+then removes that proof. Phones also send a random per-installation ID on claim;
+the desktop stores only its hash. A new grant for a known installation keeps the
+old device ID and stays provisional until the phone confirms it, which retires the
+stale grant. The ID survives forgetting the connection (Android app storage; iOS
+keychain, this device only), but not clearing Android app data. Device names are
+never used to match phones.
 
 ## Mobile versions and CI builds
 
@@ -584,3 +630,31 @@ project counts and pin discovery do not depend on the recent page.
 
 The demo implements the same paging contract locally. Paging, old-title search,
 independent pins, duplicate merges and access-scoped counts have regression tests.
+
+### Voice composer and shared animation
+
+The paired-device `/mobile/client/voice` WebSocket reuses `VoiceBridge` and checks
+conversation access plus send/stop permissions. Native audio capture and playback
+remain in each app's `VoiceSession`; the server's state and working events and the
+microphone level drive the animation.
+
+Desktop and mobile use `frontend/src/lib/voice/voiceCubeRenderer.ts` and
+`voiceCubeSim.ts`. Run `npm run build:mobile-voice` in `frontend/` after changing
+these files. This bundles an offline HTML asset in SuzentCore's resources, which
+both apps already package. `npm run check:mobile-voice` and the frontend test
+check that this asset matches the shared source. The mobile views host only the
+animation in a transparent WebView. The canvas uses explicit positioning because
+a flex-positioned canvas could render pixels without appearing on screen in
+Android WebView. The WebView has no audio, remote assets, or native
+JavaScript bridge; controls, captions, and permissions remain native. Dark mode
+and reduced-motion preferences are passed to the shared renderer.
+
+`ComposerAction` in each client prioritizes cancel/hang-up during a call, so task
+stopping never appears alongside hang-up. Outside calls it shows stop for running
+tasks, progress while busy, send for text/attachments, or voice for an empty
+composer. Voice setup and permission errors
+produce actionable messages instead of a disabled empty-composer button.
+
+Android uses a separate non-pooling transport for mutations and voice handshakes
+so they do not inherit idle sockets from background polling. Read requests keep
+their own connection pool and safe retry policy.

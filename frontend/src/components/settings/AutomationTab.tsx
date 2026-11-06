@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { CheckIcon, PencilIcon, PlayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+  CheckIcon,
+  ClipboardDocumentIcon,
+  LinkIcon,
+  PencilIcon,
+  PlayIcon,
+  TrashIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 
 import { useI18n } from '../../i18n';
 import {
@@ -12,6 +20,9 @@ import {
   updateCronJob,
   deleteCronJob,
   triggerCronJob,
+  regenerateWebhook,
+  type WebhookUrls,
+  webhookUrl,
   fetchCronStatus,
   fetchCronJobRuns,
   fetchHeartbeatGlobalConfig,
@@ -76,6 +87,25 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
   const [editFields, setEditFields] = useState<Partial<CronJob>>({});
 
+  // A webhook URL is returned only by the save that minted it, so it is held
+  // here until the user dismisses it.
+  const [revealedWebhook, setRevealedWebhook] = useState<{
+    jobId: number;
+    urls: { label: string; url: string }[];
+  } | null>(null);
+  const [webhookCopied, setWebhookCopied] = useState<string | null>(null);
+
+  const revealWebhook = (jobId: number, minted: WebhookUrls) => {
+    if (!minted.webhook_path) return;
+    const urls = [
+      { label: t('settings.automation.webhookLocal'), url: webhookUrl(minted.webhook_path) },
+    ];
+    if (minted.webhook_relay_url)
+      urls.push({ label: t('settings.automation.webhookRelay'), url: minted.webhook_relay_url });
+    setRevealedWebhook({ jobId, urls });
+    setWebhookCopied(null);
+  };
+
   // History state
   const [historyJobId, setHistoryJobId] = useState<number | null>(null);
   const [historyRunsByJob, setHistoryRunsByJob] = useState<Record<number, CronRun[]>>({});
@@ -106,6 +136,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   const scheduleIsComplete = (value: ScheduleValue) => {
     if (value.schedule_kind === 'interval') return (value.interval_minutes ?? 0) >= 1;
     if (value.schedule_kind === 'once') return Boolean(value.run_at);
+    if (value.schedule_kind === 'webhook') return true;
     return Boolean(value.cron_expr.trim());
   };
 
@@ -115,7 +146,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     if (!canCreate) return;
     setLoading(true);
     try {
-      await createCronJob({
+      const created = await createCronJob({
         name: name.trim(),
         prompt: prompt.trim(),
         active: isActive,
@@ -139,6 +170,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       setBoundChatId('');
       setQuietWhenNothingToReport(true);
       setShowCreateForm(false);
+      revealWebhook(created.job.id, created);
       await refresh();
     } catch (e: any) {
       alert(e.message || t('settings.automation.failedToCreateJob'));
@@ -174,6 +206,27 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       await refresh();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRegenerateWebhook = async (job: CronJob) => {
+    if (!window.confirm(t('settings.automation.webhookRegenerateConfirm'))) return;
+    setLoading(true);
+    try {
+      revealWebhook(job.id, await regenerateWebhook(job.id));
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyWebhook = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setWebhookCopied(url);
+    } catch (e) {
+      console.error('Failed to copy webhook URL:', e);
     }
   };
 
@@ -221,7 +274,8 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     if (editingJobId === null) return;
     setLoading(true);
     try {
-      await updateCronJob(editingJobId, editFields);
+      const saved = await updateCronJob(editingJobId, editFields);
+      revealWebhook(editingJobId, saved);
       setEditingJobId(null);
       setEditFields({});
       await refresh();
@@ -295,10 +349,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.automation.title')}
-        subtitle={t('settings.automation.subtitle')}
-      />
+      <SettingsHeader title={t('settings.automation.title')} />
 
       {/* Compact status strip: this is a summary, not a full settings section. */}
       <div className="flex items-center gap-3 border-2 border-brutal-black bg-white p-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
@@ -518,7 +569,6 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             </svg>
           }
           title={t('settings.automation.scheduledJobsTitle')}
-          description={t('settings.automation.scheduledJobsDesc')}
         />
 
         {jobs.length === 0 ? (
@@ -671,6 +721,15 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           >
                             <PlayIcon className="h-4 w-4 stroke-2" />
                           </BrutalIconButton>
+                          {job.schedule_kind === 'webhook' && (
+                            <BrutalIconButton
+                              onClick={() => handleRegenerateWebhook(job)}
+                              disabled={loading}
+                              label={t('settings.automation.webhookRegenerate')}
+                            >
+                              <LinkIcon className="h-4 w-4 stroke-2" />
+                            </BrutalIconButton>
+                          )}
                           {!isReadOnly(job) && (
                             <>
                               <BrutalIconButton
@@ -692,6 +751,53 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           )}
                         </div>
                       </div>
+
+                      {revealedWebhook?.jobId === job.id && (
+                        <div className="mt-2 border-2 border-brutal-black bg-brutal-yellow/30 p-3 space-y-2 dark:bg-zinc-900">
+                          <div className="text-xs font-black uppercase">
+                            {t('settings.automation.webhookUrlTitle')}
+                          </div>
+                          {revealedWebhook.urls.map(({ label, url }) => (
+                            <div key={url} className="space-y-1">
+                              {revealedWebhook.urls.length > 1 && (
+                                <div className="text-[11px] font-bold">{label}</div>
+                              )}
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  readOnly
+                                  value={url}
+                                  onFocus={(e) => e.target.select()}
+                                  className="flex-1 min-w-0 bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black px-2 py-1 font-mono text-xs focus:outline-none"
+                                />
+                                <BrutalIconButton
+                                  variant="primary"
+                                  onClick={() => copyWebhook(url)}
+                                  label={
+                                    webhookCopied === url ? t('common.copied') : t('common.copy')
+                                  }
+                                >
+                                  {webhookCopied === url ? (
+                                    <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                                  ) : (
+                                    <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                                  )}
+                                </BrutalIconButton>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex justify-end">
+                            <BrutalIconButton
+                              onClick={() => setRevealedWebhook(null)}
+                              label={t('common.close')}
+                            >
+                              <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+                            </BrutalIconButton>
+                          </div>
+                          <p className="text-[11px] text-neutral-700 dark:text-neutral-300">
+                            {t('settings.automation.webhookUrlOnce')}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Run details */}
                       <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">

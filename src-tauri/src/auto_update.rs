@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::backend;
+use crate::{backend, packaged};
 
 /// A staged release that fails to install this many times is left for the
 /// manual Update button, so a broken release cannot loop on every start.
@@ -65,6 +65,10 @@ fn updater_path() -> PathBuf {
 }
 
 pub fn enabled(root: &Path) -> bool {
+    // Packaged (Store) builds are updated by the Store, never by this updater.
+    if packaged::is_packaged() {
+        return false;
+    }
     let env_off = std::env::var("SUZENT_AUTO_UPDATE")
         .map(|value| {
             matches!(
@@ -77,6 +81,9 @@ pub fn enabled(root: &Path) -> bool {
 }
 
 pub fn set_enabled(root: &Path, enabled: bool) -> Result<(), String> {
+    if packaged::is_packaged() {
+        return Err(packaged::STORE_UPDATES.to_string());
+    }
     let dir = state_dir(root);
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     fs::write(dir.join("auto-update"), if enabled { "on" } else { "off" })

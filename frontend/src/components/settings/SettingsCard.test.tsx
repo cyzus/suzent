@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { SettingsCard, SettingsHelp, SettingsListItem } from './SettingsCard';
+import { SettingsCard, SettingsListItem } from './SettingsCard';
 
 describe('shared settings surfaces', () => {
   it.each([SettingsCard, SettingsListItem])(
@@ -15,11 +15,4 @@ describe('shared settings surfaces', () => {
       expect(html).toContain('Readable content');
     }
   );
-
-  it('keeps shared help collapsed with an accessible summary', () => {
-    const html = renderToStaticMarkup(<SettingsHelp title="Help">Instructions</SettingsHelp>);
-    expect(html).toContain('<summary');
-    expect(html).toContain('Help</summary>');
-    expect(html).not.toMatch(/<details[^>]*\bopen\b/);
-  });
 });

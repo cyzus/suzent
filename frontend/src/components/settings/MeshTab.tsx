@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   addA2AAgent,
@@ -132,6 +133,7 @@ function AnswerPrompt({
 }
 
 export function MeshTab(): React.ReactElement {
+  const { t } = useI18n();
   const [status, setStatus] = useState<A2AStatus | null>(null);
   const [agents, setAgents] = useState<A2AAgent[]>([]);
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
@@ -207,10 +209,7 @@ export function MeshTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title="Mesh"
-        subtitle="Every agent this device can reach — your paired Suzent devices and any external agent that speaks A2A."
-      />
+      <SettingsHeader title={t('settings.categories.mesh')} />
 
       {error && (
         <div className="border-2 border-brutal-red bg-red-50 p-3 text-sm dark:bg-red-900/20">
@@ -242,19 +241,7 @@ export function MeshTab(): React.ReactElement {
           }
         />
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          {status?.enabled ? (
-            <>
-              Published. Any agent that can reach this address can read your card and discover that
-              this device exists — it still needs a grant you approve before it can actually do
-              anything.
-            </>
-          ) : (
-            <>
-              Not published. Your agent card is hidden and the well-known path returns 404, so this
-              device is indistinguishable from one that never spoke A2A. You can still delegate{' '}
-              <em>out</em> to other agents.
-            </>
-          )}
+          {t(status?.enabled ? 'settings.concise.meshPublished' : 'settings.concise.meshHidden')}
         </p>
 
         {status && (
@@ -279,11 +266,7 @@ export function MeshTab(): React.ReactElement {
       {/* ─── Live delegated tasks ───────────────────────────────── */}
       {(liveTasks.length > 0 || settledTasks.length > 0) && (
         <SettingsCard>
-          <SectionCardHeader
-            iconTone="blue"
-            title="Delegated work"
-            description="Tasks you handed to another agent, and what they are doing with them."
-          />
+          <SectionCardHeader iconTone="blue" title="Delegated work" />
           <div className="space-y-3">
             {liveTasks.map((task) => (
               <SettingsListItem key={`${task.agent_id}:${task.task_id}`}>
@@ -360,8 +343,8 @@ export function MeshTab(): React.ReactElement {
       <SettingsCard>
         <SectionCardHeader
           iconTone="blue"
-          title="Agents in your mesh"
-          description="Suzent peers are found automatically on your LAN or tailnet. External agents are added by URL — A2A has no public directory, so someone has to give you the address."
+          title={t('settings.concise.meshMembers')}
+          description={t('settings.concise.meshDiscovery')}
         />
 
         <div className="space-y-3">
@@ -511,21 +494,13 @@ export function MeshTab(): React.ReactElement {
               {busy === 'add' ? 'Fetching card…' : 'Add'}
             </BrutalButton>
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-            We fetch <code>/.well-known/agent-card.json</code> to confirm the address is a real A2A
-            agent before saving it.
-          </p>
         </div>
       </SettingsCard>
 
       {/* ─── Inbound work ───────────────────────────────────────── */}
       {inbound.length > 0 && (
         <SettingsCard>
-          <SectionCardHeader
-            iconTone="green"
-            title="Work given to you"
-            description="Tasks other agents have sent to this device."
-          />
+          <SectionCardHeader iconTone="green" title="Work given to you" />
           <div className="space-y-2">
             {inbound.slice(0, 10).map((task) => (
               <div

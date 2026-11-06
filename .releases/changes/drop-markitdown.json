@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text."
+}

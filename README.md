@@ -38,7 +38,13 @@ It is not a chat window. It remembers what you told it and what it learned, tidi
 
 ## **QUICK START**
 
-SUZENT runs on Windows, macOS, and Linux. Git is the only prerequisite; everything else is installed for you.
+SUZENT runs on Windows, macOS, and Linux.
+
+**Windows: get it from the Microsoft Store** (recommended). No prerequisites; the Store keeps it up to date.
+
+<a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200" /></a>
+
+To install with the terminal or the [desktop installer](https://suzent.com/#download) instead, follow the steps below. Git is the only prerequisite; everything else is installed for you.
 
 **macOS / Linux**
 ```bash

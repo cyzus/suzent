@@ -1,0 +1,7 @@
+id: notion
+name: Notion
+version: 1.0.0
+description: Let the agent search and edit your Notion workspace. Sign in with your Notion account.
+api_version: 2
+icon: icon.svg
+category: service

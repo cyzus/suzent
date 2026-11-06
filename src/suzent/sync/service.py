@@ -147,7 +147,20 @@ class GitHubSyncService:
         provider.refresh_remote()
         remote_ref = f"{profile.remote}/{profile.branch}"
         diff = provider.payload_diff_name_status("HEAD", remote_ref)
-        return plan_incoming("pull", diff)
+        plan = plan_incoming("pull", diff)
+        payload_dir = repo_path / PAYLOAD_DIR_NAME
+        outgoing = plan_outgoing(
+            "pull",
+            self.payload_builder.content_hashes(payload_dir),
+            self.payload_builder.preview_content_hashes(payload_dir),
+        )
+        overlapping = overlapping_paths(merge_plans("pull", [plan, outgoing]))
+        if overlapping:
+            plan.requires_confirmation = True
+            plan.warnings.append(
+                "Pulling replaces unpushed local changes in: " + ", ".join(overlapping)
+            )
+        return plan
 
     async def preview_sync_plan_safe(
         self,
@@ -231,12 +244,25 @@ class GitHubSyncService:
                 raise DestructiveSyncPlanError(plan)
             git_output = await asyncio.to_thread(provider.pull_ff_only)
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
-            restored = await asyncio.to_thread(
-                self.payload_builder.apply_to_local,
-                payload_dir,
-                replace_memory=prefer_cloud,
-            )
-            await asyncio.to_thread(_reload_runtime)
+            # A device that never synced has nothing local worth keeping and
+            # needs the whole brain restored, not just the latest remote diff.
+            if prefer_cloud or profile.last_sync_at is None:
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local,
+                    payload_dir,
+                    replace_memory=prefer_cloud,
+                )
+                await asyncio.to_thread(_reload_runtime)
+            else:
+                # Only write the files the remote changed, so local edits that
+                # were not pushed yet stay in place and go out on the next push.
+                incoming = [change.path for change in plan.files]
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_paths_to_local, payload_dir, incoming
+                )
+                await asyncio.to_thread(_reload_runtime_for_paths, incoming)
+            profile.last_sync_at = datetime.now(timezone.utc)
+            self.save_profile(profile)
             return {
                 "success": True,
                 "git": git_output,
@@ -358,6 +384,23 @@ class GitHubSyncService:
                 profile.id,
                 refresh_remote=False,
             )
+            if (
+                profile.last_sync_at is None
+                and not confirm_destructive
+                and self.payload_builder.content_hashes(payload_dir)
+            ):
+                # A freshly cloned brain has not been restored on this device
+                # yet. Pushing now would overwrite it with this device's
+                # defaults, so wait for a pull first.
+                plan.requires_confirmation = True
+                plan.warnings.append(
+                    "This device has not pulled the synced brain yet; pull first."
+                )
+                return {
+                    "success": False,
+                    "blocked_review_required": True,
+                    "plan": plan.model_dump(mode="json"),
+                }
             overlapping = overlapping_paths(plan)
             if overlapping:
                 plan.requires_confirmation = True
@@ -386,6 +429,8 @@ class GitHubSyncService:
                 )
                 await asyncio.to_thread(_reload_runtime)
                 git_output = "Pulled incoming portable files."
+                if await asyncio.to_thread(provider.commits_ahead):
+                    git_output = await asyncio.to_thread(provider.push_payload)
             elif directions == {"incoming", "outgoing"}:
                 # Each side changed different files. HEAD is the last synced
                 # state, so commit the local side, rebase it onto the remote
@@ -421,6 +466,8 @@ class GitHubSyncService:
                         f"Sync payload contains forbidden paths: {forbidden}"
                     )
                 git_output = await asyncio.to_thread(provider.commit_and_push_payload)
+            elif await asyncio.to_thread(provider.commits_ahead):
+                git_output = await asyncio.to_thread(provider.push_payload)
             else:
                 git_output = "No portable file changes to sync."
 

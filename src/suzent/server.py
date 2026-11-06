@@ -190,7 +190,13 @@ from suzent.routes.ops_routes import (
     restart_ops_service,
     set_ops_service_enabled,
 )
-from suzent.routes.plugin_routes import install_plugin, list_plugins, remove_plugin
+from suzent.routes.plugin_routes import (
+    connect_integration,
+    disconnect_integration,
+    install_plugin,
+    list_plugins,
+    remove_plugin,
+)
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
     get_system_idle,
@@ -261,7 +267,9 @@ from suzent.routes.cron_routes import (
     get_cron_notifications,
     get_cron_job_runs,
     install_cron_presets,
+    regenerate_webhook,
 )
+from suzent.routes.webhook_routes import receive_webhook
 from suzent.routes.heartbeat_routes import (
     get_heartbeat_status,
     enable_heartbeat,
@@ -922,9 +930,9 @@ async def startup():
     # so the launch below is unconditional and outside this try.
     try:
         import json
-        from suzent.config import PROJECT_DIR
+        from suzent.config.paths import user_config_file
 
-        config_path = PROJECT_DIR / "config/social.json"
+        config_path = user_config_file("social.json")
         social_config = {}
 
         if config_path.exists():
@@ -1154,9 +1162,12 @@ async def lifespan(app):
     await startup()
     from suzent.config import USER_CONFIG_DIR
     from suzent.mobile.tls import MobileTLS
+    from suzent.relay.service import RelayService
 
     app.state.mobile_tls = MobileTLS(app, USER_CONFIG_DIR / "mobile_tls")
+    app.state.relay = RelayService(app, USER_CONFIG_DIR / "relay.json")
     try:
+        await app.state.relay.start()
         if (USER_CONFIG_DIR / "mobile_tls/identity.pem").exists():
             try:
                 await app.state.mobile_tls.start()
@@ -1166,6 +1177,7 @@ async def lifespan(app):
                 )
         yield
     finally:
+        await app.state.relay.stop()
         await app.state.mobile_tls.stop()
         await shutdown()
 
@@ -1399,6 +1411,16 @@ app = Starlette(
         Route("/plugins", list_plugins, methods=["GET"]),
         Route("/plugins/{name}/install", install_plugin, methods=["POST"]),
         Route("/plugins/{name}/remove", remove_plugin, methods=["POST"]),
+        Route(
+            "/plugins/{name}/integrations/{integration}/connect",
+            connect_integration,
+            methods=["POST"],
+        ),
+        Route(
+            "/plugins/{name}/integrations/{integration}/disconnect",
+            disconnect_integration,
+            methods=["POST"],
+        ),
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/toggle", toggle_skill, methods=["POST"]),
@@ -1512,6 +1534,12 @@ app = Starlette(
         Route("/cron/status", get_cron_status, methods=["GET"]),
         Route("/cron/notifications", get_cron_notifications, methods=["GET"]),
         Route("/cron/jobs/{job_id:int}/runs", get_cron_job_runs, methods=["GET"]),
+        Route(
+            "/cron/jobs/{job_id:int}/webhook/regenerate",
+            regenerate_webhook,
+            methods=["POST"],
+        ),
+        Route("/hooks/{token}", receive_webhook, methods=["POST"]),
         Route("/heartbeat/status", get_heartbeat_status, methods=["GET"]),
         Route("/heartbeat/enable", enable_heartbeat, methods=["POST"]),
         Route("/heartbeat/disable", disable_heartbeat, methods=["POST"]),

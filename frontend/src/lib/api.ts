@@ -521,6 +521,58 @@ export interface PluginInfo {
   commands: string[];
   missing: string[];
   restartRequired: boolean;
+  integrations?: PluginIntegration[];
+  /** The plugin's logo as a data URI, when it ships one. */
+  icon?: string | null;
+  /** The chat app a chat-app plugin provides; set up under Social Channels. */
+  channel?: string | null;
+  /** `service` for plugins that connect a hosted service. */
+  category?: 'service' | null;
+}
+
+export interface PluginIntegration {
+  id: string;
+  name: string;
+  auth: 'oauth' | 'token';
+  connected: boolean;
+  tokenHelpUrl: string | null;
+  /** Why the last connection failed, e.g. the sign-in expired. */
+  error?: string;
+  signIn?: { state: 'waiting' | 'failed'; error: string | null };
+  /** Set by connect for OAuth: the page to open so the user can sign in. */
+  authorizeUrl?: string | null;
+}
+
+/** Start a sign-in (OAuth) or save a pasted token for a plugin's service. */
+export async function connectPluginIntegration(
+  pluginId: string,
+  integrationId: string,
+  token?: string
+): Promise<PluginIntegration> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/integrations/${encodeURIComponent(integrationId)}/connect`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(token ? { token } : {}),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to connect: ${res.status}`);
+  return data;
+}
+
+export async function disconnectPluginIntegration(
+  pluginId: string,
+  integrationId: string
+): Promise<PluginIntegration> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/integrations/${encodeURIComponent(integrationId)}/disconnect`,
+    { method: 'POST' }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to disconnect: ${res.status}`);
+  return data;
 }
 
 export async function fetchPlugins(): Promise<PluginInfo[]> {
@@ -1388,7 +1440,7 @@ export async function fetchSocialConfig(): Promise<SocialConfig> {
 // Cron Jobs / Automation
 // -----------------------------------------------------------------------------
 
-export type ScheduleKind = 'cron' | 'interval' | 'once';
+export type ScheduleKind = 'cron' | 'interval' | 'once' | 'webhook';
 export type ContextMode = 'isolated' | 'bound';
 export type TaskSource = 'user' | 'agent' | 'preset' | 'heartbeat';
 
@@ -1401,7 +1453,8 @@ export interface CronJob {
   delivery_mode: 'announce' | 'none';
   model_override: string | null;
   retry_count: number;
-  /** How next_run_at is computed: a cron expression, a fixed gap, or a single run_at. */
+  /** How next_run_at is computed: a cron expression, a fixed gap, a single run_at,
+   *  or never, for a webhook task that runs when its URL is called. */
   schedule_kind: ScheduleKind;
   interval_minutes: number | null;
   run_at: string | null;
@@ -1426,6 +1479,23 @@ export interface CronJob {
   unread_count: number;
   created_at: string;
   updated_at: string;
+}
+
+/** A freshly minted webhook: its path on this machine, and its address
+ *  through the relay when one is set up. Never returned again. */
+export interface WebhookUrls {
+  webhook_path?: string;
+  webhook_relay_url?: string;
+}
+
+/** A saved task, plus its webhook URLs when this save minted one. */
+export interface CronJobSaveResult extends WebhookUrls {
+  job: CronJob;
+}
+
+/** The full URL for a webhook path the backend returned. */
+export function webhookUrl(path: string): string {
+  return `${getApiBase() || window.location.origin}${path}`;
 }
 
 export interface CronNotification {
@@ -1481,7 +1551,7 @@ export async function createCronJob(job: {
   chat_id?: string | null;
   context_mode?: ContextMode;
   suppress_ok?: boolean;
-}): Promise<CronJob> {
+}): Promise<CronJobSaveResult> {
   const res = await fetch(`${getApiBase()}/cron/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1491,11 +1561,13 @@ export async function createCronJob(job: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to create cron job');
   }
-  const data = await res.json();
-  return data.job;
+  return res.json();
 }
 
-export async function updateCronJob(jobId: number, updates: Partial<CronJob>): Promise<CronJob> {
+export async function updateCronJob(
+  jobId: number,
+  updates: Partial<CronJob>
+): Promise<CronJobSaveResult> {
   const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -1505,8 +1577,19 @@ export async function updateCronJob(jobId: number, updates: Partial<CronJob>): P
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to update cron job');
   }
-  const data = await res.json();
-  return data.job;
+  return res.json();
+}
+
+/** Issue a new URL for a webhook task; the old one stops working. */
+export async function regenerateWebhook(jobId: number): Promise<WebhookUrls> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}/webhook/regenerate`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to issue a new webhook URL');
+  }
+  return res.json();
 }
 
 export async function deleteCronJob(jobId: number): Promise<void> {

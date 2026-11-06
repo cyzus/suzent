@@ -1,0 +1,38 @@
+{
+  "description": "suzent-e2e/1 handshake and messages with fixed keys. Private keys are big-endian P-256 scalars; points are uncompressed X9.62. Each direction's message counter starts at 0.",
+  "protocol": "suzent-e2e/1",
+  "channel_token": "test-channel-token-0123456789abcdefghijklmn",
+  "desktop_static_private": "2053dbbf6ec7135c4e994d3464c478db6f48d3ca21052c8f44915edc96e02c39",
+  "desktop_static_public": "040031b3f4fb169af4e1ca1ca5e5ca4891eb9462dab53f4dedc360dec746a614402b7aaae3b96907d4af8f822e39839cd8a686aa2c55d3d49eacf6c6c54db05803",
+  "desktop_static_public_b64url": "BAAxs_T7Fpr04cocpeXKSJHrlGLatT9N7cNg3sdGphRAK3qq47lpB9Svj4IuOYOc2KaGqixV09SerPbGxU2wWAM",
+  "phone_ephemeral_private": "6d264925ad9f66f87b2ec6c562c3abeea2f3547fa35022402e6f03cb40a9415f",
+  "desktop_ephemeral_private": "7ef8db61464bb984b73ddb3ae205d06af8d66647408ccce75856fbe4c2349542",
+  "handshake_message_1": "0476fae8d460c16438298e2dc6b02c21f0c1f7faf1f9673f84585925d718989eecd15341a6f7e720aa53c354e0fa7ea825900c3b8eb89466e2370867c735912414",
+  "handshake_message_2": "04580f047f36ce693f3ce29297646ec134744ba0dab9b1db7b7d3f6c5e32a0557fc1e91405261e5ee86ea7844add405abb5b478880d75e07d17e3debb56242fd3bd26fd8a5c57fe8f9277dbaa30d9f4a8c",
+  "transcript": "fcc83a55de0181f7fc30b3834fdc82fef77e26a1bba36c5b10d7167c6d6c26b3",
+  "confirm_key": "5f7267aec124cad2931aa66a2329bdddc098a08c1dbe3327ffe385f2347c76ff",
+  "phone_to_desktop_key": "6cd1fb8312ec7af8db2c03fba7bed780b9c195901482b9e8c032e2530f414d5c",
+  "desktop_to_phone_key": "e7e5b736fab00a00777cca0d0551ff2f41ba78255655a4de63b42f8c013ba574",
+  "messages": [
+    {
+      "direction": "phone_to_desktop",
+      "plaintext": "007b2274223a2268726571222c226964223a2231222c226d6574686f64223a22474554222c2270617468223a222f6d6f62696c652f636c69656e742f73657373696f6e222c2268656164657273223a7b7d7d",
+      "ciphertext": "bb13dc5d320102f74f0ed5ad0df237876b1eb31cfc196e7639817bfe67d5dbaa810acfa7ee08805e0e15e6a90f819e23b982ab92a470060e3fa2a29175581950f3ca882296b7560e4f4cd70ca14cf4b71119576e137231ab05f05b0d3fdfb20a544b"
+    },
+    {
+      "direction": "desktop_to_phone",
+      "plaintext": "007b2274223a2268726573222c226964223a2231222c22737461747573223a3230302c2268656164657273223a7b7d7d",
+      "ciphertext": "0c527e78e8db2c8985954289f1b747aa614391d5b8e92e3b03199e90e1c92675cc9f1e328376697fd3512173439483a3d25c0e5197c078866377507cd8d69c42"
+    },
+    {
+      "direction": "desktop_to_phone",
+      "plaintext": "010101317b226f6b223a747275657d",
+      "ciphertext": "739f9feff225b6482d706d0292526d3de90da4b75442b88b26390a1b30c893"
+    },
+    {
+      "direction": "phone_to_desktop",
+      "plaintext": "007b2274223a226863616e63656c222c226964223a2231227d",
+      "ciphertext": "c0f0437051c931a64ca0e51de97d7038f111db2fd47c49f2bd416c30fdb62dc7a811aac60988fcd0c7"
+    }
+  ]
+}

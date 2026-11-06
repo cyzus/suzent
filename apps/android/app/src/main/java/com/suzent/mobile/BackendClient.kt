@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import okhttp3.ConnectionPool
 import okhttp3.Callback
 import okhttp3.Response
 import okhttp3.Call
@@ -26,13 +27,30 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) : MobileClient {
-    init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
+/**
+ * Talks to one desktop, directly at [backend] or, when [relay] is set, through an end-to-end
+ * encrypted tunnel over the user's relay. A relay-backed client is given [RelayRoute.placeholder]
+ * as its backend; none of its requests reach the network as plain HTTP.
+ */
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null, val relay: RelayRoute? = null) : MobileClient {
+    init {
+        require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" }
+        require(relay == null || (deviceTrust == null && backend.origin == RelayRoute.placeholder)) { "Relay clients use the relay placeholder" }
+    }
+    private val tunnel: RelayTunnel? = relay?.let {
+        RelayTunnel(it, OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS).build())
+    }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        // Mutations and voice handshakes must not inherit idle sockets from polling.
+        // Keep reads pooled; never replay a non-idempotent write to recover a socket.
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS)
-        .apply { deviceTrust?.configure(this) }.build()
-    private val reads = http.newBuilder().retryOnConnectionFailure(true).build()
+        // A relay probe also dials the relay and runs a handshake, so it gets longer.
+        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (!probeOnly) 0 else if (relay != null) 10 else 3, TimeUnit.SECONDS)
+        .apply { deviceTrust?.configure(this) }
+        .apply { tunnel?.let { addInterceptor(RelayInterceptor(it)) } }.build()
+    private val reads = http.newBuilder().connectionPool(ConnectionPool()).retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 
     private fun request(path: String, body: JSONObject? = null): Request = Request.Builder()
@@ -40,8 +58,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         .apply { if (body != null) post(body.toString().toRequestBody("application/json".toMediaType())) }
         .build()
 
-    private suspend fun json(path: String, body: JSONObject? = null): JSONObject =
-        execute(request(path, body), if (body == null) reads else http)
+    // `readOnly` marks a POST that only reads, so a stale pooled connection can be retried safely.
+    private suspend fun json(path: String, body: JSONObject? = null, readOnly: Boolean = body == null): JSONObject =
+        execute(request(path, body), if (readOnly) reads else http)
 
     private suspend fun execute(request: Request, transport: OkHttpClient): JSONObject = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
@@ -68,6 +87,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     class HttpFailure(val code: Int) : IOException("HTTP $code")
 
     var supportsPairingRepair = false
+    var supportsInstallationId = false
         private set
 
     suspend fun capabilities() {
@@ -75,6 +95,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             val value = json("mobile/capabilities")
             validateMobileCapabilities(value, pairing = true)
             supportsPairingRepair = value.optInt("pairing_repair") == 1
+            supportsInstallationId = value.optInt("installation_id") == 1
         }
         catch (failure: HttpFailure) {
             if (failure.code == 404 || failure.code == 405) throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
@@ -87,7 +108,20 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsScheduledTasks = false
         private set
 
+    var supportsVoice = false
+        private set
+
+    fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
+        val url = backend.endpoint("mobile/client/voice").newBuilder().addQueryParameter("chat_id", chatId).build()
+        val voice = request("mobile/client/voice").newBuilder().url(url).build()
+        return tunnel?.webSocket(voice, listener) ?: http.newWebSocket(voice, listener)
+    }
+
     private var supportsPagination = false
+
+    /** The relay route the desktop offered in its session, if it has a relay switched on. */
+    var sessionRelay: RelayRoute? = null
+        private set
 
     override suspend fun session(): ClientDevice {
         val value = json("mobile/client/session")
@@ -95,23 +129,27 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsAttachments = value.optInt("attachments") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
+        supportsVoice = value.optInt("voice") == 1
+        sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
+            .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
     }
     suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
         json("mobile/pairing/preview", JSONObject().put("pairing_id", invitation.id)), invitation)
 
-    suspend fun claim(invitation: PairingInvitation, name: String, confirmPermissions: Boolean = false, repairProof: String? = null, rotate: Boolean = false): JSONObject = json("mobile/pairing/claim",
+    suspend fun claim(invitation: PairingInvitation, name: String, confirmPermissions: Boolean = false, repairProof: String? = null, rotate: Boolean = false, installationId: String? = null): JSONObject = json("mobile/pairing/claim",
         JSONObject().put("pairing_id", invitation.id).put("invitation", invitation.secret)
-            .put("display_name", name).put("platform", "android").apply { if (confirmPermissions) put("confirm_permissions", true); repairProof?.let { put("repair_proof", it); put("rotate", rotate) } })
+            .put("display_name", name).put("platform", "android").apply { if (confirmPermissions) put("confirm_permissions", true); repairProof?.let { put("repair_proof", it); put("rotate", rotate) }; installationId?.let { put("installation_id", it) } })
     suspend fun collect(id: String, pickupSecret: String): JSONObject = json("mobile/pairing/collect",
         JSONObject().put("pairing_id", id).put("pickup_secret", pickupSecret))
 
     suspend fun confirmPairing() { json("mobile/client/pairing/confirm", JSONObject()) }
+    suspend fun forgetPairing() { json("mobile/client/pairing/forget", JSONObject()) }
 
     override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
         if (!supportsPagination) return super.chatPage(query, offset, limit)
         return ChatPage.parse(json("mobile/client/chat-page", JSONObject().put("kind", query.kind)
-            .put("value", query.value).put("offset", offset).put("limit", limit)))
+            .put("value", query.value).put("offset", offset).put("limit", limit), readOnly = true))
     }
     override suspend fun navigationMetadata(): NavigationMetadata {
         if (!supportsPagination) return super.navigationMetadata()
@@ -126,7 +164,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         if (ids.isEmpty()) return emptyList()
         if (!supportsPagination) return super.chatStatuses(ids)
         return ids.chunked(100).flatMap { batch ->
-            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch))).getJSONArray("chats")
+            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch)), readOnly = true).getJSONArray("chats")
             (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
         }
     }
@@ -244,8 +282,10 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     private class StreamRejected(message: String) : IOException(message)
 
-    fun node(listener: WebSocketListener): WebSocket = http.newWebSocket(
-        Request.Builder().url(backend.endpoint("ws/node")).build(), listener)
+    fun node(listener: WebSocketListener): WebSocket {
+        val request = Request.Builder().url(backend.endpoint("ws/node")).build()
+        return tunnel?.webSocket(request, listener) ?: http.newWebSocket(request, listener)
+    }
 
     fun cancelNode(socket: WebSocket) {
         http.dispatcher.executorService.execute { socket.cancel() }
@@ -258,8 +298,10 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override fun close() {
         // TLS shutdown can write close_notify, including when evicting an idle socket.
         http.dispatcher.executorService.execute {
+            tunnel?.close()
             http.dispatcher.cancelAll()
             http.connectionPool.evictAll()
+            reads.connectionPool.evictAll()
         }
     }
 }

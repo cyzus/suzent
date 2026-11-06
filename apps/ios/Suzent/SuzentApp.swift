@@ -10,13 +10,14 @@ import MarkdownUI
         WindowGroup {
             ContentView(model: model)
                 .onChange(of: phase) { _, phase in
+                    if phase == .background { model.voice.stop() }
                     Task { await model.setForeground(phase == .active) }
                 }
         }
     }
 }
 
-private enum Route: Hashable { case conversation, settings }
+private enum Route: Hashable { case search, conversation }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
@@ -102,6 +103,8 @@ private struct ChatSidebarRow: View {
     @State private var renaming = false
     @State private var deleting = false
     @State private var title = ""
+    @State private var swipedPin = 0
+    @State private var swipedDelete = 0
     private var pinned: Bool { chat.pinned == true }
     private var running: Bool { chat.isRunning == true }
     private var swipeable: Bool { enabled && canManage && !running }
@@ -151,18 +154,20 @@ private struct ChatSidebarRow: View {
             .contextMenu { if enabled { menuItems } }
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if swipeable {
-                    Button { manage(pinned ? "unpin" : "pin", nil) } label: {
+                    Button { swipedPin += 1; manage(pinned ? "unpin" : "pin", nil) } label: {
                         Label(pinned ? LocalizedStringKey("Unpin") : LocalizedStringKey("Pin"), systemImage: pinned ? "pin.slash" : "pin")
-                    }.tint(Color(presentation: PresentationTokens.blue))
+                    }.tint(pinned ? Color.suzentMuted : Color(presentation: PresentationTokens.blue))
                 }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if swipeable {
                     // Not role: .destructive, which would animate the row away before the confirmation.
-                    Button { deleting = true } label: { Label("Delete", systemImage: "trash") }
+                    Button { swipedDelete += 1; deleting = true } label: { Label("Delete", systemImage: "trash") }
                         .tint(Color.suzentDanger)
                 }
             }
+            .sensoryFeedback(.success, trigger: swipedPin)
+            .sensoryFeedback(.warning, trigger: swipedDelete)
             .accessibilityActions {
                 if enabled && canManage {
                     Button("Rename") { startRename() }
@@ -216,12 +221,14 @@ struct ContentView: View {
     @State private var showConnectionHelp = false
     @State private var confirmForget = false
     @State private var search = ""
+    /// The phone search page's query; the inline `search` field only exists on wide layouts.
+    @State private var searchText = ""
     @State private var expandedProject: String? = nil
-    @State private var showAllScheduled = false
-    @State private var scheduledExpanded = false
-    @State private var showAllRecent = false
+    @AppStorage("homeListMode") private var listMode: HomeListMode = .recent
     @State private var expandedAgents: Set<String> = []
     @State private var regentPressed = false
+    @State private var tab: HomeTab = .chats
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
@@ -272,24 +279,28 @@ struct ContentView: View {
         Group {
             if !model.connected { unconnected }
             else if wide {
-                NavigationSplitView(columnVisibility: .constant(.all)) {
+                NavigationSplitView(columnVisibility: $sidebarVisibility) {
                     sidebar(home: false)
                         .navigationSplitViewColumnWidth(PresentationTokens.sidebarWidth)
                         .toolbar(removing: .sidebarToggle)
-                        .overlay(alignment: .trailing) {
-                            Rectangle().fill(Color.suzentShadow).frame(width: PresentationTokens.borderWidthHeavy)
-                                .ignoresSafeArea().accessibilityHidden(true)
-                        }
                 } detail: {
                     NavigationStack { detail }
                 }.navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack(path: $path) {
-                    sidebar(home: true)
+                    VStack(spacing: 0) {
+                        switch tab {
+                        case .chats: sidebar(home: true)
+                        case .tasks: tasksTab
+                        case .settings: settingsTab
+                        }
+                        HomeTabBar(selection: $tab)
+                    }.ignoresSafeArea(.keyboard, edges: .bottom)
+                        .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
+                            case .search: searchPage
                             case .conversation: detail
-                            case .settings: settingsPage
                             }
                         }
                 }
@@ -297,7 +308,8 @@ struct ContentView: View {
         }
         .background(Color.suzentBackground)
         .foregroundStyle(Color.suzentText)
-        .overlay(alignment: .bottom) { toastHost(!conversationVisible) }
+        // The compact home keeps its tab bar uncovered.
+        .overlay(alignment: .bottom) { toastHost(!conversationVisible).padding(.bottom, !wide && model.connected && path.isEmpty ? 56 : 0) }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color.suzentText)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
@@ -315,14 +327,24 @@ struct ContentView: View {
             if !connected { showSettings = false }
         }
         .onChange(of: path) { _, path in
-            if !path.contains(.settings) { showSettings = false }
             if path.isEmpty { composing = false; attachmentsExpanded = false }
+            if !path.contains(.search) { searchText = "" }
+        }
+        .onChange(of: model.activeDesktopId) { _, _ in
+            search = ""; searchText = ""; expandedProject = nil; expandedAgents = []
+            if !path.isEmpty { path = [] }
         }
         .onChange(of: model.selected == nil) { _, missing in
-            if missing && path.last == .conversation { path = [] }
+            if missing && path.last == .conversation { path.removeLast() }
         }
         .onChange(of: wide) { _, wide in
-            if !wide { path = showSettings ? [.settings] : model.selected != nil ? [.conversation] : [] }
+            if wide {
+                showSettings = tab == .settings
+            } else {
+                if showSettings { tab = .settings }
+                showSettings = false
+                path = tab != .settings && model.selected != nil ? [.conversation] : []
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
@@ -343,7 +365,7 @@ struct ContentView: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
-            showSettings = false; path = []; showModelPicker = false; showProjectPicker = false; composing = false
+            showSettings = false; path = []; tab = .chats; showModelPicker = false; showProjectPicker = false; composing = false
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
@@ -361,13 +383,13 @@ struct ContentView: View {
     private func showConversation() {
         composing = false
         showSettings = false
-        if !wide && path != [.conversation] { path = [.conversation] }
+        // Opened from the search page, back returns to the results.
+        if !wide && path.last != .conversation { path = path.last == .search ? [.search, .conversation] : [.conversation] }
     }
 
     private func openSettings() {
         composing = false
-        showSettings = true
-        if !wide { path = [.settings] }
+        if wide { showSettings = true } else { tab = .settings; path = [] }
     }
 
     private func newConversation() {
@@ -394,6 +416,12 @@ struct ContentView: View {
                         ReconnectIndicator(active: model.busy)
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
+                        if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
+                                Text(desktop.name).lineLimit(1)
+                            }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                        }
                         Group {
                             if model.busy {
                                 if model.reconnecting { Button("Cancel") { model.cancelReconnect() } }
@@ -402,13 +430,19 @@ struct ContentView: View {
                             .buttonStyle(.plain).frame(minHeight: 44)
                     }
                     Spacer(minLength: 20)
-                    Button("Connection help") { showConnectionHelp = true }
-                        .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    otherDesktops
+                    HStack {
+                        Button("Pair another desktop") {
+                            model.cancelReconnect(); model.beginPairing(repairActive: false); repairScanner = true
+                        }.disabled(model.busy && !model.reconnecting)
+                        Spacer(minLength: 12)
+                        Button("Connection help") { showConnectionHelp = true }
+                    }.suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
                         .frame(minHeight: 44).buttonStyle(.plain)
                 }.padding(.horizontal, 24).padding(.bottom, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .confirmationDialog("Connection help", isPresented: $showConnectionHelp, titleVisibility: .visible) {
-                        Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
+                        Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
                         Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                         Button("Cancel", role: .cancel) { }
                     } message: { Text("Check that Suzent is running on your desktop and both devices are online.") }
@@ -417,6 +451,45 @@ struct ContentView: View {
                 PairingView(model: model)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
+    }
+
+    /// Visible on the reconnect screen so an unreachable default desktop never hides the others behind a menu.
+    @ViewBuilder private var otherDesktops: some View {
+        let others = model.desktops.filter { $0.id != model.activeDesktopId }
+        if !others.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Other desktops").suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                    .padding(.bottom, 6)
+                Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+                ViewThatFits(in: .vertical) {
+                    desktopRows(others)
+                    ScrollView { desktopRows(others) }.frame(maxHeight: 220)
+                }
+            }
+        }
+    }
+
+    private func desktopRows(_ desktops: [SavedDesktop]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(desktops) { desktop in
+                // Tappable while the default desktop is still being tried: the switch abandons that attempt.
+                Button { Task { await model.switchDesktop(desktop.id) } } label: {
+                    HStack(spacing: 12) {
+                        DesktopSwatch(desktop: desktop, size: 12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(desktop.name).suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                                .foregroundStyle(Color.suzentText).lineLimit(1)
+                            Text(displayOrigin(desktop.connection.origin)).font(.caption.monospaced())
+                                .foregroundStyle(Color.suzentMuted).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer(minLength: 8)
+                    }.frame(minHeight: 52).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .disabled(model.busy && !model.reconnecting)
+                    .accessibilityLabel("Switch to \(desktop.name)")
+                Rectangle().fill(Color.suzentOutline.opacity(0.5)).frame(height: PresentationTokens.borderWidth)
+            }
+        }
     }
 
     @ViewBuilder private var detail: some View {
@@ -433,21 +506,26 @@ struct ContentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
+            if wide && sidebarVisibility == .detailOnly {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { sidebarVisibility = .all } } label: {
+                        Image(systemName: "sidebar.left")
+                    }.accessibilityLabel("Show sidebar")
+                }
+            }
             if !showSettings {
                 ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
-                ToolbarItem(placement: .topBarTrailing) {
+                if !sidebarShown { ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newConversation) { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel("New conversation")
                         .disabled(model.busy || model.device?.permissions.createChats != true)
-                }
+                } }
             }
         }
     }
 
-    private var settingsPage: some View {
-        settings.navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
-    }
+    /// The iPad sidebar already carries the wordmark and the create button.
+    private var sidebarShown: Bool { wide && sidebarVisibility != .detailOnly }
 
     @ViewBuilder private var conversationTitle: some View {
         if let chat = model.selected, !chat.id.isEmpty {
@@ -462,27 +540,42 @@ struct ContentView: View {
                         .lineLimit(1).truncationMode(.tail)
                 }.padding(.horizontal, 8).multilineTextAlignment(.center)
             }
-        } else { SuzentWordmark() }
+        } else if !sidebarShown { SuzentWordmark() }
     }
 
     private func sidebar(home: Bool) -> some View {
         let searchQuery = ChatPageQuery("search", value: search.trimmingCharacters(in: .whitespacesAndNewlines))
         let recentRows = sidebarChats(model.pageChats(ChatPageQuery()), search: "", expanded: expandedAgents)
         let pinnedRows = sidebarChats(model.pageChats(ChatPageQuery("pinned")), search: "", expanded: expandedAgents)
+        // Phones keep scheduled tasks in their own tab.
+        let mode: HomeListMode = home && listMode == .tasks ? .recent : listMode
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                if home {
-                    SuzentWordmark()
-                } else {
-                    SuzentLogoMark().frame(width: 24, height: 24)
-                    Text("SUZENT").tracking(2).suzentFont(14, weight: .bold)
-                }
+                // The wordmark, not the logo face: Regent's row right below already shows the face.
+                SuzentWordmark()
                 Spacer()
-                Button(action: openSettings) {
-                    Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel("Settings")
-            }.padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 4)
+                if home {
+                    // Phones search on their own page, so results never share the screen with the home list.
+                    Button { path = [.search] } label: {
+                        Image(systemName: "magnifyingglass").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("Search chats")
+                    newConversationIcon
+                } else {
+                    HStack(spacing: 2) {
+                        Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { sidebarVisibility = .detailOnly } } label: {
+                            Image(systemName: "sidebar.left").font(.system(size: 18)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Hide sidebar")
+                        Button(action: openSettings) {
+                            Image(systemName: "gearshape").font(.system(size: 20)).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).accessibilityLabel("Settings")
+                        newConversationIcon
+                    }
+                }
+            }.frame(minHeight: 44).padding(.leading, 20).padding(.trailing, home ? 20 : 14).padding(.top, 4).padding(.bottom, home ? 0 : 4)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            if let desktop = model.activeDesktop, !model.isDemo {
+                activeDesktopLine(desktop).padding(.horizontal, 20).padding(.bottom, 4)
+            }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
                     RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
@@ -493,23 +586,24 @@ struct ContentView: View {
                         .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
                 }.buttonStyle(PressReportingButtonStyle(pressed: $regentPressed)).disabled(model.busy).padding(.horizontal, 16)
             }
-            Button(action: newConversation) {
-                Label("New conversation", systemImage: "square.and.pencil")
-                    .suzentFont(home ? 16 : PresentationTokens.typeCaption, weight: .semibold)
-                    .foregroundStyle(Color.black)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .background(Color(presentation: PresentationTokens.yellow))
-            }.buttonStyle(.plain)
-                .disabled(model.busy || model.device?.permissions.createChats != true)
-                .padding(.horizontal, 16).padding(.top, 12)
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
-                TextField("Search chats", text: $search).suzentFont(home ? 16 : 14)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-            }.padding(.horizontal, 12).frame(minHeight: 42)
-                .background(Color.suzentText.opacity(0.04))
-                .padding(.horizontal, 16).padding(.vertical, 12)
+            if !home {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .medium))
+                    TextField("Search chats", text: $search).suzentFont(14)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)) }
+                            .buttonStyle(.plain).frame(minWidth: 28, minHeight: 36).accessibilityLabel("Clear search")
+                    }
+                }.padding(.horizontal, 10).frame(minHeight: 38)
+                    .background(Color.suzentBackground)
+                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
+            }
+            if search.isEmpty {
+                HomeListPicker(selection: $listMode, modes: home ? [.recent, .projects] : [.recent, .projects, .tasks])
+                    .padding(.horizontal, 16).padding(.top, home ? 12 : 0).padding(.bottom, 4)
+            }
             ScrollViewReader { reader in
                 List {
                     Color.clear.frame(height: 0).id("sidebar-top").sidebarListRow(0).accessibilityHidden(true)
@@ -522,32 +616,28 @@ struct ContentView: View {
                             Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
                         }
                     } else {
-                        if !pinnedRows.isEmpty {
-                            sidebarHeading("Pinned").sidebarListRow()
-                            conversationRows(pinnedRows, scope: "pinned")
-                            pageFooter(ChatPageQuery("pinned"))
-                        }
-                        let recent = recentRows.filter { $0.depth == 0 }
-                        if !recent.isEmpty {
-                            HStack {
-                                sidebarHeading("Recent")
-                                Spacer()
-                                if (model.chatPages[ChatPageQuery()]?.total ?? 0) > 3 {
-                                    Button(showAllRecent ? "Show fewer" : "View all") { showAllRecent.toggle() }
-                                        .font(.caption).foregroundStyle(Color.suzentMuted).frame(minHeight: 44).buttonStyle(.plain)
-                                }
-                            }.sidebarListRow()
-                            let recentIDs = Set((showAllRecent ? recent : Array(recent.prefix(3))).map { $0.chat.id })
-                            conversationRows(recentRows.filter { recentIDs.contains($0.root.id) }, scope: "recent")
-                        }
-                        if showAllRecent { pageFooter(ChatPageQuery()) }
-                        if !projects.isEmpty { sidebarHeading("Projects").sidebarListRow() }
-                        ForEach(projects) { project in projectSection(project) }
-                        if pinnedRows.isEmpty && recentRows.isEmpty {
-                            Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                        switch mode {
+                        case .recent:
+                            if !pinnedRows.isEmpty {
+                                sidebarHeading("Pinned").sidebarListRow()
+                                conversationRows(pinnedRows, scope: "pinned")
+                                pageFooter(ChatPageQuery("pinned"))
+                                if !recentRows.isEmpty { sidebarHeading("Recent").sidebarListRow() }
+                            }
+                            conversationRows(recentRows, scope: "recent")
+                            pageFooter(ChatPageQuery())
+                            if pinnedRows.isEmpty && recentRows.isEmpty {
+                                Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                            }
+                        case .projects:
+                            ForEach(projects) { project in projectSection(project) }
+                            if projects.isEmpty {
+                                Text("No projects yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                            }
+                        case .tasks:
+                            taskRows(scope: "scheduled")
                         }
                     }
-                    scheduledSection
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -570,6 +660,53 @@ struct ContentView: View {
         }
         .background(Color.suzentSurface)
         // The list keeps its branded header; pushed pages use the system bar and its back gesture.
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    /// The sidebar header's create button, shared by the phone home and the iPad sidebar; drawn like the
+    /// header's other icons so nothing in the header is heavier than the rest.
+    private var newConversationIcon: some View {
+        Button(action: newConversation) {
+            Image(systemName: "square.and.pencil").font(.system(size: 20, weight: .medium))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel("New conversation")
+            .disabled(model.busy || model.device?.permissions.createChats != true)
+    }
+
+    private var searchPage: some View {
+        let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = ChatPageQuery("search", value: term)
+        return VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                SearchPageField(text: $searchText)
+                Button("Cancel") { path = [] }.buttonStyle(.plain).frame(minHeight: 44)
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+            List {
+                if term.isEmpty {
+                    Text("Search the titles of every chat this phone can read.")
+                        .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                } else {
+                    let rows = sidebarChats(model.pageChats(query), search: term, expanded: expandedAgents)
+                    conversationRows(rows, scope: "search")
+                    pageFooter(query)
+                    if rows.isEmpty && model.chatPages[query] != nil {
+                        Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
+            .environment(\.defaultMinListRowHeight, 0)
+            .task(id: "\(term):\(model.navigationVersion)") {
+                guard !term.isEmpty else { return }
+                do { try await Task.sleep(for: .milliseconds(300)); try Task.checkCancellation() }
+                catch { return }
+                await model.loadPage(query)
+            }
+        }
+        .background(Color.suzentSurface)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -675,38 +812,6 @@ struct ContentView: View {
         return raw.flatMap(suzentParseDate)?.suzentStamp ?? String(localized: "Not yet")
     }
 
-    @ViewBuilder private var scheduledSection: some View {
-        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: search, expanded: expandedAgents)
-        // Matches the desktop automation preview: five rows, then View all.
-        let previewLimit = 5
-        let visible = showAllScheduled || !search.isEmpty ? groups : Array(groups.prefix(previewLimit))
-        if !groups.isEmpty {
-            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { scheduledExpanded.toggle() } } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "clock")
-                    Text("Scheduled tasks")
-                    Spacer()
-                    Text("\(groups.count)").font(.caption).foregroundStyle(Color.suzentMuted)
-                    Image(systemName: scheduledExpanded || !search.isEmpty ? "chevron.down" : "chevron.right").font(.caption)
-                }.suzentFont(14, weight: .medium).frame(minHeight: 48).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityValue(scheduledExpanded ? Text("Expanded") : Text("Collapsed"))
-                .sidebarListRow()
-            ForEach(scheduledExpanded || !search.isEmpty ? visible : []) { group in
-                if let task = group.task {
-                    scheduledTaskRow(task, root: group.root).sidebarListRow()
-                } else if let root = group.root { conversationRows([root], scope: "scheduled") }
-                conversationRows(group.children, scope: "scheduled", spacing: 0)
-            }
-            if scheduledExpanded && search.isEmpty && groups.count > previewLimit {
-                Button { showAllScheduled.toggle() } label: {
-                    Text(showAllScheduled ? "Show fewer" : "View all \(groups.count) scheduled tasks")
-                        .suzentFont(PresentationTokens.typeCaption, weight: .bold)
-                        .frame(maxWidth: .infinity, minHeight: PresentationTokens.controlHeight)
-                }.buttonStyle(.plain).sidebarListRow()
-            }
-        }
-    }
-
     private func scheduledTaskRow(_ task: ScheduledTask, root: SidebarChatEntry?) -> some View {
         Button {
             if let id = task.chatId { openSidebarChat(model.chats.first { $0.id == id } ?? Chat(id: id, title: task.name)) }
@@ -764,6 +869,16 @@ struct ContentView: View {
                     }.foregroundStyle(Color.suzentMuted)
                 }
             } else {
+                if let desktop = model.activeDesktop {
+                    Section {
+                        NavigationLink {
+                            DesktopsPage(model: model) { repairScanner = true }
+                        } label: {
+                            DesktopCard(desktop: desktop, origin: model.origin, count: model.desktops.count)
+                        }
+                    } header: { settingsHeader("Connection") }
+                }
+                // Everything here applies to the connected desktop only, so it lives in one section.
                 Section {
                     NavigationLink {
                         ScrollView {
@@ -772,25 +887,20 @@ struct ContentView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(PresentationTokens.spacePage)
                             }
                         }.background(Color.suzentBackground)
-                            .navigationTitle("Desktop access").navigationBarTitleDisplayMode(.inline)
-                    } label: {
+                            .navigationTitle("Permissions").navigationBarTitleDisplayMode(.inline)
+                    } label: { Text("Permissions") }.disabled(model.device == nil)
+                    Toggle(isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(model.device?.displayName ?? String(localized: "Desktop access"))
-                            Text(model.origin).font(.caption.monospaced()).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            Text("Enable foreground Node")
+                            if model.nodeEnabled {
+                                Text(model.nodeStatus).font(.caption).foregroundStyle(Color.suzentMuted)
+                            }
                         }
-                    }.disabled(model.device == nil)
-                } header: { settingsHeader("Desktop access") }
-                Section {
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
-                        .tint(Color(presentation: PresentationTokens.blue))
-                } header: { settingsHeader("This phone as a Node") } footer: {
-                    Text(model.nodeStatus).foregroundStyle(Color.suzentMuted)
-                }
-                Section {
-                    Button("Pair again") { model.error = nil; repairScanner = true }.disabled(model.busy || model.streaming)
-                    Button("Forget connection", role: .destructive) { confirmForget = true }
+                    }.tint(Color(presentation: PresentationTokens.blue))
+                    Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
+                    Button("Forget this desktop", role: .destructive) { confirmForget = true }
                         .foregroundStyle(Color.suzentDanger).disabled(model.busy)
-                } header: { settingsHeader("Connection") } footer: {
+                } header: { settingsHeader("This desktop") } footer: {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
             }
@@ -802,10 +912,60 @@ struct ContentView: View {
             } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
-        .alert("Forget connection?", isPresented: $confirmForget) {
+        .alert("Forget this desktop?", isPresented: $confirmForget) {
             Button("Cancel", role: .cancel) {}
-            Button("Forget connection", role: .destructive) { model.forget() }
+            Button("Forget", role: .destructive) { model.forget() }
         } message: { Text("This phone will need to pair again before it can reach your desktop.") }
+    }
+
+    private func activeDesktopLine(_ desktop: SavedDesktop) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "desktopcomputer").font(.system(size: 11, weight: .medium))
+            Text(desktop.name).lineLimit(1).truncationMode(.tail)
+        }.suzentFont(PresentationTokens.typeSidebarSection, weight: .semibold).foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Desktop: \(desktop.name)"))
+    }
+
+    private func tabHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title).suzentFont(PresentationTokens.typeControl, weight: .bold)
+            .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 4).padding(.bottom, 4)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var settingsTab: some View {
+        VStack(spacing: 0) {
+            tabHeader("Settings")
+            settings.scrollContentBackground(.hidden)
+        }.background(Color.suzentBackground)
+    }
+
+    private var tasksTab: some View {
+        VStack(spacing: 0) {
+            tabHeader("Tasks")
+            List { taskRows(scope: "tasks") }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
+            .refreshable { await model.refresh() }
+        }.background(Color.suzentSurface)
+    }
+
+    @ViewBuilder private func taskRows(scope: String) -> some View {
+        let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
+        if groups.isEmpty {
+            Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
+                .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
+        }
+        ForEach(groups) { group in
+            if let task = group.task {
+                scheduledTaskRow(task, root: group.root).sidebarListRow()
+            } else if let root = group.root { conversationRows([root], scope: scope) }
+            conversationRows(group.children, scope: scope, spacing: 0)
+        }
     }
 
     private func settingsHeader(_ title: LocalizedStringKey) -> some View {
@@ -879,10 +1039,23 @@ struct ContentView: View {
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
+            .onDisappear { model.voice.stop() }
     }
 
     private func composer(_ chat: Chat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if model.voice.active {
+                VoiceCubeView(voice: model.voice).frame(height: 112).accessibilityHidden(true)
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.voice.status).suzentFont(14, weight: .medium)
+                        if !model.voice.transcript.isEmpty {
+                            Text(model.voice.transcript).suzentFont(14).lineLimit(3)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+
+                }.padding(.horizontal, 4)
+            }
             PendingAttachmentStrip(model: model)
             HStack(alignment: .center) {
                 if !chat.isRegent && model.attachmentsSupported && model.device?.permissions.send == true {
@@ -945,22 +1118,49 @@ struct ContentView: View {
     }
 
     private func sendAction(_ chat: Chat) -> some View {
-        let stopping = model.streaming || chat.isRunning == true
-        let enabled = stopping ? model.device?.permissions.stop == true :
-            !model.busy && model.device?.permissions.send == true &&
-            (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty)
+        let action = ComposerAction.resolve(
+            hasContent: !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty,
+            busy: model.busy, running: model.streaming || chat.isRunning == true,
+            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting")
+        let loading = action == .loading || (action == .stop && model.stopInFlight)
+        let label: String = switch action {
+        case .voice: String(localized: "Start voice conversation")
+        case .send: String(localized: "Send")
+        case .loading: String(localized: "Processing…")
+        case .connecting: String(localized: "Cancel voice connection")
+        case .hangUp: String(localized: "End voice conversation")
+        case .stop: model.stopInFlight ? String(localized: "Stopping…") : String(localized: "Stop")
+        }
+        let symbol = action == .stop ? "stop.fill" : action == .hangUp ? "phone.down.fill" : action == .voice ? "waveform" : "arrow.up"
         return Button {
-            if !stopping { sends += 1 }
-            Task { if stopping { await model.stop() } else { await model.send() } }
+            switch action {
+            case .voice: composing = false; model.startVoice()
+            case .hangUp, .connecting: model.voice.stop()
+            case .loading: break
+            case .stop:
+                guard model.device?.permissions.stop == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                Task { await model.stop() }
+            case .send:
+                guard model.device?.permissions.send == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                guard !chat.id.isEmpty || model.device?.permissions.createChats == true else {
+                    model.error = String(localized: "Enable Create conversations for this phone, or open an existing conversation."); return
+                }
+                sends += 1
+                Task { await model.send() }
+            }
         } label: {
-            Image(systemName: stopping ? "stop.fill" : "arrow.up")
-                .font(.system(size: stopping ? 14 : 20, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(stopping ? Color.suzentDanger : Color.suzentLink)
+            Group {
+                if loading || action == .connecting { ProgressView().tint(.white) }
+                else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
+            }.foregroundStyle(.white).frame(width: 36, height: 36)
+                .background(Color(presentation: action == .stop || action == .hangUp ? PresentationTokens.danger : PresentationTokens.blue))
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
-            .accessibilityLabel(stopping ? String(localized: "Stop") : String(localized: "Send"))
+        }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
 }
@@ -968,4 +1168,32 @@ struct ContentView: View {
 private extension View {
     /// Keeps lines readable when the conversation fills a wide iPad column.
     func readingWidth() -> some View { frame(maxWidth: 760).frame(maxWidth: .infinity) }
+}
+
+/// Owns its focus: focus state held by the root view does not reach a pushed navigation destination.
+private struct SearchPageField: View {
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.suzentMuted)
+            TextField("Search chats", text: $text).suzentFont(16)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .submitLabel(.search).focused($focused)
+            if !text.isEmpty {
+                Button { text = ""; focused = true } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Color.suzentMuted)
+                }.buttonStyle(.plain).frame(minWidth: 32, minHeight: 42).accessibilityLabel("Clear search")
+            }
+        }.padding(.horizontal, 12).frame(minHeight: 42)
+            .background(Color.suzentText.opacity(0.04))
+            // Only on the way in: coming back from a result should not raise the keyboard again. Focus set
+            // during the push transition is dropped, so it waits for the page to settle.
+            .task {
+                guard text.isEmpty else { return }
+                try? await Task.sleep(for: .milliseconds(450))
+                focused = true
+            }
+    }
 }

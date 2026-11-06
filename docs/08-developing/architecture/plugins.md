@@ -50,6 +50,8 @@ api_version: 1         # plugin API this plugin was written against
 | `extras` | Extras of Suzent's own package this plugin needs. Only meaningful for built-in plugins. |
 | `dependencies` | pip requirements of a third-party plugin. |
 | `default_enabled` | On until the user removes it. Honoured only for built-in plugins. |
+| `icon` | An SVG or PNG file in the plugin folder (under 64 KB), shown on the plugins page. Built-in service logos come from [Simple Icons](https://simpleicons.org) (CC0). |
+| `category` | `service` lists the plugin under **Settings → Services** instead of **Plugins**. Chat-app plugins (those with `channel`) are left off the Plugins page, because Social Channels installs them. |
 
 A plugin with no `__init__.py` only brings packages; `plugins/telegram/` is one.
 
@@ -94,6 +96,7 @@ uv run suzent start
 |---|---|
 | `register_tool(tool_cls)` | Adds a `suzent.tools.base.Tool` subclass. It goes through the same `_make_tool()` wrapper as built-in tools, so `requires_approval`, `output_char_limit`, the user's approval policy and ToolSearch deferral all apply. Without a `group` it is not in the tool picker and is reached through ToolSearch; with one it is listed under that capability. |
 | `register_skills(path)` | Adds a directory of skill folders. Relative paths resolve against the plugin directory. Skills get source `plugin` and id `plugin:<plugin-id>:<skill-name>`, are enabled by default, and are mounted read-only into the sandbox under `/mnt/skills/plugins/`. |
+| `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
 
@@ -104,6 +107,77 @@ reaches the live registries.
 Name clashes never replace existing behaviour: a tool whose `name` or
 `tool_name` is already taken, or a command with an alias already registered, is
 skipped with a warning.
+
+## Integrations
+
+An `Integration` (`suzent.plugins.Integration`) describes one hosted service:
+
+```python
+from suzent.plugins import Integration
+
+
+def _toolset(client):
+    from pydantic_ai_harness.notion import Notion
+
+    return Notion(client=client).get_toolset()
+
+
+def register(ctx):
+    ctx.register_integration(
+        Integration(
+            id="notion",
+            name="Notion",
+            url="https://mcp.notion.com/mcp",
+            auth="oauth",       # or "token" for a token the user pastes
+            build=_toolset,
+        )
+    )
+```
+
+`plugins/notion`, `plugins/linear` and `plugins/github` use the hosted-MCP
+capabilities from `pydantic-ai-harness`. `plugins/cloudflare` and
+`plugins/stripe` have no harness capability, so `build` wraps the client in a
+plain `MCPToolset`, prefixed because their servers use generic tool names such
+as `execute`.
+
+- **`auth="oauth"`**: `build` gets a FastMCP `Client` that adds the user's
+  access token and refreshes it. `core/mcp_oauth.py` runs the sign-in with
+  FastMCP's `OAuth`: discovery, dynamic client registration and PKCE. The
+  redirect goes to a loopback port on the machine running Suzent. The
+  settings page opens the authorization URL itself, so the server never opens
+  a browser. Tokens and the client registration are stored through
+  `core/secrets.py` (`SecretKeyValueStore`), one entry each under
+  `SUZENT_MCP_OAUTH::<plugin>.<id>::`. A new sign-in clears them and
+  registers again, because the loopback port changes. During a run the
+  provider refreshes tokens but never starts a sign-in: without a usable
+  token it raises `SignInRequired`.
+- **`auth="token"`**: `build` gets the token string, stored as
+  `SUZENT_MCP_TOKEN::<plugin>.<id>`. GitHub uses this because it does not
+  allow dynamic client registration.
+
+Both prefixes are in `secrets.PRIVATE_KEY_PREFIXES`, so
+`inject_all_to_env()` never copies them into the environment, where commands
+the agent runs would inherit them.
+
+`agent_manager._build_mcp_servers()` adds `integrations.connected_toolsets()`,
+which has one toolset for each connected integration of each loaded plugin.
+Each toolset is wrapped twice:
+
+- `_as_mcp_toolset()` counts it as MCP for context usage and sends every call
+  the server does not mark `readOnlyHint` through the permission engine,
+  exactly like user-added MCP servers.
+- A tolerant wrapper turns a failed connection (expired sign-in, service
+  down) into no tools for that run. Without it, the failure would break every
+  chat. The error is shown on the plugins page.
+
+Routes: `POST /plugins/{name}/integrations/{id}/connect` starts a sign-in and
+returns `authorizeUrl`, or saves `{"token": ...}`.
+`POST /plugins/{name}/integrations/{id}/disconnect` signs out. Both rebuild
+the cached agent. `GET /plugins` lists each plugin's `integrations` with
+`connected`, `error`, and a `signIn` state while one is in progress.
+
+Signing in from a phone is not supported yet: the OAuth redirect must reach
+the loopback callback on the Suzent machine.
 
 ## Discovery and loading
 
@@ -174,6 +248,14 @@ removed are cleaned up then. A checkout older than plugins (no `plugins/`
 folder, for instance after a rollback) gets `--extra social`, as before.
 `_plugin_extras()` reads `config/social.json` from the checkout too, so a chat
 app that is set up but has no state entry keeps its packages.
+
+The desktop installer and updater (`apps/suzent-installer`) and the setup
+scripts sync the same set. They cannot import Suzent before its environment
+is synced, so the rules live in `suzent/plugins/enablement.py`, which imports
+nothing from Suzent: they run it by path on the environment's Python
+(`enablement.py <checkout> <plugins.json>` prints the extras as JSON), and
+`PluginManager` uses the same functions. A fresh install syncs no plugin
+extras; when the script is missing or fails, they fall back to `social`.
 
 `missing_packages()` compares what a plugin declares with what is installed,
 for `suzent plugin status` and the settings page.

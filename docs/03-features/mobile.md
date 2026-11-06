@@ -39,6 +39,29 @@ Suzent** conversation explains this. Attachments stay on the phone. **Reset demo
 examples, and **Exit demo** takes you back to the connection screen. An existing
 pairing is kept while you're in the demo.
 
+## Talk with Suzent
+
+In a conversation, leave the message box empty and tap the waveform button to
+start a voice conversation. Allow microphone access when prompted. The input
+area shows the same animated cube as desktop, together with call status and live
+captions. The cube responds to your microphone and to Suzent listening, thinking,
+and speaking. Tap the hang-up button to end the call.
+During a call, the action stays **Hang up** (or **Cancel** while connecting).
+Outside a call, typing a message or attaching a file switches the waveform button
+to **Send**, and a running agent task shows **Stop**. A progress indicator
+replaces the action while a message is being processed. If voice needs setup or
+additional permissions, tapping its button explains what to change.
+
+Use a desktop version that supports mobile voice and configure a realtime voice
+model in **Settings → Voice & audio** on the desktop first. Your phone needs both **Send
+messages** and **Stop responses** permissions, because voice can start and cancel
+agent tasks. Starting a call in a new conversation also requires **Create
+conversations**. Voice is unavailable in the offline demo.
+
+Calls end when you leave the conversation, switch desktops, or put the app in
+the background. Ending a call does not stop an agent task that voice already
+started; use **Stop** if you also want to cancel that task.
+
 ## Pair your phone
 
 1. **Make your computer reachable.** Open **Settings → Mesh → Network access**,
@@ -81,23 +104,81 @@ The QR code works once and expires after a few minutes; click **New QR code**
 for another. Anyone who scans it gets the permissions you picked, so don't
 share it.
 
+### Pair more than one computer
+
+You can pair the same phone with several computers, for example your laptop
+and a home server. Open **Settings**, tap the computer at the top, and tap
+**Pair another desktop**, then scan or paste that computer's invitation as
+above. Pairing a computer the phone already knows replaces its old entry
+instead of adding a second one.
+
+The phone is connected to one computer at a time. Its name appears under the
+**SUZENT** title, and **Chats** and **Tasks** show that computer's
+conversations and scheduled tasks. To switch, open **Settings**, tap the
+computer at the top, and pick another one. If it can't be reached, you stay
+where you are. Swipe left on a computer in that list to forget it on the
+phone.
+
+Each computer keeps its own permissions for the phone. Everything under
+**This desktop** in **Settings** (**Permissions**, **Enable foreground Node**,
+**Pair again**, and **Forget this desktop**) applies to the computer you're
+connected to.
+
 ### Using it away from home
 
 The phone talks to your computer directly; there's no Suzent cloud in between.
 On your home Wi-Fi that just works. To use it elsewhere, put both devices on
-[Tailscale](https://tailscale.com/), or give Suzent a public HTTPS address of
+[Tailscale](https://tailscale.com/), go through a [relay you deploy
+yourself](#through-your-own-relay), or give Suzent a public HTTPS address of
 your own. Your computer has to be on and running Suzent; the
 [background service](./automation.md#keep-suzent-running-in-the-background)
 keeps it running when the window is closed.
 
+### Through your own relay
+
+A relay lets the phone reach your computer from any network without a VPN or
+port forwarding. Your computer connects out to the relay and keeps that
+connection open; the phone sends its requests to the relay, which passes them
+down. Suzent has no hosted relay: you run
+[suzent-relay](https://github.com/cyzus/suzent-relay) yourself, for free on
+Cloudflare Workers or with Docker on any server. Its README walks through each
+option.
+
+Everything between the phone and your computer is end-to-end encrypted. The
+QR code carries your computer's key, and the phone checks it before sending
+anything, so the relay only passes on data it can't read or change.
+
+1. Deploy suzent-relay and note its `https://` address. Setting a
+   registration key is recommended, so only your Suzent can use the relay.
+2. On your computer, open **Settings → Devices → Relay**, enter the **Relay
+   address** and **Registration key**, and save. The status changes to
+   **Connected**.
+3. Pair the phone by scanning a new QR code. The code now includes the relay.
+
+The phone always tries your computer's direct addresses first and only uses
+the relay when none of them answers. A phone paired before you set up the relay
+learns about it the next time it connects to your computer directly.
+
+**Reset relay addresses** issues new relay addresses. Use it if another Suzent
+took over the address, or to cut off phones and webhook callers that have the
+old one; pair the phone again afterwards. The same relay also gives
+[webhook tasks](./automation.md) an address on the internet.
+
 ## What you can do on the phone
 
-- **Find a chat.** The app opens on your conversations. **SUZENT Regent** and
-  **New conversation** are at the top, then pinned chats, your three most
-  recent with **View all**, your projects (tap one to open it, and **Load
-  more** for older chats), and your scheduled tasks. Search looks through the
-  titles of every chat the phone may read, not only the ones already loaded.
-  **Settings** is in the top toolbar.
+- **Find a chat.** On a phone, the bar at the bottom has **Chats**, **Tasks**,
+  and **Settings**. **Chats** opens on your conversations, with a search icon
+  and a yellow **New conversation** icon at the top right and **SUZENT Regent**
+  below them. Switch between **Recent** (pinned chats, then your conversations newest first) and
+  **Projects** (tap one to open it). **Load more** brings in older chats. The
+  app remembers which list you last used. Tap the search icon to open a search page that looks
+  through the titles of every chat the phone may read, not only the ones
+  already loaded. Going back from a chat you opened there returns to the
+  results, and **Cancel** returns to **Chats**. On a tablet, the lists sit in a
+  sidebar on the left, with **Settings** and the yellow **New conversation**
+  icon in its header and search below them. On
+  an iPad, the sidebar button next to **Settings** hides it so a chat can use the
+  full width.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
   stop a reply. Long-press a message to copy or share it, edit and resend your
@@ -122,14 +203,15 @@ keeps it running when the window is closed.
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
 - **Follow background work.** Sub-agent chats fold under the chat that
-  started them. **Scheduled tasks** shows failed tasks first, then active and
+  started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
 The app is in English and Simplified Chinese, and follows your phone's light
 or dark mode. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
-**Pair again** and **Forget connection**.
+**Pair again**, **Forget connection**, and a way to switch to each other
+computer you've paired.
 
 ## Change or remove access
 
@@ -139,15 +221,19 @@ by name with what it may do. Click **Edit permissions**, pick another choice
 **Revoke access** cuts the phone off immediately: the next time it connects, it
 signs out and asks you to pair again.
 
-**Forget connection** in the app only removes the connection from the phone.
-Also click **Revoke access** on the computer so its access is gone too.
+**Forget this desktop** in the app's **Settings** (or **Forget connection** in
+**Connection help**) removes that computer from the phone and also asks the
+computer to revoke the phone's access; other paired computers stay. If the
+computer can't be reached at that moment, click **Revoke access** there
+yourself. Pairing the same phone again replaces its old entry instead of
+adding a second one.
 
 ## Limits
 
 The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
-- voice input, or the agent's interactive forms and buttons;
+- the agent's interactive forms and buttons;
 - memory, settings, or tool permissions, which stay on the computer;
 - offline access to your conversations.
 

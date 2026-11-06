@@ -138,21 +138,6 @@ interface SettingsPageProps {
   children: React.ReactNode;
 }
 
-export function SettingsHelp({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <details className="rounded border border-neutral-300 bg-neutral-100 p-3 text-xs dark:border-zinc-600 dark:bg-zinc-800">
-      <summary className="cursor-pointer font-bold">{title}</summary>
-      <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-300">{children}</div>
-    </details>
-  );
-}
-
 /** Consistent vertical rhythm and bottom breathing room for every settings tab. */
 export function SettingsPage({ className = '', children }: SettingsPageProps): React.ReactElement {
   return <div className={`space-y-4 pb-3 ${className}`}>{children}</div>;
@@ -294,7 +279,7 @@ export function SettingsListAction({
 
   return (
     <button
-      className={`px-3 py-1 border text-[11px] font-bold uppercase transition-colors disabled:opacity-50 rounded-sm ${colorClasses} ${className}`}
+      className={`px-3 py-1 border text-[11px] font-bold uppercase whitespace-nowrap transition-colors disabled:opacity-50 rounded-sm ${colorClasses} ${className}`}
       {...props}
     >
       {children}

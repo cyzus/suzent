@@ -4,6 +4,8 @@ CLI subcommands for cron job management.
 Usage:
     suzent cron list
     suzent cron add --name "daily-report" --cron "0 9 * * *" --prompt "Summarize my inbox"
+    suzent cron add --name "gh-push" --webhook --prompt "Summarize this push"
+    suzent cron webhook-url <job_id>
     suzent cron edit <job_id> --name "new-name" --cron "0 10 * * *"
     suzent cron trigger <job_id>
     suzent cron remove <job_id>
@@ -85,6 +87,8 @@ def _describe_schedule(job: dict) -> str:
         return f"every {job.get('interval_minutes')}m"
     if kind == "once":
         return f"once @ {job.get('run_at') or '?'}"
+    if kind == "webhook":
+        return "on webhook"
     return job.get("cron_expr") or "-"
 
 
@@ -100,6 +104,11 @@ def add_job(
     ),
     at: Optional[str] = typer.Option(
         None, "--at", help="Run once at an ISO 8601 timestamp"
+    ),
+    webhook: bool = typer.Option(
+        False,
+        "--webhook",
+        help="Run whenever its webhook URL is called instead of on a schedule",
     ),
     chat: Optional[str] = typer.Option(
         None,
@@ -130,13 +139,17 @@ def add_job(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Model override"),
     inactive: bool = typer.Option(False, "--inactive", help="Create in disabled state"),
 ):
-    """Create a scheduled task — on a cron expression, an interval, or once."""
-    given = [s for s in (cron, every, at) if s is not None]
+    """Create a task that runs on a cron expression, an interval, once, or on a webhook."""
+    given = [s for s in (cron, every, at) if s is not None] + (
+        [True] if webhook else []
+    )
     if len(given) != 1:
-        typer.echo("❌ Give exactly one of --cron, --every or --at.")
+        typer.echo("❌ Give exactly one of --cron, --every, --at or --webhook.")
         raise typer.Exit(code=1)
 
-    if every is not None:
+    if webhook:
+        schedule_kind = "webhook"
+    elif every is not None:
         schedule_kind = "interval"
     elif at is not None:
         schedule_kind = "once"
@@ -171,7 +184,36 @@ def add_job(
             typer.echo(f"  Schedule: {_describe_schedule(job)}")
             if chat:
                 typer.echo(f"  Runs in:  {job.get('chat_title') or chat}")
-            typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+            if data.get("webhook_path"):
+                _echo_webhook_url(client.base_url, data)
+            else:
+                typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+def _echo_webhook_url(base_url: str, data: dict) -> None:
+    typer.echo(f"  Webhook:  POST {base_url.rstrip('/')}{data['webhook_path']}")
+    if data.get("webhook_relay_url"):
+        typer.echo(f"  Relay:    POST {data['webhook_relay_url']}")
+    typer.echo("  This URL is shown only once. Anyone who has it can run the task.")
+
+
+@cron_app.command("webhook-url")
+def webhook_url(
+    job_id: int = typer.Argument(..., help="ID of a webhook task"),
+):
+    """Issue a new URL for a webhook task. The old URL stops working."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.cron.regenerate_webhook(job_id)
+            typer.echo(f"New webhook URL for task #{job_id}:")
+            _echo_webhook_url(client.base_url, data)
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)

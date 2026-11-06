@@ -410,7 +410,9 @@ class CronJobModel(SQLModel, table=True):
     retry_count: int = Field(default=0)
 
     # -- Scheduling ---------------------------------------------------------
-    schedule_kind: str = Field(default="cron")  # "cron" | "interval" | "once"
+    schedule_kind: str = Field(
+        default="cron"
+    )  # "cron" | "interval" | "once" | "webhook"
     interval_minutes: Optional[int] = None  # schedule_kind == "interval"
     run_at: Optional[datetime] = None  # schedule_kind == "once"
     timezone: Optional[str] = None  # IANA name; None = machine local time
@@ -422,6 +424,8 @@ class CronJobModel(SQLModel, table=True):
     context_mode: str = Field(default="isolated")  # "isolated" | "bound"
     suppress_ok: bool = Field(default=False)  # roll back a no-op turn (heartbeat)
     source: str = Field(default="user")  # "user" | "agent" | "preset" | "heartbeat"
+    # SHA-256 of the webhook URL token; the token itself is shown only once.
+    webhook_token_hash: Optional[str] = Field(default=None, index=True)
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
     last_result: Optional[str] = None

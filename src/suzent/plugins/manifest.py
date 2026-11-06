@@ -1,12 +1,13 @@
 """The ``plugin.yaml`` manifest."""
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 MANIFEST_FILENAME = "plugin.yaml"
-PLUGIN_API_VERSION = 1
+PLUGIN_API_VERSION = 2
 
 
 class PluginManifest(BaseModel):
@@ -32,6 +33,11 @@ class PluginManifest(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     # Built-in plugins only: on until the user removes it.
     default_enabled: bool = False
+    # An SVG or PNG file in the plugin's directory, shown on the plugins page.
+    icon: str | None = None
+    # "service" puts a plugin that connects a hosted service (Notion, GitHub)
+    # on the Services page instead of the Plugins page.
+    category: Literal["service"] | None = None
 
     @property
     def display_name(self) -> str:

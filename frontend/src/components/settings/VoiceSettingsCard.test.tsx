@@ -24,7 +24,7 @@ it('separates speech controls from role assignment and links both pages', () => 
       />
     </I18nProvider>
   );
-  expect(roles).toContain('Voice &amp; playback settings');
+  expect(roles).toContain('Voice settings');
   expect(roles).toContain('old-provider/voice');
   expect(roles).not.toContain('Choose the API speech model');
 });

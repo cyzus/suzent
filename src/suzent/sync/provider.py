@@ -53,10 +53,14 @@ class GitHubSyncProvider:
         self.validate(require_clean=False)
         self._fetch()
 
+    # Both payload diffs use the three-dot form: only what changed on right_ref
+    # since it split from left_ref. A two-dot diff would also count local
+    # commits that never reached the remote (e.g. a push that failed) as
+    # incoming changes, so they would never be pushed.
     def payload_diff_name_status(self, left_ref: str, right_ref: str) -> str:
         self.validate(require_clean=False)
         return self._git(
-            "diff", "--name-status", left_ref, right_ref, "--", PAYLOAD_DIR_NAME
+            "diff", "--name-status", f"{left_ref}...{right_ref}", "--", PAYLOAD_DIR_NAME
         )
 
     def payload_file_diff_patch(self, left_ref: str, right_ref: str, path: str) -> str:
@@ -66,8 +70,7 @@ class GitHubSyncProvider:
             "diff",
             "--no-ext-diff",
             "--unified=3",
-            left_ref,
-            right_ref,
+            f"{left_ref}...{right_ref}",
             "--",
             f"{PAYLOAD_DIR_NAME}/{normalized}",
         )
@@ -128,7 +131,7 @@ class GitHubSyncProvider:
 
     def commit_and_push_payload(self) -> str:
         base = self.head()
-        if not self.commit_payload():
+        if not self.commit_payload() and not self.commits_ahead():
             return "No sync payload changes to push."
         try:
             return self.push_payload()
@@ -152,6 +155,16 @@ class GitHubSyncProvider:
 
     def push_payload(self) -> str:
         return self._push_with_rebase()
+
+    def commits_ahead(self) -> int:
+        """Local commits not yet on the remote-tracking branch."""
+        try:
+            count = self._git(
+                "rev-list", "--count", f"{self.remote}/{self.branch}..HEAD"
+            )
+        except RuntimeError:
+            return 0
+        return int(count.strip() or 0)
 
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").strip()

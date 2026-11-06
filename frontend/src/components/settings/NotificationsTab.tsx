@@ -8,12 +8,13 @@ import {
   NOTIFICATION_WHEN_OPTIONS,
   useNotificationPreferences,
   type NotificationSound,
-  type NotificationWhen,
 } from '../../lib/notificationPreferences';
 import { playNotificationSound } from '../../lib/notificationSound';
 import { BrutalSelect } from '../BrutalSelect';
+import { BrutalIconButton } from '../BrutalButton';
 import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsChoiceGroup } from './SettingsChoiceGroup';
 
 export function NotificationsTab(): React.ReactElement {
   const { t } = useI18n();
@@ -30,22 +31,18 @@ export function NotificationsTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.notifications.title')}
-        subtitle={t('settings.notifications.subtitle')}
-      />
+      <SettingsHeader title={t('settings.notifications.title')} />
 
       <SettingsCard>
         <SectionCardHeader
           icon={<BellIcon className="h-5 w-5" aria-hidden="true" />}
           title={t('settings.notifications.whenTitle')}
-          description={t('settings.notifications.whenDesc')}
         />
-        <BrutalSelect
+        <SettingsChoiceGroup
+          label={t('settings.notifications.whenTitle')}
           value={preferences.when}
-          onChange={(value) => setWhen(value as NotificationWhen)}
+          onChange={setWhen}
           options={whenOptions}
-          className="max-w-sm"
         />
       </SettingsCard>
 
@@ -53,18 +50,27 @@ export function NotificationsTab(): React.ReactElement {
         <SectionCardHeader
           icon={<SpeakerWaveIcon className="h-5 w-5" aria-hidden="true" />}
           title={t('settings.notifications.soundTitle')}
-          description={t('settings.notifications.soundDesc')}
         />
-        <BrutalSelect
-          value={preferences.sound}
-          onChange={(value) => {
-            const sound = value as NotificationSound;
-            setSound(sound);
-            playNotificationSound(sound);
-          }}
-          options={soundOptions}
-          className="max-w-sm"
-        />
+        <div className="flex items-center gap-2">
+          <BrutalSelect
+            value={preferences.sound}
+            onChange={(value) => {
+              const sound = value as NotificationSound;
+              setSound(sound);
+              playNotificationSound(sound);
+            }}
+            options={soundOptions}
+            className="w-full max-w-sm"
+          />
+          <BrutalIconButton
+            type="button"
+            label={t('settings.previewSound')}
+            disabled={preferences.sound === 'none'}
+            onClick={() => playNotificationSound(preferences.sound)}
+          >
+            <SpeakerWaveIcon className="h-5 w-5" aria-hidden="true" />
+          </BrutalIconButton>
+        </div>
       </SettingsCard>
 
       {isWeb() && (

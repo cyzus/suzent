@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "minor", "desktop": "patch"},
+  "summary": "Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones."
+}

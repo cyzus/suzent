@@ -1,5 +1,40 @@
 # Mobile changelog
 
+## [mobile-v0.7.0] - 2026-11-06
+
+### Release notes
+- Android: when your computer isn't reachable directly, the app connects through your own Suzent relay, end-to-end encrypted.
+- iPhone: reach your desktop through your own Suzent relay when no direct address answers, end-to-end encrypted.
+- Keep voice and send buttons vivid blue with white icons in both light and dark mode.
+- The mobile home screen switches between recent conversations and projects instead of stacking both, moves search and New conversation to header icons, uses monochrome tab icons, adds haptics and a clear unpin look to chat swipes, shows the connected desktop with a computer icon, shows a reply's model as quiet text instead of a box, opens Regent's reply actions with a long press on its bubbles, and lets the iPad sidebar be hidden with scheduled tasks as its own list.
+- Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
+- Fix the voice cube animation appearing blank on Android devices.
+- Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
+- Keep one call control during voice conversations and avoid stale Android connections when starting actions.
+
+## [mobile-v0.6.2] - 2026-11-05
+
+<!-- highlights -->
+### Highlights
+
+- **Switch computers when one is offline.** If your default desktop can't be reached, the reconnect screen now lists your other paired computers. Tap one to switch, even mid-attempt, or pair a new one from the same screen.
+<!-- /highlights -->
+
+### Release notes
+- When the default desktop can't be reached, the reconnect screen now lists your other paired desktops so you can switch with one tap, even mid-attempt, or pair a new one.
+
+## [mobile-v0.6.1] - 2026-11-03
+
+### Release notes
+- Optimize Android release size and improve edge-to-edge and large-screen compatibility.
+
+## [mobile-v0.6.0] - 2026-11-02
+
+### Release notes
+- Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones.
+- The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
+- On phones, searching chats opens its own page with the keyboard ready, and going back from a result returns to the results; on Android, loading chats no longer fails with "Backend request failed" after the app has been idle for a moment.
+
 ## [mobile-v0.5.4] - 2026-11-01
 
 ### Release notes

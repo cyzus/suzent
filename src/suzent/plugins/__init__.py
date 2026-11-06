@@ -7,6 +7,7 @@ until the user enables them.
 """
 
 from suzent.plugins.context import PluginContext
+from suzent.plugins.integrations import Integration
 from suzent.plugins.manager import (
     ENTRY_POINT_GROUP,
     PluginManager,
@@ -17,6 +18,7 @@ from suzent.plugins.manifest import PluginManifest
 
 __all__ = [
     "ENTRY_POINT_GROUP",
+    "Integration",
     "PluginContext",
     "PluginManager",
     "PluginManifest",

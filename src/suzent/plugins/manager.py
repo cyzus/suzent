@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import sys
@@ -16,6 +17,11 @@ from pydantic import ValidationError
 from suzent.logger import get_logger
 from suzent.plugins import deps
 from suzent.plugins.context import PluginContext
+from suzent.plugins.enablement import (  # channel_configured is re-exported
+    channel_configured,  # noqa: F401
+    is_enabled,
+)
+from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import (
     MANIFEST_FILENAME,
     PLUGIN_API_VERSION,
@@ -25,10 +31,12 @@ from suzent.tools.base import Tool
 
 logger = get_logger(__name__)
 
+_ICON_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+_MAX_ICON_BYTES = 64 * 1024
+
 ENTRY_POINT_GROUP = "suzent.plugins"
 STATE_VERSION = 1
-# Keys of a chat app's section in social.json that are not credentials.
-_CHANNEL_SETTING_KEYS = {"enabled", "allowed_users"}
+
 
 type PluginStatus = Literal["disabled", "enabled", "loaded", "error"]
 type PluginSource = Literal["builtin", "directory", "package"]
@@ -45,6 +53,7 @@ class PluginRecord:
     tool_classes: list[type[Tool]] = field(default_factory=list)
     command_names: list[str] = field(default_factory=list)
     skill_dirs: list[Path] = field(default_factory=list)
+    integrations: list[Integration] = field(default_factory=list)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -61,6 +70,25 @@ class PluginRecord:
     def names(self) -> set[str]:
         return {self.id, *self.manifest.aliases}
 
+    def icon_data_uri(self) -> str | None:
+        """The manifest's icon as a data URI, so the page needs no file route."""
+        if not self.manifest.icon or self.path is None:
+            return None
+        try:
+            root = self.path.resolve()
+            icon = (root / self.manifest.icon).resolve()
+            mime = _ICON_TYPES.get(icon.suffix.lower())
+            if mime is None or not icon.is_relative_to(root) or not icon.is_file():
+                return None
+            data = icon.read_bytes()
+        except OSError as exc:
+            # A broken logo must not keep the plugin list from loading.
+            logger.debug("Plugin {} icon unreadable: {}", self.id, exc)
+            return None
+        if len(data) > _MAX_ICON_BYTES:
+            return None
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -69,6 +97,8 @@ class PluginRecord:
             "description": self.manifest.description,
             "source": self.source,
             "aliases": self.manifest.aliases,
+            "channel": self.manifest.channel,
+            "category": self.manifest.category,
             "hasCode": self.has_code,
             "path": str(self.path) if self.path else None,
             "enabled": self.enabled,
@@ -77,6 +107,8 @@ class PluginRecord:
             "tools": [cls.name for cls in self.tool_classes],
             "commands": self.command_names,
             "skillDirs": [str(path) for path in self.skill_dirs],
+            "integrations": [i.id for i in self.integrations],
+            "icon": self.icon_data_uri(),
         }
 
 
@@ -180,16 +212,15 @@ class PluginManager:
         state: dict[str, dict[str, Any]],
         social: dict[str, Any],
     ) -> bool:
-        if record.id in state:
-            return bool(state[record.id].get("enabled"))
-        # Only plugins shipped with Suzent may switch themselves on.
-        if record.source != "builtin":
-            return False
-        if record.manifest.channel:
-            # A chat app the user already set up keeps working after the
-            # upgrade that split it into its own plugin.
-            return channel_configured(social.get(record.manifest.channel))
-        return record.manifest.default_enabled
+        # Shared with the desktop updater (see suzent.plugins.enablement).
+        return is_enabled(
+            record.id,
+            builtin=record.source == "builtin",
+            channel=record.manifest.channel,
+            default_enabled=record.manifest.default_enabled,
+            state=state,
+            social=social,
+        )
 
     # -- discovery ---------------------------------------------------------
 
@@ -356,6 +387,7 @@ class PluginManager:
         for name in record.command_names:
             unregister_plugin_command(name)
         record.tool_classes, record.command_names, record.skill_dirs = [], [], []
+        record.integrations = []
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -403,6 +435,7 @@ class PluginManager:
 
         record.tool_classes = list(ctx.tool_classes)
         record.skill_dirs = list(ctx.skill_dirs)
+        record.integrations = list(ctx.integrations)
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
@@ -455,15 +488,6 @@ def _module_name(record: PluginRecord) -> str:
     return f"suzent_plugin_{record.id.replace('-', '_')}"
 
 
-def channel_configured(settings: Any) -> bool:
-    """True when a chat app's section of social.json is on and has credentials."""
-    if not isinstance(settings, dict) or not settings.get("enabled", True):
-        return False
-    return any(
-        value for key, value in settings.items() if key not in _CHANNEL_SETTING_KEYS
-    )
-
-
 def _refresh_live_registries() -> None:
     """Make the tool registry, skills and agent reflect the plugins now loaded.
 
@@ -512,9 +536,9 @@ def get_plugin_manager() -> PluginManager:
         from suzent.config.paths import (
             BUILTIN_PLUGINS_DIR,
             PLUGINS_DIR,
-            PROJECT_DIR,
             USER_CONFIG_DIR,
             get_external_plugin_dirs,
+            user_config_file,
         )
 
         _manager = PluginManager(
@@ -522,6 +546,6 @@ def get_plugin_manager() -> PluginManager:
             USER_CONFIG_DIR / "plugins.json",
             builtin_dirs=[BUILTIN_PLUGINS_DIR],
             deps_root=PLUGINS_DIR / ".deps",
-            social_config_file=PROJECT_DIR / "config" / "social.json",
+            social_config_file=user_config_file("social.json"),
         )
     return _manager

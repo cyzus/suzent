@@ -167,12 +167,9 @@ export function BrowserExtensionSetup(): React.ReactElement {
           />
         </div>
       )}
-      <details className="border-t-2 border-brutal-black pt-3 text-sm">
-        <summary className="cursor-pointer font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
-          {t('settings.browser.extensionDetails')}
-        </summary>
+      <section className="border-t-2 border-brutal-black pt-3 text-sm">
+        <h4 className="font-bold">{t('settings.browser.extensionDetails')}</h4>
         <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-400">
-          <p>{t('settings.browser.extensionHelp')}</p>
           <p>{t('settings.browser.extensionDownloadHelp')}</p>
           {sourceDir && (
             <input
@@ -195,7 +192,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
             )}
           </div>
         </div>
-      </details>
+      </section>
       {error && (
         <p role="alert" className="text-sm font-bold">
           {t('settings.browser.error')}

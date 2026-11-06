@@ -1,8 +1,9 @@
+import { ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
@@ -103,10 +104,7 @@ export function BackgroundServiceTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.service.title')}
-        subtitle={t('settings.service.subtitle')}
-      />
+      <SettingsHeader title={t('settings.service.title')} />
 
       <SettingsCard>
         <SectionCardHeader
@@ -182,9 +180,13 @@ export function BackgroundServiceTab(): React.ReactElement {
           >
             {t('settings.service.restart')}
           </BrutalButton>
-          <BrutalButton disabled={busy} onClick={() => void copyLogPath()}>
-            {t('settings.service.copyLogPath')}
-          </BrutalButton>
+          <BrutalIconButton
+            disabled={busy}
+            onClick={() => void copyLogPath()}
+            label={t('settings.service.copyLogPath')}
+          >
+            <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+          </BrutalIconButton>
         </div>
       </SettingsCard>
 

@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -435,3 +436,54 @@ def test_repair_refreshes_device_name_without_changing_credential(
     assert second["reused"] is True
     assert second["device"]["display_name"] == "My phone"
     assert PairingStore(store.path).verify(first["token"]).display_name == "My phone"
+
+
+def pair_installation(store, installation_id, platform="ios", name="Phone"):
+    invitation = store.invite(ClientPermissions(send=True))
+    pickup = store.claim(
+        invitation["pairing_id"],
+        invitation["invitation"],
+        name,
+        platform,
+        confirm_permissions=True,
+        installation_id=installation_id,
+    )
+    return store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+
+
+def test_same_installation_replaces_stale_grant_after_confirmation(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    first = pair_installation(store, "a" * 32)
+    assert store.confirm(first["token"])
+    second = pair_installation(store, "a" * 32, name="Renamed")
+    assert second["device"]["device_id"] == first["device"]["device_id"]
+    assert second["device"]["provisional_until"] is not None
+    assert store.verify(first["token"]) is not None
+    assert store.confirm(second["token"])
+    assert store.verify(first["token"]) is None
+    assert [d["display_name"] for d in store.devices()] == ["Renamed"]
+    assert "a" * 32 not in (tmp_path / "clients.json").read_text()
+
+
+def test_installation_replacement_is_scoped_to_its_phone(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    kept = pair_installation(store, "a" * 32)
+    other_platform = pair_installation(store, "a" * 32, platform="android")
+    other_phone = pair_installation(store, "b" * 32)
+    legacy = pair_installation(store, None)
+    for result in (other_platform, other_phone, legacy):
+        assert result["device"]["device_id"] != kept["device"]["device_id"]
+        assert store.confirm(result["token"])
+    assert store.verify(kept["token"]) is not None
+    assert len(store.devices()) == 4
+
+
+def test_unconfirmed_installation_replacement_keeps_the_old_grant(
+    tmp_path, monkeypatch
+):
+    store = PairingStore(tmp_path / "clients.json")
+    first = pair_installation(store, "a" * 32)
+    second = pair_installation(store, "a" * 32)
+    monkeypatch.setattr(time, "time", lambda: second["device"]["provisional_until"] + 1)
+    assert store.verify(second["token"]) is None
+    assert store.verify(first["token"]) is not None

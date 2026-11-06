@@ -6,6 +6,10 @@ description: 如何更新 Suzent、修复快捷方式，以及跨版本升级已
 
 # 更新 Suzent
 
+:::note 从 Microsoft Store 安装？
+Store 版和其他 Store 应用一样，由 Microsoft Store 负责更新。本页其余内容适用于安装程序版和终端安装版：Store 版中 `suzent update`、`suzent upgrade`、`suzent repair` 以及应用内更新均已停用。更新不会影响 `~/.suzent` 中的数据。
+:::
+
 ## 自动更新
 
 Suzent 会自动保持最新。它每隔几个小时检查一次新版本，并在你继续使用时于后台下载。新版本会在 Suzent 下次关闭或启动时安装，只需几秒钟，安装后桌面应用会提示你已更新。如果 Suzent 以后台服务方式运行且没有打开桌面应用，它会在凌晨 3 点到 5 点之间、且所有对话都已空闲 30 分钟时安装更新。

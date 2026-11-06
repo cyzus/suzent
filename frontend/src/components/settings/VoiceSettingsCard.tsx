@@ -1,4 +1,6 @@
-import { SpeakerWaveIcon } from '@heroicons/react/24/outline';
+import { BrutalRange } from '../BrutalRange';
+import { SettingsChoiceGroup } from './SettingsChoiceGroup';
+import { SpeakerWaveIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
@@ -117,185 +119,213 @@ export function VoiceSettingsCard({
   const fieldClass =
     'mt-1 block w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm font-normal dark:bg-zinc-800 focus:outline-none focus:border-brutal-blue';
   return (
-    <SettingsCard className="space-y-4">
-      <SectionCardHeader
-        title={t('speech.controls')}
-        icon={<SpeakerWaveIcon className="h-5 w-5" />}
-        iconTone="blue"
-      />
-      {settings && (
-        <fieldset
-          disabled={saving}
-          className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
-        >
-          <label className="flex items-center justify-between gap-4 border-b border-neutral-200 pb-4 text-xs font-bold uppercase tracking-wide dark:border-zinc-700 sm:col-span-2">
-            {t('speech.autoplay')}
-            <BrutalOnOff
-              checked={settings.autoplay !== false}
-              disabled={saving}
-              onChange={(autoplay) => update({ autoplay })}
-            />
-          </label>
-          <label className="block">
-            {t('speech.engine')}
-            <BrutalSelect
-              className="mt-1"
-              disabled={saving}
-              value={settings.engine}
-              options={[
-                { value: 'system', label: t('speech.system') },
-                { value: 'api', label: t('speech.api') },
-              ]}
-              onChange={(engine) => {
-                setCustomVoice(false);
-                update(
-                  engine === 'api'
-                    ? { ...resetSpeechForModel(settings, models[0] || ''), engine: 'api' }
-                    : { engine: 'system', voice: '' }
-                );
-              }}
-            />
-          </label>
-          {settings.engine === 'api' && (
-            <div className="sm:col-span-2 space-y-2">
-              <label className="block">{t('speech.model')}</label>
-              <ModelDropdown
-                label={models[0] || t('settings.roles.chooseModel')}
-                options={[...new Set([...suggestions, ...unregisteredModels])]}
-                unregisteredModels={new Set(unregisteredModels)}
-                onSelect={(model) => {
-                  if (model === models[0]) return;
-                  setModels([model, ...models.slice(1).filter((id) => id !== model)]);
-                  update(resetSpeechForModel(settings, model));
+    <div className="space-y-4">
+      <SettingsCard>
+        <SectionCardHeader
+          title={t('speech.controls')}
+          icon={<SpeakerWaveIcon className="h-5 w-5" />}
+          iconTone="blue"
+        />
+        {settings && (
+          <fieldset
+            disabled={saving}
+            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
+          >
+            <label className="flex items-center justify-between gap-4 border-b border-neutral-200 pb-4 text-xs font-bold uppercase tracking-wide dark:border-zinc-700 sm:col-span-2">
+              {t('speech.autoplay')}
+              <BrutalOnOff
+                checked={settings.autoplay !== false}
+                disabled={saving}
+                onChange={(autoplay) => update({ autoplay })}
+              />
+            </label>
+            <div className="sm:col-span-2">
+              <SettingsChoiceGroup<'system' | 'api'>
+                label={t('speech.engine')}
+                value={settings.engine}
+                options={[
+                  { value: 'system', label: t('speech.system') },
+                  { value: 'api', label: t('speech.api') },
+                ]}
+                onChange={(engine) => {
                   setCustomVoice(false);
-                  setModelChanged(true);
+                  update(
+                    engine === 'api'
+                      ? { ...resetSpeechForModel(settings, models[0] || ''), engine: 'api' }
+                      : { engine: 'system', voice: '' }
+                  );
                 }}
               />
-              {models.length > 0 && (
-                <BrutalButton
-                  size="xs"
-                  onClick={() => {
-                    setModels([]);
-                    update({ voice: '' });
+            </div>
+            {settings.engine === 'api' && (
+              <div className="sm:col-span-2 space-y-2">
+                <label className="block">{t('speech.model')}</label>
+                <ModelDropdown
+                  label={models[0] || t('settings.roles.chooseModel')}
+                  options={[...new Set([...suggestions, ...unregisteredModels])]}
+                  unregisteredModels={new Set(unregisteredModels)}
+                  onSelect={(model) => {
+                    if (model === models[0]) return;
+                    setModels([model, ...models.slice(1).filter((id) => id !== model)]);
+                    update(resetSpeechForModel(settings, model));
                     setCustomVoice(false);
                     setModelChanged(true);
                   }}
-                >
-                  {t('settings.roles.clearRole')}
-                </BrutalButton>
-              )}
-              {modelChanged && (
-                <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('speech.modelChanged')}
-                </p>
-              )}
-              {models.length > 1 && (
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('speech.savedBackups', { count: models.length - 1 })}
-                </p>
-              )}
-            </div>
-          )}
-          {settings.engine === 'system' ? (
-            <>
-              <p className="text-xs font-normal leading-relaxed text-neutral-500 dark:text-neutral-400 sm:col-span-2">
-                {t('speech.systemHelp')}
-              </p>
-              <label className="block">
-                {t('speech.voice')}
-                <BrutalSelect
-                  className="mt-1"
-                  disabled={saving}
-                  value={settings.voice}
-                  onChange={(voice) => update({ voice })}
-                  options={[
-                    { value: '', label: t('speech.defaultVoice') },
-                    ...(settings.voice && !voices.some((voice) => voice.voiceURI === settings.voice)
-                      ? [{ value: settings.voice, label: settings.voice }]
-                      : []),
-                    ...voices.map((voice) => ({
-                      value: voice.voiceURI,
-                      label: `${voice.name} (${voice.lang})`,
-                    })),
-                  ]}
                 />
-              </label>
-              {!voices.length && <p role="status">{t('speech.unavailable')}</p>}
-              <label className="block">
-                {t('speech.language')}
-                <input
-                  className={fieldClass}
-                  value={settings.language}
-                  maxLength={40}
-                  onChange={(e) => update({ language: e.target.value })}
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <p className="text-xs font-normal leading-relaxed text-neutral-500 dark:text-neutral-400 sm:col-span-2">
-                {t('speech.apiHelp')}
-              </p>
-              <label className="block">
-                {t('speech.voice')}
-                {modelOptions.voices.length > 0 && (
+                {models.length > 0 && (
+                  <BrutalButton
+                    size="xs"
+                    onClick={() => {
+                      setModels([]);
+                      update({ voice: '' });
+                      setCustomVoice(false);
+                      setModelChanged(true);
+                    }}
+                  >
+                    {t('settings.roles.clearRole')}
+                  </BrutalButton>
+                )}
+                {modelChanged && (
+                  <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {t('speech.modelChanged')}
+                  </p>
+                )}
+                {models.length > 1 && (
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {t('speech.savedBackups', { count: models.length - 1 })}
+                  </p>
+                )}
+              </div>
+            )}
+            {settings.engine === 'system' ? (
+              <>
+                <p className="text-xs font-normal leading-relaxed text-neutral-500 dark:text-neutral-400 sm:col-span-2">
+                  {t('speech.systemHelp')}
+                </p>
+                <label className="block">
+                  {t('speech.voice')}
                   <BrutalSelect
                     className="mt-1"
                     disabled={saving}
-                    value={customVoice ? '__custom__' : settings.voice}
-                    onChange={(value) => {
-                      setCustomVoice(value === '__custom__');
-                      update({ voice: value === '__custom__' ? '' : value });
-                    }}
+                    value={settings.voice}
+                    onChange={(voice) => update({ voice })}
                     options={[
-                      { value: '', label: t('speech.providerDefault') },
-                      ...modelOptions.voices.map((voice) => ({ value: voice, label: voice })),
-                      { value: '__custom__', label: t('speech.customVoice') },
+                      { value: '', label: t('speech.defaultVoice') },
+                      ...(settings.voice &&
+                      !voices.some((voice) => voice.voiceURI === settings.voice)
+                        ? [{ value: settings.voice, label: settings.voice }]
+                        : []),
+                      ...voices.map((voice) => ({
+                        value: voice.voiceURI,
+                        label: `${voice.name} (${voice.lang})`,
+                      })),
                     ]}
                   />
-                )}
-                {(customVoice || !modelOptions.voices.length) && (
+                </label>
+                {!voices.length && <p role="status">{t('speech.unavailable')}</p>}
+                <label className="block">
+                  {t('speech.language')}
                   <input
-                    aria-label={t('speech.customVoice')}
                     className={fieldClass}
-                    value={settings.voice}
-                    maxLength={200}
-                    onChange={(event) => update({ voice: event.target.value })}
-                  />
-                )}
-              </label>
-              <label className="block">
-                {t('speech.format')}
-                <BrutalSelect
-                  className="mt-1"
-                  disabled={saving}
-                  value={settings.response_format}
-                  onChange={(response_format) => update({ response_format })}
-                  options={modelOptions.formats.map((format) => ({
-                    value: format,
-                    label: format === 'auto' ? t('speech.autoFormat') : format.toUpperCase(),
-                  }))}
-                />
-              </label>
-              {modelOptions.instructions && (
-                <label className="block sm:col-span-2">
-                  {t('speech.instructions')}
-                  <textarea
-                    className={fieldClass}
-                    value={settings.instructions}
-                    rows={3}
-                    maxLength={4000}
-                    onChange={(e) => update({ instructions: e.target.value })}
+                    value={settings.language}
+                    maxLength={40}
+                    onChange={(e) => update({ language: e.target.value })}
                   />
                 </label>
-              )}
-            </>
-          )}
-          <div className="space-y-3 border-t-2 border-brutal-black pt-4 sm:col-span-2">
-            <h3 className="font-bold uppercase">{t('voice.settings.title')}</h3>
-            <p className="text-xs font-normal text-neutral-500 dark:text-neutral-400">
-              {t('voice.settings.description')}
-            </p>
+              </>
+            ) : (
+              <>
+                <label className="block">
+                  {t('speech.voice')}
+                  {modelOptions.voices.length > 0 && (
+                    <BrutalSelect
+                      className="mt-1"
+                      disabled={saving}
+                      value={customVoice ? '__custom__' : settings.voice}
+                      onChange={(value) => {
+                        setCustomVoice(value === '__custom__');
+                        update({ voice: value === '__custom__' ? '' : value });
+                      }}
+                      options={[
+                        { value: '', label: t('speech.providerDefault') },
+                        ...modelOptions.voices.map((voice) => ({ value: voice, label: voice })),
+                        { value: '__custom__', label: t('speech.customVoice') },
+                      ]}
+                    />
+                  )}
+                  {(customVoice || !modelOptions.voices.length) && (
+                    <input
+                      aria-label={t('speech.customVoice')}
+                      className={fieldClass}
+                      value={settings.voice}
+                      maxLength={200}
+                      onChange={(event) => update({ voice: event.target.value })}
+                    />
+                  )}
+                </label>
+                <label className="block">
+                  {t('speech.format')}
+                  <BrutalSelect
+                    className="mt-1"
+                    disabled={saving}
+                    value={settings.response_format}
+                    onChange={(response_format) => update({ response_format })}
+                    options={modelOptions.formats.map((format) => ({
+                      value: format,
+                      label: format === 'auto' ? t('speech.autoFormat') : format.toUpperCase(),
+                    }))}
+                  />
+                </label>
+                {modelOptions.instructions && (
+                  <label className="block sm:col-span-2">
+                    {t('speech.instructions')}
+                    <textarea
+                      className={fieldClass}
+                      value={settings.instructions}
+                      rows={2}
+                      maxLength={4000}
+                      onChange={(e) => update({ instructions: e.target.value })}
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            {(
+              [
+                ...(settings.engine === 'system' || modelOptions.speed ? ['speed'] : []),
+                ...(settings.engine === 'system' ? ['pitch'] : []),
+                'volume',
+              ] as ('speed' | 'pitch' | 'volume')[]
+            ).map((key) => (
+              <BrutalRange
+                key={key}
+                label={t(`speech.${key}`)}
+                value={settings[key]}
+                valueText={
+                  key === 'volume'
+                    ? `${Math.round(settings[key] * 100)}%`
+                    : `${settings[key].toFixed(2)}×`
+                }
+                min={key === 'speed' ? 0.25 : 0}
+                max={key === 'speed' ? 4 : key === 'pitch' ? 2 : 1}
+                step={0.05}
+                disabled={saving}
+                onChange={(value) => update({ [key]: value })}
+              />
+            ))}
+          </fieldset>
+        )}
+      </SettingsCard>
+      {settings && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={t('voice.settings.title')}
+            icon={<MicrophoneIcon className="h-5 w-5" aria-hidden="true" />}
+          />
+          <fieldset
+            disabled={saving}
+            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
+          >
             <label className="block">
               {t('voice.settings.model')}
               <BrutalSelect
@@ -335,72 +365,52 @@ export function VoiceSettingsCard({
                 onChange={(event) => update({ realtime_voice: event.target.value })}
               />
             </label>
-            <label className="block">
-              {t('voice.settings.sensitivity')}
-              <BrutalSelect
-                className="mt-1"
-                disabled={saving}
-                value={settings.realtime_start_sensitivity ?? 'low'}
-                onChange={(value) =>
-                  update({
-                    realtime_start_sensitivity:
-                      value as VoiceSettings['realtime_start_sensitivity'],
-                  })
-                }
-                options={[
-                  { value: 'low', label: t('voice.settings.sensitivityLow') },
-                  { value: 'auto', label: t('voice.settings.sensitivityAuto') },
-                  { value: 'high', label: t('voice.settings.sensitivityHigh') },
-                ]}
-              />
-              <span className="mt-1 block text-xs font-normal text-neutral-500 dark:text-neutral-400">
-                {t('voice.settings.sensitivityHint')}
-              </span>
-            </label>
+            {(!settings.realtime_model || settings.realtime_model.startsWith('gemini/')) && (
+              <label className="block">
+                {t('voice.settings.sensitivity')}
+                <BrutalSelect
+                  className="mt-1"
+                  disabled={saving}
+                  value={settings.realtime_start_sensitivity ?? 'low'}
+                  onChange={(value) =>
+                    update({
+                      realtime_start_sensitivity:
+                        value as VoiceSettings['realtime_start_sensitivity'],
+                    })
+                  }
+                  options={[
+                    { value: 'low', label: t('voice.settings.sensitivityLow') },
+                    { value: 'auto', label: t('voice.settings.sensitivityAuto') },
+                    { value: 'high', label: t('voice.settings.sensitivityHigh') },
+                  ]}
+                />
+              </label>
+            )}
             {!realtimeOptions.some((option) => option.configured) && (
               <p className="text-xs text-brutal-red">{t('voice.settings.noneConfigured')}</p>
             )}
-          </div>
-          {(
-            [
-              ...(settings.engine === 'system' || modelOptions.speed ? ['speed'] : []),
-              ...(settings.engine === 'system' ? ['pitch'] : []),
-              'volume',
-            ] as ('speed' | 'pitch' | 'volume')[]
-          ).map((key) => (
-            <label
-              className="block border-t border-neutral-200 pt-4 dark:border-zinc-700"
-              key={key}
-            >
-              <span className="mb-3 flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-wide">
-                {t(`speech.${key}`)}
-                <output className="border-2 border-brutal-black bg-neutral-50 px-2 py-0.5 font-mono tabular-nums dark:bg-zinc-900">
-                  {key === 'volume'
-                    ? `${Math.round(settings[key] * 100)}%`
-                    : `${settings[key].toFixed(2)}×`}
-                </output>
-              </span>
-              <input
-                className="block w-full cursor-pointer accent-brutal-blue focus-visible:outline-2 focus-visible:outline-brutal-blue"
-                type="range"
-                min={key === 'speed' ? 0.25 : 0}
-                max={key === 'speed' ? 4 : key === 'pitch' ? 2 : 1}
-                step={0.05}
-                value={settings[key]}
-                onChange={(e) => update({ [key]: Number(e.target.value) })}
-              />
-            </label>
-          ))}
-          <BrutalButton
-            className="justify-self-end sm:col-span-2"
-            onClick={() => void save()}
-            disabled={saving}
+          </fieldset>
+        </SettingsCard>
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {status && (
+          <p
+            role="status"
+            className={
+              status === 'speech.failed'
+                ? 'text-sm text-red-600 dark:text-red-400'
+                : 'text-sm text-neutral-600 dark:text-neutral-400'
+            }
           >
+            {t(status)}
+          </p>
+        )}
+        {settings && (
+          <BrutalButton variant="primary" onClick={() => void save()} disabled={saving}>
             {t('common.save')}
           </BrutalButton>
-        </fieldset>
-      )}
-      {status && <p role="status">{t(status)}</p>}
-    </SettingsCard>
+        )}
+      </div>
+    </div>
   );
 }

@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.23.0] - 2026-11-06
+
+### Release notes
+- GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it.
+- Add webhook tasks: give a task a private URL and any service that calls it, such as GitHub or your own scripts, runs the task with the request as its input.
+- Fix plugin sign-in failing with "Client must not use multiple authentication methods" for services such as Cloudflare.
+- Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
+- Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
+- The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
+- The plugins page shows each service's logo, and its buttons have icons and no longer wrap onto two lines.
+- Connect Notion, Linear, GitHub, Cloudflare and Stripe from Settings → Plugins. Sign-ins stay in your keychain, and changes the agent makes there ask for approval.
+- Connect Suzent to a relay you deploy yourself (Settings → Devices → Relay): webhooks can reach it from the internet without a tunnel, and pairing QR codes carry an end-to-end encrypted relay route for the phone apps.
+- Settings has a new Services page for Notion, Linear, GitHub, Cloudflare, Stripe and your own MCP servers, and the Plugins page now lists only plugins that add tools and commands.
+- The chat's tools sidebar lists services connected through plugins, such as Notion, and lets you turn one off for a chat.
+- Voice conversations started from the new-chat screen now go into the project you picked instead of the default project.
+
+## [v0.22.0] - 2026-11-05
+
+<!-- highlights -->
+### Highlights
+
+- **Suzent is on the Microsoft Store.** Install it from https://apps.microsoft.com/detail/9MZQ1HHXHVZT and let the Store keep it up to date. The Store build runs its own bundled Python, needs no setup step, and uses Windows' own start-at-login switch.
+- **Your settings live with your data.** Chat apps, permissions, custom providers, skills and default config are now always saved in your Suzent data folder rather than the app folder, so they survive reinstalls and work in read-only installs. Existing settings move over automatically on first launch.
+- **Several chats at once, without the mix-ups.** Replies no longer leak into another chat while two are streaming, the send button no longer ignores the first click, and switching to a streaming chat shows it streaming straight away.
+- **Smoother streaming.** Long replies no longer re-parse the whole message on every frame, and opening a chat or the chat list no longer stalls the ones that are still streaming.
+<!-- /highlights -->
+
+### Release notes
+- Fixed replies from one chat leaking into another while two chats stream, the send button sometimes ignoring the first click, and a delay before a streaming chat shows as streaming after switching to it.
+- Add an MSIX packaged mode for the Microsoft Store build: the desktop app runs its bundled Python runtime, leaves updates to the Store, and uses the Windows StartupTask for start at login.
+- Streaming replies no longer re-parse the whole message every frame, and loading chats or the chat list no longer stalls other chats that are streaming.
+- Settings you change (chat apps, permissions, custom providers, skills and default config) are now always saved in your Suzent data folder instead of the app folder, so they work in read-only installs such as the Microsoft Store; existing settings are migrated automatically.
+
+## [v0.21.0] - 2026-11-02
+
+<!-- highlights -->
+### Highlights
+
+- **One phone, several computers.** Pair the mobile app with your laptop and a home server, and switch between them from Settings. The pairing QR code is much less dense and easier to scan, forgetting a computer on the phone also revokes the phone's access there, and pairing again replaces the old entry instead of adding another. Pair with mobile 0.6.0 to get these.
+- **A much lighter install.** Web pages are fetched with pydantic-ai's built-in web fetch instead of crawl4ai, documents are converted with small direct converters instead of MarkItDown, and webcam support is now an optional Camera plugin, so the Python environment is more than 500 MB smaller. Installs and updates download packages only for the plugins you have on. If you use camera.snap, turn on the Camera plugin under Settings → Plugins or run `suzent plugin install camera`.
+- **read_file is more precise.** Converted documents come back with line numbers and honour offset and limit like text files, and any other text file, such as .rs or .go, is read as text.
+- **Fixes you may have hit.** Sessions started by Regent no longer have their tools refused in Smart mode, the Plugins page no longer fails with "Failed to fetch" after an interrupted upgrade, spoken MP3 replies from OpenAI TTS play correctly again, and installs outside a source checkout show model providers during onboarding.
+<!-- /highlights -->
+
+### Release notes
+- Messages that wake an ACP agent chat, such as another agent's request, now show in the chat as soon as the turn starts, and voice-call context reaches ACP agents.
+- Move webcam support (camera.snap) into an optional Camera plugin backed by headless OpenCV, so the default install no longer ships OpenCV. Nodes only advertise camera.snap when it is installed; run `suzent plugin install camera` to enable it.
+- read_file shows EPUB authors and language, and fences raw notebook cells so their text is not rendered as markdown.
+- read_file converts documents with small direct converters instead of MarkItDown (about 200 MB lighter). Converted documents now come back with line numbers and honour offset/limit like text files, and any other text file (for example .rs or .go) is read as text.
+- Pair the mobile app with several computers and switch between them from Settings, with a new Chats, Tasks and Settings bar on phones.
+- The phone pairing QR code is much less dense and easier to scan, forgetting a connection on the phone revokes it on the computer, and pairing the same phone again replaces its old entry instead of adding another.
+- Phones can now pair over Tailscale when the desktop has many network adapters, instead of failing with a trusted-connection error.
+- The Plugins settings page no longer fails with "Failed to fetch" when an upgrade left a half-removed package folder in the Python environment.
+- Installs and desktop updates now sync only the packages of the plugins you have on, as suzent upgrade does: a fresh install no longer downloads every chat app's SDK, a chat app you removed stays removed, and an update no longer uninstalls the Camera plugin's OpenCV.
+- Model providers and capability data load in installed and packaged builds too: they were looked up relative to the source checkout, so a non-repo install showed no providers during onboarding.
+- Sessions started by Regent no longer have their tools refused as unrequested: the Smart mode reviewer now treats Regent's brief as the session's task.
+- Restore pydub so spoken replies in compressed formats (MP3 from OpenAI TTS) decode correctly instead of playing as noise, and add a test that fails when any imported module is not a declared dependency.
+- Fetch web pages with pydantic-ai's lightweight, SSRF-guarded web fetch instead of crawl4ai, and install only the document converters read_file uses, shrinking the Python environment by about 360 MB.
+
 ## [v0.20.0] - 2026-11-01
 
 ### Release notes

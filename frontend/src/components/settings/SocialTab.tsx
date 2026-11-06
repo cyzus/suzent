@@ -298,7 +298,6 @@ export function SocialTab({
     <SettingsPage>
       <SettingsHeader
         title={t('settings.social.title')}
-        subtitle={t('settings.social.subtitle')}
         actions={
           <Badge tone={enabledCount ? 'green' : 'neutral'}>
             {t('settings.social.enabledCount', { enabled: enabledCount, total: channels.length })}
@@ -490,7 +489,6 @@ export function SocialTab({
             </svg>
           }
           title={t('settings.social.agentCapabilitiesTitle')}
-          description={t('settings.social.agentCapabilitiesDesc')}
         />
 
         <div className="space-y-6">

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Model providers and capability data load in installed and packaged builds too: they were looked up relative to the source checkout, so a non-repo install showed no providers during onboarding."
+}

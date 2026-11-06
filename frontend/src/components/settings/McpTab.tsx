@@ -59,12 +59,15 @@ interface McpTabProps {
     stdio: Record<string, any>;
     enabled: Record<string, boolean>;
   }) => void;
+  /** Render under another page's header, e.g. the Services page. */
+  embedded?: boolean;
 }
 
 export function McpTab({
   serverList,
   onServerListChange,
   onMcpServersRefresh,
+  embedded = false,
 }: McpTabProps): React.ReactElement {
   const { t } = useI18n();
   const [srvName, setSrvName] = useState('');
@@ -270,7 +273,16 @@ export function McpTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.mcp.title')} subtitle={t('settings.mcp.subtitle')} />
+      {embedded ? (
+        <div className="pt-2">
+          <h3 className="text-sm font-black uppercase">{t('settings.mcp.title')}</h3>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            {t('settings.mcp.subtitle')}
+          </p>
+        </div>
+      ) : (
+        <SettingsHeader title={t('settings.mcp.title')} />
+      )}
 
       {/* Add MCP Server Card */}
       <CollapsibleSettingsCard
@@ -290,7 +302,6 @@ export function McpTab({
           </svg>
         }
         title={t('settings.mcp.addNewServerTitle')}
-        description={t('settings.mcp.addNewServerDesc')}
       >
         <div className="space-y-4">
           <div className="flex gap-2">
@@ -375,7 +386,6 @@ export function McpTab({
             </svg>
           }
           title={t('settings.mcp.configuredServersTitle')}
-          description={t('settings.mcp.configuredServersDesc')}
         />
 
         {serverList.length === 0 ? (

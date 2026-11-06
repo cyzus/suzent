@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it."
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import socket
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
@@ -17,9 +18,10 @@ from pydantic import (
     model_validator,
 )
 from starlette.exceptions import HTTPException
-from starlette.requests import Request
+from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket
 
 from suzent.auth_boundary import extract_token
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
@@ -79,7 +81,7 @@ class ObserveRequest(ChatRequest):
 
 
 def authorize(
-    request: Request, chat_id: str | None = None, action: str = "read"
+    request: HTTPConnection, chat_id: str | None = None, action: str = "read"
 ) -> ClientGrant:
     token = extract_token(request.scope.get("headers", []))
     grant = get_mobile_store(request).verify(token)
@@ -107,17 +109,75 @@ def forwarded(request: Request, body: dict) -> Request:
     return result
 
 
+async def voice(websocket: WebSocket) -> None:
+    """Use paired-device grants, never the host-only voice endpoint."""
+    from suzent.auth_boundary import voice_origin_allowed
+    from suzent.voice.realtime import VoiceBridge
+
+    chat_id = websocket.query_params.get("chat_id", "")
+
+    def check_access() -> None:
+        authorize(websocket, chat_id, "send")
+        # The realtime assistant can both delegate and cancel chat tasks.
+        authorize(websocket, chat_id, "stop")
+
+    try:
+        check_access()
+        if (
+            not chat_id
+            or len(chat_id) > 200
+            or "/" in chat_id
+            or get_database().get_chat(chat_id) is None
+            or not voice_origin_allowed(
+                websocket.headers.get("origin"), websocket.headers.get("host", "")
+            )
+        ):
+            raise HTTPException(403)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)
+    bridge = asyncio.create_task(factory(websocket, chat_id).run())
+    try:
+        while not bridge.done():
+            done, _ = await asyncio.wait({bridge}, timeout=0.5)
+            if done:
+                await bridge
+                break
+            try:
+                check_access()
+            except HTTPException:
+                await websocket.close(code=1008)
+                break
+    finally:
+        bridge.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bridge
+
+
 async def session(request: Request) -> JSONResponse:
     return reply(
         {
             "device": authorize(request).model_dump(),
+            "desktop_name": socket.gethostname()[:100],
             "client_protocol": 1,
             "stream_protocols": [1],
             "attachments": 1,
             "scheduled_tasks": 1,
             "chat_pagination": 1,
+            "voice": 1,
+            **relay_field(request),
         }
     )
+
+
+def relay_field(request: Request) -> dict[str, object]:
+    """Lets a phone paired before the relay was set up learn how to use it."""
+    relay = getattr(request.app.state, "relay", None)
+    descriptor = relay.phone_descriptor() if relay is not None else None
+    return {"relay": descriptor} if descriptor else {}
 
 
 def regent_summary() -> dict[str, object]:
@@ -725,8 +785,17 @@ async def confirm_pairing(request: Request) -> JSONResponse:
     return reply({"ok": True})
 
 
+async def forget_pairing(request: Request) -> JSONResponse:
+    """Let a phone retire its own grant so re-pairing does not leave orphans."""
+    grant = authorize(request)
+    get_mobile_store(request).revoke(grant.device_id)
+    return reply({"ok": True})
+
+
 client_routes = [
+    WebSocketRoute("/mobile/client/voice", voice),
     Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
+    Route("/mobile/client/pairing/forget", forget_pairing, methods=["POST"]),
     Route("/mobile/client/composer", composer, methods=["GET"]),
     Route("/mobile/client/projects", projects, methods=["GET"]),
     Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),

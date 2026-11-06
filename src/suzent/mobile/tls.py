@@ -152,16 +152,19 @@ class DeviceIdentity:
 
 def local_hosts() -> list[str]:
     import psutil
-    from suzent.nodes.discovery import _local_ip
+    from suzent.nodes.discovery import TAILSCALE_NETWORK, _local_ip
 
-    hosts = [_local_ip()]
-    for addresses in psutil.net_if_addrs().values():
-        for address in addresses:
-            if (
-                address.family == socket.AF_INET
-                and not ipaddress.ip_address(address.address).is_loopback
-            ):
-                hosts.append(address.address)
+    addresses = [
+        ipaddress.ip_address(address.address)
+        for entries in psutil.net_if_addrs().values()
+        for address in entries
+        if address.family == socket.AF_INET
+    ]
+    usable = [ip for ip in addresses if not (ip.is_loopback or ip.is_link_local)]
+    # The QR carries only six origins, so Tailscale must not lose its slot to
+    # virtual adapters (WSL, Hyper-V, Docker) that the phone can never reach.
+    usable.sort(key=lambda ip: ip not in TAILSCALE_NETWORK)
+    hosts = [_local_ip(), *map(str, usable)]
     name = socket.gethostname().split(".")[0]
     if name and name.isascii() and all(c.isalnum() or c == "-" for c in name):
         hosts.insert(1, f"{name}.local")

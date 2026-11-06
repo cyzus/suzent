@@ -133,6 +133,9 @@ class CronAPI:
     async def job_history(self, job_id: int, limit: int = 10) -> dict:
         return await self.client.get(f"/cron/jobs/{job_id}/runs?limit={limit}")
 
+    async def regenerate_webhook(self, job_id: int) -> dict:
+        return await self.client.post(f"/cron/jobs/{job_id}/webhook/regenerate")
+
     async def status(self) -> dict:
         return await self.client.get("/cron/status")
 

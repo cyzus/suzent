@@ -1,10 +1,14 @@
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 from suzent.sync import service as service_module
 from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME
 from suzent.sync.service import GitHubSyncService
+
+
+SYNCED = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 class FakePayloadBuilder:
@@ -65,6 +69,9 @@ class FakeProvider:
     def head(self) -> str:
         return "base"
 
+    def commits_ahead(self) -> int:
+        return 0
+
     def commit_payload(self) -> bool:
         self.calls.append("commit")
         return True
@@ -107,7 +114,9 @@ def test_watched_plan_does_not_fetch_remote_or_generate_patches(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     service.preview_sync_plan("auto", profile.id, refresh_remote=False)
 
@@ -132,7 +141,9 @@ def test_auto_sync_pushes_local_payload_before_remote_apply(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     asyncio.run(service.auto_sync(profile.id))
 
@@ -168,7 +179,9 @@ def test_auto_sync_applies_remote_when_local_payload_has_no_changes(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     asyncio.run(service.auto_sync(profile.id))
 
@@ -197,7 +210,9 @@ def test_auto_sync_blocks_destructive_memory_deletes(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     result = asyncio.run(service.auto_sync(profile.id))
 
@@ -227,7 +242,9 @@ def test_auto_sync_blocks_files_changed_on_both_sides(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     result = asyncio.run(service.auto_sync(profile.id, confirm_destructive=True))
 
@@ -261,7 +278,9 @@ def test_auto_sync_merges_disjoint_incoming_and_outgoing_changes(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     result = asyncio.run(service.auto_sync(profile.id))
 
@@ -294,7 +313,9 @@ def test_discard_outgoing_restores_local_from_cloud_payload(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     result = asyncio.run(service.discard_outgoing(profile.id))
 
@@ -328,7 +349,9 @@ def test_discard_outgoing_can_restore_one_selected_path(
         profiles_path=tmp_path / "profiles.json",
         payload_builder=FakePayloadBuilder(calls),
     )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+    profile = service.save_profile(
+        SyncProfile(repo_path=str(tmp_path / "repo"), last_sync_at=SYNCED)
+    )
 
     result = asyncio.run(
         service.discard_outgoing(profile.id, paths=["config/config.yaml"])
@@ -340,3 +363,26 @@ def test_discard_outgoing_can_restore_one_selected_path(
         "apply-paths:config/config.yaml",
         "reload",
     ]
+
+
+def test_auto_sync_waits_for_first_pull_on_a_freshly_cloned_device(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[str] = []
+    FakeProvider.calls = calls
+    FakeProvider.payload_remote_status_output = ""
+    FakePayloadBuilder.current_hashes = {"config/default.yaml": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"config/default.yaml": "device default"}
+    monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
+
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json",
+        payload_builder=FakePayloadBuilder(calls),
+    )
+    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+
+    result = asyncio.run(service.auto_sync(profile.id))
+
+    assert result["success"] is False
+    assert result["blocked_review_required"] is True
+    assert "push" not in calls

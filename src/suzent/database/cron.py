@@ -113,6 +113,14 @@ class CronOperationsMixin:
             )
             return session.exec(statement).first()
 
+    def find_cron_job_by_webhook_hash(self, token_hash: str) -> Optional[CronJobModel]:
+        """Find the webhook task whose URL token hashes to ``token_hash``."""
+        with self._session() as session:
+            statement = select(CronJobModel).where(
+                CronJobModel.webhook_token_hash == token_hash
+            )
+            return session.exec(statement).first()
+
     def update_cron_job(self, job_id: int, **kwargs) -> bool:
         """Update a cron job's configuration fields."""
         with self._session() as session:

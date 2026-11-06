@@ -5,7 +5,6 @@
 "Chats" = "对话";
 "Refresh" = "刷新";
 "Dismiss" = "关闭";
-"This phone as a Node" = "将手机作为 Node";
 "Enable foreground Node" = "启用前台 Node";
 "Conversations" = "对话";
 "New conversation" = "新建对话";
@@ -222,6 +221,9 @@
 "Failed calls: %d" = "%d 次调用失败";
 
 "No chats yet" = "还没有对话";
+"No projects yet" = "还没有项目";
+"Hide sidebar" = "隐藏侧边栏";
+"Show sidebar" = "显示侧边栏";
 "No matching chats" = "没有匹配的对话";
 
 "QR code recognized. Connecting to your desktop…" = "已识别二维码，正在连接桌面端…";
@@ -267,8 +269,47 @@
 "Confirm" = "确认";
 "View all %lld scheduled tasks" = "查看全部 %lld 个定时任务";
 "Connection" = "连接";
-"Forget connection?" = "忘记连接？";
 "This phone will need to pair again before it can reach your desktop." = "这台手机需要重新配对才能访问你的桌面端。";
 "Paused · Failed" = "已暂停 · 失败";
 "Not yet" = "尚未运行";
 "Privacy policy" = "隐私政策";
+"Tasks" = "任务";
+"Desktops" = "桌面端";
+"This desktop" = "当前桌面端";
+"Connected · %@" = "已连接 · %@";
+"%lld desktops" = "%lld 台桌面端";
+"Desktop: %@" = "桌面端：%@";
+"Pair another desktop" = "配对其他桌面端";
+"Other desktops" = "其他桌面端";
+"Checking…" = "正在检查…";
+"Forget" = "忘记";
+"Forget this desktop?" = "忘记此桌面端？";
+"Forget this desktop" = "忘记此桌面端";
+"Permissions" = "权限";
+"This phone will need to pair again before it can reach %@. To revoke access, also remove its credentials on the desktop." = "此手机需要重新配对后才能连接%@。若要撤销访问权限，还需在桌面端移除相应凭证。";
+"Each desktop keeps its own conversations, access and Node pairing." = "每台桌面端各自保留对话、访问权限和 Node 配对。";
+"Switch to %@" = "切换到%@";
+"Couldn't reach %@" = "无法连接%@";
+"Access to %@ was revoked or expired. Pair it again." = "%@的访问权限已被撤销或已过期，请重新配对。";
+"No scheduled tasks on %@" = "%@上没有定时任务";
+"Search the titles of every chat this phone can read." = "搜索此手机可读取的所有对话标题。";
+"Clear search" = "清除搜索";
+
+"Start voice conversation" = "开始语音对话";
+"End voice conversation" = "结束语音对话";
+"Connecting voice…" = "正在连接语音…";
+"Listening…" = "正在聆听…";
+"Speaking…" = "正在说话…";
+"Thinking…" = "正在思考…";
+"Allow microphone access in Settings to use voice." = "请在设置中允许麦克风访问，以使用语音功能。";
+"Voice connection failed. Check voice settings on your desktop and try again." = "语音连接失败。请检查桌面端语音设置后重试。";
+"Voice conversation" = "语音对话";
+
+"Voice is unavailable in the offline demo. Connect to your desktop to talk with Suzent." = "离线演示不支持语音。请连接桌面端，与 Suzent 进行语音对话。";
+"Update and restart your desktop, then configure a realtime model in Settings → Voice & audio." = "请更新并重启桌面端，然后在「设置 → 语音与音频」中配置实时语音模型。";
+"Enable Send messages and Stop responses for this phone in desktop Settings → Devices." = "请在桌面端「设置 → 设备」中为此手机开启「发送消息」和「停止回复」权限。";
+"Enable Create conversations for this phone, or open an existing conversation." = "请为此手机开启「创建会话」权限，或打开已有会话。";
+"Change this phone’s permissions in desktop Settings → Devices to use this action." = "请在桌面端「设置 → 设备」中调整此手机的权限以使用该操作。";
+"Processing…" = "正在处理…";
+"Stopping…" = "正在停止…";
+"Cancel voice connection" = "取消语音连接";

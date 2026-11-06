@@ -15,6 +15,19 @@ import TabItem from '@theme/TabItem';
 
 ## 1. 安装
 
+### 从 Microsoft Store 安装（Windows，推荐）
+
+<a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" alt="从 Microsoft 获取" width="200" /></a>
+
+在 Store 中点击 **获取**，然后从开始菜单打开 Suzent。Python、Git 等依赖都已内置，无需另外安装。接着直接进行[第 3 步](#3-添加模型提供商)。
+
+Store 版与安装程序版的区别：
+
+- **通过 Microsoft Store 更新。** Store 版中 `suzent update`、`suzent upgrade` 和 `suzent repair` 已停用。
+- **数据仍保存在 `~/.suzent`**（对话、记忆、设置、API 密钥），与安装程序版相同；卸载应用不会删除这些数据。
+- **开机启动**（设置 → 后台服务）使用 Windows 的启动应用设置，也可以在 Windows 设置 → 应用 → 启动 中关闭。
+- **可以与安装程序版同时安装。** 两者共用 `~/.suzent`，但不要同时运行：Store 版不会连接安装程序版启动的后端，而会在同一份数据上再启动一个后端。打开其中一个之前，请先退出另一个（包括它的后台服务），并且只在其中一个里开启开机启动。
+
 ### 使用安装程序
 
 从[首页](/#download)下载适合你电脑的安装程序。M 系列 Mac 选择 Apple Silicon，Intel Mac 选择 Intel。Windows 和 Linux 下载适用于 x86_64。
