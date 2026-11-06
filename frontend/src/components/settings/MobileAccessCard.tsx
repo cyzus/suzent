@@ -173,9 +173,6 @@ function ApprovePhone({
       <strong>
         {device.display_name} · {device.platform}
       </strong>
-      <p className="text-sm">
-        {t('mobileAccess.compare', { code: device.pairing_id.slice(0, 6) })}
-      </p>
       <PermissionPicker
         permissions={permissions}
         setPermissions={setPermissions}
@@ -435,9 +432,6 @@ export function MobileAccessCard({
                     {scanned.platform === 'ios' ? 'iOS' : 'Android'}
                   </p>
                 </div>
-                <p className="max-w-sm text-sm">
-                  {t('mobileAccess.compare', { code: scanned.pairing_id.slice(0, 6) })}
-                </p>
                 <p className="text-xs">
                   {t('mobileAccess.requestAccess')}{' '}
                   <Badge>{t(`mobileAccess.preset_${presetOf(permissions)}`)}</Badge>

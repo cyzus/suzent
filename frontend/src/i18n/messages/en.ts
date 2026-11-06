@@ -302,8 +302,7 @@ export const en = {
     scanStep: 'Scan with Suzent',
     scanStepHelp: 'Generate a QR code, then open the pairing scanner in the Suzent mobile app.',
     confirmStep: 'Allow it on this computer',
-    confirmStepHelp:
-      'After the phone scans, check its name and code here, then allow the connection.',
+    confirmStepHelp: 'After the phone scans, check that it is yours, then allow the connection.',
     accessSettings: 'Phone permissions',
     networkSettings: 'Connection settings',
     waiting: 'Waiting for scan',
@@ -342,7 +341,6 @@ export const en = {
     scan: 'One-time access invitation. Share only with your phone.',
     expires: 'Expires in {seconds}s',
     copy: 'Copy invitation',
-    compare: 'Confirm that the phone shows code {code}.',
     requestBadge: 'Scanned · waiting for you',
     requestAccess: 'Will get:',
     all_chats: 'Read all conversations, including future ones',

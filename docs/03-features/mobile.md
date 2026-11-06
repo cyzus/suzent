@@ -99,14 +99,14 @@ started; use **Stop** if you also want to cancel that task.
    **Paste an invitation instead** after **Copy invitation** on the
    computer), then tap **Request pairing**.
 5. **Allow it on the computer.** Once the phone scans, the QR code disappears
-   and the computer shows the phone's name and a six-character code. Check that
-   the phone shows the same code, then click **Allow**. Click **Deny** if you
-   don't recognize the phone. You can still change **Phone permissions** before
-   you allow it.
+   and the computer shows which phone scanned it. Click **Allow** if it's
+   yours, or **Deny** if it isn't. You can still change **Phone permissions**
+   before you allow it.
 
 The QR code works once and expires after a few minutes; click **New QR code**
 for another. Scanning it alone gives a phone nothing until you allow it on the
-computer.
+computer. If the QR code is already gone when you go to scan it, another device
+got there first: click **Deny** and make a new one.
 
 ### Pair more than one computer
 
