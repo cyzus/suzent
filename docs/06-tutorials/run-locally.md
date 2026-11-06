@@ -26,7 +26,7 @@ ollama pull llama3.2
 
 1. Open **Settings → Providers**, find **Ollama** under **Add a provider**, and
    click it to open its card.
-2. Click **Test connection & fetch models**.
+2. Click **Test connection**.
 3. On the **Models** tab, tick the model you pulled. Changes save on their own.
 
 ## 3. Use it for everything

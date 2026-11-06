@@ -112,21 +112,21 @@ suzent start
 
 **获取密钥：** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → 创建新密钥（以 `sk-...` 开头）
 
-在设置的 **添加提供商** 里找到 **OpenAI** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
+在设置的 **添加提供商** 里找到 **OpenAI** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **获取密钥：** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → 创建密钥（以 `sk-ant-...` 开头）
 
-在设置的 **添加提供商** 里找到 **Anthropic** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
+在设置的 **添加提供商** 里找到 **Anthropic** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **获取密钥（有免费额度）：** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → 创建 API 密钥（以 `AIza...` 开头）
 
-在设置的 **添加提供商** 里找到 **Google Gemini** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接并获取模型**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
+在设置的 **添加提供商** 里找到 **Google Gemini** 并打开它的卡片。在 **API 密钥** 标签页粘贴密钥，点击 **保存**。然后点击 **测试连接**，在 **模型** 标签页勾选需要的模型。改动会自动保存。
 
 </TabItem>
 </Tabs>

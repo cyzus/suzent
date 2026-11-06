@@ -17,7 +17,7 @@ use it like any other provider.
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, fill in **Base URL** and **Master Key**, clicking
    **Save** for each.
-4. Click **Test connection & fetch models** to load the models your proxy
+4. Click **Test connection** to load the models your proxy
    exposes, then tick the ones you want on the **Models** tab.
 
 Changes save on their own.

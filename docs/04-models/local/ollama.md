@@ -18,7 +18,7 @@ you say leaves your machine.
    ```
 2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama**
    (or type its name in the search box) and click it to open its card.
-3. Click **Test connection & fetch models** to list the models you have pulled,
+3. Click **Test connection** to list the models you have pulled,
    then tick the ones you want on the **Models** tab.
 
 Changes save on their own.

@@ -29,12 +29,17 @@ so it can work through a big log or data file in pieces.
 Documents are converted to text first, so the agent can read:
 
 - PDF files
-- Word documents
-- Excel spreadsheets
-- PowerPoint presentations
+- Word documents (`.docx`)
+- Excel spreadsheets (`.xlsx`, `.xlsm`, and older `.xls`)
+- PowerPoint presentations (`.pptx`), including speaker notes and charts
+- Outlook emails (`.msg`)
+- Jupyter notebooks (`.ipynb`)
+- EPUB e-books
+- ZIP archives: the agent sees the list of files inside, and the text of any of
+  the documents above that the archive contains
 
-Files larger than 50 MB can't be read, and other binary files (such as programs
-or archives) are refused rather than read as garbled text. To understand what is
+Files larger than 50 MB can't be read, and other binary files (such as programs)
+are refused rather than read as garbled text. To understand what is
 in a picture, the agent uses your **Vision** model instead; see
 [Model roles](../../04-models/model-roles.md).
 

@@ -15,7 +15,7 @@ Use Doubao and the other models on Volcengine Ark (ByteDance), through the Codin
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection & fetch models**, then tick the models you want on the
+4. Click **Test connection**, then tick the models you want on the
    **Models** tab.
 
 Changes save on their own, and Volcengine Ark then moves up to the providers you

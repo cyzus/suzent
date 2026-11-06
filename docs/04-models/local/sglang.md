@@ -15,7 +15,7 @@ server you control, Suzent can talk to it directly.
 2. Open **Settings → Providers**. Under **Add a provider**, find **SGLang**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
-4. Click **Test connection & fetch models**, then tick the models you want on the
+4. Click **Test connection**, then tick the models you want on the
    **Models** tab.
 
 Changes save on their own.

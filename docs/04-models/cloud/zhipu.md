@@ -15,7 +15,7 @@ Use GLM models with an API key from Zhipu's BigModel platform in China or from Z
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection & fetch models**, then tick the models you want on the
+4. Click **Test connection**, then tick the models you want on the
    **Models** tab.
 
 Changes save on their own, and Zhipu GLM / Z.ai then moves up to the providers you

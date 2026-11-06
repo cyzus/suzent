@@ -25,7 +25,7 @@ model selector in the chat window.
    choice, pick the one your key belongs to.
 3. On the **API keys** tab, paste your key and click **Save**. **Get a … API
    key** links to the page where you create one.
-4. Click **Test connection & fetch models**. This checks the key and loads the
+4. Click **Test connection**. This checks the key and loads the
    models it can use.
 5. Tick the models you want on the **Models** tab.
 

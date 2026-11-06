@@ -31,7 +31,7 @@ there in **Settings → Providers**.
 ## Set up
 
 1. Open **Settings → Data & Sync → GitHub Sync**.
-2. Click **Sign in with GitHub**, open the link shown, and enter the code.
+2. Click **Sign in to GitHub**, open the link shown, and enter the code.
 3. Accept the suggested repository name (`suzent-brain`) or type your own.
    Suzent creates it as a private repository if it doesn't exist.
 4. Click **Quick start**.
@@ -46,8 +46,10 @@ Suzent compares your computer with the repository and shows what changed:
 
 - **Push** appears when you have local changes to upload.
 - **Pull** appears when the repository has changes to download.
-- **Discard** undoes local changes you don't want to keep, one file or all.
-- **Use cloud** replaces your local copy with the repository's version.
+- **Discard** undoes a local change to one file, and **Discard local changes**
+  undoes them all.
+- **Pull remote changes** replaces your local synced files with the
+  repository's version.
 
 Click a file to see exactly what changed before you confirm. Anything that
 would delete or overwrite memory always asks first.
