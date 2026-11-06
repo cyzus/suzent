@@ -9,7 +9,7 @@ Name: Suzent: Sovereign AI Agent
 
 Subtitle: Your agent. Your rules.
 
-Promotional text: Your own AI agent, in your pocket. Catch up on your projects, plan trips around what you like, and approve actions on your computer from anywhere.
+Promotional text: Your own AI agent, in your pocket. It runs on your computer, remembers what matters to you, and keeps working while you are away. Your data stays yours.
 
 Keywords: personal AI,assistant,self-hosted,local-first,privacy,automation,LLM,memory,tasks,productivity
 
@@ -43,7 +43,7 @@ AI replies use the model provider you configure on your computer; provider charg
 
 副标题：你的智能体，你的规则。
 
-推广文本：把你自己的 AI 智能体装进口袋。随时了解项目进展，按你的喜好规划行程，在手机上批准电脑上的操作。
+推广文本：把你自己的 AI 智能体装进口袋。它运行在你的电脑上，记得对你重要的事，你不在时也继续工作。数据始终属于你。
 
 关键词：AI助手,个人AI,自托管,本地优先,隐私,自动化,大模型,记忆,任务,效率,远程
 
