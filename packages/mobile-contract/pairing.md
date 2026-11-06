@@ -205,3 +205,24 @@ Both phones show invitation recognition immediately, followed by connection-requ
 and connection-finalization progress. Legacy desktop approval retains its separate
 waiting state and comparison code. Discovery offers cancellation and network help;
 expired, declined, and unreachable outcomes remain explicit errors with scan-again.
+
+## Relay route
+
+When the desktop has a [self-hosted relay](../../docs/08-developing/protocols/relay.md)
+switched on, the invitation (and so the QR) and `GET /mobile/client/session`
+carry an optional `relay` object:
+
+```json
+{"relay": {"version": 1, "url": "https://relay.example", "channel": "<43+ char token>", "key": "<base64url, 65-byte P-256 point>"}}
+```
+
+Phones ignore it unless they speak `version: 1`. They keep it with the saved
+desktop and try it only after every direct origin has failed. The route is the
+WebSocket `wss://<url host>/c/<channel>/__suzent_e2e__`; everything on it is
+end-to-end encrypted with `suzent-e2e/1` against `key`, which the relay cannot
+read. Inside, requests reach the same routes as the mobile TLS gateway, with the
+same bearer tokens. The handshake, key schedule, framing and nonce rules are in
+the relay protocol page, and `relay-e2e-vectors.json` fixes one full exchange.
+
+A relay URL must be `https://`. A session that fails to decrypt a message is
+closed, never retried in place: the phone reconnects with a fresh handshake.

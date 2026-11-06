@@ -12,6 +12,18 @@ describe('mobile QR payload', () => {
       ...invitation,
     });
   });
+  it('carries the relay descriptor so the phone can fall back to it', () => {
+    const relay = {
+      version: 1,
+      url: 'https://relay.example',
+      channel: 'c'.repeat(43),
+      key: 'k'.repeat(87),
+    };
+    const payload = JSON.parse(
+      mobilePairingPayload('https://desktop.example:25314/', { ...invitation, relay })
+    );
+    expect(payload.relay).toEqual(relay);
+  });
   it.each([
     'file:///etc/passwd',
     'https://user:secret@desktop.example',

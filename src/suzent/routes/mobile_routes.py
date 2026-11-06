@@ -11,6 +11,7 @@ from starlette.routing import Route
 
 from suzent.config import USER_CONFIG_DIR
 from suzent.mobile.pairing import ClientPermissions, PairingError, PairingStore
+from suzent.relay.service import RelayService
 
 
 class InviteRequest(BaseModel):
@@ -50,6 +51,14 @@ class DecisionRequest(BaseModel):
 class PermissionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     permissions: ClientPermissions
+
+
+class RelayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str | None = Field(default=None, max_length=2048)
+    # None keeps the stored key; "" removes it.
+    key: str | None = Field(default=None, max_length=4096)
+    enabled: StrictBool
 
 
 class ManagementRequest(BaseModel):
@@ -100,6 +109,9 @@ async def invite(request: Request) -> JSONResponse:
                 )
             if not transport["origins"]:
                 return reply({"error": "No local network address available"}, 503)
+        relay = getattr(request.app.state, "relay", None)
+        if relay is not None and (descriptor := relay.phone_descriptor()):
+            transport["relay"] = descriptor
         return reply(
             {
                 **get_mobile_store(request).invite(
@@ -193,6 +205,37 @@ async def management(request: Request) -> JSONResponse:
     return reply({"ok": updated}, 200 if updated else 404)
 
 
+def get_relay(request: Request) -> RelayService:
+    relay = getattr(request.app.state, "relay", None)
+    if relay is None:
+        raise HTTPException(503, "Relay unavailable")
+    return relay
+
+
+async def relay_status(request: Request) -> JSONResponse:
+    return reply(get_relay(request).status())
+
+
+async def relay_configure(request: Request) -> JSONResponse:
+    relay = get_relay(request)
+    try:
+        body = RelayRequest.model_validate(await request.json())
+        await relay.configure(
+            url=(body.url or "").strip() or None,
+            key=body.key.strip() if body.key is not None else None,
+            enabled=body.enabled,
+        )
+    except (ValidationError, ValueError):
+        return reply({"error": "Invalid relay URL"}, 400)
+    return reply(relay.status())
+
+
+async def relay_reset(request: Request) -> JSONResponse:
+    relay = get_relay(request)
+    await relay.reset_channels()
+    return reply(relay.status())
+
+
 mobile_routes = [
     Route("/mobile/capabilities", capabilities, methods=["GET"]),
     Route("/mobile/pairing/invite", invite, methods=["POST"]),
@@ -208,4 +251,7 @@ mobile_routes = [
     ),
     Route("/mobile/devices/{device_id}/management", management, methods=["POST"]),
     Route("/mobile/devices/{device_id}/revoke", revoke, methods=["POST"]),
+    Route("/mobile/relay", relay_status, methods=["GET"]),
+    Route("/mobile/relay", relay_configure, methods=["POST"]),
+    Route("/mobile/relay/reset", relay_reset, methods=["POST"]),
 ]

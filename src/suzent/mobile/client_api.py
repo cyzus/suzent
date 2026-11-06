@@ -168,8 +168,16 @@ async def session(request: Request) -> JSONResponse:
             "scheduled_tasks": 1,
             "chat_pagination": 1,
             "voice": 1,
+            **relay_field(request),
         }
     )
+
+
+def relay_field(request: Request) -> dict[str, object]:
+    """Lets a phone paired before the relay was set up learn how to use it."""
+    relay = getattr(request.app.state, "relay", None)
+    descriptor = relay.phone_descriptor() if relay is not None else None
+    return {"relay": descriptor} if descriptor else {}
 
 
 def regent_summary() -> dict[str, object]:
