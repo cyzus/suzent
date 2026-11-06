@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isWeb } from '../../lib/runtime';
-import { getInitialLocale, tForLocale } from '../../i18n';
+import { getInitialLocale, tForLocale, useI18n } from '../../i18n';
 import {
   fetchNodeConfig,
   fetchA2AStatus,
@@ -21,6 +21,7 @@ import { SettingsCard, SectionCardHeader } from './SettingsCard';
  * prop drilling through SettingsModal.
  */
 export function NetworkAccessCard(): React.ReactElement {
+  const { t } = useI18n();
   const [config, setConfig] = useState<NodeAuthConfig | null>(null);
   const [a2a, setA2a] = useState<A2AStatus | null>(null);
   const [restarting, setRestarting] = useState(false);
@@ -98,7 +99,7 @@ export function NetworkAccessCard(): React.ReactElement {
         }
         iconTone="green"
         title="Network access"
-        description="Expose this device on your LAN or tailnet so other devices and agents can reach it."
+        description={t('settings.concise.networkScope')}
         actions={<BrutalOnOff checked={bound} disabled={restarting} onChange={toggle} />}
       />
 
@@ -144,8 +145,7 @@ export function NetworkAccessCard(): React.ReactElement {
 
       {!bound && (
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Listening on 127.0.0.1 only. Other devices cannot reach this machine until you enable
-          network access.
+          {t('settings.concise.networkLocal')}
         </p>
       )}
 

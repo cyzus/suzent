@@ -9,7 +9,6 @@ import { BrutalButton, BrutalLink } from '../BrutalButton';
 import {
   SectionCardHeader,
   SettingsCard,
-  SettingsHelp,
   SettingsListItem,
   Badge,
   SettingsPage,
@@ -200,7 +199,6 @@ export function AcpAgentsTab(): React.ReactElement {
       <SettingsCard className="space-y-3">
         <SectionCardHeader
           title={t('settings.acp.registeredTitle')}
-          description={t('settings.acp.registeredDesc')}
           actions={
             <RefreshButton
               spinning={loading || refreshing}
@@ -217,12 +215,6 @@ export function AcpAgentsTab(): React.ReactElement {
             {t('settings.acp.loginRequestError')}
           </p>
         )}
-        <SettingsHelp title={t('settings.acp.agentHelp')}>
-          <p>{t('settings.acp.probeHelp')}</p>
-          <p>
-            {t('settings.acp.customHelp')} <code>~/.suzent/acp_agents.json</code>
-          </p>
-        </SettingsHelp>
 
         {loading ? (
           <div className="p-8 text-center font-bold uppercase text-neutral-500 dark:text-neutral-400">

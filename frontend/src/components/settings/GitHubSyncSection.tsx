@@ -955,25 +955,23 @@ export function GitHubSyncSection({
           </svg>
         }
         title={t('settings.data.githubTitle')}
-        description={
-          <>
-            {t('settings.data.githubDesc')}
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              {configured && <Badge tone="green">{t('settings.data.githubConnected')}</Badge>}
-              {githubAuthenticated && (
-                <>
-                  <Badge tone="blue">
-                    {githubUsername
-                      ? t('settings.data.githubSignInDone', { username: githubUsername })
-                      : t('settings.data.githubSignedIn')}
-                  </Badge>
-                  <SettingsListAction tone="red" onClick={handleSignOut}>
-                    {t('settings.data.githubSignOut')}
-                  </SettingsListAction>
-                </>
-              )}
-            </div>
-          </>
+        description={t('settings.data.githubDesc')}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {configured && <Badge tone="green">{t('settings.data.githubConnected')}</Badge>}
+            {githubAuthenticated && (
+              <>
+                <Badge tone="blue">
+                  {githubUsername
+                    ? t('settings.data.githubSignInDone', { username: githubUsername })
+                    : t('settings.data.githubSignedIn')}
+                </Badge>
+                <SettingsListAction tone="red" onClick={handleSignOut}>
+                  {t('settings.data.githubSignOut')}
+                </SettingsListAction>
+              </>
+            )}
+          </div>
         }
       />
 

@@ -1,7 +1,8 @@
+import { ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { SectionCardHeader, SettingsCard } from './SettingsCard';
 import { fetchOpsLogs, type OpsLogTail } from '../../lib/opsApi';
 import {
@@ -158,10 +159,7 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
 
   return (
     <SettingsCard>
-      <SectionCardHeader
-        title={t('settings.service.logTitle')}
-        description={t('settings.service.logDesc')}
-      />
+      <SectionCardHeader title={t('settings.service.logTitle')} />
 
       {/* A row of their own: crammed into the header's actions slot, these
           controls squeezed the title into a column one word wide. */}
@@ -209,9 +207,17 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
         >
           {t('settings.service.follow')}
         </BrutalButton>
-        <BrutalButton size="sm" onClick={() => void copy()} disabled={shown.length === 0}>
-          {copied ? t('settings.service.logCopied') : t('settings.service.logCopy')}
-        </BrutalButton>
+        <BrutalIconButton
+          onClick={() => void copy()}
+          disabled={shown.length === 0}
+          label={copied ? t('settings.service.logCopied') : t('settings.service.logCopy')}
+        >
+          {copied ? (
+            <CheckIcon className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+          )}
+        </BrutalIconButton>
       </div>
 
       {logs?.available === false ? (

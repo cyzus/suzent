@@ -46,7 +46,7 @@ describe('Social channel settings', () => {
     expect(html).toContain('aria-pressed="false" aria-controls="social-channel-telegram-access"');
     expect(html).toContain('id="social-channel-telegram-access" hidden=""');
     expect(html).toContain('type="search"');
-    expect(html).toContain('Log in with WeChat');
+    expect(html).toContain('Connect WeChat');
     expect(html).toContain('for="social-channel-telegram-token"');
     expect(html).toContain('type="password"');
     expect(html).toContain('value="123"');

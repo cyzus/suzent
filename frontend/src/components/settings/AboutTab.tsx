@@ -145,7 +145,7 @@ export function AboutTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.about.title')} subtitle={t('settings.about.subtitle')} />
+      <SettingsHeader title={t('settings.about.title')} />
       <div>
         <BrutalButton
           variant="ghost"
