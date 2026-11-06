@@ -2108,6 +2108,7 @@ export const en = {
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
+    sentVia: 'Sent by {sender} via {channel}',
     today: 'Today',
     yesterday: 'Yesterday',
     runtime: {

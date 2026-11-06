@@ -22,10 +22,11 @@ export function IncomingMessage({
   if (request) {
     return (
       <div className="my-3 flex w-full flex-col items-end">
-        <span className="mb-1 pr-1 text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-          {t('chatMessage.sentByRegent')}
-        </span>
-        <UserMessage message={{ role: 'user', content: request }} chatId={chatId} />
+        <UserMessage
+          message={{ role: 'user', content: request }}
+          chatId={chatId}
+          senderLabel={t('chatMessage.sentByRegent')}
+        />
       </div>
     );
   }

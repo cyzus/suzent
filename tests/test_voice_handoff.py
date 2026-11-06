@@ -339,7 +339,7 @@ async def test_default_start_turn_preserves_chat_config_and_dispatches_acp(monke
     import suzent.acp.runtime as acp_runtime
     import suzent.agent_manager as agent_manager
     import suzent.database as database_mod
-    import suzent.routes.chat_routes as chat_routes
+    import suzent.core.prompt_row as prompt_row
 
     fake_chat = SimpleNamespace(
         config={
@@ -355,7 +355,9 @@ async def test_default_start_turn_preserves_chat_config_and_dispatches_acp(monke
         lambda: SimpleNamespace(get_chat=lambda _cid: fake_chat),
     )
     monkeypatch.setattr(
-        chat_routes, "_prewrite_user_display_message", lambda *_a, **_k: True
+        prompt_row,
+        "prewrite_prompt",
+        lambda _chat_id, message, *_a, **_k: (message, True),
     )
     seen_build_cfg: list[dict] = []
 

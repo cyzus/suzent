@@ -9,8 +9,17 @@ vi.mock('../../i18n', () => ({
   useI18n: () => ({ locale: 'en', t: (key: string) => key }),
 }));
 vi.mock('./UserMessage', () => ({
-  UserMessage: ({ message }: { message: { content: string } }) => (
-    <div data-user-bubble>{message.content}</div>
+  UserMessage: ({
+    message,
+    senderLabel,
+  }: {
+    message: { content: string };
+    senderLabel?: string;
+  }) => (
+    <div data-user-bubble>
+      {senderLabel}
+      {message.content}
+    </div>
   ),
 }));
 

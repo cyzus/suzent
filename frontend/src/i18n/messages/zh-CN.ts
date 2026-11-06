@@ -2017,6 +2017,7 @@ export const zhCN = {
     regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
+    sentVia: '{sender} 通过 {channel} 发送',
     today: '今天',
     yesterday: '昨天',
     runtime: {

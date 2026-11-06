@@ -279,6 +279,8 @@ interface UserMessageProps {
   onEdit?: (newContent: string) => void;
   /** Re-run the latest user message unchanged. */
   onRerun?: () => void;
+  /** Who sent this on the user's behalf, when it did not come from this window. */
+  senderLabel?: string;
 }
 
 const UserMessageComponent: React.FC<UserMessageProps> = ({
@@ -290,6 +292,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
   isLatest,
   onEdit,
   onRerun,
+  senderLabel,
 }) => {
   const { config } = useChatStore();
   const { t } = useI18n();
@@ -298,6 +301,12 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const content = message.content ? sanitizeContent(message.content) : '';
+  const { sender, channel } = message.metadata ?? {};
+  const label =
+    senderLabel ??
+    (typeof sender === 'string' && typeof channel === 'string'
+      ? t('chatMessage.sentVia', { sender, channel })
+      : null);
   const canEdit = isLatest && !!content && (!!onEdit || !!onRerun);
 
   const startEditing = () => {
@@ -372,6 +381,14 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             : 'space-y-3'
         }
       >
+        {label && (
+          <div className="flex justify-end pr-1">
+            <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
+              {label}
+            </span>
+          </div>
+        )}
+
         {/* Images — single thumbnail or a slideshow when there are several */}
         <UserImageGallery images={galleryImages} onImageClick={onImageClick} />
 
