@@ -10,6 +10,7 @@
     ".releases/changes/ios-app-store-privacy.json",
     ".releases/changes/ios-compact-chat-controls.json",
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/ios-relay.json",
     ".releases/changes/ios-resource-bundle-signing.json",
     ".releases/changes/ios-scroll-invalidation.json",
     ".releases/changes/ios-sidebar-hierarchy.json",
