@@ -92,6 +92,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [HTTP API and internals](https://suzent.com/docs/developing/protocols/http-api)
 - [Node protocol](https://suzent.com/docs/developing/protocols/node-protocol)
 - [Node Mesh — Security & Identity](https://suzent.com/docs/developing/protocols/node-security)
+- [Relay protocol](https://suzent.com/docs/developing/protocols/relay)
 - [Roadmap & known gaps](https://suzent.com/docs/developing/roadmap)
 - [Documentation](https://suzent.com/docs)
 - [What Is a Sovereign AI Agent?](https://suzent.com/sovereign)
