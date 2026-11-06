@@ -28,6 +28,16 @@ def _mint_webhook(db: ChatDatabase, job_id: int) -> str:
     return webhook_path(token)
 
 
+def _webhook_urls(request: Request, path: str) -> dict[str, str]:
+    """The webhook path, plus its relay address when a relay is set up."""
+    urls = {"webhook_path": path}
+    app = request.scope.get("app")
+    relay = getattr(getattr(app, "state", None), "relay", None)
+    if relay is not None and (relay_url := relay.webhook_url(path)):
+        urls["webhook_relay_url"] = relay_url
+    return urls
+
+
 def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
     """Serialize a CronJobModel to a JSON-safe dict."""
     chat_id = _task_chat_id(job)
@@ -125,7 +135,8 @@ async def create_cron_job(request: Request) -> JSONResponse:
         path = _mint_webhook(db, job_id)
         job = db.get_cron_job(job_id)
         return JSONResponse(
-            {"job": _job_to_dict(job, db), "webhook_path": path}, status_code=201
+            {"job": _job_to_dict(job, db), **_webhook_urls(request, path)},
+            status_code=201,
         )
 
     # Set initial next_run_at
@@ -244,7 +255,7 @@ async def update_cron_job(request: Request) -> JSONResponse:
         # so a link handed out earlier can't fire a task that no longer
         # expects it.
         if job.schedule_kind == WEBHOOK_KIND and not job.webhook_token_hash:
-            response["webhook_path"] = _mint_webhook(db, job_id)
+            response.update(_webhook_urls(request, _mint_webhook(db, job_id)))
         elif job.schedule_kind != WEBHOOK_KIND and job.webhook_token_hash:
             db.update_cron_job(job_id, webhook_token_hash=None)
         job = db.get_cron_job(job_id)
@@ -289,7 +300,7 @@ async def regenerate_webhook(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     if job.schedule_kind != WEBHOOK_KIND:
         return JSONResponse({"error": "This task is not a webhook"}, status_code=400)
-    return JSONResponse({"webhook_path": _mint_webhook(db, job_id)})
+    return JSONResponse(_webhook_urls(request, _mint_webhook(db, job_id)))
 
 
 async def get_cron_status(request: Request) -> JSONResponse:

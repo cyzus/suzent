@@ -260,6 +260,34 @@ export const en = {
     openModels: 'Choose the API speech model →',
   },
 
+  relay: {
+    title: 'Relay',
+    description:
+      'Reach this Suzent from anywhere through a relay you deploy yourself. Suzent dials out, so no port forwarding or VPN is needed.',
+    deployHint: 'Deploy suzent-relay on Cloudflare Workers or any server first.',
+    deployLink: 'How to deploy',
+    url: 'Relay address',
+    key: 'Registration key',
+    keyPlaceholder: 'Leave empty if your relay has none',
+    keySaved: 'Saved. Type a new key to replace it.',
+    removeKey: 'Remove key',
+    save: 'Save',
+    saving: 'Saving…',
+    reset: 'Reset relay addresses',
+    resetConfirm:
+      'Issue new relay addresses? Webhook URLs given out through the relay stop working right away.',
+    state_stopped: 'Off',
+    state_connecting: 'Connecting',
+    state_connected: 'Connected',
+    state_rejected: 'Rejected by the relay',
+    state_replaced: 'Another Suzent took over this relay address',
+    replacedHint: 'Reset the relay addresses to connect this Suzent again.',
+    rejectedHint: 'Check the registration key.',
+    invalidUrl: 'Enter the relay address, starting with https://',
+    backgroundHint:
+      'Suzent keeps the relay connection only while it is running. Turn on the Background Service to stay reachable with the window closed.',
+    webhooksNote: 'Webhook tasks get a relay URL as well. The relay can see webhook payloads.',
+  },
   mobileAccess: {
     editPermissions: 'Edit permissions',
     cancelEdit: 'Cancel',
@@ -1534,6 +1562,8 @@ export const en = {
       webhookHint:
         'Suzent gives this task a URL. Any POST to it runs the task, with the request body passed along as data. Turn on the Background Service so the URL keeps working after you close the window.',
       webhookUrlTitle: 'Webhook URL',
+      webhookLocal: 'On this machine or your tunnel',
+      webhookRelay: 'Through your relay, from anywhere',
       webhookUrlOnce:
         'Copy it now: it is shown only once. Anyone who has this URL can run the task, so keep it private.',
       webhookRegenerate: 'New webhook URL',

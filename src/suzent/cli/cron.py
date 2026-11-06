@@ -185,7 +185,7 @@ def add_job(
             if chat:
                 typer.echo(f"  Runs in:  {job.get('chat_title') or chat}")
             if data.get("webhook_path"):
-                _echo_webhook_url(client.base_url, data["webhook_path"])
+                _echo_webhook_url(client.base_url, data)
             else:
                 typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
         except ClientError as e:
@@ -195,8 +195,10 @@ def add_job(
     asyncio.run(_run())
 
 
-def _echo_webhook_url(base_url: str, path: str) -> None:
-    typer.echo(f"  Webhook:  POST {base_url.rstrip('/')}{path}")
+def _echo_webhook_url(base_url: str, data: dict) -> None:
+    typer.echo(f"  Webhook:  POST {base_url.rstrip('/')}{data['webhook_path']}")
+    if data.get("webhook_relay_url"):
+        typer.echo(f"  Relay:    POST {data['webhook_relay_url']}")
     typer.echo("  This URL is shown only once. Anyone who has it can run the task.")
 
 
@@ -211,7 +213,7 @@ def webhook_url(
             client = get_client()
             data = await client.cron.regenerate_webhook(job_id)
             typer.echo(f"New webhook URL for task #{job_id}:")
-            _echo_webhook_url(client.base_url, data["webhook_path"])
+            _echo_webhook_url(client.base_url, data)
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)

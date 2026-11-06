@@ -128,7 +128,10 @@ request they were carrying is gone; check the task's history instead.
 
 **Reaching it from the internet.** Suzent only listens on your own computer, so
 a script on the same machine can call the URL directly. A service on the
-internet, such as GitHub, needs a tunnel that forwards to Suzent, such as
+internet, such as GitHub, needs a way in.
+
+The easiest is a [relay](#webhooks-through-a-relay) you deploy yourself. You can
+also run a tunnel that forwards to Suzent, such as
 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 or [Tailscale Funnel](https://tailscale.com/kb/1223/funnel). Point the tunnel at
 `http://127.0.0.1:25314`, add the tunnel's host name to the `SUZENT_ALLOWED_HOSTS`
@@ -137,10 +140,31 @@ give the service the tunnel address with the same `/hooks/<token>` path. Only
 the `/hooks/` path works without signing in through the tunnel; the rest of
 Suzent still requires an approved device.
 
+### Webhooks through a relay
+
+A relay is a small server you deploy once, for free on Cloudflare Workers or on
+any server with Docker: [suzent-relay](https://github.com/cyzus/suzent-relay).
+Suzent connects out to it, so you don't need a tunnel, port forwarding or a
+fixed port. There is no Suzent-run relay; you use your own.
+
+1. Deploy suzent-relay by following its README. Note its `https://` address and,
+   if you set one, its registration key.
+2. In Suzent, open **Settings → Devices → Relay**, enter the address and the key,
+   and turn it on. The badge shows **Connected** once Suzent reaches it.
+3. Create a webhook task, or choose **New webhook URL** on an existing one. Suzent
+   now shows two URLs: one for this machine and one through the relay. Give the
+   relay URL to GitHub or any other service.
+
+Only `/hooks/` addresses can be reached through the relay; the rest of Suzent
+can't. The relay can read webhook payloads in transit, so use a relay you
+trust. **Reset relay addresses** in the Relay settings issues new relay
+addresses, and every relay webhook URL given out before stops working.
+
 Webhooks work only while Suzent is running, and the URL keeps the same address
 only when it runs as the [background service](#keep-suzent-running-in-the-background),
 which always uses port 25314. Turn the background service on before you hand the
-URL to anything.
+URL to anything. The relay URL stays the same either way, but it also
+only works while Suzent is running.
 
 ## Heartbeat
 

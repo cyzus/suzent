@@ -15,8 +15,9 @@ _SERVICE_NAME = "suzent"
 
 #: Secrets Suzent reads itself and never exports to the environment, where
 #: commands the agent runs would inherit them: MCP OAuth tokens and the
-#: tokens plugin integrations are connected with.
-PRIVATE_KEY_PREFIXES = ("SUZENT_MCP_OAUTH::", "SUZENT_MCP_TOKEN::")
+#: tokens plugin integrations are connected with, and the relay's
+#: registration key and channel tokens.
+PRIVATE_KEY_PREFIXES = ("SUZENT_MCP_OAUTH::", "SUZENT_MCP_TOKEN::", "SUZENT_RELAY::")
 
 
 def is_private_key(key: str) -> bool:

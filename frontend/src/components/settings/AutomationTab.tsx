@@ -21,6 +21,7 @@ import {
   deleteCronJob,
   triggerCronJob,
   regenerateWebhook,
+  type WebhookUrls,
   webhookUrl,
   fetchCronStatus,
   fetchCronJobRuns,
@@ -88,15 +89,21 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   // A webhook URL is returned only by the save that minted it, so it is held
   // here until the user dismisses it.
-  const [revealedWebhook, setRevealedWebhook] = useState<{ jobId: number; url: string } | null>(
-    null
-  );
-  const [webhookCopied, setWebhookCopied] = useState(false);
+  const [revealedWebhook, setRevealedWebhook] = useState<{
+    jobId: number;
+    urls: { label: string; url: string }[];
+  } | null>(null);
+  const [webhookCopied, setWebhookCopied] = useState<string | null>(null);
 
-  const revealWebhook = (jobId: number, path: string | undefined) => {
-    if (!path) return;
-    setRevealedWebhook({ jobId, url: webhookUrl(path) });
-    setWebhookCopied(false);
+  const revealWebhook = (jobId: number, minted: WebhookUrls) => {
+    if (!minted.webhook_path) return;
+    const urls = [
+      { label: t('settings.automation.webhookLocal'), url: webhookUrl(minted.webhook_path) },
+    ];
+    if (minted.webhook_relay_url)
+      urls.push({ label: t('settings.automation.webhookRelay'), url: minted.webhook_relay_url });
+    setRevealedWebhook({ jobId, urls });
+    setWebhookCopied(null);
   };
 
   // History state
@@ -163,7 +170,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       setBoundChatId('');
       setQuietWhenNothingToReport(true);
       setShowCreateForm(false);
-      revealWebhook(created.job.id, created.webhook_path);
+      revealWebhook(created.job.id, created);
       await refresh();
     } catch (e: any) {
       alert(e.message || t('settings.automation.failedToCreateJob'));
@@ -214,11 +221,10 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     }
   };
 
-  const copyWebhook = async () => {
-    if (!revealedWebhook) return;
+  const copyWebhook = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(revealedWebhook.url);
-      setWebhookCopied(true);
+      await navigator.clipboard.writeText(url);
+      setWebhookCopied(url);
     } catch (e) {
       console.error('Failed to copy webhook URL:', e);
     }
@@ -269,7 +275,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     setLoading(true);
     try {
       const saved = await updateCronJob(editingJobId, editFields);
-      revealWebhook(editingJobId, saved.webhook_path);
+      revealWebhook(editingJobId, saved);
       setEditingJobId(null);
       setEditFields({});
       await refresh();
@@ -755,24 +761,35 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           <div className="text-xs font-black uppercase">
                             {t('settings.automation.webhookUrlTitle')}
                           </div>
-                          <div className="flex gap-2 items-center">
-                            <input
-                              readOnly
-                              value={revealedWebhook.url}
-                              onFocus={(e) => e.target.select()}
-                              className="flex-1 min-w-0 bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black px-2 py-1 font-mono text-xs focus:outline-none"
-                            />
-                            <BrutalIconButton
-                              variant="primary"
-                              onClick={copyWebhook}
-                              label={webhookCopied ? t('common.copied') : t('common.copy')}
-                            >
-                              {webhookCopied ? (
-                                <CheckIcon className="h-4 w-4 stroke-[2.5]" />
-                              ) : (
-                                <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                          {revealedWebhook.urls.map(({ label, url }) => (
+                            <div key={url} className="space-y-1">
+                              {revealedWebhook.urls.length > 1 && (
+                                <div className="text-[11px] font-bold">{label}</div>
                               )}
-                            </BrutalIconButton>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  readOnly
+                                  value={url}
+                                  onFocus={(e) => e.target.select()}
+                                  className="flex-1 min-w-0 bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black px-2 py-1 font-mono text-xs focus:outline-none"
+                                />
+                                <BrutalIconButton
+                                  variant="primary"
+                                  onClick={() => copyWebhook(url)}
+                                  label={
+                                    webhookCopied === url ? t('common.copied') : t('common.copy')
+                                  }
+                                >
+                                  {webhookCopied === url ? (
+                                    <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                                  ) : (
+                                    <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                                  )}
+                                </BrutalIconButton>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex justify-end">
                             <BrutalIconButton
                               onClick={() => setRevealedWebhook(null)}
                               label={t('common.close')}
