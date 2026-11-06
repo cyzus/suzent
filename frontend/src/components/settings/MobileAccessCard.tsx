@@ -308,13 +308,12 @@ export function MobileAccessCard({
       const candidates = mobilePairingOrigins(origin, config?.addresses);
       mobilePairingPayload(origin, { pairing_id: '', invitation: '', expires_at: 0 }, candidates);
       await cancelActive();
+      // Permissions go with the desktop's approval, so a leaked QR code grants nothing on its own.
       const next = await mobileRequest<MobileInvitation>('pairing/invite', {
-        permissions,
         local_tls: new URL(origin).protocol !== 'https:',
       });
-      if (!mounted.current || next.approval !== 'phone') {
+      if (!mounted.current) {
         await cancelMobileInvitation(next.pairing_id);
-        if (mounted.current) throw new Error('Update the desktop backend');
         return;
       }
       invitationRef.current = next;
@@ -348,6 +347,9 @@ export function MobileAccessCard({
     });
   const expired = invitation !== null && invitation.expires_at * 1000 <= now;
   const invitationActive = invitation !== null && !expired;
+  const scanned = invitationActive
+    ? pending.find((device) => device.pairing_id === invitation.pairing_id)
+    : undefined;
   return (
     <SettingsCard>
       <div className="space-y-5">
@@ -388,7 +390,7 @@ export function MobileAccessCard({
                   permissions={permissions}
                   setPermissions={setPermissions}
                   chats={chats}
-                  busy={busy || invitationActive}
+                  busy={busy || (invitationActive && !scanned)}
                 />
               </div>
             </details>
@@ -418,7 +420,42 @@ export function MobileAccessCard({
             </details>
           </div>
           <div className="flex flex-col items-center justify-center gap-4 border-2 border-brutal-black bg-neutral-50 p-4 text-center dark:border-white/15 dark:bg-zinc-900">
-            {invitationActive ? (
+            {scanned ? (
+              <>
+                <Badge tone="amber">{t('mobileAccess.requestBadge')}</Badge>
+                <DevicePhoneMobileIcon className="h-16 w-16" aria-hidden="true" />
+                <div className="space-y-1" role="status">
+                  <p className="text-base font-black break-all">{scanned.display_name}</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {scanned.platform === 'ios' ? 'iOS' : 'Android'}
+                  </p>
+                </div>
+                <p className="max-w-sm text-sm">
+                  {t('mobileAccess.compare', { code: scanned.pairing_id.slice(0, 6) })}
+                </p>
+                <p className="text-xs">
+                  {t('mobileAccess.requestAccess')}{' '}
+                  <Badge>{t(`mobileAccess.preset_${presetOf(permissions)}`)}</Badge>
+                </p>
+                <div className="flex gap-2">
+                  <BrutalButton
+                    variant="warning"
+                    disabled={busy}
+                    onClick={() => decide(scanned.pairing_id, permissions)}
+                  >
+                    {t('mobileAccess.approve')}
+                  </BrutalButton>
+                  <BrutalButton disabled={busy} onClick={() => decide(scanned.pairing_id, null)}>
+                    {t('mobileAccess.deny')}
+                  </BrutalButton>
+                </div>
+                <p className="font-mono text-xs">
+                  {t('mobileAccess.expires', {
+                    seconds: Math.max(0, Math.ceil(scanned.expires_at - now / 1000)),
+                  })}
+                </p>
+              </>
+            ) : invitationActive ? (
               <>
                 <Badge tone="amber">{t('mobileAccess.waiting')}</Badge>
                 <img
@@ -460,7 +497,7 @@ export function MobileAccessCard({
                 </BrutalButton>
               </>
             )}
-            {invitation && (
+            {invitation && !scanned && (
               <button
                 type="button"
                 disabled={busy}
@@ -473,7 +510,7 @@ export function MobileAccessCard({
           </div>
         </div>
         {pending
-          .filter((device) => device.expires_at * 1000 > now)
+          .filter((device) => device.expires_at * 1000 > now && device !== scanned)
           .map((device) => (
             <ApprovePhone
               key={device.pairing_id}

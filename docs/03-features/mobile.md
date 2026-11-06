@@ -97,12 +97,16 @@ started; use **Stop** if you also want to cancel that task.
    encrypted automatically; you don't need a certificate.
 4. **Click Pair a phone.** In the app, tap **Scan desktop QR code** (or
    **Paste an invitation instead** after **Copy invitation** on the
-   computer), check the permissions it shows, and tap **Confirm connection**.
-   You don't need to approve anything again on the computer.
+   computer), then tap **Request pairing**.
+5. **Allow it on the computer.** Once the phone scans, the QR code disappears
+   and the computer shows the phone's name and a six-character code. Check that
+   the phone shows the same code, then click **Allow**. Click **Deny** if you
+   don't recognize the phone. You can still change **Phone permissions** before
+   you allow it.
 
 The QR code works once and expires after a few minutes; click **New QR code**
-for another. Anyone who scans it gets the permissions you picked, so don't
-share it.
+for another. Scanning it alone gives a phone nothing until you allow it on the
+computer.
 
 ### Pair more than one computer
 
