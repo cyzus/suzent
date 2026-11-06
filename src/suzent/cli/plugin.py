@@ -103,8 +103,13 @@ def list_plugins():
 
 
 @plugin_app.command("install")
-def install_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
-    """Enable a plugin and install the packages it needs."""
+def install_plugin(
+    name: str = typer.Argument(..., help="Plugin id or alias"),
+    yes: bool = typer.Option(
+        False, "--yes", help="Download the programs the plugin needs without asking."
+    ),
+):
+    """Enable a plugin and install the packages and programs it needs."""
     record = _resolve(name)
     if record.status == "error":
         typer.echo(f"❌ '{record.id}' cannot be loaded: {record.error}")
@@ -119,25 +124,66 @@ def install_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
         _manager().set_enabled(record.id, True, requested_as=name)
         _install_dependencies(record)
         typer.echo(f"Enabled '{record.id}'. It loads when Suzent starts.")
-    if record.id == "desktop":
-        _offer_agent_desktop()
+    for spec in record.manifest.binaries:
+        _offer_binary(record, spec, yes=yes)
 
 
-def _offer_agent_desktop() -> None:
-    """Ask before downloading the CLI. A non-interactive shell only prints how."""
+def _offer_binary(record, spec, *, yes: bool) -> None:
+    """Download a program the plugin runs, after the user agrees to it."""
     import sys
 
-    from suzent.cli.desktop import install_after_consent
-    from suzent.tools.desktop.install import runtime_status
+    from suzent.plugins import binaries
 
-    if runtime_status()["installed"]:
+    status = binaries.status(record.id, spec)
+    if status["installed"] or not status["supported"]:
         return
-    if not sys.stdin.isatty():
-        typer.echo(
-            "  agent-desktop is not installed. Run `suzent desktop install` to download it."
-        )
-        return
-    install_after_consent(yes=False)
+    typer.echo(
+        f"\n  '{record.id}' runs {spec.name} {spec.version} on this computer. "
+        f"Suzent can download the npm package {status['package']}@{spec.version}, "
+        "check it against the SHA-256 pinned in the plugin, and keep it in its "
+        "own folder."
+    )
+    if spec.notice:
+        typer.echo(f"  {spec.notice}")
+    if not yes:
+        if not sys.stdin.isatty():
+            typer.echo(
+                f"  Run `suzent plugin install {record.id} --yes` to download it."
+            )
+            return
+        if not typer.confirm(f"  Download {spec.name} now?"):
+            typer.echo("  Skipped. Nothing was downloaded.")
+            return
+    result = _install_binary_via_server(record.id, spec.name)
+    if result is None:
+        try:
+            result = binaries.install(record.id, spec)
+        except binaries.BinaryInstallError as exc:
+            typer.echo(f"❌ {exc}")
+            raise typer.Exit(code=1)
+    typer.echo(f"  Installed {spec.name}: {result.get('path')}")
+
+
+def _install_binary_via_server(name: str, binary: str) -> dict | None:
+    import asyncio
+
+    from suzent.client import get_client
+    from suzent.client.base import ClientError, ServerUnavailableError
+
+    async def call() -> dict:
+        client = get_client()
+        try:
+            return await client.plugins.install_binary(name, binary)
+        finally:
+            await client.aclose()
+
+    try:
+        return asyncio.run(call())
+    except ServerUnavailableError:
+        return None
+    except ClientError as exc:
+        typer.echo(f"❌ {exc}")
+        raise typer.Exit(code=1)
 
 
 @plugin_app.command("remove")

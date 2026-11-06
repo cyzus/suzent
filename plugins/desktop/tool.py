@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.logger import get_logger
-from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
-from suzent.tools.desktop import runner as desktop_runner
-from suzent.tools.desktop.catalog import DesktopCommand, DesktopOptions, prepare_call
-from suzent.tools.desktop.runner import (
+from suzent.tools.base import RememberAs, Tool, ToolErrorCode, ToolResult
+
+from . import runner as desktop_runner
+from .catalog import (
+    DesktopCommand,
+    DesktopOptions,
+    is_readonly_desktop_args,
+    prepare_call,
+    prepare_from_tool_args,
+)
+from .runner import (
     DesktopBinaryError,
     DesktopTimeout,
     parse_envelope,
@@ -41,7 +48,7 @@ class DesktopTool(Tool):
         "own; clicks, typing, and other changes ask first. Always uses the host "
         "desktop, never the Docker sandbox."
     )
-    group = ToolGroup.DESKTOP
+    group = "Desktop"
     requires_approval = True
     deferrable = True
     guidance_priority = 40
@@ -52,6 +59,26 @@ class DesktopTool(Tool):
         "again. Leave headed off unless a command reports that physical input is "
         "required. Retry an action only when the error says retry is safe."
     )
+
+    @classmethod
+    def is_readonly_call(cls, args: dict[str, Any]) -> bool:
+        return is_readonly_desktop_args(args)
+
+    @classmethod
+    def invalid_call_reason(cls, args: dict[str, Any]) -> str | None:
+        try:
+            prepare_from_tool_args(args)
+        except ValueError as exc:
+            return str(exc)
+        return None
+
+    @classmethod
+    def remember_as(cls, args: dict[str, Any]) -> RememberAs:
+        # Trust one command at a time: allowing "click" must not allow "type".
+        command = str(args.get("command") or "").strip()
+        if not command:
+            return RememberAs(None)
+        return RememberAs({"command": command}, f"desktop {command}")
 
     async def forward(
         self,
@@ -95,7 +122,7 @@ class DesktopTool(Tool):
 
         This always runs on the host computer. The chat sandbox has no display
         and is not used. If the CLI is missing, tell the user to confirm
-        installation in Settings or with `suzent desktop install`. Do not try
+        installation in Settings → Plugins or with `suzent plugin install desktop`. Do not try
         to download it yourself.
         """
         try:

@@ -23,22 +23,26 @@ the background when the agent tries to use the tool.
    terminal, `suzent plugin install desktop` does the same thing. Removing
    the plugin turns desktop control off.
 
-2. When the program is missing, Suzent asks before it downloads
-   **agent-desktop 1.0.2** from GitHub into its own folder. It checks the
-   checksum published with that release, and the build attestation when the
-   GitHub CLI (`gh`) is installed. The helper file that has to sit beside the
-   program is kept there. On a Mac, the Accessibility guide opens after a
-   successful install.
+2. The plugin card then shows **Install agent-desktop**. Suzent asks before
+   it downloads **agent-desktop 1.0.2**, the same package npm publishes,
+   into its own folder. It checks the download against a SHA-256 written
+   into the plugin, so a copy from any source has to be byte-for-byte that
+   release. Only the program for this computer and the helper file that has
+   to sit beside it are kept. On a Mac, the Accessibility guide opens after
+   a successful install.
 
-   The same download is `suzent desktop install`. Add `--yes` only when you
-   have already agreed.
+   When Suzent detects it is in mainland China (see
+   [Installing from mainland China](../../01-getting-started/quickstart.md#installing-from-mainland-china)),
+   the download comes from npmmirror first and falls back to npm; otherwise the other way round.
+   No GitHub access is needed either way.
+
+   From a terminal, `suzent plugin install desktop` asks the same question
+   after it turns the plugin on. Add `--yes` only when you have already
+   agreed.
 
    On Windows that file is unsigned. SmartScreen, antivirus software, or
    Smart App Control may block it. The confirmation says so before anything
    is downloaded.
-
-   If GitHub has no archive for this computer, and only then, Suzent uses
-   `npm install -g agent-desktop@1.0.2` instead.
 
 3. You can still install it yourself and leave Suzent out of it:
 
@@ -114,8 +118,7 @@ screen. Treat them as private.
   on GNOME Wayland.
 - **Windows.** The release binary is unsigned. SmartScreen can warn when you
   download it, antivirus software can quarantine it, and Smart App Control on
-  a clean Windows 11 install can block it. Check the file's checksum against
-  the release if a scanner holds it, then choose **More info → Run anyway**,
+  a clean Windows 11 install can block it. If a scanner holds it, then choose **More info → Run anyway**,
   or restore it from quarantine.
 - **Mac.** Accessibility must be granted, and a screenshot also needs Screen
   Recording permission. The temporary directory has to stay private to your

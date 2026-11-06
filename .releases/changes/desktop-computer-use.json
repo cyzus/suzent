@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "minor"},
-  "summary": "Optional desktop control of native apps through agent-desktop, downloaded only after you agree."
+  "summary": "Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree."
 }

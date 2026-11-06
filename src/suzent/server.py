@@ -193,11 +193,11 @@ from suzent.routes.ops_routes import (
 from suzent.routes.plugin_routes import (
     connect_integration,
     disconnect_integration,
+    install_binary,
     install_plugin,
     list_plugins,
     remove_plugin,
 )
-from suzent.tools.desktop.routes import desktop_runtime, desktop_runtime_install
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
     get_system_idle,
@@ -1413,6 +1413,11 @@ app = Starlette(
         Route("/plugins/{name}/install", install_plugin, methods=["POST"]),
         Route("/plugins/{name}/remove", remove_plugin, methods=["POST"]),
         Route(
+            "/plugins/{name}/binaries/{binary}/install",
+            install_binary,
+            methods=["POST"],
+        ),
+        Route(
             "/plugins/{name}/integrations/{integration}/connect",
             connect_integration,
             methods=["POST"],
@@ -1422,8 +1427,6 @@ app = Starlette(
             disconnect_integration,
             methods=["POST"],
         ),
-        Route("/desktop/runtime", desktop_runtime, methods=["GET"]),
-        Route("/desktop/runtime/install", desktop_runtime_install, methods=["POST"]),
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/toggle", toggle_skill, methods=["POST"]),

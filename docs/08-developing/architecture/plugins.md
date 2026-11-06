@@ -52,6 +52,7 @@ api_version: 1         # plugin API this plugin was written against
 | `default_enabled` | On until the user removes it. Honoured only for built-in plugins. |
 | `icon` | An SVG or PNG file in the plugin folder (under 64 KB), shown on the plugins page. Built-in service logos come from [Simple Icons](https://simpleicons.org) (CC0). |
 | `category` | `service` lists the plugin under **Settings → Services** instead of **Plugins**. Chat-app plugins (those with `channel`) are left off the Plugins page, because Social Channels installs them. |
+| `binaries` | Programs the plugin runs on the host, downloaded after the user agrees. See [Binaries](#binaries). Needs `api_version: 3`. |
 
 A plugin with no `__init__.py` only brings packages; `plugins/telegram/` is one.
 
@@ -91,11 +92,12 @@ uv run suzent start
 ```
 
 `plugins/desktop` is the optional desktop computer-use plugin shipped with
-Suzent. It is built in and `default_enabled: false`. Its `register()` adds
-`DesktopTool` and the `suzent-desktop` skill. The tool execs the
-`agent-desktop` 1.0.x binary on the host; it never enters the per-chat Docker
-sandbox. `POST /desktop/runtime/install` downloads the pinned release only
-when the body sets `confirmed` to true. See
+Suzent. It is built in and `default_enabled: false`. All of its code lives
+in the plugin folder: `register()` adds `DesktopTool` and the
+`suzent-desktop` skill, and hands `runner` the `agent-desktop` binary its
+manifest declares. The tool execs that binary on the host; it never enters
+the per-chat Docker sandbox. It is the reference for both [Binaries](#binaries)
+and [Classifying tool calls](#classifying-tool-calls). See
 [Desktop apps](../../03-features/tools/desktop.md).
 
 ## `PluginContext`
@@ -105,6 +107,7 @@ when the body sets `confirmed` to true. See
 | `register_tool(tool_cls)` | Adds a `suzent.tools.base.Tool` subclass. It goes through the same `_make_tool()` wrapper as built-in tools, so `requires_approval`, `output_char_limit`, the user's approval policy and ToolSearch deferral all apply. Without a `group` it is not in the tool picker and is reached through ToolSearch; with one it is listed under that capability. |
 | `register_skills(path)` | Adds a directory of skill folders. Relative paths resolve against the plugin directory. Skills get source `plugin` and id `plugin:<plugin-id>:<skill-name>`, are enabled by default, and are mounted read-only into the sandbox under `/mnt/skills/plugins/`. |
 | `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
+| `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
 
@@ -186,6 +189,69 @@ the cached agent. `GET /plugins` lists each plugin's `integrations` with
 
 Signing in from a phone is not supported yet: the OAuth redirect must reach
 the loopback callback on the Suzent machine.
+
+## Binaries
+
+A plugin that drives a command-line program declares it in `plugin.yaml`
+instead of downloading it itself. `suzent.plugins.binaries` does the rest.
+
+```yaml
+api_version: 3
+binaries:
+  - name: agent-desktop
+    version: 1.0.2
+    package: agent-desktop           # npm package carrying the builds
+    sha256: 6a2bbcc1...              # of the npm tarball
+    env: SUZENT_AGENT_DESKTOP_BIN    # optional override the user can set
+    platforms:                       # npm platform names
+      darwin-arm64:
+        files:                       # installed name: path in the tarball
+          agent-desktop: bin/agent-desktop-darwin-arm64       # first = executable
+          agent-desktop-macos-helper: bin/agent-desktop-macos-helper-darwin-arm64
+      win32-x64:
+        files:
+          agent-desktop.exe: bin/agent-desktop-win32-x64.exe
+    after_install:
+      darwin: [permissions, --guide]  # run once, per OS
+    notice: Shown with the consent prompt.
+```
+
+- **Source.** The artifact is always an npm tarball, so it reaches users who
+  cannot reach GitHub: `tarball_urls()` tries `registry.npmmirror.com` first
+  when `network_region.china_mode()` is on and `registry.npmjs.org` first
+  otherwise, falling back to the other on a download error. npmmirror copies
+  public npm packages without review, so publishing to npm is enough. When
+  each platform is its own package (for example `@suzent/himalaya-linux-x64`),
+  a platform entry sets its own `package` and `sha256`.
+- **Verification.** The tarball's SHA-256 must equal the manifest's. A
+  mismatch stops the install rather than trying the next registry. Only the
+  members listed for the current platform are extracted, as regular files,
+  into `<data dir>/plugin-bin/<plugin>/<name>/<version>/`, marked executable,
+  with an `install.json` recording what was installed. The directory is built
+  under a `.partial` name and renamed into place.
+- **Lookup.** `locate()` uses the `env` override when set (and returns `None`
+  if it is not executable, rather than silently using something else), then
+  Suzent's copy, then `command` (default `name`) on `PATH`.
+- **Consent.** Only `POST /plugins/{name}/binaries/{binary}/install` with
+  `{"confirmed": true}` and `suzent plugin install` (after a prompt, or
+  `--yes`) download. Tools only call `locate()`. `GET /plugins` reports each
+  binary's status under `binaries`, and the plugin card shows an install
+  button with the consent text.
+
+## Classifying tool calls
+
+A tool with `requires_approval` can tell the permission engine more about
+each call by overriding three classmethods on `suzent.tools.base.Tool`. They
+receive the raw arguments, so they must validate rather than trust them.
+
+| Method | Effect |
+|---|---|
+| `is_readonly_call(args) -> bool` | True lets the call run without asking, and in strict read-only and plan modes. |
+| `invalid_call_reason(args) -> str \| None` | A reason refuses the call before approval (`reason_code` `invalid_tool_call`), so a call that can never run is not offered for approval. |
+| `remember_as(args) -> RememberAs \| None` | What "always allow" stores. `RememberAs({"command": "click"}, "desktop click")` stores an `exact_input` rule for those arguments; `RememberAs(None)` offers only a one-time allow; `None` (the default) trusts the whole tool. |
+
+The engine finds the class with `registry.get_tool_class()`, so the hooks
+work for plugin tools without any change to `suzent.permissions`.
 
 ## Discovery and loading
 
@@ -275,6 +341,7 @@ for `suzent plugin status` and the settings page.
 | `GET /plugins` | Every plugin with `enabled`, `status`, `missing` packages and `restartRequired`. |
 | `POST /plugins/{name}/install` | Enables a plugin by id or alias, installs its packages, `activate()`s it, and, when it brought packages, rebuilds the social stack with `reload_social()` so a chat app whose SDK just arrived connects. A failed install returns `502` with uv's output; the plugin stays enabled so a retry reinstalls. |
 | `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
+| `POST /plugins/{name}/binaries/{binary}/install` | Downloads a declared binary. Refuses with `400` unless the body is `{"confirmed": true}`; a failed download or checksum returns `502`. |
 
 `suzent plugin install` and `remove` call these routes when a server answers
 (`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the
@@ -333,4 +400,6 @@ installs it, which is the consent step, and the settings page asks for
 confirmation before installing third-party code. There is no sandbox and no
 capability system around plugin code. The API only accepts names of
 discovered plugins, never package names. Tools a plugin adds are still subject to the user's tool
-approval policy, the same as built-in tools.
+approval policy, the same as built-in tools. Programs a plugin declares are
+downloaded only after the user agrees, and only if their hash matches the
+one the plugin ships.

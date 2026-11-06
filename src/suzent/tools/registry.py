@@ -323,7 +323,6 @@ CAPABILITY_DESCRIPTIONS = {
     "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search and correct durable memory, and retrieve relevant past sessions.",
-    "Desktop": "Read and operate native apps on this computer through the OS accessibility tree.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {
@@ -497,6 +496,14 @@ def _name_indexes() -> tuple[Dict[str, str], Dict[str, str]]:
         {cls.tool_name: cls.name for cls in classes},
         {cls.name: cls.tool_name for cls in classes},
     )
+
+
+def get_tool_class(name: str) -> Optional[type]:
+    """The tool class for a model-facing name or a class name."""
+    for cls in _all_tool_classes():
+        if name in (cls.tool_name, cls.name):
+            return cls
+    return None
 
 
 def get_tool_class_name(runtime_name: str) -> Optional[str]:

@@ -35,7 +35,6 @@ SHELL_TOOLS = frozenset(
 )
 CHECK_COMMAND_TOOL = "check_command"
 SOCIAL_TOOL = "social_message"
-DESKTOP_TOOLS = frozenset({"desktop", "DesktopTool"})
 
 
 @dataclass(frozen=True)
@@ -81,7 +80,7 @@ class PermissionEngine:
                 source=PermissionDecisionSource.RULE,
             )
 
-        invalid = self._desktop_rejection(request)
+        invalid = self._invalid_call(request)
         if invalid is not None:
             return invalid
 
@@ -497,35 +496,29 @@ class PermissionEngine:
             return True
         if request.tool_name == SOCIAL_TOOL:
             return bool(request.args.get("list_contacts"))
-        if request.tool_name in DESKTOP_TOOLS:
-            from suzent.tools.desktop.catalog import is_readonly_desktop_args
-
-            return is_readonly_desktop_args(request.args)
-        return False
+        tool = _tool_class(request.tool_name)
+        return tool is not None and tool.is_readonly_call(request.args)
 
     @staticmethod
-    def _desktop_rejection(
-        request: ToolPermissionRequest,
-    ) -> PermissionDecision | None:
-        """Refuse a desktop call whose arguments cannot be run, before any mode allows it.
+    def _invalid_call(request: ToolPermissionRequest) -> PermissionDecision | None:
+        """Refuse a call the tool says can never run, before any mode allows it.
 
-        The tool rejects the same calls, but approval happens first. An incomplete
-        or unknown command must not be offered as something the user can approve.
+        The tool rejects the same call when it runs, but approval comes first,
+        and a call that cannot run must not be offered as something to approve.
         """
-        if request.tool_name not in DESKTOP_TOOLS:
+        tool = _tool_class(request.tool_name)
+        reason = tool.invalid_call_reason(request.args) if tool is not None else None
+        if reason is None:
             return None
-        from suzent.tools.desktop.catalog import prepare_from_tool_args
+        return _decision(
+            CommandDecision.DENY, reason, "invalid_tool_call", PermissionRisk.HIGH
+        )
 
-        try:
-            prepare_from_tool_args(request.args)
-        except ValueError as exc:
-            return _decision(
-                CommandDecision.DENY,
-                str(exc),
-                "desktop_invalid_command",
-                PermissionRisk.HIGH,
-            )
-        return None
+
+def _tool_class(name: str) -> type | None:
+    from suzent.tools.registry import get_tool_class
+
+    return get_tool_class(name)
 
 
 def _delegated_task(context: PermissionContext) -> str:

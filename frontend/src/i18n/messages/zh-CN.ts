@@ -1119,11 +1119,13 @@ export const zhCN = {
       saveToken: '保存',
       createToken: '创建令牌',
       tokenHint: '令牌只给 agent 需要的权限。它保存在系统钥匙串里，agent 看不到。',
-      installAgentDesktop: '安装 agent-desktop',
-      agentDesktopReady: 'agent-desktop 已就绪',
-      agentDesktopMissing: '尚未安装 agent-desktop。',
-      confirmAgentDesktop:
-        'Suzent 会从 GitHub 下载 agent-desktop 1.0.2 到自己的文件夹，并核对发布时附带的校验和。它能读取并操作这台电脑上的应用。\n\nWindows 上的发布文件没有签名。SmartScreen、杀毒软件或 Smart App Control 可能会拦截它。\n\nmacOS 上仍需允许辅助功能。安装成功后 Suzent 会打开该引导。\n\n如果这台电脑没有对应的发布包，Suzent 会改用 npm install -g agent-desktop@1.0.2。\n\n现在安装 agent-desktop？',
+      installBinary: '安装 {name}',
+      binaryReady: '{name} 已就绪',
+      binaryMissing: '尚未安装 {name}。这个插件需要在这台电脑上使用它。',
+      binaryUnsupported: '{name} 没有适用于这台电脑的版本。',
+      confirmBinary:
+        'Suzent 会下载 {name} {version}（npm 包 {package}），用插件里固定的 SHA-256 核对，再放到它自己的文件夹里。开启国内镜像时优先从 npmmirror 下载。',
+      confirmBinaryQuestion: '现在安装 {name}？',
     },
     acp: {
       title: 'ACP 智能体',

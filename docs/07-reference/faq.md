@@ -115,10 +115,10 @@ else are refused. See [Access control & pairing](../05-chat-apps/access-control.
 ### The agent can't see my desktop apps.
 
 Desktop control is a separate plugin, and it is off until you install it.
-Turn on the Desktop plugin, then confirm **Install agent-desktop** (or run
-`suzent desktop install`). Suzent downloads the pinned 1.0.x release only
-after that confirmation, checks its checksum, and on a Mac opens the
-Accessibility guide. It does not download anything when the agent merely
+Turn on the Desktop plugin, then confirm **Install agent-desktop** on its
+card (or run `suzent plugin install desktop`). Suzent downloads the pinned
+1.0.2 release only after that confirmation, checks it against the hash the
+plugin carries, and on a Mac opens the Accessibility guide. It does not download anything when the agent merely
 tries to use the tool. You can still install the program yourself or set
 `SUZENT_AGENT_DESKTOP_BIN`. The Docker sandbox has no screen, so desktop
 actions always run on the computer itself. See

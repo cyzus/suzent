@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -10,20 +12,47 @@ from types import SimpleNamespace
 
 import pytest
 
+from suzent.plugins.binaries import PluginBinary
 from suzent.plugins.manager import PluginManager
+from suzent.plugins.manifest import PluginManifest
 from suzent.tools.base import ToolErrorCode
-from suzent.tools.desktop import catalog, runner
-from suzent.tools.desktop.catalog import prepare_call
-from suzent.tools.desktop.runner import (
-    INSTALL_HINT,
-    parse_envelope,
-    render_envelope,
-    reset_binary_cache,
-    resolve_binary,
-)
-from suzent.tools.desktop.tool import DesktopTool
 
 REPO = Path(__file__).resolve().parents[2]
+PLUGIN_DIR = REPO / "plugins" / "desktop"
+
+
+def _import_plugin() -> None:
+    """Import the plugin package the way the plugin manager does."""
+    name = "suzent_plugin_desktop"
+    if name in sys.modules:
+        return
+    spec = importlib.util.spec_from_file_location(
+        name, PLUGIN_DIR / "__init__.py", submodule_search_locations=[str(PLUGIN_DIR)]
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+
+
+_import_plugin()
+catalog = importlib.import_module("suzent_plugin_desktop.catalog")
+runner = importlib.import_module("suzent_plugin_desktop.runner")
+DesktopTool = importlib.import_module("suzent_plugin_desktop.tool").DesktopTool
+prepare_call = catalog.prepare_call
+INSTALL_HINT = runner.INSTALL_HINT
+parse_envelope = runner.parse_envelope
+render_envelope = runner.render_envelope
+reset_binary_cache = runner.reset_binary_cache
+resolve_binary = runner.resolve_binary
+SPEC = PluginManifest.from_file(PLUGIN_DIR / "plugin.yaml").binaries[0]
+
+
+@pytest.fixture(autouse=True)
+def _plugin_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("suzent.config.paths.DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(runner, "_binary", PluginBinary("desktop", SPEC))
+
+
 REF = "@s8f3k2p9:e8"
 
 
@@ -188,9 +217,11 @@ def test_missing_binary_explains_how_to_install(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("SUZENT_AGENT_DESKTOP_BIN", raising=False)
-    monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
+    monkeypatch.setattr("shutil.which", lambda _name: None)
 
-    with pytest.raises(runner.DesktopBinaryError, match="suzent desktop install"):
+    with pytest.raises(
+        runner.DesktopBinaryError, match="suzent plugin install desktop"
+    ):
         resolve_binary()
     assert "unsigned" in INSTALL_HINT
     assert "permissions --guide" in INSTALL_HINT
@@ -348,11 +379,11 @@ async def test_tool_does_not_launch_the_cli_when_it_is_missing(
     def explode() -> str:
         raise runner.DesktopBinaryError(INSTALL_HINT)
 
-    def refuse_install() -> None:
+    def refuse_install(*_args: object, **_kwargs: object) -> None:
         install_calls.append("install")
         raise AssertionError("tool calls must not download agent-desktop")
 
-    monkeypatch.setattr("suzent.tools.desktop.install.install_release", refuse_install)
+    monkeypatch.setattr("suzent.plugins.binaries.install", refuse_install)
 
     async def fail_run(*_args: object, **_kwargs: object) -> tuple[int, str, str]:
         raise AssertionError("the CLI must not be started when it is not installed")
@@ -364,7 +395,7 @@ async def test_tool_does_not_launch_the_cli_when_it_is_missing(
 
     assert result.success is False
     assert result.error_code == ToolErrorCode.EXECUTION_FAILED
-    assert "suzent desktop install" in result.message
+    assert "suzent plugin install desktop" in result.message
     assert "unsigned" in result.message
     assert install_calls == []
 
@@ -499,3 +530,65 @@ def test_enabled_desktop_plugin_registers_the_tool_and_skill(tmp_path: Path) -> 
     ]
     assert skill_dirs
     assert (skill_dirs[0] / "suzent-desktop" / "SKILL.md").is_file()
+
+
+def test_desktop_reads_are_read_only_and_side_effects_are_not() -> None:
+    reads = [
+        {"command": "snapshot", "options": {"app": "Finder", "interactive_only": True}},
+        {
+            "command": "batch",
+            "options": {
+                "entries": [
+                    {"command": "version"},
+                    {"command": "snapshot", "args": {"app": "Finder"}},
+                ]
+            },
+        },
+    ]
+    writes = [
+        {"command": "click", "options": {"ref": REF}},
+        {"command": "list-notifications", "headed": True},
+        {"command": "permissions", "options": {"guide": True}},
+        {"command": "screenshot", "options": {"path": "/tmp/screen.png"}},
+        {"command": "session", "options": {"subcommand": "start"}},
+        {
+            "command": "batch",
+            "options": {
+                "entries": [{"command": "click", "args": {"ref_id": "@s8f3k2p9:e1"}}]
+            },
+        },
+    ]
+    assert all(DesktopTool.is_readonly_call(args) for args in reads)
+    assert not any(DesktopTool.is_readonly_call(args) for args in writes)
+
+
+def test_desktop_approval_is_remembered_per_command() -> None:
+    remember = DesktopTool.remember_as({"command": "click", "options": {"ref": REF}})
+
+    assert remember.match == {"command": "click"}
+    assert remember.label == "desktop click"
+    assert DesktopTool.remember_as({}).match is None
+
+
+def test_desktop_refuses_a_bare_ref_before_approval() -> None:
+    reason = DesktopTool.invalid_call_reason(
+        {"command": "click", "options": {"ref": "@e8"}}
+    )
+
+    assert reason is not None and "@s8f3k2p9:e8" in reason
+    assert DesktopTool.invalid_call_reason({"command": "snapshot"}) is None
+
+
+def test_desktop_plugin_pins_every_platform_to_the_npm_tarball() -> None:
+    assert SPEC.package == "agent-desktop"
+    assert SPEC.version == "1.0.2"
+    assert set(SPEC.platforms) == {
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "win32-arm64",
+        "win32-x64",
+    }
+    assert "agent-desktop-macos-helper" in SPEC.platforms["darwin-arm64"].files
+    assert SPEC.after_install == {"darwin": ["permissions", "--guide"]}

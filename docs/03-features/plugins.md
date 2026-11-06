@@ -92,8 +92,14 @@ Choose **Disconnect** to sign out and forget the token.
 
 The Desktop plugin lets the agent read and operate native apps on this
 computer. It is off until you install it. The agent-desktop program it needs
-is downloaded only after you confirm, from Settings or with
-`suzent desktop install`. See [Desktop apps](./tools/desktop.md).
+is downloaded only after you confirm, from its card in Settings or when
+`suzent plugin install desktop` asks. See [Desktop apps](./tools/desktop.md).
+
+Any plugin that needs a program on your computer works the same way: its
+card shows an **Install** button for that program, and nothing is
+downloaded until you agree. The download is pinned to one version and
+checked against a hash the plugin carries, and in mainland China it comes
+from npmmirror first.
 
 ## Plugins from other people
 

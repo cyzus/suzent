@@ -11,20 +11,19 @@ import asyncio
 import json
 import os
 import re
-import shutil
 import signal
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from suzent.logger import get_logger
+from suzent.plugins.binaries import PluginBinary
 
 logger = get_logger(__name__)
 
 INSTALL_HINT = (
     "agent-desktop 1.0.x is not available. Suzent can download the pinned "
-    "1.0.2 release after you agree. In Settings → Plugins, turn Desktop on "
-    "and choose Install agent-desktop, or run `suzent desktop install`.\n"
+    "1.0.2 release after you agree. In Settings → Plugins, choose Install "
+    "agent-desktop on the Desktop plugin, or run `suzent plugin install desktop`.\n"
     "You can also install it yourself (`npm install -g agent-desktop`) or set "
     "SUZENT_AGENT_DESKTOP_BIN to an executable you already have.\n"
     "On macOS, grant Accessibility permission with:\n"
@@ -42,6 +41,7 @@ _RELEASE = re.compile(r"^1\.0\.\d+(?:[-+].+)?$")
 _STDOUT_LIMIT = 16 * 1024 * 1024
 _support_lock = asyncio.Lock()
 _supported: set[str] = set()
+_binary: PluginBinary | None = None
 
 
 class DesktopBinaryError(Exception):
@@ -65,30 +65,30 @@ def is_supported_release(version: str) -> bool:
     return bool(_RELEASE.fullmatch(version.strip()))
 
 
+def use_binary(handle: PluginBinary) -> None:
+    """Set by the plugin's ``register`` from its ``plugin.yaml`` declaration."""
+    global _binary
+    _binary = handle
+
+
 def resolve_binary() -> str:
     """Return the host executable. This never downloads or installs it.
 
     An explicit ``SUZENT_AGENT_DESKTOP_BIN`` wins, then the copy Suzent
     installed after consent, then whatever ``agent-desktop`` is on PATH.
     """
-    from suzent.tools.desktop.install import managed_executable
-
-    override = os.environ.get("SUZENT_AGENT_DESKTOP_BIN", "").strip()
-    if override:
-        path = Path(override).expanduser()
-        if path.is_file() and os.access(path, os.X_OK):
-            return str(path)
-        raise DesktopBinaryError(
-            f"SUZENT_AGENT_DESKTOP_BIN is {override}, which is not an executable file.\n"
-            f"{INSTALL_HINT}"
-        )
-    managed = managed_executable()
-    if managed is not None:
-        return str(managed)
-    found = shutil.which("agent-desktop")
-    if found:
-        return found
-    raise DesktopBinaryError(INSTALL_HINT)
+    if _binary is None:
+        raise DesktopBinaryError(INSTALL_HINT)
+    located = _binary.locate()
+    if located is None:
+        override = os.environ.get("SUZENT_AGENT_DESKTOP_BIN", "").strip()
+        if override:
+            raise DesktopBinaryError(
+                f"SUZENT_AGENT_DESKTOP_BIN is {override}, which is not an "
+                f"executable file.\n{INSTALL_HINT}"
+            )
+        raise DesktopBinaryError(INSTALL_HINT)
+    return str(located[0])
 
 
 def reset_binary_cache() -> None:

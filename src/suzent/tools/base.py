@@ -10,6 +10,7 @@ success/failure indicators, machine-readable error codes, user-friendly
 messages, and optional metadata for advanced retry and recovery logic.
 """
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Union
 
@@ -76,7 +77,6 @@ class ToolCapability(str, Enum):
     INTERACTION = "Interaction"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
-    DESKTOP = "Desktop"
 
     # Deprecated: the old "Agent" capability mixed delegation with talking to the
     # user. It stays as an alias so third-party tools that set ``ToolGroup.AGENT``
@@ -177,6 +177,19 @@ class ToolResult(BaseModel):
         )
 
 
+@dataclass(frozen=True)
+class RememberAs:
+    """What an "always allow" choice stores for one call.
+
+    ``match`` is the subset of arguments a later call must repeat to be
+    allowed again, and ``label`` names it on the approval prompt ("desktop
+    click"). ``match=None`` offers only a one-time allow.
+    """
+
+    match: dict[str, Any] | None
+    label: str = ""
+
+
 class Tool:
     """Base class for tool implementations.
 
@@ -201,6 +214,24 @@ class Tool:
 
     def __init__(self, *args, **kwargs):
         pass
+
+    # The permission engine asks these before a call needing approval runs.
+    # They see the raw arguments, so they must not trust them.
+
+    @classmethod
+    def is_readonly_call(cls, args: dict[str, Any]) -> bool:
+        """True when this call only reads, so read-only and plan modes allow it."""
+        return False
+
+    @classmethod
+    def invalid_call_reason(cls, args: dict[str, Any]) -> str | None:
+        """Why this call can never run, so it is refused instead of offered for approval."""
+        return None
+
+    @classmethod
+    def remember_as(cls, args: dict[str, Any]) -> RememberAs | None:
+        """What "always allow" stores for this call. None trusts the whole tool."""
+        return None
 
     def forward(self, **kwargs):
         raise NotImplementedError("Subclasses must implement forward()")
