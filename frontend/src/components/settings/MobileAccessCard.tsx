@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { DevicePhoneMobileIcon, QrCodeIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase, type NodeAuthConfig } from '../../lib/api';
+import { isImeComposing } from '../../lib/ime';
 import {
   mobileRequest,
   cancelMobileInvitation,
@@ -232,6 +233,7 @@ export function MobileAccessCard({
     deviceId: string;
     permissions: MobilePermissions;
   } | null>(null);
+  const [renaming, setRenaming] = useState<{ deviceId: string; name: string } | null>(null);
   useEffect(() => {
     if (config?.lan_host)
       setOrigin((current) => current || `http://${config.lan_host}:${config.port}`);
@@ -244,6 +246,11 @@ export function MobileAccessCard({
     setPending(pendingResult.pending);
     setDevices(deviceResult.devices);
     setEditing((current) =>
+      current && !deviceResult.devices.some((device) => device.device_id === current.deviceId)
+        ? null
+        : current
+    );
+    setRenaming((current) =>
       current && !deviceResult.devices.some((device) => device.device_id === current.deviceId)
         ? null
         : current
@@ -535,11 +542,57 @@ export function MobileAccessCard({
                   <DevicePhoneMobileIcon className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h5 className="truncate text-sm font-black" title={device.display_name}>
-                    {device.display_name}
-                  </h5>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {renaming?.deviceId === device.device_id ? (
+                    <form
+                      className="flex items-center gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const name = renaming.name;
+                        void act(async () => {
+                          await mobileRequest(`devices/${device.device_id}/rename`, { name });
+                          setRenaming(null);
+                        });
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        aria-label={t('mobileAccess.renameLabel')}
+                        className="min-w-0 flex-1 border-2 border-brutal-black bg-transparent px-2 py-1 text-sm dark:border-white/15"
+                        maxLength={100}
+                        placeholder={device.display_name}
+                        value={renaming.name}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setRenaming({ deviceId: device.device_id, name: event.target.value })
+                        }
+                        onKeyDown={(event) => {
+                          if (isImeComposing(event)) return;
+                          if (event.key === 'Escape') setRenaming(null);
+                        }}
+                      />
+                      <BrutalButton size="xs" variant="primary" type="submit" disabled={busy}>
+                        {t('mobileAccess.savePermissions')}
+                      </BrutalButton>
+                      <BrutalButton
+                        size="xs"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setRenaming(null)}
+                      >
+                        {t('mobileAccess.cancelEdit')}
+                      </BrutalButton>
+                    </form>
+                  ) : (
+                    <h5
+                      className="truncate text-sm font-black"
+                      title={device.custom_name ?? device.display_name}
+                    >
+                      {device.custom_name ?? device.display_name}
+                    </h5>
+                  )}
+                  <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
                     {device.platform === 'ios' ? 'iOS' : 'Android'}
+                    {device.custom_name && ` · ${device.display_name}`}
                   </p>
                 </div>
               </div>
@@ -566,7 +619,7 @@ export function MobileAccessCard({
                   <Badge>{t(`mobileAccess.preset_${presetOf(device.permissions)}`)}</Badge>
                 )}
               </div>
-              <div className="flex items-start justify-between gap-3 border-t-2 border-brutal-black bg-white p-3 dark:bg-zinc-800">
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-2 border-t-2 border-brutal-black bg-white p-3 dark:bg-zinc-800">
                 <SettingsListAction
                   disabled={busy || editing !== null}
                   onClick={() =>
@@ -582,7 +635,16 @@ export function MobileAccessCard({
                   {t('mobileAccess.editPermissions')}
                 </SettingsListAction>
                 <SettingsListAction
+                  disabled={busy || renaming !== null}
+                  onClick={() =>
+                    setRenaming({ deviceId: device.device_id, name: device.custom_name ?? '' })
+                  }
+                >
+                  {t('mobileAccess.rename')}
+                </SettingsListAction>
+                <SettingsListAction
                   tone="red"
+                  className="ml-auto"
                   disabled={busy}
                   onClick={() =>
                     void act(async () => {

@@ -53,6 +53,11 @@ class PermissionsRequest(BaseModel):
     permissions: ClientPermissions
 
 
+class RenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, max_length=100)
+
+
 class RelayRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str | None = Field(default=None, max_length=2048)
@@ -194,6 +199,17 @@ async def update_permissions(request: Request) -> JSONResponse:
     return reply({"ok": updated}, 200 if updated else 404)
 
 
+async def rename(request: Request) -> JSONResponse:
+    try:
+        body = RenameRequest.model_validate(await request.json())
+        renamed = get_mobile_store(request).rename(
+            request.path_params["device_id"], body.name
+        )
+    except (ValidationError, ValueError):
+        return reply({"error": "Invalid device name"}, 400)
+    return reply({"ok": renamed}, 200 if renamed else 404)
+
+
 async def management(request: Request) -> JSONResponse:
     try:
         body = ManagementRequest.model_validate(await request.json())
@@ -250,6 +266,7 @@ mobile_routes = [
         "/mobile/devices/{device_id}/permissions", update_permissions, methods=["POST"]
     ),
     Route("/mobile/devices/{device_id}/management", management, methods=["POST"]),
+    Route("/mobile/devices/{device_id}/rename", rename, methods=["POST"]),
     Route("/mobile/devices/{device_id}/revoke", revoke, methods=["POST"]),
     Route("/mobile/relay", relay_status, methods=["GET"]),
     Route("/mobile/relay", relay_configure, methods=["POST"]),

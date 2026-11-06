@@ -272,6 +272,8 @@ export const zhCN = {
     webhooksNote: 'Webhook 任务也会多一个中继地址。中继能看到 webhook 的内容。',
   },
   mobileAccess: {
+    rename: '重命名',
+    renameLabel: '手机名称',
     editPermissions: '编辑权限',
     cancelEdit: '取消',
     savePermissions: '保存',

@@ -43,6 +43,8 @@ class ClientGrant(BaseModel):
     permissions: ClientPermissions
     provisional_until: float | None = None
     installation: str | None = None
+    # Set on the desktop; outlives re-pairing, unlike the name the phone reports.
+    custom_name: str | None = None
 
 
 class PairingError(ValueError):
@@ -85,8 +87,16 @@ class PairingStore:
         try:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "w") as output:
+                # Omitted when unset so older builds, which reject unknown fields,
+                # can still read the file after a downgrade.
                 json.dump(
-                    {key: grant.model_dump() for key, grant in grants.items()}, output
+                    {
+                        key: grant.model_dump(
+                            exclude=None if grant.custom_name else {"custom_name"}
+                        )
+                        for key, grant in grants.items()
+                    },
+                    output,
                 )
                 output.flush()
                 os.fsync(output.fileno())
@@ -301,6 +311,7 @@ class PairingStore:
                 else secrets.token_hex(16),
                 provisional_until=time.time() + self.TTL if predecessor else None,
                 display_name=pending["display_name"],
+                custom_name=predecessor.custom_name if predecessor else None,
                 platform=pending["platform"],
                 approved_at=time.time(),
                 permissions=pending["permissions"],
@@ -402,6 +413,24 @@ class PairingStore:
                             )
                         }
                     )
+                    if grant.device_id == device_id
+                    else grant
+                    for key, grant in self._grants.items()
+                }
+            )
+            return True
+
+    def rename(self, device_id: str, name: str | None) -> bool:
+        """Set the desktop's name for a phone; an empty name restores the reported one."""
+        custom_name = (name or "").strip() or None
+        if custom_name is not None and len(custom_name) > 100:
+            raise PairingError("Invalid device name")
+        with self._lock:
+            if not any(g.device_id == device_id for g in self._grants.values()):
+                return False
+            self._save(
+                {
+                    key: grant.model_copy(update={"custom_name": custom_name})
                     if grant.device_id == device_id
                     else grant
                     for key, grant in self._grants.items()
