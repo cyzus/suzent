@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.7.1] - 2026-11-06
+
+### Release notes
+- Fix the iOS build so the relay connection ships in the App Store release.
+
 ## [mobile-v0.7.0] - 2026-11-06
 
 ### Release notes
