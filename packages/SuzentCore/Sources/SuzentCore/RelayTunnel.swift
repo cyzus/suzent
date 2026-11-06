@@ -135,6 +135,7 @@ public final class RelayTunnel: @unchecked Sendable {
         guard let url = route.socketURL else { throw ClientError.invalidAddress }
         try self.init(route: route) {
             let task = session.webSocketTask(with: url)
+            task.maximumMessageSize = maxWebSocketMessageSize
             task.resume()
             return WebSocketTransport(task: task)
         }

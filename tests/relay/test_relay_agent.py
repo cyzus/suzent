@@ -55,6 +55,10 @@ async def events(request: Request) -> StreamingResponse:
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
+async def large(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("x" * (2 * 1024 * 1024 + 1))
+
+
 async def cookies(request: Request) -> PlainTextResponse:
     response = PlainTextResponse("ok")
     response.set_cookie("a", "1")
@@ -83,6 +87,7 @@ backend = Starlette(
         Route("/hooks/echo", echo, methods=["POST"]),
         Route("/hooks/events", events),
         Route("/hooks/cookies", cookies),
+        Route("/hooks/large", large),
         Route("/hooks/boom", boom),
         Route("/secret", whoami),
         WebSocketRoute("/ws/echo", ws_echo),
@@ -371,6 +376,34 @@ async def test_inline_and_streamed_request_bodies(token: str) -> None:
             assert head["status"] == 200
             assert body == b"one,two"
             assert acks == len(b"one,two")
+        finally:
+            await agent.stop()
+
+
+async def test_large_response_stays_under_phone_message_limit(token: str) -> None:
+    """iOS drops WebSocket messages over 1 MiB, so no chunk may come near it."""
+    async with FakeRelay() as relay:
+        agent = await connected(relay, token)
+        try:
+            await relay.send(
+                {
+                    "t": "hreq",
+                    "id": "l",
+                    "method": "GET",
+                    "path": "/hooks/large",
+                    "headers": {},
+                }
+            )
+            chunks: list[int] = []
+            while True:
+                frame = await relay.next()
+                if frame.get("kind") == HCHUNK:
+                    chunks.append(len(frame["data"]))
+                elif frame.get("t") == "hend":
+                    break
+            assert sum(chunks) == 2 * 1024 * 1024 + 1
+            assert len(chunks) > 1
+            assert max(chunks) <= 512 * 1024
         finally:
             await agent.stop()
 
