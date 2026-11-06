@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   createHostToken,
@@ -17,6 +18,7 @@ import { relativeTime } from '../../lib/chatUtils';
  * can live in SecurityTab without threading state from DevicesTab.
  */
 export function HostTokenCard(): React.ReactElement {
+  const { t } = useI18n();
   const [minted, setMinted] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApprovedDevice[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -149,8 +151,7 @@ export function HostTokenCard(): React.ReactElement {
         </div>
       ) : (
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          No host tokens issued. These grant full remote access — only create one when you need to
-          administer this device from another machine.
+          {t('settings.concise.noHostTokens')}
         </p>
       )}
     </SettingsCard>

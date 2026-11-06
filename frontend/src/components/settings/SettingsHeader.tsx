@@ -8,8 +8,7 @@ interface SettingsHeaderProps {
 }
 
 /**
- * Shared header for settings tabs. Renders the boxed brutalist title block used
- * consistently across every tab so headers don't drift in size/style.
+ * Shared title and optional decision-relevant context for settings tabs.
  */
 export function SettingsHeader({
   title,
@@ -17,13 +16,15 @@ export function SettingsHeader({
   actions,
 }: SettingsHeaderProps): React.ReactElement {
   return (
-    <header className="relative flex flex-col gap-3 overflow-hidden border-2 border-brutal-black bg-brutal-yellow px-4 py-4 text-brutal-black shadow-brutal-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <header className="relative flex flex-col gap-3 border-b-2 border-brutal-black px-1 py-3 text-brutal-black dark:text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="min-w-0">
         <h2 className="font-brutal text-xl uppercase leading-none tracking-tight sm:text-2xl">
           {title}
         </h2>
         {subtitle && (
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-neutral-700">{subtitle}</p>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+            {subtitle}
+          </p>
         )}
       </div>
       {actions && (

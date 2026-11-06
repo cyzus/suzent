@@ -65,7 +65,6 @@ export function BrowserTab(): React.ReactElement {
     <SettingsPage>
       <SettingsHeader
         title={t('settings.browser.title')}
-        subtitle={t('settings.browser.subtitle')}
         actions={
           <RefreshButton
             disabled={busy}
@@ -106,14 +105,11 @@ export function BrowserTab(): React.ReactElement {
             />
             {data.settings.connection_mode === 'extension' && <BrowserExtensionSetup />}
             {data.settings.connection_mode === 'existing' && (
-              <details className="text-sm">
-                <summary className="cursor-pointer font-bold">
-                  {t('settings.browser.directSetup')}
-                </summary>
+              <div className="text-sm">
                 <p className="mt-2 text-neutral-600 dark:text-neutral-400">
                   {t('settings.browser.existingHelp')}
                 </p>
-              </details>
+              </div>
             )}
             {data.settings.connection_mode !== 'extension' && (
               <>
@@ -178,9 +174,6 @@ export function BrowserTab(): React.ReactElement {
                         />
                         {t('settings.browser.visible')}
                       </label>
-                      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
-                        {t('settings.browser.visibleHelp')}
-                      </p>
                     </div>
                   </div>
                 )}

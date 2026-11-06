@@ -1,9 +1,10 @@
+import { CopyButton } from './CopyButton';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BrutalButton } from '../BrutalButton';
 import { useI18n } from '../../i18n';
 import { decideAcpPairing, fetchAcpPairing, revokeAcpGrant } from '../../lib/acpPairing';
 import type { AcpPairingStatus } from '../../lib/acpPairing';
-import { SectionCardHeader, SettingsCard, SettingsHelp, SettingsListItem } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsListItem } from './SettingsCard';
 
 export function AcpConnections(): React.ReactElement {
   const { t, locale } = useI18n();
@@ -53,22 +54,21 @@ export function AcpConnections(): React.ReactElement {
         title={t('settings.acp.connectionsTitle')}
         description={t('settings.acp.connectionsDesc')}
       />
-      <SettingsHelp title={t('settings.acp.connectEditor')}>
-        <p>{t('settings.acp.editorSetup')}</p>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-          <dt>{t('settings.acp.command')}</dt>
-          <dd>
-            <code>suzent</code>
-          </dd>
-          <dt>{t('settings.acp.arguments')}</dt>
-          <dd>
-            <code>acp</code>
-          </dd>
-        </dl>
-        <p>{t('settings.acp.connectionsHint')}</p>
-        <p>{t('settings.acp.stdioHint')}</p>
-        <p>{t('settings.acp.connectionsScope')}</p>
-      </SettingsHelp>
+      <p className="text-xs text-neutral-600 dark:text-neutral-400">
+        {t('settings.acp.editorSetup')}
+      </p>
+      <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+        <dt>{t('settings.acp.command')}</dt>
+        <dd className="flex items-center justify-between gap-2">
+          <code>suzent</code>
+          <CopyButton value="suzent" label={t('settings.acp.command')} />
+        </dd>
+        <dt>{t('settings.acp.arguments')}</dt>
+        <dd className="flex items-center justify-between gap-2">
+          <code>acp</code>
+          <CopyButton value="acp" label={t('settings.acp.arguments')} />
+        </dd>
+      </dl>
       {error && (
         <p role="alert" className="text-sm text-red-600">
           {error}
@@ -121,6 +121,11 @@ export function AcpConnections(): React.ReactElement {
           </div>
         </SettingsListItem>
       ))}
+      {status.grants.length > 0 && (
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          {t('settings.acp.revokeHint')}
+        </p>
+      )}
       {status.grants.map((grant) => (
         <SettingsListItem key={grant.grant_id}>
           <div className="p-4 flex items-center justify-between gap-3">

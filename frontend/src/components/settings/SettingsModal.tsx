@@ -17,7 +17,6 @@ import {
   fetchMcpServers,
   saveApiKeys,
   saveCustomProvider,
-  saveGlobalSandboxConfig,
   saveRoleModels,
   saveSocialConfig,
   saveUserPreferences,
@@ -117,15 +116,12 @@ export function SettingsModal({
   const [providersLoaded, setProvidersLoaded] = useState(false);
   const [rolesLoaded, setRolesLoaded] = useState(false);
   const [socialLoaded, setSocialLoaded] = useState(false);
-  const [notebookLoaded, setNotebookLoaded] = useState(false);
   const providersAutosaveStarted = useRef(false);
   const rolesAutosaveStarted = useRef(false);
   const socialAutosaveStarted = useRef(false);
-  const notebookAutosaveStarted = useRef(false);
   const savedProviderSnapshot = useRef<string | null>(null);
   const savedRolesSnapshot = useRef<string | null>(null);
   const savedSocialSnapshot = useRef<string | null>(null);
-  const savedNotebookPath = useRef<string | null>(null);
 
   // Role models + suggestions
   const [roleModels, setRoleModels] = useState<Record<string, string[]>>({});
@@ -149,7 +145,6 @@ export function SettingsModal({
   } | null>(null);
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);
-  const [globalNotebookHostPath, setGlobalNotebookHostPath] = useState('');
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
 
@@ -182,15 +177,12 @@ export function SettingsModal({
     setProvidersLoaded(false);
     setRolesLoaded(false);
     setSocialLoaded(false);
-    setNotebookLoaded(false);
     providersAutosaveStarted.current = false;
     rolesAutosaveStarted.current = false;
     socialAutosaveStarted.current = false;
-    notebookAutosaveStarted.current = false;
     savedProviderSnapshot.current = null;
     savedRolesSnapshot.current = null;
     savedSocialSnapshot.current = null;
-    savedNotebookPath.current = null;
 
     setLoading(true);
     fetchApiKeys().then((data) => {
@@ -278,22 +270,6 @@ export function SettingsModal({
       })
       .catch(() => setMcpServers(null));
 
-    const globalVolumes = backendConfig?.globalSandboxVolumes || [];
-    const notebookVolume = globalVolumes.find((volume) => {
-      const lastColon = volume.lastIndexOf(':');
-      if (lastColon === -1) return false;
-      return volume.substring(lastColon + 1) === '/mnt/notebook';
-    });
-    if (notebookVolume) {
-      const lastColon = notebookVolume.lastIndexOf(':');
-      setGlobalNotebookHostPath(notebookVolume.substring(0, lastColon));
-    } else {
-      setGlobalNotebookHostPath('');
-    }
-    savedNotebookPath.current = notebookVolume
-      ? notebookVolume.substring(0, notebookVolume.lastIndexOf(':')).trim()
-      : '';
-    setNotebookLoaded(true);
     setMemoryEnabled(!!backendConfig?.userPreferences?.memory_enabled);
     setSandboxEnabled(
       !!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled)
@@ -374,17 +350,6 @@ export function SettingsModal({
     }
   }
 
-  async function saveNotebookSettings(): Promise<void> {
-    const notebookPath = globalNotebookHostPath.trim();
-    if (notebookPath === savedNotebookPath.current) return;
-
-    const sandboxVolumes = notebookPath ? [`${notebookPath}:/mnt/notebook`] : [];
-
-    await saveGlobalSandboxConfig(sandboxVolumes);
-    savedNotebookPath.current = notebookPath;
-    await refreshBackendConfig();
-  }
-
   function handleClose(): void {
     closeImmediatelyAndPersist(
       onClose,
@@ -393,7 +358,6 @@ export function SettingsModal({
           providersLoaded ? saveProviderSettings() : Promise.resolve(),
           rolesLoaded ? saveRoleSettings() : Promise.resolve(),
           socialLoaded ? saveSocialSettings() : Promise.resolve(),
-          notebookLoaded ? saveNotebookSettings() : Promise.resolve(),
         ]);
 
         for (const result of results) {
@@ -460,24 +424,6 @@ export function SettingsModal({
 
     return () => window.clearTimeout(timeoutId);
   }, [socialConfig, isOpen, socialLoaded]);
-
-  useEffect(() => {
-    if (!isOpen || !notebookLoaded) return;
-    if (!notebookAutosaveStarted.current) {
-      notebookAutosaveStarted.current = true;
-      return;
-    }
-
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        await saveNotebookSettings();
-      } catch (error) {
-        console.error('Failed to save notebook settings', error);
-      }
-    }, 600);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [globalNotebookHostPath, isOpen, notebookLoaded, refreshBackendConfig]);
 
   function handleKeyChange(key: string, val: string): void {
     setVerification((prev) => {
@@ -627,7 +573,7 @@ export function SettingsModal({
 
       {activeCategory === 'audio' && (
         <SettingsPage>
-          <SettingsHeader title={t('speech.title')} subtitle={t('speech.subtitle')} />
+          <SettingsHeader title={t('speech.title')} />
           <VoiceSettingsCard
             suggestions={roleSuggestions.tts || []}
             unregisteredModels={roleSuggestions._unregistered || []}
@@ -638,8 +584,6 @@ export function SettingsModal({
 
       {activeCategory === 'memory' && (
         <MemoryTab
-          globalNotebookHostPath={globalNotebookHostPath}
-          onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
           memoryEnabled={memoryEnabled}
           onMemoryEnabledChange={handleMemoryEnabledChange}
           embeddingModel={roleModels.embedding?.[0]}

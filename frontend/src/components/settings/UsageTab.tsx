@@ -659,7 +659,7 @@ export function UsageTab(): React.ReactElement {
   return (
     <SettingsPage>
       {/* Header */}
-      <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
+      <SettingsHeader title={t('settings.usage.title')} />
 
       {/* Time range selector */}
       <div className="flex gap-2">

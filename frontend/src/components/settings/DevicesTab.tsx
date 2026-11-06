@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ComputerDesktopIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
@@ -119,6 +120,7 @@ function DirectionToggle({
 }
 
 export function DevicesTab(): React.ReactElement {
+  const { t } = useI18n();
   const [nodes, setNodes] = useState<ConnectedNode[]>([]);
   const [pending, setPending] = useState<PendingNode[]>([]);
   const [devices, setDevices] = useState<ApprovedDevice[]>([]);
@@ -424,7 +426,7 @@ export function DevicesTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader title="Devices" subtitle="Connect and control trusted devices." />
+      <SettingsHeader title="Devices" />
 
       {error && (
         <div className="border-2 border-brutal-red bg-red-50 dark:bg-red-900/20 text-brutal-red px-3 py-2 text-xs font-mono">
@@ -442,11 +444,15 @@ export function DevicesTab(): React.ReactElement {
         <SectionCardHeader
           icon={<MagnifyingGlassIcon className="h-6 w-6" />}
           iconTone="blue"
-          title="Discover"
-          description="Find nearby or Tailscale devices."
+          title={t('settings.concise.devicesDiscover')}
           actions={
-            <BrutalButton onClick={runDiscover} disabled={discovering} variant="dark">
-              {discovering ? 'Scanning…' : 'Discover'}
+            <BrutalButton
+              onClick={runDiscover}
+              disabled={discovering}
+              variant="default"
+              className="dark:border-zinc-500 dark:bg-zinc-700 dark:hover:bg-zinc-600"
+            >
+              {t(discovering ? 'settings.concise.scanning' : 'settings.concise.scan')}
             </BrutalButton>
           }
         />
@@ -464,7 +470,9 @@ export function DevicesTab(): React.ReactElement {
                     {group.title} ({group.items.length})
                   </div>
                   {group.items.length === 0 && (
-                    <p className="text-xs text-neutral-400 font-mono pl-1">No peers found.</p>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono pl-1">
+                      No peers found.
+                    </p>
                   )}
                   {group.items.map((peer) => {
                     const peerBase = peer.gateway_url
@@ -526,7 +534,7 @@ export function DevicesTab(): React.ReactElement {
                 aria-expanded={showScreenPairing}
                 onClick={() => setShowScreenPairing((open) => !open)}
               >
-                <span>Add a screen (phone, tablet, TV)</span>
+                <span>{t('settings.concise.addScreen')}</span>
                 <span aria-hidden="true">{showScreenPairing ? '−' : '+'}</span>
               </button>
               {showScreenPairing && (
@@ -583,7 +591,6 @@ export function DevicesTab(): React.ReactElement {
           icon={<ComputerDesktopIcon className="h-6 w-6" />}
           iconTone="neutral"
           title={`Devices (${deviceRows.length})`}
-          description="Linked devices and permissions."
         />
         <div className="space-y-3">
           {/* Rejected inbound trigger attempts — quiet by default; expandable
@@ -677,7 +684,7 @@ export function DevicesTab(): React.ReactElement {
 
           {deviceRows.length === 0 && grants.length === 0 && pending.length === 0 && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              No linked devices yet. Use Discover above to find and control another device.
+              {t('settings.concise.devicesEmpty')}
             </p>
           )}
 

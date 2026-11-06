@@ -1,6 +1,7 @@
+import { ArrowUpIcon, ArrowDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import {
   isInputSuggestionEnabled,
@@ -392,32 +393,29 @@ function RoleRow({
                               {model}
                             </span>
                             <div className="flex gap-1">
-                              <BrutalButton
-                                size="sm"
+                              <BrutalIconButton
                                 type="button"
                                 disabled={index === 1}
                                 onClick={() => move(index, -1)}
-                                aria-label={`${t('settings.roles.moveUp')}: ${model}`}
+                                label={`${t('settings.roles.moveUp')}: ${model}`}
                               >
-                                ↑
-                              </BrutalButton>
-                              <BrutalButton
-                                size="sm"
+                                <ArrowUpIcon className="h-4 w-4" aria-hidden="true" />
+                              </BrutalIconButton>
+                              <BrutalIconButton
                                 type="button"
                                 disabled={index === draft.length - 1}
                                 onClick={() => move(index, 1)}
-                                aria-label={`${t('settings.roles.moveDown')}: ${model}`}
+                                label={`${t('settings.roles.moveDown')}: ${model}`}
                               >
-                                ↓
-                              </BrutalButton>
-                              <BrutalButton
-                                size="sm"
+                                <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
+                              </BrutalIconButton>
+                              <BrutalIconButton
                                 type="button"
                                 onClick={() => setDraft(draft.filter((id) => id !== model))}
-                                aria-label={`${t('common.remove')}: ${model}`}
+                                label={`${t('common.remove')}: ${model}`}
                               >
-                                ×
-                              </BrutalButton>
+                                <XMarkIcon className="h-4 w-4" aria-hidden="true" />
+                              </BrutalIconButton>
                             </div>
                           </li>
                         );

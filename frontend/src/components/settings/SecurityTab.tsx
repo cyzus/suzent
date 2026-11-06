@@ -18,10 +18,7 @@ export function SecurityTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.security.title')}
-        subtitle={t('settings.security.subtitle')}
-      />
+      <SettingsHeader title={t('settings.security.title')} />
 
       <SettingsCard>
         <SectionCardHeader

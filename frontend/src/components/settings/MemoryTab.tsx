@@ -1,15 +1,11 @@
 import React from 'react';
-import { pickHostDirectory } from '../../lib/hostPathPicker';
 
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader, SettingsPage } from './SettingsCard';
+import { SettingsCard, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
-import { BrutalButton } from '../BrutalButton';
 
 interface MemoryTabProps {
-  globalNotebookHostPath: string;
-  onGlobalNotebookHostPathChange: (path: string) => void;
   memoryEnabled: boolean;
   onMemoryEnabledChange: (enabled: boolean) => void;
   /** Model assigned to the "embedding" role (Model Roles tab). */
@@ -21,8 +17,6 @@ interface MemoryTabProps {
 }
 
 export function MemoryTab({
-  globalNotebookHostPath,
-  onGlobalNotebookHostPathChange,
   memoryEnabled,
   onMemoryEnabledChange,
   embeddingModel,
@@ -31,22 +25,9 @@ export function MemoryTab({
 }: MemoryTabProps): React.ReactElement {
   const { t } = useI18n();
 
-  const pickDirectory = async () => {
-    try {
-      const selected = await pickHostDirectory({ multiple: false });
-      if (!selected || Array.isArray(selected)) return;
-      onGlobalNotebookHostPathChange(selected);
-    } catch (error) {
-      console.error('Failed to pick global notebook folder', error);
-    }
-  };
-
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.memoryConfig.title')}
-        subtitle={t('settings.memoryConfig.subtitle')}
-      />
+      <SettingsHeader title={t('settings.memoryConfig.title')} />
 
       {/* Global memory enable toggle */}
       <SettingsCard>
@@ -103,64 +84,6 @@ export function MemoryTab({
                 {extractionModel || t('settings.memoryConfig.modelNotConfigured')}
               </div>
             </div>
-          </div>
-        </div>
-      </SettingsCard>
-
-      <SettingsCard>
-        <SectionCardHeader
-          iconTone="blue"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-              />
-            </svg>
-          }
-          title={t('settings.memoryConfig.systemConfigTitle')}
-          description={t('settings.memoryConfig.systemConfigDesc')}
-        />
-
-        <div className="mt-6 pt-6 border-t-2 border-dashed border-brutal-black dark:border-zinc-600 space-y-3">
-          <div>
-            <h3 className="text-lg font-bold uppercase">{t('settings.sandbox.title')}</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-              {t('settings.sandbox.subtitle')}
-            </p>
-          </div>
-
-          <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400">
-            {t('settings.sandbox.mountTarget')}
-          </div>
-          <div className="font-mono text-sm border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-800 px-3 py-2 inline-block">
-            /mnt/notebook
-          </div>
-
-          <div>
-            <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">
-              {t('settings.sandbox.hostFolder')}
-            </div>
-            <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
-              {globalNotebookHostPath || t('settings.sandbox.notConfigured')}
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <BrutalButton
-              type="button"
-              variant="success"
-              onClick={pickDirectory}
-              className="px-4 py-2 text-xs uppercase"
-            >
-              {t('settings.sandbox.chooseFolder')}
-            </BrutalButton>
-          </div>
-
-          <div className="text-xs text-neutral-600 dark:text-neutral-400">
-            {t('settings.sandbox.saveHint')}
           </div>
         </div>
       </SettingsCard>

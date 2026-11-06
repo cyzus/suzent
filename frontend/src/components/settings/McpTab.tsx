@@ -281,7 +281,7 @@ export function McpTab({
           </p>
         </div>
       ) : (
-        <SettingsHeader title={t('settings.mcp.title')} subtitle={t('settings.mcp.subtitle')} />
+        <SettingsHeader title={t('settings.mcp.title')} />
       )}
 
       {/* Add MCP Server Card */}
@@ -302,7 +302,6 @@ export function McpTab({
           </svg>
         }
         title={t('settings.mcp.addNewServerTitle')}
-        description={t('settings.mcp.addNewServerDesc')}
       >
         <div className="space-y-4">
           <div className="flex gap-2">
@@ -387,7 +386,6 @@ export function McpTab({
             </svg>
           }
           title={t('settings.mcp.configuredServersTitle')}
-          description={t('settings.mcp.configuredServersDesc')}
         />
 
         {serverList.length === 0 ? (

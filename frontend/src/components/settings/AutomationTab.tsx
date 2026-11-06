@@ -349,10 +349,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.automation.title')}
-        subtitle={t('settings.automation.subtitle')}
-      />
+      <SettingsHeader title={t('settings.automation.title')} />
 
       {/* Compact status strip: this is a summary, not a full settings section. */}
       <div className="flex items-center gap-3 border-2 border-brutal-black bg-white p-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
@@ -572,7 +569,6 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             </svg>
           }
           title={t('settings.automation.scheduledJobsTitle')}
-          description={t('settings.automation.scheduledJobsDesc')}
         />
 
         {jobs.length === 0 ? (

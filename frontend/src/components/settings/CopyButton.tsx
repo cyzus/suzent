@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n';
 import React, { useState } from 'react';
 import { CheckIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import { BrutalIconButton } from '../BrutalButton';
@@ -6,18 +7,19 @@ import { BrutalIconButton } from '../BrutalButton';
 export function CopyButton({
   value,
   tone = 'neutral',
-  label = 'Copy',
+  label,
 }: {
   value: string;
   tone?: 'blue' | 'red' | 'neutral';
   label?: string;
 }): React.ReactElement {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <BrutalIconButton
       variant={tone === 'blue' ? 'primary' : tone === 'red' ? 'danger' : 'default'}
       disabled={!value}
-      label={copied ? 'Copied' : label}
+      label={copied ? t('common.copied') : (label ?? t('common.copy'))}
       onClick={() => {
         if (!value) return;
         navigator.clipboard?.writeText(value);

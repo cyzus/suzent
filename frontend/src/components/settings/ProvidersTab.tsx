@@ -754,9 +754,6 @@ const ProviderCatalog = React.forwardRef<HTMLElement, ProviderCatalogProps>(
           >
             {t('settings.providers.catalog.title')}
           </h3>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.providers.catalog.subtitle')}
-          </p>
         </div>
         {order.map((group) => {
           const members = providers.filter((p) => (p.group ?? 'global') === group);
@@ -1402,7 +1399,6 @@ export function ProvidersTab({
       {!onboarding && (
         <SettingsHeader
           title={t('settings.providers.title')}
-          subtitle={t('settings.providers.subtitle')}
           actions={
             !onboarding && (
               <>

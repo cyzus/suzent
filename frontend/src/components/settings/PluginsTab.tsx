@@ -20,7 +20,6 @@ import {
   Badge,
   SectionCardHeader,
   SettingsCard,
-  SettingsHelp,
   SettingsListAction,
   SettingsListItem,
   SettingsPage,
@@ -353,7 +352,6 @@ export function PluginsTab({
     <SettingsCard className="space-y-3">
       <SectionCardHeader
         title={t(`${prefix}.listTitle`)}
-        description={t(`${prefix}.listDesc`)}
         actions={
           <RefreshButton
             spinning={loading}
@@ -370,10 +368,7 @@ export function PluginsTab({
           {error}
         </p>
       )}
-      <SettingsHelp title={t(`${prefix}.helpTitle`)}>
-        <p>{t(`${prefix}.helpPackages`)}</p>
-        <p>{t(`${prefix}.helpCode`)}</p>
-      </SettingsHelp>
+      <p className="text-xs text-neutral-600 dark:text-neutral-400">{t(`${prefix}.helpCode`)}</p>
 
       {loading && plugins.length === 0 ? (
         <div className="p-8 text-center font-bold uppercase text-neutral-500 dark:text-neutral-400">
@@ -447,10 +442,7 @@ export function PluginsTab({
   if (embedded) return card;
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.plugins.title')}
-        subtitle={t('settings.plugins.subtitle')}
-      />
+      <SettingsHeader title={t('settings.plugins.title')} />
       {card}
     </SettingsPage>
   );

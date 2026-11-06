@@ -18,7 +18,7 @@ export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): Re
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.data.title')} subtitle={t('settings.data.subtitle')} />
+      <SettingsHeader title={t('settings.data.title')} />
 
       <GitHubSyncSection
         busy={busy}
