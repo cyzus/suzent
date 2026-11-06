@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.23.0] - 2026-11-06
+
+### Release notes
+- GitHub sync: Pull no longer overwrites local changes you haven't pushed yet, a sync that failed to push is retried automatically, and a newly set up computer pulls your brain before auto-sync can push over it.
+- Add webhook tasks: give a task a private URL and any service that calls it, such as GitHub or your own scripts, runs the task with the request as its input.
+- Fix plugin sign-in failing with "Client must not use multiple authentication methods" for services such as Cloudflare.
+- Share the desktop voice cube animation with iOS and Android and replace inactive composer buttons with voice, hang-up, and progress actions.
+- Start realtime voice conversations from the empty iOS and Android chat composer, with live captions and a hang-up control.
+- The Microsoft Store version's taskbar and Start menu icon no longer shows a coloured border.
+- The plugins page shows each service's logo, and its buttons have icons and no longer wrap onto two lines.
+- Connect Notion, Linear, GitHub, Cloudflare and Stripe from Settings → Plugins. Sign-ins stay in your keychain, and changes the agent makes there ask for approval.
+- Connect Suzent to a relay you deploy yourself (Settings → Devices → Relay): webhooks can reach it from the internet without a tunnel, and pairing QR codes carry an end-to-end encrypted relay route for the phone apps.
+- Settings has a new Services page for Notion, Linear, GitHub, Cloudflare, Stripe and your own MCP servers, and the Plugins page now lists only plugins that add tools and commands.
+- The chat's tools sidebar lists services connected through plugins, such as Notion, and lets you turn one off for a chat.
+- Voice conversations started from the new-chat screen now go into the project you picked instead of the default project.
+
 ## [v0.22.0] - 2026-11-05
 
 <!-- highlights -->
