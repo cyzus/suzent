@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "consumed": [
     ".releases/changes/android-play-optimization.json",
     ".releases/changes/android-relay.json",
@@ -10,6 +10,7 @@
     ".releases/changes/ios-app-store-privacy.json",
     ".releases/changes/ios-compact-chat-controls.json",
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/ios-relay-release-build.json",
     ".releases/changes/ios-relay.json",
     ".releases/changes/ios-resource-bundle-signing.json",
     ".releases/changes/ios-scroll-invalidation.json",
