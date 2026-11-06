@@ -178,7 +178,9 @@ import SuzentCore
     private var client: (any MobileClient)?
     private var streamTask: Task<Void, Never>?
     private var nodeTask: Task<Void, Never>?
-    private var socket: URLSessionWebSocketTask?
+    private var socket: (any MobileSocket)?
+    /// None of the invitation's origins answered, so pairing goes through the desktop's relay.
+    private var pairingViaRelay = false
     private var generation = UUID()
     private var foreground = true
 
@@ -261,6 +263,7 @@ import SuzentCore
         invitationText = ""
         pairingInvitation = nil
         pairingPreview = nil
+        pairingViaRelay = false
         error = nil
         busy = true
         let current = generation
@@ -269,17 +272,35 @@ import SuzentCore
         pairingTask = Task {
             defer { if generation == current { busy = false; pairingStatus = nil } }
             do {
-                let selected = try await invitation.resolving { origin -> (DeviceTrust?, PairingPreview?) in
-                    var trust = invitation.tls
-                    if trust == nil, let fingerprint = invitation.tlsFingerprint {
-                        trust = try await DeviceTrust.fetch(origin: origin, fingerprint: fingerprint)
+                let selected: (invitation: PairingInvitation, value: (DeviceTrust?, PairingPreview?))
+                var viaRelay = false
+                do {
+                    selected = try await invitation.resolving { origin -> (DeviceTrust?, PairingPreview?) in
+                        var trust = invitation.tls
+                        if trust == nil, let fingerprint = invitation.tlsFingerprint {
+                            trust = try await DeviceTrust.fetch(origin: origin, fingerprint: fingerprint)
+                        }
+                        let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
+                        defer { probe.close() }
+                        _ = try await probe.capabilities()
+                        return (trust, invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil)
                     }
-                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
-                    defer { probe.close() }
-                    _ = try await probe.capabilities()
-                    return (trust, invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil)
+                } catch let direct {
+                    guard let relay = invitation.relay else { throw direct }
+                    try Task.checkCancellation()
+                    do {
+                        let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
+                        defer { probe.close() }
+                        _ = try await probe.capabilities()
+                        selected = (invitation, (invitation.tls, invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil))
+                        viaRelay = true
+                    } catch {
+                        try Task.checkCancellation()
+                        throw direct
+                    }
                 }
                 guard generation == current, !Task.isCancelled else { return }
+                pairingViaRelay = viaRelay
                 pairingPreview = selected.value.1
                 var resolved = selected.invitation
                 resolved.tls = selected.value.0
@@ -313,13 +334,19 @@ import SuzentCore
         let target = repairActive ? store.active : store.matching(invitation)
         let existing = target?.connection
         let previewName = pairingPreview?.desktopName
+        let viaRelay = pairingViaRelay
         pairingTask = Task {
             var savedID = target?.id
             defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
             pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
-                let bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
+                let bootstrap: SuzentClient
+                if viaRelay, let relay = invitation.relay {
+                    bootstrap = try SuzentClient(relay: relay, token: "")
+                } else {
+                    bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
+                }
                 defer { bootstrap.close() }
                 let capabilities = try await bootstrap.capabilities()
                 let previous = capabilities.pairingRepair == 1 ? existing?.hostToken : nil
@@ -346,7 +373,8 @@ import SuzentCore
                         }
                         let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousOrigins: existing?.origins, previousTLS: existing?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? existing?.nodeToken ?? "" : "", clientProtocol: 1,
                                                previousToken: recognized && result.reused != true ? previous : nil,
-                                               previousOrigin: recognized && result.reused != true ? existing?.origin : nil)
+                                               previousOrigin: recognized && result.reused != true ? existing?.origin : nil,
+                                               relay: invitation.relay)
                         let id = target?.id ?? UUID().uuidString
                         var next = store
                         next.upsert(SavedDesktop(id: id, name: previewName ?? target?.name ?? saved.host, connection: saved))
@@ -380,6 +408,7 @@ import SuzentCore
     /// so a failed switch leaves the current desktop untouched.
     private func activate(_ id: String, _ stored: Connection) async throws {
         var saved = stored
+        var throughRelay: RelayRoute?
         do {
             var reachable: String?
             var visited = Set<String>()
@@ -390,19 +419,29 @@ import SuzentCore
                 do { _ = try await probe.capabilities(); reachable = origin }
                 catch { try Task.checkCancellation() }
             }
-            guard let reachable else { throw PairingError.unreachable }
-            saved.origin = reachable
+            if let reachable { saved.origin = reachable }
+            else if let relay = saved.relay {
+                try Task.checkCancellation()
+                let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
+                defer { probe.close() }
+                do { _ = try await probe.capabilities(); throughRelay = relay }
+                catch { try Task.checkCancellation(); throw PairingError.unreachable }
+            } else { throw PairingError.unreachable }
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
-        let backend = try Backend(saved.origin, allowHTTP: allowsHTTP)
-        let candidate = try SuzentClient(backend: backend, token: saved.hostToken, deviceTrust: saved.tls)
+        let candidate: SuzentClient
+        if let throughRelay {
+            candidate = try SuzentClient(relay: throughRelay, token: saved.hostToken)
+        } else {
+            candidate = try SuzentClient(backend: try Backend(saved.origin, allowHTTP: allowsHTTP), token: saved.hostToken, deviceTrust: saved.tls)
+        }
         do {
             if let previous = saved.previousToken {
                 var restored = saved
                 do { try await candidate.confirmPairing() }
                 catch ClientError.http(401) {
                     try Task.checkCancellation()
-                    restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
+                    restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1, relay: saved.relay)
                     try storeConnection(id, restored)
                     if store.activeId == id { origin = restored.origin }
                     candidate.close(); try await activate(id, restored); return
@@ -426,6 +465,7 @@ import SuzentCore
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
             guard store.desktop(id) != nil else { throw CancellationError() }
+            saved.relay = session.relay?.validated(allowHTTP: allowsHTTP)
             var next = store
             next.update(id, connection: saved)
             if let name = session.desktopName { next.rename(id, to: name) }
@@ -951,7 +991,7 @@ import SuzentCore
         }
     }
 
-    private func sendNode(_ value: [String: Any], to ws: URLSessionWebSocketTask) async throws {
+    private func sendNode(_ value: [String: Any], to ws: any MobileSocket) async throws {
         let data = try JSONSerialization.data(withJSONObject: value)
         try await ws.send(.string(String(decoding: data, as: UTF8.self)))
     }
@@ -980,11 +1020,14 @@ import SuzentCore
 
     /// Best effort: otherwise the desktop keeps a grant no phone holds, and the next scan adds another.
     private func revokeOnDesktop(_ saved: Connection) {
-        guard let backend = try? Backend(saved.origin, allowHTTP: allowsHTTP),
-              let revoker = try? SuzentClient(backend: backend, token: saved.hostToken, deviceTrust: saved.tls) else { return }
+        let direct = (try? Backend(saved.origin, allowHTTP: allowsHTTP)).flatMap {
+            try? SuzentClient(backend: $0, token: saved.hostToken, deviceTrust: saved.tls)
+        }
+        let relayed = saved.relay.flatMap { try? SuzentClient(relay: $0, token: saved.hostToken) }
         Task {
-            defer { revoker.close() }
-            try? await revoker.forgetPairing()
+            defer { direct?.close(); relayed?.close() }
+            if let direct, (try? await direct.forgetPairing()) != nil { return }
+            try? await relayed?.forgetPairing()
         }
     }
 

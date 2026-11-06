@@ -36,25 +36,57 @@ private actor NavigationCapability {
     func update(_ value: Bool) { enabled = value }
 }
 
+/// A desktop WebSocket: a URLSessionWebSocketTask, or one carried through a relay tunnel.
+public protocol MobileSocket: AnyObject, Sendable {
+    func resume()
+    func send(_ message: URLSessionWebSocketTask.Message) async throws
+    func receive() async throws -> URLSessionWebSocketTask.Message
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
+}
+
+extension URLSessionWebSocketTask: MobileSocket {}
+
 public final class SuzentClient: Sendable {
     private let navigationCapability = NavigationCapability()
     public let backend: Backend
     private let token: String
     private let session: URLSession
+    private let tunnel: RelayTunnel?
 
-    public init(backend: Backend, token: String, probeOnly: Bool = false, deviceTrust: DeviceTrust? = nil) throws {
+    /// The relay this client reaches the desktop through, if it isn't a direct connection.
+    public var relay: RelayRoute? { tunnel?.route }
+
+    public convenience init(backend: Backend, token: String, probeOnly: Bool = false, deviceTrust: DeviceTrust? = nil) throws {
+        try self.init(backend: backend, token: token, probeOnly: probeOnly, deviceTrust: deviceTrust, tunnel: nil)
+    }
+
+    /// Reaches the desktop through its owner's relay. The relay's TLS ends at the relay, so the
+    /// desktop is authenticated by the end-to-end handshake against the key from pairing instead.
+    public convenience init(relay: RelayRoute, token: String, probeOnly: Bool = false) throws {
+        let tunnel = try RelayTunnel(route: relay)
+        try self.init(backend: tunnel.backend, token: token, probeOnly: probeOnly, deviceTrust: nil, tunnel: tunnel)
+    }
+
+    private init(backend: Backend, token: String, probeOnly: Bool, deviceTrust: DeviceTrust?, tunnel: RelayTunnel?) throws {
         guard deviceTrust == nil || backend.url.scheme == "https" else { throw ClientError.invalidAddress }
         if let deviceTrust { _ = try deviceTrust.certificate() }
         self.backend = backend
         self.token = token
+        self.tunnel = tunnel
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = probeOnly ? 3 : 90
-        config.timeoutIntervalForResource = probeOnly ? 3 : 3600
+        // A relay adds a round trip through the internet and a handshake before the first request.
+        let probe: TimeInterval = tunnel == nil ? 3 : 10
+        config.timeoutIntervalForRequest = probeOnly ? probe : 90
+        config.timeoutIntervalForResource = probeOnly ? probe : 3600
         config.urlCache = nil
+        if tunnel != nil { config.protocolClasses = [RelayURLProtocol.self] }
         session = URLSession(configuration: config, delegate: RedirectBlocker(deviceTrust: deviceTrust), delegateQueue: nil)
     }
 
-    public func close() { session.invalidateAndCancel() }
+    public func close() {
+        session.invalidateAndCancel()
+        tunnel?.close()
+    }
 
     public func approvals(_ id: String) async throws -> ApprovalState {
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
@@ -73,17 +105,21 @@ public final class SuzentClient: Sendable {
         try validate(response)
     }
 
-    public func voiceSocket(chatID: String) throws -> URLSessionWebSocketTask {
+    public func voiceSocket(chatID: String) throws -> any MobileSocket {
         var request = try request("mobile/client/voice")
         var url = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
         url.scheme = url.scheme == "https" ? "wss" : "ws"
         url.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
         request.url = url.url
-        return session.webSocketTask(with: request)
+        return webSocket(request)
     }
 
-    public func nodeSocket() -> URLSessionWebSocketTask {
-        session.webSocketTask(with: backend.webSocketURL)
+    public func nodeSocket() -> any MobileSocket {
+        webSocket(URLRequest(url: backend.webSocketURL))
+    }
+
+    private func webSocket(_ request: URLRequest) -> any MobileSocket {
+        tunnel?.webSocket(for: request) ?? session.webSocketTask(with: request)
     }
 
     private func request(_ path: String, body: [String: String]? = nil) throws -> URLRequest {
@@ -275,7 +311,14 @@ public final class SuzentClient: Sendable {
         request.httpMethod = "POST"
         if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await session.upload(for: request, fromFile: form)
+        let (data, response): (Data, URLResponse)
+        if tunnel == nil {
+            (data, response) = try await session.upload(for: request, fromFile: form)
+        } else {
+            // A custom URLProtocol never sees an upload task's file, so the body goes inline.
+            request.httpBody = try Data(contentsOf: form)
+            (data, response) = try await session.data(for: request)
+        }
         try validate(response)
         struct Issued: Decodable { struct Item: Decodable { let id: String }; let attachments: [Item] }
         return try JSONDecoder().decode(Issued.self, from: data).attachments.map(\.id)
