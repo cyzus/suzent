@@ -111,6 +111,7 @@ def build_approval_decision(
     # with one choice; fall back to the exact command only when no stable prefix
     # can be derived. This keeps the prompt to at most one session + one global
     # remember option instead of offering both prefix and exact variants.
+    is_desktop = tool_name in {"desktop", "DesktopTool"}
     if is_shell_command:
         command = str(args.get("content") or args.get("command") or "").strip()
         prefix = derive_command_prefix(command)
@@ -122,6 +123,17 @@ def build_approval_decision(
             matcher = {"type": "exact_input", "value": {"command": command}}
             session_label = "Allow this command for session"
             global_label = "Always allow this command"
+    elif is_desktop:
+        command = str(args.get("command") or "").strip()
+        if not command:
+            rememberable = False
+            matcher = {"type": "all"}
+            session_label = "Always allow for session"
+            global_label = "Always allow globally"
+        else:
+            matcher = {"type": "exact_input", "value": {"command": command}}
+            session_label = f"Allow desktop {command} for session"
+            global_label = f"Always allow desktop {command}"
     else:
         matcher = {"type": "all"}
         session_label = "Always allow for session"

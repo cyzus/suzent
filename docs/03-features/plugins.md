@@ -88,6 +88,12 @@ service marks as read-only run without asking. Your permission mode and
 If a sign-in expires or the service can't be reached, chats keep working
 without that service's tools, and the Services page shows **Sign in again**.
 Choose **Disconnect** to sign out and forget the token.
+## Desktop apps
+
+The Desktop plugin lets the agent read and operate native apps on this
+computer. It is off until you install it. The agent-desktop program it needs
+is downloaded only after you confirm, from Settings or with
+`suzent desktop install`. See [Desktop apps](./tools/desktop.md).
 
 ## Plugins from other people
 

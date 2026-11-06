@@ -323,6 +323,7 @@ CAPABILITY_DESCRIPTIONS = {
     "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search and correct durable memory, and retrieve relevant past sessions.",
+    "Desktop": "Read and operate native apps on this computer through the OS accessibility tree.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {

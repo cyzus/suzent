@@ -1,0 +1,6 @@
+id: desktop
+name: Desktop
+version: 1.0.0
+description: Drive native desktop apps through the agent-desktop CLI. Off until you install this plugin.
+api_version: 1
+default_enabled: false

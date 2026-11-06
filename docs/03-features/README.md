@@ -27,6 +27,7 @@ on a computer you own: that is what makes it a
 | [Permissions & approvals](./tools/human-in-the-loop.md) | How it asks before it acts, and how to remember your answers. |
 | [Files](./tools/files.md) and [Commands](./tools/shell.md) | Reading, editing, and searching files; running commands, including in the background. |
 | [Web search & pages](./tools/web.md) and [Browser](./tools/browser.md) | Searching and reading the web, and browsing in its own browser or yours. |
+| [Desktop apps](./tools/desktop.md) | Optional control of native apps on this computer, through the accessibility tree. Off until you turn it on. |
 | [Sub-agents](./tools/sub-agents.md) | Handing parts of a job to helpers, and working with your other chats. |
 | [Tasks & planning](./tools/tasks.md) | Tracking tasks on the project board and scheduling its own follow-ups. |
 | [Questions, canvas & messages](./tools/interaction.md) | Asking you questions, showing forms and buttons, and messaging you in chat apps. |

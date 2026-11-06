@@ -115,10 +115,29 @@ def install_plugin(name: str = typer.Argument(..., help="Plugin id or alias")):
         typer.echo(f"  • Installing packages for '{record.id}'...")
     if _via_server("install", name) is not None:
         typer.echo(f"Enabled '{record.id}'. It is active in the running server.")
+    else:
+        _manager().set_enabled(record.id, True, requested_as=name)
+        _install_dependencies(record)
+        typer.echo(f"Enabled '{record.id}'. It loads when Suzent starts.")
+    if record.id == "desktop":
+        _offer_agent_desktop()
+
+
+def _offer_agent_desktop() -> None:
+    """Ask before downloading the CLI. A non-interactive shell only prints how."""
+    import sys
+
+    from suzent.cli.desktop import install_after_consent
+    from suzent.tools.desktop.install import runtime_status
+
+    if runtime_status()["installed"]:
         return
-    _manager().set_enabled(record.id, True, requested_as=name)
-    _install_dependencies(record)
-    typer.echo(f"Enabled '{record.id}'. It loads when Suzent starts.")
+    if not sys.stdin.isatty():
+        typer.echo(
+            "  agent-desktop is not installed. Run `suzent desktop install` to download it."
+        )
+        return
+    install_after_consent(yes=False)
 
 
 @plugin_app.command("remove")

@@ -700,6 +700,10 @@ export const zhCN = {
         interaction: { name: '交互', description: '向用户提问，并在对话中渲染界面。' },
         creative: { name: '创作', description: '生成、分析、朗读或分享多媒体及社交内容。' },
         'memory-recall': { name: '记忆与回忆', description: '搜索长期记忆并查找相关历史会话。' },
+        desktop: {
+          name: '桌面',
+          description: '通过系统辅助功能读取并操作这台电脑上的原生应用。',
+        },
       },
       tools: {
         SkillTool: {
@@ -797,6 +801,10 @@ export const zhCN = {
         SocialMessageTool: {
           name: '社交消息',
           description: '经审批后通过已配置的社交渠道发送消息。',
+        },
+        DesktopTool: {
+          name: '桌面操作',
+          description: '读取并操作本机桌面应用。只读操作直接运行，会改变桌面的操作需要批准。',
         },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
         MemoryUpdateTool: { name: '更新记忆', description: '按用户要求记住、撤回或更正一条记忆。' },
@@ -1111,6 +1119,11 @@ export const zhCN = {
       saveToken: '保存',
       createToken: '创建令牌',
       tokenHint: '令牌只给 agent 需要的权限。它保存在系统钥匙串里，agent 看不到。',
+      installAgentDesktop: '安装 agent-desktop',
+      agentDesktopReady: 'agent-desktop 已就绪',
+      agentDesktopMissing: '尚未安装 agent-desktop。',
+      confirmAgentDesktop:
+        'Suzent 会从 GitHub 下载 agent-desktop 1.0.2 到自己的文件夹，并核对发布时附带的校验和。它能读取并操作这台电脑上的应用。\n\nWindows 上的发布文件没有签名。SmartScreen、杀毒软件或 Smart App Control 可能会拦截它。\n\nmacOS 上仍需允许辅助功能。安装成功后 Suzent 会打开该引导。\n\n如果这台电脑没有对应的发布包，Suzent 会改用 npm install -g agent-desktop@1.0.2。\n\n现在安装 agent-desktop？',
     },
     acp: {
       title: 'ACP 智能体',

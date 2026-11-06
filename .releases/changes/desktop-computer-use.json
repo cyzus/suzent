@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Optional desktop control of native apps through agent-desktop, downloaded only after you agree."
+}

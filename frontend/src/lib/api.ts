@@ -582,6 +582,32 @@ export async function fetchPlugins(): Promise<PluginInfo[]> {
 }
 
 /** Install or remove a plugin. Throws with the server's message on failure. */
+export interface DesktopRuntimeInfo {
+  installed: boolean;
+  path: string | null;
+  source: 'override' | 'managed' | 'path' | 'npm' | null;
+  version: string;
+  consent: string;
+}
+
+export async function fetchDesktopRuntime(): Promise<DesktopRuntimeInfo> {
+  const res = await fetch(`${getApiBase()}/desktop/runtime`);
+  if (!res.ok) throw new Error(`Failed to load desktop runtime: ${res.status}`);
+  return res.json();
+}
+
+/** Download agent-desktop. Call only after the user has agreed to `consent`. */
+export async function installDesktopRuntime(): Promise<DesktopRuntimeInfo> {
+  const res = await fetch(`${getApiBase()}/desktop/runtime/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmed: true }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to install agent-desktop: ${res.status}`);
+  return data;
+}
+
 export async function setPluginInstalled(id: string, installed: boolean): Promise<PluginInfo> {
   const action = installed ? 'install' : 'remove';
   const res = await fetch(`${getApiBase()}/plugins/${encodeURIComponent(id)}/${action}`, {

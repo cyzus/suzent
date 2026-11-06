@@ -1042,6 +1042,11 @@ export const en = {
       createToken: 'Create a token',
       tokenHint:
         'Give the token only the access you want the agent to have. It is kept in your system keychain and never shown to the agent.',
+      installAgentDesktop: 'Install agent-desktop',
+      agentDesktopReady: 'agent-desktop is ready',
+      agentDesktopMissing: 'agent-desktop is not installed yet.',
+      confirmAgentDesktop:
+        'Suzent will download agent-desktop 1.0.2 from GitHub into its own folder and check the checksum published with that release. It can read and operate the apps on this computer.\n\nOn Windows the release binary is unsigned. SmartScreen, antivirus, or Smart App Control may block it.\n\nOn macOS you still need to allow Accessibility. Suzent opens that guide after install.\n\nIf no archive is published for this computer, Suzent uses npm install -g agent-desktop@1.0.2 instead.\n\nInstall agent-desktop now?',
     },
     acp: {
       title: 'ACP Agents',
