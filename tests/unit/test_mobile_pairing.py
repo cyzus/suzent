@@ -102,6 +102,10 @@ def test_remote_operator_routes_remain_protected(tmp_path):
         assert client.get("/mobile/pairing/pending").status_code == 401
         assert client.get("/mobile/devices").status_code == 401
         assert client.post("/mobile/pairing/abc/decide", json={}).status_code == 401
+        assert (
+            client.post("/mobile/devices/abc/rename", json={"name": "x"}).status_code
+            == 401
+        )
         assert client.post("/mobile/pairing/claim", json={}).status_code == 400
         assert client.post("/mobile/pairing/collect", json={}).status_code == 400
         assert client.get("/mobile/pairing/claim/extra").status_code == 401
@@ -487,3 +491,29 @@ def test_unconfirmed_installation_replacement_keeps_the_old_grant(
     monkeypatch.setattr(time, "time", lambda: second["device"]["provisional_until"] + 1)
     assert store.verify(second["token"]) is None
     assert store.verify(first["token"]) is not None
+
+
+def test_rename_persists_survives_repair_and_resets(tmp_path: Path) -> None:
+    path = tmp_path / "clients.json"
+    store = PairingStore(path)
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    device_id = first["device"]["device_id"]
+    assert "custom_name" not in path.read_text()
+
+    assert store.rename(device_id, "  Work iPhone  ")
+    assert PairingStore(path).devices()[0]["custom_name"] == "Work iPhone"
+
+    reused = repair(store, first["token"], ClientPermissions(), name="iPhone")
+    assert reused["device"]["custom_name"] == "Work iPhone"
+    rotated = repair(store, first["token"], ClientPermissions(), rotate=True)
+    assert store.confirm(rotated["token"])
+    assert store.verify(rotated["token"]).custom_name == "Work iPhone"
+
+    assert store.rename(device_id, " ")
+    assert store.devices()[0]["custom_name"] is None
+    assert "custom_name" not in path.read_text()
+    assert not store.rename("missing", "Phone")
+    with pytest.raises(PairingError):
+        store.rename(device_id, "x" * 101)
