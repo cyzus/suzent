@@ -60,7 +60,7 @@ ARTWORK = (
     ROOT.parents[1]
     / "apps/android/app/src/main/res/drawable-nodpi/suzent_launcher_artwork.png"
 )
-# The Play feature graphic's layout: copy on the left, plan and summary
+# The Play feature graphic's layout: copy on the left, plan and Chats home
 # captures tilted on the right, the hand-held cube between them. Positions are
 # (left, top, width) in pixels.
 PLACEMENTS = {
@@ -133,7 +133,7 @@ async def main() -> None:
                         (ROOT / "raw" / locale / f"iphone-{shot:02d}.png").read_bytes()
                     ).decode()
                     + '">'
-                    for shot, (x, y, w, angle) in zip((1, 2), spec["phones"])
+                    for shot, (x, y, w, angle) in zip((1, 3), spec["phones"])
                 )
                 cube_left, cube_top, cube_width = spec["cube"]
                 title = "<br>".join(escape(line) for line in headline.splitlines())
