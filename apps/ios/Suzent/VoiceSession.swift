@@ -49,14 +49,14 @@ private enum VoiceFailure: Error { case audio, permission, connection }
     @ObservationIgnored private var handshake: Task<Void, Never>?
     @ObservationIgnored private var tapInstalled = false
     @ObservationIgnored private var sender: Task<Void, Never>?
-    @ObservationIgnored private var socket: URLSessionWebSocketTask?
+    @ObservationIgnored private var socket: (any MobileSocket)?
     @ObservationIgnored private var engine: AVAudioEngine?
     @ObservationIgnored private var player: AVAudioPlayerNode?
     @ObservationIgnored private var outputFormat: AVAudioFormat?
     @ObservationIgnored private var continuation: AsyncStream<Data>.Continuation?
     @ObservationIgnored private var interruption: NSObjectProtocol?
 
-    func start(prepare: @escaping @MainActor () async throws -> URLSessionWebSocketTask) {
+    func start(prepare: @escaping @MainActor () async throws -> any MobileSocket) {
         guard !active else { return }
         active = true
         animationState = "connecting"
@@ -125,7 +125,7 @@ private enum VoiceFailure: Error { case audio, permission, connection }
         }
     }
 
-    private func startAudio(inputRate: Double, outputRate: Double, socket: URLSessionWebSocketTask) throws {
+    private func startAudio(inputRate: Double, outputRate: Double, socket: any MobileSocket) throws {
         guard engine == nil else { return }
         let session = AVAudioSession.sharedInstance()
         var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
