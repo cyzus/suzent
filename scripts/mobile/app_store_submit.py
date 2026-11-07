@@ -221,7 +221,9 @@ class AppStoreSubmitter:
             },
         )["data"]
 
-    def configure_version(self, version_id: str, build_id: str, notes: str) -> None:
+    def configure_version(
+        self, version_id: str, build_id: str, notes: str | None
+    ) -> None:
         self.send(
             "PATCH",
             f"/v1/appStoreVersions/{version_id}",
@@ -236,6 +238,9 @@ class AppStoreSubmitter:
                 }
             },
         )
+        if notes is None:
+            print("First App Store version: What's New is not available, skipping")
+            return
         localizations = self.get(
             f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations"
         )["data"]
@@ -339,7 +344,13 @@ class AppStoreSubmitter:
         current = self.prepare_version(app, version)
         if current is None:
             return False
-        self.configure_version(current["id"], build_id, whats_new(notes))
+        # Apple rejects What's New on an app's first App Store version.
+        first = all(
+            item["id"] == current["id"] for item in self._versions(app, limit="2")
+        )
+        self.configure_version(
+            current["id"], build_id, None if first else whats_new(notes)
+        )
         self.submit(app, current["id"])
         print(
             f"Submitted {version} ({build}) for review; it releases automatically on approval"

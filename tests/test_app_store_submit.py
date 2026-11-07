@@ -40,13 +40,28 @@ class FakeAppStore:
         return next(b for m, p, b in self.calls if m == method and p.startswith(prefix))
 
 
+def versions_with(*current: Any) -> Any:
+    """Only the release version filters by string or state; the plain listing also has an older release."""
+    released = {
+        "id": "version-0",
+        "attributes": {"appVersionState": "READY_FOR_DISTRIBUTION"},
+    }
+
+    def respond(path: str) -> Any:
+        if "versionString" in path or "appVersionState" in path:
+            return {"data": list(current)}
+        return {"data": [*current, released]}
+
+    return respond
+
+
 def routes(
     overrides: dict[tuple[str, str], Any] | None = None,
 ) -> dict[tuple[str, str], Any]:
     base: dict[tuple[str, str], Any] = {
         ("GET", "/v1/apps?"): {"data": [{"id": APP}]},
         ("GET", "/v1/builds"): {"data": [BUILD]},
-        ("GET", f"/v1/apps/{APP}/appStoreVersions"): {"data": []},
+        ("GET", f"/v1/apps/{APP}/appStoreVersions"): versions_with(),
         ("POST", "/v1/appStoreVersions"): {"data": {"id": "version-1"}},
         ("PATCH", "/v1/appStoreVersions/"): {"data": {"id": "version-1"}},
         ("GET", "/v1/appStoreVersions/version-1/appStoreVersionLocalizations"): {
@@ -258,3 +273,20 @@ def test_token_is_a_verifiable_es256_jwt(tmp_path: Path) -> None:
     key.public_key().verify(
         der, f"{header}.{payload}".encode(), ec.ECDSA(hashes.SHA256())
     )
+
+
+def test_first_app_store_version_skips_whats_new() -> None:
+    fake = FakeAppStore(
+        routes(
+            {
+                ("GET", f"/v1/apps/{APP}/appStoreVersions"): lambda p: {
+                    "data": [{"id": "version-1"}] if "limit" in p else []
+                }
+            }
+        )
+    )
+    assert submit.AppStoreSubmitter(fake).run("com.suzent.mobile", "1.0.0", 1, NOTES)
+    assert not any(
+        "Localizations" in path for path in fake.paths("GET") + fake.paths("PATCH")
+    )
+    assert fake.calls[-1][1] == "/v1/reviewSubmissions/sub-1"
