@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.7.2] - 2026-11-06
+## [mobile-v0.7.2] - 2026-11-07
 
 ### Release notes
 - Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
