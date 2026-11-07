@@ -87,7 +87,7 @@ def _executable() -> Path:
     if found is None:
         raise MailError(
             "The himalaya mail client is not installed. Ask the user to install "
-            "it from Settings → Email."
+            "it from Settings → Services → Email."
         )
     return found[0]
 

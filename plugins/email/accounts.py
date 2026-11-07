@@ -206,7 +206,7 @@ def resolve_account(account_id: str | None) -> MailAccount:
     if not accounts:
         raise LookupError(
             "No mailbox is connected. Ask the user to add one in "
-            "Settings → Email (sign-in uses an app password or authorization code)."
+            "Settings → Services → Email (sign-in uses an app password or authorization code)."
         )
     if account_id:
         for account in accounts:

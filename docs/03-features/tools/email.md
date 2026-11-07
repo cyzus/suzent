@@ -8,23 +8,32 @@ description: Connect QQ Mail, NetEase 163, Gmail, iCloud and other mailboxes so 
 
 **Sovereign access.** Suzent signs in to your mailbox directly from your
 computer. Nothing passes through a Suzent server, the password stays in your
-system keychain, and the agent can't send a single message unless you switch
-sending on and approve it. See [what makes an agent sovereign](https://suzent.com/sovereign).
+system keychain where the agent can't read it, and the agent can't send a
+single message unless you switch sending on and approve it. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 Once a mailbox is connected you can ask things like "what did the bank email me
 this week?", "summarize my unread mail", or "draft a reply to Alice saying noon
 works". Combined with [scheduled tasks](../automation.md) it can summarize your
 inbox every morning.
 
+## Turning email on
+
+Email is an optional [plugin](../plugins.md). Open **Settings → Services**, find
+**Email** and click **Add**. Suzent then asks to install
+[himalaya](https://github.com/pimalaya/himalaya), the open-source mail program
+it uses to reach your mailbox. It downloads a pinned, checked copy from npm, or
+from the npmmirror copy in mainland China.
+
 ## Connecting a mailbox
 
 1. In your mailbox's own settings, switch on **IMAP** and create an **app
    password** (QQ Mail and NetEase call it an **authorization code**, 授权码).
    This is not your normal login password.
-2. In Suzent, open **Settings → Email** and click **Add**.
-3. Pick your provider, type your address and the app password, and click
-   **Connect**. Suzent signs in to check it before saving, and shows the
-   reason if it can't.
+2. In Suzent, open **Settings → Services**. Under **Email**, pick your
+   provider, type your address and the app password, and click **Add
+   mailbox**. Suzent signs in to check it before saving, and shows the reason
+   if it can't.
 
 | Provider | Where to get the app password |
 |---|---|
@@ -58,7 +67,7 @@ or just ask, and the agent switches them on for that chat.
 
 Each mailbox starts as **drafts only**: the agent can write mail but you do the
 sending. To let it send, switch on **Allow sending** for that mailbox in
-**Settings → Email**. Even then, each message waits for your approval, showing
+**Settings → Services**. Even then, each message waits for your approval, showing
 the recipients, subject, and text.
 
 After sending, Suzent files a copy in your Sent folder, except for Gmail, which
@@ -79,8 +88,9 @@ can't send mail by itself. Keep **Allow sending** off unless you need it.
   minutes after you switch it on.
 - **"Unsafe Login" from NetEase.** Suzent identifies itself the way NetEase
   requires. If you still see it, create a new authorization code and try again.
-- **Searching in Chinese.** One search term at a time can contain Chinese (for
-  example a subject *or* a sender). Some servers search Chinese text poorly; if
-  nothing comes back, try a shorter word or search by sender.
+- **Searching in Chinese.** Some servers search Chinese text poorly. If nothing
+  comes back, try a shorter word or search by sender.
 - **Duplicate sent messages.** If your provider already saves sent mail, you
   will see two copies. Tell us which provider so we can fix its preset.
+- **"The himalaya mail client is not installed."** Open **Settings →
+  Services** and install it from the Email card.

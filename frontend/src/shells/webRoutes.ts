@@ -24,7 +24,6 @@ import {
   ChatBubbleLeftRightIcon,
   CircleStackIcon,
   ClockIcon,
-  EnvelopeIcon,
   CloudArrowUpIcon,
   ComputerDesktopIcon,
   CpuChipIcon,
@@ -123,13 +122,6 @@ export const WEB_DESTINATION_GROUPS: WebDestinationGroup[] = [
         labelKey: 'settings.categories.social',
         icon: ChatBubbleLeftRightIcon,
         category: 'social',
-        framed: true,
-      },
-      {
-        path: '/email',
-        labelKey: 'settings.categories.email',
-        icon: EnvelopeIcon,
-        category: 'email',
         framed: true,
       },
       {

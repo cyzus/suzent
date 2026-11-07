@@ -966,43 +966,17 @@ export const en = {
       },
     },
     email: {
-      title: 'Email',
-      subtitle:
-        'Let the agent search and read your mail, save drafts, and send after you approve. Sign-in stays on this device.',
-      addTitle: 'Connect a mailbox',
-      addDesc: 'Signs in over IMAP and SMTP with an app password or authorization code.',
       emailPlaceholder: 'Email address',
       passwordPlaceholder: 'App password or authorization code',
-      passwordHelp:
-        'Use the app password or authorization code from your mailbox settings, not your normal password. IMAP must be switched on there too.',
-      passwordHelpLink: 'How to get one for {provider}',
-      displayNamePlaceholder: 'Sender name (optional)',
+      getPassword: 'How to get an app password',
       imapHost: 'IMAP server',
       smtpHost: 'SMTP server',
-      oauthOnly:
-        'Microsoft no longer accepts passwords here. Microsoft sign-in is coming in a later version.',
-      addAccount: 'Connect',
-      signingIn: 'Signing in…',
-      accountsTitle: 'Connected mailboxes',
-      accountsDesc:
-        'Passwords are kept in your system keychain, never in the config file, and the agent cannot read them.',
-      noAccounts: 'No mailbox connected',
-      passwordMissing: 'Password missing',
+      oauthOnly: 'Needs Microsoft sign-in, which is not supported yet.',
+      add: 'Add mailbox',
       allowSend: 'Allow sending',
-      allowSendDesc:
-        'Off: the agent can only save drafts for you to send. On: it may send, and asks you to approve each message.',
       test: 'Test',
-      testing: 'Testing',
-      connected: 'Connected',
-      changePassword: 'Change password',
-      pluginOff: 'Turn on the Email plugin',
-      pluginOffDesc:
-        'Email is an optional plugin. Turn it on to connect mailboxes; the agent gets the mail tools from the next message.',
-      turnOn: 'Turn on',
-      turningOn: 'Turning on…',
-      clientTitle: 'Install the mail client',
-      clientDesc:
-        'Suzent reaches your mailboxes through himalaya, an open-source mail program. Install it once before connecting a mailbox.',
+      changePassword: 'Password',
+      passwordMissing: 'Password missing',
     },
     mcp: {
       title: 'Custom MCP servers',
@@ -1185,7 +1159,6 @@ export const en = {
       memory: 'Memory System',
       security: 'Security',
       social: 'Social Channels',
-      email: 'Email',
       devices: 'Devices',
       mesh: 'Mesh',
       mcp: 'MCP Servers',

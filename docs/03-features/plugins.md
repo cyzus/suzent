@@ -98,7 +98,7 @@ is downloaded only after you confirm, from its card in Settings or when
 ## Email
 
 The Email plugin lets the agent search and read your mailboxes, save drafts,
-and send mail you approve. Turn it on from **Settings → Email**, which also
+and send mail you approve. Turn it on from **Settings → Services**, which also
 installs the himalaya mail program it uses. See [Email](./tools/email.md).
 
 Any plugin that needs a program on your computer works the same way: its

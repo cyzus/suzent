@@ -1,9 +1,10 @@
 id: email
 name: Email
 version: 1.0.0
-description: Search, read and draft mail in your own mailboxes, and send it when you allow it, through the himalaya mail client.
+description: Let the agent search, read and draft your mail, and send it when you allow.
 api_version: 3
 default_enabled: false
+category: service
 binaries:
   - name: himalaya
     version: 2.2.1

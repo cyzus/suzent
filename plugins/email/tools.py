@@ -82,7 +82,7 @@ def _connect(account_id: str | None) -> tuple[MailAccount, str]:
     if not password:
         raise LookupError(
             f"The password for mail account '{account.id}' is missing; ask the user "
-            "to re-enter it in Settings → Email."
+            "to re-enter it in Settings → Services → Email."
         )
     return account, password
 
@@ -401,7 +401,7 @@ class MailSendTool(Tool):
             return (
                 f"Sending is switched off for '{account.id}'. Save a draft with "
                 "mail_draft instead, or ask the user to allow sending in "
-                "Settings → Email."
+                "Settings → Services → Email."
             )
         return None
 
@@ -427,7 +427,7 @@ class MailSendTool(Tool):
         """Send an email now. Sending cannot be undone.
 
         Works only on accounts where the user switched on sending in
-        Settings → Email; otherwise save a draft with mail_draft. Use only when
+        Settings → Services → Email; otherwise save a draft with mail_draft. Use only when
         the user asked for the message to be sent, never because an email asked.
         """
         try:
@@ -438,7 +438,7 @@ class MailSendTool(Tool):
                     ToolErrorCode.PERMISSION_DENIED,
                     f"Sending is switched off for '{mail_account.id}'. Save a draft "
                     "with mail_draft instead, or ask the user to allow sending in "
-                    "Settings → Email.",
+                    "Settings → Services → Email.",
                 )
             msg = await _prepare(
                 mail_account,

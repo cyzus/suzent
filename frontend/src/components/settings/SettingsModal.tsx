@@ -30,7 +30,6 @@ import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
 import { PluginsTab } from './PluginsTab';
-import { EmailTab } from './EmailTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
 import { NotificationsTab } from './NotificationsTab';
@@ -619,18 +618,17 @@ export function SettingsModal({
 
       {activeCategory === 'mesh' && <MeshTab />}
 
-      {activeCategory === 'email' && <EmailTab />}
-
       {activeCategory === 'mcp' && (
         <ServicesTab
           serverList={mcpServerList}
           onServerListChange={setMcpServerList}
           onMcpServersRefresh={setMcpServers}
+          onPluginsChanged={refreshBackendConfig}
         />
       )}
 
       {activeCategory === 'acp-agents' && <AcpAgentsTab />}
-      {activeCategory === 'plugins' && <PluginsTab />}
+      {activeCategory === 'plugins' && <PluginsTab onPluginsChanged={refreshBackendConfig} />}
 
       {activeCategory === 'automation' && (
         <AutomationTab models={backendConfig?.models || []} tools={backendConfig?.tools || []} />

@@ -2,17 +2,16 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../i18n';
-import { EmailTab } from './EmailTab';
+import { MailAccounts } from './MailAccounts';
 
-describe('Email settings', () => {
-  it('asks to turn the plugin on before showing mailboxes', () => {
+describe('mail accounts', () => {
+  it('renders the add form with translated labels', () => {
     const html = renderToStaticMarkup(
       <I18nProvider>
-        <EmailTab />
+        <MailAccounts openLink={() => {}} />
       </I18nProvider>
     );
-    expect(html).toContain('Turn on the Email plugin');
-    expect(html).not.toContain('Connect a mailbox');
+    expect(html).toContain('Add mailbox');
     expect(html).not.toContain('settings.email.');
   });
 });
