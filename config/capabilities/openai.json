@@ -34,7 +34,9 @@
       ],
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-realtime-2.1-mini": {
       "mode": "chat",
@@ -43,7 +45,9 @@
       ],
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/curie:ft-personal-2022-02-08-23-37-50": {
       "mode": "chat"
@@ -1641,7 +1645,7 @@
         "/v1/chat/completions",
         "/v1/responses"
       ],
-      "max_input_tokens": 400000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -1655,7 +1659,7 @@
         "/v1/chat/completions",
         "/v1/responses"
       ],
-      "max_input_tokens": 400000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -1668,7 +1672,7 @@
       "supported_endpoints": [
         "/v1/responses"
       ],
-      "max_input_tokens": 400000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -1794,6 +1798,36 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "openai/gpt-6-cyber": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-image-2.6-sunburst": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-image-2.6-flare": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
     }
   }
 }
