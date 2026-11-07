@@ -806,7 +806,7 @@ async def get_social_config(request: Request) -> JSONResponse:
         if not config_path.exists():
             return JSONResponse({"config": {}})
 
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
         # Load defaults from example file to ensure all platforms are visible
@@ -814,7 +814,7 @@ async def get_social_config(request: Request) -> JSONResponse:
         defaults_path = get_resource_path("config/social.example.json")
         if defaults_path.exists():
             try:
-                with open(defaults_path, "r") as f:
+                with open(defaults_path, "r", encoding="utf-8") as f:
                     defaults = json.load(f)
 
                 import copy
@@ -897,14 +897,14 @@ async def save_social_config(request: Request) -> JSONResponse:
         config_path = user_config_file("social.json")
         existing_config = {}
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 existing_config = json.load(f)
 
         # Merge incoming into existing (handling masks)
         _merge_social_config(existing_config, incoming_config)
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(existing_config, f, indent=4)
 
         asyncio.create_task(_apply_social_config(request.app, existing_config))

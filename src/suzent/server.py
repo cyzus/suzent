@@ -939,7 +939,7 @@ async def startup():
 
         if config_path.exists():
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     social_config = json.load(f)
                 logger.info(f"Loaded social config from {config_path}")
             except Exception as e:

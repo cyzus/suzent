@@ -369,8 +369,8 @@ def main() -> None:
     parser.add_argument("--bundle-id", default="com.suzent.mobile")
     parser.add_argument("--timeout-minutes", type=float, default=60)
     args = parser.parse_args()
-    metadata = json.loads((args.metadata / "metadata.json").read_text())
-    notes = (args.metadata / "notes.md").read_text()
+    metadata = json.loads((args.metadata / "metadata.json").read_text(encoding="utf-8"))
+    notes = (args.metadata / "notes.md").read_text(encoding="utf-8")
     for name in (
         "APP_STORE_CONNECT_KEY_BASE64",
         "APP_STORE_CONNECT_KEY_ID",

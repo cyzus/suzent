@@ -451,7 +451,7 @@ def _fetch_release_webui(root: Path) -> bool:
 
 def _local_ui_version(root: Path) -> str:
     f = root / _BIN_DIR / "version.txt"
-    return f.read_text().strip() if f.exists() else ""
+    return f.read_text(encoding="utf-8").strip() if f.exists() else ""
 
 
 def _current_version(root: Path) -> str:
@@ -2595,10 +2595,12 @@ def register_commands(app: typer.Typer):
             resources_dir.mkdir(parents=True, exist_ok=True)
             cmd_shim = resources_dir / "suzent.cmd"
             if not cmd_shim.exists():
-                cmd_shim.write_text("@echo off\r\nREM Placeholder\r\n")
+                cmd_shim.write_text(
+                    "@echo off\r\nREM Placeholder\r\n", encoding="utf-8"
+                )
             sh_shim = resources_dir / "suzent"
             if not sh_shim.exists():
-                sh_shim.write_text("#!/bin/sh\n# Placeholder\n")
+                sh_shim.write_text("#!/bin/sh\n# Placeholder\n", encoding="utf-8")
 
         sync_args = _backend_sync_args(root)
         sync_label = " ".join(sync_args)

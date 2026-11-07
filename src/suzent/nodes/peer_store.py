@@ -49,7 +49,7 @@ class PeerGrantStore:
     def _load(self) -> None:
         try:
             if self._path.exists():
-                with open(self._path) as f:
+                with open(self._path, encoding="utf-8") as f:
                     self._peers = (json.load(f) or {}).get("peers", {}) or {}
         except Exception as e:
             logger.warning(f"Peer store: could not load {self._path}: {e}")
@@ -73,7 +73,7 @@ class PeerGrantStore:
     def _save(self) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._path, "w") as f:
+            with open(self._path, "w", encoding="utf-8") as f:
                 json.dump({"peers": self._peers}, f, indent=2)
         except Exception as e:
             logger.warning(f"Peer store: could not persist {self._path}: {e}")

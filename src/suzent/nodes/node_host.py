@@ -225,7 +225,7 @@ def _load_device_token(gateway_url: str) -> str:
         path = _device_token_path()
         if not path.exists():
             return ""
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return (data.get("tokens", {}) or {}).get(gateway_url, "")
     except Exception as e:
@@ -240,10 +240,10 @@ def _save_device_token(gateway_url: str, token: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {}
         if path.exists():
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
         data.setdefault("tokens", {})[gateway_url] = token
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception as e:
         logger.warning(f"Could not persist device token: {e}")
