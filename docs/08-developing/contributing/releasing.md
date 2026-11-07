@@ -9,12 +9,12 @@ Suzent prepares independent release plans for three products:
 | Product | Includes | Release PR | What merging does |
 | --- | --- | --- | --- |
 | `desktop` | Python backend, desktop UI, Tauri app and installer | `release/next` | Records the plan, creates `vX.Y.Z`, and starts the existing desktop build/publication workflow |
-| `mobile` | iOS and Android; one shared product version | `release/mobile` | Creates `mobile-vX.Y.Z`, publishes signed Android assets, and submits iOS to App Review, released automatically on approval |
+| `mobile` | iOS and Android; one shared product version | `release/mobile` | Creates `mobile-vX.Y.Z`, publishes signed Android assets, rolls Android out on Google Play, and submits iOS to App Review, released automatically on approval |
 | `browser` | Chrome/Edge extension | `release/browser` | Creates `browser-vX.Y.Z` and publishes the store-ready ZIP; store submission remains manual |
 
 Mobile signing requires the `mobile-release` environment. See
 [Mobile release distribution](mobile-releases.md) for credentials, recovery, and
-acceptance requirements. Play Store and browser store submission remain manual.
+acceptance requirements. Browser store submission remains manual.
 Mobile and browser releases use `--latest=false`, so they never replace the
 desktop latest release.
 
