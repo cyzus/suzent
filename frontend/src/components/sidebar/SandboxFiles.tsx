@@ -1,8 +1,10 @@
 import { useSidebarExpansion } from './SidebarExpansionContext';
 import { FullscreenButton } from '../FullscreenButton';
 import { isImeComposing } from '../../lib/ime';
-import React, { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../lib/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getApiBase, getSandboxParams } from '../../lib/api';
+import { isWeb } from '../../lib/runtime';
+import { fileContextExtras } from '../../lib/fileContextActions';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
@@ -214,6 +216,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const uploadDirectoryRef = useRef(activeRoot);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -467,9 +470,12 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     [activeRoot, config.sandbox_volumes, currentChatId, fetchDirContents, t]
   );
 
-  const handleUploadClick = () => {
+  const openUpload = (directory: string) => {
+    uploadDirectoryRef.current = directory;
     document.getElementById('sandbox-file-upload')?.click();
   };
+
+  const handleUploadClick = () => openUpload(activeRoot);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -480,7 +486,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const targetPath = `${activeRoot}/${cleanName}`;
+        const directory = uploadDirectoryRef.current.replace(/\/$/, '');
+        const targetPath = `${directory}/${cleanName}`;
         const text = await file.text();
         const base = getApiBase();
         const volumesParam = JSON.stringify(config.sandbox_volumes || []);
@@ -497,7 +504,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
           throw new Error(data.error || `Failed to upload ${file.name}`);
         }
       }
-      fetchDirContents(activeRoot);
+      fetchDirContents(uploadDirectoryRef.current);
+      if (uploadDirectoryRef.current !== activeRoot) {
+        setExpandedDirs((previous) => new Set(previous).add(uploadDirectoryRef.current));
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -716,6 +726,38 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               setError(t('sandbox.contextMenu.copyFailed'));
             });
           }}
+          onDownload={
+            fileContextExtras({
+              isDirectory: contextMenu.isDir,
+              web: isWeb(),
+              canMutate: !isMountsRoot,
+            }).download
+              ? () => {
+                  try {
+                    const filename = contextMenu.name || 'download';
+                    const href = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, contextMenu.path, config.sandbox_volumes)}`;
+                    const anchor = document.createElement('a');
+                    anchor.href = href;
+                    anchor.download = filename;
+                    anchor.rel = 'noopener';
+                    document.body.appendChild(anchor);
+                    anchor.click();
+                    anchor.remove();
+                  } catch {
+                    setError(t('sandbox.contextMenu.downloadFailed'));
+                  }
+                }
+              : undefined
+          }
+          onUpload={
+            fileContextExtras({
+              isDirectory: contextMenu.isDir,
+              web: isWeb(),
+              canMutate: !isMountsRoot,
+            }).upload
+              ? () => openUpload(contextMenu.path)
+              : undefined
+          }
           onDelete={() => handleDeletePath(contextMenu.path, contextMenu.name, contextMenu.isDir)}
           onClose={() => setContextMenu(null)}
         />
