@@ -398,8 +398,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # --- Create pydantic-ai Agent ---
     # Mid-run context compaction: the history processor runs before every model
     # request within a run, so a tool-heavy turn that grows past the trigger
-    # threshold is compacted in-flight (not only at turn boundaries). It self-guards
-    # on deps.stateless, so it's safe to register for every agent.
+    # threshold is compacted in-flight (not only at turn boundaries).
     from suzent.core.context_compressor import make_compaction_history_processor
     from suzent.core.repository_context import (
         RepositoryContextRoots,
