@@ -4,13 +4,54 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
+
+from starlette.requests import Request
+from starlette.responses import Response
 
 from suzent.logger import get_logger
 from suzent.plugins.binaries import PluginBinary
 from suzent.plugins.integrations import Integration
 from suzent.plugins.manifest import PluginManifest
 from suzent.tools.base import Tool
+
+
+@dataclass
+class PluginRoute:
+    path: str
+    endpoint: Callable[[Request], Awaitable[Response]]
+    methods: tuple[str, ...]
+
+
+class PluginSecrets:
+    """Secrets one plugin keeps in Suzent's secret store.
+
+    They never reach ``os.environ``, so commands the agent runs cannot read
+    them, and each plugin sees only its own keys.
+    """
+
+    def __init__(self, plugin_id: str) -> None:
+        self._prefix = f"SUZENT_PLUGIN::{plugin_id}::"
+
+    def _key(self, name: str) -> str:
+        if not name or "::" in name:
+            raise ValueError(f"invalid secret name {name!r}")
+        return self._prefix + name
+
+    def get(self, name: str) -> str | None:
+        from suzent.core.secrets import get_secret_manager
+
+        return get_secret_manager().get_backend_only(self._key(name))
+
+    def set(self, name: str, value: str) -> None:
+        from suzent.core.secrets import get_secret_manager
+
+        get_secret_manager().set_backend_only(self._key(name), value)
+
+    def delete(self, name: str) -> None:
+        from suzent.core.secrets import get_secret_manager
+
+        get_secret_manager().delete(self._key(name))
 
 
 @dataclass
@@ -36,6 +77,8 @@ class PluginContext:
         self.skill_dirs: list[Path] = []
         self.commands: list[PendingCommand] = []
         self.integrations: list[Integration] = []
+        self.routes: list[PluginRoute] = []
+        self.secrets = PluginSecrets(manifest.id)
 
     @property
     def id(self) -> str:
@@ -87,6 +130,25 @@ class PluginContext:
         if not integration.url.startswith("https://"):
             raise ValueError("integration url must be https://")
         self.integrations.append(integration)
+
+    def register_route(
+        self,
+        path: str,
+        endpoint: Callable[[Request], Awaitable[Response]],
+        methods: tuple[str, ...] = ("GET",),
+    ) -> None:
+        """Serve ``endpoint`` at ``/plugins/<id>/api/<path>`` for the settings page.
+
+        The route goes away when the plugin is turned off.
+        """
+        path = path.strip("/")
+        if not path or any(part in ("", ".", "..") for part in path.split("/")):
+            raise ValueError(f"invalid route path {path!r}")
+        methods = tuple(m.upper() for m in methods)
+        for route in self.routes:
+            if route.path == path and set(route.methods) & set(methods):
+                raise ValueError(f"route {path!r} registered twice")
+        self.routes.append(PluginRoute(path, endpoint, methods))
 
     def register_command(
         self, aliases: list[str], **options: Any

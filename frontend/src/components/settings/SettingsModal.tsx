@@ -623,11 +623,12 @@ export function SettingsModal({
           serverList={mcpServerList}
           onServerListChange={setMcpServerList}
           onMcpServersRefresh={setMcpServers}
+          onPluginsChanged={refreshBackendConfig}
         />
       )}
 
       {activeCategory === 'acp-agents' && <AcpAgentsTab />}
-      {activeCategory === 'plugins' && <PluginsTab />}
+      {activeCategory === 'plugins' && <PluginsTab onPluginsChanged={refreshBackendConfig} />}
 
       {activeCategory === 'automation' && (
         <AutomationTab models={backendConfig?.models || []} tools={backendConfig?.tools || []} />

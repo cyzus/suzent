@@ -160,3 +160,23 @@ key.
 - [ ] `list_peers` recomputes each peer's outbound status via a live `whoami`
       round-trip on every poll (~4s); cache/debounce so an open Devices tab
       doesn't fan out N requests per tick (also a mild self-DoS surface).
+
+## Email
+
+The email plugin (`plugins/email/`) runs the himalaya CLI and signs in over
+IMAP/SMTP with app passwords. himalaya 2.2.1 also speaks the Gmail API and
+Microsoft Graph, so OAuth sign-in only needs Suzent to obtain and refresh the
+token and hand it over the same way as the password. Remaining work:
+
+- Microsoft sign-in (device-code OAuth) for Outlook, Hotmail and Microsoft
+  365, which no longer accept passwords. Needs a registered Entra public-client
+  app.
+- Gmail sign-in. Gmail's read scopes are restricted, so a public app needs
+  Google verification plus a yearly CASA assessment; app passwords cover
+  personal Gmail meanwhile.
+- Saving attachments to the workspace (`himalaya attachment download`).
+- Email as a chat channel, gated on the sender's SPF/DKIM result so a forged
+  From cannot command the agent.
+- While himalaya runs, the password is in its environment, which another
+  process of the same user can read on Linux. A pipe on an inherited file
+  descriptor would narrow that.

@@ -3,6 +3,7 @@ import {
   ArrowPathIcon,
   CameraIcon,
   ChatBubbleLeftRightIcon,
+  EnvelopeIcon,
   PlusIcon,
   PuzzlePieceIcon,
   TrashIcon,
@@ -17,6 +18,7 @@ import {
 } from '../../lib/api';
 import type { PluginBinary, PluginInfo, PluginIntegration } from '../../lib/api';
 import { RefreshButton } from '../RefreshButton';
+import { MailAccounts } from './MailAccounts';
 import {
   Badge,
   SectionCardHeader,
@@ -32,6 +34,12 @@ const FALLBACK_ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGEl
   camera: CameraIcon,
   slack: ChatBubbleLeftRightIcon,
   feishu: ChatBubbleLeftRightIcon,
+  email: EnvelopeIcon,
+};
+
+/** Settings a loaded plugin needs beyond install, programs and sign-in. */
+const PLUGIN_SETTINGS: Record<string, React.ComponentType<{ openLink: (url: string) => void }>> = {
+  email: MailAccounts,
 };
 
 function PluginIcon({ plugin }: { plugin: PluginInfo }): React.ReactElement {
@@ -366,11 +374,14 @@ interface PluginsTabProps {
   scope?: 'extensions' | 'services';
   /** Render only the list card, inside another page. */
   embedded?: boolean;
+  /** Called after a plugin is turned on or off, so tool lists can reload. */
+  onPluginsChanged?: () => Promise<void> | void;
 }
 
 export function PluginsTab({
   scope = 'extensions',
   embedded = false,
+  onPluginsChanged,
 }: PluginsTabProps): React.ReactElement {
   const { t } = useI18n();
   const prefix = scope === 'services' ? 'settings.services' : 'settings.plugins';
@@ -414,6 +425,7 @@ export function PluginsTab({
     try {
       const updated = await setPluginInstalled(plugin.id, installing);
       setPlugins((previous) => previous.map((p) => (p.id === updated.id ? updated : p)));
+      await onPluginsChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       await load();
@@ -509,6 +521,12 @@ export function PluginsTab({
                           t={t}
                         />
                       ))}
+                    {plugin.status === 'loaded' &&
+                      (plugin.binaries ?? []).every((binary) => binary.installed) &&
+                      PLUGIN_SETTINGS[plugin.id] &&
+                      React.createElement(PLUGIN_SETTINGS[plugin.id], {
+                        openLink: (url: string) => void openExternal(url, null),
+                      })}
                   </div>
                 </div>
                 <PluginAction
