@@ -223,7 +223,11 @@ class MobileTLS:
                 self.hosts = await asyncio.to_thread(local_hosts)
                 cert, key = await asyncio.to_thread(self.identity.issue, self.hosts)
                 port_file = self.directory / "port"
-                port = int(port_file.read_text()) if port_file.exists() else 0
+                port = (
+                    int(port_file.read_text(encoding="utf-8"))
+                    if port_file.exists()
+                    else 0
+                )
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 try:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

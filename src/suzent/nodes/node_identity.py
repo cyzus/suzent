@@ -35,7 +35,7 @@ def get_node_identity() -> str:
         return _cached
     try:
         if _PATH.exists():
-            data = json.loads(_PATH.read_text() or "{}")
+            data = json.loads(_PATH.read_text(encoding="utf-8") or "{}")
             nid = str(data.get("node_identity") or "").strip()
             if nid:
                 _cached = nid
@@ -46,7 +46,7 @@ def get_node_identity() -> str:
     nid = uuid.uuid4().hex
     try:
         _PATH.parent.mkdir(parents=True, exist_ok=True)
-        _PATH.write_text(json.dumps({"node_identity": nid}, indent=2))
+        _PATH.write_text(json.dumps({"node_identity": nid}, indent=2), encoding="utf-8")
     except Exception as e:
         logger.warning(f"Node identity: could not persist {_PATH}: {e}")
     _cached = nid

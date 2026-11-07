@@ -330,7 +330,7 @@ def apply(root: Path, product: str, source: str) -> dict[str, Any]:
         mobile["build"] += 1
         write(root, MOBILE_SOURCE, mobile)
         for path, content in version_outputs(root).items():
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8")
     else:
         manifest = load(root, BROWSER_SOURCE, source)
         manifest["version"] = data["version"]
@@ -420,7 +420,7 @@ def check(
             mobile["version"] = data["version"]
             mobile["build"] += 1
             if load(root, MOBILE_SOURCE) != mobile or any(
-                path.read_text() != content
+                path.read_text(encoding="utf-8") != content
                 for path, content in version_outputs(root).items()
             ):
                 raise ValueError("Mobile version/build files are not synchronized")

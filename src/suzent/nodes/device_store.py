@@ -63,7 +63,7 @@ class DeviceTokenStore:
     def _load(self) -> None:
         try:
             if self._path.exists():
-                with open(self._path) as f:
+                with open(self._path, encoding="utf-8") as f:
                     data = json.load(f)
                 self._devices = data.get("devices", {}) or {}
         except Exception as e:
@@ -73,7 +73,7 @@ class DeviceTokenStore:
     def _save(self) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._path, "w") as f:
+            with open(self._path, "w", encoding="utf-8") as f:
                 json.dump({"devices": self._devices}, f, indent=2)
         except Exception as e:
             logger.warning(f"Device store: could not persist {self._path}: {e}")

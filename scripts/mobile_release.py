@@ -17,14 +17,18 @@ ROOT = Path(__file__).resolve().parents[1]
 def release_metadata(root: Path, tag: str) -> dict[str, str | int]:
     if not re.fullmatch(r"mobile-v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", tag):
         raise ValueError("Expected a mobile-vMAJOR.MINOR.PATCH tag")
-    version = json.loads((root / "packages/mobile-contract/version.json").read_text())
+    version = json.loads(
+        (root / "packages/mobile-contract/version.json").read_text(encoding="utf-8")
+    )
     if tag != f"mobile-v{version['version']}":
         raise ValueError("Tag does not match the mobile version")
     version_outputs(root)
     # A separate range avoids collisions with existing developer-preview builds.
     build = 100_000 + version["build"]
     version_outputs(root, build)
-    changelog = (root / "packages/mobile-contract/CHANGELOG.md").read_text()
+    changelog = (root / "packages/mobile-contract/CHANGELOG.md").read_text(
+        encoding="utf-8"
+    )
     match = re.search(
         rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## |\Z)", changelog, re.M | re.S
     )
@@ -57,8 +61,10 @@ def main() -> None:
     )
     data = release_metadata(ROOT, args.tag)
     args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "notes.md").write_text(str(data.pop("notes")))
-    (args.output / "metadata.json").write_text(json.dumps(data) + "\n")
+    (args.output / "notes.md").write_text(str(data.pop("notes")), encoding="utf-8")
+    (args.output / "metadata.json").write_text(
+        json.dumps(data) + "\n", encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
