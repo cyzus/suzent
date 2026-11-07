@@ -821,7 +821,7 @@
     },
     "gemini/gemini-omni-1.1-flash": {
       "mode": "chat",
-      "max_input_tokens": 1048576,
+      "max_input_tokens": 131072,
       "max_output_tokens": 65536,
       "supports_vision": true,
       "supports_reasoning": true,
@@ -934,6 +934,17 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "gemini/gemini-omni-1.2-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1beta/interactions"
+      ],
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_reasoning": true
     }
   }
 }
