@@ -120,9 +120,8 @@ jobs:
     environment: mobile-release
     runs-on: ubuntu-latest
     steps:
+      # Publishing scripts come from the workflow revision; the release only supplies artifacts.
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
@@ -180,9 +179,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      # Publishing scripts come from the workflow revision; the release only supplies artifacts.
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
