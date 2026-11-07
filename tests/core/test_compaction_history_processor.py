@@ -114,16 +114,21 @@ async def test_noop_under_trigger(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_skips_stateless(monkeypatch):
+async def test_sub_agent_and_dream_runs_compact_too(monkeypatch):
+    """A long sub-agent or dream run would otherwise overflow the model."""
     monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
     monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.01, raising=False)
     _fake_compaction(monkeypatch)
 
     proc = make_compaction_history_processor()
     hist = _history(12)
+    hist[1] = ModelResponse(parts=[TextPart(content="old work " * 1000)])
     out = await proc(_ctx(stateless=True), hist)
 
-    assert out is hist
+    assert len(out) < len(hist)
+    assert any(_message_has_compaction_marker(m) for m in out)
+    # The task prompt the run started with is kept verbatim.
+    assert out[0] is hist[0]
 
 
 @pytest.mark.asyncio
