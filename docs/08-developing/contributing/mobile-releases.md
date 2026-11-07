@@ -10,7 +10,8 @@ The merge workflow validates the release plan, creates an immutable `mobile-vX.Y
 tag at the merge commit, and dispatches **Release mobile** against that tag for **Android and iOS**.
 Manual runs can choose `android`, `ios`, or `both`; Android is the default.
 An iOS-only retry can use the same tag with `platforms=ios`, without
-rebuilding Android or modifying its published assets.
+rebuilding Android or modifying its published assets. `submit_for_review`
+(default on) controls whether the uploaded iOS build is submitted to App Review.
 Tag pushes alone do not publish: the explicit dispatch also works with GitHub's
 built-in token, whose tag pushes do not trigger another workflow.
 
@@ -39,7 +40,8 @@ Environment secrets:
 
 Environment variable `APPLE_TEAM_ID` holds the Apple developer team ID. Create the
 `com.suzent.mobile` app in App Store Connect before the first upload and give the
-API key permission to upload builds. Only the selected platforms require credentials. Missing configuration fails the relevant job;
+API key the **App Manager** role: uploading needs Developer, but creating versions
+and submitting for review needs App Manager or Admin. Only the selected platforms require credentials. Missing configuration fails the relevant job;
 there is no fallback to debug signing or an unsigned public artifact. Expired or
 mismatched Apple credentials must be renewed before retrying.
 
@@ -52,17 +54,40 @@ profile, builds a Release device archive, and uses Xcode's `app-store-connect`
 upload destination. It removes the imported keychain, profile, and decoded secrets
 on exit. Only dSYM files are retained as Actions artifacts, not signing material.
 
+## App Store submission
+
+After the upload, the `ios-submit` job (`scripts/mobile/app_store_submit.py`)
+uses the App Store Connect API to:
+
+1. Wait up to 60 minutes for Apple to finish processing the build.
+2. Find the App Store version matching the release version, or rename the one
+   unsubmitted version left from an earlier attempt, or create it.
+3. Attach the build, set **Automatically release this version** after approval,
+   and write the changelog's `### Release notes` (or the whole entry) as plain
+   text into **What's New** for every localization, English text included in
+   other languages.
+4. Add the version to an open review submission, creating one if needed, and
+   submit it.
+
+Review details, screenshots, and age rating carry over from the previous
+version; change them in App Store Connect before the release if needed. A
+version already waiting for review, in review, or approved is left alone, so
+rerunning the job is safe. A rejected submission still open in App Store Connect
+stops the job: resolve or cancel it there, then rerun the job. Turn off
+`submit_for_review` when dispatching manually to stop at the upload.
+
 ## Outputs and numbering
 
 - Android: release APK, AAB, and SHA256SUMS in the versioned GitHub Release.
-- iOS: a build uploaded to App Store Connect; dSYMs retained as Actions artifacts.
+- iOS: a build uploaded to App Store Connect and submitted for review with
+  automatic release; dSYMs retained as Actions artifacts.
 - GitHub publication requires Android success and, when selected, iOS success.
   A deliberately skipped iOS job does not block Android; a failed iOS job does.
   An iOS-only run uploads to App Store Connect and does not publish GitHub assets. Mobile releases use
   `--latest=false` and do not replace the desktop latest release.
-- Upload completion is not Apple processing, beta review approval, or App Store
-  publication. Configure TestFlight testing groups and required review information
-  in App Store Connect. Play Store upload/submission remains manual using the AAB.
+- Submission is not approval: Apple review can still reject the version. Configure
+  TestFlight testing groups and required review information in App Store
+  Connect. Play Store upload/submission remains manual using the AAB.
 
 Release build numbers are `100000 + packages/mobile-contract/version.json.build`.
 Release planning increments that source counter. Both platforms get the same
@@ -80,7 +105,8 @@ by an ordinary in-place update.
 
 ## Recovery
 
-For a failed run, use **Re-run failed jobs**. Successful jobs and their outputs are
+For a failed run, use **Re-run failed jobs**. A failed `ios-submit` job reruns
+without uploading again. Successful jobs and their outputs are
 reused, avoiding another upload of an already accepted iOS build. If Apple accepted
 an upload but the job failed afterward, check App Store Connect before retrying;
 do not blindly rerun the upload or increment build numbers outside release planning.
