@@ -238,7 +238,8 @@
     ".releases/changes/windows-exclusive-port-bind.json",
     ".releases/changes/windows-install-backend-identity.json",
     ".releases/changes/windows-repo-context.json",
-    ".releases/changes/windows-updater-process-identity.json"
+    ".releases/changes/windows-updater-process-identity.json",
+    ".releases/changes/windows-utf8-file-reads.json"
   ],
   "legacy_complete": true
 }

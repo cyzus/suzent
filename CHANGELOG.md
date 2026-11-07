@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
 - Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
+- Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).
 
 ## [v0.23.0] - 2026-11-06
 
