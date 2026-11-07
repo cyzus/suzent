@@ -38,6 +38,7 @@ const makeVoice = (
   playing: false,
   supported: true,
   micLevel: { current: 0 },
+  wakeListening: false,
   start: () => {},
   stop: () => {},
   interrupt: () => {},
@@ -137,6 +138,13 @@ describe('composer with voice mode', () => {
     const html = render(makeVoice('listening'));
     expect(html.split('aria-label="voice.end"').length - 1).toBe(1);
     expect(html).not.toMatch(/<button[^>]*aria-label="voice\.micButton"/);
+  });
+
+  it('marks the mic button while the wake phrase is listened for', () => {
+    expect(render(makeVoice('idle'))).not.toContain('data-testid="wake-listening"');
+    const html = render(makeVoice('idle', { wakeListening: true }));
+    expect(html).toContain('data-testid="wake-listening"');
+    expect(html).toContain('title="voice.wake.listening"');
   });
 
   it('draws the mic meter once the mic is live, not while connecting', () => {
