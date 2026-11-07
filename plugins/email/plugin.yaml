@@ -1,0 +1,44 @@
+id: email
+name: Email
+version: 1.0.0
+description: Let the agent search, read and draft your mail, and send it when you allow.
+api_version: 3
+default_enabled: false
+category: service
+binaries:
+  - name: himalaya
+    version: 2.2.1
+    # @suzent/himalaya-<platform> holds himalaya's own release binary,
+    # unchanged; scripts/pack_himalaya_npm.py builds and publishes it.
+    max_bytes: 20971520
+    env: SUZENT_HIMALAYA_BIN
+    platforms:
+      darwin-arm64:
+        package: "@suzent/himalaya-darwin-arm64"
+        sha256: 309d8fe47792b89e6f2143159a27207c581e74041cd91b3e895a786f778273c0
+        files:
+          himalaya: himalaya
+      darwin-x64:
+        package: "@suzent/himalaya-darwin-x64"
+        sha256: 13bde1e9d1e8b9e6477bcab259d5a683cc8a60368b093d23ab6c8e5775a2956f
+        files:
+          himalaya: himalaya
+      linux-arm64:
+        package: "@suzent/himalaya-linux-arm64"
+        sha256: 370fd399fbf5d756fd0ddeb140b324f3ddc8133c68659e906b500dc9b6e3220d
+        files:
+          himalaya: himalaya
+      linux-x64:
+        package: "@suzent/himalaya-linux-x64"
+        sha256: c5462380ca80a80d308b79c8cf54b509846d77074d41d5de35fa8be1a7103ddc
+        files:
+          himalaya: himalaya
+      win32-x64:
+        package: "@suzent/himalaya-win32-x64"
+        sha256: d9fae57d1e2f932995f27a0a9d527eb02f692b1004344df265722414738dc326
+        files:
+          himalaya.exe: himalaya.exe
+    notice: >-
+      himalaya is an open-source mail client (MIT or Apache-2.0) that Suzent
+      runs to reach your mailboxes. Your mail passwords stay in Suzent's secret
+      store and are handed to himalaya only while it runs.

@@ -95,6 +95,12 @@ computer. It is off until you install it. The agent-desktop program it needs
 is downloaded only after you confirm, from its card in Settings or when
 `suzent plugin install desktop` asks. See [Desktop apps](./tools/desktop.md).
 
+## Email
+
+The Email plugin lets the agent search and read your mailboxes, save drafts,
+and send mail you approve. Turn it on from **Settings → Services**, which also
+installs the himalaya mail program it uses. See [Email](./tools/email.md).
+
 Any plugin that needs a program on your computer works the same way: its
 card shows an **Install** button for that program, and nothing is
 downloaded until you agree. The download is pinned to one version and

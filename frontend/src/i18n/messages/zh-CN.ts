@@ -707,6 +707,10 @@ export const zhCN = {
           name: '桌面',
           description: '通过系统辅助功能读取并操作这台电脑上的原生应用。',
         },
+        email: {
+          name: '邮箱',
+          description: '搜索和阅读已连接的邮箱、保存草稿，并在批准后发送邮件。',
+        },
       },
       tools: {
         SkillTool: {
@@ -809,6 +813,13 @@ export const zhCN = {
           name: '桌面操作',
           description: '读取并操作本机桌面应用。只读操作直接运行，会改变桌面的操作需要批准。',
         },
+        MailSearchTool: { name: '搜索邮件', description: '搜索已连接的邮箱并列出邮件标题。' },
+        MailReadTool: { name: '阅读邮件', description: '读取一封邮件，不会将其标为已读。' },
+        MailDraftTool: {
+          name: '起草邮件',
+          description: '把邮件或回复保存到草稿箱，由你自己发送。',
+        },
+        MailSendTool: { name: '发送邮件', description: '经审批后从已连接的邮箱发送邮件。' },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
         MemoryUpdateTool: { name: '更新记忆', description: '按用户要求记住、撤回或更正一条记忆。' },
         SessionSearchTool: { name: '搜索会话', description: '搜索并读取相关的历史对话会话。' },
@@ -1046,6 +1057,19 @@ export const zhCN = {
         customTitle: '自定义端点',
         customHint: '兼容 OpenAI 或 Anthropic 接口',
       },
+    },
+    email: {
+      emailPlaceholder: '邮箱地址',
+      passwordPlaceholder: '授权码或应用专用密码',
+      getPassword: '如何获取授权码',
+      imapHost: 'IMAP 服务器',
+      smtpHost: 'SMTP 服务器',
+      oauthOnly: '需要 Microsoft 账号登录，暂不支持。',
+      add: '添加邮箱',
+      allowSend: '允许发送',
+      test: '测试',
+      changePassword: '密码',
+      passwordMissing: '缺少密码',
     },
     mcp: {
       title: '自定义 MCP 服务器',
