@@ -44,18 +44,28 @@ jobs:
         run: |
           # Trusted Publishing needs npm 11.5.1 or newer.
           npm install --global npm@^11.5.1
+          mkdir -p tarballs
           for directory in npm-himalaya/*/; do
             name="$(node -p "require('./${directory}package.json').name")"
             version="$(node -p "require('./${directory}package.json').version")"
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version is already published"
             else
-              (cd "$directory" && npm publish --access public)
+              # Publish the packed file itself, so the hash below is exactly
+              # what npm serves; a just-published version can take minutes
+              # to show up in the registry.
+              tarball="$(cd "$directory" && npm pack --silent --pack-destination ../../tarballs)"
+              echo "$name@$version sha256 $(sha256sum "tarballs/$tarball" | cut -d' ' -f1)" \
+                | tee -a "$GITHUB_STEP_SUMMARY"
+              # A version published moments ago may not show in npm view yet.
+              if ! output="$(npm publish "tarballs/$tarball" --access public 2>&1)"; then
+                echo "$output"
+                grep -q "previously published version" <<<"$output" || exit 1
+                echo "$name@$version was already published"
+              else
+                echo "$output"
+              fi
             fi
             curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$name/syncs" \
               || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
-            # The plugin pins this hash in plugin.yaml.
-            tarball="$(npm view "$name@$version" dist.tarball)"
-            echo "$name@$version sha256 $(curl -fsSL "$tarball" | sha256sum | cut -d' ' -f1)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
           done
