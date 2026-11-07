@@ -50,7 +50,7 @@ def access_token(account: Json, now: int) -> str:
             }
         ).encode()
     )
-    with tempfile.NamedTemporaryFile("w", suffix=".pem") as key:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".pem") as key:
         key.write(account["private_key"])
         key.flush()
         signature = subprocess.run(
@@ -186,13 +186,13 @@ def main() -> None:
         raise SystemExit(
             "::error::Missing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON in mobile-release environment"
         )
-    metadata = json.loads((args.metadata / "metadata.json").read_text())
+    metadata = json.loads((args.metadata / "metadata.json").read_text(encoding="utf-8"))
     token = access_token(json.loads(raw), int(time.time()))
     PlayPublisher(http_transport(token), args.package).publish(
         args.bundle,
         int(metadata["build"]),
         str(metadata["version"]),
-        (args.metadata / "notes.md").read_text(),
+        (args.metadata / "notes.md").read_text(encoding="utf-8"),
         args.track,
     )
 
