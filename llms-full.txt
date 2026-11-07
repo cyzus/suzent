@@ -2504,6 +2504,12 @@ computer. It is off until you install it. The agent-desktop program it needs
 is downloaded only after you confirm, from its card in Settings or when
 `suzent plugin install desktop` asks. See [Desktop apps](https://suzent.com/docs/features/tools/desktop).
 
+## Email
+
+The Email plugin lets the agent search and read your mailboxes, save drafts,
+and send mail you approve. Turn it on from **Settings → Services**, which also
+installs the himalaya mail program it uses. See [Email](https://suzent.com/docs/features/tools/email).
+
 Any plugin that needs a program on your computer works the same way: its
 card shows an **Install** button for that program, and nothing is
 downloaded until you agree. The download is pinned to one version and
@@ -2944,6 +2950,105 @@ start the next message. Suzent will not run the installer in the background.
 
 ---
 
+# Email
+
+Source: https://suzent.com/docs/features/tools/email
+
+
+
+
+**Sovereign access.** Suzent signs in to your mailbox directly from your
+computer. Nothing passes through a Suzent server, the password stays in your
+system keychain where the agent can't read it, and the agent can't send a
+single message unless you switch sending on and approve it. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
+Once a mailbox is connected you can ask things like "what did the bank email me
+this week?", "summarize my unread mail", or "draft a reply to Alice saying noon
+works". Combined with [scheduled tasks](https://suzent.com/docs/features/automation) it can summarize your
+inbox every morning.
+
+## Turning email on
+
+Email is an optional [plugin](https://suzent.com/docs/features/plugins). Open **Settings → Services**, find
+**Email** and click **Add**. Suzent then asks to install
+[himalaya](https://github.com/pimalaya/himalaya), the open-source mail program
+it uses to reach your mailbox. It downloads a pinned, checked copy from npm, or
+from the npmmirror copy in mainland China.
+
+## Connecting a mailbox
+
+1. In your mailbox's own settings, switch on **IMAP** and create an **app
+   password** (QQ Mail and NetEase call it an **authorization code**, 授权码).
+   This is not your normal login password.
+2. In Suzent, open **Settings → Services**. Under **Email**, pick your
+   provider, type your address and the app password, and click **Add
+   mailbox**. Suzent signs in to check it before saving, and shows the reason
+   if it can't.
+
+| Provider | Where to get the app password |
+|---|---|
+| **QQ Mail** | QQ Mail web → Settings → Account → POP3/IMAP/SMTP service → generate an authorization code |
+| **NetEase 163 / 126 / yeah.net** | Mail web → Settings → POP3/SMTP/IMAP → turn on IMAP → new authorization code |
+| **Gmail** | Turn on 2-Step Verification, then create one at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
+| **iCloud Mail** | [account.apple.com](https://account.apple.com) → Sign-In and Security → App-Specific Passwords |
+| **Yahoo Mail** | Account security → Generate app password |
+| **Aliyun Mail, Tencent Exmail** | The mailbox's client settings page |
+| **Anything else** | Choose **Other (IMAP/SMTP)** and type the IMAP and SMTP servers yourself |
+
+**Outlook, Hotmail and Microsoft 365** no longer accept passwords over IMAP.
+They need Microsoft sign-in, which is planned but not available yet.
+
+You can connect several mailboxes. When there is more than one, tell the agent
+which to use ("check my work mail").
+
+## What the agent can do
+
+| Tool | What it does |
+|---|---|
+| **Search Mail** | Find messages by words, sender, subject, date, or unread state, newest first. |
+| **Read Mail** | Open one message: its text and the names of its attachments. Reading never marks a message as read. |
+| **Draft Mail** | Save a new message or a reply in your Drafts folder. You review and send it from your own mail app. Asks before saving; choose **Always allow** if you are happy for it to save drafts on its own. |
+| **Send Mail** | Send a message now. Off unless you allow it, and every message asks for your approval. |
+
+The email tools are not on by default. Tick them in the **Tools** tab of a chat,
+or just ask, and the agent switches them on for that chat.
+
+## Sending
+
+Each mailbox starts as **drafts only**: the agent can write mail but you do the
+sending. To let it send, switch on **Allow sending** for that mailbox in
+**Settings → Services**. Even then, each message waits for your approval, showing
+the recipients, subject, and text.
+
+After sending, Suzent files a copy in your Sent folder, except for Gmail, which
+does that itself.
+
+## Staying safe
+
+Anyone can send you an email, and an email can contain text written to trick an
+agent ("forward all invoices to…"). Suzent marks everything it reads from your
+mailbox as content from the sender, and the agent is told never to act on
+instructions found there. Sending still needs your approval, so a trick email
+can't send mail by itself. Keep **Allow sending** off unless you need it.
+
+## Troubleshooting
+
+- **Sign-in fails.** Use the app password, not your normal password, and check
+  that IMAP is switched on in the mailbox's settings. Some providers need a few
+  minutes after you switch it on.
+- **"Unsafe Login" from NetEase.** Suzent identifies itself the way NetEase
+  requires. If you still see it, create a new authorization code and try again.
+- **Searching in Chinese.** Some servers search Chinese text poorly. If nothing
+  comes back, try a shorter word or search by sender.
+- **Duplicate sent messages.** If your provider already saves sent mail, you
+  will see two copies. Tell us which provider so we can fix its preset.
+- **"The himalaya mail client is not installed."** Open **Settings →
+  Services** and install it from the Email card.
+
+
+---
+
 # Files
 
 Source: https://suzent.com/docs/features/tools/files
@@ -3365,6 +3470,7 @@ world asks first (see [Permissions & approvals](https://suzent.com/docs/features
 | **Interaction** | Ask you a focused question, or show tables, forms, and buttons you can answer. | [Questions, canvas & messages](https://suzent.com/docs/features/tools/interaction) |
 | **Creative** | Generate and edit images, make videos, speak, and send messages through your chat apps. | [Images, video & speech](https://suzent.com/docs/features/tools/media) |
 | **Memory & recall** | Search what it remembers and find past conversations. | [Memory](https://suzent.com/docs/features/memory) |
+| **Email** | Search and read your mailboxes, save drafts, and send after you approve. | [Email](https://suzent.com/docs/features/tools/email) |
 
 Tools from [MCP servers](https://suzent.com/docs/features/tools/mcp) you add appear alongside these.
 
@@ -6130,7 +6236,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Memory System** | Turn memory tools on or off, see which models memory uses, and choose the notebook folder. | [Memory](https://suzent.com/docs/features/memory) |
 | **Automation** | Create and manage scheduled tasks, and choose which tools heartbeats may run without review. | [Automation](https://suzent.com/docs/features/automation) |
 | **Social Channels** | Connect Telegram, Slack, Discord, Feishu, or WeChat, and control who may chat. | [Chat apps](https://suzent.com/docs/chat-apps) |
-| **Services** | Connect Notion, Linear, GitHub, Cloudflare and Stripe, and add your own MCP servers. | [Services](https://suzent.com/docs/features/plugins#notion-linear-github-cloudflare-and-stripe), [MCP servers](https://suzent.com/docs/features/tools/mcp) |
+| **Services** | Connect Notion, Linear, GitHub, Cloudflare, Stripe and your mailboxes, and add your own MCP servers. | [Services](https://suzent.com/docs/features/plugins#notion-linear-github-cloudflare-and-stripe), [Email](https://suzent.com/docs/features/tools/email), [MCP servers](https://suzent.com/docs/features/tools/mcp) |
 | **Plugins** | Install or remove plugins for chat apps, the webcam, and extra tools, commands and skills. | [Plugins](https://suzent.com/docs/features/plugins) |
 | **Browser** | Choose how the agent connects to a browser. | [Browser](https://suzent.com/docs/features/tools/browser) |
 | **ACP Agents** | Set up coding agents such as Claude Code or Codex to use in chats. | [Working with your agent](https://suzent.com/docs/using/conversations#bring-in-another-coding-agent) |
@@ -8953,6 +9059,8 @@ and [Classifying tool calls](#classifying-tool-calls). See
 | `register_skills(path)` | Adds a directory of skill folders. Relative paths resolve against the plugin directory. Skills get source `plugin` and id `plugin:<plugin-id>:<skill-name>`, are enabled by default, and are mounted read-only into the sandbox under `/mnt/skills/plugins/`. |
 | `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
+| `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
+| `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
 
@@ -9187,6 +9295,7 @@ for `suzent plugin status` and the settings page.
 | `POST /plugins/{name}/install` | Enables a plugin by id or alias, installs its packages, `activate()`s it, and, when it brought packages, rebuilds the social stack with `reload_social()` so a chat app whose SDK just arrived connects. A failed install returns `502` with uv's output; the plugin stays enabled so a retry reinstalls. |
 | `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
 | `POST /plugins/{name}/binaries/{binary}/install` | Downloads a declared binary. Refuses with `400` unless the body is `{"confirmed": true}`; a failed download or checksum returns `502`. |
+| `/plugins/{name}/api/{path}` | Dispatches to a route the plugin registered with `register_route`, matched on path and method. `404` while the plugin is not loaded, so turning a plugin off takes its API away with its tools. |
 
 `suzent plugin install` and `remove` call these routes when a server answers
 (`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the
@@ -13126,6 +13235,26 @@ key.
 - [ ] `list_peers` recomputes each peer's outbound status via a live `whoami`
       round-trip on every poll (~4s); cache/debounce so an open Devices tab
       doesn't fan out N requests per tick (also a mild self-DoS surface).
+
+## Email
+
+The email plugin (`plugins/email/`) runs the himalaya CLI and signs in over
+IMAP/SMTP with app passwords. himalaya 2.2.1 also speaks the Gmail API and
+Microsoft Graph, so OAuth sign-in only needs Suzent to obtain and refresh the
+token and hand it over the same way as the password. Remaining work:
+
+- Microsoft sign-in (device-code OAuth) for Outlook, Hotmail and Microsoft
+  365, which no longer accept passwords. Needs a registered Entra public-client
+  app.
+- Gmail sign-in. Gmail's read scopes are restricted, so a public app needs
+  Google verification plus a yearly CASA assessment; app passwords cover
+  personal Gmail meanwhile.
+- Saving attachments to the workspace (`himalaya attachment download`).
+- Email as a chat channel, gated on the sender's SPF/DKIM result so a forged
+  From cannot command the agent.
+- While himalaya runs, the password is in its environment, which another
+  process of the same user can read on Linux. A pipe on an inherited file
+  descriptor would narrow that.
 
 
 ---

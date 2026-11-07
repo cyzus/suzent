@@ -25,6 +25,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Skills](https://suzent.com/zh-Hans/docs/features/skills)
 - [Browser](https://suzent.com/zh-Hans/docs/features/tools/browser)
 - [Desktop apps](https://suzent.com/zh-Hans/docs/features/tools/desktop)
+- [Email](https://suzent.com/zh-Hans/docs/features/tools/email)
 - [Files](https://suzent.com/zh-Hans/docs/features/tools/files)
 - [Permissions & approvals](https://suzent.com/zh-Hans/docs/features/tools/human-in-the-loop)
 - [Questions, canvas & messages](https://suzent.com/zh-Hans/docs/features/tools/interaction)
