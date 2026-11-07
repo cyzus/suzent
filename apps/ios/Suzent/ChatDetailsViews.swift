@@ -97,7 +97,7 @@ struct ChatDetailsSheet: View {
         List {
             Section {
                 if details.permissionMode.canChange {
-                    Picker("Approval mode", selection: Binding(get: { details.permissionMode.mode }, set: setMode)) {
+                    Picker("Approval mode", selection: Binding(get: { details.permissionMode.mode }, set: { setMode($0) })) {
                         ForEach(details.permissionMode.available, id: \.self) { Text(permissionModeLabel($0)).tag($0) }
                     }.disabled(savingMode)
                 } else {
