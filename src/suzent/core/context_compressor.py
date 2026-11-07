@@ -1292,12 +1292,10 @@ def make_compaction_history_processor(
         if not messages:
             return messages
 
+        # Stateless chats (dream, sub-agents) are compacted too: only what is
+        # sent to the model shrinks, and their agent_state is never persisted,
+        # so nothing compacted outlives the run.
         deps = getattr(ctx, "deps", None)
-        # Stateless/system chats (dream, sub-agents) run a fixed self-contained
-        # prompt and must never be compacted.
-        if getattr(deps, "stateless", False):
-            return messages
-
         chat_id = getattr(deps, "chat_id", "") or ""
         limit = resolve_context_limit(model_id)
         trigger = limit * CONFIG.context_compaction_trigger
