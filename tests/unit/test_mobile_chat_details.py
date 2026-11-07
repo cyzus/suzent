@@ -49,10 +49,10 @@ def setup(tmp_path, monkeypatch):
         ),
         list_tasks=lambda **_: [
             SimpleNamespace(
-                id=1, title="Write", status="pending", blocked_by=[3], active_form=None
+                id=2, title="Test", status="completed", blocked_by=[], active_form=None
             ),
             SimpleNamespace(
-                id=2, title="Test", status="completed", blocked_by=[], active_form=None
+                id=1, title="Write", status="pending", blocked_by=[3], active_form=None
             ),
         ],
         list_subagent_task_records=lambda parent_chat_id, limit: [
@@ -100,6 +100,7 @@ def test_details_for_a_full_control_phone(setup):
     assert body["context"] == {"tokens": 1200, "limit": 10000}
     assert body["goal"]["objective"] == "Ship it"
     assert [task["status"] for task in body["tasks"]] == ["blocked", "completed"]
+    assert [task["title"] for task in body["tasks"]] == ["Write", "Test"]
     assert body["agents"][0]["chatId"] == "child"
     assert body["memory"] == {
         "recalled": [{"content": "Likes tea", "category": "preference"}],

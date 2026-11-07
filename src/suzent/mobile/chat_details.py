@@ -91,7 +91,10 @@ def plan(chat_id: str, project_id: str | None) -> dict[str, Any]:
                 else task.status,
                 "activeForm": task.active_form,
             }
-            for task in tasks[:MAX_TASKS]
+            # Unfinished work first, so a long history cannot push it past the limit.
+            for task in sorted(tasks, key=lambda task: task.status == "completed")[
+                :MAX_TASKS
+            ]
         ],
     }
 
