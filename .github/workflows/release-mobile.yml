@@ -12,6 +12,10 @@ on:
         options: [android, ios, both]
         default: android
         required: true
+      submit_for_review:
+        description: Submit the iOS build for App Store review and release it on approval
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -133,6 +137,29 @@ jobs:
           name: mobile-ios-symbols
           path: ${{ runner.temp }}/Suzent.xcarchive/dSYMs/
           if-no-files-found: error
+  ios-submit:
+    if: inputs.platforms != 'android' && inputs.submit_for_review
+    needs: [prepare, ios]
+    environment: mobile-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          name: mobile-release-metadata
+          path: release-metadata
+      - name: Submit for App Store review
+        run: python3 scripts/mobile/app_store_submit.py --metadata release-metadata
+        env:
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
   publish:
     if: >-
       always() && !cancelled() && needs.prepare.result == 'success' &&
