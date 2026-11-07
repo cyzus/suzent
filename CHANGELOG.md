@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
+- New Email plugin: connect QQ Mail, NetEase, Gmail, iCloud and other mailboxes so the agent can search, read and draft mail, and send each message only after you approve it.
 - Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
 - Rename paired phones under Mobile access so each one is easy to recognize, even iPhones that only report "iPhone".
 - Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
