@@ -579,7 +579,7 @@ class SocialBrain(BaseBrain):
             config_path = user_config_file("social.json")
             if not config_path.exists():
                 return
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 cfg = _json.load(f)
             platform_cfg = cfg.get(platform)
             if not isinstance(platform_cfg, dict):
@@ -589,7 +589,7 @@ class SocialBrain(BaseBrain):
             if sender_id not in users:
                 users.append(sender_id)
             platform_cfg["allowed_users"] = users
-            with open(config_path, "w") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 _json.dump(cfg, f, indent=2)
         except Exception as e:
             logger.warning(f"Pairing: could not persist approval: {e}")

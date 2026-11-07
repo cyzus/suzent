@@ -142,7 +142,7 @@ def main() -> None:
         os.environ["CHATS_DB_PATH"] = str(directory / "default.db")
         os.environ["SUZENT_USER_CONFIG_PATH"] = str(directory / "config.yaml")
         rows = asyncio.run(measure([10, 100, 500], args.repeats, directory))
-    args.output.write_text(json.dumps(rows, indent=2) + "\n")
+    args.output.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(rows, indent=2))
 
 

@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def version_outputs(root: Path, build_number: int | None = None) -> dict[Path, str]:
-    data = json.loads((root / "packages/mobile-contract/version.json").read_text())
+    data = json.loads(
+        (root / "packages/mobile-contract/version.json").read_text(encoding="utf-8")
+    )
     version = data["version"]
     build = data["build"] if build_number is None else build_number
     if not isinstance(version, str) or not re.fullmatch(
@@ -37,12 +39,12 @@ def main() -> None:
     args = parser.parse_args()
     for path, content in version_outputs(ROOT, args.build_number).items():
         if args.check:
-            if not path.exists() or path.read_text() != content:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
                 raise SystemExit(
                     f"Stale mobile version settings: {path.relative_to(ROOT)}"
                 )
         else:
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8")
 
 
 if __name__ == "__main__":

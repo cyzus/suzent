@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "patch", "mobile": "none"},
+  "summary": "Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).",
+  "reason": "Mobile only gets UTF-8 encoding added to its release scripts; the app itself does not change."
+}

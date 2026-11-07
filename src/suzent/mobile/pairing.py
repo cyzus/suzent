@@ -73,7 +73,9 @@ class PairingStore:
         if path.exists():
             self._grants = {
                 digest: ClientGrant.model_validate(record)
-                for digest, record in json.loads(path.read_text()).items()
+                for digest, record in json.loads(
+                    path.read_text(encoding="utf-8")
+                ).items()
             }
 
     def _save(self, grants: dict[str, ClientGrant]) -> None:
