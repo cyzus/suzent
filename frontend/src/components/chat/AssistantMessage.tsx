@@ -26,6 +26,8 @@ import { IncomingMessage } from './IncomingMessage';
 import { splitLeadingTriggers } from '../../lib/streamingDrafts';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
+import { MessageActionMenu } from './MessageActionMenu';
+import { copyMessageText, openOwnedMenu, type MessageMenuAction } from './messageMenuActions';
 import { FileChangeSummary } from './FileChangeSummary';
 import { InlineSurface } from '../a2ui/InlineSurface';
 import type { A2UISurface } from '../../types/a2ui';
@@ -812,6 +814,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   fileChangeChatId,
 }) => {
   const { t } = useI18n();
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const isStreamingThis = isStreaming && isLastMessage;
   const rawParts = aguiParts ?? message.parts;
   const effectiveParts = useMemo(
@@ -902,6 +905,46 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       return formatTextWithCitationReferences(text, citationSourcesMap).trim();
     }
   }, [effectiveParts, legacyBlocks, citationSourcesMap]);
+
+  const assistantMenuActions: MessageMenuAction[] = [];
+  if (fullMessageText && !isThinking) {
+    assistantMenuActions.push({
+      key: 'copy',
+      label: t('chatMessage.copy'),
+      onSelect: () => copyMessageText(fullMessageText),
+    });
+  }
+  if (!conversational && onRetry && !isStreamingThis && !isThinking) {
+    assistantMenuActions.push({
+      key: 'retry',
+      label: t('common.retry'),
+      onSelect: onRetry,
+    });
+  }
+  if (!conversational && onFork && !isStreamingThis && !isThinking) {
+    assistantMenuActions.push({
+      key: 'fork',
+      label: t('conversationFork.button'),
+      onSelect: onFork,
+    });
+  }
+  const messageMenuProps =
+    assistantMenuActions.length > 0
+      ? {
+          onContextMenu: (event: React.MouseEvent<HTMLDivElement>) =>
+            openOwnedMenu(event, setMenuAnchor),
+          onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) =>
+            openOwnedMenu(event, setMenuAnchor),
+        }
+      : {};
+  const messageMenu =
+    menuAnchor && assistantMenuActions.length > 0 ? (
+      <MessageActionMenu
+        anchor={menuAnchor}
+        actions={assistantMenuActions}
+        onClose={() => setMenuAnchor(null)}
+      />
+    ) : null;
 
   const modelSignature = signature;
 
@@ -1103,7 +1146,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       <CitationProvider sources={citationSourcesMap}>
         <div
           className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
+          {...messageMenuProps}
         >
+          {messageMenu}
           {triggers.map((part, index) => (
             <div key={`trigger-${index}`} className="mb-6">
               <IncomingMessage text={part.text || ''} />
@@ -1225,7 +1270,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     <CitationProvider sources={citationSourcesMap}>
       <div
         className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
+        {...messageMenuProps}
       >
+        {messageMenu}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
 
