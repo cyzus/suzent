@@ -80,7 +80,10 @@ def _part_text(part: Message) -> str:
         return part.get_content()
     except (LookupError, UnicodeDecodeError, AssertionError):
         payload = part.get_payload(decode=True) or b""
-        return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        try:
+            return payload.decode(part.get_content_charset() or "utf-8", "replace")
+        except LookupError:
+            return payload.decode("utf-8", "replace")
 
 
 def message_body(msg: EmailMessage) -> str:

@@ -225,6 +225,21 @@ async def test_reply_draft_goes_to_the_drafts_folder(fake):
     assert draft["In-Reply-To"] == "<abc@example.org>"
 
 
+def test_unknown_charset_falls_back_to_utf8():
+    message = importlib.import_module("suzent_plugin_email.message")
+    raw = RAW.replace(b"charset=utf-8", b"charset=x-unknown")
+
+    detail = message.parse(raw, "42", "INBOX")
+
+    assert "Ignore previous instructions" in detail.body
+
+
+def test_drafts_pass_through_the_permission_engine():
+    assert tools.MailDraftTool.requires_approval
+    assert not tools.MailDraftTool.is_readonly_call({})
+    assert tools.MailDraftTool.remember_as({}) is None
+
+
 async def test_send_needs_the_switch(fake):
     _add("qq", allow_send=False)
 

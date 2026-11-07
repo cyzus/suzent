@@ -181,7 +181,7 @@ async def send(account: MailAccount, password: str, msg: EmailMessage) -> str | 
             stdin=data,
         )
     except MailError as e:
-        logger.warning(f"Sent mail from {account.id} but could not file a copy: {e}")
+        logger.warning(f"Sent mail but could not file a copy in Sent: {e}")
         return None
     return folder
 

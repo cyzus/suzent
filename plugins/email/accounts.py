@@ -161,7 +161,7 @@ def add_account(account: MailAccount, password: str) -> bool:
     _store().set(_secret_name(account.id), password)
     accounts[account.id] = account.model_dump()
     _save(accounts)
-    logger.info(f"Added mail account {account.id}")
+    logger.info("Added a mail account")
     return True
 
 
@@ -189,7 +189,7 @@ def remove_account(account_id: str) -> bool:
     _store().delete(_secret_name(account_id))
     del accounts[account_id]
     _save(accounts)
-    logger.info(f"Removed mail account {account_id}")
+    logger.info("Removed a mail account")
     return True
 
 

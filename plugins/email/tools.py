@@ -330,6 +330,9 @@ class MailDraftTool(Tool):
     description = (
         "Save an email or reply to the mailbox's Drafts folder for the user to send."
     )
+    # Drafts change the mailbox, so plan and read-only modes must stop them;
+    # "always allow" trusts the whole tool, since nothing is sent.
+    requires_approval = True
 
     @classmethod
     def invalid_call_reason(cls, args: dict[str, Any]) -> str | None:
@@ -368,9 +371,7 @@ class MailDraftTool(Tool):
         except (LookupError, MailError) as e:
             return _error(e)
 
-        self.audit_operation(
-            self.tool_name, "draft", "success", account=mail_account.id
-        )
+        self.audit_operation(self.tool_name, "draft", "success")
         return ToolResult.success_result(
             f"Saved a draft to {mail_account.id}/{folder}: To {msg['To']}, "
             f'subject "{msg["Subject"]}". The user can review and send it from '
@@ -454,7 +455,7 @@ class MailSendTool(Tool):
         except (LookupError, MailError) as e:
             return _error(e)
 
-        self.audit_operation(self.tool_name, "send", "success", account=mail_account.id)
+        self.audit_operation(self.tool_name, "send", "success")
         filed = f" A copy is in {sent_folder}." if sent_folder else ""
         return ToolResult.success_result(
             f"Sent from {mail_account.email} to {msg['To']}, subject "

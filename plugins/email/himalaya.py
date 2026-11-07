@@ -151,7 +151,7 @@ async def run(
             raise
     if process.returncode != 0:
         message = _error_text(stdout, stderr)
-        logger.debug(f"himalaya {args[:2]} for {account.id} failed: {message}")
+        logger.debug(f"himalaya {args[:2]} failed: {message}")
         raise MailError(message)
     if not json_output:
         return stdout

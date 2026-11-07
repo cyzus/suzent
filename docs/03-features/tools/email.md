@@ -48,7 +48,7 @@ which to use ("check my work mail").
 |---|---|
 | **Search Mail** | Find messages by words, sender, subject, date, or unread state, newest first. |
 | **Read Mail** | Open one message: its text and the names of its attachments. Reading never marks a message as read. |
-| **Draft Mail** | Save a new message or a reply in your Drafts folder. You review and send it from your own mail app. |
+| **Draft Mail** | Save a new message or a reply in your Drafts folder. You review and send it from your own mail app. Asks before saving; choose **Always allow** if you are happy for it to save drafts on its own. |
 | **Send Mail** | Send a message now. Off unless you allow it, and every message asks for your approval. |
 
 The email tools are not on by default. Tick them in the **Tools** tab of a chat,
