@@ -11164,7 +11164,7 @@ package of its own, Suzent republishes its release unchanged under `@suzent`:
   files out of it, and writes `@suzent/himalaya-<platform>`. The
   **Publish himalaya npm packages** workflow (`publish-himalaya.yml`) runs
   when that file changes on main, or by hand. It skips versions already on
-  npm and writes each published tarball's SHA-256 to the run summary; that is
+  npm and writes the SHA-256 of each tarball it publishes to the run summary; that is
   the hash to pin in the plugin's `plugin.yaml`.
 
 To update himalaya, change `VERSION`, `ARCHIVES` and `LICENSES` in the script
