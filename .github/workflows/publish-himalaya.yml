@@ -58,7 +58,8 @@ jobs:
               echo "$name@$version sha256 $(sha256sum "tarballs/$tarball" | cut -d' ' -f1)" \
                 | tee -a "$GITHUB_STEP_SUMMARY"
               # A version published moments ago may not show in npm view yet.
-              if ! output="$(npm publish "tarballs/$tarball" --access public 2>&1)"; then
+              # The ./ keeps npm from reading tarballs/<file> as a GitHub repo.
+              if ! output="$(npm publish "./tarballs/$tarball" --access public 2>&1)"; then
                 echo "$output"
                 grep -q "previously published version" <<<"$output" || exit 1
                 echo "$name@$version was already published"
@@ -68,4 +69,5 @@ jobs:
             fi
             curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$name/syncs" \
               || echo "::warning::Could not ask npmmirror to sync $name; it syncs on its own within minutes"
+            echo
           done
