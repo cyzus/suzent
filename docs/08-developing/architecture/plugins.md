@@ -108,6 +108,8 @@ and [Classifying tool calls](#classifying-tool-calls). See
 | `register_skills(path)` | Adds a directory of skill folders. Relative paths resolve against the plugin directory. Skills get source `plugin` and id `plugin:<plugin-id>:<skill-name>`, are enabled by default, and are mounted read-only into the sandbox under `/mnt/skills/plugins/`. |
 | `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
+| `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
+| `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
 
@@ -342,6 +344,7 @@ for `suzent plugin status` and the settings page.
 | `POST /plugins/{name}/install` | Enables a plugin by id or alias, installs its packages, `activate()`s it, and, when it brought packages, rebuilds the social stack with `reload_social()` so a chat app whose SDK just arrived connects. A failed install returns `502` with uv's output; the plugin stays enabled so a retry reinstalls. |
 | `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
 | `POST /plugins/{name}/binaries/{binary}/install` | Downloads a declared binary. Refuses with `400` unless the body is `{"confirmed": true}`; a failed download or checksum returns `502`. |
+| `/plugins/{name}/api/{path}` | Dispatches to a route the plugin registered with `register_route`, matched on path and method. `404` while the plugin is not loaded, so turning a plugin off takes its API away with its tools. |
 
 `suzent plugin install` and `remove` call these routes when a server answers
 (`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the

@@ -196,6 +196,7 @@ from suzent.routes.plugin_routes import (
     install_binary,
     install_plugin,
     list_plugins,
+    plugin_api,
     remove_plugin,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
@@ -1416,6 +1417,11 @@ app = Starlette(
             "/plugins/{name}/binaries/{binary}/install",
             install_binary,
             methods=["POST"],
+        ),
+        Route(
+            "/plugins/{name}/api/{path:path}",
+            plugin_api,
+            methods=["GET", "POST", "PUT", "DELETE"],
         ),
         Route(
             "/plugins/{name}/integrations/{integration}/connect",

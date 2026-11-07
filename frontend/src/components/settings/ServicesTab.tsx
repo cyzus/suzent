@@ -8,7 +8,12 @@ import { SettingsHeader } from './SettingsHeader';
 type McpTabProps = React.ComponentProps<typeof McpTab>;
 
 /** Hosted services a plugin signs in to, then MCP servers the user adds. */
-export function ServicesTab(props: Omit<McpTabProps, 'embedded'>): React.ReactElement {
+export function ServicesTab({
+  onPluginsChanged,
+  ...props
+}: Omit<McpTabProps, 'embedded'> & {
+  onPluginsChanged?: () => Promise<void> | void;
+}): React.ReactElement {
   const { t } = useI18n();
   return (
     <SettingsPage>
@@ -16,7 +21,7 @@ export function ServicesTab(props: Omit<McpTabProps, 'embedded'>): React.ReactEl
         title={t('settings.services.title')}
         subtitle={t('settings.services.subtitle')}
       />
-      <PluginsTab scope="services" embedded />
+      <PluginsTab scope="services" embedded onPluginsChanged={onPluginsChanged} />
       <McpTab {...props} embedded />
     </SettingsPage>
   );

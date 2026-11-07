@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from suzent.logger import get_logger
 from suzent.plugins import deps
-from suzent.plugins.context import PluginContext
+from suzent.plugins.context import PluginContext, PluginRoute
 from suzent.plugins.enablement import (  # channel_configured is re-exported
     channel_configured,  # noqa: F401
     is_enabled,
@@ -55,6 +55,7 @@ class PluginRecord:
     command_names: list[str] = field(default_factory=list)
     skill_dirs: list[Path] = field(default_factory=list)
     integrations: list[Integration] = field(default_factory=list)
+    routes: list[PluginRoute] = field(default_factory=list)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -392,6 +393,7 @@ class PluginManager:
             unregister_plugin_command(name)
         record.tool_classes, record.command_names, record.skill_dirs = [], [], []
         record.integrations = []
+        record.routes = []
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -440,6 +442,7 @@ class PluginManager:
         record.tool_classes = list(ctx.tool_classes)
         record.skill_dirs = list(ctx.skill_dirs)
         record.integrations = list(ctx.integrations)
+        record.routes = list(ctx.routes)
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
@@ -456,6 +459,15 @@ class PluginManager:
     def records(self) -> list[PluginRecord]:
         self.load()
         return list(self._records.values())
+
+    def route(self, plugin_id: str, path: str, method: str) -> PluginRoute | None:
+        record = next((r for r in self.records() if plugin_id in r.names()), None)
+        if record is None or record.status != "loaded":
+            return None
+        return next(
+            (r for r in record.routes if r.path == path and method in r.methods),
+            None,
+        )
 
     def tool_classes(self) -> list[type[Tool]]:
         return [cls for record in self.records() for cls in record.tool_classes]
