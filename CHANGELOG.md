@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.24.0] - 2026-11-07
 
 ### Release notes
+- Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
 - Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
 - Rename paired phones under Mobile access so each one is easy to recognize, even iPhones that only report "iPhone".
