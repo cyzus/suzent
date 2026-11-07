@@ -33,6 +33,7 @@ from suzent.tools.browser.extension.routes import (
     extension_websocket,
 )
 from suzent.logger import get_logger, setup_logging
+from suzent.mobile.chat_details import chat_detail_routes
 from suzent.mobile.client_api import client_routes
 from suzent.routes.mobile_routes import mobile_routes
 from suzent.routes.acp_pairing_routes import acp_pairing_routes
@@ -1191,6 +1192,7 @@ app = Starlette(
         *mobile_routes,
         *acp_pairing_routes,
         *acp_auth_routes,
+        *chat_detail_routes,
         *client_routes,
         Route("/health", health, methods=["GET"]),
         Route("/ready", readiness, methods=["GET"]),

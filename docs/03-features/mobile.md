@@ -206,6 +206,24 @@ old one; pair the phone again afterwards. The same relay also gives
 - **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
+- **See a conversation's details.** Tap the **i** button at the top of a
+  conversation to see what the desktop shows in its side panel:
+  - **Approval mode**: switch between **Ask**, **Smart**, and **Full access**,
+    the same [permission modes](./tools/human-in-the-loop.md) as on the
+    computer. Changing it needs **Full control** (or **Approve tool requests**
+    under **Custom**), because Smart and Full access approve tool requests for
+    you. As on the computer, the mode you pick also becomes the default for new
+    conversations.
+  - **Context**: how much of the model's context window the conversation uses.
+  - **Tasks** and **Background tasks**: the conversation's goal, its task list,
+    and the sub-agents it started. Tap a sub-agent to open its chat.
+  - **Memory**: what the latest reply recalled and what this conversation saved.
+  - **Files**: browse the conversation's project workspace on your computer and
+    open a file in another app on the phone, for example to view a photo or
+    share a PDF.
+
+  Memory and Files appear only when the phone may read every conversation,
+  because a project's files and your memories aren't limited to one chat.
 - **Follow background work.** Sub-agent chats fold under the chat that
   started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
@@ -244,7 +262,7 @@ The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
 - the agent's interactive forms and buttons;
-- memory, settings, or tool permissions, which stay on the computer;
+- memory and settings pages, or permission rules, which stay on the computer;
 - offline access to your conversations.
 
 For the technical design, see the

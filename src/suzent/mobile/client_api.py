@@ -168,6 +168,7 @@ async def session(request: Request) -> JSONResponse:
             "scheduled_tasks": 1,
             "chat_pagination": 1,
             "voice": 1,
+            "chat_details": 1,
             **relay_field(request),
         }
     )

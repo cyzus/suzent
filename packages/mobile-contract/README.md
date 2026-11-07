@@ -13,6 +13,10 @@ fragment. Clients reject redirects to keep credentials bound to the selected hos
 | Send once | POST /chat/send | `{chat_id,message}` → 202 |
 | Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
 | Stop | POST /chat/stop | `{chat_id}` |
+| Chat details | GET /mobile/client/chats/{id}/details | `{permissionMode:{mode,available,canChange},context,goal,tasks,agents,memory,files}`; requires session capability `chat_details: 1`. `memory` is null and `files` false unless the grant reads all conversations. Fixtures: `chat-details-fixtures.json` |
+| Workspace files | GET /mobile/client/chats/{id}/files?path= | `{path,entries:[{name,isDir,size,modifiedAt}],truncated}`; paths are relative to the chat's project workspace, `..` and symlinks out of it are refused; all-conversations grants only |
+| Workspace file | GET /mobile/client/chats/{id}/file?path= | raw bytes with the file's content type |
+| Approval mode | POST /mobile/client/permission-mode | `{chat_id, mode: default\|auto\|full_access}` → `{mode}`; requires `approve_tools`; not for Regent |
 | Attach | POST /mobile/client/upload?chat_id= | multipart `files` (≤10, ≤200 MB, Content-Length required) → `{attachments:[{id,filename,mime_type,size}]}` |
 
 Clients show the attach control only when `GET /mobile/client/session` reports

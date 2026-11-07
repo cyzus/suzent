@@ -160,6 +160,29 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var client: MobileClient? = null
     val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
+    val chatDetailsSupported: Boolean get() = client?.supportsChatDetails == true
+
+    private suspend fun <T> desktopCall(block: suspend (MobileClient) -> T): T {
+        val api = client ?: throw IllegalStateException("Not connected")
+        try { return block(api) }
+        catch (failure: BackendClient.HttpFailure) { if (failure.code == 401) handle(failure); throw failure }
+    }
+
+    suspend fun chatDetails(id: String): ChatDetails = desktopCall { it.chatDetails(id) }
+
+    suspend fun workspaceFiles(id: String, path: String): WorkspaceListing = desktopCall { it.workspaceFiles(id, path) }
+
+    /** Saves a workspace file under the app cache, which the attachment FileProvider shares read-only. */
+    suspend fun downloadWorkspaceFile(id: String, path: String): java.io.File = desktopCall { api ->
+        val folder = java.io.File(getApplication<Application>().cacheDir, "workspace")
+        withContext(Dispatchers.IO) { folder.deleteRecursively() }
+        val target = java.io.File(folder, java.util.UUID.randomUUID().toString()).resolve(workspaceDisplayName(path))
+        withContext(Dispatchers.IO) { target.parentFile?.mkdirs() }
+        api.workspaceFile(id, path, target)
+        target
+    }
+
+    suspend fun setPermissionMode(id: String, mode: String): String = desktopCall { it.setPermissionMode(id, mode) }
 
     val voiceUnavailableReason: Int? get() = when {
         isDemo -> R.string.voice_demo_unavailable

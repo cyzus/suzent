@@ -261,6 +261,36 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/scheduled-tasks")).tasks
     }
 
+    public func chatDetails(_ id: String) async throws -> ChatDetails {
+        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
+        return try JSONDecoder().decode(ChatDetails.self, from: await data("mobile/client/chats/\(id)/details"))
+    }
+
+    public func workspaceFiles(_ id: String, path: String) async throws -> WorkspaceListing {
+        try JSONDecoder().decode(WorkspaceListing.self, from: await workspaceData(id, route: "files", path: path))
+    }
+
+    public func workspaceFile(_ id: String, path: String) async throws -> Data {
+        try await workspaceData(id, route: "file", path: path)
+    }
+
+    private func workspaceData(_ id: String, route: String, path: String) async throws -> Data {
+        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
+        var components = URLComponents(url: backend.endpoint("mobile/client/chats/\(id)/\(route)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "path", value: path)]
+        guard let url = components?.url else { throw ClientError.invalidAddress }
+        var request = URLRequest(url: url)
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await session.data(for: request)
+        try validate(response)
+        return data
+    }
+
+    public func setPermissionMode(_ id: String, mode: String) async throws -> String {
+        struct Result: Decodable { let mode: String }
+        return try JSONDecoder().decode(Result.self, from: await data("mobile/client/permission-mode", body: ["chat_id": id, "mode": mode])).mode
+    }
+
     public func manageChat(_ id: String, action: String, value: String? = nil) async throws {
         var body = ["chat_id": id, "action": action]
         if let value { body["value"] = value }

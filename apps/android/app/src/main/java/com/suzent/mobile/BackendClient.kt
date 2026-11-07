@@ -62,8 +62,11 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     private suspend fun json(path: String, body: JSONObject? = null, readOnly: Boolean = body == null): JSONObject =
         execute(request(path, body), if (readOnly) reads else http)
 
-    private suspend fun execute(request: Request, transport: OkHttpClient): JSONObject = withContext(Dispatchers.IO) {
-        suspendCancellableCoroutine { continuation ->
+    private suspend fun execute(request: Request, transport: OkHttpClient): JSONObject =
+        execute(request, transport) { JSONObject(it.body?.string() ?: throw IOException("Empty response")) }
+
+    private suspend fun <T> execute(request: Request, transport: OkHttpClient, read: (Response) -> T): T = withContext(Dispatchers.IO) {
+        suspendCancellableCoroutine<T> { continuation ->
             val call = transport.newCall(request)
             continuation.invokeOnCancellation {
                 transport.dispatcher.executorService.execute { call.cancel() }
@@ -76,7 +79,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
                     runCatching {
                         response.use {
                             if (!it.isSuccessful) throw HttpFailure(it.code)
-                            JSONObject(it.body?.string() ?: throw IOException("Empty response"))
+                            read(it)
                         }
                     }.fold(continuation::resume, continuation::resumeWithException)
                 }
@@ -111,6 +114,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     var supportsVoice = false
         private set
 
+    override var supportsChatDetails = false
+        private set
+
     fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
         val url = backend.endpoint("mobile/client/voice").newBuilder().addQueryParameter("chat_id", chatId).build()
         val voice = request("mobile/client/voice").newBuilder().url(url).build()
@@ -130,6 +136,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
+        supportsChatDetails = value.optInt("chat_details") == 1
         sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
@@ -196,6 +203,30 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             })
         return result.optString("chat_id", id)
     }
+
+    override suspend fun chatDetails(id: String): ChatDetails {
+        require(!id.contains('/') && id != "." && id != "..")
+        return ChatDetails.parse(json("mobile/client/chats/$id/details"))
+    }
+
+    override suspend fun workspaceFiles(id: String, path: String): WorkspaceListing =
+        WorkspaceListing.parse(execute(workspaceRequest(id, "files", path), reads))
+
+    override suspend fun workspaceFile(id: String, path: String, target: java.io.File) {
+        execute(workspaceRequest(id, "file", path), reads) { response ->
+            val body = response.body ?: throw IOException("Empty response")
+            target.outputStream().use { body.byteStream().copyTo(it) }
+        }
+    }
+
+    private fun workspaceRequest(id: String, route: String, path: String): Request {
+        require(!id.contains('/') && id != "." && id != "..")
+        val url = backend.endpoint("mobile/client/chats/$id/$route").newBuilder().addQueryParameter("path", path).build()
+        return Request.Builder().url(url).apply { if (token.isNotEmpty()) header("Authorization", "Bearer $token") }.build()
+    }
+
+    override suspend fun setPermissionMode(id: String, mode: String): String =
+        json("mobile/client/permission-mode", JSONObject().put("chat_id", id).put("mode", mode)).getString("mode")
 
     override suspend fun markRead(id: String) {
         require(!id.contains('/') && id != "." && id != "..")

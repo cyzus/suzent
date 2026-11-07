@@ -22,6 +22,18 @@ public protocol MobileClient: Sendable {
     func approvals(_ id: String) async throws -> ApprovalState
     func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws
     func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws
+    func chatDetails(_ id: String) async throws -> ChatDetails
+    func workspaceFiles(_ id: String, path: String) async throws -> WorkspaceListing
+    func workspaceFile(_ id: String, path: String) async throws -> Data
+    func setPermissionMode(_ id: String, mode: String) async throws -> String
+}
+
+/// The offline demo has no desktop side panel; the app hides the entry point there.
+public extension MobileClient {
+    func chatDetails(_ id: String) async throws -> ChatDetails { throw ClientError.http(404) }
+    func workspaceFiles(_ id: String, path: String) async throws -> WorkspaceListing { throw ClientError.http(404) }
+    func workspaceFile(_ id: String, path: String) async throws -> Data { throw ClientError.http(404) }
+    func setPermissionMode(_ id: String, mode: String) async throws -> String { throw ClientError.http(404) }
 }
 
 extension SuzentClient: MobileClient {}

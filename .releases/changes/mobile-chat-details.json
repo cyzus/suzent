@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor", "mobile": "minor"},
+  "summary": "See a conversation's details on your phone: switch its approval mode, check context use, follow its tasks and background agents, see what it remembered, and open files from its project workspace."
+}

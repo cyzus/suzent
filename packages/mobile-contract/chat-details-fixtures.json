@@ -1,0 +1,48 @@
+{
+  "details": {
+    "permissionMode": {"mode": "auto", "available": ["default", "auto", "full_access"], "canChange": true},
+    "context": {"tokens": 48000, "limit": 200000},
+    "goal": {"objective": "Plan the Kyoto trip", "status": "active", "turnsElapsed": 3, "maxTurns": 20},
+    "tasks": [
+      {"id": "1", "title": "Book flights", "status": "completed", "activeForm": null},
+      {"id": "2", "title": "Find a ryokan", "status": "in_progress", "activeForm": "Finding a ryokan"},
+      {"id": "3", "title": "Draft itinerary", "status": "blocked", "activeForm": null}
+    ],
+    "agents": [
+      {"id": "t1", "description": "Compare hotel prices", "status": "running", "chatId": "child-1", "startedAt": "2026-11-07T10:00:00", "finishedAt": null},
+      {"id": "t2", "description": "Check train passes", "status": "failed", "chatId": null, "startedAt": "2026-11-07T09:00:00", "finishedAt": "2026-11-07T09:02:00"}
+    ],
+    "memory": {
+      "recalled": [{"content": "Prefers window seats", "category": "preference"}],
+      "saved": [{"content": "Travelling to Kyoto in April", "category": "fact"}]
+    },
+    "files": true
+  },
+  "minimal": {
+    "permissionMode": {"mode": "default", "available": ["default", "auto", "full_access"], "canChange": false},
+    "context": null,
+    "goal": null,
+    "tasks": [],
+    "agents": [],
+    "memory": null,
+    "files": false
+  },
+  "contextPercent": [
+    {"tokens": 48000, "limit": 200000, "percent": 24},
+    {"tokens": 250000, "limit": 200000, "percent": 100},
+    {"tokens": 1, "limit": 200000, "percent": 1}
+  ],
+  "paths": [
+    {"parent": "", "name": "uploads", "child": "uploads"},
+    {"parent": "uploads", "name": "photo.png", "child": "uploads/photo.png"},
+    {"parent": "a/b", "name": "c", "child": "a/b/c"}
+  ],
+  "files": {
+    "path": "uploads",
+    "entries": [
+      {"name": "drafts", "isDir": true, "size": 0, "modifiedAt": 1762500000.5},
+      {"name": "photo.png", "isDir": false, "size": 204800, "modifiedAt": 1762500100}
+    ],
+    "truncated": false
+  }
+}

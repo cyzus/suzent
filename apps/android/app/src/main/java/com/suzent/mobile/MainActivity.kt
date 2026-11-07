@@ -200,6 +200,9 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 @Composable
 private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: Boolean, openDesktops: (Boolean) -> Unit,
                        back: (() -> Unit)?, newChat: () -> Unit, repair: () -> Unit) {
+    var detailsOpen by remember { mutableStateOf(false) }
+    val detailsChat = model.selected?.takeIf { model.connected && !showSettings && it.id.isNotEmpty() && model.chatDetailsSupported }
+    if (detailsOpen && detailsChat != null) ChatDetailsSheet(model, detailsChat) { detailsOpen = false }
     Scaffold(topBar = {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -224,6 +227,9 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
                         Text("SUZENT", modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else SuzentWordmark()
+                }
+                if (detailsChat != null) SuzentIconButton(onClick = { detailsOpen = true }, label = stringResource(R.string.chat_details)) {
+                    Icon(painterResource(R.drawable.ic_info), contentDescription = null, modifier = Modifier.size(20.dp))
                 }
                 if (model.connected) SuzentIconButton(onClick = newChat, label = stringResource(R.string.new_chat),
                     enabled = !model.busy && model.device?.permissions?.createChats == true) {

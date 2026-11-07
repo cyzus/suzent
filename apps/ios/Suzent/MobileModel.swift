@@ -111,6 +111,7 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var voiceSupported = false
+    var chatDetailsSupported = false
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -227,6 +228,7 @@ import SuzentCore
             canReconnect = false
             device = session.device
             attachmentsSupported = true
+            chatDetailsSupported = false
             applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
@@ -481,6 +483,7 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            chatDetailsSupported = session.supportsChatDetails
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -599,6 +602,7 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            chatDetailsSupported = session.supportsChatDetails
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -686,6 +690,34 @@ import SuzentCore
             await open(chat)
             await refresh()
         } catch { handle(error) }
+    }
+
+    func chatDetails(_ id: String) async throws -> ChatDetails {
+        guard let client else { throw CancellationError() }
+        do { return try await client.chatDetails(id) } catch { if case ClientError.http(401) = error { handle(error) }; throw error }
+    }
+
+    func workspaceFiles(_ id: String, path: String) async throws -> WorkspaceListing {
+        guard let client else { throw CancellationError() }
+        do { return try await client.workspaceFiles(id, path: path) } catch { if case ClientError.http(401) = error { handle(error) }; throw error }
+    }
+
+    /// Saves a workspace file to a private temporary folder for Quick Look and sharing.
+    func downloadWorkspaceFile(_ id: String, path: String) async throws -> URL {
+        guard let client else { throw CancellationError() }
+        let data: Data
+        do { data = try await client.workspaceFile(id, path: path) } catch { if case ClientError.http(401) = error { handle(error) }; throw error }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("workspace-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let name = (path as NSString).lastPathComponent
+        let url = folder.appendingPathComponent(name.isEmpty ? "file" : name)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        return url
+    }
+
+    func setPermissionMode(_ id: String, mode: String) async throws -> String {
+        guard let client else { throw CancellationError() }
+        do { return try await client.setPermissionMode(id, mode: mode) } catch { if case ClientError.http(401) = error { handle(error) }; throw error }
     }
 
     func selectModel(_ model: String?) {
@@ -1034,6 +1066,7 @@ import SuzentCore
     private func resetSessionState() {
         voice.stop()
         voiceSupported = false
+        chatDetailsSupported = false
         scheduledTasks = []
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false

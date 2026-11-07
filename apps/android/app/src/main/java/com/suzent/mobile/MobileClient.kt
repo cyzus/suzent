@@ -32,4 +32,10 @@ interface MobileClient {
     suspend fun approvals(id: String): ApprovalState
     suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>)
     suspend fun observe(id: String, event: suspend (JSONObject) -> Unit)
+    // The offline demo has no desktop side panel; the app hides the entry point there.
+    val supportsChatDetails: Boolean get() = false
+    suspend fun chatDetails(id: String): ChatDetails = throw UnsupportedOperationException()
+    suspend fun workspaceFiles(id: String, path: String): WorkspaceListing = throw UnsupportedOperationException()
+    suspend fun workspaceFile(id: String, path: String, target: java.io.File): Unit = throw UnsupportedOperationException()
+    suspend fun setPermissionMode(id: String, mode: String): String = throw UnsupportedOperationException()
 }

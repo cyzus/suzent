@@ -234,6 +234,7 @@ struct ContentView: View {
     @State private var attachmentsExpanded = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
+    @State private var showDetails = false
     @State private var sends = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -323,7 +324,7 @@ struct ContentView: View {
             model.regentVisible = visible
         }
         .onChange(of: model.connected) { _, connected in
-            showModelPicker = false; showProjectPicker = false; path = []
+            showModelPicker = false; showProjectPicker = false; showDetails = false; path = []
             if !connected { showSettings = false }
         }
         .onChange(of: path) { _, path in
@@ -354,6 +355,9 @@ struct ContentView: View {
                 selected: model.selectedModel ?? "", dismiss: { showModelPicker = false }) {
                     model.selectModel($0.isEmpty ? nil : $0)
                 }
+        }
+        .sheet(isPresented: $showDetails) {
+            if let chat = model.selected { ChatDetailsSheet(model: model, chat: chat) }
         }
         .sheet(isPresented: $showProjectPicker) {
             SuzentSelectionPanel(title: String(localized: "Creating in"),
@@ -515,6 +519,10 @@ struct ContentView: View {
             }
             if !showSettings {
                 ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
+                if model.chatDetailsSupported && !(model.selected?.id.isEmpty ?? true) { ToolbarItem(placement: .topBarTrailing) {
+                    Button { composing = false; showDetails = true } label: { Image(systemName: "info.circle") }
+                        .accessibilityLabel("Conversation details")
+                } }
                 if !sidebarShown { ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newConversation) { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel("New conversation")

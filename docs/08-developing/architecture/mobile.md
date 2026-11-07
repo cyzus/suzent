@@ -104,6 +104,23 @@ flag that replaces the tab home). Its query survives opening a result, so back
 from that chat returns to the results; Cancel or back from the page clears it.
 Tablets keep the inline sidebar field.
 
+### Conversation details
+
+The conversation header's info button opens the phone's version of the desktop
+side panel (a sheet on both platforms) when the session reports
+`chat_details: 1`. `src/suzent/mobile/chat_details.py` serves one read,
+`/mobile/client/chats/{id}/details`, that bundles the permission mode, stored
+context usage (no token estimation), the chat's goal and tasks, its sub-agents
+and its memory activity, plus a workspace browser and file download confined to
+`get_project_dir(chat_id)`. Memory and files are project- or user-wide, so they
+need `all_chats`; switching the approval mode forwards to the desktop handler
+and needs `approve_tools`, because Smart and Full access pre-approve tool calls.
+Sub-agent rows expose a chat id only when the grant permits that chat. Shared
+decoding and helper fixtures live in `packages/mobile-contract/chat-details-fixtures.json`
+(`ChatDetails.swift`, `ChatDetails.kt`). iOS previews files with Quick Look;
+Android saves them under the cache's `workspace/` folder and hands them to
+another app through the existing FileProvider.
+
 ### iOS
 
 Install full Xcode and XcodeGen. From `apps/ios`, run `xcodegen generate`, open

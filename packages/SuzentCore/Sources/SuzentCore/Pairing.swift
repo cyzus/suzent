@@ -27,12 +27,14 @@ public struct ClientSession: Decodable, Sendable {
     public let scheduledTasks: Int?
     public var chatPagination: Int? = nil
     public var voice: Int? = nil
+    public var chatDetails: Int? = nil
     public var desktopName: String? = nil
     /// The desktop's current relay, so a phone paired before the relay was set up learns it.
     public var relay: RelayRoute? = nil
 
     public var supportsAttachments: Bool { attachments == 1 }
     public var supportsScheduledTasks: Bool { scheduledTasks == 1 }
+    public var supportsChatDetails: Bool { chatDetails == 1 }
 
     public func validate() throws {
         guard clientProtocol == 1, streamProtocols.contains(1) else { throw PairingError.incompatible }
