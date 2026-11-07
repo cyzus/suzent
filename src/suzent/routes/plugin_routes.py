@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from suzent.logger import get_logger
 from suzent.plugins import PluginRecord, get_plugin_manager
@@ -262,3 +262,13 @@ async def install_binary(request: Request) -> JSONResponse:
         logger.warning("Installing {} for {} failed: {}", spec.name, record.id, exc)
         return JSONResponse({"error": str(exc)}, status_code=502)
     return JSONResponse(result)
+
+
+async def plugin_api(request: Request) -> Response:
+    """Hand a request to a route the named plugin registered."""
+    route = get_plugin_manager().route(
+        request.path_params["name"], request.path_params["path"], request.method
+    )
+    if route is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return await route.endpoint(request)

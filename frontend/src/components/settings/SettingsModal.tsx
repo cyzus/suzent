@@ -30,6 +30,7 @@ import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
 import { PluginsTab } from './PluginsTab';
+import { EmailTab } from './EmailTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
 import { NotificationsTab } from './NotificationsTab';
@@ -617,6 +618,8 @@ export function SettingsModal({
       {activeCategory === 'devices' && <DevicesTab />}
 
       {activeCategory === 'mesh' && <MeshTab />}
+
+      {activeCategory === 'email' && <EmailTab />}
 
       {activeCategory === 'mcp' && (
         <ServicesTab
