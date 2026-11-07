@@ -366,6 +366,8 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
     micLevel: micLevelRef as { readonly current: number },
     active: state.status !== 'idle' && state.status !== 'error',
     supported: voiceSupported(),
+    /** The wake phrase is being listened for; the owner of the session sets it. */
+    wakeListening: false,
     start,
     stop,
     interrupt,

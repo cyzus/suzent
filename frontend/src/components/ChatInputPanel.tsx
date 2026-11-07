@@ -915,11 +915,26 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               type="button"
               onClick={() => voice.start(currentChatId ?? null)}
               className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-              title={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              title={
+                !voice.supported
+                  ? t('voice.errors.micUnavailable')
+                  : voice.wakeListening
+                    ? t('voice.wake.listening')
+                    : t('voice.micButton')
+              }
               aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
               disabled={!configReady || !voice.supported}
             >
-              <MicrophoneIcon className="w-5 h-5" />
+              <span className="relative">
+                <MicrophoneIcon className="w-5 h-5" />
+                {/* The mic is open for the wake phrase: always shown while it is. */}
+                {voice.wakeListening && (
+                  <span
+                    data-testid="wake-listening"
+                    className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-zinc-900"
+                  />
+                )}
+              </span>
             </button>
           )}
 

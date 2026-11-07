@@ -29,7 +29,7 @@ LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "", "testclient"}
 
 # Paths reachable from remote without a token (they self-authenticate).
 _WS_EXEMPT_PATHS = {"/ws/node"}
-_WS_FULL_ONLY_PATHS = {"/ws/voice"}
+_WS_FULL_ONLY_PATHS = {"/ws/voice", "/ws/wake"}
 
 # HTTP bootstrap paths reachable from remote without a token. These issue no
 # secret — they only queue a control request an operator must approve, and the
@@ -176,6 +176,7 @@ QUERY_TOKEN_PATHS = {
     "/subagents/stream",
     "/background-tasks/stream",
     "/ws/voice",
+    "/ws/wake",
 }
 
 
