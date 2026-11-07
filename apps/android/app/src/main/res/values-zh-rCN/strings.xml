@@ -270,7 +270,10 @@
     <string name="composer_stopping">正在停止…</string>
     <string name="voice_cancel_connection">取消语音连接</string>
     <string name="chat_details">对话详情</string>
-    <string name="chat_details_retry">加载失败，点按重试。</string>
+    <string name="details_retry">重试</string>
+    <string name="chat_details_failed">无法加载详情。</string>
+    <string name="workspace_failed">无法加载这些文件。</string>
+    <string name="workspace_project">项目工作区</string>
     <string name="approval_mode">审批模式</string>
     <string name="approval_mode_locked">需要“审批工具请求”权限才能更改。</string>
     <string name="permission_mode_ask">询问</string>

@@ -34,13 +34,79 @@ private func statusLabel(_ status: String) -> String {
     }
 }
 
-private func taskStatusSymbol(_ status: String) -> (name: String, color: Color) {
-    switch status {
-    case "completed": ("checkmark.circle.fill", .green)
-    case "in_progress", "running", "queued": ("circle.dotted.circle", .blue)
-    case "blocked", "waiting": ("pause.circle", .orange)
-    case "failed", "cancelled": ("xmark.circle", .red)
-    default: ("circle", Color.suzentMuted)
+/// The desktop side panel's square status marker: blue while working, red on failure, yellow when held up.
+private struct StatusMarker: View {
+    let status: String
+
+    var body: some View {
+        switch status {
+        case "in_progress", "running", "queued", "active":
+            Rectangle().fill(Color.suzentLink).frame(width: 8, height: 8)
+        case "failed", "cancelled":
+            Rectangle().fill(Color.suzentDanger).frame(width: 8, height: 8)
+        case "blocked", "waiting", "paused":
+            Rectangle().fill(Color(presentation: PresentationTokens.yellow)).frame(width: 8, height: 8)
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
+        case "completed":
+            Rectangle().fill(Color.suzentMuted.opacity(0.5)).frame(width: 8, height: 8)
+        default:
+            Rectangle().stroke(Color.suzentMuted, lineWidth: 1).frame(width: 8, height: 8)
+        }
+    }
+}
+
+private struct DetailsHeading: View {
+    let title: LocalizedStringKey
+    init(_ title: LocalizedStringKey) { self.title = title }
+
+    var body: some View {
+        Text(title).textCase(.uppercase).tracking(1.6)
+            .suzentFont(PresentationTokens.typeSidebarSection, weight: .heavy)
+            .foregroundStyle(Color.suzentMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, PresentationTokens.spacePage).padding(.top, 20).padding(.bottom, 6)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct RowDivider: View {
+    var body: some View { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
+}
+
+/// The black title bar shared with the desktop-model and project pickers.
+private struct DetailsBar: View {
+    let title: String
+    var back: (() -> Void)?
+    let close: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if let back {
+                Button(action: back) { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                    .accessibilityLabel("Back")
+            }
+            Text(title).suzentFont(15, weight: .bold, design: .monospaced).lineLimit(1).truncationMode(.middle)
+                .padding(.leading, back == nil ? 16 : 0).accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button(action: close) { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("Dismiss")
+        }.padding(.top, 12).foregroundStyle(.white).background(.black)
+    }
+}
+
+private struct DetailsMessage: View {
+    let text: String
+    var retry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(text).suzentFont(PresentationTokens.typeCaption).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
+            if let retry {
+                Button("Retry", action: retry).suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                    .padding(.horizontal, 16).frame(minHeight: 40)
+                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    .buttonStyle(.plain)
+            }
+        }.padding(32).frame(maxWidth: .infinity)
     }
 }
 
@@ -52,32 +118,37 @@ struct ChatDetailsSheet: View {
     @State private var details: ChatDetails?
     @State private var failure: String?
     @State private var savingMode = false
+    @State private var folders: [String] = []
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let details { content(details) }
-                else if let failure {
-                    ContentUnavailableView {
-                        Label("Couldn't load details", systemImage: "exclamationmark.triangle")
-                    } description: { Text(failure) } actions: {
-                        Button("Retry") { Task { await load() } }
-                    }
-                } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+        VStack(spacing: 0) {
+            if let folder = folders.last {
+                DetailsBar(title: folder.isEmpty ? String(localized: "Files") : (folder as NSString).lastPathComponent,
+                           back: { folders.removeLast() }, close: { dismiss() })
+                WorkspaceFolderView(model: model, chatID: chat.id, path: folder) { folders.append($0) }.id(folder)
+            } else {
+                DetailsBar(title: String(localized: "Conversation details"), close: { dismiss() })
+                ScrollView {
+                    if let details { content(details) }
+                    else if let failure { DetailsMessage(text: failure) { Task { await load() } } }
+                    else { ProgressView().padding(40) }
+                }.refreshable { await load() }
             }
-            .background(Color.suzentBackground)
-            .navigationTitle("Conversation details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+        .background(Color.suzentSurface)
+        .foregroundStyle(Color.suzentText)
         .task { await load() }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(PresentationTokens.radius)
+        .presentationBackground(Color.suzentSurface)
     }
 
     private func load() async {
         failure = nil
         do { details = try await model.chatDetails(chat.id) }
         catch is CancellationError { }
-        catch { failure = error.localizedDescription }
+        catch { failure = String(localized: "Couldn't load details") }
     }
 
     private func setMode(_ mode: String) {
@@ -86,108 +157,138 @@ struct ChatDetailsSheet: View {
         Task {
             defer { savingMode = false }
             do {
-                let saved = try await model.setPermissionMode(chat.id, mode: mode)
-                current.permissionMode.mode = saved
+                current.permissionMode.mode = try await model.setPermissionMode(chat.id, mode: mode)
                 details = current
             } catch { model.error = error.localizedDescription }
         }
     }
 
-    @ViewBuilder private func content(_ details: ChatDetails) -> some View {
-        List {
-            Section {
-                if details.permissionMode.canChange {
-                    Picker("Approval mode", selection: Binding(get: { details.permissionMode.mode }, set: { setMode($0) })) {
-                        ForEach(details.permissionMode.available, id: \.self) { Text(permissionModeLabel($0)).tag($0) }
-                    }.disabled(savingMode)
-                } else {
-                    LabeledContent("Approval mode", value: permissionModeLabel(details.permissionMode.mode))
-                }
-            } header: { Text("Tools") } footer: {
-                Text(permissionModeDescription(details.permissionMode.mode)
-                     + (details.permissionMode.canChange ? "" : " " + String(localized: "Changing it needs the Approve tool requests permission.")))
+    private func modePicker(_ mode: ChatDetails.PermissionMode) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(mode.available.enumerated()), id: \.element) { index, option in
+                let chosen = option == mode.mode
+                Button { setMode(option) } label: {
+                    Text(permissionModeLabel(option)).suzentFont(PresentationTokens.typeCaption, weight: chosen ? .bold : .medium)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(chosen ? Color.black : Color.suzentText)
+                        .background(chosen ? Color(presentation: PresentationTokens.yellow) : Color.suzentSurface)
+                        .overlay(alignment: .leading) {
+                            if index > 0 { Rectangle().fill(Color.suzentOutline).frame(width: PresentationTokens.borderWidth) }
+                        }
+                }.buttonStyle(.plain)
+                    .disabled(!mode.canChange || savingMode)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
             }
+        }
+        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+        .opacity(mode.canChange ? 1 : PresentationTokens.disabledAlpha)
+        .padding(.horizontal, PresentationTokens.spacePage)
+    }
+
+    private func statusRow(_ title: String, status: String, detail: String? = nil, done: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            StatusMarker(status: status).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).suzentFont(PresentationTokens.typeChat).lineLimit(2)
+                    .strikethrough(done, color: Color.suzentMuted)
+                    .foregroundStyle(done ? Color.suzentMuted : Color.suzentText)
+                if let detail {
+                    Text(detail).suzentFont(PresentationTokens.typeMeta, weight: .medium).foregroundStyle(Color.suzentMuted)
+                }
+            }
+            Spacer(minLength: 0)
+        }.padding(.horizontal, PresentationTokens.spacePage).padding(.vertical, PresentationTokens.spaceRow)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+
+    @ViewBuilder private func content(_ details: ChatDetails) -> some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            DetailsHeading("Approval mode")
+            modePicker(details.permissionMode)
+            Text(permissionModeDescription(details.permissionMode.mode)
+                 + (details.permissionMode.canChange ? "" : " " + String(localized: "Changing it needs the Approve tool requests permission.")))
+                .suzentFont(PresentationTokens.typeLabel).foregroundStyle(Color.suzentMuted)
+                .padding(.horizontal, PresentationTokens.spacePage).padding(.top, 8)
 
             if let context = details.context {
-                Section("Context") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ProgressView(value: Double(context.percent), total: 100).tint(Color.suzentText)
-                        Text("\(context.percent)% of \(context.limit.formatted(.number.notation(.compactName))) tokens")
-                            .font(.footnote).foregroundStyle(Color.suzentMuted)
-                    }.padding(.vertical, 4)
-                }
+                DetailsHeading("Context")
+                VStack(alignment: .leading, spacing: 8) {
+                    GeometryReader { proxy in
+                        Rectangle().fill(Color.suzentText)
+                            .frame(width: proxy.size.width * CGFloat(context.percent) / 100)
+                    }.frame(height: 10)
+                        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    Text("\(context.percent)% of \(context.limit.formatted(.number.notation(.compactName))) tokens")
+                        .suzentFont(PresentationTokens.typeLabel).monospacedDigit().foregroundStyle(Color.suzentMuted)
+                }.padding(.horizontal, PresentationTokens.spacePage)
             }
 
             if details.goal != nil || !details.tasks.isEmpty {
-                Section("Tasks") {
-                    if let goal = details.goal {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(goal.objective).font(.body.weight(.semibold))
-                            Text(statusLabel(goal.status)).font(.footnote).foregroundStyle(Color.suzentMuted)
-                        }
-                    }
-                    ForEach(details.tasks) { task in
-                        let symbol = taskStatusSymbol(task.status)
-                        Label {
-                            Text(task.status == "in_progress" ? task.activeForm ?? task.title : task.title)
-                                .strikethrough(task.status == "completed", color: Color.suzentMuted)
-                                .foregroundStyle(task.status == "completed" ? Color.suzentMuted : Color.suzentText)
-                        } icon: { Image(systemName: symbol.name).foregroundStyle(symbol.color) }
-                    }
+                DetailsHeading("Tasks")
+                if let goal = details.goal {
+                    Text(goal.objective).suzentFont(PresentationTokens.typeControl, weight: .bold)
+                        .padding(.horizontal, PresentationTokens.spacePage).padding(.bottom, 2)
+                    Text(statusLabel(goal.status)).suzentFont(PresentationTokens.typeMeta, weight: .medium)
+                        .foregroundStyle(Color.suzentMuted).padding(.horizontal, PresentationTokens.spacePage)
+                }
+                ForEach(details.tasks) { task in
+                    statusRow(task.status == "in_progress" ? task.activeForm ?? task.title : task.title,
+                              status: task.status, done: task.status == "completed")
+                    RowDivider()
                 }
             }
 
             if !details.agents.isEmpty {
-                Section("Background tasks") {
-                    ForEach(details.agents) { agent in
-                        let symbol = taskStatusSymbol(agent.status)
-                        let row = Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(agent.description).lineLimit(2)
-                                Text(statusLabel(agent.status))
-                                    .font(.footnote).foregroundStyle(Color.suzentMuted)
+                DetailsHeading("Background tasks")
+                ForEach(details.agents) { agent in
+                    if let child = agent.chatId {
+                        Button {
+                            dismiss()
+                            Task { await model.open(model.chats.first { $0.id == child } ?? Chat(id: child, title: agent.description)) }
+                        } label: {
+                            HStack(spacing: 0) {
+                                statusRow(agent.description, status: agent.status, detail: statusLabel(agent.status))
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Color.suzentMuted).padding(.trailing, PresentationTokens.spacePage)
                             }
-                        } icon: { Image(systemName: symbol.name).foregroundStyle(symbol.color) }
-                        if let child = agent.chatId {
-                            Button {
-                                dismiss()
-                                Task { await model.open(model.chats.first { $0.id == child } ?? Chat(id: child, title: agent.description)) }
-                            } label: { row }.foregroundStyle(Color.suzentText)
-                        } else { row }
+                        }.buttonStyle(ChatRowButtonStyle(selected: false))
+                    } else {
+                        statusRow(agent.description, status: agent.status, detail: statusLabel(agent.status))
                     }
+                    RowDivider()
                 }
             }
 
             if let memory = details.memory, !memory.recalled.isEmpty || !memory.saved.isEmpty {
-                Section("Memory") {
-                    ForEach(memory.recalled, id: \.self) { item in
-                        Label(item.content, systemImage: "arrow.down.circle").labelStyle(MemoryLabelStyle())
-                    }
-                    ForEach(memory.saved, id: \.self) { item in
-                        Label(item.content, systemImage: "plus.circle").labelStyle(MemoryLabelStyle())
-                    }
+                DetailsHeading("Memory")
+                ForEach(Array((memory.recalled + memory.saved).enumerated()), id: \.offset) { _, item in
+                    Text(item.content).suzentFont(PresentationTokens.typeChat)
+                        .padding(.horizontal, PresentationTokens.spacePage).padding(.vertical, PresentationTokens.spaceRow)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    RowDivider()
                 }
             }
 
             if details.files {
-                Section {
-                    NavigationLink {
-                        WorkspaceFolderView(model: model, chatID: chat.id, path: "")
-                    } label: { Label("Files", systemImage: "folder") }
-                } footer: { Text("Files in this conversation's project workspace on your desktop.") }
+                DetailsHeading("Files")
+                Button { folders = [""] } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "folder").font(.system(size: 15, weight: .medium))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Project workspace").suzentFont(PresentationTokens.typeControl, weight: .semibold)
+                            Text("Files in this conversation's project workspace on your desktop.")
+                                .suzentFont(PresentationTokens.typeMeta, weight: .medium).foregroundStyle(Color.suzentMuted)
+                                .multilineTextAlignment(.leading)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.suzentMuted)
+                    }.padding(.horizontal, PresentationTokens.spacePage).frame(maxWidth: .infinity, minHeight: 56)
+                        .contentShape(Rectangle())
+                }.buttonStyle(ChatRowButtonStyle(selected: false))
+                RowDivider()
             }
-        }
-        .scrollContentBackground(.hidden)
-        .refreshable { await load() }
-    }
-}
-
-private struct MemoryLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            configuration.icon.foregroundStyle(Color.suzentMuted)
-            configuration.title.font(.subheadline)
-        }
+        }.padding(.bottom, PresentationTokens.spaceLarge)
     }
 }
 
@@ -195,35 +296,28 @@ struct WorkspaceFolderView: View {
     let model: MobileModel
     let chatID: String
     let path: String
+    let open: (String) -> Void
     @State private var listing: WorkspaceListing?
     @State private var failure: String?
     @State private var opening: String?
     @State private var preview: URL?
 
     var body: some View {
-        Group {
+        ScrollView {
             if let listing {
-                if listing.entries.isEmpty {
-                    ContentUnavailableView("No files yet", systemImage: "folder")
-                } else {
-                    List {
-                        ForEach(listing.entries) { entry in row(entry) }
+                if listing.entries.isEmpty { DetailsMessage(text: String(localized: "No files yet")) }
+                else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(listing.entries) { entry in row(entry); RowDivider() }
                         if listing.truncated {
-                            Text("Only the first 500 items are shown.").font(.footnote).foregroundStyle(Color.suzentMuted)
+                            Text("Only the first 500 items are shown.").suzentFont(PresentationTokens.typeLabel)
+                                .foregroundStyle(Color.suzentMuted).padding(PresentationTokens.spacePage)
                         }
-                    }.scrollContentBackground(.hidden)
+                    }
                 }
-            } else if let failure {
-                ContentUnavailableView {
-                    Label("Couldn't load files", systemImage: "exclamationmark.triangle")
-                } description: { Text(failure) } actions: {
-                    Button("Retry") { Task { await load() } }
-                }
-            } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            } else if let failure { DetailsMessage(text: failure) { Task { await load() } } }
+            else { ProgressView().padding(40) }
         }
-        .background(Color.suzentBackground)
-        .navigationTitle(path.isEmpty ? String(localized: "Files") : (path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
         .quickLookPreview($preview)
@@ -233,35 +327,33 @@ struct WorkspaceFolderView: View {
         failure = nil
         do { listing = try await model.workspaceFiles(chatID, path: path) }
         catch is CancellationError { }
-        catch { failure = error.localizedDescription }
+        catch { failure = String(localized: "Couldn't load files") }
     }
 
-    @ViewBuilder private func row(_ entry: WorkspaceEntry) -> some View {
+    private func row(_ entry: WorkspaceEntry) -> some View {
         let child = workspaceChildPath(path, entry.name)
-        if entry.isDir {
-            NavigationLink {
-                WorkspaceFolderView(model: model, chatID: chatID, path: child)
-            } label: { Label(entry.name, systemImage: "folder") }
-        } else {
-            Button {
-                guard opening == nil else { return }
-                opening = child
-                Task {
-                    defer { opening = nil }
-                    do { preview = try await model.downloadWorkspaceFile(chatID, path: child) }
-                    catch { model.error = error.localizedDescription }
+        return Button {
+            if entry.isDir { open(child); return }
+            guard opening == nil else { return }
+            opening = child
+            Task {
+                defer { opening = nil }
+                do { preview = try await model.downloadWorkspaceFile(chatID, path: child) }
+                catch { model.error = error.localizedDescription }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: entry.isDir ? "folder" : "doc").font(.system(size: 15, weight: .medium)).frame(width: 20)
+                Text(entry.name).suzentFont(PresentationTokens.typeChat).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 8)
+                if opening == child { ProgressView() }
+                else if entry.isDir {
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.suzentMuted)
+                } else {
+                    Text(Int64(entry.size).formatted(.byteCount(style: .file)))
+                        .suzentFont(PresentationTokens.typeMeta, weight: .medium).monospacedDigit().foregroundStyle(Color.suzentMuted)
                 }
-            } label: {
-                HStack {
-                    Label(entry.name, systemImage: "doc")
-                    Spacer()
-                    if opening == child { ProgressView() }
-                    else {
-                        Text(Int64(entry.size).formatted(.byteCount(style: .file)))
-                            .font(.footnote).foregroundStyle(Color.suzentMuted)
-                    }
-                }
-            }.foregroundStyle(Color.suzentText).disabled(opening != nil)
-        }
+            }.padding(.horizontal, PresentationTokens.spacePage).frame(maxWidth: .infinity, minHeight: 48).contentShape(Rectangle())
+        }.buttonStyle(ChatRowButtonStyle(selected: false)).disabled(opening != nil && opening != child)
     }
 }

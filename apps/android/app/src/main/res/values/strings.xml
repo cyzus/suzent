@@ -272,7 +272,10 @@
     <string name="composer_stopping">Stopping…</string>
     <string name="voice_cancel_connection">Cancel voice connection</string>
     <string name="chat_details">Conversation details</string>
-    <string name="chat_details_retry">Couldn\'t load. Tap to retry.</string>
+    <string name="details_retry">Retry</string>
+    <string name="chat_details_failed">Couldn\'t load the details.</string>
+    <string name="workspace_failed">Couldn\'t load these files.</string>
+    <string name="workspace_project">Project workspace</string>
     <string name="approval_mode">Approval mode</string>
     <string name="approval_mode_locked">Changing it needs the Approve tool requests permission.</string>
     <string name="permission_mode_ask">Ask</string>
