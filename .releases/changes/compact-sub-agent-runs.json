@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up."}
