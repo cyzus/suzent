@@ -1,7 +1,13 @@
 import React from 'react';
 import { ContextMenu } from '../ContextMenu';
 import { itemBase, itemDefault, itemDanger } from '../contextMenuStyles';
-import { ClipboardDocumentIcon, FolderOpenIcon, TrashIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
+  ClipboardDocumentIcon,
+  FolderOpenIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 
 interface FileTreeContextMenuProps {
@@ -11,6 +17,10 @@ interface FileTreeContextMenuProps {
   onOpen: () => void;
   onReveal: () => void;
   onCopyPath: () => void;
+  /** Browser console only. The desktop shell reveals the file locally instead. */
+  onDownload?: () => void;
+  /** Upload into this folder. Omitted for files and the read-only mounts root. */
+  onUpload?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -22,6 +32,8 @@ export const FileTreeContextMenu: React.FC<FileTreeContextMenuProps> = ({
   onOpen,
   onReveal,
   onCopyPath,
+  onDownload,
+  onUpload,
   onDelete,
   onClose,
 }) => {
@@ -43,6 +55,17 @@ export const FileTreeContextMenu: React.FC<FileTreeContextMenuProps> = ({
         <FolderOpenIcon className="h-4 w-4 stroke-[2.5]" />
         {t(isDir ? 'sandbox.contextMenu.toggleFolder' : 'sandbox.contextMenu.open')}
       </button>
+      {onUpload && (
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemBase} ${itemDefault}`}
+          onClick={() => runAction(onUpload)}
+        >
+          <ArrowUpTrayIcon className="h-4 w-4 stroke-[2.5]" />
+          {t('sandbox.contextMenu.uploadHere')}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -61,6 +84,17 @@ export const FileTreeContextMenu: React.FC<FileTreeContextMenuProps> = ({
         <ClipboardDocumentIcon className="h-4 w-4 stroke-[2.5]" />
         {t('sandbox.contextMenu.copyPath')}
       </button>
+      {onDownload && (
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemBase} ${itemDefault}`}
+          onClick={() => runAction(onDownload)}
+        >
+          <ArrowDownTrayIcon className="h-4 w-4 stroke-[2.5]" />
+          {t('sandbox.contextMenu.download')}
+        </button>
+      )}
       {canDelete && (
         <>
           <div role="separator" className="my-0.5 h-0.5 bg-brutal-black" />
