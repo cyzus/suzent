@@ -1900,7 +1900,8 @@ started; use **Stop** if you also want to cancel that task.
    computer), then tap **Request pairing**.
 5. **Allow it on the computer.** Once the phone scans, the QR code disappears
    and the computer shows which phone scanned it. Click **Allow** if it's
-   yours, or **Deny** if it isn't. You can still change **Phone permissions**
+   yours, or **Deny** if it isn't. The phone shows **Waiting for desktop
+   approval** until you do. You can still change **Phone permissions**
    before you allow it.
 
 The QR code works once and expires after a few minutes; click **New QR code**
