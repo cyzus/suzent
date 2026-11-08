@@ -99,7 +99,7 @@ private fun InfoSectionHeader(title: String, trailing: String? = null) {
 @Composable
 private fun planColor(status: String): Color = when (status) {
     "completed" -> Color(PresentationTokens.green)
-    "in_progress" -> Color(PresentationTokens.yellow)
+    "in_progress" -> suzentYellow()
     "blocked" -> MaterialTheme.colorScheme.error
     else -> suzentSelection
 }
@@ -118,7 +118,7 @@ private fun PlanSection(overview: ChatOverview) {
                         "paused" -> R.string.plan_paused
                         "completed" -> R.string.plan_completed
                         else -> R.string.plan_not_started
-                    }), Modifier.background(if (active) Color(PresentationTokens.yellow) else suzentSelection).padding(horizontal = 6.dp, vertical = 2.dp),
+                    }), Modifier.background(if (active) suzentYellow() else suzentSelection).padding(horizontal = 6.dp, vertical = 2.dp),
                         fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.SemiBold,
                         color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
                     val turns = goal.turnsElapsed
@@ -171,7 +171,7 @@ private fun PlanTaskRow(task: ChatOverview.PlanTask) {
 @Composable
 private fun ContextSection(context: ChatOverview.Context) {
     val dark = isSystemInDarkTheme()
-    val palette = listOf(PresentationTokens.blue, PresentationTokens.green, PresentationTokens.yellow,
+    val palette = listOf(PresentationTokens.blue, PresentationTokens.green, if (dark) PresentationTokens.yellow_dark else PresentationTokens.yellow,
         if (dark) PresentationTokens.muted_dark else PresentationTokens.muted_light, PresentationTokens.gray)
     val swatch = { index: Int -> Color(palette[index % palette.size]) }
     Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp)) {

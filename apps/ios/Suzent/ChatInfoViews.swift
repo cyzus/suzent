@@ -78,7 +78,7 @@ private struct PlanSection: View {
                     HStack(spacing: 6) {
                         Text(goalStatus(goal.status)).font(.caption.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(goal.status == "active" ? Color(presentation: PresentationTokens.yellow) : Color.suzentSelection)
+                            .background(goal.status == "active" ? Color.suzentYellow : Color.suzentSelection)
                             .foregroundStyle(goal.status == "active" ? Color.black : Color.suzentText)
                         if let turns = goal.turnsElapsed, let max = goal.maxTurns, max > 0 {
                             Text("Turn \(turns) of \(max)").font(.caption).foregroundStyle(Color.suzentMuted)
@@ -125,7 +125,7 @@ private struct PlanProgressBar: View {
 private func planColor(_ status: String) -> Color {
     switch status {
     case "completed": Color(presentation: PresentationTokens.green)
-    case "in_progress": Color(presentation: PresentationTokens.yellow)
+    case "in_progress": Color.suzentYellow
     case "blocked": Color.suzentDanger
     default: Color.suzentSelection
     }
@@ -227,7 +227,10 @@ private struct ContextSection: View {
         .accessibilityHidden(true)
     }
 
-    private func swatch(_ index: Int) -> Color { Color(presentation: palette[index % palette.count]) }
+    private func swatch(_ index: Int) -> Color {
+        let token = palette[index % palette.count]
+        return token == PresentationTokens.yellow ? Color.suzentYellow : Color(presentation: token)
+    }
 
     private func categoryLabel(_ id: String) -> LocalizedStringKey {
         switch id {

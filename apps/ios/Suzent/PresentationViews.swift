@@ -19,10 +19,12 @@ extension Color {
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
     static let suzentCodeHeader = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.code_header_dark))
     static let suzentDanger = Color(uiColor: .suzentAdaptive(light: PresentationTokens.danger, dark: PresentationTokens.danger_dark))
+    /// The shared accent. Light mode keeps the bright yellow; dark mode uses the deeper one.
+    static let suzentYellow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.yellow, dark: PresentationTokens.yellow_dark))
     static let suzentErrorSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.error_surface, dark: PresentationTokens.error_surface_dark))
     /// Segmented tabs, as the desktop's BrutalSegmentedTabs: grey track, black block (yellow in dark).
     static let suzentTabTrack = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.code_header_dark))
-    static let suzentTabBlock = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.yellow))
+    static let suzentTabBlock = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.yellow_dark))
     static let suzentTabBlockText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.black))
 
     init(presentation value: UInt32) {
@@ -141,7 +143,7 @@ struct MessageView: View {
                 }
                     .padding(PresentationTokens.spaceMedium)
                     .foregroundStyle(regent ? Color.suzentText : Color.black)
-                    .background(regent ? Color.regentUserBackground : Color(presentation: PresentationTokens.yellow), in: RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
+                    .background(regent ? Color.regentUserBackground : Color.suzentYellow, in: RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
                     .overlay(RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius).strokeBorder(
                         regent ? Color.suzentText.opacity(colorScheme == .dark ? 0.14 : 0.18) : Color.suzentOutline,
                         lineWidth: regent ? 1 : PresentationTokens.borderWidth))
@@ -357,7 +359,7 @@ struct ChatRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.suzentDanger : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.suzentDanger : Color(presentation: PresentationTokens.yellow)) : selected ? Color.suzentSelection : .clear)
+            .background(configuration.isPressed ? (destructive ? Color.suzentDanger : Color.suzentYellow) : selected ? Color.suzentSelection : .clear)
             .overlay(alignment: .bottom) {
                 if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
             }
@@ -703,15 +705,15 @@ private struct CitationParagraph: UIViewRepresentable {
 private final class CitationContentCache {
     private var text: String?
     private var sources: [CitationSource] = []
-    private var parsed = MarkdownContent("")
+    private var linked = ""
 
-    func content(_ text: String, sources: [CitationSource]) -> MarkdownContent {
+    func content(_ text: String, sources: [CitationSource]) -> String {
         if self.text != text || self.sources != sources {
-            parsed = MarkdownContent(markdownWithCitationLinks(text, sources: sources, badges: true))
+            linked = markdownWithCitationLinks(text, sources: sources, badges: true)
             self.text = text
             self.sources = sources
         }
-        return parsed
+        return linked
     }
 }
 
@@ -727,8 +729,19 @@ struct SuzentMarkdown: View {
     @State private var contentCache = CitationContentCache()
     @ScaledMetric(relativeTo: .body) private var scale: Double = 100
     @ViewBuilder private var markdown: some View {
-        let rendered = Markdown(contentCache.content(text, sources: citationSources)).markdownTheme(suzentMarkdownTheme)
-        if selectable { rendered.textSelection(.enabled) } else { rendered }
+        let linked = contentCache.content(text, sources: citationSources)
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(markdownPieces(linked).enumerated()), id: \.offset) { _, piece in
+                switch piece {
+                case .markdown(let part):
+                    let rendered = Markdown(MarkdownContent(part)).markdownTheme(suzentMarkdownTheme)
+                    if selectable { rendered.textSelection(.enabled) } else { rendered }
+                case .inline(let part):
+                    let paragraph = InlineCodeParagraph(text: part) { pendingLink = $0 }
+                    if selectable { paragraph.textSelection(.enabled) } else { paragraph.textSelection(.disabled) }
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -804,7 +817,7 @@ struct SuzentMarkdown: View {
                     FontFamilyVariant(.monospaced)
                     FontWeight(.semibold)
                     ForegroundColor(.black)
-                    BackgroundColor(Color(presentation: PresentationTokens.yellow))
+                    BackgroundColor(Color.suzentYellow)
                 }
                 .link {
                     ForegroundColor(Color.suzentLink)
@@ -921,7 +934,7 @@ private struct ApprovalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Approval required").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12).foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
+                .padding(12).foregroundStyle(.black).background(Color.suzentYellow)
             VStack(alignment: .leading, spacing: 10) {
                 Text(request.toolName).font(.system(.headline, design: .monospaced))
                 Text("Via connected desktop").font(.caption).foregroundStyle(Color.suzentMuted)
@@ -1031,7 +1044,7 @@ struct SuzentSelectionPanel: View {
                                 Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
                             }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                                 .foregroundStyle(option.id == selected ? Color.black : Color.primary)
-                                .background(option.id == selected ? Color(presentation: PresentationTokens.yellow) : Color.suzentSurface)
+                                .background(option.id == selected ? Color.suzentYellow : Color.suzentSurface)
                         }.buttonStyle(.plain).accessibilityAddTraits(option.id == selected ? .isSelected : [])
                         Divider()
                     }
@@ -1112,7 +1125,7 @@ struct ReconnectIndicator: View {
         let ink = Color.suzentText
         let surface = Color.suzentSurface
         let subtle = Color.suzentMuted.opacity(0.22)
-        let yellow = Color(presentation: PresentationTokens.yellow)
+        let yellow = Color.suzentYellow
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
             let t = animated ? timeline.date.timeIntervalSince(began) : 0
             let blinkPeriod = stage == 2 ? 1.2 : 2.7

@@ -343,7 +343,7 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
           <button
             type="submit"
             disabled={saving}
-            className="px-5 py-2 text-xs font-black uppercase tracking-wide border-2 border-brutal-black bg-brutal-black text-white shadow-[3px_3px_0_0_#000] hover:bg-neutral-800 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none dark:border-brutal-yellow dark:bg-brutal-yellow dark:text-brutal-black dark:hover:bg-yellow-300 disabled:opacity-60"
+            className="px-5 py-2 text-xs font-black uppercase tracking-wide border-2 border-brutal-black bg-brutal-black text-white shadow-[3px_3px_0_0_#000] hover:bg-neutral-800 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none dark:border-brutal-yellow dark:bg-brutal-yellow dark:text-brutal-black dark:hover:brightness-95 disabled:opacity-60"
           >
             {t('projectSettings.save')}
           </button>

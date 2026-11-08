@@ -58,7 +58,7 @@ struct PairingScanner: View {
                                     Spacer()
                                     Button("Scan again", action: reset).font(.footnote.bold())
                                 }.padding(16).background(Color(uiColor: .systemBackground))
-                                    .overlay(alignment: .leading) { Rectangle().fill(Color(presentation: PresentationTokens.yellow)).frame(width: 3) }
+                                    .overlay(alignment: .leading) { Rectangle().fill(Color.suzentYellow).frame(width: 3) }
                                     .transition(.offset(y: 12).combined(with: .opacity))
                             } else if model.busy {
                                 VStack(spacing: 12) {
@@ -70,7 +70,7 @@ struct PairingScanner: View {
                             }
                             HStack(spacing: 12) {
                                 Button { setTorch(!torch) } label: { Image(systemName: torch ? "flashlight.on.fill" : "flashlight.off.fill").frame(width: 44, height: 44) }
-                                    .foregroundStyle(torch ? .black : .white).background(torch ? Color(presentation: PresentationTokens.yellow) : .black.opacity(0.6))
+                                    .foregroundStyle(torch ? .black : .white).background(torch ? Color.suzentYellow : .black.opacity(0.6))
                                     .accessibilityLabel("Flashlight").disabled(allowed != true || failed)
                                 Button("Paste an invitation instead") { paste = true }.buttonStyle(SuzentButtonStyle(compact: true))
                             }

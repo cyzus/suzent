@@ -118,7 +118,7 @@ struct RegentMark: View {
                 let pulse = waiting && !working && !reduceMotion ? 0.75 + 0.25 * sin(t * 3) : 1
                 crownContext.fill(gem, with: .color((waiting && !working ? Color.orange : eyes).opacity(pulse)))
                 if !waiting && pose.glint > 0 {
-                    crownContext.fill(gem, with: .color(Color(presentation: PresentationTokens.yellow).opacity(pose.glint)))
+                    crownContext.fill(gem, with: .color(Color.suzentYellow.opacity(pose.glint)))
                 }
             }
             .rotation3DEffect(.degrees(working && !reduceMotion ? sin(t * 1.4) * 12 : 0), axis: (x: 0, y: 1, z: 0))
