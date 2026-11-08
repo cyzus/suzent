@@ -9,6 +9,8 @@ on:
       - 'packages/mobile-contract/**'
       - 'packages/presentation/**'
       - 'scripts/generate_presentation.py'
+      - 'scripts/sync_assembly_scan.py'
+      - 'config/assembly_scan.json'
       - 'scripts/mobile_logo.py'
       - 'scripts/generate_app_icons.py'
       - 'scripts/generate_mobile_version.py'
@@ -40,6 +42,8 @@ on:
       - 'packages/mobile-contract/**'
       - 'packages/presentation/**'
       - 'scripts/generate_presentation.py'
+      - 'scripts/sync_assembly_scan.py'
+      - 'config/assembly_scan.json'
       - 'scripts/mobile_logo.py'
       - 'scripts/generate_app_icons.py'
       - 'scripts/generate_mobile_version.py'
@@ -75,6 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/generate_mobile_version.py --check
+      - run: python3 scripts/sync_assembly_scan.py --check
       - id: version
         env:
           RUN_NUMBER: ${{ github.run_number }}

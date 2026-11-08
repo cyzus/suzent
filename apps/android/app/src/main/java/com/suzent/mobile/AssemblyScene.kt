@@ -56,8 +56,9 @@ internal object AssemblyScene {
                 if ((i < 2) == back) continue
                 val points = listOf(corners[i],corners[(i+1)%4])
                 val opacity = sin(progress * PI) * if (back) .24 else .95
-                if (!back) marks += AssemblyMark(points, 0xFF408DFF, opacity * .15, true, 4.0)
-                marks += AssemblyMark(points, 0xFF408DFF, opacity, true, if (back) .65 else 1.15)
+                for (layer in if (back) AssemblyScan.back else AssemblyScan.front) {
+                    marks += AssemblyMark(points, layer.color, opacity * layer.opacity, true, layer.width)
+                }
             }
         }
         data class Part(val offset: Triple<Double,Double,Double>, val alpha: Double)

@@ -1,20 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { RobotAvatar, RobotVariant } from './RobotAvatar';
+import { assemblyFrame } from './assemblyScene';
 
 interface ThinkingAnimationProps {
   isThinking: boolean;
 }
-
-// Weighted probability configuration for Thinking Animation (Production Line)
-const THINKING_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
-  { variant: 'idle', weight: 20 }, // High chance
-  { variant: 'observer', weight: 20 },
-  { variant: 'party', weight: 5 },
-  { variant: 'workout', weight: 5 },
-  { variant: 'skeptic', weight: 1 },
-  { variant: 'eater', weight: 1 },
-  { variant: 'scanner', weight: 1 },
-];
 
 // Weighted probability configuration for Agent Badge (Personality)
 const BADGE_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
@@ -44,39 +34,78 @@ const selectWeightedVariant = (
 };
 
 const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinking }) => {
-  // Randomly select 3 variants based on weights on mount
-  const variants = useMemo(() => {
-    return [0, 1, 2].map(() => selectWeightedVariant(THINKING_WEIGHTS));
-  }, []);
-
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!isThinking) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = 0,
+      seconds = 0;
+    let previous: number | undefined;
+    const draw = (): void => {
+      const { width, height } = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      const w = Math.round(width * ratio),
+        h = Math.round(height * ratio);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, w, h);
+      const scale = Math.min(w / 320, h / 108);
+      context.setTransform(scale, 0, 0, scale, (w - 320 * scale) / 2, (h - 108 * scale) / 2);
+      for (const mark of assemblyFrame(seconds, motion.matches)) {
+        context.beginPath();
+        mark.points.forEach(([x, y], i) => {
+          if (i === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        });
+        if (mark.points.length > 2) context.closePath();
+        context.globalAlpha = mark.alpha;
+        if (mark.stroke) {
+          context.strokeStyle = mark.color;
+          context.lineWidth = mark.width ?? 0.65;
+          context.stroke();
+        } else {
+          context.fillStyle = mark.color;
+          context.fill();
+        }
+      }
+      context.globalAlpha = 1;
+    };
+    const tick = (now: number): void => {
+      if (previous !== undefined) seconds += Math.min((now - previous) / 1000, 0.05);
+      previous = now;
+      draw();
+      frame = requestAnimationFrame(tick);
+    };
+    const sync = (): void => {
+      cancelAnimationFrame(frame);
+      previous = undefined;
+      draw();
+      if (!motion.matches && !document.hidden) frame = requestAnimationFrame(tick);
+    };
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas);
+    motion.addEventListener('change', sync);
+    document.addEventListener('visibilitychange', sync);
+    sync();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      motion.removeEventListener('change', sync);
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, [isThinking]);
   return (
-    <div
-      className={`
-      thinking-assembly absolute inset-0 isolate pointer-events-none overflow-hidden
-      transition-opacity duration-500 rounded-lg
-      ${isThinking ? 'opacity-100' : 'opacity-0'}
-    `}
-    >
-      {/* Background Pattern */}
-      <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
-
-      {/* Robots Layer */}
-      <div className="absolute inset-0 z-10">
-        {variants.map((variant, i) => (
-          <div key={i} className="conveyor-item" style={{ animationDelay: `${i * 0.8}s` }}>
-            <div className="w-full h-full flex items-center justify-center text-brutal-black relative">
-              <div className="robot-carrier"></div>
-              <div className="assembly-robot w-10 h-10 relative z-10">
-                <RobotAvatar variant={variant} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Scanner Layer (Must be top for blend mode) */}
-      <div className="scanner-beam z-30 mix-blend-difference"></div>
-    </div>
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className={`absolute inset-0 h-full w-full pointer-events-none transition-opacity duration-500 motion-reduce:transition-none ${isThinking ? 'opacity-100' : 'opacity-0'}`}
+    />
   );
 };
 

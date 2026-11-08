@@ -15,11 +15,11 @@ class AssemblySceneTest {
     }
 
     @Test fun scanOnlyRunsAfterAssemblyAndHasProjectedDepth() {
-        assertTrue(AssemblyScene.frame(.2).none { it.color == 0xFF408DFF })
-        val scan = AssemblyScene.frame(2.2 / 1.45).filter { it.color == 0xFF408DFF }
-        assertEquals(6, scan.size)
+        assertTrue(AssemblyScene.frame(.2).none { it.color in listOf(0xFF737980, 0xFFc4c7ca, 0xFFa8adb3, 0xFFe0e2e4) })
+        val scan = AssemblyScene.frame(2.2 / 1.45).filter { it.color in listOf(0xFF737980, 0xFFc4c7ca, 0xFFa8adb3, 0xFFe0e2e4) }
+        assertEquals(10, scan.size)
         assertTrue(scan.all { it.points.first().y != it.points.last().y })
-        assertTrue(AssemblyScene.frame(3.2 / 1.45).none { it.color == 0xFF408DFF })
+        assertTrue(AssemblyScene.frame(3.2 / 1.45).none { it.color in listOf(0xFF737980, 0xFFc4c7ca, 0xFFa8adb3, 0xFFe0e2e4) })
     }
     @Test fun reducedMotionKeepsAStableCompletedScene() {
         assertEquals(AssemblyScene.frame(0.0, true), AssemblyScene.frame(100.0, true))

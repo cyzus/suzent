@@ -985,7 +985,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   //  • Active (streaming / thinking / awaiting approval): the animated robot
   //    card. It's `sticky` so it pins to the top of the chat viewport while a
   //    long reply scrolls past — you always see what the agent is doing. It's
-  //    wide (400×80) only while thinking, so the assembly-line / conveyor
+  //    wide (320×108) only while thinking, so the assembly-line / conveyor
   //    animation has room; otherwise the compact 90×40 single-robot card.
   //  • History (finished, previous turns): a small, static "Suzent" pill in
   //    normal flow — no animation, not sticky — so old turns stay quiet and we
@@ -1036,7 +1036,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
       transition-[width,height] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
       bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
-      ${isThinking ? 'w-[400px] h-[80px]' : 'w-[90px] h-[40px]'}
+      ${isThinking ? 'w-[320px] max-w-full h-[108px]' : 'w-[90px] h-[40px]'}
     `}
     >
       <div className="absolute inset-0 opacity-100 scale-100">
