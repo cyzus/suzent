@@ -945,45 +945,218 @@ private fun reconnectSample(phase: Float, vararg frames: Pair<Float, Float>): Fl
     return frames.last().second
 }
 
+private class DampedSpring(value: Float, private val k: Float = 130f, private val d: Float = 15f) {
+    var x = value
+    var target = value
+    var v = 0f
+    fun step(dt: Float): Float {
+        val f = -k * (x - target) - d * v
+        v += f * dt
+        x += v * dt
+        return x
+    }
+    fun impulse(dv: Float) { v += dv }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReconnectNode(
+    cx: Float, cy: Float, boxSize: Float, gaze: Float, eyeY: Float, blink: Float,
+    tiltDeg: Float, liftPx: Float, scaleX: Float, scaleY: Float, hollow: Boolean,
+    ink: Color, surface: Color
+) {
+    val pivot = Offset(cx, cy + liftPx + boxSize * 0.32f)
+    rotate(degrees = tiltDeg, pivot = pivot) {
+        scale(scaleX = scaleX, scaleY = scaleY, pivot = pivot) {
+            val s = boxSize / 24f
+            val x0 = cx - boxSize / 2f
+            val y0 = cy + liftPx - boxSize / 2f
+            val bodyRadius = androidx.compose.ui.geometry.CornerRadius(4.2f * s)
+            drawRoundRect(if (hollow) surface else ink, topLeft = Offset(x0, y0),
+                size = androidx.compose.ui.geometry.Size(24f * s, 24f * s), cornerRadius = bodyRadius)
+            if (hollow) {
+                drawRoundRect(ink, topLeft = Offset(x0, y0),
+                    size = androidx.compose.ui.geometry.Size(24f * s, 24f * s),
+                    cornerRadius = bodyRadius, style = Stroke(width = 1.6f * s))
+            }
+            for (index in 1 until SuzentLogoGeometry.rectangles.size) {
+                val rect = SuzentLogoGeometry.rectangles[index]
+                val eh = maxOf(0.35f, rect[3] * blink)
+                val ew = rect[2] * (1f + (1f - blink) * 0.12f)
+                val ex = x0 + (rect[0] + gaze - (ew - rect[2]) / 2f) * s
+                val ey = y0 + (rect[1] + eyeY + (rect[3] - eh) / 2f) * s
+                val er = androidx.compose.ui.geometry.CornerRadius(minOf(rect[4], eh / 2f) * s)
+                drawRoundRect(if (hollow) ink else surface, topLeft = Offset(ex, ey),
+                    size = androidx.compose.ui.geometry.Size(ew * s, eh * s), cornerRadius = er)
+            }
+        }
+    }
+}
+
 @Composable
-fun ReconnectIndicator(active: Boolean) {
+fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val lifecycle by owner.lifecycle.currentStateFlow.collectAsState()
     val animated = active && android.animation.ValueAnimator.areAnimatorsEnabled() &&
         lifecycle.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-    val p = if (animated) {
-        val transition = rememberInfiniteTransition(label = "reconnect")
-        val value by transition.animateFloat(0f, 1f,
-            infiniteRepeatable(tween(7800, easing = LinearEasing)), label = "curious logo")
-        value
-    } else 0f
-    val gaze = reconnectSample(p, 0f to 0f, .09f to 0f, .15f to -1.5f, .28f to -1.5f, .34f to 0f, .40f to 1.33f, .53f to 1.33f, .60f to 0f, 1f to 0f)
-    val eyeY = reconnectSample(p, 0f to 0f, .15f to -.33f, .28f to -.33f, .34f to 0f, .40f to -.67f, .53f to -.67f, .60f to -1f, .68f to -1f, .76f to 0f, 1f to 0f)
-    val lift = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -3f, .27f to -3f, .35f to 1f, .43f to -5f, .51f to -5f, .57f to 2f, .64f to -7f, .72f to 1f, .76f to 0f, 1f to 0f)
-    val tilt = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -7f, .27f to -7f, .35f to 2f, .43f to 6f, .51f to 6f, .57f to -2f, .64f to 0f, 1f to 0f)
-    val blink = reconnectSample(p, 0f to 1f, .12f to 1f, .145f to .12f, .17f to 1f, .31f to 1f, .335f to .12f, .36f to 1f, .55f to 1f, .575f to .12f, .60f to 1f, .71f to 1f, .735f to .12f, .76f to 1f, 1f to 1f)
-    val ink = MaterialTheme.colorScheme.onSurface
-    Box(Modifier.size(210.dp, 130.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
-        Canvas(Modifier.size(72.dp).graphicsLayer {
-            rotationZ = tilt; translationY = lift * density
-            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .8f)
-        }) {
-            val scale = size.width / 24f
-            SuzentLogoGeometry.rectangles.forEachIndexed { index, rect ->
-                val eye = index > 0
-                val height = rect[3] * if (eye) blink else 1f
-                drawRoundRect(if (eye) Color.White else Color.Black,
-                    topLeft = Offset((rect[0] + if (eye) gaze else 0f) * scale,
-                        (rect[1] + if (eye) eyeY + (rect[3] - height) / 2f else 0f) * scale),
-                    size = androidx.compose.ui.geometry.Size(rect[2] * scale, height * scale),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(minOf(rect[4], height / 2f) * scale))
+    val seconds = remember { mutableDoubleStateOf(0.0) }
+    val spStage = remember { DampedSpring(0f, 95f, 15f) }
+    val spAmp = remember { DampedSpring(10f, 90f, 14f) }
+    val spLeftSX = remember { DampedSpring(1f, 220f, 14f) }
+    val spLeftSY = remember { DampedSpring(1f, 220f, 14f) }
+    val spRightSX = remember { DampedSpring(1f, 220f, 14f) }
+    val spRightSY = remember { DampedSpring(1f, 220f, 14f) }
+    val spLeftLift = remember { DampedSpring(0f, 130f, 14f) }
+    val spRightLift = remember { DampedSpring(0f, 130f, 14f) }
+    val spLeftTilt = remember { DampedSpring(0f, 90f, 12f) }
+    val spRightTilt = remember { DampedSpring(0f, 90f, 12f) }
+    val spEyeY = remember { DampedSpring(0f, 140f, 16f) }
+
+    LaunchedEffect(stage) {
+        when (stage) {
+            1 -> { spLeftSX.impulse(-1.3f); spLeftSY.impulse(1.5f); spLeftLift.impulse(-40f) }
+            2 -> {
+                spLeftSX.impulse(1.6f); spLeftSY.impulse(-1.6f)
+                spRightSX.impulse(1.8f); spRightSY.impulse(-1.8f); spRightLift.impulse(-45f)
+            }
+            3 -> { spLeftSX.impulse(-1.8f); spLeftSY.impulse(2.0f); spLeftLift.impulse(-65f) }
+        }
+    }
+
+    LaunchedEffect(animated) {
+        if (!animated) return@LaunchedEffect
+        var previous = 0L
+        while (true) withFrameNanos { now ->
+            val dt = if (previous == 0L) 0f else minOf((now - previous) / 1_000_000_000f, 0.05f)
+            previous = now
+            seconds.doubleValue += dt.toDouble()
+            val t = seconds.doubleValue.toFloat()
+            val st = spStage.target.toInt()
+            spAmp.target = when (st) { 0 -> 10f; 1 -> 14f; 2 -> 1.4f; else -> 4f }
+            spEyeY.target = when (st) { 1 -> -0.9f; 3 -> -0.35f; else -> 0f }
+            val floatWave = sin(t * 3.4f)
+            spLeftLift.target = if (st == 3) -kotlin.math.abs(sin(t * 6f)) * 7f else floatWave * 2.5f
+            spRightLift.target = if (st >= 2) -floatWave * 2.5f else 0f
+            spLeftTilt.target = when (st) { 0 -> sin(t * 2.5f) * 4.5f; 1 -> -4f; else -> 0f }
+            spRightTilt.target = if (st >= 2) sin(t * 2.5f) * -3f else 0f
+            spLeftSX.target = 1f; spLeftSY.target = 1f
+            spRightSX.target = 1f; spRightSY.target = 1f
+            if (dt > 0f) {
+                spStage.step(dt); spAmp.step(dt); spEyeY.step(dt)
+                spLeftLift.step(dt); spRightLift.step(dt)
+                spLeftTilt.step(dt); spRightTilt.step(dt)
+                spLeftSX.step(dt); spLeftSY.step(dt); spRightSX.step(dt); spRightSY.step(dt)
             }
         }
-        if (animated) Canvas(Modifier.fillMaxSize()) {
-            val opacity = reconnectSample(p, 0f to 0f, .05f to 0f, .12f to 1f, .21f to 0f, 1f to 0f)
-            val x = size.width / 2f + (-92f + reconnectSample(p, 0f to -8f, .21f to 13f, 1f to 13f)).dp.toPx()
-            drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .65f * opacity)), x, x + 44.dp.toPx()),
-                topLeft = Offset(x, size.height / 2f - 10.dp.toPx()), size = androidx.compose.ui.geometry.Size(44.dp.toPx(), 1.dp.toPx()))
+    }
+    spStage.target = stage.toFloat()
+
+    val ink = MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
+    val outlineSubtle = MaterialTheme.colorScheme.outlineVariant
+    val yellow = Color(PresentationTokens.yellow)
+    Box(Modifier.size(260.dp, 136.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val t = if (animated) seconds.doubleValue.toFloat() else 0f
+            val stSmooth = if (animated) spStage.x else stage.toFloat()
+            val amp = (if (animated) spAmp.x else 6f).dp.toPx()
+            val eyeY = if (animated) spEyeY.x else 0f
+            val lLift = (if (animated) spLeftLift.x else 0f).dp.toPx()
+            val rLift = (if (animated) spRightLift.x else 0f).dp.toPx()
+            val lTilt = if (animated) spLeftTilt.x else 0f
+            val rTilt = if (animated) spRightTilt.x else 0f
+            val lSX = if (animated) spLeftSX.x else 1f
+            val lSY = if (animated) spLeftSY.x else 1f
+            val rSX = if (animated) spRightSX.x else 1f
+            val rSY = if (animated) spRightSY.x else 1f
+
+            val blinkCycle = t % (if (stage == 2) 1.2f else 2.7f)
+            val blink = when {
+                !animated -> 1f
+                blinkCycle < 0.14f -> 1f - 0.88f * sin((blinkCycle / 0.14f) * Math.PI.toFloat())
+                stage == 2 && blinkCycle in 0.22f..0.36f -> 1f - 0.88f * sin(((blinkCycle - 0.22f) / 0.14f) * Math.PI.toFloat())
+                else -> 1f
+            }
+
+            val cy = size.height / 2f - 10.dp.toPx()
+            val leftX = 48.dp.toPx()
+            val rightX = size.width - 48.dp.toPx()
+            val span = rightX - leftX
+            val freq = if (stage == 1) 2.5f else 1.5f
+            val phaseSpeed = if (stage == 3) -7.5f else 5.2f
+
+            // 1. Dual silk sine waves
+            for (w in 0..1) {
+                val path = androidx.compose.ui.graphics.Path()
+                val steps = 56
+                for (i in 0..steps) {
+                    val u = i / steps.toFloat()
+                    val x = leftX + u * span
+                    val env = sin(u * Math.PI.toFloat())
+                    val yOff = (1f - u) * lLift * 0.4f + u * rLift * 0.4f
+                    val y = cy + yOff + sin(u * Math.PI.toFloat() * 2f * freq - t * phaseSpeed + w * Math.PI.toFloat()) * amp * env
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, ink.copy(alpha = if (w == 0) 0.88f else 0.20f),
+                    style = Stroke(width = (if (w == 0) 1.8f else 1.2f).dp.toPx()))
+            }
+
+            // 2. Flowing energy beads
+            if (animated) {
+                val beadCount = if (stage >= 2) 3 else 2
+                for (b in 0 until beadCount) {
+                    var u = ((t * (if (stage == 3) 0.95f else 0.58f)) + b / beadCount.toFloat()) % 1f
+                    if (stage == 3) u = 1f - u
+                    val x = leftX + u * span
+                    val env = sin(u * Math.PI.toFloat())
+                    val yOff = (1f - u) * lLift * 0.4f + u * rLift * 0.4f
+                    val y = cy + yOff + sin(u * Math.PI.toFloat() * 2f * freq - t * phaseSpeed) * amp * env
+                    val r = 3.8.dp.toPx()
+                    drawCircle(yellow, radius = r, center = Offset(x, y))
+                    drawCircle(ink, radius = r, center = Offset(x, y), style = Stroke(width = 1.4.dp.toPx()))
+                }
+            }
+
+            // 3. Left Node (Phone) & Right Node (Desktop)
+            val nodeSize = 44.dp.toPx()
+            drawReconnectNode(leftX, cy, nodeSize, 1.25f, eyeY, blink, lTilt, lLift, lSX, lSY, false, ink, surface)
+            drawReconnectNode(rightX, cy, nodeSize, if (stage >= 2) -1.25f else 0f, 0f,
+                if (stage >= 2) blink else 1f, rTilt, rLift, rSX, rSY, stage < 2, ink, surface)
+
+            // 4. Fluid 4-pill progress bar
+            if (active) {
+                val pillY = size.height - 10.dp.toPx()
+                val gap = 5.dp.toPx()
+                val baseW = 8.dp.toPx()
+                val activeW = 24.dp.toPx()
+                val h = 4.5.dp.toPx()
+                val widths = FloatArray(4)
+                val factors = FloatArray(4)
+                var totalW = gap * 3f
+                for (i in 0..3) {
+                    val dist = kotlin.math.abs(stSmooth - i)
+                    val af = (1f - dist).coerceIn(0f, 1f)
+                    val s = af * af * (3f - 2f * af)
+                    val w = baseW + (activeW - baseW) * s
+                    widths[i] = w; factors[i] = s; totalW += w
+                }
+                var px = (size.width - totalW) / 2f
+                val cr = androidx.compose.ui.geometry.CornerRadius(h / 2f)
+                for (i in 0..3) {
+                    val w = widths[i]
+                    val s = factors[i]
+                    val done = i < stSmooth - 0.1f
+                    val fill = when {
+                        s > 0.5f -> yellow
+                        done -> ink
+                        else -> outlineSubtle
+                    }
+                    drawRoundRect(fill, topLeft = Offset(px, pillY - h / 2f),
+                        size = androidx.compose.ui.geometry.Size(w, h), cornerRadius = cr)
+                    drawRoundRect(ink, topLeft = Offset(px, pillY - h / 2f),
+                        size = androidx.compose.ui.geometry.Size(w, h), cornerRadius = cr,
+                        style = Stroke(width = 1.dp.toPx()))
+                    px += w + gap
+                }
+            }
         }
     }
 }
