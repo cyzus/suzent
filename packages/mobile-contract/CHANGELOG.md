@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.7.3] - 2026-11-08
+
+### Release notes
+- Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
+
 ## [mobile-v0.7.2] - 2026-11-07
 
 ### Release notes
