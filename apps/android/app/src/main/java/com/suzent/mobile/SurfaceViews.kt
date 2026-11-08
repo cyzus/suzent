@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -316,55 +317,109 @@ private fun SurfaceInput(value: String, onValueChange: (String) -> Unit, placeho
         decorationBox = { input -> Box { if (value.isEmpty()) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium); input() } })
 }
 
+/** Connects a cached page to whichever composition is showing it now. */
+private class SurfaceBridge {
+    var onHeight: (Float) -> Unit = {}
+    var onAction: (String, Map<String, Any?>) -> Unit = { _, _ -> }
+}
+
+/**
+ * Loaded pages and their content heights, kept while their reply scrolls off screen. The chat list disposes
+ * off-screen rows, so without this every return reloaded the page (a blank flash) and re-measured it (a jump).
+ */
+private object SurfacePages {
+    private const val LIMIT = 4
+    private val views = LinkedHashMap<String, Pair<WebView, SurfaceBridge>>(LIMIT, .75f, true)
+    private val heights = object : LinkedHashMap<String, Float>(32, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Float>) = size > 32
+    }
+
+    fun height(html: String): Float? = heights[html]
+    fun remember(html: String, height: Float) { heights[html] = height }
+
+    fun obtain(context: android.content.Context, html: String): Pair<WebView, SurfaceBridge> {
+        views[html]?.let { cached ->
+            // A page from an earlier activity (rotation, language change) cannot move into this one.
+            if (cached.first.context === context) {
+                (cached.first.parent as? android.view.ViewGroup)?.removeView(cached.first)
+                return cached
+            }
+            views.remove(html)?.first?.destroy()
+        }
+        val bridge = SurfaceBridge()
+        val view = createPage(context, html, bridge)
+        views[html] = view to bridge
+        while (views.size > LIMIT) {
+            // Pages on screen stay; the cache may run over its limit until one scrolls away.
+            val eldest = views.entries.firstOrNull { it.value.first.parent == null && it.key != html } ?: break
+            views.remove(eldest.key)?.first?.destroy()
+        }
+        return view to bridge
+    }
+
+    /** Destroys a page only when it is no longer cached; cached ones wait to be shown again. */
+    fun release(view: WebView) {
+        if (views.values.none { it.first === view }) view.destroy()
+    }
+}
+
 /**
  * Agent HTML in an isolated web view: no file or content access, no shared storage, links open outside the app,
  * and `postMessage({type: 'a2ui:action'})` reaches the agent like a button.
  */
 @SuppressLint("SetJavaScriptEnabled")
+private fun createPage(context: android.content.Context, html: String, bridge: SurfaceBridge): WebView = WebView(context).apply {
+    settings.javaScriptEnabled = true
+    settings.allowFileAccess = false
+    settings.allowContentAccess = false
+    settings.domStorageEnabled = false
+    settings.setGeolocationEnabled(false)
+    isVerticalScrollBarEnabled = false
+    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    addJavascriptInterface(object {
+        @JavascriptInterface fun post(message: String) {
+            val body = runCatching { JSONObject(message) }.getOrNull() ?: return
+            when (body.optString("kind")) {
+                "height" -> {
+                    val height = body.optDouble("height", 0.0).toFloat().coerceIn(40f, 5000f)
+                    this@apply.post { SurfacePages.remember(html, height); bridge.onHeight(height) }
+                }
+                "action" -> {
+                    val name = body.optString("action")
+                    val context = jsonMap(body.optJSONObject("context"))
+                    this@apply.post { if (name.isNotBlank()) bridge.onAction(name, context) }
+                }
+            }
+        }
+    }, "SuzentSurface")
+    webViewClient = object : WebViewClient() {
+        // The surface's own document loads in place; anything the user follows opens in the browser.
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            val scheme = request.url.scheme?.lowercase()
+            if (request.hasGesture() && scheme in setOf("http", "https", "mailto"))
+                runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(request.url.toString()))) }
+            return true
+        }
+    }
+    loadDataWithBaseURL(null, surfaceHtmlDocument(html), "text/html", "UTF-8", null)
+}
+
 @Composable
 private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: SurfaceAct) {
-    var measured by remember(html.html) { mutableStateOf<Float?>(null) }
+    var measured by remember(html.html) { mutableStateOf(SurfacePages.height(html.html)) }
     val canAct by rememberUpdatedState(interactive)
     val currentAct by rememberUpdatedState(act)
     // The agent's height is only a first guess until the page reports its content height.
     val height = measured ?: html.height?.toFloat() ?: 120f
-    AndroidView(factory = { context ->
-        WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.allowFileAccess = false
-            settings.allowContentAccess = false
-            settings.domStorageEnabled = false
-            settings.setGeolocationEnabled(false)
-            isVerticalScrollBarEnabled = false
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            addJavascriptInterface(object {
-                @JavascriptInterface fun post(message: String) {
-                    val body = runCatching { JSONObject(message) }.getOrNull() ?: return
-                    when (body.optString("kind")) {
-                        "height" -> this@apply.post { measured = body.optDouble("height", 0.0).toFloat().coerceIn(40f, 5000f) }
-                        "action" -> {
-                            val name = body.optString("action")
-                            val context = jsonMap(body.optJSONObject("context"))
-                            this@apply.post { if (canAct && name.isNotBlank()) currentAct(name, context) {} }
-                        }
-                    }
-                }
-            }, "SuzentSurface")
-            webViewClient = object : WebViewClient() {
-                // The surface's own document loads in place; anything the user follows opens in the browser.
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    val scheme = request.url.scheme?.lowercase()
-                    if (request.hasGesture() && scheme in setOf("http", "https", "mailto"))
-                        runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(request.url.toString()))) }
-                    return true
-                }
-            }
-            loadDataWithBaseURL(null, surfaceHtmlDocument(html.html), "text/html", "UTF-8", null)
-            tag = html.html
-        }
-    }, update = { view -> if (view.tag != html.html) { view.tag = html.html; view.loadDataWithBaseURL(null, surfaceHtmlDocument(html.html), "text/html", "UTF-8", null) } },
-        onRelease = { it.destroy() },
-        modifier = Modifier.fillMaxWidth().height(height.dp).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .4f)))
+    key(html.html) {
+        AndroidView(factory = { context ->
+            val (view, bridge) = SurfacePages.obtain(context, html.html)
+            bridge.onHeight = { measured = it }
+            bridge.onAction = { name, context -> if (canAct) currentAct(name, context) {} }
+            view
+        }, onRelease = SurfacePages::release,
+            modifier = Modifier.fillMaxWidth().height(height.dp).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .4f)))
+    }
 }
 
 /** The user's side of a surface action: what was pressed, like the desktop's canvas pill. */
