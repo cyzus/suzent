@@ -78,14 +78,16 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
     val work = parts.take(start).filterNot { it.regentBubble }
     val persistent = parts.take(start).filter { it.regentBubble }
     val pending = work.any { it.state == "approval-requested" && it.output.isEmpty() }
+    val author = turnAuthorMark(regent, live, compact, pending)
+    val showDisclosure = !live && work.isNotEmpty()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.weight(1f, fill = false)) {
-                if (regent) RegentIdentity(working = live, showStatus = false)
-                else if (live || !compact || pending) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
+        if (author != null || showDisclosure) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (author == null) Spacer(Modifier.weight(1f))
+            else Box(Modifier.weight(1f, fill = false)) {
+                if (author == TurnAuthorMark.Assembly) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
                 else SuzentAssistantBadge(compact = compact)
             }
-            if (!live && work.isNotEmpty()) {
+            if (showDisclosure) {
                 val visible = expanded || pending
                 val label = stringResource(if (visible) R.string.reminder_expanded else R.string.reminder_collapsed)
                 SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = label }, contentPadding = PaddingValues(0.dp)) {
