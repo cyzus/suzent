@@ -260,6 +260,16 @@ MarkdownBlock.displayName = 'MarkdownBlock';
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
   ({ content, onFileClick, isStreaming = false, compact = false, caret = false }) => {
     const sourcesMap = useCitationSources();
+    // Every reload of the chat hands each message a fresh sources map, even when
+    // its sources are unchanged. Keying the components map on that identity
+    // remounted every paragraph of the history, losing the reader's place.
+    // Rebuild only when the set of sources changes; read the map through a ref.
+    const sourcesMapRef = React.useRef(sourcesMap);
+    sourcesMapRef.current = sourcesMap;
+    const sourcesSignature = React.useMemo(
+      () => (sourcesMap ? Array.from(sourcesMap.keys()).join('\u0000') : ''),
+      [sourcesMap]
+    );
     const openingLinksRef = React.useRef(new Map<string, number>());
 
     // The `components` map below is keyed into React's element type. A fresh
@@ -328,7 +338,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           if (typeof child === 'string' && hasCitationMarker(child)) {
             // Route even when sourcesMap is null/empty so unresolvable markers are
             // stripped rather than leaking their raw protocol glyphs.
-            return renderTextWithCitations(child, sourcesMap ?? null, key);
+            return renderTextWithCitations(child, sourcesMapRef.current ?? null, key);
           }
           if (React.isValidElement(child) && child.props?.children) {
             if (child.type === 'code' || child.props?.node?.tagName === 'code') {
@@ -350,7 +360,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
         }
         return arr.map((child, i) => walk(child, `${keyPrefix}-${i}`));
       },
-      [sourcesMap]
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature tracks the map's contents
+      [sourcesSignature]
     );
 
     // Normalize content
@@ -418,7 +429,9 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           const isInline = inline !== false && !lang && !isMultilineInlineCode;
 
           if (isInline && hasCitationMarker(codeContent)) {
-            return <>{renderTextWithCitations(codeContent, sourcesMap ?? null, 'code')}</>;
+            return (
+              <>{renderTextWithCitations(codeContent, sourcesMapRef.current ?? null, 'code')}</>
+            );
           }
 
           // Check if inline code contains a file path pattern
@@ -605,7 +618,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           </blockquote>
         ),
       }),
-      [applyCitations, handleFileClick, isExternalLink, openExternalLink, sourcesMap]
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature tracks the map's contents
+      [applyCitations, handleFileClick, isExternalLink, openExternalLink, sourcesSignature]
     );
 
     return (
