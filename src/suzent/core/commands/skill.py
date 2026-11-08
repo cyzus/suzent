@@ -3,11 +3,11 @@
 
 Usage:
   /skill                  — list the enabled skills
-  /skill <name> [task]    — have the agent load <name>, then do the task
+  /skill <name> [task]    — run the task with <name>'s instructions in context
 
 A turn that names an enabled skill is not answered here: the chat processor
-sends it on to the agent with a reminder to load the skill first (see
-``skill_invocation_reminder``). This handler only answers what is left — the
+sends it on to the agent with the skill's full instructions attached (see
+``skill_invocation_context``). This handler only answers what is left — the
 bare listing and names it cannot use.
 """
 
@@ -32,11 +32,18 @@ def _split_invocation(message: str) -> tuple[str, str] | None:
     return parts[1], parts[2] if len(parts) > 2 else ""
 
 
-def skill_invocation_reminder(message: str, skill_manager: Any) -> str | None:
-    """Reminder that makes the agent load the skill a ``/skill`` turn names.
+def skill_invocation_context(
+    message: str, skill_manager: Any, *, sandbox_enabled: bool = True
+) -> str | None:
+    """The skill a ``/skill`` turn names, with its instructions, for the model.
 
-    None when the message is not such a turn, or names a skill that is missing
-    or disabled; those fall through to the command, which says why.
+    The user chose the skill, so its content goes in with the turn rather than
+    as an instruction to call skill_execute: the model cannot skip the load, and
+    the turn saves a round trip. Codex and Claude Code inject explicit skill
+    invocations the same way.
+
+    None when the message is not such a turn, or names a skill that is missing,
+    disabled or unreadable; those fall through to the command, which says why.
     """
     invocation = _split_invocation(message)
     if invocation is None or skill_manager is None:
@@ -45,17 +52,21 @@ def skill_invocation_reminder(message: str, skill_manager: Any) -> str | None:
     skill = skill_manager.loader.get_skill(name)
     if skill is None or not skill_manager.is_skill_enabled(skill.id):
         return None
+    content = skill_manager.get_skill_content(skill.id, sandbox_enabled=sandbox_enabled)
+    if not content:
+        return None
     follow_up = (
-        "then carry out the rest of their message with it."
+        "Carry out the rest of their message by following it."
         if task
-        else "then briefly say what it can do and ask what they want done with it."
+        else "Briefly say what it can do and ask what they want done with it."
     )
-    # The ID, not the name: same-named skills from several sources resolve by
-    # name to the last one, which may not be the one checked as enabled here.
     return (
-        f"The user invoked the `{skill.metadata.name}` skill with /skill. Before "
-        f"anything else, load it with skill_execute (skill_name="
-        f'"{skill.id}"), {follow_up}'
+        f"The user invoked the `{skill.metadata.name}` skill with /skill. Its "
+        f"instructions are below, already loaded: do not load it again with "
+        f"skill_execute. {follow_up}\n\n"
+        f'<skill name="{skill.metadata.name}" id="{skill.id}">\n'
+        f"{content.strip()}\n"
+        f"</skill>"
     )
 
 
