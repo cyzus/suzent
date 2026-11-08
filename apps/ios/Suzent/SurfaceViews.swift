@@ -428,10 +428,92 @@ private struct SurfaceHTML: View {
     @State private var measured: CGFloat?
 
     var body: some View {
-        // The agent's height is only a first guess until the page reports its content height.
-        HTMLWebView(html: html, interactive: interactive, act: act) { measured = min(max($0, 40), 5000) }
-            .frame(height: measured ?? fixedHeight.map { CGFloat($0) } ?? 120)
+        // The agent's height is only a first guess until the page reports its content height; a page seen before
+        // starts at the height it last measured, so scrolling back to it does not jump.
+        HTMLWebView(html: html, interactive: interactive, act: act) { measured = $0 }
+            .frame(height: measured ?? SurfacePages.shared.height(html) ?? fixedHeight.map { CGFloat($0) } ?? 120)
             .overlay(Rectangle().strokeBorder(Color.suzentOutline.opacity(0.4), lineWidth: 1))
+    }
+}
+
+/// Connects a cached page to whichever view is showing it now, and handles its messages and navigation.
+private final class SurfaceBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+    let html: String
+    var interactive = false
+    var act: (String, [String: JSONValue]) async -> Bool = { _, _ in false }
+    var resize: (CGFloat) -> Void = { _ in }
+    init(html: String) { self.html = html }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let text = message.body as? String,
+              let body = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
+        switch body["kind"]?.text {
+        case "height":
+            guard case .number(let value) = body["height"] else { return }
+            let height = min(max(CGFloat(value), 40), 5000)
+            Task { @MainActor in SurfacePages.shared.remember(html, height: height) }
+            resize(height)
+        case "action":
+            guard interactive, let action = body["action"]?.text, !action.isEmpty else { return }
+            var context: [String: JSONValue] = [:]
+            if case .object(let values) = body["context"] { context = values }
+            let act = act
+            Task { @MainActor in _ = await act(action, context) }
+        default: break
+        }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        // The surface's own document loads in place; anything the user follows opens in the browser.
+        if action.navigationType == .linkActivated, let url = action.request.url, ["http", "https", "mailto"].contains(url.scheme ?? "") {
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+        } else if action.targetFrame?.isMainFrame == true, action.navigationType != .other {
+            decisionHandler(.cancel)
+        } else { decisionHandler(.allow) }
+    }
+}
+
+/// Loaded pages and their content heights, kept while their reply scrolls off screen. The transcript drops
+/// off-screen rows, so without this every return reloaded the page (a blank flash) and re-measured it (a jump).
+@MainActor private final class SurfacePages {
+    static let shared = SurfacePages()
+    private let limit = 4
+    private var pages: [(html: String, view: WKWebView, bridge: SurfaceBridge)] = []
+    private var heights: [String: CGFloat] = [:]
+    private var heightOrder: [String] = []
+
+    func height(_ html: String) -> CGFloat? { heights[html] }
+
+    func remember(_ html: String, height: CGFloat) {
+        if heights.updateValue(height, forKey: html) == nil { heightOrder.append(html) }
+        if heightOrder.count > 32 { heights[heightOrder.removeFirst()] = nil }
+    }
+
+    func obtain(_ html: String) -> (WKWebView, SurfaceBridge) {
+        if let index = pages.firstIndex(where: { $0.html == html }) {
+            let page = pages.remove(at: index)
+            pages.append(page)
+            return (page.view, page.bridge)
+        }
+        let bridge = SurfaceBridge(html: html)
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.add(bridge, name: "surface")
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = bridge
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        view.scrollView.isScrollEnabled = false
+        view.loadHTMLString(surfaceHTMLDocument(html), baseURL: nil)
+        pages.append((html, view, bridge))
+        // Pages on screen stay; the cache may run over its limit until one scrolls away.
+        while pages.count > limit, let index = pages.firstIndex(where: { $0.view.superview == nil && $0.html != html }) {
+            let page = pages.remove(at: index)
+            page.view.stopLoading()
+            page.view.configuration.userContentController.removeScriptMessageHandler(forName: "surface")
+        }
+        return (view, bridge)
     }
 }
 
@@ -441,61 +523,26 @@ private struct HTMLWebView: UIViewRepresentable {
     let act: (String, [String: JSONValue]) async -> Bool
     let resize: (CGFloat) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.userContentController.add(context.coordinator, name: "surface")
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.scrollView.isScrollEnabled = false
-        view.loadHTMLString(surfaceHTMLDocument(html), baseURL: nil)
-        context.coordinator.loaded = html
-        return view
+    /// Hosts the cached page, so swapping the page for another surface replaces the subview, not this container.
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .clear
+        attach(to: container)
+        return container
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {
-        context.coordinator.parent = self
-        if context.coordinator.loaded != html { context.coordinator.loaded = html; view.loadHTMLString(surfaceHTMLDocument(html), baseURL: nil) }
-    }
+    func updateUIView(_ container: UIView, context: Context) { attach(to: container) }
 
-    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
-        view.configuration.userContentController.removeScriptMessageHandler(forName: "surface")
-    }
-
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        var parent: HTMLWebView
-        var loaded = ""
-        init(_ parent: HTMLWebView) { self.parent = parent }
-
-        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let text = message.body as? String,
-                  let body = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
-            switch body["kind"]?.text {
-            case "height":
-                if case .number(let height) = body["height"] { parent.resize(CGFloat(height)) }
-            case "action":
-                guard parent.interactive, let action = body["action"]?.text, !action.isEmpty else { return }
-                var context: [String: JSONValue] = [:]
-                if case .object(let values) = body["context"] { context = values }
-                let act = parent.act
-                Task { @MainActor in _ = await act(action, context) }
-            default: break
-            }
-        }
-
-        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-            // The surface's own document loads in place; anything the user follows opens in the browser.
-            if action.navigationType == .linkActivated, let url = action.request.url, ["http", "https", "mailto"].contains(url.scheme ?? "") {
-                UIApplication.shared.open(url)
-                decisionHandler(.cancel)
-            } else if action.targetFrame?.isMainFrame == true, action.navigationType != .other {
-                decisionHandler(.cancel)
-            } else { decisionHandler(.allow) }
-        }
+    private func attach(to container: UIView) {
+        let (view, bridge) = SurfacePages.shared.obtain(html)
+        bridge.interactive = interactive
+        bridge.act = act
+        bridge.resize = resize
+        guard view.superview !== container else { return }
+        container.subviews.forEach { $0.removeFromSuperview() }
+        view.frame = container.bounds
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        container.addSubview(view)
     }
 }
 
