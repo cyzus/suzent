@@ -60,6 +60,8 @@
     ".releases/changes/desktop-computer-use.json",
     ".releases/changes/desktop-notification-click.json",
     ".releases/changes/desktop-system-notifications.json",
+    ".releases/changes/desktop-tray-menu.json",
+    ".releases/changes/desktop-tray-status-close-prompt.json",
     ".releases/changes/development-workspace-update-button.json",
     ".releases/changes/doc-convert-parity.json",
     ".releases/changes/drop-markitdown.json",
