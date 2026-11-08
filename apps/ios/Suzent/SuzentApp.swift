@@ -1003,7 +1003,8 @@ struct ContentView: View {
     }
 
     private func conversation(_ chat: Chat) -> some View {
-        GeometryReader { viewport in
+        let loadingHistory = model.openingChatID == chat.id && (chat.messages ?? []).isEmpty
+        return GeometryReader { viewport in
         ZStack(alignment: .bottom) {
         VStack(spacing: 0) {
             if chat.isRegent {
@@ -1028,7 +1029,8 @@ struct ContentView: View {
                         if chat.id.isEmpty { startPage(chat) }
                         let savedMessages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
                         let messages = chat.isRegent ? regentMessages(savedMessages, liveParts: model.liveParts) : savedMessages
-                        if chat.isRegent && messages.isEmpty && !model.streaming { RegentGreeting() }
+                        if loadingHistory { HistoryLoadingIndicator() }
+                        if !loadingHistory && chat.isRegent && messages.isEmpty && !model.streaming { RegentGreeting() }
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
                         let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
                         let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
@@ -1125,7 +1127,7 @@ struct ContentView: View {
                 TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                     .tint(Color.suzentLink)
                     .suzentFont(PresentationTokens.typeChat).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
+                Color.clear.frame(width: 44, height: 44)
             }
             if composing { HStack(spacing: 8) {
                 Button {
@@ -1138,11 +1140,12 @@ struct ContentView: View {
                 }.buttonStyle(.plain)
                 .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                 Spacer(minLength: 8)
-                sendAction(chat)
-            } }
+                Color.clear.frame(width: 44, height: 44)
+            }.transition(.opacity) }
         }.padding(10).background(Color.suzentSurface)
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0), value: composing)
+            .overlay(alignment: .bottomTrailing) { sendAction(chat).padding(10) }
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
             .padding(.trailing, 2).padding(.bottom, 2)
@@ -1247,6 +1250,24 @@ private struct SearchPageField: View {
                 guard text.isEmpty else { return }
                 try? await Task.sleep(for: .milliseconds(450))
                 focused = true
+            }
+    }
+}
+
+private struct HistoryLoadingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+
+    var body: some View {
+        ProgressView().tint(Color.suzentMuted)
+            .opacity(visible ? 1 : 0)
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: visible)
+            .accessibilityHidden(!visible)
+            .task {
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled else { return }
+                visible = true
             }
     }
 }

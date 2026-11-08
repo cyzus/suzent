@@ -105,6 +105,7 @@ import SuzentCore
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
+    private(set) var openingChatID: String?
     var pinnedVersion = 0
     var pairingVersion = 0
     @ObservationIgnored private var drafts: [String: String] = [:]
@@ -682,11 +683,13 @@ import SuzentCore
         streaming = false
         pendingApprovals = []
         if chat.id != selected?.id { discardAttachments() }
-        selected = chat
+        if selected?.id != chat.id { selected = chat }
+        openingChatID = chat.id
         selectedModel = UserDefaults.standard.string(forKey: "suzent.chatModel.\(origin).\(chat.id)")
         draft = drafts[chat.id] ?? ""
         liveParts = []
         let current = generation
+        defer { if current == generation { openingChatID = nil } }
         do {
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
