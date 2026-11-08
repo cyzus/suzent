@@ -2168,13 +2168,30 @@ old one; pair the phone again afterwards. The same relay also gives
 - **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
+- **Use what the agent shows.** Tables, cards, buttons, forms and the other
+  displays the agent builds for you appear right in its reply, as on the
+  computer. Tap a button or fill in a form to answer; your choice shows as a
+  short line in the chat and the agent carries on from it. When the agent asks
+  you a question with options, answer it there and the reply continues. Using
+  them needs the **Send messages** permission. Displays the agent pins to the
+  computer's side panel still appear in the reply on the phone.
+- **See the plan and context.** In a conversation, tap the panel icon next to
+  **New conversation** to open **Conversation info**: the goal the agent is
+  working toward, its steps with what's done and what's next, and how full the
+  context window is, split by what fills it. On a phone it opens as a sheet you
+  can drag up for more; on a tablet it sits beside the chat. It's read-only and
+  updates while the agent works. Regent's chat doesn't have it; its board stays
+  on the computer.
 - **Follow background work.** Sub-agent chats fold under the chat that
   started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
-The app is in English and Simplified Chinese, and follows your phone's light
-or dark mode. If the connection drops, it reconnects when you open it again and
+The app is in English and Simplified Chinese. Under **Settings → Preferences**
+you can choose **Appearance** (match the phone, light, or dark), **Text size**,
+whether to use **Haptics**, and the **Language** (on iPhone this opens iOS
+Settings for Suzent; on Android it needs Android 13 or later). These apply to
+the phone only. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
 **Pair again**, **Forget connection**, and a way to switch to each other
 computer you've paired.
@@ -2205,7 +2222,7 @@ adding a second one.
 The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
-- the agent's interactive forms and buttons;
+- the computer's side panel for displays the agent keeps updating (they show in the reply instead);
 - memory, settings, or tool permissions, which stay on the computer;
 - offline access to your conversations.
 
@@ -8183,8 +8200,7 @@ web links open a native source-preview sheet with title, snippet, copy-link and
 external-browser actions. Reading a source uses Safari View Controller on iOS
 and Custom Tabs on Android. Inline citation capsules display source favicons
 with a fixed-size fallback; repeated references have independent selection.
-Multi-source citations list each resolved source in the sheet. Attachments, A2UI and some
-legacy inline tool formats still require desktop. Shared palette and filtering
+Multi-source citations list each resolved source in the sheet. Some legacy inline tool formats still require desktop; A2UI surfaces render natively (see [Inline surfaces](#inline-surfaces)). Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
 Mobile logo geometry is generated from `frontend/public/favicon.svg`, including
@@ -8260,6 +8276,68 @@ Only the latest message shows its action row; every message offers the same acti
 (copy, share, edit, retry, branch, sources) from a long-press menu on its footer or
 bubble, so message text keeps native selection. Send, copy, long press and approval
 choices give haptic feedback, and iOS text follows Dynamic Type.
+
+### Conversation info and phone preferences
+
+`GET /mobile/client/chats/{id}/overview` (session capability `chat_overview: 1`) returns
+the desktop sidebar's plan and context sections for one permitted chat: the chat's goal,
+its tasks with status only (`blocked` is derived from `blocked_by`, as on the desktop),
+and a context headline. The headline uses the stored `context_usage` (provider count,
+else total tokens) against `resolve_context_limit` for the chat's model, plus the
+breakdown's non-empty categories and reserve. Unlike the desktop chat load it never
+deserializes agent state to estimate a missing count, so a chat with no usage reports
+`usedTokens: null`. Clients skip the panel on older backends and in Regent's chat.
+
+A header button opens the panel. iOS uses `.inspector`, which is a medium/large sheet
+on compact width and a trailing column on regular width; Android uses a
+`ModalBottomSheet` on phones and a `sidebarWidth` column beside the conversation from
+840 dp. The panel polls every 4 s while the chat runs and every 15 s otherwise. The
+offline demo returns a sample plan for its trip conversation from `demo.json`.
+
+Settings → Preferences is local to the phone. iOS stores appearance, text size and
+haptics in `@AppStorage` and applies them at the root with `preferredColorScheme` and
+`dynamicTypeSize`; `suzentFeedback` gates every `sensoryFeedback`. Language opens the
+app's page in iOS Settings. Android keeps them in the `app_preferences` file through
+`AppPreferences`; `AppPreferencesProvider` overrides `LocalConfiguration.uiMode` (so
+each `isSystemInDarkTheme` follows it) and scales `LocalDensity.fontScale`, and
+`suzentHaptic` returns early when haptics are off. Language uses `LocaleManager`
+per-app locales on Android 13+ with `res/xml/locales_config.xml`.
+
+### Inline surfaces
+
+Agent-rendered A2UI surfaces (`render_ui`, `ask_question`) arrive in saved messages as
+`{"type": "a2ui", "surface": …}` parts and live as `CUSTOM` `a2ui.render` events on the
+same `/mobile/client/live` stream; `a2ui.resolved` removes an answered deferred question.
+Both clients decode the component tree (`A2UI.swift`, `A2UI.kt`) leniently: an unknown or
+malformed component becomes `unknown` and renders nothing, so a newer desktop never breaks
+a transcript. A surface is its own chunk in the reply, counts as part of the final reply
+rather than the folded activity, and a later render of the same id replaces the earlier
+one in the live buffer. Every desktop component has a native view: text (markdown through
+the chat renderer), badge, button, table (scrolls sideways), form (text, number, select
+with optional free text, multiselect chips, checkbox, textarea; required fields gate
+submit), list, progress, divider, card, stack and columns (side by side only when each
+column gets at least 140 pt/dp, otherwise stacked). HTML runs in a `WKWebView` with a
+non-persistent data store or a `WebView` without file, content or DOM storage access,
+gets a phone viewport and standards mode when it has none, opens followed links in the
+browser, and bridges `postMessage({type: 'a2ui:action'})` back as an action. It always
+sizes to its content with the desktop's auto-size shim (body height, re-measured on
+resize, DOM changes, image loads and fonts, capped at 5000 pt/dp); an agent-given
+`height` is only the first guess, because scrolling inside the page would fight the
+chat's own scroll. Surfaces with `target: "canvas"`
+also render inline until the conversation panel shows them.
+
+Actions follow the desktop dispatcher. An ordinary button or form is sent through
+`/mobile/client/send` as the desktop's `[canvas: action] "label" {context}` message
+(sorted keys, with `surface_id` added); `submit_question` forms send the
+"question: answer" text; a deferred `ask_question` posts to
+`POST /mobile/client/surface-answer` (session capability `surfaces: 1`, `send`
+permission, chat scope, answers up to 100 KB), which resolves the waiting tool call and
+emits `a2ui.resolved`. Controls are enabled only with the send permission; ordinary
+surfaces also need an idle conversation, deferred ones need the capability, and a
+question form the user has since replied to stays disabled. User messages that came
+from an action render as a "↳ label" line. Shared expectations live in
+`packages/mobile-contract/surface-fixtures.json`; the offline demo's trip conversation
+carries a sample surface.
 
 ### Mobile tool approvals and activity rail
 
@@ -13128,8 +13206,10 @@ See [Native mobile clients](https://suzent.com/docs/developing/architecture/mobi
 
 Planned, in order:
 
-1. **Interactive tools and attachments** — scoped upload. (Mobile tool approvals
-   have shipped; see [Native mobile clients](https://suzent.com/docs/developing/architecture/mobile#mobile-tool-approvals-and-activity-rail).)
+1. **Canvas in the conversation panel** — surfaces with `target: "canvas"` move from the
+   reply into the Conversation info panel, with a pointer left in the chat. (Inline
+   surfaces, tool approvals and attachments have shipped; see
+   [Native mobile clients](https://suzent.com/docs/developing/architecture/mobile#inline-surfaces).)
 2. **Device capabilities** — user-confirmed camera capture and upload, audio capture,
    single location fix; native permission and lifecycle adapters.
 3. **Resilience** — durable event cursor/replay, idempotent send IDs in the backend, local
