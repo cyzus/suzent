@@ -187,7 +187,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const editorRef = React.useRef<MentionTextAreaHandle | null>(null);
   const isComposingRef = React.useRef(false);
   const mentionActive = mentionQuery !== null;
-  const suggestions = useSlashCommands(input);
+  const suggestions = useSlashCommands(input, currentChatId);
   const ghostOverlayRef = React.useRef<HTMLDivElement | null>(null);
   const [dismissedSuggestion, setDismissedSuggestion] = React.useState<string | null>(null);
   // Every new turn clears the suggestion before predicting again, so an Esc
@@ -267,6 +267,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   React.useEffect(() => {
     setSelectedSuggestion(0);
   }, [suggestions.length]);
+  const suggestionListRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    suggestionListRef.current
+      ?.querySelector('[data-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [selectedSuggestion]);
   React.useEffect(() => {
     setSelectedMentionSuggestion(0);
   }, [visibleMentions]);
@@ -534,7 +540,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         {/* Slash command suggestions */}
         {suggestions.length > 0 && (
-          <div className="absolute left-2 right-2 bottom-[calc(100%-0.5rem)] border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm overflow-hidden z-30">
+          <div
+            ref={suggestionListRef}
+            className="absolute -left-px -right-px bottom-[calc(100%+0.5rem)] border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 max-h-72 overflow-y-auto z-30"
+          >
             {suggestions.map((cmd, i) => {
               const showHeader = i === 0 || suggestions[i - 1].category !== cmd.category;
               return (
@@ -545,7 +554,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     </div>
                   )}
                   <div
-                    className={`flex items-baseline gap-3 px-3 py-2 text-sm ${!input.includes(' ') || cmd.isOption ? 'cursor-pointer ' : ''}${i === selectedSuggestion && (!input.includes(' ') || cmd.isOption) ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                    data-selected={i === selectedSuggestion}
+                    className={`group flex items-baseline gap-3 px-3 py-2 text-sm ${!input.includes(' ') || cmd.isOption ? 'cursor-pointer ' : ''}${i === selectedSuggestion && (!input.includes(' ') || cmd.isOption) ? 'is-active bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       if (!input.includes(' ') || cmd.isOption) {
@@ -558,10 +568,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     }}
                   >
                     <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
-                    <span className="text-neutral-500 dark:text-neutral-400 truncate">
+                    <span className="text-neutral-500 dark:text-neutral-400 group-[.is-active]:text-brutal-black/70 truncate">
                       {cmd.description}
                     </span>
-                    <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 shrink-0">
+                    <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 group-[.is-active]:text-brutal-black/60 shrink-0">
                       {cmd.usage}
                     </span>
                   </div>
