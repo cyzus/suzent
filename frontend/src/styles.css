@@ -191,8 +191,9 @@
 
   /* Following the live tail needs actual heights: revealing an estimated
      history row can otherwise move the bottom after the scroll target is read.
-     Native scroll anchoring must not compete with the hook in this mode. */
-  [data-following-bottom='true'] {
+     useAutoScroll anchors the viewport itself (WebKit has no native scroll
+     anchoring), so native anchoring must not compete with it in either mode. */
+  [data-following-bottom] {
     overflow-anchor: none;
   }
 
