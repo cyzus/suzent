@@ -1,6 +1,7 @@
 {
   "version": "0.24.0",
   "consumed": [
+    ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
     ".releases/changes/acp-registry-pairing.json",
