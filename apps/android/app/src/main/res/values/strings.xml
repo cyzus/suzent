@@ -46,7 +46,7 @@
     <string name="review_invitation">Review invitation</string>
     <string name="reconnect">Reconnect to desktop</string>
     <string name="waiting_approval">Waiting for desktop approval</string>
-    <string name="compare_code">Check this code on your desktop, then choose which conversations and actions to share.</string>
+    <string name="allow_on_desktop">Click Allow on your computer to finish connecting.</string>
     <string name="cancel_pairing">Cancel pairing</string>
     <string name="confirm_desktop">Connect to this desktop?</string>
     <string name="confirm_desktop_help">Your desktop will ask you to approve this phone. Node access stays separate.</string>
