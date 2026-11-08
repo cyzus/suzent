@@ -413,14 +413,20 @@ struct ContentView: View {
                 VStack {
                     Spacer(minLength: 20)
                     VStack(spacing: 21) {
-                        ReconnectIndicator(active: model.busy)
+                        ReconnectIndicator(active: model.busy, stage: model.reconnectStage)
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
-                        if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
-                                Text(desktop.name).lineLimit(1)
-                            }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                        VStack(spacing: 6) {
+                            if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
+                                    Text(desktop.name).lineLimit(1)
+                                }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                            }
+                            if model.busy, let status = model.reconnectStatus, !status.isEmpty {
+                                Text(status).suzentFont(PresentationTokens.typeCaption, weight: .semibold, design: .monospaced)
+                                    .tracking(0.8).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                            }
                         }
                         Group {
                             if model.busy {

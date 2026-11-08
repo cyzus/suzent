@@ -1,0 +1,6 @@
+{
+  "products": {
+    "mobile": "patch"
+  },
+  "summary": "Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop."
+}
