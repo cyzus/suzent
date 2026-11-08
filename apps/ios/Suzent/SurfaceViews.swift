@@ -7,7 +7,7 @@ struct SurfaceView: View {
     let surface: A2UISurface
     /// Buttons and forms work; false while they cannot be acted on (no permission, a reply is running, answered).
     let interactive: Bool
-    let act: (String, [String: JSONValue]) -> Void
+    let act: (String, [String: JSONValue]) async -> Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,7 +31,7 @@ struct SurfaceComponentView: View {
     let interactive: Bool
     /// The surface's own frame already outlines a top-level card.
     var root = false
-    let act: (String, [String: JSONValue]) -> Void
+    let act: (String, [String: JSONValue]) async -> Bool
 
     var body: some View {
         switch component {
@@ -43,13 +43,13 @@ struct SurfaceComponentView: View {
             Button(label) {
                 var payload = context
                 payload["button_label"] = .string(label)
-                act(action, payload)
+                Task { _ = await act(action, payload) }
             }
             .buttonStyle(SuzentButtonStyle(prominent: variant == nil || variant == "primary", destructive: variant == "danger"))
             .disabled(disabled || !interactive)
         case let .table(columns, rows): SurfaceTable(columns: columns, rows: rows)
         case let .form(fields, submitLabel, action):
-            SurfaceForm(fields: fields, submitLabel: submitLabel, interactive: interactive) { act(action, $0) }
+            SurfaceForm(fields: fields, submitLabel: submitLabel, interactive: interactive) { await act(action, $0) }
         case let .list(items, ordered):
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
@@ -229,7 +229,7 @@ private struct SurfaceForm: View {
     let fields: [A2UIFormField]
     let submitLabel: String?
     let interactive: Bool
-    let submit: ([String: JSONValue]) -> Void
+    let submit: ([String: JSONValue]) async -> Bool
     @State private var values: [String: JSONValue] = [:]
     @State private var otherText: [String: String] = [:]
     @State private var submitted = false
@@ -249,8 +249,10 @@ private struct SurfaceForm: View {
                 }
             }
             Button(submitLabel ?? String(localized: "Submit")) {
+                // Locked while sending so a double tap cannot answer twice; a failed send unlocks it to retry.
                 submitted = true
-                submit(payload)
+                let answer = payload
+                Task { if !(await submit(answer)) { submitted = false } }
             }
             .buttonStyle(SuzentButtonStyle(prominent: true))
             .disabled(!interactive || submitted || !complete)
@@ -259,10 +261,24 @@ private struct SurfaceForm: View {
         .onAppear { if values.isEmpty { values = Dictionary(uniqueKeysWithValues: fields.compactMap { f in f.default.map { (f.name, $0) } }) } }
     }
 
-    /// What the agent receives: each field by name, free text in place of a select's options when typed.
+    /// What the agent receives: each field by name. Typed free text replaces a select's choice and joins a
+    /// multiselect's choices, as on the desktop; number fields are converted only now, so editing keeps "1.".
     private var payload: [String: JSONValue] {
         var result = values
-        for (name, text) in otherText where !text.trimmingCharacters(in: .whitespaces).isEmpty { result[name] = .string(text) }
+        for field in fields {
+            let typed = (otherText[field.name] ?? "").trimmingCharacters(in: .whitespaces)
+            switch field.kind {
+            case "number":
+                if case .string(let raw) = values[field.name] {
+                    result[field.name] = Double(raw.replacingOccurrences(of: ",", with: ".")).map(JSONValue.number) ?? .string(raw)
+                }
+            case "multiselect" where !typed.isEmpty:
+                result[field.name] = .array(selections(values[field.name]).map(JSONValue.string) + [.string(typed)])
+            case "select" where !typed.isEmpty:
+                result[field.name] = .string(typed)
+            default: break
+            }
+        }
         for field in fields where result[field.name] == nil {
             switch field.kind {
             case "checkbox": result[field.name] = .bool(false)
@@ -288,6 +304,11 @@ private struct SurfaceForm: View {
         Binding(get: { values[name]?.displayText ?? "" }, set: { values[name] = .string($0) })
     }
 
+    private func freeText(_ field: A2UIFormField) -> some View {
+        TextField(String(localized: "Or type your own"), text: Binding(get: { otherText[field.name] ?? "" }, set: { otherText[field.name] = $0 }))
+            .modifier(SurfaceFieldStyle())
+    }
+
     private func selections(_ value: JSONValue?) -> [String] {
         guard case .array(let items) = value else { return [] }
         return items.map(\.displayText)
@@ -296,9 +317,7 @@ private struct SurfaceForm: View {
     @ViewBuilder private func input(_ field: A2UIFormField) -> some View {
         switch field.kind {
         case "number":
-            TextField(field.placeholder ?? "", text: Binding(get: { values[field.name]?.displayText ?? "" }, set: { raw in
-                values[field.name] = Double(raw.replacingOccurrences(of: ",", with: ".")).map(JSONValue.number) ?? .string(raw)
-            })).keyboardType(.decimalPad).modifier(SurfaceFieldStyle())
+            TextField(field.placeholder ?? "", text: text(field.name)).keyboardType(.decimalPad).modifier(SurfaceFieldStyle())
         case "textarea":
             TextField(field.placeholder ?? "", text: text(field.name), axis: .vertical).lineLimit(3...6).modifier(SurfaceFieldStyle())
         case "checkbox":
@@ -319,17 +338,17 @@ private struct SurfaceForm: View {
                         Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Color.suzentMuted)
                     }.modifier(SurfaceFieldStyle())
                 }
-                if field.allowFreeText == true {
-                    TextField(String(localized: "Or type your own"), text: Binding(get: { otherText[field.name] ?? "" }, set: { otherText[field.name] = $0 }))
-                        .modifier(SurfaceFieldStyle())
-                }
+                if field.allowFreeText == true { freeText(field) }
             }
         case "multiselect":
             let chosen = Set(selections(values[field.name]))
-            FlowChips(options: field.options ?? [], chosen: chosen) { option in
-                var next = chosen
-                if next.contains(option) { next.remove(option) } else { next.insert(option) }
-                values[field.name] = .array((field.options ?? []).filter(next.contains).map(JSONValue.string))
+            VStack(alignment: .leading, spacing: 6) {
+                FlowChips(options: field.options ?? [], chosen: chosen) { option in
+                    var next = chosen
+                    if next.contains(option) { next.remove(option) } else { next.insert(option) }
+                    values[field.name] = .array((field.options ?? []).filter(next.contains).map(JSONValue.string))
+                }
+                if field.allowFreeText == true { freeText(field) }
             }
         default:
             TextField(field.placeholder ?? "", text: text(field.name)).modifier(SurfaceFieldStyle())
@@ -405,7 +424,7 @@ private struct SurfaceHTML: View {
     let html: String
     let fixedHeight: Double?
     let interactive: Bool
-    let act: (String, [String: JSONValue]) -> Void
+    let act: (String, [String: JSONValue]) async -> Bool
     @State private var measured: CGFloat = 120
 
     var body: some View {
@@ -418,7 +437,7 @@ private struct SurfaceHTML: View {
 private struct HTMLWebView: UIViewRepresentable {
     let html: String
     let interactive: Bool
-    let act: (String, [String: JSONValue]) -> Void
+    let act: (String, [String: JSONValue]) async -> Bool
     let resize: (CGFloat) -> Void
 
     private static let bridge = """
@@ -475,7 +494,8 @@ private struct HTMLWebView: UIViewRepresentable {
                 guard parent.interactive, let action = body["action"]?.text, !action.isEmpty else { return }
                 var context: [String: JSONValue] = [:]
                 if case .object(let values) = body["context"] { context = values }
-                parent.act(action, context)
+                let act = parent.act
+                Task { @MainActor in _ = await act(action, context) }
             default: break
             }
         }

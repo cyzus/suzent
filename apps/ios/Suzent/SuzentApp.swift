@@ -1086,7 +1086,7 @@ struct ContentView: View {
             interactive: { surface in
                 canSend && (surface.isDeferred ? model.surfacesSupported : idle && !answered.contains(surface.id))
             },
-            act: { surface, action, context in Task { await model.act(on: surface, action: action, context: context) } })
+            act: { surface, action, context in await model.act(on: surface, action: action, context: context) })
     }
 
     private func composer(_ chat: Chat) -> some View {

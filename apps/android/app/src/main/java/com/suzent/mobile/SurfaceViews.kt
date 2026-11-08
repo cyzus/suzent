@@ -60,7 +60,8 @@ import org.json.JSONObject
 import java.util.Locale
 
 /** How surfaces in the transcript act; provided once by the conversation so every reply shares it. */
-class SurfaceHandler(val interactive: (A2UISurface) -> Boolean, val act: (A2UISurface, String, Map<String, Any?>) -> Unit)
+/** [act] reports through its last argument whether the action was delivered. */
+class SurfaceHandler(val interactive: (A2UISurface) -> Boolean, val act: (A2UISurface, String, Map<String, Any?>, (Boolean) -> Unit) -> Unit)
 
 val LocalSurfaceHandler = compositionLocalOf<SurfaceHandler?> { null }
 
@@ -68,12 +69,15 @@ val LocalSurfaceHandler = compositionLocalOf<SurfaceHandler?> { null }
 fun ProvideSurfaceHandler(handler: SurfaceHandler, content: @Composable () -> Unit) =
     CompositionLocalProvider(LocalSurfaceHandler provides handler, content = content)
 
+/** Runs a surface action; the callback says whether it was delivered. */
+typealias SurfaceAct = (String, Map<String, Any?>, (Boolean) -> Unit) -> Unit
+
 /** An agent-rendered surface inside a reply, with a slim ruled header like the desktop's inline surfaces. */
 @Composable
 fun SurfaceBlock(surface: A2UISurface) {
     val handler = LocalSurfaceHandler.current
     val interactive = handler?.interactive?.invoke(surface) ?: false
-    val act: (String, Map<String, Any?>) -> Unit = { action, context -> handler?.act?.invoke(surface, action, context) }
+    val act: SurfaceAct = { action, context, done -> handler?.act?.invoke(surface, action, context, done) ?: done(false) }
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
         surface.title?.takeIf { it.isNotBlank() }?.let { title ->
@@ -87,15 +91,15 @@ fun SurfaceBlock(surface: A2UISurface) {
 }
 
 @Composable
-private fun SurfaceComponent(component: A2UIComponent, interactive: Boolean, act: (String, Map<String, Any?>) -> Unit, root: Boolean = false) {
+private fun SurfaceComponent(component: A2UIComponent, interactive: Boolean, act: SurfaceAct, root: Boolean = false) {
     when (component) {
         is A2UIComponent.Text -> if (component.markdown) MarkdownText(component.content) else SurfaceText(component)
         is A2UIComponent.Badge -> SurfaceBadge(component)
-        is A2UIComponent.Button -> SuzentAction(component.label, onClick = { act(component.action, component.context + ("button_label" to component.label)) },
+        is A2UIComponent.Button -> SuzentAction(component.label, onClick = { act(component.action, component.context + ("button_label" to component.label)) {} },
             prominent = component.variant == null || component.variant == "primary", destructive = component.variant == "danger",
             enabled = interactive && !component.disabled)
         is A2UIComponent.Table -> SurfaceTable(component)
-        is A2UIComponent.Form -> SurfaceForm(component, interactive) { act(component.action, it) }
+        is A2UIComponent.Form -> SurfaceForm(component, interactive) { payload, done -> act(component.action, payload, done) }
         is A2UIComponent.ListItems -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             component.items.forEachIndexed { index, item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,7 +198,7 @@ private fun TableCell(text: String, width: androidx.compose.ui.unit.Dp, bold: Bo
 
 /** Side by side when each column gets a usable width, stacked on narrow phones. */
 @Composable
-private fun SurfaceColumns(columns: A2UIComponent.Columns, interactive: Boolean, act: (String, Map<String, Any?>) -> Unit) {
+private fun SurfaceColumns(columns: A2UIComponent.Columns, interactive: Boolean, act: SurfaceAct) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val count = columns.children.size.coerceAtLeast(1)
         val weights = columns.children.indices.map { columns.ratios.getOrNull(it)?.takeIf { r -> r > 0 }?.toFloat() ?: 1f }
@@ -210,20 +214,27 @@ private fun SurfaceColumns(columns: A2UIComponent.Columns, interactive: Boolean,
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SurfaceForm(form: A2UIComponent.Form, interactive: Boolean, submit: (Map<String, Any?>) -> Unit) {
+private fun SurfaceForm(form: A2UIComponent.Form, interactive: Boolean, submit: (Map<String, Any?>, (Boolean) -> Unit) -> Unit) {
     val values = remember(form) { mutableStateMapOf<String, Any?>().apply { form.fields.forEach { f -> f.default?.let { put(f.name, it) } } } }
     val otherText = remember(form) { mutableStateMapOf<String, String>() }
     var submitted by rememberSaveable(form) { mutableStateOf(false) }
     var picking by remember { mutableStateOf<A2UIFormField?>(null) }
     val enabled = interactive && !submitted
 
-    // What the agent receives: each field by name, free text in place of a select's options when typed.
+    // What the agent receives: each field by name. Typed free text replaces a select's choice and joins a
+    // multiselect's choices, as on the desktop; number fields are converted only now, so editing keeps "1.".
     fun payload(): Map<String, Any?> = form.fields.associate { field ->
-        field.name to (otherText[field.name]?.takeIf { it.isNotBlank() } ?: values[field.name] ?: when (field.kind) {
-            "checkbox" -> false
-            "multiselect" -> emptyList<String>()
+        val typed = otherText[field.name]?.trim().orEmpty()
+        val value = values[field.name]
+        field.name to when {
+            field.kind == "number" && value is String -> value.replace(',', '.').toDoubleOrNull() ?: value
+            field.kind == "multiselect" && typed.isNotEmpty() -> ((value as? List<*>) ?: emptyList<Any?>()) + typed
+            field.kind == "select" && typed.isNotEmpty() -> typed
+            value != null -> value
+            field.kind == "checkbox" -> false
+            field.kind == "multiselect" -> emptyList<String>()
             else -> ""
-        })
+        }
     }
     val complete = form.fields.filter { it.required }.all { field ->
         when (val value = payload()[field.name]) {
@@ -272,16 +283,18 @@ private fun SurfaceForm(form: A2UIComponent.Form, interactive: Boolean, submit: 
                                     fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
+                        if (field.allowFreeText) SurfaceInput(otherText[field.name] ?: "", { otherText[field.name] = it },
+                            stringResource(R.string.surface_free_text), enabled)
                     }
-                    "number" -> SurfaceInput(jsonDisplay(values[field.name]), { raw ->
-                        values[field.name] = raw.replace(',', '.').toDoubleOrNull() ?: raw
-                    }, field.placeholder ?: "", enabled, KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    "number" -> SurfaceInput(jsonDisplay(values[field.name]), { values[field.name] = it }, field.placeholder ?: "", enabled,
+                        KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     "textarea" -> SurfaceInput(jsonDisplay(values[field.name]), { values[field.name] = it }, field.placeholder ?: "", enabled, multiline = true)
                     else -> SurfaceInput(jsonDisplay(values[field.name]), { values[field.name] = it }, field.placeholder ?: "", enabled)
                 }
             }
         }
-        SuzentAction(form.submitLabel ?: stringResource(R.string.surface_submit), onClick = { submitted = true; submit(payload()) },
+        // Locked while sending so a double tap cannot answer twice; a failed send unlocks it to retry.
+        SuzentAction(form.submitLabel ?: stringResource(R.string.surface_submit), onClick = { submitted = true; submit(payload()) { ok -> if (!ok) submitted = false } },
             prominent = true, enabled = enabled && complete)
     }
     picking?.let { field ->
@@ -321,7 +334,7 @@ private const val htmlBridge = """
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: (String, Map<String, Any?>) -> Unit) {
+private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: SurfaceAct) {
     var measured by remember { mutableStateOf(120f) }
     val canAct by rememberUpdatedState(interactive)
     val currentAct by rememberUpdatedState(act)
@@ -339,7 +352,7 @@ private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: (St
                 @JavascriptInterface fun height(value: Double) { post { measured = value.toFloat().coerceIn(40f, 1200f) } }
                 @JavascriptInterface fun action(name: String, context: String) {
                     val parsed = runCatching { jsonMap(JSONObject(context)) }.getOrDefault(emptyMap())
-                    post { if (canAct && name.isNotBlank()) currentAct(name, parsed) }
+                    post { if (canAct && name.isNotBlank()) currentAct(name, parsed) {} }
                 }
             }, "SuzentSurface")
             webViewClient = object : WebViewClient() {

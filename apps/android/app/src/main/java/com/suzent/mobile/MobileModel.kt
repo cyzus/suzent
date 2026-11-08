@@ -736,29 +736,35 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     val surfacesSupported: Boolean get() = client?.supportsSurfaces == true
 
-    /** A button or form on a surface: a blocked question gets its answer, anything else is sent like a message. */
-    fun act(surface: A2UISurface, action: String, context: Map<String, Any?>) {
-        val api = client ?: return
-        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return
-        if (device?.permissions?.send != true) return
+    /**
+     * A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+     * [done] reports whether it was delivered, so a form can be used again after a failure.
+     */
+    fun act(surface: A2UISurface, action: String, context: Map<String, Any?>, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return done(false)
+        if (device?.permissions?.send != true) return done(false)
         if (surface.deferred) {
-            liveParts = liveParts.filterNot { it.type == "a2ui" && it.surface?.id == surface.id }
             val current = generation
             viewModelScope.launch {
-                try { api.answerSurface(id, surface.id, deferredAnswer(context)) }
-                catch (failure: CancellationException) { throw failure }
-                catch (failure: Exception) { if (current == generation) handle(failure, R.string.surface_answer_failed) }
+                try {
+                    api.answerSurface(id, surface.id, deferredAnswer(context))
+                    liveParts = liveParts.filterNot { it.type == "a2ui" && it.surface?.id == surface.id }
+                    done(true)
+                } catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) { if (current == generation) handle(failure, R.string.surface_answer_failed); done(false) }
             }
             return
         }
         val text = if (action == "submit_question") questionAnswerText(context) else canvasActionMessage(action, context, surface.id)
-        if (text.isNotEmpty()) submit(text, emptyList(), fromDraft = false)
+        if (text.isNotEmpty()) submit(text, emptyList(), fromDraft = false, done) else done(false)
     }
 
-    private fun submit(message: String, outgoing: List<PendingAttachment>, fromDraft: Boolean) {
-        val api = client ?: return
-        var id = selected?.id ?: return
-        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return
+    private fun submit(message: String, outgoing: List<PendingAttachment>, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        var id = selected?.id ?: return done(false)
+        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return done(false)
+        var delivered = false
         busy = true
         error = null
         val current = generation
@@ -786,10 +792,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         files = outgoing.map { FileAttachment(it.name, it.mimeType) }))
                 }
                 chats = chats.map { if (it.id == id) it.copy(running = true) else it }
+                delivered = true
                 if (foreground) observe(id)
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
-            finally { if (current == generation) { busy = false; pairingStatus = null } }
+            finally { if (current == generation) { busy = false; pairingStatus = null }; done(delivered) }
         }
     }
 

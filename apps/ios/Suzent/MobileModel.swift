@@ -772,36 +772,39 @@ import SuzentCore
     }
 
     func send() async {
-        await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
+        _ = await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
     }
 
     /// A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
-    func act(on surface: A2UISurface, action: String, context: [String: JSONValue]) async {
-        guard let client, device?.permissions.send == true, let id = selected?.id, !id.isEmpty else { return }
+    /// Returns whether the answer was delivered, so a form can be used again after a failure.
+    func act(on surface: A2UISurface, action: String, context: [String: JSONValue]) async -> Bool {
+        guard let client, device?.permissions.send == true, let id = selected?.id, !id.isEmpty else { return false }
         if surface.isDeferred {
-            liveParts.removeAll { $0.type == "a2ui" && $0.surface?.id == surface.id }
-            do { try await client.answerSurface(id, surfaceID: surface.id, answer: deferredAnswer(context)) }
-            catch {
+            do {
+                try await client.answerSurface(id, surfaceID: surface.id, answer: deferredAnswer(context))
+                liveParts.removeAll { $0.type == "a2ui" && $0.surface?.id == surface.id }
+                return true
+            } catch {
                 if case ClientError.http(401) = error { handle(error) }
                 else { self.error = String(localized: "The answer could not be delivered. The question may have expired.") }
+                return false
             }
-            return
         }
         let text = action == "submit_question" ? questionAnswerText(context)
             : canvasActionMessage(action: action, context: context, surfaceID: surface.id)
-        guard !text.isEmpty else { return }
-        await submit(text, outgoing: [], fromDraft: false)
+        guard !text.isEmpty else { return false }
+        return await submit(text, outgoing: [], fromDraft: false)
     }
 
-    private func submit(_ text: String, outgoing: [PendingAttachment], fromDraft: Bool) async {
-        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
-        guard !text.isEmpty || !outgoing.isEmpty else { return }
+    private func submit(_ text: String, outgoing: [PendingAttachment], fromDraft: Bool) async -> Bool {
+        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return false }
+        guard !text.isEmpty || !outgoing.isEmpty else { return false }
         busy = true
         error = nil
         defer { busy = false }
         do {
             if id.isEmpty {
-                guard device?.permissions.createChats == true else { return }
+                guard device?.permissions.createChats == true else { return false }
                 let created = try await client.createChat(title: String(localized: "Mobile conversation"), projectID: selected?.projectId)
                 selected = created
                 id = created.id
@@ -822,9 +825,11 @@ import SuzentCore
                 syncRunning(chat)
             }
             if foreground { observe(id, client: client) }
+            return true
         } catch {
             if case ClientError.http(401) = error { handle(error) }
             else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
+            return false
         }
     }
 

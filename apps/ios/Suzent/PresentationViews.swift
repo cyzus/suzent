@@ -854,7 +854,8 @@ struct SuzentAssistantBadge: View {
 /// How surfaces in the transcript act; set once by the conversation so every reply shares it.
 struct SurfaceHandler {
     let interactive: (A2UISurface) -> Bool
-    let act: (A2UISurface, String, [String: JSONValue]) -> Void
+    /// Resolves to whether the action was delivered.
+    let act: (A2UISurface, String, [String: JSONValue]) async -> Bool
 }
 
 private struct SurfaceHandlerKey: EnvironmentKey {
@@ -891,7 +892,7 @@ struct ActivityContent: View {
                 }
                 else if chunk.first?.type == "a2ui", let surface = chunk.first?.surface {
                     SurfaceView(surface: surface, interactive: surfaceHandler?.interactive(surface) ?? false) { action, context in
-                        surfaceHandler?.act(surface, action, context)
+                        await surfaceHandler?.act(surface, action, context) ?? false
                     }
                 }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }

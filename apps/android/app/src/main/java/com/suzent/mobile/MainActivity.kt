@@ -978,7 +978,7 @@ private fun surfaceHandler(model: MobileModel, chat: Chat): SurfaceHandler {
     // A blocked question is answered while the run waits; anything else starts a new turn.
     return SurfaceHandler(
         interactive = { surface -> canSend && if (surface.deferred) model.surfacesSupported else idle && surface.id !in answered },
-        act = { surface, action, context -> model.act(surface, action, context) })
+        act = { surface, action, context, done -> model.act(surface, action, context, done) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
