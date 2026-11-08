@@ -607,6 +607,52 @@ fn get_service_log_path() -> Result<String, String> {
         .to_string())
 }
 
+#[derive(Clone, Serialize)]
+struct DesktopAbout {
+    packaged: bool,
+    /// `microsoft_store` | `github` | `development`
+    distribution: String,
+    /// `bundled` | `source`
+    runtime: String,
+    install_path: String,
+    data_dir: String,
+    app_version: String,
+}
+
+#[tauri::command]
+fn get_desktop_about() -> DesktopAbout {
+    let packaged = packaged::is_packaged();
+    let distribution = if packaged {
+        "microsoft_store"
+    } else if cfg!(debug_assertions) {
+        "development"
+    } else {
+        "github"
+    };
+    let install_path = if packaged {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.display().to_string()))
+            .unwrap_or_default()
+    } else {
+        backend::find_install_workspace_dir()
+            .display()
+            .to_string()
+    };
+    DesktopAbout {
+        packaged,
+        distribution: distribution.to_string(),
+        runtime: if packaged {
+            "bundled".to_string()
+        } else {
+            "source".to_string()
+        },
+        install_path,
+        data_dir: backend::find_data_dir().display().to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
 fn publish_backend_port(app_handle: &tauri::AppHandle, port: u16) -> Result<(), String> {
     let window = app_handle
         .get_webview_window("main")
@@ -1076,6 +1122,7 @@ fn main() {
             set_service_enabled,
             restart_background_service,
             get_service_log_path,
+            get_desktop_about,
             get_auto_update_enabled,
             set_auto_update_enabled,
             get_staged_update,
