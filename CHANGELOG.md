@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
 - Refine chat bubbles and inline code styling, with a clearer copy icon and compact message actions.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
+- Type /skill to list your skills, or /skill <name> to have the agent use one, with skill names suggested as you type.
 - Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).
 
 ## [v0.23.0] - 2026-11-06
