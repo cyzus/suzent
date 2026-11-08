@@ -64,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
@@ -258,11 +259,17 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
         Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            ReconnectIndicator(active = model.busy)
+            ReconnectIndicator(active = model.busy, stage = model.reconnectStage)
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
                     fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 ActiveDesktopLabel(model)
+                val status = model.reconnectStatus
+                if (model.busy && !status.isNullOrEmpty()) {
+                    Text(status, fontSize = PresentationTokens.typeCaption.sp, fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Box(Modifier.heightIn(min = 44.dp)) {
                 if (model.busy) {

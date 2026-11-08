@@ -34,6 +34,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
     var reconnecting by mutableStateOf(false)
+    var reconnectStage by mutableStateOf(0)
+        private set
+    var reconnectStatus by mutableStateOf<String?>(null)
+        private set
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
     var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
@@ -418,10 +422,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private suspend fun activate(id: String) {
         var saved = requireNotNull(desktops.desktop(id)).connection
         var viaRelay = false
+        reconnectStage = 0
+        reconnectStatus = "LAN · ${displayOrigin(saved.origin)}"
         run {
             var reachable: String? = null
             for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
                 currentCoroutineContext().ensureActive()
+                reconnectStatus = "LAN · ${displayOrigin(origin)}"
                 val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
                 try { probe.capabilities(); reachable = origin; break }
                 catch (failure: CancellationException) { throw failure }
@@ -432,6 +439,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val relay = saved.relay
             if (reachable == null && relay != null) {
                 currentCoroutineContext().ensureActive()
+                reconnectStage = 1
+                reconnectStatus = "RELAY"
                 val probe = relayClient(relay, "", probeOnly = true)
                 try { probe.capabilities(); viaRelay = true }
                 catch (failure: CancellationException) { throw failure }
@@ -441,6 +450,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             if (!viaRelay) saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
         }
         require(saved.clientProtocol == 1)
+        reconnectStage = 2
+        reconnectStatus = "VERIFYING"
         val candidate = saved.relay?.takeIf { viaRelay }?.let { relayClient(it, saved.hostToken) }
             ?: BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
@@ -464,6 +475,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             }
             candidate.capabilities()
             val session = candidate.session()
+            reconnectStage = 3
+            reconnectStatus = "SYNCING"
             val navigation = candidate.initialNavigation()
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
@@ -503,7 +516,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 else error = text(R.string.reconnect_unreachable)
             }
             catch (failure: Exception) { handle(failure) }
-            finally { busy = false; reconnecting = false; reconnectJob = null }
+            finally { busy = false; reconnecting = false; reconnectStatus = null; reconnectStage = 0; reconnectJob = null }
         }
     }
 

@@ -12,6 +12,8 @@ import SuzentCore
     var device: ClientDevice?
     var canReconnect = false
     var reconnecting = false
+    var reconnectStage = 0
+    var reconnectStatus: String?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
     var chatPages: [ChatPageQuery: ChatPage] = [:]
@@ -409,11 +411,14 @@ import SuzentCore
     private func activate(_ id: String, _ stored: Connection) async throws {
         var saved = stored
         var throughRelay: RelayRoute?
+        reconnectStage = 0
+        reconnectStatus = "LAN · \(displayOrigin(saved.origin))"
         do {
             var reachable: String?
             var visited = Set<String>()
             for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil && visited.insert(origin).inserted {
                 try Task.checkCancellation()
+                reconnectStatus = "LAN · \(displayOrigin(origin))"
                 let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowsHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
                 defer { probe.close() }
                 do { _ = try await probe.capabilities(); reachable = origin }
@@ -422,6 +427,8 @@ import SuzentCore
             if let reachable { saved.origin = reachable }
             else if let relay = saved.relay {
                 try Task.checkCancellation()
+                reconnectStage = 1
+                reconnectStatus = "RELAY"
                 let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
                 defer { probe.close() }
                 do { _ = try await probe.capabilities(); throughRelay = relay }
@@ -429,6 +436,8 @@ import SuzentCore
             } else { throw PairingError.unreachable }
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
+        reconnectStage = 2
+        reconnectStatus = "VERIFYING"
         let candidate: SuzentClient
         if let throughRelay {
             candidate = try SuzentClient(relay: throughRelay, token: saved.hostToken)
@@ -460,6 +469,8 @@ import SuzentCore
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
+            reconnectStage = 3
+            reconnectStatus = "SYNCING"
             let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
@@ -522,7 +533,7 @@ import SuzentCore
     /// A switch to another desktop may have cancelled this attempt and taken over; the newer attempt keeps the busy state.
     private func releaseReconnect(_ attempt: Task<Void, Never>) {
         guard reconnectTask == attempt else { return }
-        busy = false; reconnecting = false; reconnectTask = nil
+        busy = false; reconnecting = false; reconnectStatus = nil; reconnectStage = 0; reconnectTask = nil
     }
 
     /// Probes the target with the reconnect timeouts and keeps the current desktop if it cannot be reached.
