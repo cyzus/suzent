@@ -39,10 +39,12 @@ message.
 | Command | What it does | Works in |
 |---|---|---|
 | `/skill` (also `/skills`) | List your enabled skills. | Everywhere |
-| `/skill <name> [task]` | Have the agent load that skill, then do the task. Without a task, the agent says what the skill does and asks what you want. In the desktop app, typing `/skill ` suggests your skill names. | Everywhere |
+| `/skill <name> [task]` | Give the agent that skill's full instructions with your message, then have it do the task. Without a task, the agent says what the skill does and asks what you want. In the desktop app, typing `/skill ` suggests your skill names. | Everywhere |
 
 Unlike other commands, `/skill <name>` goes to the agent, so it starts a normal
-turn. See [Skills](../03-features/skills.md).
+turn. The agent gets the whole skill right away instead of deciding whether to
+read it. Using the same skill again sends it again, so any edits you made to it
+since are picked up. See [Skills](../03-features/skills.md).
 
 ## Undo and retry
 
