@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { isWeb } from '../../lib/runtime';
 import { fileContextExtras } from '../../lib/fileContextActions';
+import { freshPointerPoint } from '../../lib/menuPlacement';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
@@ -414,9 +415,12 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       event.preventDefault();
       event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
-      const x = 'clientX' in event && event.clientX > 0 ? event.clientX : rect.left + 16;
-      const y = 'clientY' in event && event.clientY > 0 ? event.clientY : rect.bottom;
-      setContextMenu({ ...item, x, y });
+      const point = 'clientX' in event ? freshPointerPoint(event) : null;
+      setContextMenu({
+        ...item,
+        x: point?.x ?? rect.left + 16,
+        y: point?.y ?? rect.bottom,
+      });
     },
     []
   );

@@ -51,6 +51,7 @@ import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { HeartbeatRowMenu, ScheduledTaskMenu } from './sidebar/AutomationRowMenu';
 import { openOwnedMenu } from './chat/messageMenuActions';
+import { freshPointerPoint } from '../lib/menuPlacement';
 import { canStartRun } from '../lib/runNowGuard';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
@@ -1470,7 +1471,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           if (renamingChatId) return;
           e.preventDefault();
           e.stopPropagation();
-          openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
+          const rect = e.currentTarget.getBoundingClientRect();
+          openChatMenu(
+            chat.id,
+            freshPointerPoint(e) ?? { x: rect.left + 16, y: rect.top + rect.height / 2 }
+          );
         }}
         className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-1.5 border-transparent' : 'py-2 border-b last:border-b-0'}
           ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-2' : 'px-3.5'}
@@ -1769,10 +1774,9 @@ export const ChatList: React.FC<ChatListProps> = ({
                                     event.stopPropagation();
                                     setTaskMenu({
                                       jobId: job.id,
-                                      anchor:
-                                        event.clientX || event.clientY
-                                          ? { x: event.clientX, y: event.clientY }
-                                          : { rect: event.currentTarget.getBoundingClientRect() },
+                                      anchor: freshPointerPoint(event) ?? {
+                                        rect: event.currentTarget.getBoundingClientRect(),
+                                      },
                                     });
                                   }}
                                   className={`group/task relative transition-colors ${
@@ -2333,9 +2337,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 event.preventDefault();
                                 // Keep the open menu's own contextmenu listener from closing it.
                                 event.stopPropagation();
+                                const rect = event.currentTarget.getBoundingClientRect();
                                 setProjectMenu({
                                   projectId: project.id,
-                                  anchor: { x: event.clientX, y: event.clientY },
+                                  anchor: freshPointerPoint(event) ?? {
+                                    x: rect.left + 16,
+                                    y: rect.top + rect.height / 2,
+                                  },
                                 });
                               }}
                               className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
