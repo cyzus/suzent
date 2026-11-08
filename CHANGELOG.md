@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closing the window keeps Suzent in the Windows notification area or the macOS menu bar until you quit.
 - The tray shows which chats are waiting on you or running, and closing the window asks whether to minimize to the tray or quit, with a setting to remember the choice.
 - New Email plugin: connect QQ Mail, NetEase, Gmail, iCloud and other mailboxes so the agent can search, read and draft mail, and send each message only after you approve it.
+- The agent can search only past lessons, and lessons in the notebook's Experience pages now show up in memory search.
 - See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
 - Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
 - Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
