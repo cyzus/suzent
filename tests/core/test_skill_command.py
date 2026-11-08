@@ -39,7 +39,7 @@ def test_reminder_names_the_skill_and_the_task(manager: SkillManager) -> None:
     )
 
     assert reminder is not None
-    assert 'skill_name="writer"' in reminder
+    assert f'skill_name="{manager.loader.get_skill("writer").id}"' in reminder
     assert "carry out the rest of their message" in reminder
 
 
@@ -81,3 +81,28 @@ async def test_command_explains_unusable_skills(manager: SkillManager) -> None:
 
     assert "turned off" in disabled
     assert "No skill named `missing`" in missing
+
+
+def test_reminder_keeps_the_requested_source(tmp_path: Path) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    _write_skill(first, "writer", "First writer")
+    _write_skill(second, "writer", "Second writer")
+    manager = SkillManager(skills_dir=first)
+    manager.skills_dirs = [first, second]
+    manager.loader.skills_dirs = manager.skills_dirs
+    manager.loader.source_ids[second.resolve()] = "repo"
+    manager.persistence_file = tmp_path / "config" / "skills.json"
+    manager.reload()
+    ids = [s.id for s in manager.loader.list_skills()]
+    assert len(set(ids)) == 2
+    requested = next(
+        i
+        for i in ids
+        if manager.loader.get_skill(i).metadata.description == "First writer"
+    )
+    manager.enable_skill(requested)
+
+    reminder = skill_invocation_reminder(f"/skill {requested} go", manager)
+
+    assert reminder is not None
+    assert f'skill_name="{requested}"' in reminder

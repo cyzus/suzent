@@ -50,10 +50,12 @@ def skill_invocation_reminder(message: str, skill_manager: Any) -> str | None:
         if task
         else "then briefly say what it can do and ask what they want done with it."
     )
+    # The ID, not the name: same-named skills from several sources resolve by
+    # name to the last one, which may not be the one checked as enabled here.
     return (
         f"The user invoked the `{skill.metadata.name}` skill with /skill. Before "
         f"anything else, load it with skill_execute (skill_name="
-        f'"{skill.metadata.name}"), {follow_up}'
+        f'"{skill.id}"), {follow_up}'
     )
 
 
