@@ -1,0 +1,1 @@
+{"products":{"mobile":"patch"},"summary":"Reduce Android conversation entry flicker by preserving open messages, avoiding temporary empty greetings, and positioning history before layout."}
