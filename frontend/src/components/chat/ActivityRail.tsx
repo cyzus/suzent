@@ -458,8 +458,9 @@ export const TurnActivity: React.FC<{
         <div className="activity-rail-header activity-turn-duration">
           <WorkedDuration startedAtMs={startedAtMs} isActive />
         </div>
-        <div className="activity-turn-history space-y-2 py-1">{children.slice(0, finalStart)}</div>
-        {children.slice(finalStart)}
+        {/* New activity changes finalStart. Keep streamed blocks under one
+            parent so React preserves their DOM, selection and scroll anchors. */}
+        <div className="activity-turn-history space-y-2 py-1">{children}</div>
       </>
     );
   return (
