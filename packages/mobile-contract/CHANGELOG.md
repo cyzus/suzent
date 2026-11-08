@@ -3,6 +3,7 @@
 ## [mobile-v0.7.3] - 2026-11-08
 
 ### Release notes
+- While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
 - Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
 
 ## [mobile-v0.7.2] - 2026-11-07
