@@ -137,6 +137,14 @@ agent.
 | **Headless server** | Suzent running as a background service with no window. | [Headless server](#headless-server) |
 | **Chat apps** | Telegram, Slack, Discord, Feishu, or WeChat. | [Chat apps](https://suzent.com/docs/chat-apps) |
 
+On Windows, closing the desktop window leaves Suzent in the notification
+area. On macOS, it leaves Suzent in the menu bar. **Open** brings the window
+back, and so does clicking the dock icon or opening the app again. **Quit**
+exits. Until you quit, work Suzent already started keeps running. On Linux,
+closing the window quits. To keep Suzent running after you quit — on any
+system — use the
+[background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
+
 ## Phone
 
 The Suzent app for Android and iOS (currently in preview) is a remote control
@@ -695,8 +703,8 @@ the same steps every time.
   [Desktop, phone, and browser](https://suzent.com/docs/getting-started/platforms).
 - **From a chat app** such as Telegram or Slack: see
   [Chat apps](https://suzent.com/docs/chat-apps).
-- **Keep it running** after you close the window, so chat apps and scheduled
-  tasks keep working: turn on **Settings → Background Service**. See
+- **Keep it running** after you quit, so chat apps and scheduled tasks keep
+  working: turn on **Settings → Background Service**. See
   [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
 ## Back it up
@@ -1274,13 +1282,16 @@ Change the 20-turn limit with `goals_max_turns` in
 ## Keep Suzent running in the background
 
 Scheduled tasks, heartbeats, chat apps, and paired devices only work while
-Suzent is running. To keep them going after you close the window, turn on
-**Settings → Background Service**.
+Suzent is running.
 
-Suzent then starts when you sign in and keeps running without the window. The
-desktop app connects to it when you open it, and closing the window doesn't
-stop it. It needs no administrator access, and it restarts itself if it
-crashes or uses too much memory. Updates stop and restart it for you.
+On Windows and macOS, closing the window does not quit. Suzent stays in the
+notification area or the menu bar and keeps going until you choose **Quit**.
+On Linux, closing the window quits.
+
+To keep Suzent running after you quit, and to start it when you sign in, turn
+on **Settings → Background Service**. It needs no administrator access, and it
+restarts itself if it crashes or uses too much memory. Updates stop and
+restart it for you. The desktop app connects to it when you open it.
 
 The same thing from the command line:
 
@@ -1317,7 +1328,7 @@ suzent heartbeat run -c <chat_id>
 ## Troubleshooting
 
 **A task never runs.** Check that it is switched on and that its next run time
-is in the future. If you closed the app, turn on the background service.
+is in the future. If you quit Suzent, turn on the background service.
 
 **A task keeps failing.** Read its last error in **Settings → Automation** and
 fix the cause; the next scheduled run uses the fix. A one-time task that failed
@@ -5336,8 +5347,10 @@ Send these as messages to the bot:
 
 ## Keep it online
 
-Chat apps only work while Suzent is running. To keep them available after you
-close the window, turn on the [background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
+Chat apps only work while Suzent is running. On Windows and macOS, closing
+the window leaves Suzent in the notification area or the menu bar. To keep
+chat apps available after you quit, turn on the
+[background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
 
 ---
@@ -5677,8 +5690,8 @@ background service keeps its own log; see `suzent service logs` below.
 
 ## Background service
 
-The background service keeps Suzent running after you close the window, so
-scheduled tasks and chat apps keep working. The same switch is in
+The background service keeps Suzent running after you quit, so scheduled
+tasks and chat apps keep working. The same switch is in
 **Settings → Background Service**. See
 [Keep Suzent running in the background](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
@@ -6182,16 +6195,18 @@ next to the message box, or choose one of the
 
 ### Scheduled tasks don't run when I close the window.
 
-Tasks, heartbeats, and chat apps only work while Suzent is running. Turn on
-**Settings → Background Service** to keep it running after you close the
-window. See [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
+Tasks, heartbeats, and chat apps only work while Suzent is running. On Windows
+and macOS, closing the window leaves Suzent in the notification area or the
+menu bar, so tasks keep running until you choose **Quit**. After you quit, or
+on Linux, turn on **Settings → Background Service**. See
+[Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
 ## Troubleshooting
 
 ### My chat app bot doesn't reply.
 
 Check three things. Suzent must be running, so turn on the background service
-if you closed the window. The app must be enabled in
+if you quit. The app must be enabled in
 **Settings → Social Channels**. And your own user ID must be in
 **Allowed users** on the **Access control** tab, because messages from anyone
 else are refused. See [Access control & pairing](https://suzent.com/docs/chat-apps/access-control).
@@ -6264,7 +6279,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](https://suzent.com/docs/features/nodes) |
 | **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
 | **Appearance** | Theme, color scheme, and language. | [Making it yours](https://suzent.com/docs/using/make-it-yours#look-and-language) |
-| **Background Service** | Keep Suzent running after you close the window. | [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background) |
+| **Background Service** | Keep Suzent running after you quit, and start it at sign-in. | [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](https://suzent.com/docs/features/filesystem), [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop) |
 | **Data & Sync** | Sync your settings, skills, and memory through GitHub. | [GitHub Sync](https://suzent.com/docs/features/github-sync) |
 | **Usage** | See what you've spent and how many tokens you've used. | [FAQ](https://suzent.com/docs/reference/faq#how-much-am-i-spending) |
