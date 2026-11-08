@@ -316,18 +316,6 @@ private fun SurfaceInput(value: String, onValueChange: (String) -> Unit, placeho
         decorationBox = { input -> Box { if (value.isEmpty()) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium); input() } })
 }
 
-private const val htmlBridge = """
-(function () {
-  window.addEventListener('message', function (event) {
-    var data = event.data;
-    if (data && data.type === 'a2ui:action' && typeof data.action === 'string') SuzentSurface.action(data.action, JSON.stringify(data.context || {}));
-  });
-  var report = function () { SuzentSurface.height(document.documentElement.scrollHeight); };
-  new ResizeObserver(report).observe(document.documentElement);
-  window.addEventListener('load', report);
-})();
-"""
-
 /**
  * Agent HTML in an isolated web view: no file or content access, no shared storage, links open outside the app,
  * and `postMessage({type: 'a2ui:action'})` reaches the agent like a button.
@@ -335,10 +323,11 @@ private const val htmlBridge = """
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: SurfaceAct) {
-    var measured by remember { mutableStateOf(120f) }
+    var measured by remember(html.html) { mutableStateOf<Float?>(null) }
     val canAct by rememberUpdatedState(interactive)
     val currentAct by rememberUpdatedState(act)
-    val height = html.height?.toFloat() ?: measured
+    // The agent's height is only a first guess until the page reports its content height.
+    val height = measured ?: html.height?.toFloat() ?: 120f
     AndroidView(factory = { context ->
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -349,14 +338,19 @@ private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: Sur
             isVerticalScrollBarEnabled = false
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             addJavascriptInterface(object {
-                @JavascriptInterface fun height(value: Double) { post { measured = value.toFloat().coerceIn(40f, 1200f) } }
-                @JavascriptInterface fun action(name: String, context: String) {
-                    val parsed = runCatching { jsonMap(JSONObject(context)) }.getOrDefault(emptyMap())
-                    post { if (canAct && name.isNotBlank()) currentAct(name, parsed) {} }
+                @JavascriptInterface fun post(message: String) {
+                    val body = runCatching { JSONObject(message) }.getOrNull() ?: return
+                    when (body.optString("kind")) {
+                        "height" -> this@apply.post { measured = body.optDouble("height", 0.0).toFloat().coerceIn(40f, 5000f) }
+                        "action" -> {
+                            val name = body.optString("action")
+                            val context = jsonMap(body.optJSONObject("context"))
+                            this@apply.post { if (canAct && name.isNotBlank()) currentAct(name, context) {} }
+                        }
+                    }
                 }
             }, "SuzentSurface")
             webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView, url: String?) { view.evaluateJavascript(htmlBridge, null) }
                 // The surface's own document loads in place; anything the user follows opens in the browser.
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val scheme = request.url.scheme?.lowercase()
@@ -365,10 +359,10 @@ private fun SurfaceHtml(html: A2UIComponent.Html, interactive: Boolean, act: Sur
                     return true
                 }
             }
-            loadDataWithBaseURL(null, phoneViewport(html.html), "text/html", "UTF-8", null)
+            loadDataWithBaseURL(null, surfaceHtmlDocument(html.html), "text/html", "UTF-8", null)
             tag = html.html
         }
-    }, update = { view -> if (view.tag != html.html) { view.tag = html.html; view.loadDataWithBaseURL(null, phoneViewport(html.html), "text/html", "UTF-8", null) } },
+    }, update = { view -> if (view.tag != html.html) { view.tag = html.html; view.loadDataWithBaseURL(null, surfaceHtmlDocument(html.html), "text/html", "UTF-8", null) } },
         onRelease = { it.destroy() },
         modifier = Modifier.fillMaxWidth().height(height.dp).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .4f)))
 }

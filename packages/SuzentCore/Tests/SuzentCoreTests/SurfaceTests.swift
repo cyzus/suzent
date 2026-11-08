@@ -79,3 +79,11 @@ private struct SurfaceFixtures: Decodable {
     let empty = try JSONDecoder().decode(A2UISurface.self, from: Data(#"{"id":"x"}"#.utf8))
     #expect(empty.component == .unknown(""))
 }
+
+@Test func htmlDocumentFitsAPhoneAndSizesToContent() {
+    let fragment = surfaceHTMLDocument("<p>Hi</p>")
+    #expect(fragment.hasPrefix("<!DOCTYPE html>\n<meta name=\"viewport\""))
+    #expect(fragment.contains("body.scrollHeight") && fragment.contains("messageHandlers.surface") && fragment.contains("a2ui:action"))
+    let own = surfaceHTMLDocument("<!doctype html><meta name='viewport' content='width=400'><p>Hi</p>")
+    #expect(own.hasPrefix("<!doctype html><meta name='viewport'"))
+}

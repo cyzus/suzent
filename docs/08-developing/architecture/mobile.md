@@ -295,8 +295,12 @@ with optional free text, multiselect chips, checkbox, textarea; required fields 
 submit), list, progress, divider, card, stack and columns (side by side only when each
 column gets at least 140 pt/dp, otherwise stacked). HTML runs in a `WKWebView` with a
 non-persistent data store or a `WebView` without file, content or DOM storage access,
-gets a phone viewport when it has none, opens followed links in the browser, and bridges
-`postMessage({type: 'a2ui:action'})` back as an action. Surfaces with `target: "canvas"`
+gets a phone viewport and standards mode when it has none, opens followed links in the
+browser, and bridges `postMessage({type: 'a2ui:action'})` back as an action. It always
+sizes to its content with the desktop's auto-size shim (body height, re-measured on
+resize, DOM changes, image loads and fonts, capped at 5000 pt/dp); an agent-given
+`height` is only the first guess, because scrolling inside the page would fight the
+chat's own scroll. Surfaces with `target: "canvas"`
 also render inline until the conversation panel shows them.
 
 Actions follow the desktop dispatcher. An ordinary button or form is sent through
