@@ -967,8 +967,29 @@ class ChatProcessor:
         # so turn-end persistence snapshots it. The old pre-turn compaction block was
         # removed as redundant.
 
+        # `/skill <name> ...` runs the agent rather than answering the turn, so
+        # it bypasses dispatch and rides in as a reminder to load that skill.
+        skill_reminder = None
+        if (
+            message_content
+            and message_content.lstrip().lower().startswith("/skill")
+            and not resume_approvals
+            and not is_heartbeat
+        ):
+            from suzent.core.commands.skill import skill_invocation_reminder
+
+            skill_reminder = skill_invocation_reminder(
+                message_content, deps.skill_manager
+            )
+
         # Universal slash command dispatch (before history is modified or agent runs)
-        if message_content and not resume_approvals and not files and not is_heartbeat:
+        if (
+            message_content
+            and not resume_approvals
+            and not files
+            and not is_heartbeat
+            and skill_reminder is None
+        ):
             from suzent.core.commands import (
                 dispatch as _dispatch_command,
                 CommandContext as _CmdCtx,
@@ -1145,6 +1166,8 @@ class ChatProcessor:
         # to the user) to inspect them via analyze_visual. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
+        if skill_reminder:
+            _adhoc_reminders.append(skill_reminder)
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
         if _vision_reminder:
             _adhoc_reminders.append(_vision_reminder)
