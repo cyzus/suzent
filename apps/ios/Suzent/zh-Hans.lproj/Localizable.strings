@@ -41,7 +41,7 @@
 "Your Suzent, together." = "随时连接你的 Suzent。";
 "Connect to your desktop. Continue conversations wherever you are." = "连接桌面端，随时继续你的对话。";
 "Waiting for desktop approval" = "等待桌面端批准";
-"Check this code on your desktop, then choose which conversations and actions to share." = "核对桌面端的验证码，然后选择要共享的会话和操作权限。";
+"Click Allow on your computer to finish connecting." = "在电脑上点击“允许”即可完成连接。";
 "Cancel pairing" = "取消配对";
 "Connect to this desktop?" = "连接此桌面端？";
 "Your desktop will ask you to approve this phone. Node access stays separate." = "桌面端会请求批准这台手机。Node 访问需单独开启。";

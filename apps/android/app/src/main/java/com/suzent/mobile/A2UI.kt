@@ -175,7 +175,59 @@ fun canvasActionLabel(text: String): String? {
     return match.groupValues[2].ifEmpty { match.groupValues[1] }
 }
 
-/** Agent HTML written for a desktop iframe gets a phone viewport, so it is not laid out 980 px wide and shrunk. */
-fun phoneViewport(html: String): String =
-    if (Regex("""<meta[^>]+name=["']?viewport""", RegexOption.IGNORE_CASE).containsMatchIn(html)) html
-    else "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">$html"
+/**
+ * Agent HTML written for a desktop iframe, made to fit a phone reply: a phone viewport, standards mode, and the
+ * desktop's auto-size shim. It reports `{kind: "height"}` as content grows (fonts, images, script output) and
+ * forwards `postMessage({type: "a2ui:action"})` as `{kind: "action"}`. Phones always size to content: a fixed
+ * height would need scrolling inside the page, which the chat's own scroll takes over.
+ */
+fun surfaceHtmlDocument(html: String): String {
+    var document = html
+    if (!Regex("""<meta[^>]+name=["']?viewport""", RegexOption.IGNORE_CASE).containsMatchIn(document))
+        document = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">$document"
+    if (!Regex("""^\s*<!doctype\s""", RegexOption.IGNORE_CASE).containsMatchIn(document)) document = "<!DOCTYPE html>\n$document"
+    return document + "\n" + surfaceHtmlShim
+}
+
+private val surfaceHtmlShim = """
+<style>html, body { height: auto !important; min-height: 0 !important; }</style>
+<script>
+(function () {
+  function post(body) {
+    var text = JSON.stringify(body);
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.surface) window.webkit.messageHandlers.surface.postMessage(text);
+    else if (window.SuzentSurface) window.SuzentSurface.post(text);
+  }
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (data && data.type === 'a2ui:action' && typeof data.action === 'string') post({ kind: 'action', action: data.action, context: data.context || {} });
+  });
+  var pending = false;
+  var previous = 0;
+  function measure() {
+    pending = false;
+    var body = document.body;
+    if (!body || !document.documentElement.clientWidth) return;
+    var style = getComputedStyle(body);
+    var height = Math.ceil(Math.max(body.scrollHeight, body.getBoundingClientRect().height) + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0));
+    if (height > 0 && height !== previous) { previous = height; post({ kind: 'height', height: height }); }
+  }
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(measure);
+  }
+  window.addEventListener('load', schedule);
+  window.addEventListener('resize', schedule);
+  document.addEventListener('load', schedule, true);
+  if (window.ResizeObserver) {
+    var observer = new ResizeObserver(schedule);
+    observer.observe(document.documentElement);
+    observer.observe(document.body);
+  }
+  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+  if (document.fonts) document.fonts.ready.then(schedule);
+  schedule();
+})();
+</script>
+""".trimIndent()

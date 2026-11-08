@@ -8,7 +8,7 @@ import SuzentCore
     var pairingInvitation: PairingInvitation?
     var pairingPreview: PairingPreview?
     var pairingStatus: String?
-    var pairingCode: String?
+    var awaitingDesktop = false
     var device: ClientDevice?
     var canReconnect = false
     var reconnecting = false
@@ -324,7 +324,7 @@ import SuzentCore
         pairingTask = nil
         pairingStatus = nil
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         pairingPreview = nil
         busy = false
         generation = UUID()
@@ -347,7 +347,7 @@ import SuzentCore
         let viaRelay = pairingViaRelay
         pairingTask = Task {
             var savedID = target?.id
-            defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
+            defer { if generation == current { busy = false; awaitingDesktop = false; pairingStatus = nil } }
             pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
@@ -369,7 +369,7 @@ import SuzentCore
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
-                if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
+                if !invitation.phoneConfirmation { awaitingDesktop = true }
                 pairingStatus = String(localized: "Finishing connection…")
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
@@ -396,7 +396,7 @@ import SuzentCore
                         if store.activeId == id { origin = saved.origin; canReconnect = true }
                         try await activate(id, saved)
                         repairActive = false
-                        busy = false; pairingCode = nil; pairingStatus = nil
+                        busy = false; awaitingDesktop = false; pairingStatus = nil
                         pairingVersion += 1
                         pairingInvitation = nil
                         return
@@ -1098,7 +1098,7 @@ import SuzentCore
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin ?? ""
     }
