@@ -895,7 +895,7 @@ struct ActivityContent: View {
                         await surfaceHandler?.act(surface, action, context) ?? false
                     }
                 }
-                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
+                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1, expansionKey: railChunkKey(chunk, index: index)) }
             }
         }
     }
