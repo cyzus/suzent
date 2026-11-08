@@ -3,9 +3,11 @@
 
 mod auto_update;
 mod backend;
+mod close_action;
 mod notifications;
 mod packaged;
 mod tray;
+mod tray_status;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
@@ -1139,7 +1141,11 @@ fn main() {
             get_staged_update,
             apply_staged_update_now,
             notifications::show_notification,
-            tray::set_tray_language
+            tray::set_tray_language,
+            close_action::ack_close_prompt,
+            close_action::get_close_action,
+            close_action::set_close_action,
+            close_action::resolve_close
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

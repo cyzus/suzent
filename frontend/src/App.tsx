@@ -13,6 +13,7 @@ import {
 import { ChatList } from './components/ChatList';
 import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
+import { ClosePrompt } from './components/ClosePrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SidebarToggleIcon } from './components/SidebarToggleIcon';
@@ -508,6 +509,23 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     loadChatRef.current = loadChat;
   }, [loadChat]);
+  React.useEffect(() => {
+    if (isWeb()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<string>('tray-open-chat', (event) => {
+        void loadChatRef.current(event.payload, { force: true });
+      }).then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+    );
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
   React.useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
@@ -1640,6 +1658,7 @@ export default function App({ children }: AppProps = {}) {
           </ChatProvider>
         </ProjectProvider>
       )}
+      <ClosePrompt />
     </ErrorBoundary>
   );
 }

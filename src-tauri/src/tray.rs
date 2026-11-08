@@ -1,6 +1,7 @@
 //! Windows notification area and macOS menu bar.
 //!
-//! Closing the main window hides it. The process, and any backend it owns,
+//! Closing the main window hides it, quits, or asks, per the user's close
+//! preference (see `close_action`). A hidden app, and any backend it owns,
 //! keeps running until an explicit quit. Quit, restart, and the updater call
 //! `AppHandle::exit`, which does not go through this hide path, so child
 //! cleanup and staged updates still run.
@@ -15,8 +16,10 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
 
-const SHOW_ID: &str = "tray-show";
-const QUIT_ID: &str = "tray-quit";
+use crate::close_action::CloseAction;
+
+pub const SHOW_ID: &str = "tray-show";
+pub const QUIT_ID: &str = "tray-quit";
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
 static EXITING: AtomicBool = AtomicBool::new(false);
@@ -219,23 +222,41 @@ pub fn on_close_requested<R: Runtime>(window: &tauri::Window<R>, api: &tauri::Cl
     ) {
         return;
     }
-    // Hide first. prevent_close only after that succeeds, so a failed hide
-    // still closes the window instead of leaving an invisible app.
-    match window.hide() {
-        Ok(()) => api.prevent_close(),
-        Err(error) => {
-            eprintln!("Could not hide the window, so it will close: {error}");
+    match crate::close_action::current() {
+        CloseAction::Quit => {
+            api.prevent_close();
+            quit(window.app_handle());
         }
+        CloseAction::Ask => {
+            api.prevent_close();
+            crate::close_action::prompt(window.app_handle());
+        }
+        // Hide first. prevent_close only after that succeeds, so a failed hide
+        // still closes the window instead of leaving an invisible app.
+        CloseAction::Tray => match window.hide() {
+            Ok(()) => api.prevent_close(),
+            Err(error) => {
+                eprintln!("Could not hide the window, so it will close: {error}");
+            }
+        },
     }
 }
 
-fn on_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
+/// An explicit quit: skips the hide path so child cleanup and staged
+/// updates still run.
+pub fn quit<R: Runtime>(app: &AppHandle<R>) {
+    mark_exiting();
+    app.exit(0);
+}
+
+fn on_menu(app: &AppHandle, id: &str) {
+    if let Some(chat_id) = id.strip_prefix(crate::tray_status::CHAT_PREFIX) {
+        crate::tray_status::open_chat(app, chat_id);
+        return;
+    }
     match menu_action(id) {
         Some(MenuAction::Show) => reveal_main(app),
-        Some(MenuAction::Quit) => {
-            mark_exiting();
-            app.exit(0);
-        }
+        Some(MenuAction::Quit) => quit(app),
         None => {}
     }
 }
@@ -291,6 +312,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         }
     }
     TRAY_READY.store(true, Ordering::SeqCst);
+    crate::tray_status::start(app.clone(), system_language());
     install_quit_hook_if_needed();
     println!(
         "Closing the window leaves Suzent in the {}",
@@ -372,6 +394,7 @@ pub fn set_tray_language(
     state: tauri::State<'_, TrayState>,
     language: String,
 ) -> Result<(), String> {
+    crate::tray_status::set_language(&language);
     let copy = copy_for_language(&language);
     let items = state
         .items
