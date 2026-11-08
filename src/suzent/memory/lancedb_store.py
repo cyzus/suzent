@@ -501,6 +501,7 @@ class LanceDBMemoryStore:
         limit: int = 10,
         chat_id: Optional[str] = None,
         min_importance: float = 0.0,
+        record_access: bool = True,
     ) -> List[Dict[str, Any]]:
         """Pure semantic search using vector similarity."""
         try:
@@ -520,7 +521,8 @@ class LanceDBMemoryStore:
                 for r in results
             ]
 
-            self._schedule_access_recording(formatted_results)
+            if record_access:
+                self._schedule_access_recording(formatted_results)
 
             return formatted_results
 
@@ -560,6 +562,7 @@ class LanceDBMemoryStore:
         user_id: str,
         chat_id: Optional[str] = None,
         limit: int = 10,
+        record_access: bool = True,
     ) -> List[Dict[str, Any]]:
         """Public FTS-only search (no embedding API call, purely local)."""
         where = self._build_user_chat_filter(user_id, chat_id)
@@ -567,7 +570,8 @@ class LanceDBMemoryStore:
         formatted_results = [
             self._format_memory_result(r, score=r.get("_score", 0.0)) for r in results
         ]
-        self._schedule_access_recording(formatted_results)
+        if record_access:
+            self._schedule_access_recording(formatted_results)
         return formatted_results
 
     @staticmethod
@@ -623,6 +627,10 @@ class LanceDBMemoryStore:
             scored_results.append(result)
 
         return scored_results
+
+    def record_accesses(self, results: List[Dict[str, Any]]) -> None:
+        """Count *results* as accessed, for a caller that searched with ``record_access=False``."""
+        self._schedule_access_recording(results)
 
     def _schedule_access_recording(self, results: List[Dict[str, Any]]) -> None:
         """Fire-and-forget access-counter bookkeeping.
@@ -686,6 +694,7 @@ class LanceDBMemoryStore:
         fts_weight: float = 0.3,
         recency_boost: float = 0.1,
         importance_boost: float = 0.2,
+        record_access: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Hybrid search combining semantic similarity, full-text search,
@@ -716,7 +725,8 @@ class LanceDBMemoryStore:
             # Sort and limit
             scored_results.sort(key=lambda x: x["score"], reverse=True)
             final_results = scored_results[:limit]
-            self._schedule_access_recording(final_results)
+            if record_access:
+                self._schedule_access_recording(final_results)
 
             return final_results
 

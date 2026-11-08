@@ -378,6 +378,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 user_id=user_id,
                 chat_id=None,  # Always search user-level
                 limit=fetch_limit,
+                record_access=False,
             )
             if min_importance is not None:
                 memories = [
@@ -403,6 +404,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                     )
                 ]
             memories = memories[offset : offset + limit]
+            manager.store.record_accesses(memories)
         else:
             # List all memories (no search). Ordering and the importance band are
             # applied across the whole set before pagination, so the first page is

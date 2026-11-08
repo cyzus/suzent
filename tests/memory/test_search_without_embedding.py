@@ -4,8 +4,14 @@ from suzent.memory.manager import MemoryManager
 class FakeStore:
     def __init__(self):
         self.calls = []
+        self.recorded = []
 
-    async def fts_search(self, query_text, user_id, chat_id=None, limit=10):
+    def record_accesses(self, results):
+        self.recorded.extend(r["id"] for r in results)
+
+    async def fts_search(
+        self, query_text, user_id, chat_id=None, limit=10, record_access=True
+    ):
         self.calls.append(
             {
                 "query_text": query_text,
@@ -51,8 +57,15 @@ class RankedStore:
 
     def __init__(self):
         self.limits = []
+        self.recorded = []
 
-    async def fts_search(self, query_text, user_id, chat_id=None, limit=10):
+    def record_accesses(self, results):
+        self.recorded.extend(r["id"] for r in results)
+
+    async def fts_search(
+        self, query_text, user_id, chat_id=None, limit=10, record_access=True
+    ):
+        assert not record_access
         self.limits.append(limit)
         rows = [
             {
@@ -84,3 +97,14 @@ async def test_a_kind_filter_finds_a_lesson_ranked_below_the_limit():
 
     assert [r["id"] for r in results] == ["lesson"]
     assert store.limits[0] > 2
+    assert store.recorded == ["lesson"]
+
+
+async def test_a_caller_that_trims_results_records_access_itself():
+    store = RankedStore()
+    manager = MemoryManager(store=store, embedding_model=None, embedding_dimension=2)
+    manager.embedding_gen.model = None
+
+    await manager.search_memories("log", user_id="user-1", record_access=False)
+
+    assert store.recorded == []

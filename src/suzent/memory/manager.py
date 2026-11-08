@@ -467,12 +467,17 @@ class MemoryManager:
         user_id: Optional[str] = None,
         kinds: Optional[List[str]] = None,
         use_hybrid: bool = True,
+        record_access: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Semantic search for memories (agent-facing tool).
         Uses hybrid search when embeddings are configured; otherwise falls back
         to local full-text search so memory remains useful without an embedding
         provider. With *kinds*, only memories of those kinds are returned.
+
+        Only the returned memories are counted as accessed, never the deeper set
+        ranked for a kind filter. A caller that trims the results further passes
+        ``record_access=False`` and records what it keeps.
         """
         depth = max(limit, FILTERED_SEARCH_DEPTH) if kinds else limit
         try:
@@ -482,6 +487,7 @@ class MemoryManager:
                     user_id=user_id or "",
                     chat_id=chat_id,
                     limit=depth,
+                    record_access=False,
                 )
             elif use_hybrid:
                 results = await self.store.hybrid_search(
@@ -490,6 +496,7 @@ class MemoryManager:
                     user_id=user_id,
                     chat_id=chat_id,
                     limit=depth,
+                    record_access=False,
                 )
             else:
                 results = await self.store.semantic_search(
@@ -497,6 +504,7 @@ class MemoryManager:
                     user_id=user_id,
                     chat_id=chat_id,
                     limit=depth,
+                    record_access=False,
                 )
 
             if kinds:
@@ -506,6 +514,8 @@ class MemoryManager:
                     if matches_metadata(r.get("metadata") or {}, kinds=kinds)
                 ][:limit]
 
+            if record_access:
+                self.store.record_accesses(results)
             self._log_recalls(results)
             logger.info(f"Memory search for '{query}': found {len(results)} results")
             return results
