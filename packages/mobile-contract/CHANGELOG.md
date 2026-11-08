@@ -4,6 +4,11 @@
 
 ### Release notes
 - Long-press menus open beside the finger and stay inside the screen, including in the Android app.
+- Reduce Android conversation entry flicker by preserving open messages, avoiding temporary empty greetings, and positioning history before layout.
+- Smooth Android composer transitions and keep the voice or send button anchored while the input expands and collapses.
+- Refine Android long-press menus with lighter styling, touch-aware placement, and smooth opening and closing animations.
+- Reduce flashing during Android history loading with a delayed loading indicator and a subtle message fade-in.
+- Keep iOS composer actions anchored during expansion and collapse, and reduce conversation loading flashes with preserved messages and delayed loading feedback.
 - See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
 - Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
 - While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
