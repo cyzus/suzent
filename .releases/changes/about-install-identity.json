@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID."
+}
