@@ -4,15 +4,15 @@ from unittest.mock import patch
 import pytest
 
 from suzent.core.commands import CommandContext, dispatch
-from suzent.core.commands.skill import skill_invocation_reminder
+from suzent.core.commands.skill import skill_invocation_context
 from suzent.skills.manager import SkillManager
 
 
-def _write_skill(root: Path, name: str, description: str) -> None:
+def _write_skill(root: Path, name: str, description: str, body: str = "body") -> None:
     skill_dir = root / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\nbody\n",
+        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n",
         encoding="utf-8",
     )
 
@@ -20,7 +20,7 @@ def _write_skill(root: Path, name: str, description: str) -> None:
 @pytest.fixture
 def manager(tmp_path: Path) -> SkillManager:
     skills_dir = tmp_path / "skills"
-    _write_skill(skills_dir, "writer", "Writes prose")
+    _write_skill(skills_dir, "writer", "Writes prose", "Use short sentences.")
     _write_skill(skills_dir, "painter", "Paints pictures")
     manager = SkillManager(skills_dir=skills_dir)
     manager.persistence_file = tmp_path / "config" / "skills.json"
@@ -33,31 +33,48 @@ def _ctx() -> CommandContext:
     return CommandContext(chat_id="chat-1", user_id="user", surface="frontend")
 
 
-def test_reminder_names_the_skill_and_the_task(manager: SkillManager) -> None:
-    reminder = skill_invocation_reminder(
+def test_context_carries_the_skill_and_the_task(manager: SkillManager) -> None:
+    context = skill_invocation_context(
         "/skill writer draft a note, don't be long", manager
     )
 
-    assert reminder is not None
-    assert f'skill_name="{manager.loader.get_skill("writer").id}"' in reminder
-    assert "carry out the rest of their message" in reminder
+    assert context is not None
+    skill_id = manager.loader.get_skill("writer").id
+    assert f'<skill name="writer" id="{skill_id}">' in context
+    assert "Use short sentences." in context
+    assert "do not load it again with skill_execute" in context
+    assert "Carry out the rest of their message" in context
 
 
-def test_reminder_without_a_task_asks_what_to_do(manager: SkillManager) -> None:
-    reminder = skill_invocation_reminder("/skills writer", manager)
+def test_context_without_a_task_asks_what_to_do(manager: SkillManager) -> None:
+    context = skill_invocation_context("/skills writer", manager)
 
-    assert reminder is not None
-    assert "ask what they want done" in reminder
+    assert context is not None
+    assert "ask what they want done" in context
+
+
+def test_context_is_not_truncated(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    long_body = "step\n" * 3000
+    _write_skill(skills_dir, "long", "A long skill", long_body + "THE END")
+    manager = SkillManager(skills_dir=skills_dir)
+    manager.persistence_file = tmp_path / "config" / "skills.json"
+    manager.enable_skill("long")
+
+    context = skill_invocation_context("/skill long go", manager)
+
+    assert context is not None
+    assert "THE END" in context
 
 
 @pytest.mark.parametrize(
     "message",
     ["/skill", "/skill painter go", "/skill missing go", "hello", "/skillful x"],
 )
-def test_no_reminder_unless_an_enabled_skill_is_named(
+def test_no_context_unless_an_enabled_skill_is_named(
     manager: SkillManager, message: str
 ) -> None:
-    assert skill_invocation_reminder(message, manager) is None
+    assert skill_invocation_context(message, manager) is None
 
 
 @pytest.mark.asyncio
@@ -83,10 +100,10 @@ async def test_command_explains_unusable_skills(manager: SkillManager) -> None:
     assert "No skill named `missing`" in missing
 
 
-def test_reminder_keeps_the_requested_source(tmp_path: Path) -> None:
+def test_context_keeps_the_requested_source(tmp_path: Path) -> None:
     first, second = tmp_path / "first", tmp_path / "second"
-    _write_skill(first, "writer", "First writer")
-    _write_skill(second, "writer", "Second writer")
+    _write_skill(first, "writer", "First writer", "first body")
+    _write_skill(second, "writer", "Second writer", "second body")
     manager = SkillManager(skills_dir=first)
     manager.skills_dirs = [first, second]
     manager.loader.skills_dirs = manager.skills_dirs
@@ -102,7 +119,9 @@ def test_reminder_keeps_the_requested_source(tmp_path: Path) -> None:
     )
     manager.enable_skill(requested)
 
-    reminder = skill_invocation_reminder(f"/skill {requested} go", manager)
+    context = skill_invocation_context(f"/skill {requested} go", manager)
 
-    assert reminder is not None
-    assert f'skill_name="{requested}"' in reminder
+    assert context is not None
+    assert f'id="{requested}"' in context
+    assert "first body" in context
+    assert "second body" not in context

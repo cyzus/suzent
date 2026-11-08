@@ -968,18 +968,20 @@ class ChatProcessor:
         # removed as redundant.
 
         # `/skill <name> ...` runs the agent rather than answering the turn, so
-        # it bypasses dispatch and rides in as a reminder to load that skill.
-        skill_reminder = None
+        # it bypasses dispatch and rides in with that skill's instructions.
+        skill_context = None
         if (
             message_content
             and message_content.lstrip().lower().startswith("/skill")
             and not resume_approvals
             and not is_heartbeat
         ):
-            from suzent.core.commands.skill import skill_invocation_reminder
+            from suzent.core.commands.skill import skill_invocation_context
 
-            skill_reminder = skill_invocation_reminder(
-                message_content, deps.skill_manager
+            skill_context = skill_invocation_context(
+                message_content,
+                deps.skill_manager,
+                sandbox_enabled=deps.sandbox_enabled,
             )
 
         # Universal slash command dispatch (before history is modified or agent runs)
@@ -988,7 +990,7 @@ class ChatProcessor:
             and not resume_approvals
             and not files
             and not is_heartbeat
-            and skill_reminder is None
+            and skill_context is None
         ):
             from suzent.core.commands import (
                 dispatch as _dispatch_command,
@@ -1096,6 +1098,7 @@ class ChatProcessor:
             build_combined_reminder,
             make_user_prompt_part,
             sanitize_untrusted_text,
+            wrap_in_system_reminder,
         )
 
         # Neutralize reminder delimiters in everything we did not author, before
@@ -1166,8 +1169,6 @@ class ChatProcessor:
         # to the user) to inspect them via analyze_visual. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
-        if skill_reminder:
-            _adhoc_reminders.append(skill_reminder)
         _vision_reminder = _stripped_image_reminder(stripped_image_paths)
         if _vision_reminder:
             _adhoc_reminders.append(_vision_reminder)
@@ -1187,6 +1188,20 @@ class ChatProcessor:
                 message_content = f"{message_content}\n\n{reminder}"
             else:
                 message_content = reminder
+        if skill_context:
+            # A block of its own, not an ad-hoc reminder: the reminder budget
+            # would truncate a typical skill, and the user asked for all of it.
+            from suzent.core.context_usage import register_context_source
+
+            register_context_source(
+                deps,
+                sanitize_untrusted_text(skill_context).strip(),
+                "skills",
+                "skill_invocation",
+            )
+            message_content = (
+                f"{message_content}\n{wrap_in_system_reminder(skill_context)}"
+            )
 
         # Only append a new user message if there's actual content or attachments
         # (For stateless resume, we might just be submitting tool results)
