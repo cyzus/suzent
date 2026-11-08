@@ -285,7 +285,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           <button
             type="button"
             onClick={handleNativePick}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-black uppercase transition-colors border-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:bg-yellow-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-black uppercase transition-colors border-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
           >
             <PlusIcon className="w-4 h-4" />
             {t('folderContext.chooseDifferent')}

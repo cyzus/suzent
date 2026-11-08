@@ -96,11 +96,16 @@ import io.noties.markwon.LinkResolver
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 
+fun suzentYellow(dark: Boolean): Color = Color(if (dark) PresentationTokens.yellow_dark else PresentationTokens.yellow)
+
+@Composable
+fun suzentYellow(): Color = suzentYellow(isSystemInDarkTheme())
+
 @Composable
 fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
-        secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
+        secondaryContainer = suzentYellow(), onSecondaryContainer = Color.Black,
         surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.background_dark),
         surfaceVariant = Color(PresentationTokens.code_header_dark),
         surfaceDim = Color(PresentationTokens.background_dark), surfaceBright = Color(PresentationTokens.code_header_dark),
@@ -113,7 +118,7 @@ fun SuzentTheme(content: @Composable () -> Unit) {
         error = Color(PresentationTokens.danger_dark), onError = Color.Black
     ) else lightColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
-        secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
+        secondaryContainer = suzentYellow(), onSecondaryContainer = Color.Black,
         surface = Color.White, background = Color.White, outline = Color.Black,
         onSurface = Color.Black, onBackground = Color.Black, onSurfaceVariant = Color(PresentationTokens.muted_light),
         outlineVariant = Color(0xFFE0E0E0),
@@ -213,7 +218,8 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         })
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
-                builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
+                // The bordered chip draws the fill. A theme background would paint over its border.
+                builder.codeBackgroundColor(0)
                     .codeTextColor(Color.Black.toArgb())
                     .codeBlockBackgroundColor(codeBackground.toArgb())
                     .codeBlockTextColor(codeForeground.toArgb())
@@ -330,6 +336,7 @@ private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlug
             }
         }
         renderer.setParsedMarkdown(view, view.prepareMarkdown(styled))
+        view.text = inlineCodeBordered(view.text, suzentYellow(binding.dark).toArgb(), 2f * view.resources.displayMetrics.density, view)
         view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.create()
         view.highlightColor = android.graphics.Color.TRANSPARENT
     })
@@ -432,7 +439,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), bubbleShape)
         else Modifier.drawBehind {
             drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
-        }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline)
+        }.background(suzentYellow()).border(PresentationTokens.borderWidth.dp, outline)
         // The text inside keeps long-press for selection; the bubble's padding opens the actions menu.
         var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
@@ -717,7 +724,7 @@ fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Bo
     val pressed by interaction.collectIsPressedAsState()
     val error = MaterialTheme.colorScheme.error
     val background = if (pressed && enabled) {
-        if (danger) error else Color(PresentationTokens.yellow)
+        if (danger) error else suzentYellow()
     } else if (danger) error.copy(alpha = .07f) else Color.Transparent
     val foreground = (if (pressed && enabled) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
         .copy(alpha = if (enabled) 1f else DisabledAlpha)
@@ -960,7 +967,7 @@ fun ApprovalCards(model: MobileModel) {
             var overflowing by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
                 .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
-                Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(suzentYellow()).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(request.toolName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(stringResource(R.string.approval_backend), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1066,7 +1073,7 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
                 items(options.size) { index ->
                     val (id, label) = options[index]
                     val active = id == selected
-                    Row(Modifier.fillMaxWidth().background(if (active) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.surface)
+                    Row(Modifier.fillMaxWidth().background(if (active) suzentYellow() else MaterialTheme.colorScheme.surface)
                         .selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
                         .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
@@ -1200,7 +1207,7 @@ fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
     val ink = MaterialTheme.colorScheme.onSurface
     val surface = MaterialTheme.colorScheme.surface
     val outlineSubtle = MaterialTheme.colorScheme.outlineVariant
-    val yellow = Color(PresentationTokens.yellow)
+    val yellow = suzentYellow()
     Box(Modifier.size(260.dp, 136.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val t = if (animated) seconds.doubleValue.toFloat() else 0f

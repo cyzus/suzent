@@ -76,7 +76,7 @@ struct PairingView: View {
                 .padding(PresentationTokens.spaceLarge)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(presentation: PresentationTokens.yellow))
+                .background(Color.suzentYellow)
                 .overlay(Rectangle().stroke(.black, lineWidth: PresentationTokens.borderWidth))
 
                 if model.awaitingDesktop {

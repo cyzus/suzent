@@ -71,7 +71,7 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
   const toneClass = (tone: BrutalDialogAction['tone']) => {
     switch (tone) {
       case 'primary':
-        return 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-brutal-yellow dark:text-brutal-black dark:hover:bg-yellow-300';
+        return 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-brutal-yellow dark:text-brutal-black dark:hover:brightness-95';
       case 'danger':
         return 'bg-brutal-red text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500';
       case 'default':

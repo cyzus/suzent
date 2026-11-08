@@ -202,7 +202,7 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         type="button"
         role="menuitem"
         onClick={() => setView('root')}
-        className="w-full text-left px-3 py-2 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2 border-b-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:bg-yellow-300 transition-colors"
+        className="w-full text-left px-3 py-2 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2 border-b-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:brightness-95 transition-colors"
       >
         <svg
           className="w-3 h-3"

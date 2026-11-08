@@ -961,7 +961,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           {stopStreaming && streamingForCurrentChat && input.trim() ? (
             <button
               type="submit"
-              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:brightness-95 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={!configReady}
               title={t('chatInput.redirectAgent')}
               aria-label={t('chatInput.redirectAgent')}

@@ -132,7 +132,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (cameraLive) SuzentTextButton(onClick = { torch = !torch },
-                                modifier = Modifier.border(1.dp, Color.White).background(if (torch) Color(PresentationTokens.yellow) else Color.Black)) {
+                                modifier = Modifier.border(1.dp, Color.White).background(if (torch) suzentYellow() else Color.Black)) {
                                 Text(stringResource(R.string.flashlight), color = if (torch) Color.Black else Color.White)
                             }
                             Box(Modifier.weight(1f)) { SuzentAction(stringResource(R.string.paste_invitation), { paste = true }, compact = true) }

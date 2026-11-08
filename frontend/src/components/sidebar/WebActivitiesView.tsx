@@ -167,7 +167,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
         {/* Right Side: Timeline Toggle */}
         <button
           onClick={() => setIsTimelineOpen(!isTimelineOpen)}
-          className={`shrink-0 px-4 flex flex-col justify-center items-center font-mono font-bold transition-all border-l-2 border-brutal-black dark:border-black ${isTimelineOpen ? 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black hover:dark:bg-neutral-200' : 'bg-brutal-yellow text-brutal-black hover:bg-yellow-300 dark:bg-brutal-yellow/80 hover:dark:bg-brutal-yellow'}`}
+          className={`shrink-0 px-4 flex flex-col justify-center items-center font-mono font-bold transition-all border-l-2 border-brutal-black dark:border-black ${isTimelineOpen ? 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black hover:dark:bg-neutral-200' : 'bg-brutal-yellow text-brutal-black hover:brightness-95 dark:bg-brutal-yellow/80 hover:dark:bg-brutal-yellow'}`}
           disabled={!hasHistory}
         >
           <div className="text-[10px] uppercase tracking-widest opacity-80 mb-0.5">

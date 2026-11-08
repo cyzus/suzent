@@ -41,7 +41,10 @@ never reuse the light text color for a shadow. Code blocks follow the active the
 and links use a lighter blue in dark mode while primary action fills retain blue.
 
 Yellow is the accent: pressed rows, the selected option, the New conversation
-action, the demo banner and the approval header. Errors never use it: they appear
+action, the demo banner and the approval header. Dark mode uses `yellow-dark`
+for that same accent, on desktop and both phones, so large yellow fills are
+quieter on the charcoal background. Light mode keeps `yellow`. Inline code is
+a yellow chip with black text and a 2 px black border on every platform. Errors never use it: they appear
 as a transient bottom toast on `error-surface` (`error-surface-dark`), auto-dismissed
 after 6 seconds. Every surface is square (`radius`); only Regent's message bubbles
 use `radiusBubble`. Meta text uses `typeMeta` and small labels `typeLabel`; pressed
