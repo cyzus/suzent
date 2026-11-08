@@ -1502,7 +1502,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             />
             <button
               type="submit"
-              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black transition-colors shrink-0"
+              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:brightness-95 text-brutal-black transition-colors shrink-0"
             >
               {t('chatList.rename.confirm')}
             </button>
@@ -2443,7 +2443,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => startChatInProject(project.id)}
-                                      className="mt-3 inline-flex items-center gap-1 border-2 border-brutal-black bg-brutal-yellow px-2.5 py-1.5 text-[10px] font-extrabold uppercase text-brutal-black hover:bg-yellow-300"
+                                      className="mt-3 inline-flex items-center gap-1 border-2 border-brutal-black bg-brutal-yellow px-2.5 py-1.5 text-[10px] font-extrabold uppercase text-brutal-black hover:brightness-95"
                                     >
                                       <PlusIcon
                                         className="h-3.5 w-3.5 stroke-[3]"

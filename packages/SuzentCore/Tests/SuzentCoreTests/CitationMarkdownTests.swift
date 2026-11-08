@@ -13,6 +13,15 @@ import Testing
     #expect(markdownWithCitationLinks("Fact \u{e200}cite\u{e202}missing\u{e201}.", sources: sources) == "Fact .")
 }
 
+@Test func inlineCodeParagraphsSplitAwayFromFences() {
+    let pieces = markdownPieces("Run `git status` now.\n\n```swift\nkeep `this`\n```\n\n- item `code`")
+    #expect(pieces.contains(.inline("Run `git status` now.")))
+    #expect(pieces.contains { if case .markdown(let text) = $0 { return text.contains("keep `this`") } else { return false } })
+    #expect(pieces.contains { if case .inline(let text) = $0 { return text.contains("- item `code`") } else { return false } })
+    #expect(markdownPieces("A lone ` stays.") == [.markdown("A lone ` stays.")])
+    #expect(markdownPieces("# Title `code`") == [.markdown("# Title `code`")])
+}
+
 @Test func decodesCitationMetadataForPresentation() throws {
     let data = #"{"type":"citation-sources","citationSources":[{"id":"t0_src_1","type":"webpage","title":"Example","url":"https://example.com","snippet":"A source"}]}"#.data(using: .utf8)!
     let part = try JSONDecoder().decode(MessagePart.self, from: data)
