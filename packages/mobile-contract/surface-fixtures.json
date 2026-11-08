@@ -1,0 +1,80 @@
+{
+  "surface": {
+    "id": "booking",
+    "title": "Booking",
+    "target": "inline",
+    "rev": 1730000000000,
+    "component": {
+      "type": "card",
+      "title": "Dinner",
+      "children": [
+        {"type": "text", "content": "Pick a time", "variant": "heading"},
+        {"type": "badge", "label": "Open", "color": "success"},
+        {"type": "columns", "ratios": [2, 1], "children": [
+          {"type": "list", "items": ["Fado", "Tapas"], "ordered": true},
+          {"type": "progress", "value": 40, "label": "Booked"}
+        ]},
+        {"type": "divider"},
+        {"type": "table", "columns": [{"key": "time", "label": "Time"}, {"key": "seats", "label": "Seats"}],
+         "rows": [{"time": "19:00", "seats": 2}, {"time": "21:00", "seats": null}]},
+        {"type": "stack", "gap": "sm", "children": [
+          {"type": "button", "label": "Book 19:00", "action": "book", "context": {"time": "19:00"}, "variant": "primary"},
+          {"type": "button", "label": "Later", "action": "later", "disabled": true}
+        ]},
+        {"type": "form", "action": "notes", "submit_label": "Save", "fields": [
+          {"name": "name", "label": "Name", "required": true, "placeholder": "Your name"},
+          {"name": "guests", "label": "Guests", "type": "number", "default": 2},
+          {"name": "area", "label": "Area", "type": "select", "options": ["Alfama", "Baixa"], "allow_free_text": true},
+          {"name": "diet", "label": "Diet", "type": "multiselect", "options": ["Vegetarian", "Vegan"], "default": ["Vegetarian"]},
+          {"name": "outside", "label": "Outside", "type": "checkbox", "default": false},
+          {"name": "note", "label": "Note", "type": "textarea"}
+        ]},
+        {"type": "html", "html": "<p>Map</p>", "height": 120},
+        {"type": "chart", "data": []}
+      ]
+    }
+  },
+  "component_types": ["card", "text", "badge", "columns", "list", "progress", "divider", "table", "stack", "button", "button", "form", "html", "unknown"],
+  "cell_text": {"19:00": "19:00", "2": "2", "null": ""},
+  "actions": [
+    {"name": "button with context", "surface_id": "booking", "action": "book",
+     "context": {"button_label": "Book 19:00", "time": "19:00"},
+     "message": "[canvas: book] \"Book 19:00\" {\"surface_id\":\"booking\",\"time\":\"19:00\"}"},
+    {"name": "button without context", "surface_id": "booking", "action": "later",
+     "context": {"button_label": "Later"},
+     "message": "[canvas: later] \"Later\" {\"surface_id\":\"booking\"}"},
+    {"name": "form keeps its own surface id", "surface_id": "booking", "action": "notes",
+     "context": {"name": "Ana", "surface_id": "other"},
+     "message": "[canvas: notes] {\"name\":\"Ana\",\"surface_id\":\"other\"}"}
+  ],
+  "question_answers": [
+    {"context": {"button_label": " Yes "}, "text": "Yes"},
+    {"context": {"Which day?": "Friday", "Who?": ["Ana", "Ben"], "surface_id": "q"}, "text": "Which day?: Friday\nWho?: Ana, Ben"}
+  ],
+  "deferred_answers": [
+    {"context": {"button_label": "Yes"}, "answer": {"answer": "Yes"}},
+    {"context": {"day": "Friday"}, "answer": {"day": "Friday"}}
+  ],
+  "canvas_messages": [
+    {"text": "[canvas: book] \"Book 19:00\" {\"time\":\"19:00\"}", "label": "Book 19:00"},
+    {"text": "[canvas: notes] {\"name\":\"Ana\"}", "label": "notes"},
+    {"text": "Plain message", "label": null}
+  ],
+  "live": {
+    "events": [
+      {"type": "TEXT_MESSAGE_START", "messageId": "m"},
+      {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m", "delta": "Here"},
+      {"type": "CUSTOM", "name": "a2ui.render", "value": {"id": "s", "title": "S", "component": {"type": "text", "content": "v1"}, "rev": 1}},
+      {"type": "CUSTOM", "name": "a2ui.render", "value": {"id": "s", "title": "S", "component": {"type": "text", "content": "v2"}, "rev": 2}},
+      {"type": "CUSTOM", "name": "a2ui.render", "value": {"id": "q", "deferred": true, "component": {"type": "button", "label": "Yes", "action": "submit_question"}}},
+      {"type": "CUSTOM", "name": "a2ui.resolved", "value": {"surfaceId": "q"}}
+    ],
+    "part_types": ["text", "a2ui"],
+    "surface_ids": ["s"],
+    "latest_text": "v2"
+  },
+  "chunks": {
+    "parts": ["reasoning", "a2ui", "text", "tool", "a2ui", "a2ui"],
+    "kinds": [["reasoning"], ["a2ui"], ["text"], ["tool"], ["a2ui"], ["a2ui"]]
+  }
+}

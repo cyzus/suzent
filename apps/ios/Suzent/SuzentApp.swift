@@ -9,6 +9,7 @@ import MarkdownUI
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
+                .appPreferences()
                 .onChange(of: phase) { _, phase in
                     if phase == .background { model.voice.stop() }
                     Task { await model.setForeground(phase == .active) }
@@ -166,8 +167,8 @@ private struct ChatSidebarRow: View {
                         .tint(Color.suzentDanger)
                 }
             }
-            .sensoryFeedback(.success, trigger: swipedPin)
-            .sensoryFeedback(.warning, trigger: swipedDelete)
+            .suzentFeedback(.success, trigger: swipedPin)
+            .suzentFeedback(.warning, trigger: swipedDelete)
             .accessibilityActions {
                 if enabled && canManage {
                     Button("Rename") { startRename() }
@@ -234,6 +235,7 @@ struct ContentView: View {
     @State private var attachmentsExpanded = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
+    @State private var showInfo = false
     @State private var sends = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -329,6 +331,7 @@ struct ContentView: View {
         .onChange(of: path) { _, path in
             if path.isEmpty { composing = false; attachmentsExpanded = false }
             if !path.contains(.search) { searchText = "" }
+            if path.last != .conversation { showInfo = false }
         }
         .onChange(of: model.activeDesktopId) { _, _ in
             search = ""; searchText = ""; expandedProject = nil; expandedAgents = []
@@ -363,7 +366,7 @@ struct ContentView: View {
                     model.selected?.projectName = model.projects.first { $0.id == id }?.name
                 }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: sends)
+        .suzentFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
             showSettings = false; path = []; tab = .chats; showModelPicker = false; showProjectPicker = false; composing = false
         }
@@ -509,6 +512,15 @@ struct ContentView: View {
             }
         }
         .background(Color.suzentBackground)
+        // A trailing column on iPad and a resizable sheet on iPhone, from the same panel.
+        .inspector(isPresented: Binding(get: { showInfo && infoAvailable }, set: { showInfo = $0 })) {
+            if let id = model.selected?.id {
+                ChatInfoPanel(model: model, chatID: id)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .inspectorColumnWidth(min: 280, ideal: PresentationTokens.sidebarWidth, max: 420)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
@@ -521,6 +533,11 @@ struct ContentView: View {
             }
             if !showSettings {
                 ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
+                if infoAvailable { ToolbarItem(placement: .topBarTrailing) {
+                    Button { showInfo.toggle() } label: { PanelToggleIcon(open: showInfo, edge: wide ? .trailing : .bottom) }
+                        .accessibilityLabel("Conversation info")
+                        .accessibilityAddTraits(showInfo ? .isSelected : [])
+                } }
                 if !sidebarShown { ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newConversation) { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel("New conversation")
@@ -528,6 +545,12 @@ struct ContentView: View {
                 } }
             }
         }
+    }
+
+    /// Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
+    private var infoAvailable: Bool {
+        guard let chat = model.selected, !showSettings else { return false }
+        return model.overviewSupported && !chat.id.isEmpty && !chat.isRegent
     }
 
     /// The iPad sidebar already carries the wordmark and the create button.
@@ -910,6 +933,7 @@ struct ContentView: View {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
             }
+            PreferencesSection(header: AnyView(settingsHeader("Preferences")))
             Section {
                 if !model.isDemo {
                     Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
@@ -1024,6 +1048,7 @@ struct ContentView: View {
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16).readingWidth()
+                    .environment(\.surfaceHandler, surfaceHandler(chat))
             }.id(chat.id)
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
@@ -1046,6 +1071,28 @@ struct ContentView: View {
             .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
             .onDisappear { model.voice.stop() }
+    }
+
+    /// Question forms the user has replied to since, which are not offered again (desktop `isAnsweredQuestion`).
+    private func answeredQuestions(_ chat: Chat) -> Set<String> {
+        let messages = chat.messages ?? []
+        guard let lastUser = messages.lastIndex(where: { $0.role == "user" }) else { return [] }
+        return Set(messages.prefix(lastUser).flatMap(\.parts).compactMap { part -> String? in
+            guard let surface = part.surface, case .form(_, _, "submit_question") = surface.component else { return nil }
+            return surface.id
+        })
+    }
+
+    private func surfaceHandler(_ chat: Chat) -> SurfaceHandler {
+        let answered = answeredQuestions(chat)
+        let idle = !model.busy && !model.streaming && chat.isRunning != true
+        let canSend = model.device?.permissions.send == true && !chat.id.isEmpty
+        return SurfaceHandler(
+            // A blocked question is answered while the run waits; anything else starts a new turn.
+            interactive: { surface in
+                canSend && (surface.isDeferred ? model.surfacesSupported : idle && !answered.contains(surface.id))
+            },
+            act: { surface, action, context in await model.act(on: surface, action: action, context: context) })
     }
 
     private func composer(_ chat: Chat) -> some View {

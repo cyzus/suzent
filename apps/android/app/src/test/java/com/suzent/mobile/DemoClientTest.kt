@@ -21,6 +21,35 @@ class DemoClientTest {
         }
     }
 
+    @Test fun overviewHasSamplePlanOnlyForTrip() = runBlocking {
+        for (language in listOf("en", "zh")) {
+            val demo = client(language = language)
+            assertTrue(demo.supportsChatOverview)
+            val trip = demo.overview("demo-trip")
+            assertNotNull(trip.goal)
+            assertEquals(2, trip.completedCount)
+            assertEquals("in_progress", trip.tasks[2].status)
+            assertEquals(4, trip.context.categories.size)
+            val other = demo.overview("demo-note")
+            assertNull(other.goal)
+            assertTrue(other.tasks.isEmpty())
+            assertNull(other.context.usedTokens)
+        }
+    }
+
+    @Test fun overviewParsesMissingUsageAndCancelledTasks() {
+        val overview = ChatOverview.parse(org.json.JSONObject("""{"goal":null,"tasks":[{"id":"1","title":"A","activeForm":null,"status":"cancelled"}],
+            "context":{"usedTokens":null,"limit":100000,"percent":null,"reserveTokens":null,"categories":[]}}"""))
+        assertTrue(overview.tasks.single().isDone)
+        assertNull(overview.tasks.single().activeForm)
+        assertEquals(0, overview.completedCount)
+        assertEquals(100_000, overview.context.limit)
+        assertNull(overview.context.percent)
+        assertEquals("18.4k", compactTokens(18_400))
+        assertEquals("200k", compactTokens(200_000))
+        assertEquals("<1%", percentText(0.4))
+    }
+
     @Test fun streamsAndPersistsWithoutAConnection() = runBlocking {
         val directory = Files.createTempDirectory("suzent-demo").toFile()
         try {
