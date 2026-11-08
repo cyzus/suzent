@@ -3,6 +3,7 @@
 ## [mobile-v0.8.0] - 2026-11-08
 
 ### Release notes
+- Keep a collapsed activity rail closed while a reply is streaming, and stop streaming blue and a single failure from recoloring the whole rail.
 - Long-press menus open beside the finger and stay inside the screen, including in the Android app.
 - Reduce Android conversation entry flicker by preserving open messages, avoiding temporary empty greetings, and positioning history before layout.
 - Smooth Android composer transitions and keep the voice or send button anchored while the input expands and collapses.

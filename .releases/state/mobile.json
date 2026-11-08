@@ -1,6 +1,7 @@
 {
   "version": "0.8.0",
   "consumed": [
+    ".releases/changes/activity-rail-streaming.json",
     ".releases/changes/anchor-long-press-menus.json",
     ".releases/changes/android-chat-entry-smoothness.json",
     ".releases/changes/android-composer-motion.json",
