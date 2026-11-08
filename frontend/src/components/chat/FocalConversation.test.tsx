@@ -106,6 +106,31 @@ describe('Focal conversation controls', () => {
       expect(html).not.toContain('\ue202');
     }
   );
+  it('keeps Regent named on a desktop message and names a different agent', () => {
+    const regent = renderToStaticMarkup(
+      <AssistantMessage
+        conversational
+        regent
+        message={{ role: 'assistant', content: 'Hello' }}
+        messageIndex={0}
+        isStreaming={false}
+        isLastMessage={false}
+      />
+    );
+    expect(regent).toContain('regent-identity');
+    expect(regent).toContain('chatList.focal.name');
+    const agent = renderToStaticMarkup(
+      <AssistantMessage
+        message={{ role: 'assistant', content: 'Hello', model: 'acp/codex' }}
+        messageIndex={0}
+        isStreaming={false}
+        isLastMessage={false}
+      />
+    );
+    expect(agent).toContain('codex');
+    expect(agent).not.toContain('regent-identity');
+    expect(response(false)).toContain('Suzent');
+  });
   it('hides message actions and empty footers only for focal', () => {
     const focal = response(true);
     expect(focal).not.toContain('status.copyToClipboard');

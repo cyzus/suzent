@@ -6,6 +6,7 @@ import { VideoContextMenu } from './VideoContextMenu';
 import { getApiBase } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
+import { freshPointerPoint } from '../../lib/menuPlacement';
 
 export function VideoResultPlayer({
   src,
@@ -28,7 +29,8 @@ export function VideoResultPlayer({
       className="my-2 w-full overflow-hidden border border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
       onContextMenu={(event) => {
         event.preventDefault();
-        setMenu({ x: event.clientX, y: event.clientY });
+        const rect = event.currentTarget.getBoundingClientRect();
+        setMenu(freshPointerPoint(event) ?? { x: rect.left + 12, y: rect.top + 12 });
       }}
       onKeyDown={(event) => {
         if (isImeComposing(event)) return;

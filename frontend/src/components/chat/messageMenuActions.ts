@@ -1,5 +1,6 @@
 import { isImeComposing } from '../../lib/ime';
 import { claimContextMenu, prefersNativeContextMenu } from '../../lib/contextMenuClaim';
+import { pointerMenuPoint } from '../../lib/menuPlacement';
 
 export interface MessageMenuAction {
   key: string;
@@ -45,12 +46,6 @@ export function openOwnedMenu(
   ) {
     return;
   }
-  const x = event.clientX > 0 || event.clientY > 0 ? event.clientX : 0;
-  const y = event.clientY > 0 || event.clientX > 0 ? event.clientY : 0;
-  if (x === 0 && y === 0) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    open({ x: rect.left + 12, y: rect.top + 12 });
-    return;
-  }
-  open({ x, y });
+  const rect = event.currentTarget.getBoundingClientRect();
+  open(pointerMenuPoint(event, { x: rect.left + 12, y: rect.top + 12 }));
 }
