@@ -1,8 +1,10 @@
 # Mobile changelog
 
-## [mobile-v0.7.3] - 2026-11-08
+## [mobile-v0.8.0] - 2026-11-08
 
 ### Release notes
+- See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
+- Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
 - While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
 - Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
 
