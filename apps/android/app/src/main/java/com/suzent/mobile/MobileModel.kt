@@ -30,7 +30,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
     var pairingPreview by mutableStateOf<PairingPreview?>(null)
     var pairingStatus by mutableStateOf<String?>(null)
-    var pairingCode by mutableStateOf<String?>(null)
+    var awaitingDesktop by mutableStateOf(false)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
     var reconnecting by mutableStateOf(false)
@@ -323,7 +323,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = null
         pairingStatus = null
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         pairingPreview = null
         generation++
         busy = false
@@ -357,7 +357,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
-                if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
+                if (!invitation.phoneConfirmation) awaitingDesktop = true
                 pairingStatus = text(R.string.pairing_finishing)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
                     currentCoroutineContext().ensureActive()
@@ -389,12 +389,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                                 removeDesktop(desktop.id)
                                 error = text(R.string.desktop_access_revoked, desktop.name)
                                 pairingInvitation = null
-                                busy = false; pairingCode = null; pairingStatus = null
+                                busy = false; awaitingDesktop = false; pairingStatus = null
                                 return@launch
                             }
                             pairingVersion++
                             pairingInvitation = null
-                            busy = false; pairingCode = null; pairingStatus = null
+                            busy = false; awaitingDesktop = false; pairingStatus = null
                             return@launch
                         }
                         "pending" -> {
@@ -410,7 +410,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation == current) { pairingInvitation = null; handle(failure) }
             } finally {
                 bootstrap.close()
-                if (generation == current) { busy = false; pairingCode = null; pairingStatus = null }
+                if (generation == current) { busy = false; awaitingDesktop = false; pairingStatus = null }
             }
         }
     }
@@ -1071,7 +1071,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin.orEmpty()
     }
