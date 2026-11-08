@@ -31,6 +31,14 @@ private struct ActivityReveal<Content: View>: View {
     }
 }
 
+/// Same rule as Android `turnAuthorMark`: Regent's chat header already names Regent.
+enum TurnAuthorMark { case assembly, assistant }
+
+func turnAuthorMark(regentChat: Bool, live: Bool, compact: Bool, pendingApproval: Bool) -> TurnAuthorMark? {
+    if regentChat { return nil }
+    return live || !compact || pendingApproval ? .assembly : .assistant
+}
+
 struct ActivityTurn: View {
     let parts: [MessagePart]
     var live = false
@@ -48,12 +56,15 @@ struct ActivityTurn: View {
         let work = Array(parts.prefix(start)).filter { $0.regentBubble != true && $0.type != "a2ui" }
         let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true || $0.type == "a2ui" }
         let pending = work.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
+        let author = turnAuthorMark(regentChat: regent, live: live, compact: compact, pendingApproval: pending)
+        let showDisclosure = !live && !work.isEmpty
         VStack(alignment: .leading, spacing: 10) {
+            if author != nil || showDisclosure {
             HStack(spacing: 12) {
-                if regent { RegentIdentity(working: live, showStatus: false) }
-                else if live || !compact || pending { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
-                else { SuzentAssistantBadge(compact: compact) }
-                if !live && !work.isEmpty {
+                if author == .assembly { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
+                else if author == .assistant { SuzentAssistantBadge(compact: compact) }
+                else { Spacer(minLength: 0) }
+                if showDisclosure {
                     Button {
                         withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
                     } label: {
@@ -64,6 +75,7 @@ struct ActivityTurn: View {
                             .frame(minHeight: 44).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityValue(expanded || pending ? Text("Expanded") : Text("Collapsed"))
                 }
+            }
             }
             if live { ActivityContent(parts: parts, live: true, citationSources: citationSources, regent: regent) }
             else {
