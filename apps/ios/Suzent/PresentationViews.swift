@@ -737,8 +737,8 @@ struct SuzentMarkdown: View {
                     let rendered = Markdown(MarkdownContent(part)).markdownTheme(suzentMarkdownTheme)
                     if selectable { rendered.textSelection(.enabled) } else { rendered }
                 case .inline(let part):
-                    InlineCodeParagraph(text: part) { pendingLink = $0 }
-                        .textSelection(selectable ? .enabled : .disabled)
+                    let paragraph = InlineCodeParagraph(text: part) { pendingLink = $0 }
+                    if selectable { paragraph.textSelection(.enabled) } else { paragraph.textSelection(.disabled) }
                 }
             }
         }
