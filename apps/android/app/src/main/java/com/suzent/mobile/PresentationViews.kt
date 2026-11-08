@@ -944,7 +944,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
                     ActivityText(chunk.first().text, citationSources, regent, onBubbleLongPress)
                 }
                 else if (chunk.first().type == "a2ui") chunk.first().surface?.let { SurfaceBlock(it) }
-                else ActivityRail(chunk, live, index == chunks.lastIndex)
+                else ActivityRail(chunk, live, index == chunks.lastIndex, expansionKey = railChunkKey(chunk, index))
             }
         }
     }

@@ -1014,6 +1014,14 @@ private fun surfaceHandler(model: MobileModel, chat: Chat): SurfaceHandler {
 private fun ColumnScope.Conversation(model: MobileModel) {
     DisposableEffect(model) { onDispose { model.voice.stop() } }
     val chat = model.selected ?: return
+    val railChoices = remember(chat.id) { RailChoices() }
+    var streamGeneration by remember(chat.id) { mutableIntStateOf(0) }
+    var sawStreaming by remember(chat.id) { mutableStateOf(false) }
+    val streamStep = nextStreamGeneration(streamGeneration, sawStreaming, model.streaming)
+    if (streamStep.first != streamGeneration || streamStep.second != sawStreaming) {
+        streamGeneration = streamStep.first
+        sawStreaming = streamStep.second
+    }
     var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val expanded = keyboardVisible && !attachmentsExpanded
@@ -1097,6 +1105,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             }
         }
     }
+    CompositionLocalProvider(LocalRailChoices provides railChoices) {
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
     val viewportHeight = maxHeight
     Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
@@ -1138,16 +1147,20 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             val lastUser = chat.messages.indexOfLast { it.role == "user" }
             val newest = index == messages.lastIndex
             val canReplay = !chat.isRegent && idle && chat.models.isNotEmpty() && lastUser >= 0 && model.device?.permissions?.send == true && model.device?.permissions?.manageChats == true
+            CompositionLocalProvider(LocalRailScope provides railScope(chat.id, "m${message.messageIndex}")) {
             MessageView(message, regent = chat.isRegent, isLatest = newest && !model.streaming && model.liveParts.isEmpty(), fallbackModel = chat.model,
                 canRetry = canReplay && (message.messageIndex == lastUser || (newest && message.role == "assistant")),
                 canEdit = canReplay && message.role == "user" && message.messageIndex == lastUser,
                 canFork = !chat.isRegent && idle && message.role == "assistant" && model.device?.permissions?.createChats == true,
                 onAction = { action, text -> model.messageAction(message, action, text) })
+            }
         }
         if (live) item(key = "live") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CompositionLocalProvider(LocalRailScope provides railScope(chat.id, "live$streamGeneration")) {
                 ActivityTurn(if (chat.isRegent) regentDisplayParts(model.liveParts, model.streaming) else model.liveParts,
                     live = model.streaming, regent = chat.isRegent)
+                }
             }
         }
     }
@@ -1230,6 +1243,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
     ) { model.selectModel(it.ifEmpty { null }); modelsExpanded = false }
 
+}
 }
 
 @Composable
