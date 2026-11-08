@@ -45,6 +45,11 @@ describe('backend version request', () => {
       apiVersion: 1,
       buildCommit: 'abcdef123456',
       developmentMode: false,
+      buildSource: 'unknown',
+      runtime: 'unknown',
+      installationId: null,
+      dataDir: null,
+      sourceRoot: null,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
