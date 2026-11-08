@@ -233,6 +233,9 @@ struct ContentView: View {
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
+    @State private var railChoices = RailChoices()
+    @State private var streamGeneration = 0
+    @State private var sawStreaming = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
     @State private var showInfo = false
@@ -1041,17 +1044,19 @@ struct ContentView: View {
                                 canEdit: canReplay && message.role == "user" && message.messageIndex == lastUser,
                                 canFork: !chat.isRegent && idle && message.role == "assistant" && model.device?.permissions.createChats == true,
                                 onAction: { action, text in Task { await model.messageAction(message, action: action, text: text) } })
+                                .environment(\.railScope, railScope(chatId: chat.id, messageKey: "m\(message.messageIndex)"))
                         }
                         if hasLiveMessage {
                             VStack(alignment: .leading, spacing: 10) {
                                 ActivityTurn(parts: chat.isRegent ? regentDisplayParts(model.liveParts, live: model.streaming) : model.liveParts,
                                              live: model.streaming, regent: chat.isRegent)
                             }
+                            .environment(\.railScope, railScope(chatId: chat.id, messageKey: "live\(streamGeneration)"))
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16).readingWidth()
                     .environment(\.surfaceHandler, surfaceHandler(chat))
-            }.id(chat.id)
+            }.id(chat.id).environment(\.railChoices, railChoices)
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
                 ViewThatFits(in: .vertical) {
@@ -1070,7 +1075,18 @@ struct ContentView: View {
         }.clipped()
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
-            .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
+            .onChange(of: chat.id) { _, _ in
+                attachmentsExpanded = false
+                railChoices.clear()
+                let step = nextStreamGeneration(0, wasStreaming: false, streaming: model.streaming)
+                streamGeneration = step.generation
+                sawStreaming = step.streaming
+            }
+            .onChange(of: model.streaming, initial: true) { _, streaming in
+                let step = nextStreamGeneration(streamGeneration, wasStreaming: sawStreaming, streaming: streaming)
+                streamGeneration = step.generation
+                sawStreaming = step.streaming
+            }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
             .onDisappear { model.voice.stop() }
     }
