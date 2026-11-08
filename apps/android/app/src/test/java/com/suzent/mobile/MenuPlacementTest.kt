@@ -4,6 +4,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MenuPlacementTest {
+    @Test fun leavesSpaceBelowTheFinger() {
+        val placed = placeMenu(100, 200, 240, 160, 400, 800, margin = 8, touchGap = 8)
+        assertEquals(208, placed.y)
+    }
+
+    @Test fun flipsAboveTheFingerWhenThereIsNotEnoughRoomBelow() {
+        val placed = placeMenu(100, 700, 240, 160, 400, 800, margin = 8, touchGap = 8)
+        assertEquals(532, placed.y)
+    }
+
+    @Test fun clampsTallMenusWhenNeitherSideFits() {
+        val placed = placeMenu(100, 400, 240, 700, 400, 800, margin = 8, touchGap = 8)
+        assertEquals(92, placed.y)
+    }
+
     @Test fun keepsAMenuBesideThePressWhenItFits() {
         val placed = placeMenu(180, 240, 200, 120, 1080, 1920, margin = 8)
         assertEquals(180, placed.x)

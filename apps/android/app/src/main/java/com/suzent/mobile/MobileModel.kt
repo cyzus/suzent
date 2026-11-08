@@ -48,6 +48,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     var sentVersion by mutableStateOf(0)
     var openedVersion by mutableStateOf(0)
+    var openingChatId by mutableStateOf<String?>(null)
+        private set
     var pinnedVersion by mutableStateOf(0)
     var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
@@ -628,14 +630,16 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         streaming = false
         pendingApprovals = emptyList()
         if (chat.id != selected?.id) discardAttachments()
-        selected = chat
+        selected = if (selected?.id == chat.id) selected else chat
+        openingChatId = chat.id
+        val openingGeneration = generation
         selectedModel = modelPreferences.getString("chatModel.$origin.${chat.id}", null)
         draft = drafts[chat.id].orEmpty()
         liveParts = emptyList()
         viewModelScope.launch {
             try {
                 val api = client ?: return@launch
-                val current = generation
+                val current = openingGeneration
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
@@ -647,7 +651,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     if (saved.running) observe(chat.id)
                 }
             } catch (failure: CancellationException) { throw failure }
-            catch (failure: Exception) { handle(failure) }
+            catch (failure: Exception) { if (openingGeneration == generation) handle(failure) }
+            finally { if (openingGeneration == generation) openingChatId = null }
         }
     }
 

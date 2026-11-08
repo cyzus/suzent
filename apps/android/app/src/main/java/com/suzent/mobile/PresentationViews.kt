@@ -12,6 +12,11 @@ import android.widget.TextView
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.graphicsLayer
@@ -619,7 +624,7 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
 }
 
 /**
- * Long-press menu in the Suzent style: square panel, 2 px rule, hard offset shadow.
+ * Long-press menu with a lighter rounded panel and Suzent's offset shadow.
  *
  * Material's dropdown anchors to the composable it is called from. On a full-width
  * row that is always the same corner, wherever the finger was. [anchorInWindow] is
@@ -649,18 +654,28 @@ fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, anchorInWindow: 
     val provider = remember(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin) {
         PressMenuPositionProvider(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin)
     }
-    if (expanded) Popup(popupPositionProvider = provider, onDismissRequest = onDismissRequest,
+    val visibility = remember { MutableTransitionState(false) }
+    visibility.targetState = expanded
+    if (visibility.currentState || visibility.targetState) Popup(popupPositionProvider = provider, onDismissRequest = onDismissRequest,
         properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)) {
-        val outline = MaterialTheme.colorScheme.outline
-        val menuShadow = suzentShadow
-        val menuSurface = MaterialTheme.colorScheme.surface
-        val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
-        Box(Modifier.width(minOf(260.dp, maxWidth)).heightIn(max = maxHeight).drawBehind {
-            val offset = menuShadowSize.toPx()
-            drawRect(menuShadow, topLeft = Offset(offset, offset), size = size)
-        }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
-            Column(Modifier.fillMaxWidth().heightIn(max = (maxHeight - menuShadowSize).coerceAtLeast(0.dp))
-                .verticalScroll(scroll).background(menuSurface).border(PresentationTokens.borderWidth.dp, outline), content = content)
+        AnimatedVisibility(visibleState = visibility,
+            enter = fadeIn(tween(140)) + scaleIn(tween(180, easing = FastOutSlowInEasing), initialScale = .94f),
+            exit = fadeOut(tween(100)) + scaleOut(tween(100), targetScale = .97f)) {
+            val outline = MaterialTheme.colorScheme.outline
+            val menuShadow = suzentShadow
+            val menuSurface = MaterialTheme.colorScheme.surface
+            val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
+            val shape = RoundedCornerShape(12.dp)
+            Box(Modifier.width(minOf(244.dp, maxWidth)).heightIn(max = maxHeight).drawBehind {
+                val offset = menuShadowSize.toPx()
+                drawRoundRect(menuShadow, topLeft = Offset(offset, offset),
+                    size = androidx.compose.ui.geometry.Size(size.width - offset, size.height - offset),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()))
+            }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
+                Column(Modifier.fillMaxWidth().heightIn(max = (maxHeight - menuShadowSize).coerceAtLeast(0.dp))
+                    .verticalScroll(scroll).background(menuSurface, shape).border(1.dp, outline, shape)
+                    .padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
+            }
         }
     }
 }
@@ -674,7 +689,8 @@ private class PressMenuPositionProvider(private val pressX: Int?, private val pr
         val anchorX = pressX ?: if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left else anchorBounds.right - popupContentSize.width
         val anchorY = pressY ?: anchorBounds.top
         val placed = placeMenu(anchorX, anchorY, popupContentSize.width, popupContentSize.height,
-            windowSize.width, windowSize.height, insetLeft, insetTop, insetRight, insetBottom, margin)
+            windowSize.width, windowSize.height, insetLeft, insetTop, insetRight, insetBottom, margin,
+            touchGap = if (pressY != null) margin else 0)
         return IntOffset(placed.x, placed.y)
     }
 }
@@ -695,18 +711,31 @@ internal fun Modifier.recordPressInWindow(onPress: (Offset) -> Unit): Modifier {
 }
 
 @Composable
-fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Boolean = false, action: () -> Unit) {
+fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Boolean = false,
+                   selected: Boolean = false, action: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val error = MaterialTheme.colorScheme.error
-    val background = if (pressed) { if (danger) error else Color(PresentationTokens.yellow) } else Color.Transparent
-    val foreground = (if (pressed) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
+    val background = if (pressed && enabled) {
+        if (danger) error else Color(PresentationTokens.yellow)
+    } else if (danger) error.copy(alpha = .07f) else Color.Transparent
+    val foreground = (if (pressed && enabled) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
         .copy(alpha = if (enabled) 1f else DisabledAlpha)
-    Row(Modifier.fillMaxWidth().background(background).clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
-        .heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Icon(painterResource(icon), null, tint = foreground, modifier = Modifier.padding(end = 10.dp).size(18.dp))
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = foreground)
+    Row(Modifier.fillMaxWidth().background(background, RoundedCornerShape(7.dp))
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
+        .heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Icon(painterResource(icon), null, tint = foreground, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = foreground)
+        if (selected) Icon(painterResource(R.drawable.ic_message_check), null, tint = foreground,
+            modifier = Modifier.padding(start = 12.dp).size(18.dp))
     }
+}
+
+@Composable
+fun SuzentMenuDivider() {
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** Text-input flow (rename, edit and resend): square sheet with title, field and Cancel/Save. */
