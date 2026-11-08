@@ -535,7 +535,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
         if (openSearch == null) Button(onClick = { create(null) },
             enabled = !model.busy && model.device?.permissions?.createChats == true,
             shape = RectangleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(PresentationTokens.yellow), contentColor = Color.Black),
+            colors = ButtonDefaults.buttonColors(containerColor = suzentYellow(), contentColor = Color.Black),
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth().heightIn(min = 48.dp)) {
             Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
@@ -756,7 +756,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         val direction = swipe.dismissDirection
         val delete = direction == SwipeToDismissBoxValue.EndToStart
         Row(Modifier.fillMaxSize().background(when (direction) {
-            SwipeToDismissBoxValue.StartToEnd -> if (chat.pinned) selection else Color(PresentationTokens.yellow)
+            SwipeToDismissBoxValue.StartToEnd -> if (chat.pinned) selection else suzentYellow()
             SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
             SwipeToDismissBoxValue.Settled -> Color.Transparent
         }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
@@ -778,7 +778,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             if (value == SwipeToDismissBoxValue.EndToStart) { view.suzentHaptic(SuzentHaptic.Reject); deleting = true }
             scope.launch { swipe.reset() }
         }) {
-    Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) selection else MaterialTheme.colorScheme.surface)
+    Row(Modifier.fillMaxWidth().background(if (pressed) suzentYellow() else if (selected) selection else MaterialTheme.colorScheme.surface)
         .recordPressInWindow {
             menuAnchor = it
             pressAt = android.os.SystemClock.uptimeMillis()
@@ -1351,7 +1351,7 @@ private enum class HomeListMode(val label: Int) { RECENT(R.string.recent_chats),
 @Composable
 private fun HomeListPicker(selection: HomeListMode, select: (HomeListMode) -> Unit, modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
-    val block = Color(if (dark) PresentationTokens.yellow else PresentationTokens.black)
+    val block = if (dark) suzentYellow() else Color(PresentationTokens.black)
     val blockText = if (dark) Color.Black else Color.White
     BoxWithConstraints(modifier.fillMaxWidth()
         .background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg))

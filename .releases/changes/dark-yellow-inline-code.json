@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "Use a deeper yellow in dark mode, and give inline code the same black border on phones as on desktop."
+}

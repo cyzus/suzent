@@ -141,7 +141,7 @@ private fun SurfaceText(text: A2UIComponent.Text) = when (text.variant) {
 private fun SurfaceBadge(badge: A2UIComponent.Badge) {
     val (fill, ink) = when (badge.color) {
         "success" -> Color(PresentationTokens.green) to Color.Black
-        "warning" -> Color(PresentationTokens.yellow) to Color.Black
+        "warning" -> suzentYellow() to Color.Black
         "error" -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
         "info" -> Color(PresentationTokens.blue) to Color.White
         else -> suzentSelection to MaterialTheme.colorScheme.onSurface
@@ -274,7 +274,7 @@ private fun SurfaceForm(form: A2UIComponent.Form, interactive: Boolean, submit: 
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             field.options.forEach { option ->
                                 val on = option in chosen
-                                Text(option, Modifier.background(if (on) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.background)
+                                Text(option, Modifier.background(if (on) suzentYellow() else MaterialTheme.colorScheme.background)
                                     .border(1.dp, MaterialTheme.colorScheme.outline)
                                     .toggleable(on, enabled, Role.Checkbox) {
                                         val next = if (on) chosen - option else chosen + option

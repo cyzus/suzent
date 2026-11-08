@@ -126,7 +126,7 @@ fun RegentMark(working: Boolean = false, waiting: Boolean = false, size: Dp = 32
     }
     val ink = MaterialTheme.colorScheme.onSurface
     val eyes = MaterialTheme.colorScheme.background
-    val glintColor = Color(PresentationTokens.yellow)
+    val glintColor = suzentYellow()
     Canvas(Modifier.size(size, size * 1.5f).graphicsLayer {
         rotationY = if (working && !reduced) (sin(seconds * 1.4) * 12).toFloat() else 0f
         rotationZ = nod.value

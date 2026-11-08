@@ -2,7 +2,7 @@ import React from 'react';
 import type { A2UIButton } from '../../../types/a2ui';
 
 const VARIANT_CLASSES: Record<string, string> = {
-  primary: 'bg-brutal-yellow border-brutal-black text-brutal-black hover:bg-yellow-300',
+  primary: 'bg-brutal-yellow border-brutal-black text-brutal-black hover:brightness-95',
   secondary:
     'bg-white border-brutal-black text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700',
   danger: 'bg-red-500 border-red-700 text-white hover:bg-red-600',

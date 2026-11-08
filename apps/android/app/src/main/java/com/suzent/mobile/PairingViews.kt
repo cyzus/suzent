@@ -80,7 +80,7 @@ private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
 private fun PairingProgressView(model: MobileModel) {
     Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
-        Column(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow))
+        Column(Modifier.fillMaxWidth().background(suzentYellow())
             .border(PresentationTokens.borderWidth.dp, Color.Black).padding(PresentationTokens.spaceLarge.dp),
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
             Text(stringResource(R.string.pairing_heading), style = MaterialTheme.typography.titleLarge, color = Color.Black)

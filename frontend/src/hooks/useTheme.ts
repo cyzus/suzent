@@ -6,6 +6,7 @@ import {
   createElement,
   type ReactNode,
 } from 'react';
+import presentation from '../../../packages/presentation/tokens.json';
 
 export type Theme = 'light' | 'dark';
 /**
@@ -20,7 +21,7 @@ export type Scheme = 'warm' | 'cold' | 'green' | 'ember';
 
 /** Accent colors shown on interactive elements, headers, buttons */
 export const SCHEME_COLORS: Record<Scheme, { light: string; dark: string }> = {
-  warm: { light: '#FFE666', dark: '#FFE666' },
+  warm: { light: presentation.colors.yellow, dark: presentation.colors['yellow-dark'] },
   cold: { light: '#7DD3FC', dark: '#38BDF8' },
   green: { light: '#86EFAC', dark: '#4ADE80' },
   ember: { light: '#FFA64D', dark: '#FF6600' },

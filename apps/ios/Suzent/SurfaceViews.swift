@@ -114,7 +114,7 @@ private struct SurfaceBadge: View {
     var body: some View {
         let (fill, ink): (Color, Color) = switch color {
         case "success": (Color(presentation: PresentationTokens.green), .black)
-        case "warning": (Color(presentation: PresentationTokens.yellow), .black)
+        case "warning": (Color.suzentYellow, .black)
         case "error": (Color.suzentDanger, .white)
         case "info": (Color(presentation: PresentationTokens.blue), .white)
         default: (Color.suzentSelection, Color.suzentText)
@@ -377,7 +377,7 @@ private struct FlowChips: View {
                 Button { toggle(option) } label: {
                     Text(option).font(.subheadline.weight(on ? .semibold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(on ? Color(presentation: PresentationTokens.yellow) : Color.suzentBackground)
+                        .background(on ? Color.suzentYellow : Color.suzentBackground)
                         .foregroundStyle(on ? Color.black : Color.suzentText)
                         .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
                 }

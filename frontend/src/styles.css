@@ -873,7 +873,7 @@ code {
   position: relative;
   overflow: hidden;
   color: #111;
-  background: #ffe666;
+  background: var(--suzent-yellow);
   box-shadow: inset 0 -3px 0 #111;
 }
 
@@ -881,7 +881,7 @@ code {
   flex-shrink: 0;
   border: 2px solid #111;
   background: #111;
-  color: #ffe666;
+  color: var(--suzent-yellow);
   padding: 0.05rem 0.35rem;
   font-size: 0.62rem;
   line-height: 1.1;
@@ -1124,7 +1124,7 @@ code {
 
 .activity-rail-dot-pending {
   border-color: #111;
-  background: #ffe666;
+  background: var(--suzent-yellow);
   box-shadow: 2px 2px 0 #111;
 }
 
