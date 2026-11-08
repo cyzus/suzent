@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID.
 - Long-press menus open beside the finger and stay inside the screen, including in the Android app.
+- The chat no longer jumps while a reply streams or when it finishes, keeps your reading position, and no longer shows a blank area on macOS after you send a message.
 - Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
 - Context menus can start a chat in a project, upload into a folder, save a sandbox file from the browser, and pause or run scheduled tasks and heartbeats.
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
