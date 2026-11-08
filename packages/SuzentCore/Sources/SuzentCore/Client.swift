@@ -256,6 +256,18 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
     }
 
+    public func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws {
+        var request = try request("mobile/client/surface-answer", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": chatID, "surface_id": surfaceID,
+                                                                      "answer": answer.mapValues(\.foundationValue)])
+        let (_, response) = try await session.data(for: request)
+        try validate(response)
+    }
+
+    public func overview(_ id: String) async throws -> ChatOverview {
+        try JSONDecoder().decode(ChatOverview.self, from: await data("mobile/client/chats/\(id)/overview"))
+    }
+
     public func scheduledTasks() async throws -> [ScheduledTask] {
         struct Listing: Decodable { let tasks: [ScheduledTask] }
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/scheduled-tasks")).tasks

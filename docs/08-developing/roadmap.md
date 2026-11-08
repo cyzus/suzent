@@ -27,8 +27,10 @@ See [Native mobile clients](./architecture/mobile.md) for what exists today.
 
 Planned, in order:
 
-1. **Interactive tools and attachments** — scoped upload. (Mobile tool approvals
-   have shipped; see [Native mobile clients](./architecture/mobile.md#mobile-tool-approvals-and-activity-rail).)
+1. **Canvas in the conversation panel** — surfaces with `target: "canvas"` move from the
+   reply into the Conversation info panel, with a pointer left in the chat. (Inline
+   surfaces, tool approvals and attachments have shipped; see
+   [Native mobile clients](./architecture/mobile.md#inline-surfaces).)
 2. **Device capabilities** — user-confirmed camera capture and upload, audio capture,
    single location fix; native permission and lifecycle adapters.
 3. **Resilience** — durable event cursor/replay, idempotent send IDs in the backend, local

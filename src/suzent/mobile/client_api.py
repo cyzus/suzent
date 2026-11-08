@@ -73,6 +73,17 @@ class MessageActionRequest(ChatRequest):
     model: str | None = Field(default=None, min_length=1, max_length=300)
 
 
+class SurfaceAnswerRequest(ChatRequest):
+    surface_id: str = Field(min_length=1, max_length=200)
+    answer: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def bounded(self) -> SurfaceAnswerRequest:
+        if len(json.dumps(self.answer, default=str)) > 100_000:
+            raise ValueError("Answer too large")
+        return self
+
+
 class ObserveRequest(ChatRequest):
     wait_ms: int = Field(default=1000, ge=0, le=1000)
     protocol: Literal[1] = 1
@@ -167,6 +178,8 @@ async def session(request: Request) -> JSONResponse:
             "attachments": 1,
             "scheduled_tasks": 1,
             "chat_pagination": 1,
+            "chat_overview": 1,
+            "surfaces": 1,
             "voice": 1,
             **relay_field(request),
         }
@@ -354,6 +367,94 @@ async def chat(request: Request) -> JSONResponse:
             if native
             else None,
             "models": get_enabled_models_from_db() if native else [],
+        }
+    )
+
+
+PLAN_STATUSES = {"pending", "in_progress", "completed", "cancelled", "blocked"}
+
+
+def plan_status(task: object) -> str:
+    status = getattr(task, "status", "pending")
+    if getattr(task, "blocked_by", None) and status == "pending":
+        return "blocked"
+    return status if status in PLAN_STATUSES else "pending"
+
+
+def context_summary(stored_chat: object) -> dict[str, object]:
+    """The desktop context headline, without re-estimating the saved agent state."""
+    from suzent.core.context_compressor import resolve_context_limit
+    from suzent.core.providers import get_default_chat_model
+
+    usage = dict(getattr(stored_chat, "context_usage", None) or {})
+    config = getattr(stored_chat, "config", None) or {}
+    try:
+        limit = resolve_context_limit(config.get("model") or get_default_chat_model())
+    except Exception:
+        limit = usage.get("context_limit")
+    measured = usage.get("context_tokens")
+    if measured is None:
+        measured = usage.get("total_tokens")
+    breakdown = usage.get("context_breakdown") or {}
+    categories = sorted(
+        (
+            {"id": str(category["id"]), "tokens": int(category["tokens"])}
+            for category in breakdown.get("categories", [])
+            if isinstance(category, dict) and category.get("tokens", 0) > 0
+        ),
+        key=lambda category: -category["tokens"],
+    )
+    return {
+        "usedTokens": measured,
+        "limit": limit or None,
+        "percent": min(100.0, measured * 100 / limit)
+        if measured is not None and limit
+        else None,
+        "reserveTokens": breakdown.get("reserve_tokens"),
+        "categories": categories,
+    }
+
+
+async def overview(request: Request) -> JSONResponse:
+    chat_id = request.path_params["chat_id"]
+    authorize(request, chat_id)
+    db = get_database()
+    stored_chat = db.get_chat(chat_id)
+    if stored_chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    project_id = db.get_chat_projects([chat_id]).get(chat_id, (None, None))[0]
+    goal = db.get_goal(project_id, chat_id=chat_id) if project_id else None
+    tasks = (
+        db.list_tasks(
+            project_id=project_id,
+            chat_id=chat_id,
+            include_completed=True,
+            include_cancelled=True,
+        )
+        if project_id
+        else []
+    )
+    # Descriptions, results and file paths stay on the desktop; the phone shows status.
+    return reply(
+        {
+            "goal": {
+                "objective": goal.objective,
+                "status": goal.status,
+                "turnsElapsed": goal.turns_elapsed,
+                "maxTurns": goal.max_turns,
+            }
+            if goal
+            else None,
+            "tasks": [
+                {
+                    "id": str(task.id),
+                    "title": task.title,
+                    "activeForm": task.active_form,
+                    "status": plan_status(task),
+                }
+                for task in tasks
+            ],
+            "context": context_summary(stored_chat),
         }
     )
 
@@ -778,6 +879,21 @@ async def decide_approvals(request: Request) -> JSONResponse:
     return await decide(request)
 
 
+async def surface_answer(request: Request) -> JSONResponse:
+    """Answers a question form the agent is blocked on; other surface actions are ordinary sends."""
+    body = await parse(request, SurfaceAnswerRequest)
+    authorize(request, body.chat_id, "send")
+    from suzent.a2ui import pending as pending_questions
+    from suzent.core.stream_registry import push_custom_event
+
+    if not pending_questions.resolve(body.chat_id, body.surface_id, body.answer):
+        raise HTTPException(404, "No pending question for this surface")
+    await push_custom_event(
+        body.chat_id, "a2ui.resolved", {"surfaceId": body.surface_id}
+    )
+    return reply({"ok": True})
+
+
 async def confirm_pairing(request: Request) -> JSONResponse:
     token = extract_token(request.scope.get("headers", []))
     if not get_mobile_store(request).confirm(token):
@@ -801,6 +917,7 @@ client_routes = [
     Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
+    Route("/mobile/client/surface-answer", surface_answer, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),
     Route("/mobile/client/chats", chats, methods=["GET"]),
     Route("/mobile/client/chat-page", chat_page, methods=["POST"]),
@@ -809,6 +926,7 @@ client_routes = [
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/read", mark_read, methods=["POST"]),
+    Route("/mobile/client/chats/{chat_id}/overview", overview, methods=["GET"]),
     Route("/mobile/client/upload", upload, methods=["POST"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),

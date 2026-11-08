@@ -21,6 +21,7 @@ public struct MessagePart: Decodable, Sendable, Equatable {
     public var outcome: String?
     public var regentBubble: Bool? = nil
     public var citationSources: [CitationSource]?
+    public var surface: A2UISurface? = nil
     public init(type: String, text: String? = nil, toolName: String? = nil, args: String? = nil,
                 output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil,
                 citationSources: [CitationSource]? = nil) {
@@ -149,7 +150,8 @@ public func activityChunks(_ parts: [MessagePart]) -> [[MessagePart]] {
     var chunks: [[MessagePart]] = []
     for part in parts {
         if part.type == "citation-sources" || (["text", "reasoning"].contains(part.type) && (part.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { continue }
-        if part.type == "text" || chunks.isEmpty || chunks.last?.last?.type == "text" { chunks.append([part]) }
+        // A surface is a block of its own, like text; tools and reasoning around it keep their own rails.
+        if ["text", "a2ui"].contains(part.type) || chunks.isEmpty || ["text", "a2ui"].contains(chunks.last?.last?.type ?? "") { chunks.append([part]) }
         else { chunks[chunks.count - 1].append(part) }
     }
     return chunks
@@ -265,7 +267,21 @@ public struct LiveActivityBuffer: Sendable {
             default: parts[index].output = (fields["content"] ?? fields["output"] ?? fields["result"])?.text; parts[index].state = "completed"; parts[index].outcome = fields["outcome"]?.text
             }
         case "CUSTOM":
-            guard let value = fields["value"], let toolId = value["toolCallId"]?.text, !toolId.isEmpty else { return }
+            guard let value = fields["value"] else { return }
+            switch fields["name"]?.text {
+            case "a2ui.render":
+                guard let surface = value.decodeSurface() else { return }
+                // A later render of the same id replaces the earlier one in place.
+                if let index = parts.firstIndex(where: { $0.type == "a2ui" && $0.surface?.id == surface.id }) { parts[index].surface = surface }
+                else { var part = MessagePart(type: "a2ui"); part.surface = surface; parts.append(part) }
+                dirty = true; return
+            case "a2ui.resolved":
+                guard let id = value["surfaceId"]?.text else { return }
+                parts.removeAll { $0.type == "a2ui" && $0.surface?.id == id && $0.surface?.isDeferred == true }
+                dirty = true; return
+            default: break
+            }
+            guard let toolId = value["toolCallId"]?.text, !toolId.isEmpty else { return }
             switch fields["name"]?.text {
             case "tool_approval_request":
                 let index = toolIndex(toolId)

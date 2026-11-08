@@ -111,6 +111,8 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var voiceSupported = false
+    var overviewSupported = false
+    var surfacesSupported = false
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -123,6 +125,12 @@ import SuzentCore
             return String(localized: "Enable Create conversations for this phone, or open an existing conversation.")
         }
         return nil
+    }
+
+    /// The plan and context panel reads on demand; nil while unavailable.
+    func overview(_ chatID: String) async -> ChatOverview? {
+        guard overviewSupported, !chatID.isEmpty, let client else { return nil }
+        return try? await client.overview(chatID)
     }
 
     func startVoice() {
@@ -227,6 +235,8 @@ import SuzentCore
             canReconnect = false
             device = session.device
             attachmentsSupported = true
+            overviewSupported = true
+            surfacesSupported = true
             applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
@@ -481,6 +491,8 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -599,6 +611,8 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -758,9 +772,29 @@ import SuzentCore
     }
 
     func send() async {
+        await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
+    }
+
+    /// A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+    func act(on surface: A2UISurface, action: String, context: [String: JSONValue]) async {
+        guard let client, device?.permissions.send == true, let id = selected?.id, !id.isEmpty else { return }
+        if surface.isDeferred {
+            liveParts.removeAll { $0.type == "a2ui" && $0.surface?.id == surface.id }
+            do { try await client.answerSurface(id, surfaceID: surface.id, answer: deferredAnswer(context)) }
+            catch {
+                if case ClientError.http(401) = error { handle(error) }
+                else { self.error = String(localized: "The answer could not be delivered. The question may have expired.") }
+            }
+            return
+        }
+        let text = action == "submit_question" ? questionAnswerText(context)
+            : canvasActionMessage(action: action, context: context, surfaceID: surface.id)
+        guard !text.isEmpty else { return }
+        await submit(text, outgoing: [], fromDraft: false)
+    }
+
+    private func submit(_ text: String, outgoing: [PendingAttachment], fromDraft: Bool) async {
         guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoing = attachments
         guard !text.isEmpty || !outgoing.isEmpty else { return }
         busy = true
         error = nil
@@ -776,8 +810,7 @@ import SuzentCore
             }
             let issued = outgoing.isEmpty ? [] : try await client.upload(outgoing, chatID: id)
             try await client.send(text, chatID: id, model: selectedModel, attachments: issued)
-            draft = ""
-            drafts[id] = nil
+            if fromDraft { draft = ""; drafts[id] = nil }
             outgoing.forEach { try? FileManager.default.removeItem(at: $0.url) }
             attachments.removeAll { item in outgoing.contains { $0.id == item.id } }
             sentVersion += 1
@@ -1035,7 +1068,7 @@ import SuzentCore
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
-        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
+        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         generation = UUID()
         nodeEnabled = false

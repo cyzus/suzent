@@ -130,6 +130,7 @@ val DisabledAlpha = PresentationTokens.disabledAlpha.toFloat()
 enum class SuzentHaptic { Light, LongPress, Confirm, Reject }
 
 fun View.suzentHaptic(kind: SuzentHaptic) {
+    if (!AppPreferences.haptics) return
     performHapticFeedback(when (kind) {
         SuzentHaptic.Light -> HapticFeedbackConstants.VIRTUAL_KEY
         SuzentHaptic.LongPress -> HapticFeedbackConstants.LONG_PRESS
@@ -392,6 +393,9 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role in listOf("system_triggered", "trigger")) {
         systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
+    } else if (message.role == "user" && message.files.isEmpty() && canvasActionLabel(message.text) != null) {
+        // A surface action reads as what was pressed, like the desktop's canvas pill.
+        CanvasActionPill(canvasActionLabel(message.text) ?: "")
     } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         val dark = isSystemInDarkTheme()
         val bubbleShape = RoundedCornerShape(PresentationTokens.radiusBubble.dp)
@@ -796,6 +800,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
                         MarkdownText(chunk.first().text, citationSources, onLongPress = bubbleMenu)
                     }
                 }
+                else if (chunk.first().type == "a2ui") chunk.first().surface?.let { SurfaceBlock(it) }
                 else ActivityRail(chunk, live, index == chunks.lastIndex)
             }
         }

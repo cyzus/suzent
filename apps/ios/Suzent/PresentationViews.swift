@@ -120,6 +120,16 @@ struct MessageView: View {
             if let reminder = SystemReminder(message.text) {
                 SystemReminderView(reminder: reminder, citationSources: message.citationSources)
             }
+        } else if user, message.files.isEmpty, let label = canvasActionLabel(message.text) {
+            // A surface action reads as what was pressed, like the desktop's canvas pill.
+            HStack(spacing: 6) {
+                Spacer(minLength: 40)
+                Image(systemName: "arrow.turn.down.right").font(.caption)
+                Text(label).suzentFont(PresentationTokens.typeCaption, weight: .semibold).lineLimit(2)
+            }
+            .foregroundStyle(Color.suzentMuted)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Chose \(label)"))
         } else if user {
             HStack {
                 Spacer(minLength: 40)
@@ -165,7 +175,7 @@ struct MessageView: View {
             footer.contentShape(Rectangle()).contentShape(.contextMenuPreview, Rectangle()).contextMenu { menuItems }
         }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: copies)
+        .suzentFeedback(.impact(weight: .light), trigger: copies)
         .task(id: copies) {
             guard copies > 0 else { return }
             copied = true
@@ -841,7 +851,25 @@ struct SuzentAssistantBadge: View {
     }
 }
 
+/// How surfaces in the transcript act; set once by the conversation so every reply shares it.
+struct SurfaceHandler {
+    let interactive: (A2UISurface) -> Bool
+    let act: (A2UISurface, String, [String: JSONValue]) -> Void
+}
+
+private struct SurfaceHandlerKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: SurfaceHandler? = nil
+}
+
+extension EnvironmentValues {
+    var surfaceHandler: SurfaceHandler? {
+        get { self[SurfaceHandlerKey.self] }
+        set { self[SurfaceHandlerKey.self] = newValue }
+    }
+}
+
 struct ActivityContent: View {
+    @Environment(\.surfaceHandler) private var surfaceHandler
     let parts: [MessagePart]
     var live = false
     var citationSources: [CitationSource] = []
@@ -860,6 +888,11 @@ struct ActivityContent: View {
                     if regent, let bubbleMenu {
                         bubble.contentShape(.contextMenuPreview, shape).contextMenu { bubbleMenu }
                     } else { bubble }
+                }
+                else if chunk.first?.type == "a2ui", let surface = chunk.first?.surface {
+                    SurfaceView(surface: surface, interactive: surfaceHandler?.interactive(surface) ?? false) { action, context in
+                        surfaceHandler?.act(surface, action, context)
+                    }
                 }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
             }
@@ -908,7 +941,7 @@ private struct ApprovalCard: View {
             }.padding(12)
         }.background(Color.suzentSurface)
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .sensoryFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
+            .suzentFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
     }
 
     private var choiceButtons: some View {

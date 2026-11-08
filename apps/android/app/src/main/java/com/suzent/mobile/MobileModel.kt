@@ -160,6 +160,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var client: MobileClient? = null
     val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
+    val overviewSupported: Boolean get() = client?.supportsChatOverview == true
+
+    /** The plan and context panel reads on demand; null while unavailable. */
+    suspend fun overview(chatId: String): ChatOverview? {
+        val api = client?.takeIf { it.supportsChatOverview && chatId.isNotEmpty() } ?: return null
+        return try { api.overview(chatId) } catch (failure: CancellationException) { throw failure } catch (_: Exception) { null }
+    }
 
     val voiceUnavailableReason: Int? get() = when {
         isDemo -> R.string.voice_demo_unavailable
@@ -725,11 +732,32 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         attachments = emptyList()
     }
 
-    fun send() {
+    fun send() = submit(draft.trim(), attachments, fromDraft = true)
+
+    val surfacesSupported: Boolean get() = client?.supportsSurfaces == true
+
+    /** A button or form on a surface: a blocked question gets its answer, anything else is sent like a message. */
+    fun act(surface: A2UISurface, action: String, context: Map<String, Any?>) {
+        val api = client ?: return
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return
+        if (device?.permissions?.send != true) return
+        if (surface.deferred) {
+            liveParts = liveParts.filterNot { it.type == "a2ui" && it.surface?.id == surface.id }
+            val current = generation
+            viewModelScope.launch {
+                try { api.answerSurface(id, surface.id, deferredAnswer(context)) }
+                catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) { if (current == generation) handle(failure, R.string.surface_answer_failed) }
+            }
+            return
+        }
+        val text = if (action == "submit_question") questionAnswerText(context) else canvasActionMessage(action, context, surface.id)
+        if (text.isNotEmpty()) submit(text, emptyList(), fromDraft = false)
+    }
+
+    private fun submit(message: String, outgoing: List<PendingAttachment>, fromDraft: Boolean) {
         val api = client ?: return
         var id = selected?.id ?: return
-        val message = draft.trim()
-        val outgoing = attachments
         if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return
         busy = true
         error = null
@@ -749,8 +777,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (current != generation) return@launch
                 api.send(id, message, selectedModel, issued)
                 if (current != generation) return@launch
-                draft = ""
-                drafts.remove(id)
+                if (fromDraft) { draft = ""; drafts.remove(id) }
                 outgoing.forEach { it.file.delete() }
                 attachments = attachments - outgoing.toSet()
                 sentVersion++

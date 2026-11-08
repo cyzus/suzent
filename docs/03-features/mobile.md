@@ -206,13 +206,30 @@ old one; pair the phone again afterwards. The same relay also gives
 - **Organize.** Long-press a chat to pin, rename, move, or delete it, or swipe
   it to pin or delete, if the phone has **Full control** (or may manage
   conversations).
+- **Use what the agent shows.** Tables, cards, buttons, forms and the other
+  displays the agent builds for you appear right in its reply, as on the
+  computer. Tap a button or fill in a form to answer; your choice shows as a
+  short line in the chat and the agent carries on from it. When the agent asks
+  you a question with options, answer it there and the reply continues. Using
+  them needs the **Send messages** permission. Displays the agent pins to the
+  computer's side panel still appear in the reply on the phone.
+- **See the plan and context.** In a conversation, tap the panel icon next to
+  **New conversation** to open **Conversation info**: the goal the agent is
+  working toward, its steps with what's done and what's next, and how full the
+  context window is, split by what fills it. On a phone it opens as a sheet you
+  can drag up for more; on a tablet it sits beside the chat. It's read-only and
+  updates while the agent works. Regent's chat doesn't have it; its board stays
+  on the computer.
 - **Follow background work.** Sub-agent chats fold under the chat that
   started them. **Tasks** (on an iPad, the third list beside **Recent** and **Projects**; on an Android tablet, **Scheduled tasks** in the list) shows failed tasks first, then active and
   paused ones, with their status and next run. You can open a task's chat but
   not change the task from the phone.
 
-The app is in English and Simplified Chinese, and follows your phone's light
-or dark mode. If the connection drops, it reconnects when you open it again and
+The app is in English and Simplified Chinese. Under **Settings → Preferences**
+you can choose **Appearance** (match the phone, light, or dark), **Text size**,
+whether to use **Haptics**, and the **Language** (on iPhone this opens iOS
+Settings for Suzent; on Android it needs Android 13 or later). These apply to
+the phone only. If the connection drops, it reconnects when you open it again and
 picks up a reply where it left off. If it can't, **Connection help** has
 **Pair again**, **Forget connection**, and a way to switch to each other
 computer you've paired.
@@ -243,7 +260,7 @@ adding a second one.
 The preview doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
-- the agent's interactive forms and buttons;
+- the computer's side panel for displays the agent keeps updating (they show in the reply instead);
 - memory, settings, or tool permissions, which stay on the computer;
 - offline access to your conversations.
 

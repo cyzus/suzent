@@ -81,6 +81,46 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
     public let lastRunFinishedAt: String?
 }
 
+/// A conversation's plan and context headline, as the desktop sidebar overview shows them.
+public struct ChatOverview: Decodable, Sendable, Equatable {
+    public struct Goal: Decodable, Sendable, Equatable {
+        public let objective: String
+        public let status: String
+        public let turnsElapsed: Int?
+        public let maxTurns: Int?
+    }
+
+    public struct PlanTask: Decodable, Identifiable, Sendable, Equatable {
+        public let id: String
+        public let title: String
+        public let activeForm: String?
+        public let status: String
+
+        public var isDone: Bool { status == "completed" || status == "cancelled" }
+    }
+
+    public struct Context: Decodable, Sendable, Equatable {
+        public struct Category: Decodable, Identifiable, Sendable, Equatable {
+            public let id: String
+            public let tokens: Int
+        }
+
+        public let usedTokens: Int?
+        public let limit: Int?
+        public let percent: Double?
+        public let reserveTokens: Int?
+        public let categories: [Category]
+    }
+
+    public let goal: Goal?
+    public let tasks: [PlanTask]
+    public let context: Context
+
+    public var completedCount: Int { tasks.filter { $0.status == "completed" }.count }
+    /// The step the agent is on now, which the plan summary names.
+    public var currentTask: PlanTask? { tasks.first { $0.status == "in_progress" } }
+}
+
 public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
