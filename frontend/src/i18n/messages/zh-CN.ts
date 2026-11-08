@@ -268,7 +268,7 @@ export const zhCN = {
     replacedHint: '重置中继地址后，这台 Suzent 会重新连上。',
     rejectedHint: '请检查注册密钥。',
     invalidUrl: '请输入以 https:// 开头的中继地址',
-    backgroundHint: '开启后台服务可在关闭窗口后保持连接。',
+    backgroundHint: '开启后台服务可在退出应用后保持连接。',
     webhooksNote: 'Webhook 任务也会多一个中继地址。中继能看到 webhook 的内容。',
   },
   mobileAccess: {
@@ -1256,9 +1256,9 @@ export const zhCN = {
     },
     service: {
       title: '后台服务',
-      subtitle: '关闭窗口后继续运行自动化、消息渠道和后台任务',
+      subtitle: '退出应用后继续运行自动化、消息渠道和后台任务',
       backgroundTitle: '在后台运行 Suzent',
-      backgroundDesc: '登录时启动，关闭窗口后继续运行。',
+      backgroundDesc: '登录时启动，退出应用后继续运行。',
       status: '状态',
       uptime: '运行时间',
       memory: '内存',
@@ -1649,7 +1649,7 @@ export const zhCN = {
       freqWebhook: '被调用时（Webhook）',
       summaryWebhook: '其 Webhook 地址被调用时运行',
       webhookHint:
-        'Suzent 会为这个任务生成一个地址，任何对它的 POST 请求都会运行该任务，请求内容作为数据一并交给它。请开启后台服务，这样关闭窗口后地址仍然可用。',
+        'Suzent 会为这个任务生成一个地址，任何对它的 POST 请求都会运行该任务，请求内容作为数据一并交给它。请开启后台服务，这样退出应用后地址仍然可用。',
       webhookUrlTitle: 'Webhook 地址',
       webhookLocal: '本机或你的隧道',
       webhookRelay: '经你的中继，任何地方都能访问',

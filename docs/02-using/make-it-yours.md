@@ -45,8 +45,8 @@ the same steps every time.
   [Desktop, phone, and browser](../01-getting-started/platforms.md).
 - **From a chat app** such as Telegram or Slack: see
   [Chat apps](../05-chat-apps/README.md).
-- **Keep it running** after you close the window, so chat apps and scheduled
-  tasks keep working: turn on **Settings → Background Service**. See
+- **Keep it running** after you quit, so chat apps and scheduled tasks keep
+  working: turn on **Settings → Background Service**. See
   [Automation](../03-features/automation.md#keep-suzent-running-in-the-background).
 
 ## Back it up

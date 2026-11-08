@@ -5,6 +5,7 @@ mod auto_update;
 mod backend;
 mod notifications;
 mod packaged;
+mod tray;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
@@ -1040,12 +1041,17 @@ fn main() {
                 backend_startup: Mutex::new(()),
                 backend_startup_error: Mutex::new(None),
             });
+            app.manage(tray::TrayState::default());
 
             let status = build_bootstrap_status(Some(app.handle()));
             if !status.required && apply_staged_update_on_start() {
                 auto_update::skip_on_exit();
                 app.handle().exit(0);
                 return Ok(());
+            }
+            // After the staged-update exit, so a handover does not flash a tray icon.
+            if let Err(error) = tray::install(app.handle()) {
+                eprintln!("System tray unavailable; closing the window will quit Suzent: {error}");
             }
             if status.required {
                 let app_handle = app.handle().clone();
@@ -1057,6 +1063,11 @@ fn main() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                tray::on_close_requested(window, &api);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
@@ -1080,7 +1091,8 @@ fn main() {
             set_auto_update_enabled,
             get_staged_update,
             apply_staged_update_now,
-            notifications::show_notification
+            notifications::show_notification,
+            tray::set_tray_language
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1088,17 +1100,42 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let tauri::RunEvent::Exit = event {
-                if auto_update::skipped_on_exit() {
-                    return;
+        .run(|app, event| {
+            // Dock reopen and deep links are macOS-only readers of `app`.
+            #[cfg(not(target_os = "macos"))]
+            let _ = &app;
+            match event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    // Restart, the updater, and a system quit all arrive here.
+                    // Mark it before any close they provoke so the window is not
+                    // hidden out from under the exit.
+                    tray::mark_exiting();
                 }
-                let root = backend::find_install_workspace_dir();
-                if let Some(tag) = auto_update::pending(&root) {
-                    if let Err(error) = auto_update::spawn(&root, &tag, None) {
-                        eprintln!("Could not install staged update {tag}: {error}");
+                tauri::RunEvent::Ready => {
+                    tray::install_quit_hook_if_needed();
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    tray::reveal_main(app);
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Opened { urls } => {
+                    if !urls.is_empty() {
+                        tray::reveal_main(app);
                     }
                 }
+                tauri::RunEvent::Exit => {
+                    if auto_update::skipped_on_exit() {
+                        return;
+                    }
+                    let root = backend::find_install_workspace_dir();
+                    if let Some(tag) = auto_update::pending(&root) {
+                        if let Err(error) = auto_update::spawn(&root, &tag, None) {
+                            eprintln!("Could not install staged update {tag}: {error}");
+                        }
+                    }
+                }
+                _ => {}
             }
         });
 }

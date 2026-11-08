@@ -280,7 +280,7 @@ export const en = {
     replacedHint: 'Reset the relay addresses to connect this Suzent again.',
     rejectedHint: 'Check the registration key.',
     invalidUrl: 'Enter the relay address, starting with https://',
-    backgroundHint: 'Enable the background service to stay connected after closing the window.',
+    backgroundHint: 'Enable the background service to stay connected after you quit.',
     webhooksNote: 'Webhook tasks get a relay URL as well. The relay can see webhook payloads.',
   },
   mobileAccess: {
@@ -1175,10 +1175,9 @@ export const en = {
     },
     service: {
       title: 'Background Service',
-      subtitle:
-        'Keep automations, channels, and background tasks running when the window is closed',
+      subtitle: 'Keep automations, channels, and background tasks running after you quit',
       backgroundTitle: 'Run Suzent in the background',
-      backgroundDesc: 'Start at login and keep running when the window closes.',
+      backgroundDesc: 'Start at login and keep running after you quit.',
       status: 'Status',
       uptime: 'Uptime',
       memory: 'Memory',
@@ -1587,7 +1586,7 @@ export const en = {
       freqWebhook: 'When called (webhook)',
       summaryWebhook: 'Runs when its webhook URL is called',
       webhookHint:
-        'Suzent gives this task a URL. Any POST to it runs the task, with the request body passed along as data. Turn on the Background Service so the URL keeps working after you close the window.',
+        'Suzent gives this task a URL. Any POST to it runs the task, with the request body passed along as data. Turn on the Background Service so the URL keeps working after you quit.',
       webhookUrlTitle: 'Webhook URL',
       webhookLocal: 'On this machine or your tunnel',
       webhookRelay: 'Through your relay, from anywhere',
