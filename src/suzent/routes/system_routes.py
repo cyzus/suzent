@@ -20,18 +20,37 @@ from suzent.config import get_effective_volumes
 # `service.state` and `server` reach for it here.
 from suzent.version import get_backend_commit as get_backend_commit
 from suzent.version import get_backend_version as get_backend_version
+from suzent.version import get_backend_source_root as get_backend_source_root
+from suzent.version import get_build_source as get_build_source
+from suzent.version import get_runtime_kind as get_runtime_kind
 
 logger = get_logger(__name__)
 
 API_VERSION = 1
 
 
-def get_system_identity() -> dict[str, str | int | bool]:
+def _installation_id() -> str:
+    # Lazy: node_identity pulls user-config paths; keep version responses cheap
+    # for callers that only need the package/commit fields.
+    from suzent.nodes.node_identity import get_node_identity
+
+    return get_node_identity()
+
+
+def get_system_identity() -> dict[str, str | int | bool | None]:
+    from suzent.config import get_data_dir
+
+    source_root = get_backend_source_root()
     return {
         "backend_version": get_backend_version(),
         "api_version": API_VERSION,
         "build_commit": get_backend_commit(),
         "development_mode": os.getenv("SUZENT_DEV_MODE") == "1",
+        "build_source": get_build_source(),
+        "runtime": get_runtime_kind(),
+        "installation_id": _installation_id(),
+        "data_dir": str(get_data_dir()),
+        "source_root": str(source_root) if source_root else None,
     }
 
 
