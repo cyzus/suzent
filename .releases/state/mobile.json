@@ -44,6 +44,7 @@
     ".releases/changes/mobile-home-list-switch.json",
     ".releases/changes/mobile-inline-surfaces.json",
     ".releases/changes/mobile-ipad-reading-width.json",
+    ".releases/changes/mobile-layered-assembly-scan.json",
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-model-memory.json",
     ".releases/changes/mobile-multiple-desktops.json",

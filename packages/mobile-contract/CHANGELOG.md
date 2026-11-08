@@ -13,6 +13,7 @@
 - Keep iOS composer actions anchored during expansion and collapse, and reduce conversation loading flashes with preserved messages and delayed loading feedback.
 - See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
 - Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
+- iOS and Android now use a thicker layered gray assembly scan matching desktop.
 - While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
 - Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
 - Regent's chat on the phone no longer repeats the logo and name already shown in the header.
