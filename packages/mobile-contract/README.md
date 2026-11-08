@@ -10,6 +10,8 @@ fragment. Clients reject redirects to keep credentials bound to the selected hos
 | Create | POST /chats | `{title}` → `{id,title,messages}` |
 | Load | GET /chats/{id} | `{id,title,messages:[{role,content}]}` |
 | Scheduled tasks | GET /mobile/client/scheduled-tasks | `{tasks:[{id,name,chatId,active,isRunning,nextRunAt,lastRunAt,hasError}]}`; requires session capability `scheduled_tasks: 1` |
+| Chat overview | GET /mobile/client/chats/{id}/overview | `{goal:{objective,status,turnsElapsed,maxTurns}|null, tasks:[{id,title,activeForm,status}], context:{usedTokens,limit,percent,reserveTokens,categories:[{id,tokens}]}}`; scoped like the chat; task descriptions, results and paths stay on the desktop; requires session capability `chat_overview: 1` |
+| Surface answer | POST /mobile/client/surface-answer | `{chat_id, surface_id, answer}` → `{ok:true}`; resolves a waiting `ask_question`; needs `send`; 404 when nothing waits; requires session capability `surfaces: 1`. Ordinary surface actions are sends; see `surface-fixtures.json` |
 | Send once | POST /chat/send | `{chat_id,message}` → 202 |
 | Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
 | Stop | POST /chat/stop | `{chat_id}` |

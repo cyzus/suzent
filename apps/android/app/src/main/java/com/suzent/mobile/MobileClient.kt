@@ -6,6 +6,8 @@ import org.json.JSONObject
 interface MobileClient {
     val supportsAttachments: Boolean
     val supportsScheduledTasks: Boolean
+    val supportsChatOverview: Boolean
+    val supportsSurfaces: Boolean
     fun close()
     fun cancelLive()
     suspend fun session(): ClientDevice
@@ -24,12 +26,14 @@ interface MobileClient {
     suspend fun create(title: String, projectId: String? = null): Chat
     suspend fun chat(id: String): Chat
     suspend fun markRead(id: String)
+    suspend fun overview(id: String): ChatOverview
     suspend fun manageChat(id: String, action: String, value: String? = null)
     suspend fun messageAction(id: String, index: Int, action: String, text: String? = null, model: String? = null): String
     suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String>
     suspend fun send(id: String, text: String, model: String? = null, attachments: List<String> = emptyList())
     suspend fun stop(id: String)
     suspend fun approvals(id: String): ApprovalState
+    suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>)
     suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>)
     suspend fun observe(id: String, event: suspend (JSONObject) -> Unit)
 }

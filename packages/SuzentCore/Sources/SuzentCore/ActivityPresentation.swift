@@ -147,7 +147,8 @@ public func activityDetail(_ raw: String?, output: Bool = false) -> String {
 
 public func activityFinalStart(_ parts: [MessagePart]) -> Int {
     var start = parts.count
-    while start > 0 && parts[start - 1].type == "text" { start -= 1 }
+    // The reply ends with its text and any surfaces shown with it.
+    while start > 0 && ["text", "a2ui"].contains(parts[start - 1].type) { start -= 1 }
     return start
 }
 
