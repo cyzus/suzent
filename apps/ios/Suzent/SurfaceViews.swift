@@ -425,11 +425,12 @@ private struct SurfaceHTML: View {
     let fixedHeight: Double?
     let interactive: Bool
     let act: (String, [String: JSONValue]) async -> Bool
-    @State private var measured: CGFloat = 120
+    @State private var measured: CGFloat?
 
     var body: some View {
-        HTMLWebView(html: html, interactive: interactive, act: act) { measured = min(max($0, 40), 1200) }
-            .frame(height: fixedHeight.map { CGFloat($0) } ?? measured)
+        // The agent's height is only a first guess until the page reports its content height.
+        HTMLWebView(html: html, interactive: interactive, act: act) { measured = min(max($0, 40), 5000) }
+            .frame(height: measured ?? fixedHeight.map { CGFloat($0) } ?? 120)
             .overlay(Rectangle().strokeBorder(Color.suzentOutline.opacity(0.4), lineWidth: 1))
     }
 }
@@ -440,39 +441,25 @@ private struct HTMLWebView: UIViewRepresentable {
     let act: (String, [String: JSONValue]) async -> Bool
     let resize: (CGFloat) -> Void
 
-    private static let bridge = """
-    (function () {
-      const send = (body) => window.webkit.messageHandlers.surface.postMessage(JSON.stringify(body));
-      window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (data && data.type === 'a2ui:action' && typeof data.action === 'string') send({ kind: 'action', action: data.action, context: data.context || {} });
-      });
-      const report = () => send({ kind: 'height', height: document.documentElement.scrollHeight });
-      new ResizeObserver(report).observe(document.documentElement);
-      window.addEventListener('load', report);
-    })();
-    """
-
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(context.coordinator, name: "surface")
-        configuration.userContentController.addUserScript(WKUserScript(source: Self.bridge, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.isScrollEnabled = false
-        view.loadHTMLString(phoneViewport(html), baseURL: nil)
+        view.loadHTMLString(surfaceHTMLDocument(html), baseURL: nil)
         context.coordinator.loaded = html
         return view
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.parent = self
-        if context.coordinator.loaded != html { context.coordinator.loaded = html; view.loadHTMLString(phoneViewport(html), baseURL: nil) }
+        if context.coordinator.loaded != html { context.coordinator.loaded = html; view.loadHTMLString(surfaceHTMLDocument(html), baseURL: nil) }
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {

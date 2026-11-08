@@ -81,10 +81,12 @@ class SurfaceTest {
         assertEquals(A2UIComponent.Unknown(""), A2UISurface.parse(JSONObject("""{"id":"x"}""")).component)
     }
 
-    @Test fun phoneViewportIsAddedOnce() {
-        assertTrue(phoneViewport("<p>Hi</p>").startsWith("<meta name=\"viewport\""))
-        val own = "<meta name='viewport' content='width=400'><p>Hi</p>"
-        assertEquals(own, phoneViewport(own))
+    @Test fun htmlDocumentFitsAPhoneAndSizesToContent() {
+        val fragment = surfaceHtmlDocument("<p>Hi</p>")
+        assertTrue(fragment.startsWith("<!DOCTYPE html>\n<meta name=\"viewport\""))
+        assertTrue("body.scrollHeight" in fragment && "SuzentSurface.post" in fragment && "a2ui:action" in fragment)
+        val own = surfaceHtmlDocument("<!doctype html><meta name='viewport' content='width=400'><p>Hi</p>")
+        assertTrue(own.startsWith("<!doctype html><meta name='viewport'"))
     }
 
     @Test fun demoTripReplyCarriesASurface() = runBlocking {
