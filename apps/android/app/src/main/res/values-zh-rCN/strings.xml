@@ -46,7 +46,7 @@
     <string name="review_invitation">检查邀请</string>
     <string name="reconnect">重新连接桌面端</string>
     <string name="waiting_approval">等待桌面端批准</string>
-    <string name="compare_code">核对桌面端的验证码，然后选择要共享的会话和操作权限。</string>
+    <string name="allow_on_desktop">在电脑上点击“允许”即可完成连接。</string>
     <string name="cancel_pairing">取消配对</string>
     <string name="confirm_desktop">连接此桌面端？</string>
     <string name="confirm_desktop_help">桌面端会请求批准这台手机。Node 访问需单独开启。</string>
