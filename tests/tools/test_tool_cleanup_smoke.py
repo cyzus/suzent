@@ -26,7 +26,7 @@ class _DummyResolver:
 
 
 class _DummyMemoryManager:
-    async def search_memories(self, query, limit, chat_id, user_id):
+    async def search_memories(self, query, limit, chat_id, user_id, kinds=None):
         return [
             {
                 "content": "remember the test",
