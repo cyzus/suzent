@@ -44,6 +44,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                             MessagePart(part.optString("type"), part.optString("text"), part.optString("toolName"),
                                 part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"),
                                 outcome = part.opt("outcome") as? String ?: "",
+                                surface = part.optJSONObject("surface")?.let(A2UISurface::parse),
                                 citationSources = (0 until sources.length()).mapNotNull { sourceIndex ->
                                     sources.optJSONObject(sourceIndex)?.let { source -> CitationSource(
                                         source.optString("id"), source.optString("type"), source.optString("title"),
@@ -72,6 +73,41 @@ data class ScheduledTask(val id: String, val name: String, val chatId: String?, 
             json.opt("chatId") as? String, json.getBoolean("active"), json.optBoolean("isRunning"),
             json.opt("nextRunAt") as? String, json.opt("lastRunAt") as? String, json.optBoolean("hasError"),
             json.opt("chatUpdatedAt") as? String, json.opt("lastRunFinishedAt") as? String)
+    }
+}
+
+/** A conversation's plan and context headline, as the desktop sidebar overview shows them. */
+data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context: Context) {
+    data class Goal(val objective: String, val status: String, val turnsElapsed: Int?, val maxTurns: Int?)
+    data class PlanTask(val id: String, val title: String, val activeForm: String?, val status: String) {
+        val isDone: Boolean get() = status == "completed" || status == "cancelled"
+    }
+    data class Category(val id: String, val tokens: Int)
+    data class Context(val usedTokens: Int?, val limit: Int?, val percent: Double?, val reserveTokens: Int?, val categories: List<Category>)
+
+    val completedCount: Int get() = tasks.count { it.status == "completed" }
+
+    companion object {
+        private fun JSONObject.optIntOrNull(key: String): Int? = if (isNull(key)) null else optInt(key)
+
+        fun parse(json: JSONObject): ChatOverview {
+            val goal = json.optJSONObject("goal")?.let {
+                Goal(it.getString("objective"), it.getString("status"), it.optIntOrNull("turnsElapsed"), it.optIntOrNull("maxTurns"))
+            }
+            val taskArray = json.optJSONArray("tasks") ?: JSONArray()
+            val tasks = (0 until taskArray.length()).map {
+                val task = taskArray.getJSONObject(it)
+                PlanTask(task.getString("id"), task.getString("title"), task.opt("activeForm") as? String, task.optString("status", "pending"))
+            }
+            val context = json.optJSONObject("context") ?: JSONObject()
+            val categoryArray = context.optJSONArray("categories") ?: JSONArray()
+            val categories = (0 until categoryArray.length()).map {
+                val category = categoryArray.getJSONObject(it)
+                Category(category.getString("id"), category.getInt("tokens"))
+            }
+            return ChatOverview(goal, tasks, Context(context.optIntOrNull("usedTokens"), context.optIntOrNull("limit"),
+                if (context.isNull("percent")) null else context.optDouble("percent"), context.optIntOrNull("reserveTokens"), categories))
+        }
     }
 }
 

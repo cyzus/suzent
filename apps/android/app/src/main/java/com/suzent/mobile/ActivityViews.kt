@@ -75,8 +75,9 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(live) { if (!live) expanded = false }
     val start = activityFinalStart(parts)
-    val work = parts.take(start).filterNot { it.regentBubble }
-    val persistent = parts.take(start).filter { it.regentBubble }
+    // Regent's bubbles and surfaces stay visible when the work above them folds away.
+    val work = parts.take(start).filterNot { it.regentBubble || it.type == "a2ui" }
+    val persistent = parts.take(start).filter { it.regentBubble || it.type == "a2ui" }
     val pending = work.any { it.state == "approval-requested" && it.output.isEmpty() }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -63,6 +65,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +81,19 @@ class MainActivity : ComponentActivity() {
     private val model: MobileModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppPreferences.load(this)
         enableEdgeToEdge()
-        setContent { SuzentTheme { MobileScreen(model) } }
+        setContent {
+            AppPreferencesProvider {
+                // System bar icons follow the in-app appearance, not only the system one.
+                val dark = isSystemInDarkTheme()
+                LaunchedEffect(dark) {
+                    val style = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+                    enableEdgeToEdge(style, style)
+                }
+                SuzentTheme { MobileScreen(model) }
+            }
+        }
     }
     override fun onStart() { super.onStart(); model.setForeground(true) }
     override fun onStop() { model.setForeground(false); super.onStop() }
@@ -201,6 +215,16 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 @Composable
 private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: Boolean, openDesktops: (Boolean) -> Unit,
                        back: (() -> Unit)?, newChat: () -> Unit, repair: () -> Unit) {
+    val selected = model.selected
+    // Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
+    val infoAvailable = model.connected && !showSettings && model.overviewSupported &&
+        selected != null && selected.id.isNotEmpty() && !selected.isRegent
+    var infoOpen by rememberSaveable { mutableStateOf(false) }
+    val wide = back == null
+    if (infoOpen && infoAvailable && !wide && selected != null) ModalBottomSheet(onDismissRequest = { infoOpen = false },
+        shape = RectangleShape, containerColor = MaterialTheme.colorScheme.surface) {
+        ChatInfoPanel(model, selected.id, Modifier.fillMaxWidth())
+    }
     Scaffold(topBar = {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -226,6 +250,10 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
                             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else SuzentWordmark()
                 }
+                if (infoAvailable) SuzentIconButton(onClick = { infoOpen = !infoOpen }, label = stringResource(R.string.chat_info),
+                    modifier = Modifier.semantics { this.selected = infoOpen }) {
+                    PanelToggleIcon(infoOpen, bottom = !wide, Modifier.size(22.dp))
+                }
                 if (model.connected) SuzentIconButton(onClick = newChat, label = stringResource(R.string.new_chat),
                     enabled = !model.busy && model.device?.permissions?.createChats == true) {
                     Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -240,7 +268,11 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
                 !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                 showSettings && desktopsOpen -> DesktopsView(model, back = { openDesktops(false) })
                 showSettings -> SettingsView(model, openDesktops = { openDesktops(true) })
-                model.selected != null -> Conversation(model)
+                selected != null && wide && infoOpen && infoAvailable -> Row(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).fillMaxHeight()) { ProvideSurfaceHandler(surfaceHandler(model, selected)) { Conversation(model) } }
+                    ChatInfoColumn(model, selected.id)
+                }
+                selected != null -> ProvideSurfaceHandler(surfaceHandler(model, selected)) { Conversation(model) }
                 else -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     if (model.busy) CircularProgressIndicator() else Text(stringResource(R.string.select_conversation), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -856,6 +888,7 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
             SettingsRow(stringResource(R.string.forget_this_desktop), { forgetting = true }, enabled = !model.busy, danger = true)
             SettingsFooter(stringResource(R.string.revoke_help))
         }
+        PreferencesSection()
         SettingsSection(stringResource(R.string.about))
         if (!model.isDemo) {
             SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
@@ -864,6 +897,56 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
         val uriHandler = LocalUriHandler.current
         SettingsRow(stringResource(R.string.privacy_policy), { uriHandler.openUri(PRIVACY_POLICY_URL) })
     }
+}
+
+@Composable
+private fun PreferencesSection() {
+    val context = LocalContext.current
+    var picking by remember { mutableStateOf<String?>(null) }
+    var language by remember { mutableStateOf(AppPreferences.language(context)) }
+    val appearanceLabels = mapOf(AppearancePreference.SYSTEM to R.string.match_system, AppearancePreference.LIGHT to R.string.appearance_light,
+        AppearancePreference.DARK to R.string.appearance_dark).mapValues { stringResource(it.value) }
+    val textSizeLabels = mapOf(TextSizePreference.SYSTEM to R.string.match_system, TextSizePreference.SMALL to R.string.text_size_small,
+        TextSizePreference.LARGE to R.string.text_size_large, TextSizePreference.EXTRA_LARGE to R.string.text_size_extra_large)
+        .mapValues { stringResource(it.value) }
+    // Language names stay in their own language so they can be found from either one.
+    val languageLabels = mapOf(LanguagePreference.SYSTEM to stringResource(R.string.match_system),
+        LanguagePreference.ENGLISH to "English", LanguagePreference.CHINESE to "简体中文")
+    SettingsSection(stringResource(R.string.preferences))
+    PreferenceRow(stringResource(R.string.appearance), appearanceLabels.getValue(AppPreferences.appearance)) { picking = "appearance" }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    PreferenceRow(stringResource(R.string.text_size), textSizeLabels.getValue(AppPreferences.textSize)) { picking = "text" }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    ListItem(headlineContent = { Text(stringResource(R.string.haptics), fontWeight = FontWeight.SemiBold) },
+        trailingContent = { Switch(checked = AppPreferences.haptics, onCheckedChange = null) },
+        modifier = Modifier.toggleable(value = AppPreferences.haptics, role = Role.Switch, onValueChange = { AppPreferences.haptics = it }))
+    if (AppPreferences.supportsLanguage) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        PreferenceRow(stringResource(R.string.language), languageLabels.getValue(language)) { picking = "language" }
+    }
+    SettingsFooter(stringResource(R.string.preferences_footer))
+    when (picking) {
+        "appearance" -> SuzentSelectionPanel(stringResource(R.string.appearance), appearanceLabels.map { it.key.name to it.value },
+            AppPreferences.appearance.name, dismiss = { picking = null }) { picked ->
+            AppPreferences.appearance = AppearancePreference.valueOf(picked); picking = null
+        }
+        "text" -> SuzentSelectionPanel(stringResource(R.string.text_size), textSizeLabels.map { it.key.name to it.value },
+            AppPreferences.textSize.name, dismiss = { picking = null }) { picked ->
+            AppPreferences.textSize = TextSizePreference.valueOf(picked); picking = null
+        }
+        "language" -> SuzentSelectionPanel(stringResource(R.string.language), languageLabels.map { it.key.name to it.value },
+            language.name, dismiss = { picking = null }) { picked ->
+            // The platform recreates the activity in the new language.
+            picking = null; language = LanguagePreference.valueOf(picked); AppPreferences.setLanguage(context, language)
+        }
+    }
+}
+
+@Composable
+private fun PreferenceRow(label: String, value: String, onClick: () -> Unit) {
+    ListItem(headlineContent = { Text(label, fontWeight = FontWeight.SemiBold) },
+        trailingContent = { Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        modifier = Modifier.clickable(role = Role.Button, onClickLabel = label, onClick = onClick))
 }
 
 @Composable
@@ -884,6 +967,25 @@ private fun SettingsRow(label: String, onClick: () -> Unit, enabled: Boolean = t
 private fun SettingsFooter(text: String) {
     Text(text, Modifier.padding(horizontal = PresentationTokens.spacePage.dp, vertical = PresentationTokens.spaceSmall.dp),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Question forms the user has replied to since, which are not offered again (desktop `isAnsweredQuestion`). */
+private fun answeredQuestions(chat: Chat): Set<String> {
+    val lastUser = chat.messages.indexOfLast { it.role == "user" }
+    if (lastUser < 0) return emptySet()
+    return chat.messages.take(lastUser).flatMap { it.parts }.mapNotNull { part ->
+        part.surface?.takeIf { (it.component as? A2UIComponent.Form)?.action == "submit_question" }?.id
+    }.toSet()
+}
+
+private fun surfaceHandler(model: MobileModel, chat: Chat): SurfaceHandler {
+    val answered = answeredQuestions(chat)
+    val idle = !model.busy && !model.streaming && !chat.running
+    val canSend = model.device?.permissions?.send == true && chat.id.isNotEmpty()
+    // A blocked question is answered while the run waits; anything else starts a new turn.
+    return SurfaceHandler(
+        interactive = { surface -> canSend && if (surface.deferred) model.surfacesSupported else idle && surface.id !in answered },
+        act = { surface, action, context, done -> model.act(surface, action, context, done) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
