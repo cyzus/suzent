@@ -9,12 +9,8 @@ describe('desktopAbout helpers', () => {
   });
 
   it('points release notes at the matching tag when known', () => {
-    expect(releaseNotesUrl('v0.23.0')).toBe(
-      'https://github.com/cyzus/suzent/releases/tag/v0.23.0'
-    );
-    expect(releaseNotesUrl('0.23.0')).toBe(
-      'https://github.com/cyzus/suzent/releases/tag/v0.23.0'
-    );
+    expect(releaseNotesUrl('v0.23.0')).toBe('https://github.com/cyzus/suzent/releases/tag/v0.23.0');
+    expect(releaseNotesUrl('0.23.0')).toBe('https://github.com/cyzus/suzent/releases/tag/v0.23.0');
     expect(releaseNotesUrl(null)).toBe('https://github.com/cyzus/suzent/releases/latest');
   });
 

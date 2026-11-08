@@ -175,8 +175,7 @@ export async function fetchSystemVersion(
     developmentMode: payload.development_mode === true,
     buildSource: typeof payload.build_source === 'string' ? payload.build_source : 'unknown',
     runtime: typeof payload.runtime === 'string' ? payload.runtime : 'unknown',
-    installationId:
-      typeof payload.installation_id === 'string' ? payload.installation_id : null,
+    installationId: typeof payload.installation_id === 'string' ? payload.installation_id : null,
     dataDir: typeof payload.data_dir === 'string' ? payload.data_dir : null,
     sourceRoot: typeof payload.source_root === 'string' ? payload.source_root : null,
   };

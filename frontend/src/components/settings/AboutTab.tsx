@@ -195,8 +195,7 @@ export function AboutTab(): React.ReactElement {
       ? t('common.loading')
       : formatVersion(backend.version, unavailable);
   const productVersion = frontendVersion !== unavailable ? frontendVersion : backendVersion;
-  const commit =
-    shortCommit(__FRONTEND_BUILD_COMMIT__) || shortCommit(backend.commit) || null;
+  const commit = shortCommit(__FRONTEND_BUILD_COMMIT__) || shortCommit(backend.commit) || null;
   const fullCommit =
     (__FRONTEND_BUILD_COMMIT__ !== 'unknown' && __FRONTEND_BUILD_COMMIT__) ||
     backend.commit ||
@@ -455,11 +454,7 @@ interface AboutDetailRowProps {
   badge?: string | null;
 }
 
-export function AboutDetailRow({
-  label,
-  value,
-  badge,
-}: AboutDetailRowProps): React.ReactElement {
+export function AboutDetailRow({ label, value, badge }: AboutDetailRowProps): React.ReactElement {
   return (
     <div className="grid gap-1 border-b-2 border-brutal-black/10 py-3 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-start sm:gap-4">
       <dt className="text-xs font-black uppercase text-neutral-500 dark:text-neutral-400">
