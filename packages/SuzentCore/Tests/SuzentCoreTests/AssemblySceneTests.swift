@@ -13,11 +13,11 @@ final class AssemblySceneTests: XCTestCase {
     }
 
     func testScanFollowsAssemblyAndHasProjectedDepth() {
-        XCTAssertFalse(AssemblyScene.frame(seconds: 0.2).contains { $0.color == 0x408DFF })
-        let scan = AssemblyScene.frame(seconds: 2.2 / 1.45).filter { $0.color == 0x408DFF }
-        XCTAssertEqual(scan.count, 6)
+        XCTAssertFalse(AssemblyScene.frame(seconds: 0.2).contains { [UInt32(0x737980), 0xc4c7ca, 0xa8adb3, 0xe0e2e4].contains($0.color) })
+        let scan = AssemblyScene.frame(seconds: 2.2 / 1.45).filter { [UInt32(0x737980), 0xc4c7ca, 0xa8adb3, 0xe0e2e4].contains($0.color) }
+        XCTAssertEqual(scan.count, 10)
         XCTAssertTrue(scan.allSatisfy { $0.points.first!.y != $0.points.last!.y })
-        XCTAssertFalse(AssemblyScene.frame(seconds: 3.2 / 1.45).contains { $0.color == 0x408DFF })
+        XCTAssertFalse(AssemblyScene.frame(seconds: 3.2 / 1.45).contains { [UInt32(0x737980), 0xc4c7ca, 0xa8adb3, 0xe0e2e4].contains($0.color) })
     }
     func testReducedMotionIsStable() {
         let first = AssemblyScene.frame(seconds: 0, reduced: true)

@@ -68,8 +68,9 @@ public enum AssemblyScene {
                 if (i < 2) == back { continue }
                 let points = [corners[i], corners[(i+1)%4]]
                 let opacity = sin(progress * .pi) * (back ? 0.24 : 0.95)
-                if !back { marks.append(AssemblyMark(points: points, color: 0x408DFF, alpha: opacity * 0.15, stroke: true, width: 4)) }
-                marks.append(AssemblyMark(points: points, color: 0x408DFF, alpha: opacity, stroke: true, width: back ? 0.65 : 1.15))
+                for layer in back ? AssemblyScan.back : AssemblyScan.front {
+                    marks.append(AssemblyMark(points: points, color: layer.color, alpha: opacity * layer.opacity, stroke: true, width: layer.width))
+                }
             }
         }
         for slot in -3...2 {
