@@ -54,5 +54,7 @@ Send these as messages to the bot:
 
 ## Keep it online
 
-Chat apps only work while Suzent is running. To keep them available after you
-close the window, turn on the [background service](../03-features/automation.md#keep-suzent-running-in-the-background).
+Chat apps only work while Suzent is running. On Windows and macOS, closing
+the window leaves Suzent in the notification area or the menu bar. To keep
+chat apps available after you quit, turn on the
+[background service](../03-features/automation.md#keep-suzent-running-in-the-background).

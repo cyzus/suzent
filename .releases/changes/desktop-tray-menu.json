@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Closing the window keeps Suzent in the Windows notification area or the macOS menu bar until you quit."
+}
