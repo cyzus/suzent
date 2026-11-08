@@ -381,3 +381,18 @@ it('keeps a compact identity and live work visible without a second duration row
   expect(markup).toContain('Reply');
   expect(markup).not.toContain('activity-turn-duration');
 });
+
+it('keeps streaming content in the same container when the final-answer boundary moves', () => {
+  const children = [
+    <p key="prose">A long response the user is reading</p>,
+    <div key="activity">New tool activity</div>,
+    <p key="tail">Continuing response</p>,
+  ];
+  const render = (finalStart: number) =>
+    renderToStaticMarkup(
+      <TurnActivity isStreaming finalStart={finalStart} startedAtMs={Date.now()}>
+        {children}
+      </TurnActivity>
+    );
+  expect(render(2)).toBe(render(0));
+});
