@@ -304,6 +304,10 @@
                         ]
                       },
                       {
+                        "type": "html",
+                        "html": "<style>body{margin:0;font:14px -apple-system,Roboto,sans-serif;color:#111;background:#fff}.room{padding:12px}.stage{background:#ffe666;border:2px solid #000;text-align:center;padding:6px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.t{border:2px solid #000;height:36px;display:flex;align-items:center;justify-content:center}.mine{background:#0066ff;color:#fff;animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.06)}}button{width:100%;padding:10px;border:2px solid #000;background:#000;color:#fff;font-weight:700}</style><div class=room><div class=stage>Stage</div><div class=grid><div class=t>1</div><div class=\"t mine\">Your table</div><div class=t>3</div><div class=t>4</div><div class=t>5</div><div class=t>6</div><div class=t>7</div><div class=t>8</div></div><button onclick=\"parent.postMessage({type:'a2ui:action',action:'pick_table',context:{table:2}},'*')\">Pick this table</button></div>"
+                      },
+                      {
                         "type": "divider"
                       },
                       {
@@ -848,6 +852,10 @@
                             "variant": "secondary"
                           }
                         ]
+                      },
+                      {
+                        "type": "html",
+                        "html": "<style>body{margin:0;font:14px -apple-system,Roboto,sans-serif;color:#111;background:#fff}.room{padding:12px}.stage{background:#ffe666;border:2px solid #000;text-align:center;padding:6px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.t{border:2px solid #000;height:36px;display:flex;align-items:center;justify-content:center}.mine{background:#0066ff;color:#fff;animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.06)}}button{width:100%;padding:10px;border:2px solid #000;background:#000;color:#fff;font-weight:700}</style><div class=room><div class=stage>舞台</div><div class=grid><div class=t>1</div><div class=\"t mine\">你的座位</div><div class=t>3</div><div class=t>4</div><div class=t>5</div><div class=t>6</div><div class=t>7</div><div class=t>8</div></div><button onclick=\"parent.postMessage({type:'a2ui:action',action:'pick_table',context:{table:2}},'*')\">选这张桌子</button></div>"
                       },
                       {
                         "type": "divider"
