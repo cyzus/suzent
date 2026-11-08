@@ -1,0 +1,9 @@
+{
+  "back": [{"color": "737980", "opacity": 1.0, "width": 1.2}],
+  "front": [
+    {"color": "c4c7ca", "opacity": 0.12, "width": 6.0},
+    {"color": "737980", "opacity": 0.65, "width": 3.2},
+    {"color": "a8adb3", "opacity": 1.0, "width": 2.1},
+    {"color": "e0e2e4", "opacity": 0.9, "width": 0.8}
+  ]
+}
