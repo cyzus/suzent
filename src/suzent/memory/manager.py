@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
-from .lancedb_store import LanceDBMemoryStore
+from .lancedb_store import LanceDBMemoryStore, matches_metadata
 from .markdown_store import MarkdownMemoryStore
 from .indexer import CoreMemoryFileIndexer
 from .classifier import classify_fact
@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 # Memory system constants
 DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
 DEFAULT_MEMORY_SEARCH_LIMIT = 10
+# Kind lives in a JSON metadata column, so a kind-filtered search ranks this many
+# rows first and filters them in Python; a plain top-N would leave few or none.
+FILTERED_SEARCH_DEPTH = 200
 
 # Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
@@ -462,50 +465,57 @@ class MemoryManager:
         limit: int = DEFAULT_MEMORY_SEARCH_LIMIT,
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        kinds: Optional[List[str]] = None,
         use_hybrid: bool = True,
+        record_access: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Semantic search for memories (agent-facing tool).
         Uses hybrid search when embeddings are configured; otherwise falls back
         to local full-text search so memory remains useful without an embedding
-        provider.
+        provider. With *kinds*, only memories of those kinds are returned.
+
+        Only the returned memories are counted as accessed, never the deeper set
+        ranked for a kind filter. A caller that trims the results further passes
+        ``record_access=False`` and records what it keeps.
         """
+        depth = max(limit, FILTERED_SEARCH_DEPTH) if kinds else limit
         try:
             if not self.embedding_gen.model:
                 results = await self.store.fts_search(
                     query_text=query,
                     user_id=user_id or "",
                     chat_id=chat_id,
-                    limit=limit,
+                    limit=depth,
+                    record_access=False,
                 )
-                self._log_recalls(results)
-                logger.info(
-                    f"Keyword memory search for '{query}': found {len(results)} results"
-                )
-                return results
-
-            # Generate query embedding
-            query_embedding = await self.embedding_gen.generate(query)
-
-            if use_hybrid:
-                # Hybrid search (semantic + full-text)
+            elif use_hybrid:
                 results = await self.store.hybrid_search(
-                    query_embedding=query_embedding,
+                    query_embedding=await self.embedding_gen.generate(query),
                     query_text=query,
                     user_id=user_id,
                     chat_id=chat_id,
-                    limit=limit,
+                    limit=depth,
+                    record_access=False,
                 )
             else:
-                # Pure semantic search
                 results = await self.store.semantic_search(
-                    query_embedding=query_embedding,
+                    query_embedding=await self.embedding_gen.generate(query),
                     user_id=user_id,
                     chat_id=chat_id,
-                    limit=limit,
+                    limit=depth,
+                    record_access=False,
                 )
 
+            if kinds:
+                results = [
+                    r
+                    for r in results
+                    if matches_metadata(r.get("metadata") or {}, kinds=kinds)
+                ][:limit]
+
+            if record_access:
+                self.store.record_accesses(results)
             self._log_recalls(results)
             logger.info(f"Memory search for '{query}': found {len(results)} results")
             return results
