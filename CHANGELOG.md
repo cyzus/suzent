@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
 - Context menus can start a chat in a project, upload into a folder, save a sandbox file from the browser, and pause or run scheduled tasks and heartbeats.
 - Use a deeper yellow in dark mode, and give inline code the same black border on phones as on desktop.
+- Desktop thinking animation now uses the mobile robot assembly sequence and respects reduced motion preferences.
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
 - Closing the window keeps Suzent in the Windows notification area or the macOS menu bar until you quit.
 - The tray shows which chats are waiting on you or running, and closing the window asks whether to minimize to the tray or quit, with a setting to remember the choice.
