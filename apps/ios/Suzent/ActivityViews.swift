@@ -73,8 +73,9 @@ struct ActivityTurn: View {
 
     var body: some View {
         let start = activityFinalStart(parts)
-        let work = Array(parts.prefix(start)).filter { $0.regentBubble != true }
-        let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true }
+        // Regent's bubbles and surfaces stay visible when the work above them folds away.
+        let work = Array(parts.prefix(start)).filter { $0.regentBubble != true && $0.type != "a2ui" }
+        let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true || $0.type == "a2ui" }
         let pending = work.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {

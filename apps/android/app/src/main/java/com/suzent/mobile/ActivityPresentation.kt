@@ -118,7 +118,8 @@ fun activityDetail(raw: String, output: Boolean = false): String {
 }
 fun activityFinalStart(parts: List<MessagePart>): Int {
     var start = parts.size
-    while (start > 0 && parts[start - 1].type == "text") start--
+    // The reply ends with its text and any surfaces shown with it.
+    while (start > 0 && parts[start - 1].type in setOf("text", "a2ui")) start--
     return start
 }
 

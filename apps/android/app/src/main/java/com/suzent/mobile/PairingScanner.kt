@@ -61,7 +61,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
     var allowed by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
     LaunchedEffect(Unit) { if (!allowed) permission.launch(Manifest.permission.CAMERA) }
-    val found = model.pairingInvitation != null || model.pairingCode != null
+    val found = model.pairingInvitation != null || model.awaitingDesktop
     val active = !found && !model.busy && model.error == null && !paste && foreground
     val latestActive by rememberUpdatedState(active)
     val reset = { model.cancelPairing(); model.error = null }
@@ -152,8 +152,9 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                             Text(model.pairingPreview?.desktopName ?: stringResource(R.string.confirm_desktop), style = MaterialTheme.typography.titleLarge)
                         }
                         Text(model.pairingInvitation?.origin.orEmpty(), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                        if (model.pairingCode != null) {
-                            PairingProgress(stringResource(R.string.waiting_approval)); PairingCode(model.pairingCode.orEmpty())
+                        if (model.awaitingDesktop) {
+                            PairingProgress(stringResource(R.string.waiting_approval))
+                            Text(stringResource(R.string.allow_on_desktop), style = MaterialTheme.typography.bodySmall)
                         } else model.pairingInvitation?.let { invitation ->
                             var details by remember { mutableStateOf(false) }
                             model.pairingPreview?.let { preview ->

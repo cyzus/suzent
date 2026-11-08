@@ -108,6 +108,12 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsScheduledTasks = false
         private set
 
+    override var supportsChatOverview = false
+        private set
+
+    override var supportsSurfaces = false
+        private set
+
     var supportsVoice = false
         private set
 
@@ -130,6 +136,8 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
+        supportsChatOverview = value.optInt("chat_overview") == 1
+        supportsSurfaces = value.optInt("surfaces") == 1
         sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
@@ -200,6 +208,14 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override suspend fun markRead(id: String) {
         require(!id.contains('/') && id != "." && id != "..")
         json("mobile/client/chats/$id/read", JSONObject())
+    }
+    override suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>) {
+        json("mobile/client/surface-answer", JSONObject().put("chat_id", id).put("surface_id", surfaceId)
+            .put("answer", JSONObject(compactJson(answer))))
+    }
+    override suspend fun overview(id: String): ChatOverview {
+        require(!id.contains('/') && id != "." && id != "..")
+        return ChatOverview.parse(json("mobile/client/chats/$id/overview"))
     }
     override suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")

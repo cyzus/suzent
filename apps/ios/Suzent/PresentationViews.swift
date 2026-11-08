@@ -120,6 +120,16 @@ struct MessageView: View {
             if let reminder = SystemReminder(message.text) {
                 SystemReminderView(reminder: reminder, citationSources: message.citationSources)
             }
+        } else if user, message.files.isEmpty, let label = canvasActionLabel(message.text) {
+            // A surface action reads as what was pressed, like the desktop's canvas pill.
+            HStack(spacing: 6) {
+                Spacer(minLength: 40)
+                Image(systemName: "arrow.turn.down.right").font(.caption)
+                Text(label).suzentFont(PresentationTokens.typeCaption, weight: .semibold).lineLimit(2)
+            }
+            .foregroundStyle(Color.suzentMuted)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Chose \(label)"))
         } else if user {
             HStack {
                 Spacer(minLength: 40)
@@ -165,7 +175,7 @@ struct MessageView: View {
             footer.contentShape(Rectangle()).contentShape(.contextMenuPreview, Rectangle()).contextMenu { menuItems }
         }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: copies)
+        .suzentFeedback(.impact(weight: .light), trigger: copies)
         .task(id: copies) {
             guard copies > 0 else { return }
             copied = true
@@ -841,7 +851,26 @@ struct SuzentAssistantBadge: View {
     }
 }
 
+/// How surfaces in the transcript act; set once by the conversation so every reply shares it.
+struct SurfaceHandler {
+    let interactive: (A2UISurface) -> Bool
+    /// Resolves to whether the action was delivered.
+    let act: (A2UISurface, String, [String: JSONValue]) async -> Bool
+}
+
+private struct SurfaceHandlerKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: SurfaceHandler? = nil
+}
+
+extension EnvironmentValues {
+    var surfaceHandler: SurfaceHandler? {
+        get { self[SurfaceHandlerKey.self] }
+        set { self[SurfaceHandlerKey.self] = newValue }
+    }
+}
+
 struct ActivityContent: View {
+    @Environment(\.surfaceHandler) private var surfaceHandler
     let parts: [MessagePart]
     var live = false
     var citationSources: [CitationSource] = []
@@ -860,6 +889,11 @@ struct ActivityContent: View {
                     if regent, let bubbleMenu {
                         bubble.contentShape(.contextMenuPreview, shape).contextMenu { bubbleMenu }
                     } else { bubble }
+                }
+                else if chunk.first?.type == "a2ui", let surface = chunk.first?.surface {
+                    SurfaceView(surface: surface, interactive: surfaceHandler?.interactive(surface) ?? false) { action, context in
+                        await surfaceHandler?.act(surface, action, context) ?? false
+                    }
                 }
                 else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1, expansionKey: railChunkKey(chunk, index: index)) }
             }
@@ -908,7 +942,7 @@ private struct ApprovalCard: View {
             }.padding(12)
         }.background(Color.suzentSurface)
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .sensoryFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
+            .suzentFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
     }
 
     private var choiceButtons: some View {
@@ -1034,42 +1068,166 @@ struct SuzentLogoMark: View {
 
 struct ReconnectIndicator: View {
     let active: Bool
+    var stage: Int = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var began = Date()
+    @State private var stageFloat: Double = 0
+    @State private var waveAmp: Double = 10
 
-    private func sample(_ phase: Double, _ frames: [(Double, Double)]) -> Double {
-        for index in 1..<frames.count where phase <= frames[index].0 {
-            let (start, from) = frames[index - 1]
-            let (end, to) = frames[index]
-            let t = max(0, min(1, (phase - start) / (end - start)))
-            return from + (to - from) * t * t * (3 - 2 * t)
+    private func drawNode(
+        _ context: inout GraphicsContext, cx: Double, cy: Double, boxSize: Double,
+        gaze: Double, eyeY: Double, blink: Double, tiltDeg: Double, liftPx: Double,
+        hollow: Bool, ink: Color, surface: Color
+    ) {
+        var ctx = context
+        let pivot = CGPoint(x: cx, y: cy + liftPx + boxSize * 0.32)
+        ctx.translateBy(x: pivot.x, y: pivot.y)
+        ctx.rotate(by: .degrees(tiltDeg))
+        ctx.translateBy(x: -pivot.x, y: -pivot.y)
+
+        let s = boxSize / 24.0
+        let x0 = cx - boxSize / 2.0
+        let y0 = cy + liftPx - boxSize / 2.0
+        let bodyRect = CGRect(x: x0, y: y0, width: 24 * s, height: 24 * s)
+        let bodyPath = Path(roundedRect: bodyRect, cornerRadius: 4.2 * s)
+        ctx.fill(bodyPath, with: .color(hollow ? surface : ink))
+        if hollow {
+            ctx.stroke(bodyPath, with: .color(ink), lineWidth: 1.6 * s)
         }
-        return frames.last?.1 ?? 0
+        for index in 1..<SuzentLogoGeometry.rectangles.count {
+            let rect = SuzentLogoGeometry.rectangles[index]
+            let eh = max(0.35, rect[3] * blink)
+            let ew = rect[2] * (1.0 + (1.0 - blink) * 0.12)
+            let ex = x0 + (rect[0] + gaze - (ew - rect[2]) / 2.0) * s
+            let ey = y0 + (rect[1] + eyeY + (rect[3] - eh) / 2.0) * s
+            let eyeRect = CGRect(x: ex, y: ey, width: ew * s, height: eh * s)
+            let eyePath = Path(roundedRect: eyeRect, cornerRadius: min(rect[4], eh / 2.0) * s)
+            ctx.fill(eyePath, with: .color(hollow ? ink : surface))
+        }
     }
 
     var body: some View {
         let animated = active && !reduceMotion && scenePhase == .active
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animated)) { timeline in
-            let p = animated ? timeline.date.timeIntervalSince(began).truncatingRemainder(dividingBy: 7.8) / 7.8 : 0
-            let gaze = sample(p, [(0,0),(0.09,0),(0.15,-1.5),(0.28,-1.5),(0.34,0),(0.40,1.33),(0.53,1.33),(0.60,0),(1,0)])
-            let lift = sample(p, [(0,0),(0.09,0),(0.18,-3),(0.27,-3),(0.35,1),(0.43,-5),(0.51,-5),(0.57,2),(0.64,-7),(0.72,1),(0.76,0),(1,0)])
-            let tilt = sample(p, [(0,0),(0.09,0),(0.18,-7),(0.27,-7),(0.35,2),(0.43,6),(0.51,6),(0.57,-2),(0.64,0),(1,0)])
-            let blink = sample(p, [(0,1),(0.12,1),(0.145,0.12),(0.17,1),(0.31,1),(0.335,0.12),(0.36,1),(0.55,1),(0.575,0.12),(0.60,1),(0.71,1),(0.735,0.12),(0.76,1),(1,1)])
-            ZStack {
-                SuzentLogoMark(eyeOffset: CGSize(width: gaze, height: animated ? sample(p, [(0,0),(0.15,-0.33),(0.28,-0.33),(0.34,0),(0.40,-0.67),(0.53,-0.67),(0.60,-1),(0.68,-1),(0.76,0),(1,0)]) : 0), blink: blink)
-                    .frame(width: 72, height: 72)
-                    .rotationEffect(.degrees(tilt), anchor: UnitPoint(x: 0.5, y: 0.8))
-                    .offset(y: lift)
+        let ink = Color.suzentText
+        let surface = Color.suzentSurface
+        let subtle = Color.suzentMuted.opacity(0.22)
+        let yellow = Color(presentation: PresentationTokens.yellow)
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
+            let t = animated ? timeline.date.timeIntervalSince(began) : 0
+            let blinkPeriod = stage == 2 ? 1.2 : 2.7
+            let bc = t.truncatingRemainder(dividingBy: blinkPeriod)
+            let blink: Double = {
+                guard animated else { return 1 }
+                if bc < 0.14 { return 1 - 0.88 * sin((bc / 0.14) * .pi) }
+                if stage == 2, bc >= 0.22, bc < 0.36 { return 1 - 0.88 * sin(((bc - 0.22) / 0.14) * .pi) }
+                return 1
+            }()
+            let floatWave = animated ? sin(t * 3.4) : 0
+            let lLift = animated ? (stage == 3 ? -abs(sin(t * 6.0)) * 7.0 : floatWave * 2.5) : 0
+            let rLift = animated && stage >= 2 ? -floatWave * 2.5 : 0
+            let lTilt = animated ? (stage == 0 ? sin(t * 2.5) * 4.5 : (stage == 1 ? -4.0 : 0)) : 0
+            let rTilt = animated && stage >= 2 ? sin(t * 2.5) * -3.0 : 0
+            let eyeY: Double = stage == 1 ? -0.9 : (stage == 3 ? -0.35 : 0)
+
+            Canvas { context, size in
+                let cy = size.height / 2.0 - 10.0
+                let leftX = 48.0
+                let rightX = size.width - 48.0
+                let span = rightX - leftX
+                let freq = stage == 1 ? 2.5 : 1.5
+                let phaseSpeed = stage == 3 ? -7.5 : 5.2
+
+                // 1. Dual silk sine waves
+                for w in 0...1 {
+                    var path = Path()
+                    let steps = 56
+                    for i in 0...steps {
+                        let u = Double(i) / Double(steps)
+                        let x = leftX + u * span
+                        let env = sin(u * .pi)
+                        let yOff = (1.0 - u) * lLift * 0.4 + u * rLift * 0.4
+                        let y = cy + yOff + sin(u * .pi * 2.0 * freq - t * phaseSpeed + Double(w) * .pi) * waveAmp * env
+                        if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                        else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                    context.stroke(path, with: .color(ink.opacity(w == 0 ? 0.88 : 0.20)), lineWidth: w == 0 ? 1.8 : 1.2)
+                }
+
+                // 2. Flowing energy beads
                 if animated {
-                    Rectangle().fill(LinearGradient(colors: [.clear, Color.suzentText.opacity(0.65)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: 44, height: 1)
-                        .opacity(sample(p, [(0,0),(0.05,0),(0.12,1),(0.21,0),(1,0)]))
-                        .offset(x: -70 + sample(p, [(0,-8),(0.21,13),(1,13)]), y: -10)
+                    let beadCount = stage >= 2 ? 3 : 2
+                    for b in 0..<beadCount {
+                        var u = (t * (stage == 3 ? 0.95 : 0.58) + Double(b) / Double(beadCount)).truncatingRemainder(dividingBy: 1.0)
+                        if u < 0 { u += 1.0 }
+                        if stage == 3 { u = 1.0 - u }
+                        let x = leftX + u * span
+                        let env = sin(u * .pi)
+                        let yOff = (1.0 - u) * lLift * 0.4 + u * rLift * 0.4
+                        let y = cy + yOff + sin(u * .pi * 2.0 * freq - t * phaseSpeed) * waveAmp * env
+                        let r = 3.8
+                        let beadRect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+                        let beadPath = Path(ellipseIn: beadRect)
+                        context.fill(beadPath, with: .color(yellow))
+                        context.stroke(beadPath, with: .color(ink), lineWidth: 1.4)
+                    }
+                }
+
+                // 3. Left & Right Nodes
+                drawNode(&context, cx: leftX, cy: cy, boxSize: 44, gaze: 1.25, eyeY: eyeY, blink: blink,
+                         tiltDeg: lTilt, liftPx: lLift, hollow: false, ink: ink, surface: surface)
+                drawNode(&context, cx: rightX, cy: cy, boxSize: 44, gaze: stage >= 2 ? -1.25 : 0, eyeY: 0,
+                         blink: stage >= 2 ? blink : 1, tiltDeg: rTilt, liftPx: rLift, hollow: stage < 2, ink: ink, surface: surface)
+
+                // 4. Fluid 4-pill progress bar
+                if active {
+                    let pillY = size.height - 10.0
+                    let gap = 5.0
+                    let baseW = 8.0
+                    let activeW = 24.0
+                    let h = 4.5
+                    var widths = [Double](repeating: 0, count: 4)
+                    var factors = [Double](repeating: 0, count: 4)
+                    var totalW = gap * 3.0
+                    for i in 0..<4 {
+                        let dist = abs(stageFloat - Double(i))
+                        let af = max(0, min(1, 1.0 - dist))
+                        let s = af * af * (3.0 - 2.0 * af)
+                        let w = baseW + (activeW - baseW) * s
+                        widths[i] = w; factors[i] = s; totalW += w
+                    }
+                    var px = (size.width - totalW) / 2.0
+                    for i in 0..<4 {
+                        let w = widths[i]
+                        let s = factors[i]
+                        let done = Double(i) < stageFloat - 0.1
+                        let fill: Color = s > 0.5 ? yellow : (done ? ink : subtle)
+                        let rect = CGRect(x: px, y: pillY - h / 2.0, width: w, height: h)
+                        let pillPath = Path(roundedRect: rect, cornerRadius: h / 2.0)
+                        context.fill(pillPath, with: .color(fill))
+                        context.stroke(pillPath, with: .color(ink), lineWidth: 1.0)
+                        px += w + gap
+                    }
                 }
             }
-        }.frame(width: 210, height: 130)
+        }.frame(width: 260, height: 136)
             .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+            .onAppear {
+                stageFloat = Double(stage)
+                waveAmp = stage == 0 ? 10 : (stage == 1 ? 14 : (stage == 2 ? 1.4 : 4))
+            }
+            .onChange(of: stage) { _, next in
+                let targetAmp: Double = next == 0 ? 10 : (next == 1 ? 14 : (next == 2 ? 1.4 : 4))
+                if reduceMotion {
+                    stageFloat = Double(next)
+                    waveAmp = targetAmp
+                } else {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                        stageFloat = Double(next)
+                        waveAmp = targetAmp
+                    }
+                }
+            }
             .onChange(of: active) { _, active in if active { began = Date() } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { began = Date() } }
     }

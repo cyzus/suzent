@@ -9,6 +9,7 @@ data class MessagePart(
     val type: String, val text: String = "", val toolName: String = "",
     val args: String = "", val output: String = "", val toolCallId: String = "",
     val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(), val outcome: String = "", val regentBubble: Boolean = false,
+    val surface: A2UISurface? = null,
 )
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
@@ -123,12 +124,15 @@ fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
     return result
 }
 
+private val blockTypes = setOf("text", "a2ui")
+
 // Parts are normalized at the history or live-publication boundary.
 fun activityChunks(parts: List<MessagePart>): List<List<MessagePart>> {
     val chunks = mutableListOf<MutableList<MessagePart>>()
     parts.forEach { part ->
         if (part.type == "citation-sources" || (part.type in listOf("text", "reasoning") && part.text.isBlank())) return@forEach
-        if (part.type == "text" || chunks.isEmpty() || chunks.last().last().type == "text") chunks.add(mutableListOf(part))
+        // A surface is a block of its own, like text; tools and reasoning around it keep their own rails.
+        if (part.type in blockTypes || chunks.isEmpty() || chunks.last().last().type in blockTypes) chunks.add(mutableListOf(part))
         else chunks.last().add(part)
     }
     return chunks
@@ -252,6 +256,13 @@ class LiveActivityBuffer {
             "CUSTOM" -> {
                 val value = event.optJSONObject("value") ?: return
                 when (event.optString("name")) {
+                    "a2ui.render" -> {
+                        val surface = A2UISurface.parse(value)
+                        // A later render of the same id replaces the earlier one in place.
+                        val index = parts.indexOfFirst { it.type == "a2ui" && it.surface?.id == surface.id }
+                        if (index >= 0) parts[index] = parts[index].copy(surface = surface) else parts.add(MessagePart("a2ui", surface = surface))
+                    }
+                    "a2ui.resolved" -> parts.removeAll { it.type == "a2ui" && it.surface?.deferred == true && it.surface.id == value.optString("surfaceId") }
                     "tool_approval_request" -> {
                         val toolId = value.optString("toolCallId")
                         val index = parts.indexOfFirst { it.type == "tool" && it.toolCallId == toolId }

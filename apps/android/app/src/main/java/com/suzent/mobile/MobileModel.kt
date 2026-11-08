@@ -30,10 +30,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
     var pairingPreview by mutableStateOf<PairingPreview?>(null)
     var pairingStatus by mutableStateOf<String?>(null)
-    var pairingCode by mutableStateOf<String?>(null)
+    var awaitingDesktop by mutableStateOf(false)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
     var reconnecting by mutableStateOf(false)
+    var reconnectStage by mutableStateOf(0)
+        private set
+    var reconnectStatus by mutableStateOf<String?>(null)
+        private set
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
     var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
@@ -160,6 +164,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var client: MobileClient? = null
     val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
+    val overviewSupported: Boolean get() = client?.supportsChatOverview == true
+
+    /** The plan and context panel reads on demand; null while unavailable. */
+    suspend fun overview(chatId: String): ChatOverview? {
+        val api = client?.takeIf { it.supportsChatOverview && chatId.isNotEmpty() } ?: return null
+        return try { api.overview(chatId) } catch (failure: CancellationException) { throw failure } catch (_: Exception) { null }
+    }
 
     val voiceUnavailableReason: Int? get() = when {
         isDemo -> R.string.voice_demo_unavailable
@@ -319,7 +330,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = null
         pairingStatus = null
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         pairingPreview = null
         generation++
         busy = false
@@ -353,7 +364,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
-                if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
+                if (!invitation.phoneConfirmation) awaitingDesktop = true
                 pairingStatus = text(R.string.pairing_finishing)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
                     currentCoroutineContext().ensureActive()
@@ -385,12 +396,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                                 removeDesktop(desktop.id)
                                 error = text(R.string.desktop_access_revoked, desktop.name)
                                 pairingInvitation = null
-                                busy = false; pairingCode = null; pairingStatus = null
+                                busy = false; awaitingDesktop = false; pairingStatus = null
                                 return@launch
                             }
                             pairingVersion++
                             pairingInvitation = null
-                            busy = false; pairingCode = null; pairingStatus = null
+                            busy = false; awaitingDesktop = false; pairingStatus = null
                             return@launch
                         }
                         "pending" -> {
@@ -406,7 +417,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation == current) { pairingInvitation = null; handle(failure) }
             } finally {
                 bootstrap.close()
-                if (generation == current) { busy = false; pairingCode = null; pairingStatus = null }
+                if (generation == current) { busy = false; awaitingDesktop = false; pairingStatus = null }
             }
         }
     }
@@ -418,10 +429,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private suspend fun activate(id: String) {
         var saved = requireNotNull(desktops.desktop(id)).connection
         var viaRelay = false
+        reconnectStage = 0
+        reconnectStatus = "LAN · ${displayOrigin(saved.origin)}"
         run {
             var reachable: String? = null
             for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
                 currentCoroutineContext().ensureActive()
+                reconnectStatus = "LAN · ${displayOrigin(origin)}"
                 val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
                 try { probe.capabilities(); reachable = origin; break }
                 catch (failure: CancellationException) { throw failure }
@@ -432,6 +446,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val relay = saved.relay
             if (reachable == null && relay != null) {
                 currentCoroutineContext().ensureActive()
+                reconnectStage = 1
+                reconnectStatus = "RELAY"
                 val probe = relayClient(relay, "", probeOnly = true)
                 try { probe.capabilities(); viaRelay = true }
                 catch (failure: CancellationException) { throw failure }
@@ -441,6 +457,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             if (!viaRelay) saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
         }
         require(saved.clientProtocol == 1)
+        reconnectStage = 2
+        reconnectStatus = "VERIFYING"
         val candidate = saved.relay?.takeIf { viaRelay }?.let { relayClient(it, saved.hostToken) }
             ?: BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
@@ -464,6 +482,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             }
             candidate.capabilities()
             val session = candidate.session()
+            reconnectStage = 3
+            reconnectStatus = "SYNCING"
             val navigation = candidate.initialNavigation()
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
@@ -503,7 +523,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 else error = text(R.string.reconnect_unreachable)
             }
             catch (failure: Exception) { handle(failure) }
-            finally { busy = false; reconnecting = false; reconnectJob = null }
+            finally { busy = false; reconnecting = false; reconnectStatus = null; reconnectStage = 0; reconnectJob = null }
         }
     }
 
@@ -725,12 +745,39 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         attachments = emptyList()
     }
 
-    fun send() {
-        val api = client ?: return
-        var id = selected?.id ?: return
-        val message = draft.trim()
-        val outgoing = attachments
-        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return
+    fun send() = submit(draft.trim(), attachments, fromDraft = true)
+
+    val surfacesSupported: Boolean get() = client?.supportsSurfaces == true
+
+    /**
+     * A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+     * [done] reports whether it was delivered, so a form can be used again after a failure.
+     */
+    fun act(surface: A2UISurface, action: String, context: Map<String, Any?>, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return done(false)
+        if (device?.permissions?.send != true) return done(false)
+        if (surface.deferred) {
+            val current = generation
+            viewModelScope.launch {
+                try {
+                    api.answerSurface(id, surface.id, deferredAnswer(context))
+                    liveParts = liveParts.filterNot { it.type == "a2ui" && it.surface?.id == surface.id }
+                    done(true)
+                } catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) { if (current == generation) handle(failure, R.string.surface_answer_failed); done(false) }
+            }
+            return
+        }
+        val text = if (action == "submit_question") questionAnswerText(context) else canvasActionMessage(action, context, surface.id)
+        if (text.isNotEmpty()) submit(text, emptyList(), fromDraft = false, done) else done(false)
+    }
+
+    private fun submit(message: String, outgoing: List<PendingAttachment>, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        var id = selected?.id ?: return done(false)
+        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return done(false)
+        var delivered = false
         busy = true
         error = null
         val current = generation
@@ -749,8 +796,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (current != generation) return@launch
                 api.send(id, message, selectedModel, issued)
                 if (current != generation) return@launch
-                draft = ""
-                drafts.remove(id)
+                if (fromDraft) { draft = ""; drafts.remove(id) }
                 outgoing.forEach { it.file.delete() }
                 attachments = attachments - outgoing.toSet()
                 sentVersion++
@@ -759,10 +805,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         files = outgoing.map { FileAttachment(it.name, it.mimeType) }))
                 }
                 chats = chats.map { if (it.id == id) it.copy(running = true) else it }
+                delivered = true
                 if (foreground) observe(id)
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
-            finally { if (current == generation) { busy = false; pairingStatus = null } }
+            finally { if (current == generation) { busy = false; pairingStatus = null }; done(delivered) }
         }
     }
 
@@ -1058,7 +1105,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin.orEmpty()
     }

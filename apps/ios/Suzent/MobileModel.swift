@@ -8,10 +8,12 @@ import SuzentCore
     var pairingInvitation: PairingInvitation?
     var pairingPreview: PairingPreview?
     var pairingStatus: String?
-    var pairingCode: String?
+    var awaitingDesktop = false
     var device: ClientDevice?
     var canReconnect = false
     var reconnecting = false
+    var reconnectStage = 0
+    var reconnectStatus: String?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
     var chatPages: [ChatPageQuery: ChatPage] = [:]
@@ -111,6 +113,8 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var voiceSupported = false
+    var overviewSupported = false
+    var surfacesSupported = false
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -123,6 +127,12 @@ import SuzentCore
             return String(localized: "Enable Create conversations for this phone, or open an existing conversation.")
         }
         return nil
+    }
+
+    /// The plan and context panel reads on demand; nil while unavailable.
+    func overview(_ chatID: String) async -> ChatOverview? {
+        guard overviewSupported, !chatID.isEmpty, let client else { return nil }
+        return try? await client.overview(chatID)
     }
 
     func startVoice() {
@@ -227,6 +237,8 @@ import SuzentCore
             canReconnect = false
             device = session.device
             attachmentsSupported = true
+            overviewSupported = true
+            surfacesSupported = true
             applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
@@ -314,7 +326,7 @@ import SuzentCore
         pairingTask = nil
         pairingStatus = nil
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         pairingPreview = nil
         busy = false
         generation = UUID()
@@ -337,7 +349,7 @@ import SuzentCore
         let viaRelay = pairingViaRelay
         pairingTask = Task {
             var savedID = target?.id
-            defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
+            defer { if generation == current { busy = false; awaitingDesktop = false; pairingStatus = nil } }
             pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
@@ -359,7 +371,7 @@ import SuzentCore
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
-                if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
+                if !invitation.phoneConfirmation { awaitingDesktop = true }
                 pairingStatus = String(localized: "Finishing connection…")
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
@@ -386,7 +398,7 @@ import SuzentCore
                         if store.activeId == id { origin = saved.origin; canReconnect = true }
                         try await activate(id, saved)
                         repairActive = false
-                        busy = false; pairingCode = nil; pairingStatus = nil
+                        busy = false; awaitingDesktop = false; pairingStatus = nil
                         pairingVersion += 1
                         pairingInvitation = nil
                         return
@@ -409,11 +421,14 @@ import SuzentCore
     private func activate(_ id: String, _ stored: Connection) async throws {
         var saved = stored
         var throughRelay: RelayRoute?
+        reconnectStage = 0
+        reconnectStatus = "LAN · \(displayOrigin(saved.origin))"
         do {
             var reachable: String?
             var visited = Set<String>()
             for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil && visited.insert(origin).inserted {
                 try Task.checkCancellation()
+                reconnectStatus = "LAN · \(displayOrigin(origin))"
                 let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowsHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
                 defer { probe.close() }
                 do { _ = try await probe.capabilities(); reachable = origin }
@@ -422,6 +437,8 @@ import SuzentCore
             if let reachable { saved.origin = reachable }
             else if let relay = saved.relay {
                 try Task.checkCancellation()
+                reconnectStage = 1
+                reconnectStatus = "RELAY"
                 let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
                 defer { probe.close() }
                 do { _ = try await probe.capabilities(); throughRelay = relay }
@@ -429,6 +446,8 @@ import SuzentCore
             } else { throw PairingError.unreachable }
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
+        reconnectStage = 2
+        reconnectStatus = "VERIFYING"
         let candidate: SuzentClient
         if let throughRelay {
             candidate = try SuzentClient(relay: throughRelay, token: saved.hostToken)
@@ -460,6 +479,8 @@ import SuzentCore
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
+            reconnectStage = 3
+            reconnectStatus = "SYNCING"
             let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
@@ -481,6 +502,8 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -522,7 +545,7 @@ import SuzentCore
     /// A switch to another desktop may have cancelled this attempt and taken over; the newer attempt keeps the busy state.
     private func releaseReconnect(_ attempt: Task<Void, Never>) {
         guard reconnectTask == attempt else { return }
-        busy = false; reconnecting = false; reconnectTask = nil
+        busy = false; reconnecting = false; reconnectStatus = nil; reconnectStage = 0; reconnectTask = nil
     }
 
     /// Probes the target with the reconnect timeouts and keeps the current desktop if it cannot be reached.
@@ -599,6 +622,8 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -758,16 +783,39 @@ import SuzentCore
     }
 
     func send() async {
-        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoing = attachments
-        guard !text.isEmpty || !outgoing.isEmpty else { return }
+        _ = await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
+    }
+
+    /// A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+    /// Returns whether the answer was delivered, so a form can be used again after a failure.
+    func act(on surface: A2UISurface, action: String, context: [String: JSONValue]) async -> Bool {
+        guard let client, device?.permissions.send == true, let id = selected?.id, !id.isEmpty else { return false }
+        if surface.isDeferred {
+            do {
+                try await client.answerSurface(id, surfaceID: surface.id, answer: deferredAnswer(context))
+                liveParts.removeAll { $0.type == "a2ui" && $0.surface?.id == surface.id }
+                return true
+            } catch {
+                if case ClientError.http(401) = error { handle(error) }
+                else { self.error = String(localized: "The answer could not be delivered. The question may have expired.") }
+                return false
+            }
+        }
+        let text = action == "submit_question" ? questionAnswerText(context)
+            : canvasActionMessage(action: action, context: context, surfaceID: surface.id)
+        guard !text.isEmpty else { return false }
+        return await submit(text, outgoing: [], fromDraft: false)
+    }
+
+    private func submit(_ text: String, outgoing: [PendingAttachment], fromDraft: Bool) async -> Bool {
+        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return false }
+        guard !text.isEmpty || !outgoing.isEmpty else { return false }
         busy = true
         error = nil
         defer { busy = false }
         do {
             if id.isEmpty {
-                guard device?.permissions.createChats == true else { return }
+                guard device?.permissions.createChats == true else { return false }
                 let created = try await client.createChat(title: String(localized: "Mobile conversation"), projectID: selected?.projectId)
                 selected = created
                 id = created.id
@@ -776,8 +824,7 @@ import SuzentCore
             }
             let issued = outgoing.isEmpty ? [] : try await client.upload(outgoing, chatID: id)
             try await client.send(text, chatID: id, model: selectedModel, attachments: issued)
-            draft = ""
-            drafts[id] = nil
+            if fromDraft { draft = ""; drafts[id] = nil }
             outgoing.forEach { try? FileManager.default.removeItem(at: $0.url) }
             attachments.removeAll { item in outgoing.contains { $0.id == item.id } }
             sentVersion += 1
@@ -789,9 +836,11 @@ import SuzentCore
                 syncRunning(chat)
             }
             if foreground { observe(id, client: client) }
+            return true
         } catch {
             if case ClientError.http(401) = error { handle(error) }
             else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
+            return false
         }
     }
 
@@ -1035,7 +1084,7 @@ import SuzentCore
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
-        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
+        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         generation = UUID()
         nodeEnabled = false
@@ -1060,7 +1109,7 @@ import SuzentCore
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin ?? ""
     }

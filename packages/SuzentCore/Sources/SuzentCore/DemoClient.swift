@@ -58,7 +58,7 @@ import Foundation
         let permissions = ClientPermissions(chatIds: [], allChats: true, createChats: true, manageChats: true,
                                             send: true, stop: true, approveTools: true)
         return ClientSession(device: ClientDevice(deviceId: "offline-demo", displayName: "Suzent Demo", platform: "demo", permissions: permissions),
-                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1)
+                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1, chatOverview: 1, surfaces: 1)
     }
 
     public func projects() async throws -> [Project] { try decode([Project].self, strings["projects"]!) }
@@ -85,6 +85,18 @@ import Foundation
                                   "models": [label("model"), label("alternate_model")]]
         records.insert(item, at: 0); try save()
         return try decode(Chat.self, item)
+    }
+
+    /// The demo never asks a blocking question, so there is nothing to answer.
+    public func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws {}
+
+    /// Only the trip conversation carries a sample plan; the rest show an empty one.
+    public func overview(_ id: String) async throws -> ChatOverview {
+        let sample = strings["overview"] as! [String: Any]
+        guard id == "demo-trip" else {
+            return try decode(ChatOverview.self, ["tasks": [], "context": ["categories": []]])
+        }
+        return try decode(ChatOverview.self, sample)
     }
 
     public func markRead(_ id: String) async throws {
