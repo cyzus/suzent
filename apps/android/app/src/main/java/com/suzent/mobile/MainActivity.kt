@@ -10,6 +10,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -207,8 +213,10 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
     }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val width = constraints.maxWidth.toFloat()
-        if (showHome || reveal.value > 0f) Box(Modifier.fillMaxSize().graphicsLayer { translationX = -(1f - reveal.value) * width * .25f }) { home() }
-        if (!showHome || reveal.value < 1f) Box(Modifier.fillMaxSize().graphicsLayer { translationX = reveal.value * width }) { detail() }
+        val homeVisible by remember(showHome) { derivedStateOf { showHome || reveal.value > 0f } }
+        val detailVisible by remember(showHome) { derivedStateOf { !showHome || reveal.value < 1f } }
+        if (homeVisible) Box(Modifier.fillMaxSize().graphicsLayer { translationX = -(1f - reveal.value) * width * .25f }) { home() }
+        if (detailVisible) Box(Modifier.fillMaxSize().graphicsLayer { translationX = reveal.value * width }) { detail() }
     }
 }
 
@@ -816,19 +824,19 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             Text(stringResource(R.string.manage_permission_hint), modifier = Modifier.padding(16.dp), fontSize = 13.sp)
         } else if (moving) {
             SuzentMenuItem(stringResource(R.string.move_to_project), R.drawable.ic_chat_back) { moving = false }
-            HorizontalDivider(thickness = 2.dp, color = outline)
+            SuzentMenuDivider()
             model.projects.forEach { project ->
                 val current = project.id == chat.projectId
-                DropdownMenuItem(text = { Text(project.name, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
-                    trailingIcon = if (current) ({ Icon(painterResource(R.drawable.ic_message_check), null, Modifier.size(18.dp)) }) else null,
-                    enabled = !current && !model.busy,
-                    onClick = { menu = false; model.manageChat(chat, "move", project.id) })
+                SuzentMenuItem(project.name, R.drawable.ic_chat_folder,
+                    enabled = !current && !model.busy, selected = current) {
+                    menu = false; model.manageChat(chat, "move", project.id)
+                }
             }
         } else {
             SuzentMenuItem(stringResource(if (chat.pinned) R.string.unpin_chat else R.string.pin_chat), R.drawable.ic_chat_pin) { menu = false; togglePin() }
             SuzentMenuItem(stringResource(R.string.rename_chat), R.drawable.ic_chat_rename) { menu = false; title = chat.title; renaming = true }
             SuzentMenuItem(stringResource(R.string.move_to_project), R.drawable.ic_chat_folder, enabled = !chat.running && model.projects.isNotEmpty()) { moving = true }
-            HorizontalDivider(thickness = 2.dp, color = outline)
+            SuzentMenuDivider()
             SuzentMenuItem(stringResource(R.string.delete_chat), R.drawable.ic_chat_delete, enabled = !chat.running, danger = true) { menu = false; deleting = true }
         }
     }
@@ -1009,6 +1017,9 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val expanded = keyboardVisible && !attachmentsExpanded
+    val loadingHistory = model.openingChatId == chat.id && chat.messages.isEmpty()
+    val historyAlpha = animateFloatAsState(if (loadingHistory) 0f else 1f,
+        animationSpec = tween(160, easing = FastOutSlowInEasing), label = "history reveal")
     LaunchedEffect(keyboardVisible) { if (keyboardVisible) attachmentsExpanded = false }
     androidx.activity.compose.BackHandler(enabled = attachmentsExpanded) { attachmentsExpanded = false }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -1095,9 +1106,18 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val live = model.streaming || model.liveParts.isNotEmpty()
     lastItem = (if (chat.id.isEmpty()) 1 else 0) + (if (chat.isRegent && messages.isEmpty() && !model.streaming) 1 else 0) +
         messages.size + (if (live) 1 else 0) - 1
+    var positionedVersion by remember(chat.id) { mutableIntStateOf(-1) }
+    if (!loadingHistory && positionedVersion != model.openedVersion && lastItem >= 0) {
+        SideEffect {
+            scroll.requestScrollToItem(lastItem)
+            positionedVersion = model.openedVersion
+        }
+    }
     // Follow a streaming reply, and the hand-off from the live turn to the saved message, while at the end.
     LaunchedEffect(model.liveParts, messages.size) { if (following && chat.id.isNotEmpty()) toEnd() }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(attachmentsExpanded) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().graphicsLayer {
+        alpha = if (loadingHistory) 1f else historyAlpha.value
+    }.pointerInput(attachmentsExpanded) {
         if (attachmentsExpanded) awaitEachGesture {
             // Observe before selectable text and message controls consume the touch.
             awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
@@ -1109,7 +1129,10 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         // Short conversations sit at the bottom, as they did when the list was reversed.
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp, if (chat.id.isEmpty()) Alignment.Top else Alignment.Bottom)) {
         if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
-        if (chat.isRegent && messages.isEmpty() && !model.streaming) item { RegentGreeting() }
+        if (loadingHistory) item(key = "loading-history") {
+            HistoryLoadingIndicator()
+        }
+        if (!loadingHistory && chat.isRegent && messages.isEmpty() && !model.streaming) item { RegentGreeting() }
         itemsIndexed(messages, key = { index, _ -> "message-$index" }) { index, message ->
             val idle = !model.busy && !model.streaming && !chat.running
             val lastUser = chat.messages.indexOfLast { it.role == "user" }
@@ -1139,7 +1162,10 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline)
-        .animateContentSize(animationSpec = androidx.compose.animation.core.tween(180)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .animateContentSize(
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+            alignment = Alignment.BottomCenter
+        ).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (model.voice.active) {
             VoiceCubeView(model.voice.animationState, model.voice.working, model.voice.micLevel, Modifier.fillMaxWidth().height(112.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1165,9 +1191,12 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat, startVoice) else Spacer(Modifier.width(44.dp))
+        Spacer(Modifier.width(44.dp))
         }
-        if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        AnimatedVisibility(visible = expanded,
+            enter = fadeIn(tween(160, delayMillis = 40)),
+            exit = fadeOut(tween(90))) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 SuzentTextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() },
                     enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
@@ -1179,8 +1208,13 @@ private fun ColumnScope.Conversation(model: MobileModel) {
                 }
 
             }
-            SendAction(model, chat, startVoice)
+            Spacer(Modifier.size(44.dp))
         }
+        }
+    }
+    // One persistent action stays at the animated panel's bottom edge in both layouts.
+    Box(Modifier.align(Alignment.BottomEnd).padding(10.dp)) {
+        SendAction(model, chat, startVoice)
     }
     }
     }
@@ -1196,6 +1230,21 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
     ) { model.selectModel(it.ifEmpty { null }); modelsExpanded = false }
 
+}
+
+@Composable
+private fun HistoryLoadingIndicator() {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(180)
+        visible = true
+    }
+    Box(Modifier.fillMaxWidth().height(68.dp), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(visible, enter = fadeIn(tween(140)), exit = fadeOut(tween(90))) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable

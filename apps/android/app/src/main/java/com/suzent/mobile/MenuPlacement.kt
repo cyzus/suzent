@@ -22,6 +22,7 @@ fun placeMenu(
     insetRight: Int = 0,
     insetBottom: Int = 0,
     margin: Int = 0,
+    touchGap: Int = 0,
 ): MenuPlacement {
     val safeLeft = insetLeft + margin
     val safeTop = insetTop + margin
@@ -33,9 +34,15 @@ fun placeMenu(
     val height = menuHeight.coerceIn(0, availableHeight)
     val maxX = safeLeft + (availableWidth - width)
     val maxY = safeTop + (availableHeight - height)
+    val preferredY = when {
+        touchGap == 0 -> anchorY
+        anchorY + touchGap + height <= safeBottom -> anchorY + touchGap
+        anchorY - touchGap - height >= safeTop -> anchorY - touchGap - height
+        else -> anchorY
+    }
     return MenuPlacement(
         x = anchorX.coerceIn(safeLeft, maxX),
-        y = anchorY.coerceIn(safeTop, maxY),
+        y = preferredY.coerceIn(safeTop, maxY),
         maxWidth = availableWidth,
         maxHeight = availableHeight,
     )
