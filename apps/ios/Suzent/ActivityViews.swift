@@ -121,8 +121,10 @@ struct ActivityRail: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var storedKey: String { railChoices != nil && !railScope.isEmpty ? "\(railScope):\(expansionKey)" : "" }
     private var choice: Bool? {
+        // Read the local choice even when the store already has one, so a later tap still refreshes the row.
+        let local = localChoice
         if !storedKey.isEmpty, let stored = railChoices?.choice(storedKey) { return stored }
-        return localChoice
+        return local
     }
     private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
     private var expanded: Bool { railExpanded(choice: choice, live: live, current: current, waiting: waiting) }

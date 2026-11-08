@@ -143,8 +143,12 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean, expa
     val scope = LocalRailScope.current
     val storedKey = if (store != null && scope.isNotEmpty()) "$scope:$expansionKey" else ""
     // Local state repaints the row immediately. The conversation store is what survives the row leaving the list.
+    // Read the local choice even when the store already has one: skipping it lets Compose stop
+    // watching the state the tap writes, so the next tap does not repaint.
     var localChoice by remember(storedKey) { mutableStateOf<Boolean?>(null) }
-    val choice = (if (storedKey.isNotEmpty()) store?.choice(storedKey) else null) ?: localChoice
+    val local = localChoice
+    val stored = if (storedKey.isNotEmpty()) store?.choice(storedKey) else null
+    val choice = stored ?: local
     val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
     val expanded = railExpanded(choice, live, current, waiting)
     val running = live && current && parts.any { it.state == "running" || it.type == "reasoning" }
