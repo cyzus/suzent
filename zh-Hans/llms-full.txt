@@ -2474,7 +2474,9 @@ so they keep working when you change models or providers. See
 A **tool** lets the agent *do* something, like run a command. A **skill**
 teaches it *how* to do something well: a workflow, a house style, the steps for
 a particular system. The agent sees a one-line description of each enabled
-skill and reads the full instructions only when a task calls for them.
+skill and reads the full instructions only when a task calls for them. To pick
+a skill yourself, type `/skill <name>` followed by your task; see
+[Slash commands](https://suzent.com/zh-Hans/docs/reference/slash-commands#skills).
 
 ## Built-in skills
 
@@ -6134,10 +6136,12 @@ message.
 | Command | What it does | Works in |
 |---|---|---|
 | `/skill` (also `/skills`) | List your enabled skills. | Everywhere |
-| `/skill <name> [task]` | Have the agent load that skill, then do the task. Without a task, the agent says what the skill does and asks what you want. In the desktop app, typing `/skill ` suggests your skill names. | Everywhere |
+| `/skill <name> [task]` | Give the agent that skill's full instructions with your message, then have it do the task. Without a task, the agent says what the skill does and asks what you want. In the desktop app, typing `/skill ` suggests your skill names. | Everywhere |
 
 Unlike other commands, `/skill <name>` goes to the agent, so it starts a normal
-turn. See [Skills](https://suzent.com/zh-Hans/docs/features/skills).
+turn. The agent gets the whole skill right away instead of deciding whether to
+read it. Using the same skill again sends it again, so any edits you made to it
+since are picked up. See [Skills](https://suzent.com/zh-Hans/docs/features/skills).
 
 ## Undo and retry
 
@@ -9584,7 +9588,10 @@ fragment is saved.
 
 This budget belongs to `build_combined_reminder`, not to
 `wrap_in_system_reminder`. Directly wrapped live inbox injections do not use the
-assembly budget. Inbox background turns do, on both runtimes, so long messages
+assembly budget, and neither does a `/skill <name>` turn: the chat processor
+wraps the named skill's full `SKILL.md` content (from `skill_invocation_context`)
+in a block of its own after the combined reminder, so a long skill is not
+truncated. The model does not call `skill_execute` for it. Inbox background turns do, on both runtimes, so long messages
 can be truncated there; their visible trigger reflects the budgeted text.
 
 ACP turns take `system_reminders` like native ones and assemble them with
