@@ -1077,7 +1077,7 @@ struct ReconnectIndicator: View {
         let animated = active && !reduceMotion && scenePhase == .active
         let ink = Color.suzentText
         let surface = Color.suzentSurface
-        let subtle = Color.suzentOutlineSubtle
+        let subtle = Color.suzentMuted.opacity(0.22)
         let yellow = Color(presentation: PresentationTokens.yellow)
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
             let t = animated ? timeline.date.timeIntervalSince(began) : 0
