@@ -106,14 +106,16 @@ describe('Focal conversation controls', () => {
       expect(html).not.toContain('\ue202');
     }
   );
-  it('keeps copy while removing retry, fork and model signature only for focal', () => {
+  it('hides message actions and empty footers only for focal', () => {
     const focal = response(true);
-    expect(focal).toContain('status.copyToClipboard');
+    expect(focal).not.toContain('status.copyToClipboard');
+    expect(focal).not.toContain('conversation-message-actions');
     expect(focal).not.toContain('common.retry');
     expect(focal).not.toContain('conversationFork.button');
     expect(focal).not.toContain('test-model');
     expect(focal).not.toContain('<time');
     const regular = response(false);
+    expect(regular).toContain('status.copyToClipboard');
     expect(regular).toContain('common.retry');
     expect(regular).toContain('conversationFork.button');
     expect(regular).toContain('test-model');
