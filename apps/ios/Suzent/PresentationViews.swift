@@ -861,7 +861,7 @@ struct ActivityContent: View {
                         bubble.contentShape(.contextMenuPreview, shape).contextMenu { bubbleMenu }
                     } else { bubble }
                 }
-                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1) }
+                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1, expansionKey: railChunkKey(chunk, index: index)) }
             }
         }
     }

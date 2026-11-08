@@ -796,7 +796,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
                         MarkdownText(chunk.first().text, citationSources, onLongPress = bubbleMenu)
                     }
                 }
-                else ActivityRail(chunk, live, index == chunks.lastIndex)
+                else ActivityRail(chunk, live, index == chunks.lastIndex, expansionKey = railChunkKey(chunk, index))
             }
         }
     }

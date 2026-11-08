@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Keep a collapsed activity rail closed while a reply is streaming, and stop streaming blue and a single failure from recoloring the whole rail."
+}

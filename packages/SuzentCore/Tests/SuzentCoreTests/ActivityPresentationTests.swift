@@ -53,3 +53,82 @@ import Testing
     #expect(abs(cycle(2.25, 1) - 0.25) < 1e-9)
     #expect(abs(cycle(1.25, 1, alternate: true) - 0.75) < 1e-9)
 }
+
+@Test @MainActor func collapsedStreamingRailStaysClosedAcrossRemountAndTokenUpdates() {
+    let choices = RailChoices()
+    let chunk = [MessagePart(type: "reasoning", text: "Looking")]
+    let key = "\(railScope(chatId: "chat", messageKey: "live1")):\(railChunkKey(chunk, index: 0))"
+    #expect(railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false))
+    choices.set(key, expanded: false)
+    // A recycled row has no local choice and reads the same conversation store.
+    #expect(railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false) == false)
+    let updated = chunk + [MessagePart(type: "tool", toolName: "read_file", toolCallId: "t1", state: "running")]
+    #expect(railChunkKey(updated, index: 0) == railChunkKey(chunk, index: 0))
+    let same = "\(railScope(chatId: "chat", messageKey: "live1")):\(railChunkKey(updated, index: 0))"
+    #expect(railExpanded(choice: choices.choice(same), live: true, current: true, waiting: false) == false)
+}
+
+@Test @MainActor func reopeningAndANewStreamAreSeparateFromTheCollapsedRail() {
+    let choices = RailChoices()
+    let key = "\(railScope(chatId: "chat", messageKey: "live1")):i0"
+    choices.set(key, expanded: false)
+    choices.set(key, expanded: true)
+    #expect(railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false))
+    let first = nextStreamGeneration(0, wasStreaming: false, streaming: true)
+    let held = nextStreamGeneration(first.generation, wasStreaming: first.streaming, streaming: true)
+    let stopped = nextStreamGeneration(held.generation, wasStreaming: held.streaming, streaming: false)
+    let second = nextStreamGeneration(stopped.generation, wasStreaming: stopped.streaming, streaming: true)
+    #expect(held.generation == 1)
+    #expect(second.generation == 2)
+    let nextKey = "\(railScope(chatId: "chat", messageKey: "live\(second.generation)")):i0"
+    #expect(choices.choice(nextKey) == nil)
+    #expect(railExpanded(choice: choices.choice(nextKey), live: true, current: true, waiting: false))
+}
+
+@Test @MainActor func aNewChatDoesNotReuseRailChoices() {
+    let previous = RailChoices()
+    previous.set("\(railScope(chatId: "a", messageKey: "m0")):i0", expanded: false)
+    let next = RailChoices()
+    #expect(next.choice("\(railScope(chatId: "b", messageKey: "m0")):i0") == nil)
+    #expect(railExpanded(choice: next.choice("\(railScope(chatId: "b", messageKey: "m0")):i0"), live: true, current: true, waiting: false))
+}
+
+@Test func approvalKeepsTheRailOpenAndAFinishedUntouchedRailCloses() {
+    #expect(railExpanded(choice: false, live: true, current: true, waiting: true))
+    #expect(railExpanded(choice: nil, live: false, current: false, waiting: false) == false)
+}
+
+@Test func streamingStaysInkWhenAnEarlierToolFailed() {
+    let parts = [
+        MessagePart(type: "tool", toolName: "read_file", toolCallId: "a", state: "error"),
+        MessagePart(type: "tool", toolName: "grep_search", toolCallId: "b", state: "running"),
+    ]
+    #expect(activityHeaderTone(parts, live: true, current: true) == .streaming)
+    #expect(activityToneToken(.streaming) == "text")
+    #expect(activityToneToken(.streaming) != "blue")
+    #expect(activityItemTone(failed: true, pending: false, active: false) == .failed)
+    #expect(activityItemTone(failed: false, pending: false, active: true) == .streaming)
+    #expect(activityToneToken(.failed) == "danger")
+    #expect(activitySummary(parts, live: true).contains { $0.kind == "failed" && $0.count == 1 })
+}
+
+@Test func aMixOfSuccessAndFailureDoesNotPaintTheWholeHeaderAsFailed() {
+    let parts = [
+        MessagePart(type: "tool", toolName: "read_file", toolCallId: "a", state: "completed"),
+        MessagePart(type: "tool", toolName: "write_file", toolCallId: "b", state: "error"),
+    ]
+    #expect(activityHeaderTone(parts, live: false, current: false) == .idle)
+    #expect(activityToneToken(.idle) == "muted")
+    #expect(activityItemTone(failed: true, pending: false, active: false) == .failed)
+    #expect(activityItemTone(failed: false, pending: false, active: false) == .idle)
+    #expect(activitySummary(parts, live: false).contains { $0.kind == "failed" && $0.count == 1 })
+}
+
+@Test func everyToolFailingIsStillAFailedHeaderOnceTheStreamEnds() {
+    let parts = [
+        MessagePart(type: "tool", toolName: "read_file", toolCallId: "a", state: "error"),
+        MessagePart(type: "tool", toolName: "grep_search", toolCallId: "b", state: "denied"),
+    ]
+    #expect(activityHeaderTone(parts, live: false, current: false) == .failed)
+    #expect(activityToneToken(.failed) == "danger")
+}
