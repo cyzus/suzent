@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -71,7 +72,7 @@ import kotlin.math.sin
 
 @Composable
 fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolean = false, compact: Boolean = false,
-                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList(), onBubbleLongPress: (() -> Unit)? = null) {
+                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList(), onBubbleLongPress: ((Offset) -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(live) { if (!live) expanded = false }
     val start = activityFinalStart(parts)

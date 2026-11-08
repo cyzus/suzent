@@ -54,8 +54,26 @@ import androidx.compose.ui.text.font.FontWeight
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.localToWindow
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
@@ -162,7 +180,7 @@ fun SuzentChevron(expanded: Boolean, modifier: Modifier = Modifier, size: Dp = 1
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat(),
-                 onLongPress: (() -> Unit)? = null) {
+                 onLongPress: ((Offset) -> Unit)? = null) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -279,12 +297,17 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
 
 @Composable
 private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier,
-                          onLongPress: (() -> Unit)? = null) {
+                          onLongPress: ((Offset) -> Unit)? = null) {
     AndroidView(modifier = modifier, factory = { ctx ->
         StableTableTextView(ctx).apply { setTextIsSelectable(onLongPress == null); setLineSpacing(0f, 1.2f) }
     }, update = update@ { view ->
         // Set on every update so the listener sees the current menu callback; selection stays off when it is set.
-        view.setOnLongClickListener(onLongPress?.let { action -> android.view.View.OnLongClickListener { action(); true } })
+        view.setOnLongClickListener(onLongPress?.let { action ->
+            android.view.View.OnLongClickListener {
+                action(Offset((view as? StableTableTextView)?.pressInWindowX ?: 0f, (view as? StableTableTextView)?.pressInWindowY ?: 0f))
+                true
+            }
+        })
         if (view.tag == binding) return@update
         view.tag = binding
         view.textSize = binding.textSize
@@ -388,6 +411,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     val shadowColor = suzentShadow
     val view = LocalView.current
     var menu by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf<Offset?>(null) }
     val actionsLabel = stringResource(R.string.message_actions)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role in listOf("system_triggered", "trigger")) {
@@ -402,11 +426,20 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
         }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline)
         // The text inside keeps long-press for selection; the bubble's padding opens the actions menu.
+        var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
         Box(Modifier.padding(end = if (regent) 0.dp else PresentationTokens.shadowOffset.dp,
             bottom = if (regent) 0.dp else PresentationTokens.shadowOffset.dp)
             .widthIn(max = 320.dp).then(bubble)
-            .pointerInput(Unit) { detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) }
-            .semantics { onLongClick(actionsLabel) { menu = true; true } }
+            .onGloballyPositioned { bubbleCoords = it }
+            .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { local ->
+                    menuAnchor = bubbleCoordsState.value?.localToWindow(local)
+                    view.suzentHaptic(SuzentHaptic.LongPress)
+                    menu = true
+                })
+            }
+            .semantics { onLongClick(actionsLabel) { menuAnchor = bubbleCoords?.positionInWindow(); menu = true; true } }
             .padding(PresentationTokens.spaceMedium.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
                 message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
@@ -416,7 +449,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Regent's bubbles open the reply actions on a long press, like the user's own messages.
         ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources,
-            onBubbleLongPress = if (regent) ({ view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
+            onBubbleLongPress = if (regent) ({ point -> menuAnchor = point; view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
     }
     message.reaction?.takeIf { it.isNotEmpty() }?.let { reaction ->
         val label = stringResource(R.string.regent_reaction, reaction)
@@ -435,7 +468,8 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .semantics { contentDescription = label })
     }
     if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork,
-        showActions = isLatest, menu = menu, onMenu = { menu = it }, onAction = onAction)
+        showActions = isLatest, menu = menu, menuAnchor = menuAnchor, onMenu = { menu = it },
+        onAnchor = { menuAnchor = it }, onAction = onAction)
     }
 }
 
@@ -465,7 +499,8 @@ private fun SystemReminderView(reminder: SystemReminder, sources: List<CitationS
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRetry: Boolean, canEdit: Boolean,
-                          canFork: Boolean, showActions: Boolean, menu: Boolean, onMenu: (Boolean) -> Unit,
+                          canFork: Boolean, showActions: Boolean, menu: Boolean, menuAnchor: Offset?,
+                          onMenu: (Boolean) -> Unit, onAnchor: (Offset?) -> Unit,
                           onAction: (String, String?) -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -487,9 +522,19 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
         view.suzentHaptic(SuzentHaptic.Light)
     }
     Box(Modifier.fillMaxWidth()) {
+        var footerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        val footerCoordsState = rememberUpdatedState(footerCoords)
         Row(Modifier.fillMaxWidth()
-            .pointerInput(hasMenu) { if (hasMenu) detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); onMenu(true) }) }
-            .semantics { if (hasMenu) onLongClick(actionsLabel) { onMenu(true); true } },
+            .onGloballyPositioned { footerCoords = it }
+            .pointerInput(hasMenu) {
+                if (!hasMenu) return@pointerInput
+                detectTapGestures(onLongPress = { local ->
+                    onAnchor(footerCoordsState.value?.localToWindow(local))
+                    view.suzentHaptic(SuzentHaptic.LongPress)
+                    onMenu(true)
+                })
+            }
+            .semantics { if (hasMenu) onLongClick(actionsLabel) { onAnchor(footerCoords?.positionInWindow()); onMenu(true); true } },
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (user) Spacer(Modifier.weight(1f))
             if (showActions) {
@@ -526,7 +571,7 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
             }
             if (showActions && user) Text(stringResource(R.string.you), fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
         }
-        SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }) {
+        SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }, anchorInWindow = menuAnchor) {
             if (hasText) {
                 SuzentMenuItem(stringResource(R.string.message_copy), R.drawable.ic_message_copy) { onMenu(false); copy() }
                 SuzentMenuItem(stringResource(R.string.message_share), R.drawable.ic_share) { onMenu(false); shareText(context, message.text) }
@@ -570,23 +615,78 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
     }
 }
 
-/** Long-press menu in the Suzent style: square panel, 2 px rule, hard offset shadow. */
+/**
+ * Long-press menu in the Suzent style: square panel, 2 px rule, hard offset shadow.
+ *
+ * Material's dropdown anchors to the composable it is called from. On a full-width
+ * row that is always the same corner, wherever the finger was. [anchorInWindow] is
+ * the press in window pixels; without one (TalkBack) the menu sits on the element
+ * that opened it. Either way it is shifted to stay inside the safe area.
+ */
 @Composable
-fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val outline = MaterialTheme.colorScheme.outline
-    val menuShadow = suzentShadow
-    val menuSurface = MaterialTheme.colorScheme.surface
-    val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, shape = RectangleShape,
-        containerColor = Color.Transparent, tonalElevation = 0.dp, shadowElevation = 0.dp,
-        modifier = Modifier.width(260.dp)) {
-        // The popup's scroll container clips anything drawn outside its bounds, so the offset is
-        // reserved inside the content: shadow first, opaque panel over it.
-        Box(Modifier.fillMaxWidth().drawBehind {
+fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, anchorInWindow: Offset? = null,
+               content: @Composable ColumnScope.() -> Unit) {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val configuration = LocalConfiguration.current
+    val scroll = rememberScrollState()
+    LaunchedEffect(expanded) { if (expanded) scroll.scrollTo(0) }
+    val safe = WindowInsets.safeDrawing
+    val insetLeft = safe.getLeft(density, direction)
+    val insetTop = safe.getTop(density)
+    val insetRight = safe.getRight(density, direction)
+    val insetBottom = safe.getBottom(density)
+    val margin = with(density) { 8.dp.roundToPx() }
+    val windowWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val windowHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val maxWidth = with(density) { (windowWidth - insetLeft - insetRight - margin * 2).coerceAtLeast(0).toDp() }
+    val maxHeight = with(density) { (windowHeight - insetTop - insetBottom - margin * 2).coerceAtLeast(0).toDp() }
+    val pressX = anchorInWindow?.x?.roundToInt()
+    val pressY = anchorInWindow?.y?.roundToInt()
+    val provider = remember(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin) {
+        PressMenuPositionProvider(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin)
+    }
+    if (expanded) Popup(popupPositionProvider = provider, onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)) {
+        val outline = MaterialTheme.colorScheme.outline
+        val menuShadow = suzentShadow
+        val menuSurface = MaterialTheme.colorScheme.surface
+        val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
+        Box(Modifier.width(minOf(260.dp, maxWidth)).heightIn(max = maxHeight).drawBehind {
             val offset = menuShadowSize.toPx()
             drawRect(menuShadow, topLeft = Offset(offset, offset), size = size)
         }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
-            Column(Modifier.fillMaxWidth().background(menuSurface).border(PresentationTokens.borderWidth.dp, outline), content = content)
+            Column(Modifier.fillMaxWidth().heightIn(max = (maxHeight - menuShadowSize).coerceAtLeast(0.dp))
+                .verticalScroll(scroll).background(menuSurface).border(PresentationTokens.borderWidth.dp, outline), content = content)
+        }
+    }
+}
+
+private class PressMenuPositionProvider(private val pressX: Int?, private val pressY: Int?,
+                                       private val insetLeft: Int, private val insetTop: Int,
+                                       private val insetRight: Int, private val insetBottom: Int,
+                                       private val margin: Int) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection,
+                                   popupContentSize: IntSize): IntOffset {
+        val anchorX = pressX ?: if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left else anchorBounds.right - popupContentSize.width
+        val anchorY = pressY ?: anchorBounds.top
+        val placed = placeMenu(anchorX, anchorY, popupContentSize.width, popupContentSize.height,
+            windowSize.width, windowSize.height, insetLeft, insetTop, insetRight, insetBottom, margin)
+        return IntOffset(placed.x, placed.y)
+    }
+}
+
+/** Remember a press in window pixels without consuming it, so clicks, swipes and scrolling still run. */
+@Composable
+internal fun Modifier.recordPressInWindow(onPress: (Offset) -> Unit): Modifier {
+    val callback = rememberUpdatedState(onPress)
+    val coordinates = remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val coordinatesState = rememberUpdatedState(coordinates.value)
+    return this.onGloballyPositioned { coordinates.value = it }.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val point = coordinatesState.value?.localToWindow(down.position) ?: return@awaitEachGesture
+            callback.value(point)
         }
     }
 }
@@ -782,19 +882,34 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
+private fun ActivityText(text: String, citationSources: List<CitationSource>, regent: Boolean,
+                         onBubbleLongPress: ((Offset) -> Unit)?) {
+    val bubbleMenu = onBubbleLongPress.takeIf { regent }
+    val bubbleMenuState = rememberUpdatedState(bubbleMenu)
+    var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
+    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
+        .onGloballyPositioned { bubbleCoords = it }
+        .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) {
+            detectTapGestures(onLongPress = { local ->
+                val menu = bubbleMenuState.value ?: return@detectTapGestures
+                menu(bubbleCoordsState.value?.localToWindow(local) ?: return@detectTapGestures)
+            })
+        } else Modifier)
+        .padding(12.dp) else Modifier) {
+        MarkdownText(text, citationSources, onLongPress = bubbleMenu)
+    }
+}
+
+@Composable
 fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false,
-                    onBubbleLongPress: (() -> Unit)? = null) {
+                    onBubbleLongPress: ((Offset) -> Unit)? = null) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") {
-                    val bubbleMenu = onBubbleLongPress.takeIf { regent }
-                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
-                        .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { bubbleMenu() }) } else Modifier)
-                        .padding(12.dp) else Modifier) {
-                        MarkdownText(chunk.first().text, citationSources, onLongPress = bubbleMenu)
-                    }
+                    ActivityText(chunk.first().text, citationSources, regent, onBubbleLongPress)
                 }
                 else ActivityRail(chunk, live, index == chunks.lastIndex)
             }
