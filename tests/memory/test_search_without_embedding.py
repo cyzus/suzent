@@ -44,3 +44,43 @@ async def test_search_memories_uses_keyword_fallback_without_embedding():
             "limit": 3,
         }
     ]
+
+
+class RankedStore:
+    """Returns ``limit`` rows, ranked so the lesson sits below the top few."""
+
+    def __init__(self):
+        self.limits = []
+
+    async def fts_search(self, query_text, user_id, chat_id=None, limit=10):
+        self.limits.append(limit)
+        rows = [
+            {
+                "id": f"log{i}",
+                "content": f"daily log line {i}",
+                "metadata": {"source_type": "archive_log", "tags": ["kind:world"]},
+                "importance": 0.5,
+            }
+            for i in range(5)
+        ] + [
+            {
+                "id": "lesson",
+                "content": "Re-read the file after a stale_write",
+                "metadata": {"source_type": "notebook", "category": "experience"},
+                "importance": 0.5,
+            }
+        ]
+        return rows[:limit]
+
+
+async def test_a_kind_filter_finds_a_lesson_ranked_below_the_limit():
+    store = RankedStore()
+    manager = MemoryManager(store=store, embedding_model=None, embedding_dimension=2)
+    manager.embedding_gen.model = None
+
+    results = await manager.search_memories(
+        "edit_file stale_write", user_id="user-1", limit=2, kinds=["experience"]
+    )
+
+    assert [r["id"] for r in results] == ["lesson"]
+    assert store.limits[0] > 2

@@ -64,14 +64,27 @@ class MemorySearchTool(Tool):
                 description="Maximum number of memories to return.",
             ),
         ] = 10,
+        kind: Annotated[
+            Optional[Literal["user", "experience", "world"]],
+            Field(
+                description=(
+                    "Only return memories of this kind. user: about the user. "
+                    "experience: lessons from past failures and their fixes. "
+                    "world: knowledge. Omit to search everything."
+                )
+            ),
+        ] = None,
     ) -> ToolResult:
         """Search long-term archival memory for relevant information.
 
         Uses semantic similarity to find relevant memories even if the exact words differ.
+        When a tool call or command fails, search with kind="experience" and the tool
+        name plus the error text before retrying: a past lesson may already hold the fix.
 
         Args:
             query: What to search for in memory (use natural language).
             limit: Maximum number of results to return (default 10).
+            kind: Only return memories of this kind.
         """
         mm = ctx.deps.memory_manager
         if not mm:
@@ -93,6 +106,7 @@ class MemorySearchTool(Tool):
                 limit=limit,
                 chat_id=None,  # Always search user-level memories
                 user_id=user_id,
+                kinds=[kind] if kind else None,
             )
 
             if not memories:

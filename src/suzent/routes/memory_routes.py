@@ -362,8 +362,17 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         if query:
             # Semantic search. The search path ranks by relevance and has no
             # native offset, so page by over-fetching and slicing — that keeps
-            # "load more" from re-appending the same top hits.
-            fetch_limit = min(offset + limit, ARCHIVAL_SEARCH_MAX_DEPTH)
+            # "load more" from re-appending the same top hits. Filters and the
+            # importance band are applied after ranking, so with any of them set the
+            # full depth is ranked first, or a page could come back short or empty.
+            narrowed = (
+                any(filters) or min_importance is not None or max_importance is not None
+            )
+            fetch_limit = (
+                ARCHIVAL_SEARCH_MAX_DEPTH
+                if narrowed
+                else min(offset + limit, ARCHIVAL_SEARCH_MAX_DEPTH)
+            )
             memories = await manager.search_memories(
                 query=query,
                 user_id=user_id,
