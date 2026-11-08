@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.24.0] - 2026-11-07
+## [v0.24.0] - 2026-11-08
 
 ### Release notes
 - Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename paired phones under Mobile access so each one is easy to recognize, even iPhones that only report "iPhone".
 - Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
 - Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
+- Refine chat bubbles and inline code styling, with a clearer copy icon and compact message actions.
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
 - Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).
 
