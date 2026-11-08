@@ -3,10 +3,12 @@
 ## [mobile-v0.8.0] - 2026-11-08
 
 ### Release notes
+- Long-press menus open beside the finger and stay inside the screen, including in the Android app.
 - See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
 - Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
 - While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
 - Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
+- Regent's chat on the phone no longer repeats the logo and name already shown in the header.
 
 ## [mobile-v0.7.2] - 2026-11-07
 
