@@ -34,9 +34,15 @@ def describe(meta: dict[str, Any]) -> dict[str, Any]:
     """
     tags = [str(t) for t in meta.get("tags") or [] if t]
     if meta.get("source_type") != "archive_log":
-        about_user = meta.get("category") in ABOUT_USER_CATEGORIES
+        category = meta.get("category")
+        if category == "experience":
+            kind = "experience"
+        elif category in ABOUT_USER_CATEGORIES:
+            kind = "user"
+        else:
+            kind = "world"
         return {
-            "kind": "user" if about_user else "world",
+            "kind": kind,
             "topics": _page_topics(meta, tags),
         }
 
