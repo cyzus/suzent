@@ -13,6 +13,7 @@ import {
 import { ChatList } from './components/ChatList';
 import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
+import { ClosePrompt } from './components/ClosePrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SidebarToggleIcon } from './components/SidebarToggleIcon';
@@ -411,6 +412,10 @@ function AppInner(): React.ReactElement {
     setIsSettingsOpen(true);
     setIsLeftSidebarOpen(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   };
+  const closeSettings = () => {
+    setIsSettingsOpen(false);
+    setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
+  };
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
@@ -508,6 +513,35 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     loadChatRef.current = loadChat;
   }, [loadChat]);
+  // The window may have been hidden on Memory, Skills or Settings; a tray
+  // click should land on the conversation itself.
+  const openChatFromTray = (chatId: string) => {
+    if (isSettingsOpen) closeSettings();
+    setMainView('chat');
+    mobileNavigation.open();
+    void loadChat(chatId, { force: true });
+  };
+  const openChatFromTrayRef = React.useRef(openChatFromTray);
+  React.useEffect(() => {
+    openChatFromTrayRef.current = openChatFromTray;
+  });
+  React.useEffect(() => {
+    if (isWeb()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<string>('tray-open-chat', (event) => {
+        openChatFromTrayRef.current(event.payload);
+      }).then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+    );
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
   React.useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
@@ -1002,10 +1036,7 @@ function AppInner(): React.ReactElement {
         </div>
         <SettingsModal
           isOpen={isSettingsOpen}
-          onClose={() => {
-            setIsSettingsOpen(false);
-            setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
-          }}
+          onClose={closeSettings}
           initialCategory={settingsInitialCategory}
           navigationHost={settingsNavigationHost}
           showInlineNavigation={!isLeftSidebarOpen || viewportWidth < DESKTOP_BREAKPOINT_PX}
@@ -1640,6 +1671,7 @@ export default function App({ children }: AppProps = {}) {
           </ChatProvider>
         </ProjectProvider>
       )}
+      <ClosePrompt />
     </ErrorBoundary>
   );
 }

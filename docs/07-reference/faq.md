@@ -98,16 +98,18 @@ next to the message box, or choose one of the
 
 ### Scheduled tasks don't run when I close the window.
 
-Tasks, heartbeats, and chat apps only work while Suzent is running. Turn on
-**Settings → Background Service** to keep it running after you close the
-window. See [Automation](../03-features/automation.md#keep-suzent-running-in-the-background).
+Tasks, heartbeats, and chat apps only work while Suzent is running. On Windows
+and macOS, closing the window leaves Suzent in the notification area or the
+menu bar, so tasks keep running until you choose **Quit**. After you quit, or
+on Linux, turn on **Settings → Background Service**. See
+[Automation](../03-features/automation.md#keep-suzent-running-in-the-background).
 
 ## Troubleshooting
 
 ### My chat app bot doesn't reply.
 
 Check three things. Suzent must be running, so turn on the background service
-if you closed the window. The app must be enabled in
+if you quit. The app must be enabled in
 **Settings → Social Channels**. And your own user ID must be in
 **Allowed users** on the **Access control** tab, because messages from anyone
 else are refused. See [Access control & pairing](../05-chat-apps/access-control.md).

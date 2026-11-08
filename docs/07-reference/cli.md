@@ -46,8 +46,8 @@ background service keeps its own log; see `suzent service logs` below.
 
 ## Background service
 
-The background service keeps Suzent running after you close the window, so
-scheduled tasks and chat apps keep working. The same switch is in
+The background service keeps Suzent running after you quit, so scheduled
+tasks and chat apps keep working. The same switch is in
 **Settings → Background Service**. See
 [Keep Suzent running in the background](../03-features/automation.md#keep-suzent-running-in-the-background).
 
