@@ -11,6 +11,7 @@ from suzent.core.commands.node import handle_node
 from suzent.core.commands.goal import handle_goal, handle_subgoal
 from suzent.core.commands.undo import handle_undo
 from suzent.core.commands.fork import handle_fork
+from suzent.core.commands.skill import handle_skill
 
 __all__ = [
     "dispatch",
@@ -30,4 +31,5 @@ __all__ = [
     "handle_subgoal",
     "handle_undo",
     "handle_fork",
+    "handle_skill",
 ]
