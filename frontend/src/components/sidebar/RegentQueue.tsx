@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import { resolveChat, useChatStates } from '../../hooks/useChatStates';
 import { canResolve, type ChatStateRow } from '../../lib/chatStates';
 import { BoardRowMenu, type BoardRowMenuItem } from './BoardRowMenu';
+import { freshPointerPoint } from '../../lib/menuPlacement';
 
 const WAITING_PREVIEW = 4;
 const RUNNING_PREVIEW = 3;
@@ -49,10 +50,7 @@ export function RegentQueueView({ rows, onOpenChat }: RegentQueueViewProps): Rea
     event.preventDefault();
     // A context-menu key press reports no pointer position; anchor to the row.
     const rect = event.currentTarget.getBoundingClientRect();
-    const anchor =
-      event.clientX || event.clientY
-        ? { x: event.clientX, y: event.clientY }
-        : { x: rect.left + 16, y: rect.top + 16 };
+    const anchor = freshPointerPoint(event) ?? { x: rect.left + 16, y: rect.top + 16 };
     const items: BoardRowMenuItem[] = [
       { key: 'open', label: t('chatBoard.menu.open'), onSelect: () => onOpenChat(row.chatId) },
     ];

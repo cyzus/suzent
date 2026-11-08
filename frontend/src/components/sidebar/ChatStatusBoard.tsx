@@ -11,6 +11,7 @@ import {
 import { formatRelativeTime } from '../../lib/chatUtils';
 import { BrutalSelect } from '../BrutalSelect';
 import { BoardRowMenu, type BoardRowMenuItem } from './BoardRowMenu';
+import { freshPointerPoint } from '../../lib/menuPlacement';
 
 const ALL_PROJECTS = '__all__';
 
@@ -73,10 +74,7 @@ export function ChatStatusBoard({
     event.preventDefault();
     // A context-menu key press reports no pointer position; anchor to the row.
     const rect = event.currentTarget.getBoundingClientRect();
-    const anchor =
-      event.clientX || event.clientY
-        ? { x: event.clientX, y: event.clientY }
-        : { x: rect.left + 16, y: rect.top + 16 };
+    const anchor = freshPointerPoint(event) ?? { x: rect.left + 16, y: rect.top + 16 };
     const items: BoardRowMenuItem[] = [];
     if (onOpenChat) {
       items.push({

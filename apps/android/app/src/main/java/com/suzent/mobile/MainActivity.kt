@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
@@ -721,6 +722,8 @@ private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: 
 private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
                         childCount: Int, expanded: Boolean, toggle: () -> Unit, nested: Boolean) {
     var menu by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf<Offset?>(null) }
+    var pressAt by remember { mutableLongStateOf(0L) }
     var moving by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -768,9 +771,19 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             scope.launch { swipe.reset() }
         }) {
     Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) selection else MaterialTheme.colorScheme.surface)
+        .recordPressInWindow {
+            menuAnchor = it
+            pressAt = android.os.SystemClock.uptimeMillis()
+        }
         .combinedClickable(interactionSource = interaction, indication = null, enabled = !model.busy,
             onLongClickLabel = stringResource(R.string.conversation_actions),
-            onLongClick = { view.suzentHaptic(SuzentHaptic.LongPress); moving = false; menu = true }, onClick = { open(chat) })
+            onLongClick = {
+                // TalkBack has no finger. A press older than the long-press window anchors to the row.
+                if (android.os.SystemClock.uptimeMillis() - pressAt > 1_500L) menuAnchor = null
+                view.suzentHaptic(SuzentHaptic.LongPress)
+                moving = false
+                menu = true
+            }, onClick = { open(chat) })
         .heightIn(min = 44.dp).padding(start = if (nested) 32.dp else 12.dp, end = 12.dp,
             top = PresentationTokens.spaceRow.dp, bottom = PresentationTokens.spaceRow.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -798,7 +811,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         if (chat.running) Box(Modifier.padding(start = 8.dp)) { StreamingPulse() }
     }
     }
-    SuzentMenu(expanded = menu, onDismissRequest = { menu = false }) {
+    SuzentMenu(expanded = menu, onDismissRequest = { menu = false }, anchorInWindow = menuAnchor) {
         if (!canManage) {
             Text(stringResource(R.string.manage_permission_hint), modifier = Modifier.padding(16.dp), fontSize = 13.sp)
         } else if (moving) {
