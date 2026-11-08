@@ -1082,20 +1082,12 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       </div>
     ) : null;
 
-  const conversationCopy = conversational && fullMessageText && !isThinking && (
-    <CopyButton
-      text={fullMessageText}
-      className="conversation-copy relative shrink-0 !w-8 !h-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
-    />
-  );
-
   const messageFooter = conversational ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
-      {conversationCopy}
-      {!isThinking && citationSourcesList.length > 0 && (
+    !isThinking && citationSourcesList.length > 0 ? (
+      <div className="conversation-message-actions flex min-w-0 flex-wrap items-center gap-2">
         <SourcesPanel sources={citationSourcesList} />
-      )}
-    </div>
+      </div>
+    ) : null
   ) : (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
