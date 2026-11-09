@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID.
+- Desktop control now installs agent-desktop 1.2.0, which can open the macOS Dock and menu bar extras, and `suzent plugin install` works when Suzent isn't running.
 - Long-press menus open beside the finger and stay inside the screen, including in the Android app.
 - The chat no longer jumps while a reply streams or when it finishes, keeps your reading position, and no longer shows a blank area on macOS after you send a message.
 - Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop thinking animation now uses the mobile robot assembly sequence and respects reduced motion preferences.
 - The desktop message box can grow to half the window while you edit a long message.
 - Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
+- Desktop control results no longer repeat a sandbox notice or show unknown retry details on every call.
 - Closing the window keeps Suzent in the Windows notification area or the macOS menu bar until you quit.
 - The tray shows which chats are waiting on you or running, and closing the window asks whether to minimize to the tray or quit, with a setting to remember the choice.
 - The memory dream can now tell Regent about things worth your attention, such as lessons that could become a skill or a pattern of recurring failures.
