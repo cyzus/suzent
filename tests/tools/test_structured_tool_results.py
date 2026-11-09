@@ -133,6 +133,26 @@ def test_grep_matches_drop_context_markers(tmp_path, monkeypatch):
     ]
 
 
+def test_grep_matches_leave_out_context_group_separators(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\na\nb\nc\nneedle\n", encoding="utf-8")
+    resolver = _Resolver([(source, str(source))])
+    monkeypatch.setattr(
+        "suzent.tools.filesystem.grep_tool.get_or_create_path_resolver",
+        lambda deps: resolver,
+    )
+    tool = GrepTool()
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", None)
+
+    result = tool.forward(
+        _ctx(tmp_path, resolver), pattern="needle", path=str(tmp_path), context_lines=1
+    )
+
+    lines = [match["line"] for match in result.metadata["matches"]]
+    assert lines == [1, 2, 4, 5]
+
+
 def test_web_search_copies_the_json_results_into_metadata():
     hit = {"title": "Suzent", "url": "https://suzent.com", "description": "Agent"}
     raw = ToolResult.success_result(

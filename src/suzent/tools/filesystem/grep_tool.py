@@ -414,6 +414,8 @@ class GrepTool(Tool):
         capped: bool,
         engine: str,
     ) -> GrepResult:
+        # The Python fallback marks gaps between context groups with line 0.
+        source_lines = [result for result in results if result[1] > 0]
         metadata = {
             "match_count": len(results),
             "file_count": files_with_matches,
@@ -428,11 +430,11 @@ class GrepTool(Tool):
             "engine": engine,
             "matches": [
                 _structured_match(display_path, line_number, text, context_lines)
-                for display_path, line_number, text in results[
+                for display_path, line_number, text in source_lines[
                     :MAX_GREP_STRUCTURED_MATCHES
                 ]
             ],
-            "matches_truncated": len(results) > MAX_GREP_STRUCTURED_MATCHES,
+            "matches_truncated": len(source_lines) > MAX_GREP_STRUCTURED_MATCHES,
         }
         if not results:
             message = f"No matches for '{pattern}' in {path or 'the default folder'}"
