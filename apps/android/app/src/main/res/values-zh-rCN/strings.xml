@@ -313,4 +313,7 @@
     <string name="surface_choose">请选择</string>
     <string name="surface_free_text">或自行输入</string>
     <string name="surface_chose">已选择 %1$s</string>
+    <string name="reconnect_finding">正在寻找可用连接</string>
+    <string name="reconnect_verifying">正在验证连接</string>
+    <string name="reconnect_syncing">正在同步桌面</string>
 </resources>

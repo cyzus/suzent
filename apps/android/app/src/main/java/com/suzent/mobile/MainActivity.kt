@@ -306,8 +306,8 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
                     fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 ActiveDesktopLabel(model)
                 val status = model.reconnectStatus
-                if (model.busy && !status.isNullOrEmpty()) {
-                    Text(status, fontSize = PresentationTokens.typeCaption.sp, fontFamily = FontFamily.Monospace,
+                Box(Modifier.height(16.dp)) {
+                    Text(if (model.busy) status.orEmpty() else "", fontSize = PresentationTokens.typeCaption.sp, fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

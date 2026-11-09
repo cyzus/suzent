@@ -164,6 +164,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var repairActive = false
     private val connection: Connection? get() = desktops.active?.connection
     private var client: MobileClient? = null
+    private val connectionUpgrade = ConnectionUpgrade<BackendClient>(viewModelScope)
+    // Previously captured clients may still serve polling requests or the device socket.
+    private val retiredClients = mutableListOf<MobileClient>()
     val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
     val overviewSupported: Boolean get() = client?.supportsChatOverview == true
@@ -429,38 +432,26 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
      * reached never tears down the session already open.
      */
     private suspend fun activate(id: String) {
+        connectionUpgrade.cancel()
         var saved = requireNotNull(desktops.desktop(id)).connection
         var viaRelay = false
         reconnectStage = 0
-        reconnectStatus = "LAN · ${displayOrigin(saved.origin)}"
-        run {
-            var reachable: String? = null
-            for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
-                currentCoroutineContext().ensureActive()
-                reconnectStatus = "LAN · ${displayOrigin(origin)}"
-                val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
-                try { probe.capabilities(); reachable = origin; break }
-                catch (failure: CancellationException) { throw failure }
-                catch (_: Exception) { }
-                finally { probe.close() }
+        reconnectStatus = text(R.string.reconnect_finding)
+        val relay = saved.relay
+        val route = resolveConnectionRoute(listOf(saved.origin) + saved.origins, relay != null) { route ->
+            val probe = when (route) {
+                is ConnectionRoute.Direct -> BackendClient(Backend.parse(route.origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
+                ConnectionRoute.Relay -> relayClient(requireNotNull(relay), "", probeOnly = true)
             }
-            // Direct addresses always win; the relay is only the way in when none answers.
-            val relay = saved.relay
-            if (reachable == null && relay != null) {
-                currentCoroutineContext().ensureActive()
-                reconnectStage = 1
-                reconnectStatus = "RELAY"
-                val probe = relayClient(relay, "", probeOnly = true)
-                try { probe.capabilities(); viaRelay = true }
-                catch (failure: CancellationException) { throw failure }
-                catch (_: Exception) { }
-                finally { probe.close() }
-            }
-            if (!viaRelay) saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
+            try { probe.capabilities() } finally { probe.close() }
+        }
+        when (route) {
+            is ConnectionRoute.Direct -> saved = saved.copy(origin = route.origin)
+            ConnectionRoute.Relay -> viaRelay = true
         }
         require(saved.clientProtocol == 1)
         reconnectStage = 2
-        reconnectStatus = "VERIFYING"
+        reconnectStatus = text(R.string.reconnect_verifying)
         val candidate = saved.relay?.takeIf { viaRelay }?.let { relayClient(it, saved.hostToken) }
             ?: BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
@@ -485,7 +476,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             candidate.capabilities()
             val session = candidate.session()
             reconnectStage = 3
-            reconnectStatus = "SYNCING"
+            reconnectStatus = text(R.string.reconnect_syncing)
             val navigation = candidate.initialNavigation()
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
@@ -506,7 +497,43 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             selected = initialChat
             restoreModel(initialChat)
             connected = true
+            if (viaRelay) startDirectUpgrade(id, saved, candidate)
         } catch (failure: Exception) { candidate.close(); throw failure }
+    }
+
+    private fun startDirectUpgrade(id: String, saved: Connection, relayed: BackendClient) {
+        val deviceId = device?.id
+        connectionUpgrade.start(
+            prepare = {
+                val route = resolveConnectionRoute(listOf(saved.origin) + saved.origins, false) { route ->
+                    val origin = (route as ConnectionRoute.Direct).origin
+                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
+                    try { probe.capabilities() } finally { probe.close() }
+                } as ConnectionRoute.Direct
+                val direct = BackendClient(Backend.parse(route.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
+                try {
+                    withTimeout(5000) {
+                        direct.capabilities()
+                        check(direct.session().id == deviceId)
+                    }
+                    direct
+                } catch (failure: Exception) { direct.close(); throw failure }
+            },
+            isCurrent = {
+                foreground && connected && !isDemo && desktops.activeId == id &&
+                    client === relayed && connection?.hostToken == saved.hostToken
+            },
+            isIdle = { !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktop == null },
+            install = { direct ->
+                val latest = requireNotNull(desktops.desktop(id)).connection
+                val updated = latest.copy(origin = direct.backend.origin.toString())
+                persist(desktops.updating(id, updated))
+                origin = updated.origin
+                retiredClients.add(relayed)
+                client = direct
+            },
+            discard = { it.close() },
+        )
     }
 
     fun connect() {
@@ -937,6 +964,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun setForeground(active: Boolean) {
         foreground = active
         if (!active) {
+            connectionUpgrade.cancel()
             voice.stop()
             cancelReconnect()
             client?.cancelLive()
@@ -945,6 +973,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             liveParts = emptyList()
             disconnectNode()
         } else {
+            val relayed = client as? BackendClient
+            val saved = connection
+            val id = desktops.activeId
+            if (relayed?.relay != null && saved != null && id != null) startDirectUpgrade(id, saved, relayed)
             if (!connected && canReconnect) connect()
             viewModelScope.launch {
                 refreshNow()
@@ -1083,6 +1115,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     /** Drops everything that belongs to the open desktop's session; credentials stay. */
     private fun resetSession() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { it.close() }
+        retiredClients.clear()
         voice.stop()
         scheduledTasks = emptyList()
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
@@ -1115,5 +1150,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         origin = connection?.origin.orEmpty()
     }
 
-    override fun onCleared() { voice.stop(); disconnectNode(); client?.close() }
+    override fun onCleared() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { it.close() }
+        retiredClients.clear()
+        voice.stop(); disconnectNode(); client?.close()
+    }
 }

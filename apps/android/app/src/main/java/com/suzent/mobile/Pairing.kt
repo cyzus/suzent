@@ -126,3 +126,38 @@ fun pairingRepairProof(token: String, invitation: PairingInvitation, side: Strin
     return mac.doFinal("suzent-mobile-repair-v1:$side:${invitation.id}:${invitation.secret}".toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
+
+sealed interface ConnectionRoute {
+    data class Direct(val origin: String) : ConnectionRoute
+    data object Relay : ConnectionRoute
+}
+
+suspend fun resolveConnectionRoute(
+    origins: List<String>, hasRelay: Boolean, probe: suspend (ConnectionRoute) -> Unit,
+): ConnectionRoute = coroutineScope {
+    ensureActive()
+    val routes = origins.distinct().map { ConnectionRoute.Direct(it) } +
+        if (hasRelay) listOf(ConnectionRoute.Relay) else emptyList()
+    val results = Channel<ConnectionRoute?>(Channel.UNLIMITED)
+    val jobs = routes.map { route ->
+        launch {
+            val result = try {
+                if (route == ConnectionRoute.Relay && origins.isNotEmpty()) kotlinx.coroutines.delay(300)
+                ensureActive()
+                probe(route)
+                route
+            } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
+            catch (_: Exception) { null }
+            results.send(result)
+        }
+    }
+    try {
+        repeat(jobs.size) {
+            results.receive()?.let { ensureActive(); return@coroutineScope it }
+        }
+        throw PairingFailure(PairingFailure.Reason.UNREACHABLE)
+    } finally {
+        jobs.forEach { it.cancel() }
+        results.close()
+    }
+}
