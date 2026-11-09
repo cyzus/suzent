@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Desktop control now installs agent-desktop 1.2.0, which can open the macOS Dock and menu bar extras, and `suzent plugin install` works when Suzent isn't running."}

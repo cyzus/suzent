@@ -9,7 +9,7 @@ description: Let the agent read and operate native apps on your computer, using 
 The agent can look at a native app the way a person would — buttons, menus,
 text fields — and then click or type. It does this with
 [agent-desktop](https://github.com/vercel-labs/agent-desktop) (Apache-2.0,
-version 1.0.x), a separate program that reads the operating system's
+version 1.x), a separate program that reads the operating system's
 accessibility tree. It is not the [browser](./browser.md) tool, and it does
 not guess from screenshots.
 
@@ -24,7 +24,7 @@ the background when the agent tries to use the tool.
    the plugin turns desktop control off.
 
 2. The plugin card then shows **Install agent-desktop**. Suzent asks before
-   it downloads **agent-desktop 1.0.2**, the same package npm publishes,
+   it downloads the **agent-desktop** release pinned in the plugin, the same package npm publishes,
    into its own folder. It checks the download against a SHA-256 written
    into the plugin, so a copy from any source has to be byte-for-byte that
    release. Only the program for this computer and the helper file that has
@@ -126,7 +126,7 @@ screen. Treat them as private.
   user.
 - **Refs go stale.** After the window changes, the agent has to take a new
   snapshot. A ref from an old snapshot is not reused.
-- **Version.** Suzent talks to agent-desktop 1.0.x. A newer or older major
+- **Version.** Suzent talks to agent-desktop 1.x. A newer or older major
   version is refused until this integration is updated, so the agent is not
   guessing at a different command set.
 - **Time limit.** One desktop command is stopped after three minutes, even if

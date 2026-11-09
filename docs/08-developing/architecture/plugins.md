@@ -201,9 +201,9 @@ instead of downloading it itself. `suzent.plugins.binaries` does the rest.
 api_version: 3
 binaries:
   - name: agent-desktop
-    version: 1.0.2
+    version: 1.2.0
     package: agent-desktop           # npm package carrying the builds
-    sha256: 6a2bbcc1...              # of the npm tarball
+    sha256: 9e4b1a69...              # of the npm tarball
     env: SUZENT_AGENT_DESKTOP_BIN    # optional override the user can set
     platforms:                       # npm platform names
       darwin-arm64:
@@ -239,6 +239,15 @@ binaries:
   `--yes`) download. Tools only call `locate()`. `GET /plugins` reports each
   binary's status under `binaries`, and the plugin card shows an install
   button with the consent text.
+- **Updates.** The weekly `check-plugin-binaries` workflow runs
+  `scripts/check_plugin_binaries.py`. It takes a newer stable release only
+  when it is at least seven days old, and, on npm, from the same trusted
+  publisher with provenance. It rewrites `version` and `sha256` in the
+  manifest and opens a pull request for review. For himalaya it follows the
+  upstream GitHub release and updates `scripts/pack_himalaya_npm.py`; merging
+  that publishes the npm packages, and a later run moves the email plugin's
+  pin. New commands in a release still have to be added to the plugin by
+  hand.
 
 ## Classifying tool calls
 

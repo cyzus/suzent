@@ -1,0 +1,61 @@
+name: Check plugin binaries
+
+# Looks for newer releases of the programs plugins pin (agent-desktop,
+# himalaya) and opens a pull request that moves the pins, with the new
+# SHA-256 values. scripts/check_plugin_binaries.py does the checking.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Look for new releases
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uv run python scripts/check_plugin_binaries.py --summary "$RUNNER_TEMP/body.md"
+          if [ -f "$RUNNER_TEMP/body.md" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A pull request opened with the workflow token does not start CI, so
+      # run the plugin tests here first.
+      - name: Test the plugins against the new pins
+        if: steps.check.outputs.changed == 'true'
+        run: uv run pytest tests/plugins tests/test_pack_himalaya_npm.py -m "not sandbox"
+
+      - name: Create pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automation/plugin-binaries
+          delete-branch: true
+          commit-message: "chore(plugins): update pinned plugin programs"
+          title: "chore(plugins): update pinned plugin programs"
+          body-path: ${{ runner.temp }}/body.md
+          add-paths: |
+            plugins/*/plugin.yaml
+            scripts/pack_himalaya_npm.py
+            .releases/changes/plugin-binaries-*.json
