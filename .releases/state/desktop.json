@@ -1,5 +1,5 @@
 {
-  "version": "0.24.2",
+  "version": "0.25.0",
   "consumed": [
     ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
@@ -45,6 +45,7 @@
     ".releases/changes/ci-context-sources.json",
     ".releases/changes/ci-uv-sync-locked.json",
     ".releases/changes/cn-plan-presets.json",
+    ".releases/changes/code-mode.json",
     ".releases/changes/compact-sub-agent-runs.json",
     ".releases/changes/compaction-history-safety.json",
     ".releases/changes/compaction-summary-and-notices.json",
