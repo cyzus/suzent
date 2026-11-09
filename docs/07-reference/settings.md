@@ -27,7 +27,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](../03-features/nodes.md) |
 | **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
 | **Appearance** | Theme, color scheme, and language. | [Making it yours](../02-using/make-it-yours.md#look-and-language) |
-| **Background Service** | Keep Suzent running after you quit, and start it at sign-in. | [Automation](../03-features/automation.md#keep-suzent-running-in-the-background) |
+| **Background Service** | Keep Suzent running after you quit, start it at sign-in, and choose what closing the window does. | [Automation](../03-features/automation.md#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](../03-features/filesystem.md), [Permissions & approvals](../03-features/tools/human-in-the-loop.md) |
 | **Data & Sync** | Sync your settings, skills, and memory through GitHub. | [GitHub Sync](../03-features/github-sync.md) |
 | **Usage** | See what you've spent and how many tokens you've used. | [FAQ](./faq.md#how-much-am-i-spending) |
