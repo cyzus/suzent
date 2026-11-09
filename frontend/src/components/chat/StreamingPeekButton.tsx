@@ -151,7 +151,9 @@ export const StreamingPeekButton: React.FC<StreamingPeekButtonProps> = React.mem
           title={label}
           aria-label={label}
           className={`suzent-peek-btn flex flex-col items-center px-4 pt-1.5 pb-0 overflow-hidden text-brutal-black dark:text-white focus:outline-none ${
-            actuallyVisible ? 'is-visible pointer-events-auto cursor-pointer' : 'pointer-events-none'
+            actuallyVisible
+              ? 'is-visible pointer-events-auto cursor-pointer'
+              : 'pointer-events-none'
           }`}
         >
           <svg
