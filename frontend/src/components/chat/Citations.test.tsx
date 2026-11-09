@@ -1,12 +1,15 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import citationFixtures from '../../../../packages/mobile-contract/citation-fixtures.json';
+import { I18nProvider } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   CitationProvider,
   formatTextWithCitationReferences,
   type CitationSourcesMap,
 } from './Citations';
+import type { CitationSource } from '../../lib/streamEvents';
 
 const sources: CitationSourcesMap = new Map([
   [
@@ -51,6 +54,42 @@ describe('citation rendering', () => {
 
     expect(html).toContain('example.com');
     expect(html).not.toContain('citet0_src_1');
+  });
+
+  it('renders PUA markers nested in bold when file links are enabled', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <CitationProvider sources={sources}>
+          <MarkdownRenderer
+            content={
+              'Lead: **clean `core` skeleton (3 Ports)citet0_src_1t0_src_2**. See /workspace/a.md'
+            }
+            onFileClick={() => {}}
+          />
+        </CitationProvider>
+      </I18nProvider>
+    );
+
+    expect(html).toContain('<strong>');
+    expect(html).toContain('<code');
+    expect(html).toContain('example.com');
+    expect(html).toContain('a.md');
+    expect(html).not.toMatch(/[-]/);
+  });
+
+  it('renders bare bracket source labels when the ids are known', () => {
+    const html = render('Fact[t0_src_1]. Both [t0_src_1, t0_src_2]. **Bold [t0_src_2]**.');
+
+    expect(html).toContain('example.com');
+    expect(html).toContain('example.org');
+    expect(html).not.toContain('[t0_src_');
+  });
+
+  it('keeps bracket text whose ids are not known sources', () => {
+    const html = render('Literal [t9_src_9] and [note].');
+
+    expect(html).toContain('[t9_src_9]');
+    expect(html).toContain('[note]');
   });
 
   it('renders PUA citation markers even when wrapped in inline code', () => {
@@ -149,6 +188,22 @@ describe('citation rendering', () => {
     expect(text).toContain('Fact [example.com][1].');
     expect(text).toContain('[1]: https://example.com "Example Source"');
     expect(text).not.toContain('cite-t0_src_1');
+  });
+});
+
+describe('shared citation fixtures', () => {
+  const fixtureSources: CitationSourcesMap = new Map(
+    citationFixtures.sources.map((source) => [source.id, source as CitationSource])
+  );
+  const idByUrl = new Map(citationFixtures.sources.map((source) => [source.url, source.id]));
+
+  it.each(citationFixtures.cases)('$name', ({ text, cites, keeps, drops }) => {
+    const output = formatTextWithCitationReferences(text, fixtureSources);
+    const cited = [...output.matchAll(/^\[\d+\]: (\S+)/gm)].map((m) => idByUrl.get(m[1]));
+
+    expect(new Set(cited)).toEqual(new Set(cites.flat()));
+    keeps.forEach((kept) => expect(output).toContain(kept));
+    drops.forEach((dropped) => expect(output).not.toContain(dropped));
   });
 });
 

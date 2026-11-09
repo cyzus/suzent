@@ -1,0 +1,22 @@
+{
+  "sources": [
+    {"id": "t0_src_1", "type": "search", "title": "Example Source", "url": "https://example.com"},
+    {"id": "t0_src_2", "type": "webpage", "title": "Second Source", "url": "https://example.org"}
+  ],
+  "cases": [
+    {"name": "pua marker", "text": "Factcitet0_src_1.", "cites": [["t0_src_1"]], "keeps": ["Fact"], "drops": ["", "", "cite"]},
+    {"name": "pua marker with two ids", "text": "Factcitet0_src_1t0_src_2.", "cites": [["t0_src_1", "t0_src_2"]], "keeps": ["Fact"], "drops": [""]},
+    {"name": "obj-normalized marker", "text": "Fact￼cite￼t0_src_1￼.", "cites": [["t0_src_1"]], "keeps": ["Fact"], "drops": ["￼"]},
+    {"name": "ascii marker", "text": "Fact [[cite:t0_src_1]].", "cites": [["t0_src_1"]], "keeps": ["Fact"], "drops": ["[[cite"]},
+    {"name": "loose marker", "text": "Fact cite-t0_src_1.", "cites": [["t0_src_1"]], "keeps": ["Fact"], "drops": ["cite-t0"]},
+    {"name": "pua marker inside bold", "text": "**Leadcitet0_src_2**", "cites": [["t0_src_2"]], "keeps": ["**Lead"], "drops": [""]},
+    {"name": "joined marker after cjk", "text": "文档说明citet0_src_1。", "cites": [["t0_src_1"]], "keeps": ["文档说明", "。"], "drops": ["citet0"]},
+    {"name": "joined marker followed by cjk", "text": "说明citet0_src_1的数据", "cites": [["t0_src_1"]], "keeps": ["说明", "的数据"], "drops": ["citet0"]},
+    {"name": "joined marker glued to a latin word stays", "text": "Use APIcitet0_src_1 now", "cites": [], "keeps": ["APIcitet0_src_1"], "drops": []},
+    {"name": "joined marker with unknown id stays", "text": "Literal citet0_src_99", "cites": [], "keeps": ["citet0_src_99"], "drops": []},
+    {"name": "bracket labels", "text": "Fact[t0_src_1]. Both [t0_src_1, t0_src_2].", "cites": [["t0_src_1"], ["t0_src_1", "t0_src_2"]], "keeps": ["Fact", "Both"], "drops": ["[t0_src_"]},
+    {"name": "bracket label inside bold", "text": "**Bold [t0_src_2]**", "cites": [["t0_src_2"]], "keeps": ["**Bold"], "drops": ["[t0_src_2]"]},
+    {"name": "bracket text with unknown ids stays", "text": "Literal [t9_src_9] and [note].", "cites": [], "keeps": ["[t9_src_9]", "[note]"], "drops": []},
+    {"name": "bracket with one unknown id stays", "text": "Mixed [t0_src_1, t9_src_9].", "cites": [], "keeps": ["[t0_src_1, t9_src_9]"], "drops": []}
+  ]
+}
