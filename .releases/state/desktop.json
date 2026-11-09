@@ -1,5 +1,5 @@
 {
-  "version": "0.24.0",
+  "version": "0.24.1",
   "consumed": [
     ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
@@ -48,6 +48,7 @@
     ".releases/changes/compaction-history-safety.json",
     ".releases/changes/compaction-summary-and-notices.json",
     ".releases/changes/composer-message-queue.json",
+    ".releases/changes/composer-voice-send-toggle.json",
     ".releases/changes/context-menu-actions.json",
     ".releases/changes/conversation-task-checklist.json",
     ".releases/changes/cube-loading-indicators.json",
@@ -76,6 +77,7 @@
     ".releases/changes/email-plugin.json",
     ".releases/changes/ember-theme.json",
     ".releases/changes/fix-concurrent-chat-streams.json",
+    ".releases/changes/fix-model-menu-position.json",
     ".releases/changes/focal-acp-dispatch.json",
     ".releases/changes/focal-agent-dispatch.json",
     ".releases/changes/focal-agent.json",
