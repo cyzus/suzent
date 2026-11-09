@@ -32,11 +32,6 @@ INSTALL_HINT = (
     "Smart App Control may block it."
 )
 
-HOST_BANNER = (
-    "Ran on the host desktop. agent-desktop is never executed inside the "
-    "chat's Docker sandbox, which has no display."
-)
-
 _RELEASE = re.compile(r"^1\.0\.\d+(?:[-+].+)?$")
 _STDOUT_LIMIT = 16 * 1024 * 1024
 _support_lock = asyncio.Lock()
@@ -118,7 +113,7 @@ def render_envelope(envelope: dict[str, Any]) -> RenderedEnvelope:
     if envelope.get("ok") is True:
         data = _shrink(envelope.get("data"))
         payload = {"ok": True, "command": command, "data": data}
-        lines = [HOST_BANNER]
+        lines: list[str] = []
         if isinstance(data, dict):
             disposition = data.get("disposition")
             if isinstance(disposition, dict) and disposition.get("delivery"):
@@ -147,14 +142,13 @@ def render_envelope(envelope: dict[str, Any]) -> RenderedEnvelope:
     disposition = (
         error.get("disposition") if isinstance(error.get("disposition"), dict) else {}
     )
-    lines = [
-        HOST_BANNER,
-        f"agent-desktop {command or 'command'} failed: {code}.",
-        "retry="
-        f"{disposition.get('retry', 'unknown')} "
-        f"delivery={disposition.get('delivery', 'unknown')}. "
-        "Repeat the action only when retry is safe.",
-    ]
+    lines = [f"agent-desktop {command or 'command'} failed: {code}."]
+    if disposition.get("retry"):
+        lines.append(
+            f"retry={disposition['retry']} "
+            f"delivery={disposition.get('delivery', 'unknown')}. "
+            "Repeat the action only when retry is safe."
+        )
     suggestion = error.get("suggestion")
     if isinstance(suggestion, str) and suggestion.strip():
         lines.append(f"suggestion: {suggestion.strip()}")
