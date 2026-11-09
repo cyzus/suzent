@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.8.1] - 2026-11-09
+
+### Release notes
+- With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.
+
 ## [mobile-v0.8.0] - 2026-11-09
 
 ### Release notes

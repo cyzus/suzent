@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0",
+  "version": "0.8.1",
   "consumed": [
     ".releases/changes/activity-rail-streaming.json",
     ".releases/changes/anchor-long-press-menus.json",
@@ -78,6 +78,7 @@
     ".releases/changes/mobile-voice-controls-connections.json",
     ".releases/changes/mobile-websocket-message-size.json",
     ".releases/changes/product-release-plans.json",
+    ".releases/changes/reduced-motion-assembly-conveyor.json",
     ".releases/changes/regent-single-identity.json",
     ".releases/changes/relay-mobile-contract.json",
     ".releases/changes/restructure-user-docs.json",
