@@ -1,9 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 
 interface StreamingPeekButtonProps {
   visible: boolean;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   onClick: () => void;
+}
+
+/**
+ * Returns true only when the active turn (the latest message / streaming row,
+ * or the user prompt right above it) has scrolled completely out of the
+ * scroller's viewport. If any part of the latest user message or streaming
+ * reply is still visible on screen, the user already sees the live turn and
+ * does not need the peeking indicator yet.
+ */
+export function isActiveTurnOutOfView(scroller: HTMLElement | null): boolean {
+  if (!scroller) return true;
+  const rows = scroller.querySelectorAll<HTMLElement>('[data-message-index]');
+  if (rows.length === 0) return false;
+
+  const scrollerRect = scroller.getBoundingClientRect();
+  if (scrollerRect.height <= 0) return false;
+
+  const lastRow = rows[rows.length - 1];
+  const prevRow = rows.length >= 2 ? rows[rows.length - 2] : null;
+  const topAnchorRow = prevRow?.classList.contains('chat-msg-row-user') ? prevRow : lastRow;
+
+  const topRect = topAnchorRow.getBoundingClientRect();
+  // `topRect.top` is the top edge of the user's last prompt (or the live turn).
+  // Once the user scrolls up far enough that even this top edge is pushed below
+  // the bottom of the scroll viewport (with a 16px threshold), the entire
+  // active turn is out of view below the fold.
+  return topRect.top >= scrollerRect.bottom - 16;
 }
 
 const STYLE = `
@@ -62,7 +90,7 @@ const STYLE = `
 
 let styleInjected = false;
 function usePeekStyles() {
-  React.useEffect(() => {
+  useEffect(() => {
     if (styleInjected || typeof document === 'undefined') return;
     const el = document.createElement('style');
     el.setAttribute('data-suzent-streaming-peek', '');
@@ -73,25 +101,57 @@ function usePeekStyles() {
 }
 
 export const StreamingPeekButton: React.FC<StreamingPeekButtonProps> = React.memo(
-  ({ visible, onClick }) => {
+  ({ visible, scrollContainerRef, onClick }) => {
     const { t } = useI18n();
     usePeekStyles();
 
+    const [turnOutOfView, setTurnOutOfView] = useState(true);
+
+    useEffect(() => {
+      if (!visible || !scrollContainerRef) {
+        setTurnOutOfView(!scrollContainerRef);
+        return;
+      }
+      const el = scrollContainerRef.current;
+      if (!el) {
+        setTurnOutOfView(true);
+        return;
+      }
+
+      const check = () => {
+        setTurnOutOfView(isActiveTurnOutOfView(el));
+      };
+      check();
+
+      el.addEventListener('scroll', check, { passive: true });
+      window.addEventListener('resize', check, { passive: true });
+      const mutationObserver =
+        typeof MutationObserver !== 'undefined' ? new MutationObserver(check) : null;
+      mutationObserver?.observe(el, { childList: true, subtree: true });
+
+      return () => {
+        el.removeEventListener('scroll', check);
+        window.removeEventListener('resize', check);
+        mutationObserver?.disconnect();
+      };
+    }, [visible, scrollContainerRef]);
+
+    const actuallyVisible = visible && turnOutOfView;
     const label = t('chatWindow.scrollToBottom');
 
     return (
       <div
         className="pointer-events-none absolute inset-x-0 bottom-full z-10 flex justify-center overflow-hidden"
-        aria-hidden={!visible}
+        aria-hidden={!actuallyVisible}
       >
         <button
           type="button"
-          tabIndex={visible ? 0 : -1}
+          tabIndex={actuallyVisible ? 0 : -1}
           onClick={onClick}
           title={label}
           aria-label={label}
           className={`suzent-peek-btn flex flex-col items-center px-4 pt-1.5 pb-0 overflow-hidden text-brutal-black dark:text-white focus:outline-none ${
-            visible ? 'is-visible pointer-events-auto cursor-pointer' : 'pointer-events-none'
+            actuallyVisible ? 'is-visible pointer-events-auto cursor-pointer' : 'pointer-events-none'
           }`}
         >
           <svg
