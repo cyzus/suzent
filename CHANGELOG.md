@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - Tool approvals are clearer: one pending badge instead of two, the waiting call scrolls into view, the approval card names the tool and shows its reason at full size tinted by risk, and the call you just approved or denied stays visible afterwards.
+- Citations inside bold or italic text, and citations written as plain [t0_src_1] labels, now render as source chips, and those paragraphs keep their formatting.
 - Optional code mode lets the agent batch read-only look-ups in one Python snippet, with each call shown live in the chat.
 - Improve permission approval card readability, action hierarchy, and keyboard focus visibility.
 - On macOS, the yellow window button now minimizes Suzent; the window uses the native red, yellow and green buttons.
