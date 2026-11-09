@@ -30,7 +30,7 @@ How the Store build differs from the installer:
 
 ### Use the installer
 
-Download the installer for your platform from the [landing page](/#download). On macOS, choose Apple Silicon for M-series Macs or Intel for Intel-based Macs. Windows and Linux downloads target x86_64.
+Download the installer for your platform from the [landing page](/#download). The macOS installer is a universal build that runs natively on both Apple Silicon and Intel Macs. Windows and Linux downloads target x86_64.
 
 - **macOS:** open the downloaded `.dmg`, then double-click **Suzent Installer**. You can also drag it to Applications first and open it from there.
 - **Windows:** open the downloaded `.exe`.

@@ -1947,9 +1947,9 @@ fn dirs_home() -> PathBuf {
 fn ui_asset_name() -> &'static str {
     if cfg!(windows) {
         "suzent-windows-x86_64.exe"
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    } else if cfg!(target_os = "macos") && network::is_apple_silicon_macos() {
         "suzent-macos-aarch64"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+    } else if cfg!(target_os = "macos") {
         "suzent-macos-x86_64"
     } else {
         "suzent-linux-x86_64"
