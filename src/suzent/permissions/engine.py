@@ -446,12 +446,14 @@ class PermissionEngine:
                 PermissionRisk.CRITICAL,
                 metadata=evaluation.metadata,
             )
+        from suzent.tools.shell.permissions.risk import assess_command_risk
+
         return build_approval_decision(
             request.tool_name,
             request.args,
             reason=evaluation.reason,
             reason_code="shell_policy_ask",
-            risk=PermissionRisk.HIGH,
+            risk=assess_command_risk(content),
         )
 
     @staticmethod

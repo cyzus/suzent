@@ -1,0 +1,7 @@
+{
+  "products": {
+    "desktop": "patch",
+    "mobile": "patch"
+  },
+  "summary": "Improve tool permission details and separate shell approval requirements from risk for read-only chained commands."
+}
