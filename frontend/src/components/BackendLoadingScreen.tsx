@@ -1,5 +1,4 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
 
 import { getInitialLocale, tForLocale } from '../i18n';
 import { isDesktop } from '../lib/runtime';
@@ -64,15 +63,6 @@ export function BackendLoadingScreen({
       setRecovering(false);
     }
   }
-
-  React.useEffect(() => {
-    if (!isDesktop()) return;
-    if (detectDesktopPlatform(navigator.userAgent, navigator.platform) !== 'macos') return;
-    void invoke('set_startup_window_controls', { enabled: true }).catch(console.error);
-    return () => {
-      void invoke('set_startup_window_controls', { enabled: false }).catch(console.error);
-    };
-  }, []);
 
   React.useEffect(() => {
     if (error) return;
