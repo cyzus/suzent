@@ -108,3 +108,38 @@ describe('pending approval badge', () => {
     expect(render()).toContain(reviewRequired);
   });
 });
+
+describe('inline permission explanation', () => {
+  it('shows review context and scope without a nested disclosure or repeated outcome', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(ToolCallBlock, {
+          toolName: 'run_command',
+          defaultCollapsed: false,
+          inActivityRail: true,
+          permissionDecision: decision({
+            behavior: 'ask',
+            risk: 'high',
+            reason: 'Shell chaining needs review',
+          }),
+          permissionResolution: {
+            toolCallId: 'call-1',
+            behavior: 'allow',
+            source: 'user',
+            actionId: 'allow_once',
+            scope: 'once',
+          },
+        })
+      )
+    );
+    expect(html).not.toContain('<details');
+    expect(html).toContain('role="note"');
+    expect(html).toContain(tForLocale('en', 'toolCallBlock.permissionSources.policy'));
+    expect(html).toContain(tForLocale('en', 'toolCallBlock.permissionScopes.once'));
+    expect(html).toContain('Shell chaining needs review');
+    expect(html).not.toContain(tForLocale('en', 'toolCallBlock.permissionOutcome'));
+    expect(html.split(tForLocale('en', 'toolCallBlock.permissionUserAllowed'))).toHaveLength(3);
+  });
+});
